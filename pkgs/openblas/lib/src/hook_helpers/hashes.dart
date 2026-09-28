@@ -32,7 +32,7 @@ const version = 'artifacts-v0.1.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
-    '2fdee594cd3645c2da8e33b664d8da417e6332f1c80f73545d84bed73ae91be5';
+    '4b7f2d5c6fb05d4977d6641c63dca911acb67547e15344d5d88e85d7672d3a0d';
 
 /// ASCII marker prefix embedded in compiled `openblas` extension binaries.
 const sourceHashMarkerPrefix = 'OPENBLAS_SOURCE_HASH=';
@@ -146,21 +146,21 @@ final fileHashes = <(OS, Architecture, String), String>{
   (OS.linux, Architecture.x64, 'openblas'):
       '89a5bd9a56f29babae59c73f1d37cd961036664ba0b9d7fa55b1dcc29321d535',
   (OS.linux, Architecture.x64, 'openblas_extensions'):
-      '0f56da9a6a34501b1bfe4f68c7028226bd2077c7d9ab0af8b5cca054b04c9a94',
+      '046259f033276e79792749e293c27784510e91e71335e197379eb7675a9cafc4',
   (OS.linux, Architecture.arm64, 'openblas'):
       'df645117ecf5aadc53aa2d99a6fc72b7fff1bb7efbb3af4c91e8d743c1b3fb06',
   (OS.linux, Architecture.arm64, 'openblas_extensions'):
-      '6c9e8411912d2e19299bdb23923c4ed06df7c761b667dd98352aae5aaef85a5a',
+      '68a0b3b80039e4094323d9bacb4c7612a80b7bb1b58a3fd41c5d849944371584',
   (OS.macOS, Architecture.arm64, 'openblas'):
-      '94d92086467a78b1dd92615d03c958b5aefc574ea54809ab28fd7f2deffb87a7',
+      '02eba7b23489e640f376c2d27f0ed6e55c40a6f19e792b49973fd2858cadda78',
   (OS.macOS, Architecture.arm64, 'openblas_extensions'):
-      '1d8b909bccb3a3d76981c0a66160db997de83a6ea75949f7afe93f2dbc9db0b5',
+      '8fb6cfef5d079ded35a8ede40e5e07c17647006ab06c8bd5549b3d37f44a034d',
   (OS.macOS, Architecture.x64, 'openblas'):
-      'c06bf9f9c7068840da139a207e9750ab800cb521687c60787e00b511a9af0e65',
+      '46d32d61c8e9f97a5c759802c75eb1e9f2af1010fb092f98d61f39275c0342e0',
   (OS.macOS, Architecture.x64, 'openblas_extensions'):
-      '070412ce43b906afd6a139e153619b2f133b12d0b203ce9680422dbbe03175cd',
+      '6a59534f0a871598296fc898df411dd9ca9a454a2d2e890eed4dec92475bacae',
   (OS.windows, Architecture.x64, 'openblas'):
       'c8b6f93012b81eb5775955006a1a363d720ba2013b5262052944763e0a736346',
   (OS.windows, Architecture.x64, 'openblas_extensions'):
-      'cdf4c25f95f2ca28e2218da209524ff82dff145bbdab24ce5cf9921045d5b705',
+      '296b1b2adaa57cf8a583754cfd49ca15523f060a02d3bb50f78cfc54e30c0adc',
 };

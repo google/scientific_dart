@@ -191,7 +191,9 @@ void main() {
     test(
       'nativeSourceHash matches the current hook/ sources only if they are unchanged since the release tag',
       () {
-        final pkgRoot = Directory.current;
+        final pkgRoot = Directory('pkgs/openblas').existsSync()
+            ? Directory('pkgs/openblas').absolute
+            : Directory.current;
         final tagCheck = Process.runSync('git', [
           'rev-parse',
           '--verify',

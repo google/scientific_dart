@@ -32,7 +32,7 @@ const version = 'artifacts-v0.1.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
-    '1e736ab5003778b2866454d0ae2ce2d1edb3af834a82639e3d791702f096aac1';
+    '4cfcba461b39e67f5155a59c68a1901094ea470a49a6b9c13bcc5413572e52d2';
 
 /// ASCII marker prefix embedded in compiled `ndarray` binaries.
 const sourceHashMarkerPrefix = 'NDARRAY_SOURCE_HASH=';
@@ -142,13 +142,13 @@ String ndarrayArtifactName(OS os, Architecture arch) {
 /// SHA-256 digests for prebuilt `ndarray` binaries indexed by `(OS, Architecture)`.
 final fileHashes = <(OS, Architecture), String>{
   (OS.linux, Architecture.x64):
-      'ed3b0f78477f5165d81b5cdb7dd6a63393c39c6625cdd42470917f51ff17f9bc',
+      '4f6807ccefe6199d2748b921398935485efbb522ae90423a4c0570b3717faefb',
   (OS.linux, Architecture.arm64):
-      '000ee9ac1d2ee39cd0b94954703204d14c6331c1c713429d4b42fd9dabc954d3',
+      '3f3fa7642df70f677945c8cdefca814f564c74562653a603c632dd8543adc100',
   (OS.macOS, Architecture.arm64):
-      '1856c03411e083f2e489d98ac8df995b14b1213bd411d3f63333e048366d2c3b',
+      '0b64301e7c272bc990743e0ebfa2f83e16fe3ecf4d054eb8632e2cc521ee6760',
   (OS.macOS, Architecture.x64):
-      '89d1c215bda8843be8339d5eb98d6601be0f15337e773c62608821d8c88e917e',
+      '2f47dc26a5cc15c17132bd74a320ab836d6d724acec20991f2b1ad9a9e988722',
   (OS.windows, Architecture.x64):
-      'a59697e50d5c6b54f1cc357c11339ed613a6820378ab4f935fde1f2a1253ff4a',
+      'bdac26fc4e84ce6f92671882b7e4847bdf510d795bf12b60a938c01a86af41e0',
 };

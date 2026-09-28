@@ -32,7 +32,7 @@ const version = 'artifacts-v0.1.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
-    '626a51894f9b3830c258e2219f0dff6a1935a127d784789c5dfc2d151e40275f';
+    'd903d66961bf24b31c786cb8b0caa9edfa68fadd08d27ab1777fdf10ee371d83';
 
 /// ASCII marker prefix embedded in compiled `pocketfft` binaries.
 const sourceHashMarkerPrefix = 'POCKETFFT_SOURCE_HASH=';
@@ -142,13 +142,13 @@ String pocketfftArtifactName(OS os, Architecture arch) {
 /// SHA-256 digests for prebuilt `pocketfft` binaries indexed by `(OS, Architecture)`.
 final fileHashes = <(OS, Architecture), String>{
   (OS.linux, Architecture.x64):
-      '2ded76508597e001aba11c7680e569ec03d1897645b7893133df48f7ee9befd0',
+      'a2f25d0cf8af5f34ec41a30ebca8dee26bb2d66cc9cb384961d496a619bc4aad',
   (OS.linux, Architecture.arm64):
-      '5a5207c46feedc36be4bc0af71fa40fe20d507518c5a07a42767a0f78408a5fc',
+      '65b8067ccdab9c252f4bd4d86d03c298257e219da5bc84d259492f692a987b14',
   (OS.macOS, Architecture.arm64):
-      'c858d52526d87e7092c6a34797bc0257b0c433b78bc5fc7f1b7cdf4c2d236d18',
+      '7824f1e28d548219cde5844c3d10ce518b31fbf804f3ff5e6a7953f083dc0870',
   (OS.macOS, Architecture.x64):
-      'f43b833cce00f1ea46b158c69f17f13f44b495731c6077f68dac477fec4c0d77',
+      '435b4d928a49dd0b86309ddb16163187e73bc382f8fed5724b1d1af88d1750f3',
   (OS.windows, Architecture.x64):
-      '7cab00a7da04dbbbad39585448fd52ace6d9a1f58c083da3c190ef874b7abbc6',
+      'd3f40eaa88d8107fe54b7b545fe2b70ee5beafffe90967ff8d875f995904d082',
 };
