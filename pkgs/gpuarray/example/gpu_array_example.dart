@@ -69,23 +69,19 @@ void main() {
   print('4. Seamless Interop with Host NDArray:');
   ResourceScope.scope(() {
     // Start with a host NDArray
-    final hostArray = NDArray.fromList(
-      [1.0, 4.0, 9.0, 16.0],
-      [4],
-      DType.float64,
-    );
-    print('Host NDArray: ${hostArray.toList()}');
+    final hostArr = NDArray.fromList([1.0, 4.0, 9.0, 16.0], [4], DType.float64);
+    print('Host NDArray: ${hostArr.toList()}');
 
     // Upload to GPU via .toGpu() extension
-    final gpuArray = hostArray.toGpu();
-    print('Uploaded to GPU device: ${gpuArray.device.name}');
+    final gpuArr = hostArr.toGpu();
+    print('Uploaded to GPU device: ${gpuArr.device.name}');
 
     // Execute compute kernel on GPU
-    final gpuSqrt = gpuArray.sqrt();
+    final gpuSqrt = gpuArr.sqrt();
 
     // Download back to host memory as an NDArray
-    final resultArray = gpuSqrt.toNDArray();
-    print('Downloaded result NDArray: ${resultArray.toList()}');
+    final resultND = gpuSqrt.toNDArray();
+    print('Downloaded result NDArray: ${resultND.toList()}');
   });
 
   print('\n=== Example Finished Successfully ===');

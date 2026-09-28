@@ -1,311 +1,231 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import '../backend/compute_engine.dart';
 import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:typed_data';
-
-import 'package:resource_scope/resource_scope.dart';
-
-import '../device.dart';
 import '../dtype.dart';
-import '../exceptions.dart';
 import '../gpu_array.dart';
+import '../device.dart';
 
-/// Maps a [DType] to its SafeTensors specification identifier string.
-String _dtypeToSafetensors(DType dtype) => switch (dtype) {
-  DType.float64 => 'F64',
-  DType.float32 => 'F32',
-  DType.float16 => 'F16',
-  DType.bfloat16 => 'BF16',
-  DType.int64 => 'I64',
-  DType.int32 => 'I32',
-  DType.int16 => 'I16',
-  DType.int8 => 'I8',
-  DType.uint64 => 'U64',
-  DType.uint32 => 'U32',
-  DType.uint16 => 'U16',
-  DType.uint8 => 'U8',
-  DType.boolean => 'BOOL',
-  DType.complex64 => 'C64',
-  DType.complex128 => 'C128',
-};
+/// DType name mapping for SafeTensors specification.
+String _dtypeToSafetensors(DType dtype) {
+  switch (dtype) {
+    case DType.float64:
+      return 'F64';
+    case DType.float32:
+      return 'F32';
+    case DType.float16:
+      return 'F16';
+    case DType.bfloat16:
+      return 'BF16';
+    case DType.int64:
+      return 'I64';
+    case DType.int32:
+      return 'I32';
+    case DType.int16:
+      return 'I16';
+    case DType.int8:
+      return 'I8';
+    case DType.uint64:
+      return 'U64';
+    case DType.uint32:
+      return 'U32';
+    case DType.uint16:
+      return 'U16';
+    case DType.uint8:
+      return 'U8';
+    case DType.boolean:
+      return 'BOOL';
+    case DType.complex64:
+      return 'C64';
+    case DType.complex128:
+      return 'C128';
+  }
+}
 
-/// Maps a SafeTensors dtype string [code] to its corresponding [DType].
-///
-/// Throws a [FormatException] if [code] is not a recognized SafeTensors dtype.
-DType _safetensorsToDtype(String code) => switch (code) {
-  'F64' => DType.float64,
-  'F32' => DType.float32,
-  'F16' => DType.float16,
-  'BF16' => DType.bfloat16,
-  'I64' => DType.int64,
-  'I32' => DType.int32,
-  'I16' => DType.int16,
-  'I8' => DType.int8,
-  'U64' => DType.uint64,
-  'U32' => DType.uint32,
-  'U16' => DType.uint16,
-  'U8' => DType.uint8,
-  'BOOL' => DType.boolean,
-  'C64' => DType.complex64,
-  'C128' => DType.complex128,
-  _ => throw FormatException('Unsupported SafeTensors dtype: "$code".'),
-};
+DType _safetensorsToDtype(String st) {
+  switch (st) {
+    case 'F64':
+      return DType.float64;
+    case 'F32':
+      return DType.float32;
+    case 'F16':
+      return DType.float16;
+    case 'BF16':
+      return DType.bfloat16;
+    case 'I64':
+      return DType.int64;
+    case 'I32':
+      return DType.int32;
+    case 'I16':
+      return DType.int16;
+    case 'I8':
+      return DType.int8;
+    case 'U64':
+      return DType.uint64;
+    case 'U32':
+      return DType.uint32;
+    case 'U16':
+      return DType.uint16;
+    case 'U8':
+      return DType.uint8;
+    case 'BOOL':
+      return DType.boolean;
+    case 'C64':
+      return DType.complex64;
+    case 'C128':
+      return DType.complex128;
+    default:
+      throw ArgumentError('Unsupported SafeTensors dtype: $st');
+  }
+}
 
-/// Serializes a map of named [tensors] and optional string [metadata] into the
-/// binary SafeTensors format.
-///
-/// Synchronizes any pending GPU writes on each tensor's buffer to host memory
-/// before reading its raw byte payload. Non-contiguous tensor views are
-/// materialized in an isolated [ResourceScope] that is disposed before
-/// returning.
-///
-/// None of the arrays in [tensors] may be disposed.
+/// Serializes [tensors] to binary SafeTensors format.
 Uint8List saveSafetensors(
   Map<String, GpuArray> tensors, {
   Map<String, String>? metadata,
 }) {
-  final snapshot = Map<String, GpuArray>.of(tensors);
-  for (final entry in snapshot.entries) {
-    if (entry.value.isDisposed) {
-      throw StateError(
-        'Cannot serialize disposed GpuArray "${entry.key}" to SafeTensors.',
-      );
-    }
-  }
-
-  final headerMap = <String, Object>{};
+  final headerMap = <String, dynamic>{};
   if (metadata != null) {
-    headerMap['__metadata__'] = Map<String, String>.of(metadata);
+    headerMap['__metadata__'] = metadata;
   }
 
   var currentOffset = 0;
-  final tensorPayloads = <Uint8List>[];
+  final tensorBytesList = <Uint8List>[];
 
-  for (final entry in snapshot.entries) {
+  for (final entry in tensors.entries) {
     final name = entry.key;
     final tensor = entry.value;
+    final contiguousTensor = tensor.isContiguous ? tensor : tensor.copy();
+    final byteLen = contiguousTensor.byteSize;
 
-    final payload = ResourceScope.scope(() {
-      final contiguousTensor = tensor.isContiguous ? tensor : tensor.copy();
-      contiguousTensor.buffer.ensureHostSynced();
-      final byteLength = contiguousTensor.byteSize;
+    headerMap[name] = {
+      'dtype': _dtypeToSafetensors(contiguousTensor.dtype),
+      'shape': contiguousTensor.shape,
+      'data_offsets': [currentOffset, currentOffset + byteLen],
+    };
 
-      headerMap[name] = <String, Object>{
-        'dtype': _dtypeToSafetensors(contiguousTensor.dtype),
-        'shape': List<int>.of(contiguousTensor.shape),
-        'data_offsets': <int>[currentOffset, currentOffset + byteLength],
-      };
+    currentOffset += byteLen;
 
-      currentOffset += byteLength;
+    final u8List = Uint8List(byteLen);
+    if (byteLen > 0) {
+      final ptr =
+          (contiguousTensor.buffer.pointer.cast<ffi.Uint8>() +
+                  contiguousTensor.offsetElements *
+                      contiguousTensor.dtype.byteWidth)
+              .cast<ffi.Uint8>();
+      u8List.setAll(0, ptr.asTypedList(byteLen));
+    }
+    tensorBytesList.add(u8List);
 
-      final tensorBytes = Uint8List(byteLength);
-      if (byteLength > 0) {
-        final byteOffset =
-            contiguousTensor.offsetElements * contiguousTensor.dtype.byteWidth;
-        final sourceAddress = contiguousTensor.buffer.address + byteOffset;
-        tensorBytes.setAll(0, sourceAddress.asTypedList(byteLength));
-      }
-      return tensorBytes;
-    });
-
-    tensorPayloads.add(payload);
+    if (!identical(contiguousTensor, tensor)) {
+      contiguousTensor.dispose();
+    }
   }
 
   final headerJson = jsonEncode(headerMap);
-  final rawHeaderBytes = utf8.encode(headerJson);
-  final paddingLength = (8 - (rawHeaderBytes.length % 8)) % 8;
-  final headerLength = rawHeaderBytes.length + paddingLength;
+  final headerBytes = utf8.encode(headerJson);
+  final headerLen = headerBytes.length;
 
-  final totalSize = 8 + headerLength + currentOffset;
-  final outputBytes = Uint8List(totalSize);
-  final byteData = ByteData.sublistView(outputBytes);
+  final totalSize = 8 + headerLen + currentOffset;
+  final result = Uint8List(totalSize);
+  final bdata = ByteData.sublistView(result);
 
-  byteData.setUint64(0, headerLength, Endian.little);
-  outputBytes.setAll(8, rawHeaderBytes);
-  for (var i = 0; i < paddingLength; i++) {
-    outputBytes[8 + rawHeaderBytes.length + i] = 0x20;
+  bdata.setUint64(0, headerLen, Endian.little);
+  result.setRange(8, 8 + headerLen, headerBytes);
+
+  var offset = 8 + headerLen;
+  for (final tBytes in tensorBytesList) {
+    result.setRange(offset, offset + tBytes.length, tBytes);
+    offset += tBytes.length;
   }
 
-  var writeOffset = 8 + headerLength;
-  for (final tensorBytes in tensorPayloads) {
-    outputBytes.setAll(writeOffset, tensorBytes);
-    writeOffset += tensorBytes.length;
-  }
-
-  return outputBytes;
+  return result;
 }
 
-/// Deserializes a binary SafeTensors buffer [bytes] into a map of named
-/// [GpuArray] tensors allocated on [device] (or [GpuDevice.defaultDevice]).
-///
-/// Marks each loaded tensor's underlying [GpuBuffer] as host-modified so
-/// subsequent GPU shader dispatches upload the deserialized weights.
-///
-/// The target [device] must not be disposed.
-/// Throws a [FormatException] if [bytes] is truncated, has a malformed UTF-8
-/// or JSON header, specifies an unknown dtype, contains negative dimensions,
-/// or has invalid or out-of-bounds `data_offsets`.
+/// Deserializes a binary SafeTensors byte buffer into a dictionary of [GpuArray] tensors.
 Map<String, GpuArray> loadSafetensors(Uint8List bytes, {GpuDevice? device}) {
-  final targetDevice = device ?? GpuDevice.defaultDevice;
-  if (targetDevice.isDisposed) {
-    throw GpuDeviceDisposedException(targetDevice.name);
-  }
+  final dev = device ?? GpuDevice.defaultDevice;
   if (bytes.length < 8) {
-    throw FormatException(
-      'Invalid SafeTensors buffer: byte length (${bytes.length}) is smaller '
-      'than the 8-byte header size prefix.',
+    throw ArgumentError(
+      'Invalid SafeTensors buffer: buffer size (${bytes.length}) smaller than header length prefix.',
+    );
+  }
+  final bdata = ByteData.sublistView(bytes);
+  final headerLen = bdata.getUint64(0, Endian.little);
+
+  if (8 + headerLen > bytes.length) {
+    throw ArgumentError(
+      'Invalid SafeTensors buffer: header length ($headerLen) exceeds buffer size (${bytes.length}).',
     );
   }
 
-  final byteData = ByteData.sublistView(bytes);
-  final headerLength = byteData.getUint64(0, Endian.little);
-  if (headerLength < 0 ||
-      headerLength > bytes.length - 8 ||
-      8 + headerLength > bytes.length) {
-    throw FormatException(
-      'Invalid SafeTensors buffer: header length ($headerLength) exceeds '
-      'available buffer size (${bytes.length - 8}).',
-    );
-  }
+  final headerBytes = bytes.sublist(8, 8 + headerLen);
+  final headerJson = utf8.decode(headerBytes);
+  final headerMap = jsonDecode(headerJson) as Map<String, dynamic>;
 
-  final headerSlice = Uint8List.sublistView(bytes, 8, 8 + headerLength);
-  final String headerJson;
-  try {
-    headerJson = utf8.decode(headerSlice);
-  } on FormatException catch (error) {
-    throw FormatException(
-      'Invalid SafeTensors UTF-8 header: ${error.message}',
-    );
-  }
+  final dataStartOffset = 8 + headerLen;
+  final result = <String, GpuArray>{};
 
-  final Object? decodedHeader;
-  try {
-    decodedHeader = jsonDecode(headerJson);
-  } on FormatException catch (error) {
-    throw FormatException('Invalid SafeTensors JSON header: ${error.message}');
-  }
+  for (final entry in headerMap.entries) {
+    if (entry.key == '__metadata__') continue;
 
-  if (decodedHeader is! Map<String, dynamic>) {
-    throw const FormatException(
-      'Invalid SafeTensors header: root JSON value must be an object.',
-    );
-  }
+    final info = entry.value as Map<String, dynamic>;
+    final dtypeStr = info['dtype'] as String;
+    final dtype = _safetensorsToDtype(dtypeStr);
+    final shape = (info['shape'] as List).cast<int>();
+    final offsets = (info['data_offsets'] as List).cast<int>();
 
-  final dataStartOffset = 8 + headerLength;
-  final loadedTensors = <String, GpuArray>{};
-
-  try {
-    for (final entry in decodedHeader.entries) {
-      final tensorName = entry.key;
-      final descriptor = entry.value;
-      if (tensorName == '__metadata__') {
-        if (descriptor is! Map) {
-          throw const FormatException(
-            'Invalid SafeTensors "__metadata__" entry: must be a JSON object.',
-          );
-        }
-        continue;
-      }
-
-      if (descriptor is! Map<String, dynamic>) {
-        throw FormatException(
-          'Invalid SafeTensors descriptor for tensor "$tensorName": '
-          'must be a JSON object.',
-        );
-      }
-
-      final rawDtype = descriptor['dtype'];
-      if (rawDtype is! String) {
-        throw FormatException(
-          'Missing or non-string "dtype" for tensor "$tensorName".',
-        );
-      }
-      final dtype = _safetensorsToDtype(rawDtype);
-
-      final rawShape = descriptor['shape'];
-      if (rawShape is! List) {
-        throw FormatException(
-          'Missing or non-list "shape" for tensor "$tensorName".',
-        );
-      }
-      final shape = <int>[];
-      var elementCount = 1;
-      for (final dimension in rawShape) {
-        if (dimension is! int || dimension < 0) {
-          throw FormatException(
-            'Invalid shape dimension "$dimension" for tensor "$tensorName": '
-            'dimensions must be non-negative integers.',
-          );
-        }
-        shape.add(dimension);
-        elementCount *= dimension;
-      }
-
-      final rawOffsets = descriptor['data_offsets'];
-      if (rawOffsets is! List || rawOffsets.length != 2) {
-        throw FormatException(
-          'Invalid "data_offsets" for tensor "$tensorName": '
-          'expected a 2-element integer list.',
-        );
-      }
-      final startOffset = rawOffsets[0];
-      final endOffset = rawOffsets[1];
-      if (startOffset is! int ||
-          endOffset is! int ||
-          startOffset < 0 ||
-          endOffset < startOffset) {
-        throw FormatException(
-          'Invalid "data_offsets" [$startOffset, $endOffset] for tensor '
-          '"$tensorName".',
-        );
-      }
-
-      final expectedByteSize = elementCount * dtype.byteWidth;
-      if (endOffset - startOffset != expectedByteSize) {
-        throw FormatException(
-          'Data offset span (${endOffset - startOffset}) does not match '
-          'expected byte size ($expectedByteSize) for tensor "$tensorName".',
-        );
-      }
-
-      final absoluteStart = dataStartOffset + startOffset;
-      final absoluteEnd = dataStartOffset + endOffset;
-      if (absoluteEnd > bytes.length) {
-        throw FormatException(
-          'Data offset end ($absoluteEnd) exceeds total buffer length '
-          '(${bytes.length}) for tensor "$tensorName".',
-        );
-      }
-
-      final tensor = GpuArray.empty(shape, dtype, device: targetDevice);
-      if (expectedByteSize > 0) {
-        final sourceView = Uint8List.sublistView(
-          bytes,
-          absoluteStart,
-          absoluteEnd,
-        );
-        tensor.buffer.address
-            .asTypedList(expectedByteSize)
-            .setAll(0, sourceView);
-      }
-      tensor.buffer.markHostModified();
-
-      loadedTensors[tensorName] = tensor;
+    if (offsets.length != 2 || offsets[0] < 0 || offsets[1] < offsets[0]) {
+      throw FormatException(
+        'Invalid data_offsets for tensor "${entry.key}": $offsets',
+      );
     }
-  } catch (_) {
-    for (final allocated in loadedTensors.values) {
-      allocated.dispose();
+
+    final start = dataStartOffset + offsets[0];
+    final end = dataStartOffset + offsets[1];
+    final expectedByteSize = ShapeUtils.computeSize(shape) * dtype.byteWidth;
+
+    if (offsets[1] - offsets[0] != expectedByteSize) {
+      throw FormatException(
+        'Data offset length (${offsets[1] - offsets[0]}) does not match expected tensor byte size ($expectedByteSize) for tensor "${entry.key}".',
+      );
     }
-    rethrow;
+
+    if (end > bytes.length) {
+      throw FormatException(
+        'Data offset end ($end) exceeds buffer length (${bytes.length}) for tensor "${entry.key}".',
+      );
+    }
+
+    final tensor = GpuArray.empty(shape, dtype, device: dev);
+    if (expectedByteSize > 0) {
+      final ptr = tensor.buffer.pointer.cast<ffi.Uint8>();
+      final srcView = Uint8List.sublistView(bytes, start, end);
+      ptr.asTypedList(expectedByteSize).setAll(0, srcView);
+    }
+
+    result[entry.key] = tensor;
   }
 
-  return loadedTensors;
+  return result;
 }
 
-/// Saves [tensors] and optional [metadata] to a `.safetensors` file at
-/// [filePath].
-///
-/// None of the arrays in [tensors] may be disposed.
+/// Saves [tensors] to a `.safetensors` file at [filePath].
 void saveSafetensorsFile(
   String filePath,
   Map<String, GpuArray> tensors, {
@@ -315,11 +235,7 @@ void saveSafetensorsFile(
   File(filePath).writeAsBytesSync(bytes);
 }
 
-/// Loads a map of named [GpuArray] tensors from a `.safetensors` file at
-/// [filePath] onto [device] (or [GpuDevice.defaultDevice]).
-///
-/// Throws a [FormatException] if the file contents do not conform to the
-/// SafeTensors binary specification.
+/// Loads tensors from a `.safetensors` file at [filePath].
 Map<String, GpuArray> loadSafetensorsFile(
   String filePath, {
   GpuDevice? device,
@@ -327,4 +243,3 @@ Map<String, GpuArray> loadSafetensorsFile(
   final bytes = File(filePath).readAsBytesSync();
   return loadSafetensors(bytes, device: device);
 }
-
