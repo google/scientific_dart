@@ -1,0 +1,394 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+import 'dart:ffi' as ffi;
+import 'dart:math' show min;
+
+import 'package:ffi/ffi.dart';
+
+import 'ndarray.dart' show Complex, ComplexList;
+
+/// An Isolate-local scratch memory arena for transient FFI allocations.
+///
+/// Maintains pre-allocated persistent C heap memory to reduce allocation overhead.
+final class ScratchArena {
+  ScratchArena._();
+
+  static final List<ffi.Pointer<ffi.Uint8>> _pages = [];
+  static final List<int> _pageCapacities = [];
+  static const int _baseCapacity = 256 * 1024; // 256KB base capacity for page 0
+  static int _currentPageIndex = 0;
+  static int _offset = 0;
+
+  static void _init() {
+    if (_pages.isEmpty) {
+      _pages.add(malloc<ffi.Uint8>(_baseCapacity));
+      _pageCapacities.add(_baseCapacity);
+    }
+  }
+
+  /// Allocates [bytes] of memory from the arena stack, aligned to 8 bytes.
+  ///
+  /// **Preconditions:**
+  /// - [bytes] must be non-negative.
+  ///
+  /// It is an error if [bytes] is negative.
+  ///
+  /// **Performance considerations:**
+  /// - Amortized $O(1)$ complexity. If the current page has enough space,
+  ///   allocation is a simple pointer offset increment.
+  /// - If a new page needs to be allocated, it invokes native `malloc`, which
+  ///   has $O(1)$ to $O(N)$ complexity depending on the system allocator.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<T> allocate<T extends ffi.NativeType>(int bytes) {
+    if (bytes < 0) {
+      throw ArgumentError('bytes must be non-negative.');
+    }
+    _init();
+
+    // Ensure 8-byte alignment for native FFI alignment requirements
+    final alignedBytes = (bytes + 7) & ~7;
+
+    final currentCapacity = _pageCapacities[_currentPageIndex];
+
+    // If current page doesn't have enough space, switch to next page!
+    if (_offset + alignedBytes > currentCapacity) {
+      _currentPageIndex++;
+      _offset = 0;
+
+      if (_currentPageIndex >= _pages.length) {
+        // Geometrically scale capacities: Page 0 (256KB), Page 1 (512KB), Page 2 (1MB) etc.
+        final scaledCap = min(
+          1 << 30,
+          _baseCapacity << min(_currentPageIndex, 20),
+        );
+        final targetCap = alignedBytes > scaledCap ? alignedBytes : scaledCap;
+        _pages.add(malloc<ffi.Uint8>(targetCap));
+        _pageCapacities.add(targetCap);
+      } else {
+        // If reusing a cached page but its capacity is too small for this allocation:
+        if (_pageCapacities[_currentPageIndex] < alignedBytes) {
+          // Instead of freeing the small page, move it to the end of the list
+          // so it can be reused later for standard page requests.
+          final smallPage = _pages.removeAt(_currentPageIndex);
+          final smallCap = _pageCapacities.removeAt(_currentPageIndex);
+          _pages.add(smallPage);
+          _pageCapacities.add(smallCap);
+
+          // Insert the new custom-sized page at the current index.
+          _pages.insert(_currentPageIndex, malloc<ffi.Uint8>(alignedBytes));
+          _pageCapacities.insert(_currentPageIndex, alignedBytes);
+        }
+      }
+    }
+
+    final currentArena = _pages[_currentPageIndex];
+    final ptr = ffi.Pointer<T>.fromAddress(currentArena.address + _offset);
+    _offset += alignedBytes;
+    return ptr;
+  }
+
+  /// Gets the current stack marker in the arena.
+  static ScratchMarker get marker =>
+      ScratchMarker._(_currentPageIndex, _offset);
+
+  /// Resets the arena stack back to the given [marker].
+  ///
+  /// This rolls back the allocation offset and deallocates any excess pages.
+  /// Empty custom-allocated pages are pruned even if they are below the
+  /// standard preservation limit (page 0 or 1).
+  ///
+  /// **Preconditions:**
+  /// - [marker] must be a valid marker obtained from [ScratchArena.marker]
+  ///   in the current allocation session.
+  /// - Cannot reset to a marker that is ahead of the current stack pointer.
+  ///
+  /// **Performance considerations:**
+  /// - $O(P)$ where $P$ is the number of pages pruned. Usually $O(1)$ unless
+  ///   many pages were allocated.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static void reset(ScratchMarker marker) {
+    final pageIndex = marker.pageIndex;
+    final offset = marker.offset;
+
+    assert(pageIndex <= _currentPageIndex);
+    if (pageIndex == _currentPageIndex) {
+      assert(offset <= _offset);
+    }
+
+    int? pruneFromIndex;
+    for (var i = 0; i < _pages.length; i++) {
+      final isEmpty = i > pageIndex || (i == pageIndex && offset == 0);
+      if (isEmpty) {
+        final isCustom = _pageCapacities[i] > (_baseCapacity << min(i, 20));
+        final isExcess = i >= 2;
+        if (isCustom || isExcess) {
+          pruneFromIndex = i;
+          break;
+        }
+      }
+    }
+
+    if (pruneFromIndex != null) {
+      while (_pages.length > pruneFromIndex) {
+        final page = _pages.removeLast();
+        _pageCapacities.removeLast();
+        malloc.free(page);
+      }
+    }
+
+    if (_pages.isEmpty) {
+      _currentPageIndex = 0;
+      _offset = 0;
+    } else if (pageIndex >= _pages.length) {
+      _currentPageIndex = _pages.length - 1;
+      _offset = _pageCapacities[_currentPageIndex];
+    } else {
+      _currentPageIndex = pageIndex;
+      _offset = offset;
+    }
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Int]s.
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Transient allocation in the pre-allocated C stack.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Int> copyInts(List<int> list) {
+    final ptr = allocate<ffi.Int>(list.length * ffi.sizeOf<ffi.Int>());
+    for (var i = 0; i < list.length; i++) {
+      ptr[i] = list[i];
+    }
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Double]s.
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Uses fast typed list views to copy contiguous memory blocks.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Double> copyDoubles(List<double> list) {
+    final ptr = allocate<ffi.Double>(list.length * ffi.sizeOf<ffi.Double>());
+    final typedList = ptr.asTypedList(list.length);
+    typedList.setRange(0, list.length, list);
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Float]s.
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Uses fast typed list views to copy contiguous memory blocks.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Float> copyFloats(List<double> list) {
+    final ptr = allocate<ffi.Float>(list.length * ffi.sizeOf<ffi.Float>());
+    final typedList = ptr.asTypedList(list.length);
+    typedList.setRange(0, list.length, list);
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Int32]s.
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Uses fast typed list views to copy contiguous memory blocks.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Int32> copyInt32s(List<int> list) {
+    final ptr = allocate<ffi.Int32>(list.length * ffi.sizeOf<ffi.Int32>());
+    final typedList = ptr.asTypedList(list.length);
+    typedList.setRange(0, list.length, list);
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Int64]s.
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Uses fast typed list views to copy contiguous memory blocks.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Int64> copyInt64s(List<int> list) {
+    final ptr = allocate<ffi.Int64>(list.length * ffi.sizeOf<ffi.Int64>());
+    final typedList = ptr.asTypedList(list.length);
+    typedList.setRange(0, list.length, list);
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Double]s.
+  ///
+  /// Each complex number is represented as 2 consecutive double values (real followed by imaginary).
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Specially optimized for [ComplexList] to perform a direct contiguous memory copy.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Double> copyComplexes(List<Complex> list) {
+    final ptr = allocate<ffi.Double>(
+      list.length * 2 * ffi.sizeOf<ffi.Double>(),
+    );
+    final typedList = ptr.asTypedList(list.length * 2);
+    if (list is ComplexList) {
+      typedList.setRange(0, list.length * 2, list.backingList);
+    } else {
+      for (var i = 0; i < list.length; i++) {
+        typedList[i * 2] = list[i].real;
+        typedList[i * 2 + 1] = list[i].imag;
+      }
+    }
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Float]s.
+  ///
+  /// Each complex number is represented as 2 consecutive float values (real followed by imaginary).
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Specially optimized for [ComplexList] to perform a direct contiguous memory copy.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Float> copyFloatComplexes(List<Complex> list) {
+    final ptr = allocate<ffi.Float>(list.length * 2 * ffi.sizeOf<ffi.Float>());
+    final typedList = ptr.asTypedList(list.length * 2);
+    if (list is ComplexList) {
+      typedList.setRange(0, list.length * 2, list.backingList);
+    } else {
+      for (var i = 0; i < list.length; i++) {
+        typedList[i * 2] = list[i].real;
+        typedList[i * 2 + 1] = list[i].imag;
+      }
+    }
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Uint8] bytes (1 for true, 0 for false).
+  ///
+  /// **Preconditions:**
+  /// - [list] must be non-null.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(N)$ where $N$ is the number of elements in [list].
+  /// - Fast element-wise iteration to map boolean states to native byte flags.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Uint8> copyBools(List<bool> list) {
+    final ptr = allocate<ffi.Uint8>(list.length * ffi.sizeOf<ffi.Uint8>());
+    final typedList = ptr.asTypedList(list.length);
+    for (var i = 0; i < list.length; i++) {
+      typedList[i] = list[i] ? 1 : 0;
+    }
+    return ptr;
+  }
+
+  /// Allocates transient memory from the arena for strided operations.
+  ///
+  /// Allocations are bump-allocated on the [ScratchArena] stack, making them
+  /// safe for reentrant and nested operations when callers use [marker] and [reset].
+  ///
+  /// [ndim] is the number of dimensions.
+  /// [segments] is the number of segments of size [ndim] needed in the buffer.
+  /// Defaults to 4.
+  ///
+  /// **Preconditions:**
+  /// - [ndim] must be non-negative.
+  /// - [segments] must be non-negative.
+  ///
+  /// It is an error if [ndim] or [segments] is negative.
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity is $O(1)$ amortized allocation on the bump stack.
+  ///
+  /// **Example:**
+  /// {@example /example/scratch_arena_example.dart}
+  static ffi.Pointer<ffi.Int> getStridedBuffer(int ndim, [int segments = 4]) {
+    if (ndim < 0 || segments < 0) {
+      throw ArgumentError('ndim and segments must be non-negative.');
+    }
+    final count = ndim * segments;
+    final requiredSize = count > 0 ? count : 1;
+    return allocate<ffi.Int>(requiredSize * ffi.sizeOf<ffi.Int>());
+  }
+
+  /// Releases all persistent resources held by the [ScratchArena].
+  ///
+  /// This frees all pre-allocated pages.
+  /// Clients should call this when they are done using the arena to free
+  /// native memory.
+  static void cleanup() {
+    for (final page in _pages) {
+      malloc.free(page);
+    }
+    _pages.clear();
+    _pageCapacities.clear();
+    _currentPageIndex = 0;
+    _offset = 0;
+  }
+}
+
+/// Represents a stable checkpoint marker for the [ScratchArena] memory stack.
+///
+/// Markers are used to reset the arena stack back to a previous state,
+/// effectively freeing all allocations made after the marker was recorded.
+///
+/// **Example:**
+/// {@example /example/scratch_arena_example.dart}
+final class ScratchMarker {
+  /// The page index inside the ScratchArena page pool when the marker was recorded.
+  final int pageIndex;
+
+  /// The byte offset inside the page when the marker was recorded.
+  final int offset;
+
+  const ScratchMarker._(this.pageIndex, this.offset);
+}

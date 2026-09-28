@@ -1,0 +1,52 @@
+# Dart Tooling & Build Artifacts Caches
+.dart_tool/
+.packages
+build/
+.hooks_runner/
+*.dill
+*.exe
+
+# Compiled Shared Library Asset Binaries (Loaded dynamically via FFI/Native Assets)
+*.so
+*.dylib
+*.dll
+*.a
+
+# Python Benchmark Caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Unpacked Native Third-Party Source Files (Downloaded dynamically by hook/build.dart)
+pkgs/pocketfft/hook/src/
+pkgs/openblas/third_party/
+
+# IDE & System files
+.idea/
+.vscode/settings.json
+.DS_Store
+*.log
+
+# Transient Local Test / Benchmark Run Outputs
+scratch/
+scratch_notebook/
+.local-chrome/
+.jetski/
+criterion_history.json
+**/benchmark/report/
+.dart_tool/lib/
+
+# Local pub cache
+pub_cache/
+
+# Web compilation artifacts
+*.wasm
+*.wasm.map
+*.js.deps
+*.js.map
+*.mjs
+*.support.js
+editor_client.js
+notebook_session.json
+notebook_session.ipynb
+
