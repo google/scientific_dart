@@ -281,6 +281,46 @@ NDArray<T> matmul<T extends DTypeTag>(
   }
   final targetDType = a.dtype;
 
+  if (a.shape.length == 1 && b.shape.length == 1) {
+    if (a.shape[0] != b.shape[0]) {
+      throw ArgumentError(
+        'Incompatible vector dimensions for 1D dot product in matmul: ${a.shape} and ${b.shape}',
+      );
+    }
+    if (targetDType.isFloating || targetDType.isComplex) {
+      checkBlasIntDim(a.shape[0], 'n', 'matmul');
+      checkBlasIntStride(a.strides[0], 'inca', 'matmul');
+      checkBlasIntStride(b.strides[0], 'incb', 'matmul');
+    }
+  } else {
+    final kA = a.shape[a.shape.length - 1];
+    final kB = b.shape.length == 1 ? b.shape[0] : b.shape[b.shape.length - 2];
+    if (kA != kB) {
+      throw ArgumentError(
+        'Incompatible inner matrix dimensions for matmul: kA($kA) != kB($kB). Shapes: ${a.shape} and ${b.shape}',
+      );
+    }
+    if (targetDType.isFloating || targetDType.isComplex) {
+      final m = a.shape.length == 1 ? 1 : a.shape[a.shape.length - 2];
+      final n = b.shape.length == 1 ? 1 : b.shape[b.shape.length - 1];
+      checkBlasIntDim(m, 'm', 'matmul');
+      checkBlasIntDim(kA, 'k', 'matmul');
+      checkBlasIntDim(n, 'n', 'matmul');
+      if (a.shape.length == 1) {
+        checkBlasIntStride(a.strides[0], 'inca', 'matmul');
+      } else {
+        checkBlasIntStride(a.strides[a.shape.length - 2], 'lda', 'matmul');
+        checkBlasIntStride(a.strides[a.shape.length - 1], 'lda', 'matmul');
+      }
+      if (b.shape.length == 1) {
+        checkBlasIntStride(b.strides[0], 'incb', 'matmul');
+      } else {
+        checkBlasIntStride(b.strides[b.shape.length - 2], 'ldb', 'matmul');
+        checkBlasIntStride(b.strides[b.shape.length - 1], 'ldb', 'matmul');
+      }
+    }
+  }
+
   switch (targetDType) {
     case DType.float16:
     case DType.bfloat16:
@@ -1324,6 +1364,15 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     p[n] = lastShape[1];
   }
 
+  for (var i = 0; i <= n; i++) {
+    checkBlasIntDim(p[i], 'dim', 'multi_dot');
+  }
+  for (var i = 0; i < n; i++) {
+    for (final s in arrays[i].strides) {
+      checkBlasIntStride(s, 'lda', 'multi_dot');
+    }
+  }
+
   // Resolve target DType and upcasted type
   DType<DTypeTag> targetDType = arrays[0].dtype;
   for (var i = 1; i < n; i++) {
@@ -1472,6 +1521,9 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
         'Matrix inversion only supports float or complex dtypes (got ${a.dtype}).',
       );
   }
+  checkBlasIntDim(a.shape[rank - 1], 'n', 'inv');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'inv');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'inv');
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
       if (!listEquals(out.shape, a.shape) ||
@@ -1769,6 +1821,9 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
       'Matrix must be square and at least 2D (was ${a.shape})',
     );
   }
+  checkBlasIntDim(a.shape[rank - 1], 'n', 'det');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'det');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'det');
   final stackShape = a.shape.sublist(0, rank - 2);
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
@@ -2009,6 +2064,9 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
       'Matrix must be square and at least 2D (was ${a.shape})',
     );
   }
+  checkBlasIntDim(a.shape[rank - 1], 'n', 'slogdet');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'slogdet');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'slogdet');
   final stackShape = a.shape.sublist(0, rank - 2);
 
   if ((a.dtype as DType<DTypeTag>) == DType.float16 ||
@@ -2291,7 +2349,9 @@ void _copyStrided2DMatrix(
   } else {
     final marker = ScratchArena.marker;
     try {
-      final cBuf = ScratchArena.allocate<ffi.Int>(4 * ffi.sizeOf<ffi.Int>());
+      final cBuf = ScratchArena.allocate<ffi.Int64>(
+        4 * ffi.sizeOf<ffi.Int64>(),
+      );
       cBuf[0] = stride0;
       cBuf[1] = stride1;
       cBuf[2] = n;
@@ -2494,6 +2554,18 @@ NDArray<T> solve<T extends DTypeTag>(
     );
   }
 
+  final nrhs = rankB == rankA ? b.shape[rankB - 1] : 1;
+  checkBlasIntDim(n, 'n', 'solve');
+  checkBlasIntDim(nrhs, 'nrhs', 'solve');
+  checkBlasIntStride(a.strides[rankA - 2], 'lda', 'solve');
+  checkBlasIntStride(a.strides[rankA - 1], 'lda', 'solve');
+  if (rankB == 1) {
+    checkBlasIntStride(b.strides[0], 'ldb', 'solve');
+  } else {
+    checkBlasIntStride(b.strides[rankB - 2], 'ldb', 'solve');
+    checkBlasIntStride(b.strides[rankB - 1], 'ldb', 'solve');
+  }
+
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
       if (!listEquals(out.shape, expectedOutShape) ||
@@ -2533,8 +2605,6 @@ NDArray<T> solve<T extends DTypeTag>(
       });
     }
   }
-
-  final nrhs = rankB == rankA ? b.shape[rankB - 1] : 1;
 
   final NDArray<T> bCopy;
   if (rankA > 2 && rankB == 1) {
@@ -2681,6 +2751,9 @@ NDArray<T> solve<T extends DTypeTag>(
     );
   }
   final n = a.shape[rank - 1];
+  checkBlasIntDim(n, 'n', 'eig');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'eig');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'eig');
   final stackShape = a.shape.sublist(0, rank - 2);
 
   final compDType =
@@ -3031,6 +3104,9 @@ NDArray<R> eigvals<R extends DTypeTag>(
     );
   }
   final n = a.shape[rank - 1];
+  checkBlasIntDim(n, 'n', 'eigvals');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'eigvals');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'eigvals');
   final stackShape = a.shape.sublist(0, rank - 2);
 
   final compDType =
@@ -3317,6 +3393,10 @@ NDArray<T> pinv<T extends DTypeTag>(
   }
   final m = a.shape[0];
   final n = a.shape[1];
+  checkBlasIntDim(m, 'm', 'pinv');
+  checkBlasIntDim(n, 'n', 'pinv');
+  checkBlasIntStride(a.strides[0], 'lda', 'pinv');
+  checkBlasIntStride(a.strides[1], 'lda', 'pinv');
 
   final targetShape = [n, m];
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
@@ -3441,6 +3521,11 @@ NDArray<T> matrix_power<T extends DTypeTag>(
   }
 
   final size = a.shape[0];
+  if (a.dtype.isFloating || a.dtype.isComplex || n < 0) {
+    checkBlasIntDim(size, 'n', 'matrix_power');
+    checkBlasIntStride(a.strides[0], 'lda', 'matrix_power');
+    checkBlasIntStride(a.strides[1], 'lda', 'matrix_power');
+  }
   if (out != null) {
     if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
       throw ArgumentError(
@@ -3568,6 +3653,9 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
       'Cholesky decomposition is only supported for float and complex dtypes (was ${a.dtype})',
     );
   }
+  checkBlasIntDim(a.shape[rank - 1], 'n', 'cholesky');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'cholesky');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'cholesky');
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
       if (!listEquals(out.shape, a.shape) ||
@@ -3774,6 +3862,10 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   }
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
+  checkBlasIntDim(m, 'm', 'qr');
+  checkBlasIntDim(n, 'n', 'qr');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'qr');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'qr');
   final k = m < n ? m : n;
   final stackShape = a.shape.sublist(0, rank - 2);
 
@@ -4143,6 +4235,10 @@ svd<T extends DTypeTag, R extends DTypeTag>(
   }
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
+  checkBlasIntDim(m, 'm', 'svd');
+  checkBlasIntDim(n, 'n', 'svd');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svd');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svd');
   final stackShape = a.shape.sublist(0, rank - 2);
 
   final uShape = [...stackShape, m, m];
@@ -4258,6 +4354,10 @@ svd<T extends DTypeTag, R extends DTypeTag>(
   final rank = a.shape.length;
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
+  checkBlasIntDim(m, 'm', 'svd');
+  checkBlasIntDim(n, 'n', 'svd');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svd');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svd');
   final stackShape = a.shape.sublist(0, rank - 2);
 
   return NDArray.scope(() {
@@ -4582,6 +4682,14 @@ svd<T extends DTypeTag, R extends DTypeTag>(
 }
 
 NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
+  final rank = a.shape.length;
+  final m = a.shape[rank - 2];
+  final n = a.shape[rank - 1];
+  checkBlasIntDim(m, 'm', 'svdvals');
+  checkBlasIntDim(n, 'n', 'svdvals');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svdvals');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svdvals');
+
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
@@ -4590,9 +4698,6 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
     });
   }
 
-  final rank = a.shape.length;
-  final m = a.shape[rank - 2];
-  final n = a.shape[rank - 1];
   final stackShape = a.shape.sublist(0, rank - 2);
 
   return NDArray.scope(() {
@@ -4822,6 +4927,9 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
   if (m != n) {
     throw ArgumentError('Last two dimensions must be square (got $m x $n).');
   }
+  checkBlasIntDim(n, 'n', 'eigh');
+  checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigh');
+  checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'eigh');
 
   final bool promoted =
       a.dtype.isInteger ||
@@ -5109,6 +5217,9 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   if (m != n) {
     throw ArgumentError('Last two dimensions must be square (got $m x $n).');
   }
+  checkBlasIntDim(n, 'n', 'eigvalsh');
+  checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigvalsh');
+  checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'eigvalsh');
 
   final bool promoted =
       a.dtype.isInteger ||
@@ -5319,6 +5430,9 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   if (m != n) {
     throw ArgumentError('Last two dimensions must be square (got $m x $n).');
   }
+  checkBlasIntDim(n, 'n', 'schur');
+  checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'schur');
+  checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'schur');
 
   final bool promoted =
       a.dtype.isInteger ||
@@ -5630,6 +5744,9 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   if (m != n) {
     throw ArgumentError('Last two dimensions must be square (got $m x $n).');
   }
+  checkBlasIntDim(n, 'n', 'hessenberg');
+  checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'hessenberg');
+  checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'hessenberg');
 
   final bool promoted =
       a.dtype.isInteger ||
@@ -7156,6 +7273,15 @@ LstsqResult<R> lstsq<
   }
 
   final nrhs = b.shape.length > 1 ? b.shape[1] : 1;
+  checkBlasIntDim(m, 'm', 'lstsq');
+  checkBlasIntDim(n, 'n', 'lstsq');
+  checkBlasIntDim(nrhs, 'nrhs', 'lstsq');
+  checkBlasIntStride(a.strides[0], 'lda', 'lstsq');
+  checkBlasIntStride(a.strides[1], 'lda', 'lstsq');
+  checkBlasIntStride(b.strides[0], 'ldb', 'lstsq');
+  if (b.shape.length > 1) {
+    checkBlasIntStride(b.strides[1], 'ldb', 'lstsq');
+  }
 
   if (out != null) {
     if (out.isDisposed) {
@@ -7512,6 +7638,10 @@ NDArray<R> cond<R extends DTypeTag>(
   if (k == 0) {
     throw ArgumentError('Cannot compute condition number of an empty matrix.');
   }
+  checkBlasIntDim(m, 'm', 'cond');
+  checkBlasIntDim(n, 'n', 'cond');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'cond');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'cond');
 
   final DType<DTypeTag> resDType = switch (a.dtype) {
     DType.float32 || DType.complex64 => DType.float32,

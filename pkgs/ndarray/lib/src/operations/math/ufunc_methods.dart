@@ -2705,13 +2705,15 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
     }
 
     final rank = a.rank;
-    final cStridesA = ScratchArena.allocate<ffi.Int>(
-      rank * ffi.sizeOf<ffi.Int>(),
+    final cStridesA = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
     );
-    final cStridesRes = ScratchArena.allocate<ffi.Int>(
-      rank * ffi.sizeOf<ffi.Int>(),
+    final cStridesRes = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
     );
-    final cShape = ScratchArena.allocate<ffi.Int>(rank * ffi.sizeOf<ffi.Int>());
+    final cShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
     for (var i = 0; i < rank; i++) {
       cStridesA[i] = a.strides[i];
       cStridesRes[i] = result.strides[i];

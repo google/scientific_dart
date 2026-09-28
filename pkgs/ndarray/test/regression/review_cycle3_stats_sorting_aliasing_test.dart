@@ -252,7 +252,7 @@ void main() {
 
     test('count_nonzero and argmax with out aliasing flipped slice of a', () {
       NDArray.scope(() {
-        final a = NDArray.fromList([0, 1, 2, 0, 3, 0], [2, 3], DType.int32);
+        final a = NDArray.fromList([0, 1, 2, 0, 3, 0], [2, 3], DType.int64);
         final outSlice = flip(a.slice([Index(0)]));
         final resCount = count_nonzero(a, axis: 0, out: outSlice);
         expect(resCount, same(outSlice));
@@ -267,7 +267,7 @@ void main() {
         final b = NDArray.fromList(
           [10, 50, 20, 40, 30, 60],
           [2, 3],
-          DType.int32,
+          DType.int64,
         );
         final outArgmax = flip(b.slice([Index(0)]));
         final resArgmax = argmax(b, axis: 0, out: outArgmax);
@@ -280,7 +280,7 @@ void main() {
         final c = NDArray.fromList(
           [10, 50, 20, 40, 30, 60],
           [2, 3],
-          DType.int32,
+          DType.int64,
         );
         final outArgmin = flip(c.slice([Index(0)]));
         final resArgmin = argmin(c, axis: 0, out: outArgmin);

@@ -185,7 +185,7 @@ final class ScratchArena {
     }
   }
 
-  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Int]s.
+  /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Int64]s.
   ///
   /// **Preconditions:**
   /// - [list] must be non-null.
@@ -196,17 +196,7 @@ final class ScratchArena {
   ///
   /// **Example:**
   /// {@example /example/scratch_arena_example.dart}
-  static ffi.Pointer<ffi.Int> copyInts(List<int> list) {
-    final ptr = allocate<ffi.Int>(list.length * ffi.sizeOf<ffi.Int>());
-    for (var i = 0; i < list.length; i++) {
-      final v = list[i];
-      if (v < -0x80000000 || v > 0x7fffffff) {
-        throw UnsupportedError('Value $v exceeds 32-bit native int limit.');
-      }
-      ptr[i] = v;
-    }
-    return ptr;
-  }
+  static ffi.Pointer<ffi.Int64> copyInts(List<int> list) => copyInt64s(list);
 
   /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Double]s.
   ///
@@ -382,7 +372,7 @@ final class ScratchArena {
   ///
   /// **Example:**
   /// {@example /example/scratch_arena_example.dart}
-  static ffi.Pointer<ffi.Int> getStridedBuffer(int ndim, [int segments = 4]) {
+  static ffi.Pointer<ffi.Int64> getStridedBuffer(int ndim, [int segments = 4]) {
     if (ndim < 0) {
       throw ArgumentError.value(ndim, 'ndim', 'Must be non-negative.');
     }
@@ -392,7 +382,7 @@ final class ScratchArena {
     if (segments < 4) segments = 4;
     final count = ndim * segments;
     final requiredSize = count > 0 ? count : 1;
-    return allocate<ffi.Int>(requiredSize * ffi.sizeOf<ffi.Int>());
+    return allocate<ffi.Int64>(requiredSize * ffi.sizeOf<ffi.Int64>());
   }
 
   /// Releases all persistent resources held by the [ScratchArena].

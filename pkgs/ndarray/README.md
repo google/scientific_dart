@@ -20,7 +20,7 @@
 - **Numerical Optimization & Root Finding**: Multivariate nonlinear function minimization (`minimize`) supporting quasi-Newton **L-BFGS** (`MinimizeMethod.lbfgs`) and derivative-free **Nelder-Mead** simplex (`MinimizeMethod.nelderMead`), alongside 1D scalar root finding (`root_scalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
 - **Spatial Distance Metrics & Orthogonal Polynomials**: Pairwise distance matrix computations (`pdist`, `cdist`, `squareform`) across Euclidean, Manhattan, Cosine, Chebyshev, and Minkowski metrics, plus classical orthogonal polynomial evaluation, fitting, differentiation, integration, and root/quadrature generation (Chebyshev, Legendre, Hermite, Laguerre).
 - **Zero-Copy NumPy `.npy` & `.npz` Streaming I/O**: Native binary serialization and deserialization for single arrays (`save`, `load`) and multi-array ZIP archives (`savez`, `loadz` with optional compression), enabling zero-overhead data exchange with Python, NumPy, SciPy, and PyTorch pipelines.
-- **Zero-Copy Strided Views**: Every `NDArray<T>` pairs an off-heap C buffer with an N-dimensional `shape` and element `strides`. Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapaxes`, `moveaxis`), reshaping (`reshape`), dimension expansion (`expand_dims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
+- **Zero-Copy Strided Views & 64-Bit Indexing**: Every `NDArray<T>` pairs an off-heap C buffer with 64-bit N-dimensional `shape` and element `strides` (`int64_t`), supporting large tensors and virtual broadcasted views beyond $2^{31} - 1$ elements with `NDArray<Int64>` index and count operations (`argsort`, `argpartition`, `searchsorted`, `argmax`, `argmin`, `nonzero`, `argwhere`, `count_nonzero`, `digitize`). Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapaxes`, `moveaxis`), reshaping (`reshape`), dimension expansion (`expand_dims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
 - **Deterministic Scoped Memory Management**: Zone-based lexical resource arenas (`NDArray.scope`) and explicit escape hatches (`detachToParentScope`) that automatically track and free unmanaged C-heap allocations deterministically when a computation block completes, eliminating GC pressure and out-of-memory stalls.
 
 ---
@@ -37,7 +37,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  ndarray: ^0.1.0
+  ndarray: ^0.2.0
 ```
 
 ### Native Assets, Prebuilt Binaries, & `hooks.user_defines`

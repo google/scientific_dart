@@ -56,7 +56,7 @@ void main() async {
                 final res = coordinateLists.map((list) {
                   return NDArray<DTypeTag>.fromList(list, [
                     list.length,
-                  ], DType.int32);
+                  ], DType.int64);
                 }).toList();
                 blackhole(res.length);
               });

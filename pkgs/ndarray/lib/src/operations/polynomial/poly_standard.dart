@@ -318,6 +318,16 @@ NDArray<R> polyfit<
   if (w != null && (w.shape.length != 1 || w.shape[0] != m)) {
     throw ArgumentError("Weights w must be a 1D array of same length as x.");
   }
+  checkBlasIntDim(m, 'm', 'polyfit');
+  checkBlasIntDim(deg + 1, 'n', 'polyfit');
+  checkBlasIntStride(x.strides[0], 'incx', 'polyfit');
+  checkBlasIntStride(y.strides[0], 'incy', 'polyfit');
+  if (w != null) {
+    checkBlasIntStride(w.strides[0], 'incw', 'polyfit');
+  }
+  if (out != null && out.shape.isNotEmpty) {
+    checkBlasIntStride(out.strides[0], 'incout', 'polyfit');
+  }
 
   var resolvedType = resolveDType(x.dtype, y.dtype);
   if (w != null) {
@@ -766,6 +776,8 @@ NDArray<DTypeTag> roots<T extends DTypeTag>(
   if (p.shape.length != 1) {
     throw ArgumentError("Coefficient array p must be 1-dimensional.");
   }
+  checkBlasIntDim(p.shape[0], 'n', 'roots');
+  checkBlasIntStride(p.strides[0], 'incp', 'roots');
 
   final DType<DTypeTag> targetComplexDType = p.dtype == DType.complex64
       ? DType.complex64

@@ -54,6 +54,7 @@ BroadcastResult broadcastBinaryStrides(
   List<int> stridesB,
 ) {
   if (listEquals(shapeA, shapeB)) {
+    checkTotalSize(shapeA);
     return BroadcastResult(shapeA, stridesA, stridesB);
   }
 

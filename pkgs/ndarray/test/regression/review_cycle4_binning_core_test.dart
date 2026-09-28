@@ -113,37 +113,40 @@ void main() {
       },
     );
 
-    test('digitize with negative-stride flipped out (both Int32 and Int64)', () {
-      NDArray.scope(() {
-        final x = NDArray<Float64>.fromList(
-          [0.2, 6.4, 3.0, 1.6],
-          [4],
-          DType.float64,
-        );
-        final bins = NDArray<Float64>.fromList(
-          [0.0, 1.0, 2.5, 4.0, 10.0],
-          [5],
-          DType.float64,
-        );
-        // Expected digitize indices: [1, 4, 3, 2]
+    test(
+      'digitize with negative-stride flipped out (both Int32 and Int64)',
+      () {
+        NDArray.scope(() {
+          final x = NDArray<Float64>.fromList(
+            [0.2, 6.4, 3.0, 1.6],
+            [4],
+            DType.float64,
+          );
+          final bins = NDArray<Float64>.fromList(
+            [0.0, 1.0, 2.5, 4.0, 10.0],
+            [5],
+            DType.float64,
+          );
+          // Expected digitize indices: [1, 4, 3, 2]
 
-        // 1. Int32 flipped out (same dtype as searchsorted result)
-        final buf32 = NDArray<Int32>.fromList([0, 0, 0, 0], [4], DType.int32);
-        final flippedOut32 = flip(buf32);
-        final res32 = digitize(x, bins, out: flippedOut32);
-        expect(identical(res32, flippedOut32), isTrue);
-        expect(flippedOut32.toList(), equals([1, 4, 3, 2]));
-        expect(buf32.toList(), equals([2, 3, 4, 1]));
+          // 1. Int32 flipped out via digitizeAs
+          final buf32 = NDArray<Int32>.fromList([0, 0, 0, 0], [4], DType.int32);
+          final flippedOut32 = flip(buf32);
+          final res32 = digitizeAs(x, bins, DType.int32, out: flippedOut32);
+          expect(identical(res32, flippedOut32), isTrue);
+          expect(flippedOut32.toList(), equals([1, 4, 3, 2]));
+          expect(buf32.toList(), equals([2, 3, 4, 1]));
 
-        // 2. Int64 flipped out (casts from Int32 to Int64 via _fastCopyAndCast)
-        final buf64 = NDArray<Int64>.fromList([0, 0, 0, 0], [4], DType.int64);
-        final flippedOut64 = flip(buf64);
-        final res64 = digitizeAs(x, bins, DType.int64, out: flippedOut64);
-        expect(identical(res64, flippedOut64), isTrue);
-        expect(flippedOut64.toList(), equals([1, 4, 3, 2]));
-        expect(buf64.toList(), equals([2, 3, 4, 1]));
-      });
-    });
+          // 2. Int64 flipped out (default digitize)
+          final buf64 = NDArray<Int64>.fromList([0, 0, 0, 0], [4], DType.int64);
+          final flippedOut64 = flip(buf64);
+          final res64 = digitize(x, bins, out: flippedOut64);
+          expect(identical(res64, flippedOut64), isTrue);
+          expect(flippedOut64.toList(), equals([1, 4, 3, 2]));
+          expect(buf64.toList(), equals([2, 3, 4, 1]));
+        });
+      },
+    );
 
     test(
       'histogram(a, bins: bins) does not steal or dispose caller bins array',

@@ -62,7 +62,7 @@ void main() {
       expect(p, same(outP));
       expect(outP.scalar, 42);
 
-      final outAP = NDArray.scalar(99, dtype: DType.int32);
+      final outAP = NDArray.scalar(99, dtype: DType.int64);
       final ap = argpartition(a, 0, out: outAP);
       expect(ap, same(outAP));
       expect(outAP.scalar, 0);

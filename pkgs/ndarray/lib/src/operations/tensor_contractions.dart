@@ -414,6 +414,22 @@ NDArray<T> tensordot<T extends DTypeTag>(
     }
   }
 
+  final m = freeA.map((i) => a.shape[i]).fold(1, (x, y) => x * y);
+  final k = normAxesA.map((i) => a.shape[i]).fold(1, (x, y) => x * y);
+  final n = freeB.map((i) => b.shape[i]).fold(1, (x, y) => x * y);
+
+  if (targetDType.isFloating || targetDType.isComplex) {
+    checkBlasIntDim(m, 'm', 'tensordot');
+    checkBlasIntDim(k, 'k', 'tensordot');
+    checkBlasIntDim(n, 'n', 'tensordot');
+    for (var d = 0; d < a.strides.length; d++) {
+      checkBlasIntStride(a.strides[d], 'lda', 'tensordot');
+    }
+    for (var d = 0; d < b.strides.length; d++) {
+      checkBlasIntStride(b.strides[d], 'ldb', 'tensordot');
+    }
+  }
+
   return NDArray.scope(() {
     if (freeA.isEmpty && freeB.isEmpty) {
       bool isSeq(List<int> axes) {
@@ -430,10 +446,11 @@ NDArray<T> tensordot<T extends DTypeTag>(
           bToUse.isContiguous &&
           isSeq(normAxesA) &&
           isSeq(normAxesB)) {
-        final n = aToUse.size;
+        final dotN = aToUse.size;
         if (targetDType == DType.float64) {
+          checkBlasIntDim(dotN, 'n', 'tensordot');
           final val = cblas_ddot(
-            n,
+            dotN,
             aToUse.pointer.cast<ffi.Double>(),
             1,
             bToUse.pointer.cast<ffi.Double>(),
@@ -445,8 +462,9 @@ NDArray<T> tensordot<T extends DTypeTag>(
             out: out,
           );
         } else if (targetDType == DType.float32) {
+          checkBlasIntDim(dotN, 'n', 'tensordot');
           final val = cblas_sdot(
-            n,
+            dotN,
             aToUse.pointer.cast<ffi.Float>(),
             1,
             bToUse.pointer.cast<ffi.Float>(),
@@ -463,10 +481,6 @@ NDArray<T> tensordot<T extends DTypeTag>(
 
     final aPerm = a.transpose([...freeA, ...normAxesA]);
     final bPerm = b.transpose([...normAxesB, ...freeB]);
-
-    final m = freeA.map((i) => a.shape[i]).fold(1, (x, y) => x * y);
-    final k = normAxesA.map((i) => a.shape[i]).fold(1, (x, y) => x * y);
-    final n = freeB.map((i) => b.shape[i]).fold(1, (x, y) => x * y);
 
     final a2D = aPerm.reshape([m, k]);
     final b2D = bPerm.reshape([k, n]);
@@ -1386,6 +1400,15 @@ NDArray<T> vdot<T extends DTypeTag>(
       "Cannot compute vdot: operands must have the same total number of elements (${a.size} != ${b.size}).",
     );
   }
+  if (a.dtype.isFloating || a.dtype.isComplex) {
+    checkBlasIntDim(a.size, 'n', 'vdot');
+    for (var d = 0; d < a.strides.length; d++) {
+      checkBlasIntStride(a.strides[d], 'inca', 'vdot');
+    }
+    for (var d = 0; d < b.strides.length; d++) {
+      checkBlasIntStride(b.strides[d], 'incb', 'vdot');
+    }
+  }
 
   return NDArray.scope(() {
     final flatA = a.reshape([a.size]);
@@ -1525,23 +1548,23 @@ NDArray<T> kron<T extends DTypeTag>(
     } else {
       final marker = ScratchArena.marker;
       try {
-        final cStridesA = ScratchArena.allocate<ffi.Int>(
-          maxRank * ffi.sizeOf<ffi.Int>(),
+        final cStridesA = ScratchArena.allocate<ffi.Int64>(
+          maxRank * ffi.sizeOf<ffi.Int64>(),
         );
-        final cShapeA = ScratchArena.allocate<ffi.Int>(
-          maxRank * ffi.sizeOf<ffi.Int>(),
+        final cShapeA = ScratchArena.allocate<ffi.Int64>(
+          maxRank * ffi.sizeOf<ffi.Int64>(),
         );
-        final cStridesB = ScratchArena.allocate<ffi.Int>(
-          maxRank * ffi.sizeOf<ffi.Int>(),
+        final cStridesB = ScratchArena.allocate<ffi.Int64>(
+          maxRank * ffi.sizeOf<ffi.Int64>(),
         );
-        final cShapeB = ScratchArena.allocate<ffi.Int>(
-          maxRank * ffi.sizeOf<ffi.Int>(),
+        final cShapeB = ScratchArena.allocate<ffi.Int64>(
+          maxRank * ffi.sizeOf<ffi.Int64>(),
         );
-        final cStridesRes = ScratchArena.allocate<ffi.Int>(
-          maxRank * ffi.sizeOf<ffi.Int>(),
+        final cStridesRes = ScratchArena.allocate<ffi.Int64>(
+          maxRank * ffi.sizeOf<ffi.Int64>(),
         );
-        final cShapeRes = ScratchArena.allocate<ffi.Int>(
-          maxRank * ffi.sizeOf<ffi.Int>(),
+        final cShapeRes = ScratchArena.allocate<ffi.Int64>(
+          maxRank * ffi.sizeOf<ffi.Int64>(),
         );
 
         for (var i = 0; i < maxRank; i++) {

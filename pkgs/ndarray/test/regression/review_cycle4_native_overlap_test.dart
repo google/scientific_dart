@@ -106,18 +106,20 @@ void main() {
 
         final marker = ScratchArena.marker;
         try {
-          final cShape = ScratchArena.allocate<ffi.Int>(ffi.sizeOf<ffi.Int>());
-          final cStridesCond = ScratchArena.allocate<ffi.Int>(
-            ffi.sizeOf<ffi.Int>(),
+          final cShape = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
           );
-          final cStridesX = ScratchArena.allocate<ffi.Int>(
-            ffi.sizeOf<ffi.Int>(),
+          final cStridesCond = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
           );
-          final cStridesY = ScratchArena.allocate<ffi.Int>(
-            ffi.sizeOf<ffi.Int>(),
+          final cStridesX = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
           );
-          final cStridesRes = ScratchArena.allocate<ffi.Int>(
-            ffi.sizeOf<ffi.Int>(),
+          final cStridesY = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
+          );
+          final cStridesRes = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
           );
           cShape[0] = 4;
           cStridesCond[0] = cond.strides[0];
@@ -173,12 +175,14 @@ void main() {
 
         final marker = ScratchArena.marker;
         try {
-          final cShape = ScratchArena.allocate<ffi.Int>(ffi.sizeOf<ffi.Int>());
-          final cStridesSrc = ScratchArena.allocate<ffi.Int>(
-            ffi.sizeOf<ffi.Int>(),
+          final cShape = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
           );
-          final cStridesRes = ScratchArena.allocate<ffi.Int>(
-            ffi.sizeOf<ffi.Int>(),
+          final cStridesSrc = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
+          );
+          final cStridesRes = ScratchArena.allocate<ffi.Int64>(
+            ffi.sizeOf<ffi.Int64>(),
           );
           cShape[0] = 5;
           cStridesSrc[0] = aFlipped.strides[0];

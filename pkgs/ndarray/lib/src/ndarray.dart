@@ -23,7 +23,6 @@ import 'package:ffi/ffi.dart';
 import 'dart:collection';
 
 import 'ndarray_bindings.dart';
-import 'ndarray_extensions_bindings.dart';
 import 'scratch_arena.dart';
 
 import 'package:openblas/openblas.dart' show openblas_set_num_threads;
@@ -58,7 +57,7 @@ sealed class DTypeTag {
 ///   floats).
 /// - [S]: the sum/product accumulation tag (`Int64` for `Boolean`; `Self`
 ///   otherwise).
-/// - [CS]: the cumulative sum/product tag (`Int32` for `Boolean`; `Self`
+/// - [CS]: the cumulative sum/product tag (`Int64` for `Boolean`; `Self`
 ///   otherwise).
 sealed class DTypeSpec<
   R extends DTypeTag,
@@ -226,30 +225,96 @@ int _computeCheckedTotalSize(List<int> shape) {
   var totalSize = 1;
   for (final dim in shape) {
     if (dim < 0) {
-      throw ArgumentError('Shape dimensions cannot be negative: $shape');
-    }
-    if (dim > 2147483647) {
-      throw UnsupportedError(
-        'NDArray operations currently support arrays up to 2^31 - 1 elements. Got ${shape.length == 1 ? dim : shape}.',
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not contain negative dimensions',
       );
     }
     if (dim == 0) {
       totalSize = 0;
       continue;
     }
-    if (totalSize != 0 && totalSize > 2147483647 ~/ dim) {
-      throw UnsupportedError(
-        'NDArray operations currently support arrays up to 2^31 - 1 elements. Got $shape.',
+    if (totalSize != 0 && totalSize > 0x7fffffffffffffff ~/ dim) {
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not result in total size overflowing 64-bit integer',
       );
     }
     totalSize *= dim;
   }
-  if (totalSize > 2147483647 || totalSize < 0) {
-    throw UnsupportedError(
-      'NDArray operations currently support arrays up to 2^31 - 1 elements. Got $totalSize.',
+  return totalSize;
+}
+
+({int minRelativeOffset, int maxRelativeOffset}) _computeCheckedRelativeSpan(
+  List<int> shape,
+  List<int> strides,
+) {
+  var minRelativeOffset = 0;
+  var maxRelativeOffset = 0;
+  for (var d = 0; d < shape.length; d++) {
+    final stride = strides[d];
+    final size = shape[d];
+    if (size <= 1 || stride == 0) {
+      continue;
+    }
+    final spanCount = size - 1;
+    if (stride > 0) {
+      if (stride > 0x7fffffffffffffff ~/ spanCount) {
+        throw ArgumentError.value(
+          strides,
+          'strides',
+          'Must not result in stride span overflowing 64-bit integer',
+        );
+      }
+      final dimSpan = spanCount * stride;
+      if (maxRelativeOffset > 0x7fffffffffffffff - dimSpan) {
+        throw ArgumentError.value(
+          strides,
+          'strides',
+          'Must not result in positive offset span overflowing 64-bit integer',
+        );
+      }
+      maxRelativeOffset += dimSpan;
+    } else {
+      if (stride == -0x8000000000000000) {
+        throw ArgumentError.value(
+          strides,
+          'strides',
+          'Must not result in stride span overflowing 64-bit integer',
+        );
+      }
+      final absStride = -stride;
+      if (absStride > 0x7fffffffffffffff ~/ spanCount) {
+        throw ArgumentError.value(
+          strides,
+          'strides',
+          'Must not result in stride span overflowing 64-bit integer',
+        );
+      }
+      final negSpan = spanCount * absStride;
+      if (-minRelativeOffset > 0x7fffffffffffffff - negSpan) {
+        throw ArgumentError.value(
+          strides,
+          'strides',
+          'Must not result in negative offset span overflowing 64-bit integer',
+        );
+      }
+      minRelativeOffset -= negSpan;
+    }
+  }
+  if (maxRelativeOffset > 0x7fffffffffffffff - (-minRelativeOffset) - 1) {
+    throw ArgumentError.value(
+      strides,
+      'strides',
+      'Must not result in total buffer span overflowing 64-bit integer',
     );
   }
-  return totalSize;
+  return (
+    minRelativeOffset: minRelativeOffset,
+    maxRelativeOffset: maxRelativeOffset,
+  );
 }
 
 @internal
@@ -851,13 +916,6 @@ sealed class NDArray<T extends DTypeTag>
        strides = List<int>.unmodifiable(strides),
        isContiguous = _checkContiguous(shape, strides) {
     _computeCheckedTotalSize(shape);
-    for (final stride in strides) {
-      if (stride < -0x80000000 || stride > 0x7fffffff) {
-        throw UnsupportedError(
-          'Stride $stride exceeds 32-bit native int limit.',
-        );
-      }
-    }
     _initializeOpenBLASOnce();
     if (_parent == null) {
       final ptrToFree = _allocPointer ?? _pointer;
@@ -958,10 +1016,10 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - All dimensions in [shape] must be strictly non-negative ($\ge 0$).
-  /// - Total element count must not exceed $2^{31} - 1$ ($2,147,483,647$).
+  /// - Total element count and byte size must not overflow a 64-bit signed integer ($2^{63} - 1$).
   ///
   /// - It is an error if any dimension in [shape] is negative.
-  /// - It is an error if the total element count exceeds $2^{31} - 1$ ($2,147,483,647$).
+  /// - It is an error if the total element count or byte size overflows a 64-bit signed integer.
   /// - It is an error if the provided [dtype] is unsupported.
   ///
   /// **Performance considerations:**
@@ -997,19 +1055,20 @@ sealed class NDArray<T extends DTypeTag>
           'Strides length (${strides.length}) must match shape length (${shape.length}).',
         );
       }
-      for (var d = 0; d < shape.length; d++) {
-        final stride = strides[d];
-        final size = shape[d];
-        if (stride > 0) {
-          maxRelativeOffset += (size - 1) * stride;
-        } else if (stride < 0) {
-          minRelativeOffset += (size - 1) * stride;
-        }
-      }
+      final span = _computeCheckedRelativeSpan(shape, strides);
+      minRelativeOffset = span.minRelativeOffset;
+      maxRelativeOffset = span.maxRelativeOffset;
     }
     final int allocSize = strides == null
         ? totalSize
         : (isEmpty ? 0 : (maxRelativeOffset - minRelativeOffset + 1));
+    if (allocSize > 0x7fffffffffffffff ~/ dtype.byteWidth) {
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not result in byte size overflowing 64-bit integer',
+      );
+    }
     final int initialOffsetElements = (strides == null || isEmpty)
         ? 0
         : -minRelativeOffset;
@@ -1275,10 +1334,10 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - All dimensions in [shape] must be strictly non-negative ($\ge 0$).
-  /// - Total element count must not exceed $2^{31} - 1$ ($2,147,483,647$).
+  /// - Total element count and byte size must not overflow a 64-bit signed integer ($2^{63} - 1$).
   ///
   /// - It is an error if any dimension in [shape] is negative.
-  /// - It is an error if the total element count exceeds $2^{31} - 1$ ($2,147,483,647$).
+  /// - It is an error if the total element count or byte size overflows a 64-bit signed integer.
   /// - It is an error if the provided [dtype] is unsupported.
   ///
   /// **Performance considerations:**
@@ -1351,13 +1410,23 @@ sealed class NDArray<T extends DTypeTag>
     double step = 1.0,
     required DType<T> dtype,
   }) {
-    if (step == 0.0) {
-      throw ArgumentError('Step size cannot be zero.');
+    if (step == 0.0 || step.isNaN) {
+      throw ArgumentError.value(step, 'step', 'Must be a non-zero number');
     }
     if ((stop > start && step < 0.0) || (stop < start && step > 0.0)) {
       throw ArgumentError('Step size direction must match start/stop range.');
     }
-    final length = ((stop - start) / step).ceil();
+    final rawLength = (stop - start) / step;
+    if (rawLength.isNaN ||
+        rawLength.isInfinite ||
+        rawLength >= 9223372036854775808.0) {
+      throw ArgumentError.value(
+        step,
+        'step',
+        'Must not result in length overflowing 64-bit integer',
+      );
+    }
+    final length = rawLength.ceil();
     final arr = NDArray<T>.create([length], dtype);
     for (var i = 0; i < length; i++) {
       final val = start + i * step;
@@ -1429,6 +1498,17 @@ sealed class NDArray<T extends DTypeTag>
     final root = parent._rootParent;
     final rootPhysicalStart = root._allocPointer ?? root._pointer;
     final bool isEmpty = shape.contains(0);
+    if (!isEmpty &&
+        offsetElements != 0 &&
+        (offsetElements == -0x8000000000000000 ||
+            offsetElements.abs() >
+                0x7fffffffffffffff ~/ parent.dtype.byteWidth)) {
+      throw ArgumentError.value(
+        offsetElements,
+        'offsetElements',
+        'Must not result in byte offset overflowing 64-bit integer',
+      );
+    }
     final childLogicalPointer = isEmpty
         ? rootPhysicalStart
         : _offsetPointer(parent.pointer, offsetElements, parent.dtype);
@@ -1436,18 +1516,18 @@ sealed class NDArray<T extends DTypeTag>
         (childLogicalPointer.address - rootPhysicalStart.address) ~/
         parent.dtype.byteWidth;
 
-    // Calculate min and max relative offsets
-    var minRelativeOffset = 0;
-    var maxRelativeOffset = 0;
+    final (:minRelativeOffset, :maxRelativeOffset) = isEmpty
+        ? (minRelativeOffset: 0, maxRelativeOffset: 0)
+        : _computeCheckedRelativeSpan(shape, strides);
+
     if (!isEmpty) {
-      for (var d = 0; d < shape.length; d++) {
-        final stride = strides[d];
-        final size = shape[d];
-        if (stride > 0) {
-          maxRelativeOffset += (size - 1) * stride;
-        } else if (stride < 0) {
-          minRelativeOffset += (size - 1) * stride;
-        }
+      if ((cumulativeOffset > 0 &&
+              maxRelativeOffset > 0x7fffffffffffffff - cumulativeOffset) ||
+          (cumulativeOffset < 0 &&
+              minRelativeOffset < -0x7fffffffffffffff - cumulativeOffset)) {
+        throw RangeError(
+          'View physical offsets overflow 64-bit bounds for root buffer [0..${root._data.length - 1}].',
+        );
       }
     }
 
@@ -1580,19 +1660,20 @@ sealed class NDArray<T extends DTypeTag>
           'Strides length (${strides.length}) must match shape length (${shape.length}).',
         );
       }
-      for (var d = 0; d < shape.length; d++) {
-        final stride = strides[d];
-        final size = shape[d];
-        if (stride > 0) {
-          maxRelativeOffset += (size - 1) * stride;
-        } else if (stride < 0) {
-          minRelativeOffset += (size - 1) * stride;
-        }
-      }
+      final span = _computeCheckedRelativeSpan(shape, strides);
+      minRelativeOffset = span.minRelativeOffset;
+      maxRelativeOffset = span.maxRelativeOffset;
     }
     final int allocSize = strides == null
         ? totalSize
         : (isEmpty ? 0 : (maxRelativeOffset - minRelativeOffset + 1));
+    if (allocSize > 0x7fffffffffffffff ~/ dtype.byteWidth) {
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not result in byte size overflowing 64-bit integer',
+      );
+    }
     final int initialOffsetElements = (strides == null || isEmpty)
         ? 0
         : -minRelativeOffset;
@@ -1659,7 +1740,25 @@ sealed class NDArray<T extends DTypeTag>
     if (shape.isEmpty) return [];
     final strides = List<int>.filled(shape.length, 1);
     for (var i = shape.length - 2; i >= 0; i--) {
-      strides[i] = strides[i + 1] * shape[i + 1];
+      final nextStride = strides[i + 1];
+      final nextDim = shape[i + 1];
+      if (nextDim < 0) {
+        throw ArgumentError.value(
+          shape,
+          'shape',
+          'Must not contain negative dimensions',
+        );
+      }
+      if (nextStride != 0 &&
+          nextDim > 0 &&
+          nextStride > 0x7fffffffffffffff ~/ nextDim) {
+        throw ArgumentError.value(
+          shape,
+          'shape',
+          'Must not result in C-contiguous stride overflowing 64-bit integer',
+        );
+      }
+      strides[i] = nextStride * nextDim;
     }
     return strides;
   }
@@ -1749,8 +1848,21 @@ sealed class NDArray<T extends DTypeTag>
         }
         negOneIdx = i;
       } else if (d < 0) {
-        throw ArgumentError('Negative dimension size: $d');
+        throw ArgumentError.value(
+          newShape,
+          'newShape',
+          'Must not contain negative dimensions other than -1',
+        );
+      } else if (d == 0) {
+        knownProd = 0;
       } else {
+        if (knownProd != 0 && knownProd > 0x7fffffffffffffff ~/ d) {
+          throw ArgumentError.value(
+            newShape,
+            'newShape',
+            'Must not result in total size overflowing 64-bit integer',
+          );
+        }
         knownProd *= d;
       }
     }
@@ -3003,8 +3115,8 @@ sealed class NDArray<T extends DTypeTag>
         final List<int> indices;
         final maskMarker = ScratchArena.marker;
         try {
-          final pIndices = ScratchArena.allocate<ffi.Int>(
-            size * ffi.sizeOf<ffi.Int>(),
+          final pIndices = ScratchArena.allocate<ffi.Int64>(
+            size * ffi.sizeOf<ffi.Int64>(),
           );
           final count = unpack_mask_c(
             mask.mask.pointer.cast(),
@@ -3012,7 +3124,7 @@ sealed class NDArray<T extends DTypeTag>
             mask.mask.strides[0],
             pIndices,
           );
-          indices = pIndices.cast<ffi.Int32>().asTypedList(count).toList();
+          indices = pIndices.asTypedList(count).toList();
         } finally {
           ScratchArena.reset(maskMarker);
         }
@@ -3379,7 +3491,7 @@ sealed class NDArray<T extends DTypeTag>
       );
     }
     if (spec is int) {
-      final indices = NDArray<Int32>.fromList([spec], [1], DType.int32);
+      final indices = NDArray<Int64>.fromList([spec], [1], DType.int64);
       NDArray? broadcastedVal;
       try {
         if (value is NDArray) {
@@ -3419,9 +3531,9 @@ sealed class NDArray<T extends DTypeTag>
         final subList = spec.first as List;
         if (subList.every((e) => e is int)) {
           final intIndices = subList.cast<int>().toList();
-          final indices = NDArray<Int32>.fromList(intIndices, [
+          final indices = NDArray<Int64>.fromList(intIndices, [
             intIndices.length,
-          ], DType.int32);
+          ], DType.int64);
           NDArray? broadcastedVal;
           try {
             if (value is NDArray) {
@@ -3450,9 +3562,9 @@ sealed class NDArray<T extends DTypeTag>
         if ((shape.length == 1 && spec.length > 1) ||
             (value is NDArray && value.size > 1)) {
           final intIndices = spec.cast<int>();
-          final indices = NDArray<Int32>.fromList(intIndices, [
+          final indices = NDArray<Int64>.fromList(intIndices, [
             intIndices.length,
-          ], DType.int32);
+          ], DType.int64);
           NDArray? broadcastedVal;
           try {
             if (value is NDArray) {
@@ -3524,9 +3636,9 @@ sealed class NDArray<T extends DTypeTag>
       for (var i = 0; i < spec.size; i++) {
         intList.add((spec.getCellFlat(i) as num).toInt());
       }
-      final indices = NDArray<Int32>.fromList(intList, [
+      final indices = NDArray<Int64>.fromList(intList, [
         intList.length,
-      ], DType.int32);
+      ], DType.int64);
       NDArray? broadcastedVal;
       try {
         if (value is NDArray) {
@@ -4084,8 +4196,8 @@ sealed class NDArray<T extends DTypeTag>
         final List<int> indices;
         final maskMarker = ScratchArena.marker;
         try {
-          final pIndices = ScratchArena.allocate<ffi.Int>(
-            size * ffi.sizeOf<ffi.Int>(),
+          final pIndices = ScratchArena.allocate<ffi.Int64>(
+            size * ffi.sizeOf<ffi.Int64>(),
           );
           final count = unpack_mask_c(
             mask.mask.pointer.cast(),
@@ -4093,7 +4205,7 @@ sealed class NDArray<T extends DTypeTag>
             mask.mask.strides[0],
             pIndices,
           );
-          indices = pIndices.cast<ffi.Int32>().asTypedList(count).toList();
+          indices = pIndices.asTypedList(count).toList();
         } finally {
           ScratchArena.reset(maskMarker);
         }
@@ -4194,23 +4306,23 @@ sealed class NDArray<T extends DTypeTag>
         final pTypes = ScratchArena.allocate<ffi.Int>(
           rank * ffi.sizeOf<ffi.Int>(),
         );
-        final pIndexVals = ScratchArena.allocate<ffi.Int>(
-          rank * ffi.sizeOf<ffi.Int>(),
+        final pIndexVals = ScratchArena.allocate<ffi.Int64>(
+          rank * ffi.sizeOf<ffi.Int64>(),
         );
-        final pSliceStarts = ScratchArena.allocate<ffi.Int>(
-          rank * ffi.sizeOf<ffi.Int>(),
+        final pSliceStarts = ScratchArena.allocate<ffi.Int64>(
+          rank * ffi.sizeOf<ffi.Int64>(),
         );
-        final pSliceStops = ScratchArena.allocate<ffi.Int>(
-          rank * ffi.sizeOf<ffi.Int>(),
+        final pSliceStops = ScratchArena.allocate<ffi.Int64>(
+          rank * ffi.sizeOf<ffi.Int64>(),
         );
-        final pSliceSteps = ScratchArena.allocate<ffi.Int>(
-          rank * ffi.sizeOf<ffi.Int>(),
+        final pSliceSteps = ScratchArena.allocate<ffi.Int64>(
+          rank * ffi.sizeOf<ffi.Int64>(),
         );
-        final pIndicesPtrs = ScratchArena.allocate<ffi.Pointer<ffi.Int>>(
-          rank * ffi.sizeOf<ffi.Pointer<ffi.Int>>(),
+        final pIndicesPtrs = ScratchArena.allocate<ffi.Pointer<ffi.Int64>>(
+          rank * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
         );
-        final pIndicesLens = ScratchArena.allocate<ffi.Int>(
-          rank * ffi.sizeOf<ffi.Int>(),
+        final pIndicesLens = ScratchArena.allocate<ffi.Int64>(
+          rank * ffi.sizeOf<ffi.Int64>(),
         );
 
         for (var i = 0; i < rank; i++) {
@@ -4271,8 +4383,8 @@ sealed class NDArray<T extends DTypeTag>
             pSliceSteps[i] = 0;
 
             final values = selector.values;
-            final pIndices = ScratchArena.allocate<ffi.Int>(
-              values.length * ffi.sizeOf<ffi.Int>(),
+            final pIndices = ScratchArena.allocate<ffi.Int64>(
+              values.length * ffi.sizeOf<ffi.Int64>(),
             );
             for (var j = 0; j < values.length; j++) {
               final idx = values[j];

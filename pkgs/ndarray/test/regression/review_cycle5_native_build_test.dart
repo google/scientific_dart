@@ -455,20 +455,20 @@ void main() {
           final aTrans = aNative.transpose();
           final marker = ScratchArena.marker;
           try {
-            final cShape = ScratchArena.allocate<ffi.Int>(
-              2 * ffi.sizeOf<ffi.Int>(),
+            final cShape = ScratchArena.allocate<ffi.Int64>(
+              2 * ffi.sizeOf<ffi.Int64>(),
             );
-            final cStridesA = ScratchArena.allocate<ffi.Int>(
-              2 * ffi.sizeOf<ffi.Int>(),
+            final cStridesA = ScratchArena.allocate<ffi.Int64>(
+              2 * ffi.sizeOf<ffi.Int64>(),
             );
-            final cStridesMin = ScratchArena.allocate<ffi.Int>(
-              2 * ffi.sizeOf<ffi.Int>(),
+            final cStridesMin = ScratchArena.allocate<ffi.Int64>(
+              2 * ffi.sizeOf<ffi.Int64>(),
             );
-            final cStridesMax = ScratchArena.allocate<ffi.Int>(
-              2 * ffi.sizeOf<ffi.Int>(),
+            final cStridesMax = ScratchArena.allocate<ffi.Int64>(
+              2 * ffi.sizeOf<ffi.Int64>(),
             );
-            final cStridesRes = ScratchArena.allocate<ffi.Int>(
-              2 * ffi.sizeOf<ffi.Int>(),
+            final cStridesRes = ScratchArena.allocate<ffi.Int64>(
+              2 * ffi.sizeOf<ffi.Int64>(),
             );
             cShape[0] = 3;
             cShape[1] = 3;

@@ -413,16 +413,22 @@ void main() {
         );
       });
 
-      test('overflowing shape product throws UnsupportedError', () {
-        expect(
-          () => NDArray<Float64>.create([100000, 100000], DType.float64),
-          throwsA(anyOf(isA<ArgumentError>(), isA<UnsupportedError>())),
-        );
-        expect(
-          () => NDArray<Float64>.create([2147483648], DType.float64),
-          throwsA(anyOf(isA<ArgumentError>(), isA<UnsupportedError>())),
-        );
-      });
+      test(
+        'overflowing 64-bit shape product or byte size throws ArgumentError',
+        () {
+          expect(
+            () => NDArray<Float64>.create([
+              3037000500,
+              3037000500,
+            ], DType.float64),
+            throwsArgumentError,
+          );
+          expect(
+            () => NDArray<Float64>.create([0x2000000000000000], DType.float64),
+            throwsArgumentError,
+          );
+        },
+      );
     });
 
     group('M4: .npy Load Byte Verification', () {

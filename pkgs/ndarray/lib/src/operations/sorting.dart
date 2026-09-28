@@ -242,12 +242,12 @@ NDArray<T> sort<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int32> argsort<T extends DTypeTag>(
+NDArray<Int64> argsort<T extends DTypeTag>(
   NDArray<T> a, {
   int axis = -1,
   SortKind kind = SortKind.quicksort,
-  NDArray<Int32>? out,
-}) => argsortAs<T, Int32>(a, DType.int32, axis: axis, kind: kind, out: out);
+  NDArray<Int64>? out,
+}) => argsortAs<T, Int64>(a, DType.int64, axis: axis, kind: kind, out: out);
 
 /// Returns the indices that would sort an array [a], stored in the specified
 /// integer [dtype] (`DType.int32` or `DType.int64`).
@@ -342,12 +342,23 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
 
     final nativeKind = mapSortKind(kind);
 
-    final is64 = result.dtype == DType.int64;
-    final ScratchMarker? marker = is64 ? ScratchArena.marker : null;
+    final is32 = result.dtype == DType.int32;
+    final ScratchMarker? marker = is32 ? ScratchArena.marker : null;
     try {
-      final ffi.Pointer<ffi.Int> resPtr = is64
-          ? ScratchArena.allocate<ffi.Int>(totalSize * ffi.sizeOf<ffi.Int>())
-          : result.pointer.cast<ffi.Int>();
+      final ffi.Pointer<ffi.Int64> resPtr = is32
+          ? ScratchArena.allocate<ffi.Int64>(
+              totalSize * ffi.sizeOf<ffi.Int64>(),
+            )
+          : result.pointer.cast<ffi.Int64>();
+
+      void copyIf32() {
+        if (is32) {
+          final outPtr = result.pointer.cast<ffi.Int32>();
+          for (var i = 0; i < totalSize; i++) {
+            outPtr[i] = resPtr[i];
+          }
+        }
+      }
 
       switch (src.dtype) {
         case DType.float64:
@@ -360,12 +371,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.float32:
           final dataPtr = src.pointer.cast<ffi.Float>();
@@ -377,12 +383,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.int64:
           final dataPtr = src.pointer.cast<ffi.LongLong>();
@@ -394,12 +395,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.int32:
           final dataPtr = src.pointer.cast<ffi.Int>();
@@ -411,12 +407,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.int16:
           final dataPtr = src.pointer.cast<ffi.Int16>();
@@ -428,12 +419,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.uint8:
           final dataPtr = src.pointer.cast<ffi.Uint8>();
@@ -445,12 +431,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.complex128:
         case DType.complex64:
@@ -489,12 +470,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
           for (var r = 0; r < numRows; r++) {
             native_argsort_int8(dataPtr + r * n, resPtr + r * n, n, nativeKind);
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.uint16:
           final dataPtr = src.pointer.cast<ffi.Uint16>();
@@ -506,12 +482,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.uint32:
           final dataPtr = src.pointer.cast<ffi.Uint32>();
@@ -523,12 +494,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.uint64:
           final dataPtr = src.pointer.cast<ffi.Uint64>();
@@ -540,12 +506,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.float16:
           final dataPtr = src.pointer.cast<ffi.Uint16>();
@@ -557,12 +518,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
         case DType.bfloat16:
           final dataPtr = src.pointer.cast<ffi.Uint16>();
@@ -574,12 +530,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
               nativeKind,
             );
           }
-          if (is64) {
-            final outPtr = result.pointer.cast<ffi.LongLong>();
-            for (var i = 0; i < totalSize; i++) {
-              outPtr[i] = resPtr[i];
-            }
-          }
+          copyIf32();
           return finish();
       }
     } finally {
@@ -724,8 +675,8 @@ NDArray<T> partition<T extends DTypeTag>(
 
     final marker = ScratchArena.marker;
     try {
-      final cKList = ScratchArena.allocate<ffi.Int>(
-        uniqueK.length * ffi.sizeOf<ffi.Int>(),
+      final cKList = ScratchArena.allocate<ffi.Int64>(
+        uniqueK.length * ffi.sizeOf<ffi.Int64>(),
       );
       for (var i = 0; i < uniqueK.length; i++) {
         cKList[i] = uniqueK[i];
@@ -858,12 +809,12 @@ NDArray<T> partition<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int32> argpartition<T extends DTypeTag>(
+NDArray<Int64> argpartition<T extends DTypeTag>(
   NDArray<T> a,
   dynamic kth, {
   int axis = -1,
-  NDArray<Int32>? out,
-}) => argpartitionAs<T, Int32>(a, kth, DType.int32, axis: axis, out: out);
+  NDArray<Int64>? out,
+}) => argpartitionAs<T, Int64>(a, kth, DType.int64, axis: axis, out: out);
 
 /// Returns the indices that would partition an array along [axis], stored in
 /// the specified integer [dtype] (`DType.int32` or `DType.int64`).
@@ -988,15 +939,17 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
       return finish();
     }
 
-    final is64 = result.dtype == DType.int64;
+    final is32 = result.dtype == DType.int32;
     final marker = ScratchArena.marker;
     try {
-      final ffi.Pointer<ffi.Int> resPtr = is64
-          ? ScratchArena.allocate<ffi.Int>(totalSize * ffi.sizeOf<ffi.Int>())
-          : result.pointer.cast<ffi.Int>();
+      final ffi.Pointer<ffi.Int64> resPtr = is32
+          ? ScratchArena.allocate<ffi.Int64>(
+              totalSize * ffi.sizeOf<ffi.Int64>(),
+            )
+          : result.pointer.cast<ffi.Int64>();
 
-      final cKList = ScratchArena.allocate<ffi.Int>(
-        uniqueK.length * ffi.sizeOf<ffi.Int>(),
+      final cKList = ScratchArena.allocate<ffi.Int64>(
+        uniqueK.length * ffi.sizeOf<ffi.Int64>(),
       );
       for (var i = 0; i < uniqueK.length; i++) {
         cKList[i] = uniqueK[i];
@@ -1173,8 +1126,8 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
           }
       }
 
-      if (is64 && src.dtype != DType.boolean) {
-        final outPtr = result.pointer.cast<ffi.LongLong>();
+      if (is32 && src.dtype != DType.boolean) {
+        final outPtr = result.pointer.cast<ffi.Int32>();
         for (var i = 0; i < totalSize; i++) {
           outPtr[i] = resPtr[i];
         }
@@ -1222,16 +1175,16 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
 ///   print(indices.toList()); // [[1, 2], [0, 3]]
 /// }
 /// ```
-NDArray<Int32> searchsorted<T extends DTypeTag>(
+NDArray<Int64> searchsorted<T extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> v, {
   SearchSide side = SearchSide.left,
   NDArray<DTypeTag>? sorter,
-  NDArray<Int32>? out,
-}) => searchsortedAs<T, Int32>(
+  NDArray<Int64>? out,
+}) => searchsortedAs<T, Int64>(
   a,
   v,
-  DType.int32,
+  DType.int64,
   side: side,
   sorter: sorter,
   out: out,
@@ -1315,15 +1268,15 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
   return NDArray.scope(() {
     NDArray<DTypeTag>? srcSorter;
     if (sorter != null) {
-      if (sorter.dtype != DType.int32) {
-        srcSorter = castNDArray(sorter, DType.int32);
+      if (sorter.dtype != DType.int64) {
+        srcSorter = castNDArray(sorter, DType.int64);
       } else if (!sorter.isContiguous) {
         srcSorter = sorter.copy();
       } else {
         srcSorter = sorter;
       }
       final aSize = a.shape[0];
-      final sorterPtr = srcSorter.pointer.cast<ffi.Int>();
+      final sorterPtr = srcSorter.pointer.cast<ffi.Int64>();
       for (var i = 0; i < aSize; i++) {
         final idx = sorterPtr[i];
         if (idx < 0 || idx >= aSize) {
@@ -1348,16 +1301,18 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
     final numValues = srcV.size;
     final sideLeft = side == SearchSide.left ? 1 : 0;
 
-    final ffi.Pointer<ffi.Int> cSorter = (srcSorter != null)
-        ? srcSorter.pointer.cast<ffi.Int>()
-        : ffi.Pointer<ffi.Int>.fromAddress(0);
+    final ffi.Pointer<ffi.Int64> cSorter = (srcSorter != null)
+        ? srcSorter.pointer.cast<ffi.Int64>()
+        : ffi.Pointer<ffi.Int64>.fromAddress(0);
 
-    final is64 = result.dtype == DType.int64;
-    final ScratchMarker? marker = is64 ? ScratchArena.marker : null;
+    final is32 = result.dtype == DType.int32;
+    final ScratchMarker? marker = is32 ? ScratchArena.marker : null;
     try {
-      final ffi.Pointer<ffi.Int> resPtr = is64
-          ? ScratchArena.allocate<ffi.Int>(numValues * ffi.sizeOf<ffi.Int>())
-          : result.pointer.cast<ffi.Int>();
+      final ffi.Pointer<ffi.Int64> resPtr = is32
+          ? ScratchArena.allocate<ffi.Int64>(
+              numValues * ffi.sizeOf<ffi.Int64>(),
+            )
+          : result.pointer.cast<ffi.Int64>();
 
       var wroteResultDirectly = false;
       switch (srcA.dtype) {
@@ -1541,8 +1496,8 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
             cSorter,
           );
       }
-      if (is64 && !wroteResultDirectly) {
-        final outPtr = result.pointer.cast<ffi.LongLong>();
+      if (is32 && !wroteResultDirectly) {
+        final outPtr = result.pointer.cast<ffi.Int32>();
         for (var i = 0; i < numValues; i++) {
           outPtr[i] = resPtr[i];
         }
@@ -1678,20 +1633,20 @@ dynamic where<T extends DTypeTag>(
 
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.allocate<ffi.Int>(
-        commonShape.length * ffi.sizeOf<ffi.Int>(),
+      final cShape = ScratchArena.allocate<ffi.Int64>(
+        commonShape.length * ffi.sizeOf<ffi.Int64>(),
       );
-      final cStridesCond = ScratchArena.allocate<ffi.Int>(
-        stridesCond.length * ffi.sizeOf<ffi.Int>(),
+      final cStridesCond = ScratchArena.allocate<ffi.Int64>(
+        stridesCond.length * ffi.sizeOf<ffi.Int64>(),
       );
-      final cStridesX = ScratchArena.allocate<ffi.Int>(
-        stridesX.length * ffi.sizeOf<ffi.Int>(),
+      final cStridesX = ScratchArena.allocate<ffi.Int64>(
+        stridesX.length * ffi.sizeOf<ffi.Int64>(),
       );
-      final cStridesY = ScratchArena.allocate<ffi.Int>(
-        stridesY.length * ffi.sizeOf<ffi.Int>(),
+      final cStridesY = ScratchArena.allocate<ffi.Int64>(
+        stridesY.length * ffi.sizeOf<ffi.Int64>(),
       );
-      final cStridesRes = ScratchArena.allocate<ffi.Int>(
-        resultStrides.length * ffi.sizeOf<ffi.Int>(),
+      final cStridesRes = ScratchArena.allocate<ffi.Int64>(
+        resultStrides.length * ffi.sizeOf<ffi.Int64>(),
       );
 
       for (var i = 0; i < commonShape.length; i++) {
@@ -1828,12 +1783,12 @@ dynamic where<T extends DTypeTag>(
 
 /// Returns the indices of the elements that are non-zero.
 ///
-/// Returns a `List<NDArray<Int32>>` containing 1D integer arrays, one for each dimension
+/// Returns a `List<NDArray<Int64>>` containing 1D integer arrays, one for each dimension
 /// of [a], which give the coordinates of the non-zero elements along that dimension.
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-List<NDArray<Int32>> nonzero<T extends DTypeTag>(NDArray<T> a) {
+List<NDArray<Int64>> nonzero<T extends DTypeTag>(NDArray<T> a) {
   if (a.isDisposed) {
     throw StateError('Cannot execute nonzero() on a disposed array.');
   }
@@ -1841,7 +1796,7 @@ List<NDArray<Int32>> nonzero<T extends DTypeTag>(NDArray<T> a) {
   final count = count_nonzero<T>(a).scalar;
   final results = List.generate(
     rank,
-    (_) => NDArray<Int32>.create([count], DType.int32, zeroInit: true),
+    (_) => NDArray<Int64>.create([count], DType.int64, zeroInit: true),
   );
 
   if (count == 0 || rank == 0) {
@@ -1853,11 +1808,11 @@ List<NDArray<Int32>> nonzero<T extends DTypeTag>(NDArray<T> a) {
     final res = NDArray<Boolean>.create(a.shape, DType.boolean);
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.allocate<ffi.Int>(
-        rank * ffi.sizeOf<ffi.Int>(),
+      final cShape = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
       );
-      final cStrides = ScratchArena.allocate<ffi.Int>(
-        rank * ffi.sizeOf<ffi.Int>(),
+      final cStrides = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
       );
       for (var i = 0; i < rank; i++) {
         cShape[i] = a.shape[i];
@@ -1955,8 +1910,8 @@ List<NDArray<Int32>> nonzero<T extends DTypeTag>(NDArray<T> a) {
         case DType.uint32:
         case DType.uint16:
           final doubleA = castNDArray(a, DType.float64);
-          final doubleStrides = ScratchArena.allocate<ffi.Int>(
-            rank * ffi.sizeOf<ffi.Int>(),
+          final doubleStrides = ScratchArena.allocate<ffi.Int64>(
+            rank * ffi.sizeOf<ffi.Int64>(),
           );
           for (var i = 0; i < rank; i++) {
             doubleStrides[i] = doubleA.strides[i];
@@ -1980,20 +1935,22 @@ List<NDArray<Int32>> nonzero<T extends DTypeTag>(NDArray<T> a) {
 
   final marker = ScratchArena.marker;
   try {
-    final cShape = ScratchArena.allocate<ffi.Int>(rank * ffi.sizeOf<ffi.Int>());
-    final cStrides = ScratchArena.allocate<ffi.Int>(
-      rank * ffi.sizeOf<ffi.Int>(),
+    final cShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
     );
     for (var i = 0; i < rank; i++) {
       cShape[i] = cond.shape[i];
       cStrides[i] = cond.strides[i];
     }
 
-    final outCoords = ScratchArena.allocate<ffi.Pointer<ffi.Int>>(
-      rank * ffi.sizeOf<ffi.Pointer<ffi.Int>>(),
+    final outCoords = ScratchArena.allocate<ffi.Pointer<ffi.Int64>>(
+      rank * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
     );
     for (var d = 0; d < rank; d++) {
-      outCoords[d] = results[d].pointer.cast<ffi.Int>();
+      outCoords[d] = results[d].pointer.cast<ffi.Int64>();
     }
 
     native_collect_nonzero_coords(
@@ -2012,13 +1969,63 @@ List<NDArray<Int32>> nonzero<T extends DTypeTag>(NDArray<T> a) {
   return results;
 }
 
+/// Returns indices that are non-zero in the flattened version of [a].
+///
+/// Equivalent to `nonzero(a.reshape([a.size]))[0]` for contiguous arrays or
+/// `nonzero(a.flatten())[0]` for strided arrays.
+///
+/// **Preconditions:**
+/// - [a] (and [out] if provided) must not be disposed.
+/// - If [out] is provided, it must be writeable with dtype [DType.int64] and
+///   1-D shape matching the number of non-zero elements in [a].
+///
+/// **Example:**
+/// ```dart
+/// final a = NDArray.fromList([-2, -1, 0, 1, 2], [5], DType.int32);
+/// final idx = flatnonzero(a); // [0, 1, 3, 4] (DType.int64)
+/// ```
+NDArray<Int64> flatnonzero<T extends DTypeTag>(
+  NDArray<T> a, {
+  NDArray<Int64>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute flatnonzero() on a disposed array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write flatnonzero() result to a disposed output array.',
+    );
+  }
+  return NDArray.scope(() {
+    final flat = a.isContiguous
+        ? a.reshape([a.size])
+        : a.copy().reshape([a.size]);
+    final coords = nonzero<T>(flat);
+    final res = coords[0];
+    if (out != null) {
+      if (!out.isWriteable ||
+          !listEquals(out.shape, res.shape) ||
+          out.dtype != DType.int64) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must be writeable with shape ${res.shape} and dtype int64',
+        );
+      }
+      res.copy(out: out);
+      return out;
+    }
+    return res.detachToParentScope();
+  });
+}
+
 /// Find the indices of array elements that are non-zero, grouped by element.
 ///
 /// Returns a 2D array of shape `[M, N]` where `M` is the number of non-zero
 /// elements, and `N` is the rank of [a].
 ///
 /// It is an error if [a] is disposed.
-NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
+NDArray<Int64> argwhere<T extends DTypeTag>(NDArray<T> a) {
   if (a.isDisposed) {
     throw StateError('Cannot execute argwhere() on a disposed array.');
   }
@@ -2029,15 +2036,15 @@ NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
 
     if (rank == 0) {
       if (count > 0) {
-        return NDArray<Int32>.create([1, 0], DType.int32).detachToParentScope();
+        return NDArray<Int64>.create([1, 0], DType.int64).detachToParentScope();
       } else {
-        return NDArray<Int32>.create([0, 0], DType.int32).detachToParentScope();
+        return NDArray<Int64>.create([0, 0], DType.int64).detachToParentScope();
       }
     }
 
-    final result = NDArray<Int32>.create(
+    final result = NDArray<Int64>.create(
       [count, rank],
-      DType.int32,
+      DType.int64,
       zeroInit: true,
     );
     if (count == 0) {
@@ -2048,11 +2055,11 @@ NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
     final cond = NDArray<Boolean>.create(a.shape, DType.boolean);
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.allocate<ffi.Int>(
-        rank * ffi.sizeOf<ffi.Int>(),
+      final cShape = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
       );
-      final cStrides = ScratchArena.allocate<ffi.Int>(
-        rank * ffi.sizeOf<ffi.Int>(),
+      final cStrides = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
       );
       for (var i = 0; i < rank; i++) {
         cShape[i] = a.shape[i];
@@ -2150,8 +2157,8 @@ NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
         case DType.uint32:
         case DType.uint16:
           final doubleA = castNDArray(a, DType.float64);
-          final doubleStrides = ScratchArena.allocate<ffi.Int>(
-            rank * ffi.sizeOf<ffi.Int>(),
+          final doubleStrides = ScratchArena.allocate<ffi.Int64>(
+            rank * ffi.sizeOf<ffi.Int64>(),
           );
           for (var i = 0; i < rank; i++) {
             doubleStrides[i] = doubleA.strides[i];
@@ -2168,11 +2175,11 @@ NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
           doubleA.dispose();
       }
 
-      final cCondShape = ScratchArena.allocate<ffi.Int>(
-        rank * ffi.sizeOf<ffi.Int>(),
+      final cCondShape = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
       );
-      final cCondStrides = ScratchArena.allocate<ffi.Int>(
-        rank * ffi.sizeOf<ffi.Int>(),
+      final cCondStrides = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
       );
       for (var i = 0; i < rank; i++) {
         cCondShape[i] = cond.shape[i];
@@ -2185,7 +2192,7 @@ NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
         cCondShape,
         cCondStrides,
         rank,
-        result.pointer.cast<ffi.Int>(),
+        result.pointer.cast<ffi.Int64>(),
       );
     } finally {
       ScratchArena.reset(marker);
@@ -2197,10 +2204,10 @@ NDArray<Int32> argwhere<T extends DTypeTag>(NDArray<T> a) {
 
 void _dispatchCountNonzeroFFI(
   ffi.Pointer<ffi.Void> src,
-  ffi.Pointer<ffi.Int> stridesSrc,
-  ffi.Pointer<ffi.Int> dest,
-  ffi.Pointer<ffi.Int> stridesDest,
-  ffi.Pointer<ffi.Int> shape,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Int64> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
   int rank,
   int axis,
   int isContig,
@@ -2211,7 +2218,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_double(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2222,7 +2229,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_float(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2233,7 +2240,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_int64(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2244,7 +2251,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_int32(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2256,7 +2263,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_uint8(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2267,7 +2274,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_int16(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2278,7 +2285,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_complex128(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2289,7 +2296,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_complex64(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2305,7 +2312,7 @@ void _dispatchCountNonzeroFFI(
       native_count_nonzero_double(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2323,7 +2330,7 @@ void _dispatchCountNonzeroFFI(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int32> count_nonzero<T extends DTypeTag>(
+NDArray<Int64> count_nonzero<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
   NDArray<DTypeTag>? out,
@@ -2356,14 +2363,14 @@ NDArray<Int32> count_nonzero<T extends DTypeTag>(
   if (out != null) {
     if (!out.isWriteable ||
         !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.int32) {
+        out.dtype != DType.int64) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = NDArray<Int32>.create(out.shape, DType.int32);
+        final temp = NDArray<Int64>.create(out.shape, DType.int64);
         count_nonzero<T>(a, axis: axis, out: temp);
-        return temp.copy(out: out as NDArray<Int32>);
+        return temp.copy(out: out as NDArray<Int64>);
       });
     }
   }
@@ -2393,18 +2400,20 @@ NDArray<Int32> count_nonzero<T extends DTypeTag>(
     }
 
     final result =
-        (out ?? NDArray<Int32>.create([], DType.int32)) as NDArray<Int32>;
+        (out ?? NDArray<Int64>.create([], DType.int64)) as NDArray<Int64>;
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.allocate<ffi.Int>(ffi.sizeOf<ffi.Int>());
+      final cShape = ScratchArena.allocate<ffi.Int64>(ffi.sizeOf<ffi.Int64>());
       cShape[0] = src.size;
-      final cStrides = ScratchArena.allocate<ffi.Int>(ffi.sizeOf<ffi.Int>());
+      final cStrides = ScratchArena.allocate<ffi.Int64>(
+        ffi.sizeOf<ffi.Int64>(),
+      );
       cStrides[0] = 1;
 
       _dispatchCountNonzeroFFI(
         src.pointer,
         cStrides,
-        result.pointer.cast<ffi.Int>(),
+        result.pointer.cast<ffi.Int64>(),
         cStrides,
         cShape,
         1,
@@ -2424,14 +2433,16 @@ NDArray<Int32> count_nonzero<T extends DTypeTag>(
   final targetAxis = normAxis;
 
   final result =
-      (out ?? NDArray<Int32>.create(targetShape, DType.int32))
-          as NDArray<Int32>;
+      (out ?? NDArray<Int64>.create(targetShape, DType.int64))
+          as NDArray<Int64>;
 
   final marker = ScratchArena.marker;
   try {
-    final cShape = ScratchArena.allocate<ffi.Int>(rank * ffi.sizeOf<ffi.Int>());
-    final cStridesSrc = ScratchArena.allocate<ffi.Int>(
-      rank * ffi.sizeOf<ffi.Int>(),
+    final cShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cStridesSrc = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
     );
     for (var i = 0; i < rank; i++) {
       cShape[i] = a.shape[i];
@@ -2439,8 +2450,8 @@ NDArray<Int32> count_nonzero<T extends DTypeTag>(
     }
 
     final rankDest = targetShape.length;
-    final cStridesDest = ScratchArena.allocate<ffi.Int>(
-      (rankDest > 0 ? rankDest : 1) * ffi.sizeOf<ffi.Int>(),
+    final cStridesDest = ScratchArena.allocate<ffi.Int64>(
+      (rankDest > 0 ? rankDest : 1) * ffi.sizeOf<ffi.Int64>(),
     );
     for (var i = 0; i < rankDest; i++) {
       cStridesDest[i] = result.strides[i];
@@ -2449,7 +2460,7 @@ NDArray<Int32> count_nonzero<T extends DTypeTag>(
     _dispatchCountNonzeroFFI(
       a.pointer,
       cStridesSrc,
-      result.pointer.cast<ffi.Int>(),
+      result.pointer.cast<ffi.Int64>(),
       cStridesDest,
       cShape,
       rank,
@@ -2466,10 +2477,10 @@ NDArray<Int32> count_nonzero<T extends DTypeTag>(
 
 void _dispatchArgMinMaxFFI(
   ffi.Pointer<ffi.Void> src,
-  ffi.Pointer<ffi.Int> stridesSrc,
-  ffi.Pointer<ffi.Int> dest,
-  ffi.Pointer<ffi.Int> stridesDest,
-  ffi.Pointer<ffi.Int> shape,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Int64> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
   int rank,
   int axis,
   int isMax,
@@ -2481,7 +2492,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_double(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2493,7 +2504,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_float(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2505,7 +2516,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_int64(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2517,7 +2528,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_int32(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2530,7 +2541,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_uint8(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2542,7 +2553,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_int16(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2559,7 +2570,7 @@ void _dispatchArgMinMaxFFI(
       native_argminmax_double(
         src,
         stridesSrc,
-        dest.cast(),
+        dest,
         stridesDest,
         shape,
         rank,
@@ -2573,7 +2584,7 @@ void _dispatchArgMinMaxFFI(
   }
 }
 
-NDArray<Int32> _uint64ArgMinMax(
+NDArray<Int64> _uint64ArgMinMax(
   NDArray a,
   int? normAxis,
   bool isMax, {
@@ -2582,8 +2593,8 @@ NDArray<Int32> _uint64ArgMinMax(
   required List<int> targetShape,
 }) {
   final result =
-      (out ?? NDArray<Int32>.create(targetShape, DType.int32))
-          as NDArray<Int32>;
+      (out ?? NDArray<Int64>.create(targetShape, DType.int64))
+          as NDArray<Int64>;
   final rank = a.shape.length;
 
   if (normAxis == null) {
@@ -2670,7 +2681,7 @@ NDArray<Int32> _uint64ArgMinMax(
   return result;
 }
 
-NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
+NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   NDArray<T> a,
   int? axis,
   bool isMax, {
@@ -2714,14 +2725,14 @@ NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
   if (out != null) {
     if (!out.isWriteable ||
         !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.int32) {
+        out.dtype != DType.int64) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = NDArray<Int32>.create(out.shape, DType.int32);
+        final temp = NDArray<Int64>.create(out.shape, DType.int64);
         _argminmaxFFI<T>(a, axis, isMax, keepdims: keepdims, out: temp);
-        return temp.copy(out: out as NDArray<Int32>);
+        return temp.copy(out: out as NDArray<Int64>);
       });
     }
   }
@@ -2761,19 +2772,21 @@ NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
     }
 
     final result =
-        (out ?? NDArray<Int32>.create(targetShape, DType.int32))
-            as NDArray<Int32>;
+        (out ?? NDArray<Int64>.create(targetShape, DType.int64))
+            as NDArray<Int64>;
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.allocate<ffi.Int>(ffi.sizeOf<ffi.Int>());
+      final cShape = ScratchArena.allocate<ffi.Int64>(ffi.sizeOf<ffi.Int64>());
       cShape[0] = src.size;
-      final cStrides = ScratchArena.allocate<ffi.Int>(ffi.sizeOf<ffi.Int>());
+      final cStrides = ScratchArena.allocate<ffi.Int64>(
+        ffi.sizeOf<ffi.Int64>(),
+      );
       cStrides[0] = 1;
 
       _dispatchArgMinMaxFFI(
         src.pointer,
         cStrides,
-        result.pointer.cast<ffi.Int>(),
+        result.pointer.cast<ffi.Int64>(),
         cStrides, // dummy contiguous dest strides
         cShape,
         1, // dummy rank
@@ -2794,14 +2807,16 @@ NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
   final targetAxis = normAxis;
 
   final result =
-      (out ?? NDArray<Int32>.create(targetShape, DType.int32))
-          as NDArray<Int32>;
+      (out ?? NDArray<Int64>.create(targetShape, DType.int64))
+          as NDArray<Int64>;
 
   final marker = ScratchArena.marker;
   try {
-    final cShape = ScratchArena.allocate<ffi.Int>(rank * ffi.sizeOf<ffi.Int>());
-    final cStridesSrc = ScratchArena.allocate<ffi.Int>(
-      rank * ffi.sizeOf<ffi.Int>(),
+    final cShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cStridesSrc = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
     );
     for (var i = 0; i < rank; i++) {
       cShape[i] = a.shape[i];
@@ -2812,8 +2827,8 @@ NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
         ? (List<int>.from(result.strides)..removeAt(targetAxis))
         : result.strides;
     final rankDest = squeezedDestStrides.length;
-    final cStridesDest = ScratchArena.allocate<ffi.Int>(
-      (rankDest > 0 ? rankDest : 1) * ffi.sizeOf<ffi.Int>(),
+    final cStridesDest = ScratchArena.allocate<ffi.Int64>(
+      (rankDest > 0 ? rankDest : 1) * ffi.sizeOf<ffi.Int64>(),
     );
     for (var i = 0; i < rankDest; i++) {
       cStridesDest[i] = squeezedDestStrides[i];
@@ -2822,7 +2837,7 @@ NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
     _dispatchArgMinMaxFFI(
       a.pointer,
       cStridesSrc,
-      result.pointer.cast<ffi.Int>(),
+      result.pointer.cast<ffi.Int64>(),
       cStridesDest,
       cShape,
       rank,
@@ -2845,7 +2860,7 @@ NDArray<Int32> _argminmaxFFI<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int32> argmax<T extends DTypeTag>(
+NDArray<Int64> argmax<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
@@ -2861,7 +2876,7 @@ NDArray<Int32> argmax<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int32> argmin<T extends DTypeTag>(
+NDArray<Int64> argmin<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
@@ -3016,7 +3031,7 @@ List<int>? findIndex<T extends DTypeTag>(
 
     final cMatchCoords = rank == 0
         ? ffi.nullptr
-        : ScratchArena.allocate<ffi.Int>(rank * ffi.sizeOf<ffi.Int>());
+        : ScratchArena.allocate<ffi.Int64>(rank * ffi.sizeOf<ffi.Int64>());
 
     final cTarget = _allocateTarget(target, a.dtype);
 

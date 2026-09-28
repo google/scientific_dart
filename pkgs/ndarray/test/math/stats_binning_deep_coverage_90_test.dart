@@ -324,7 +324,7 @@ void main() {
               DType.float64,
             );
 
-            final out = NDArray.zeros([2, 2], DType.int32);
+            final out = NDArray.zeros([2, 2], DType.int64);
             final res = digitize(x2D, bins, out: out);
             expect(identical(res, out), isTrue);
             expect(res.shape, equals([2, 2]));
@@ -386,10 +386,10 @@ void main() {
               throwsA(anything),
             );
 
-            final outDisposed = NDArray.zeros([2], DType.int32)..dispose();
+            final outDisposed = NDArray.zeros([2], DType.int64)..dispose();
             expect(() => digitize(x, bins, out: outDisposed), throwsStateError);
 
-            final outBadShape = NDArray.zeros([3], DType.int32);
+            final outBadShape = NDArray.zeros([3], DType.int64);
             expect(
               () => digitize(x, bins, out: outBadShape),
               throwsArgumentError,

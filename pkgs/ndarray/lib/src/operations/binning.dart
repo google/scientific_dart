@@ -400,12 +400,12 @@ NDArray<T> bincount<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy digitize reference](https://numpy.org/doc/stable/reference/generated/numpy.digitize.html)
 /// for details.
-NDArray<Int32> digitize<Tx extends DTypeTag, Tb extends DTypeTag>(
+NDArray<Int64> digitize<Tx extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Tx> x,
   NDArray<Tb> bins, {
   bool right = false,
-  NDArray<Int32>? out,
-}) => digitizeAs<Tx, Tb, Int32>(x, bins, DType.int32, right: right, out: out);
+  NDArray<Int64>? out,
+}) => digitizeAs<Tx, Tb, Int64>(x, bins, DType.int64, right: right, out: out);
 
 /// Returns the indices of the bins to which each value in [x] belongs, stored
 /// in the specified integer [dtype].
@@ -494,15 +494,15 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         : castNDArray<DTypeTag>(x, commonDType);
 
     final side = right ? SearchSide.left : SearchSide.right;
-    NDArray<Int32> res;
+    NDArray<Int64> res;
 
     if (increasing) {
       res = searchsorted(commonBins, commonX, side: side);
     } else {
       final flippedBins = flip(commonBins);
       final j = searchsorted(flippedBins, commonX, side: side);
-      final nArr = NDArray<Int32>.scalar(bins.size, dtype: DType.int32);
-      res = subtract<Int32>(nArr, j);
+      final nArr = NDArray<Int64>.scalar(bins.size, dtype: DType.int64);
+      res = subtract<Int64>(nArr, j);
     }
 
     if (out != null) {
@@ -513,7 +513,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       return out;
     }
 
-    if (dtype == DType.int32) {
+    if (dtype == DType.int64) {
       return (res as NDArray<R>).detachToParentScope();
     }
     return castNDArray<R>(res, dtype).detachToParentScope();

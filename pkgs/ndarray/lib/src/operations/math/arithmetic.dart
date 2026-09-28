@@ -5466,12 +5466,12 @@ NDArray<T> round<T extends DTypeTag>(
 typedef StridedBinaryOp =
     void Function(
       ffi.Pointer<ffi.Void> a,
-      ffi.Pointer<ffi.Int> stridesA,
+      ffi.Pointer<ffi.Int64> stridesA,
       ffi.Pointer<ffi.Void> b,
-      ffi.Pointer<ffi.Int> stridesB,
+      ffi.Pointer<ffi.Int64> stridesB,
       ffi.Pointer<ffi.Void> result,
-      ffi.Pointer<ffi.Int> stridesResult,
-      ffi.Pointer<ffi.Int> shape,
+      ffi.Pointer<ffi.Int64> stridesResult,
+      ffi.Pointer<ffi.Int64> shape,
       int rank,
     );
 
@@ -5541,10 +5541,10 @@ NDArray<T> add<T extends DTypeTag>(
         result.isContiguous &&
         listEquals(a.shape, b.shape);
 
-    late final ffi.Pointer<ffi.Int> cShape;
-    late final ffi.Pointer<ffi.Int> cStridesA;
-    late final ffi.Pointer<ffi.Int> cStridesB;
-    late final ffi.Pointer<ffi.Int> cStridesRes;
+    late final ffi.Pointer<ffi.Int64> cShape;
+    late final ffi.Pointer<ffi.Int64> cStridesA;
+    late final ffi.Pointer<ffi.Int64> cStridesB;
+    late final ffi.Pointer<ffi.Int64> cStridesRes;
     if (!isContig) {
       final cBuffer = ScratchArena.getStridedBuffer(ndim);
       cShape = cBuffer;
@@ -7192,10 +7192,10 @@ NDArray<T> subtract<T extends DTypeTag>(
         result.isContiguous &&
         listEquals(a.shape, b.shape);
 
-    late final ffi.Pointer<ffi.Int> cShape;
-    late final ffi.Pointer<ffi.Int> cStridesA;
-    late final ffi.Pointer<ffi.Int> cStridesB;
-    late final ffi.Pointer<ffi.Int> cStridesRes;
+    late final ffi.Pointer<ffi.Int64> cShape;
+    late final ffi.Pointer<ffi.Int64> cStridesA;
+    late final ffi.Pointer<ffi.Int64> cStridesB;
+    late final ffi.Pointer<ffi.Int64> cStridesRes;
     if (!isContig) {
       final cBuffer = ScratchArena.getStridedBuffer(ndim);
       cShape = cBuffer;
@@ -8858,10 +8858,10 @@ NDArray<T> multiply<T extends DTypeTag>(
         result.isContiguous &&
         listEquals(a.shape, b.shape);
 
-    late final ffi.Pointer<ffi.Int> cShape;
-    late final ffi.Pointer<ffi.Int> cStridesA;
-    late final ffi.Pointer<ffi.Int> cStridesB;
-    late final ffi.Pointer<ffi.Int> cStridesRes;
+    late final ffi.Pointer<ffi.Int64> cShape;
+    late final ffi.Pointer<ffi.Int64> cStridesA;
+    late final ffi.Pointer<ffi.Int64> cStridesB;
+    late final ffi.Pointer<ffi.Int64> cStridesRes;
     if (!isContig) {
       final cBuffer = ScratchArena.getStridedBuffer(ndim);
       cShape = cBuffer;
@@ -10530,10 +10530,10 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         result.isContiguous &&
         listEquals(a.shape, b.shape);
 
-    late final ffi.Pointer<ffi.Int> cShape;
-    late final ffi.Pointer<ffi.Int> cStridesA;
-    late final ffi.Pointer<ffi.Int> cStridesB;
-    late final ffi.Pointer<ffi.Int> cStridesRes;
+    late final ffi.Pointer<ffi.Int64> cShape;
+    late final ffi.Pointer<ffi.Int64> cStridesA;
+    late final ffi.Pointer<ffi.Int64> cStridesB;
+    late final ffi.Pointer<ffi.Int64> cStridesRes;
     if (!isContig) {
       final cBuffer = ScratchArena.getStridedBuffer(ndim);
       cShape = cBuffer;

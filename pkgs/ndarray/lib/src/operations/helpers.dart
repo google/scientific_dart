@@ -625,6 +625,7 @@ List<int> broadcastStackShapes(List<int> sA, List<int> sB) {
       );
     }
   }
+  checkTotalSize(result);
   return result;
 }
 
@@ -1090,7 +1091,29 @@ List<int> broadcast3Shapes(List<int> s1, List<int> s2, List<int> s3) {
     }
     common[len - 1 - i] = target;
   }
+  checkTotalSize(common);
   return common;
+}
+
+/// Maximum dimension or leading stride supported by LP64 32-bit `blasint` OpenBLAS/LAPACK kernels.
+const int maxBlasInt = 0x7fffffff;
+
+/// Validates that an OpenBLAS/LAPACK matrix or vector dimension fits within LP64 32-bit signed `blasint`.
+void checkBlasIntDim(int value, String name, String operation) {
+  if (value > maxBlasInt || value < -maxBlasInt) {
+    throw UnsupportedError(
+      '$operation dimension $name ($value) exceeds 32-bit OpenBLAS/LAPACK blasint limit ($maxBlasInt).',
+    );
+  }
+}
+
+/// Validates that an OpenBLAS/LAPACK stride or leading dimension fits within LP64 32-bit signed `blasint`.
+void checkBlasIntStride(int stride, String name, String operation) {
+  if (stride > maxBlasInt || stride < -maxBlasInt) {
+    throw UnsupportedError(
+      '$operation stride $name ($stride) exceeds 32-bit OpenBLAS/LAPACK blasint limit ($maxBlasInt).',
+    );
+  }
 }
 
 dynamic castValue(dynamic val, DType dtype, {DType? sourceDType}) {
@@ -1573,10 +1596,10 @@ void _cumOpFallbackHelper<T extends DTypeTag, R extends DTypeTag>(
   int axis,
   void Function(
     ffi.Pointer<ffi.Double> src,
-    ffi.Pointer<ffi.Int> srcStrides,
+    ffi.Pointer<ffi.Int64> srcStrides,
     ffi.Pointer<ffi.Double> dest,
-    ffi.Pointer<ffi.Int> destStrides,
-    ffi.Pointer<ffi.Int> shape,
+    ffi.Pointer<ffi.Int64> destStrides,
+    ffi.Pointer<ffi.Int64> shape,
     int rank,
     int axis,
   )

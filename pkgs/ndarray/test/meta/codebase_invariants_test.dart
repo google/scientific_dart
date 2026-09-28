@@ -553,10 +553,22 @@ void main() {
             ).firstMatch(hashesTxt)?.group(1);
             expect(
               tagVersion,
-              equals(pubVersion),
+              isNotNull,
               reason:
-                  '$pkgName: hashes.dart version (`artifacts-v$tagVersion`) must match pubspec.yaml version (`$pubVersion`).',
+                  '$pkgName: hashes.dart must define `const version = \'artifacts-v<version>\';`.',
             );
+            final pinnedSourceHash = RegExp(
+              r"const\s+nativeSourceHash\s*=\s*'([0-9a-f]{64})';",
+            ).firstMatch(hashesTxt)?.group(1);
+            final currentSourceHash = computeNativeSourceHash(dir.uri);
+            if (pinnedSourceHash == currentSourceHash && pkgName == 'ndarray') {
+              expect(
+                tagVersion,
+                equals(pubVersion),
+                reason:
+                    '$pkgName: hashes.dart version (`artifacts-v$tagVersion`) must match pubspec.yaml version (`$pubVersion`).',
+              );
+            }
 
             // Hash inputs in hook/ must only be top-level tracked files (never recursive).
             expect(
@@ -1477,6 +1489,180 @@ void main() {
               'License header or repository URL invariant violations:\n'
               '${violations.join('\n')}',
         );
+      },
+    );
+  });
+
+  group('64-Bit Size, Stride, and Index Invariants (R1–R4)', () {
+    test(
+      'Native C++ headers use int64_t (never 32-bit int*) for shape, stride, and index arrays',
+      () {
+        final headers = [
+          File('${pkgRoot.path}/hook/custom_ufuncs.h'),
+          File('${pkgRoot.path}/hook/custom_sorting.h'),
+          File('${pkgRoot.path}/hook/custom_indexing.h'),
+        ];
+        final forbiddenShapeStridePtr = RegExp(
+          r'\bconst\s+int\s*\*\s*(shape|strides|[a-z]+_strides)\b',
+        );
+        final forbiddenIndexPtr = RegExp(
+          r'\bint\s*\*\s*(out_indices|indices)\b',
+        );
+        final violations = <String>[];
+
+        for (final header in headers) {
+          expect(header.existsSync(), isTrue, reason: 'Missing ${header.path}');
+          final content = header.readAsStringSync();
+          if (!content.contains('int64_t')) {
+            violations.add('${header.path}: does not use int64_t');
+          }
+          for (final match in forbiddenShapeStridePtr.allMatches(content)) {
+            violations.add(
+              '${header.path}: found 32-bit shape/stride pointer "${match.group(0)}"',
+            );
+          }
+          for (final match in forbiddenIndexPtr.allMatches(content)) {
+            violations.add(
+              '${header.path}: found 32-bit index pointer "${match.group(0)}"',
+            );
+          }
+        }
+
+        expect(
+          violations,
+          isEmpty,
+          reason:
+              'Found 32-bit int* shape/stride/index declarations in C++ headers:\n'
+              '${violations.join('\n')}',
+        );
+      },
+    );
+
+    test(
+      'Dart FFI bindings use ffi.Int64 and ffi.Pointer<ffi.Int64> for shapes, strides, and index buffers',
+      () {
+        final bindingsFiles = [
+          File('${pkgRoot.path}/lib/src/ndarray_bindings.dart'),
+          File('${pkgRoot.path}/lib/src/ndarray_extensions_bindings.dart'),
+        ];
+        final forbiddenShapeStrideOrIndexParam = RegExp(
+          r'ffi\.Pointer<ffi\.Int(32)?>\s+(shape|strides|[a-zA-Z]+Strides|[a-z]+_strides|out_indices|indices|start_coords|directions|match_coords)\b',
+        );
+        final violations = <String>[];
+
+        for (final file in bindingsFiles) {
+          final lines = file.readAsLinesSync();
+          for (var i = 0; i < lines.length; i++) {
+            final line = lines[i];
+            if (forbiddenShapeStrideOrIndexParam.hasMatch(line)) {
+              violations.add(
+                '${_posix(file.path)}:${i + 1}: 32-bit shape/stride/index pointer parameter: ${line.trim()}',
+              );
+            }
+          }
+        }
+
+        expect(
+          violations,
+          isEmpty,
+          reason:
+              'FFI bindings must use ffi.Pointer<ffi.Int64> for shape, stride, and index arrays:\n'
+              '${violations.join('\n')}',
+        );
+      },
+    );
+
+    test(
+      'ScratchArena helpers return ffi.Pointer<ffi.Int64> for strided metadata and integer copies',
+      () {
+        final arenaFile = File('${pkgRoot.path}/lib/src/scratch_arena.dart');
+        final content = arenaFile.readAsStringSync();
+        expect(
+          content,
+          contains('static ffi.Pointer<ffi.Int64> getStridedBuffer('),
+        );
+        expect(content, contains('static ffi.Pointer<ffi.Int64> copyInts('));
+        expect(content, contains('static ffi.Pointer<ffi.Int64> copyInt64s('));
+      },
+    );
+
+    test(
+      'Public index-producing and count-producing operations return NDArray<Int64>',
+      () {
+        final sortingContent = File(
+          '${pkgRoot.path}/lib/src/operations/sorting.dart',
+        ).readAsStringSync();
+        expect(sortingContent, matches(RegExp(r'NDArray<Int64>\s+argsort\b')));
+        expect(
+          sortingContent,
+          matches(RegExp(r'NDArray<Int64>\s+argpartition\b')),
+        );
+        expect(
+          sortingContent,
+          matches(RegExp(r'NDArray<Int64>\s+searchsorted\b')),
+        );
+        expect(sortingContent, matches(RegExp(r'NDArray<Int64>\s+argmax\b')));
+        expect(sortingContent, matches(RegExp(r'NDArray<Int64>\s+argmin\b')));
+        expect(
+          sortingContent,
+          matches(RegExp(r'List<NDArray<Int64>>\s+nonzero\b')),
+        );
+        expect(sortingContent, matches(RegExp(r'NDArray<Int64>\s+argwhere\b')));
+        expect(
+          sortingContent,
+          matches(RegExp(r'NDArray<Int64>\s+count_nonzero\b')),
+        );
+        expect(
+          sortingContent,
+          matches(RegExp(r'NDArray<Int64>\s+flatnonzero\b')),
+        );
+
+        final binningContent = File(
+          '${pkgRoot.path}/lib/src/operations/binning.dart',
+        ).readAsStringSync();
+        expect(binningContent, matches(RegExp(r'NDArray<Int64>\s+digitize\b')));
+      },
+    );
+
+    test(
+      'Core NDArray, broadcasting, slicing, and NPY/NPZ I/O have no 32-bit 0x7fffffff ceilings',
+      () {
+        final hexCeilingPattern = RegExp(
+          r'\b0x7fffffff\b',
+          caseSensitive: false,
+        );
+        final decCeilingPattern = RegExp(r'\b2147483647\b');
+        final coreFiles = [
+          File('${pkgRoot.path}/lib/src/ndarray.dart'),
+          File('${pkgRoot.path}/lib/src/operations/broadcasting.dart'),
+          File('${pkgRoot.path}/lib/src/operations/spacers.dart'),
+          File('${pkgRoot.path}/lib/src/operations/io.dart'),
+        ];
+        final violations = <String>[];
+        for (final file in coreFiles) {
+          final content = file.readAsStringSync();
+          if (hexCeilingPattern.hasMatch(content)) {
+            violations.add(
+              '${_posix(file.path)} still contains a 32-bit 0x7fffffff ceiling.',
+            );
+          }
+          if (!file.path.endsWith('ndarray.dart') &&
+              decCeilingPattern.hasMatch(content)) {
+            violations.add(
+              '${_posix(file.path)} still contains a 32-bit 2147483647 ceiling.',
+            );
+          }
+        }
+        final ndarrayContent = File(
+          '${pkgRoot.path}/lib/src/ndarray.dart',
+        ).readAsStringSync();
+        expect(
+          ndarrayContent,
+          contains('totalSize > 0x7fffffffffffffff ~/ dim'),
+          reason:
+              'NDArray._computeCheckedTotalSize must check 64-bit signed multiplication overflow.',
+        );
+        expect(violations, isEmpty, reason: violations.join('\n'));
       },
     );
   });

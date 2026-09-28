@@ -435,8 +435,8 @@ NDArray<R> _correlateValid<
 
   final marker = ScratchArena.marker;
   try {
-    final cBuffer = ScratchArena.allocate<ffi.Int>(
-      rank * 5 * ffi.sizeOf<ffi.Int>(),
+    final cBuffer = ScratchArena.allocate<ffi.Int64>(
+      rank * 5 * ffi.sizeOf<ffi.Int64>(),
     );
     final cStrides1 = cBuffer;
     final cStrides2 = cBuffer + rank;

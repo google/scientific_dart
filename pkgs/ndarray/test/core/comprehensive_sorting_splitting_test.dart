@@ -272,7 +272,7 @@ void main() {
         final argsortScalar = argsort(scalar);
         expect(argsortScalar.scalar, 0);
 
-        final outArgsortScalar = NDArray.create(<int>[], DType.int32);
+        final outArgsortScalar = NDArray.create(<int>[], DType.int64);
         argsort(scalar, out: outArgsortScalar);
         expect(outArgsortScalar.scalar, 0);
 
@@ -293,9 +293,10 @@ void main() {
         expect(outArgsort64.toList(), [1, 2, 0]);
 
         final badOutShape = NDArray.create([2], DType.int32);
+        final badOutShape64 = NDArray.create([2], DType.int64);
         expect(() => sort(a, out: badOutShape), throwsA(isA<ArgumentError>()));
         expect(
-          () => argsort(a, out: badOutShape),
+          () => argsort(a, out: badOutShape64),
           throwsA(isA<ArgumentError>()),
         );
 
@@ -804,7 +805,7 @@ void main() {
         expect(count_nonzero(a, axis: 1).toList(), [2, 1]);
         expect(count_nonzero(a, axis: -1).toList(), [2, 1]);
 
-        final out = NDArray.create([3], DType.int32);
+        final out = NDArray.create([3], DType.int64);
         count_nonzero(a, axis: 0, out: out);
         expect(out.toList(), [1, 0, 2]);
 

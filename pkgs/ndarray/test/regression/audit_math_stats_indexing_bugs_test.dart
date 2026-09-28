@@ -588,7 +588,7 @@ void main() {
           [2, 2],
           DType.boolean,
         );
-        final outBase = NDArray.zeros([2, 2], DType.int32);
+        final outBase = NDArray.zeros([2, 2], DType.int64);
         final outTransposed = outBase.transpose();
 
         final res = argsort(b, axis: 1, out: outTransposed);

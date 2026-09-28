@@ -19,6 +19,7 @@ import 'package:openblas/openblas.dart';
 
 import '../ndarray.dart';
 import '../scratch_arena.dart';
+import 'helpers.dart';
 
 /// Method selection for 1D scalar root finding ([root_scalar]).
 enum RootMethod {
@@ -33,6 +34,7 @@ enum RootMethod {
 }
 
 void _dcopy(int n, ffi.Pointer<ffi.Double> src, ffi.Pointer<ffi.Double> dest) {
+  checkBlasIntDim(n, 'n', 'optimize');
   cblas_dcopy(n, src, 1, dest, 1);
 }
 
@@ -41,6 +43,10 @@ void _copyArrayToPointer(
   NDArray<Float64> arr,
   ffi.Pointer<ffi.Double> dest,
 ) {
+  checkBlasIntDim(n, 'n', 'optimize');
+  if (arr.rank == 1) {
+    checkBlasIntStride(arr.strides[0], 'incx', 'optimize');
+  }
   if (arr.isContiguous) {
     cblas_dcopy(n, arr.pointer.cast<ffi.Double>(), 1, dest, 1);
   } else if (arr.rank == 1 && arr.strides[0] > 0) {
@@ -66,6 +72,10 @@ void _copyPointerToArray(
   ffi.Pointer<ffi.Double> src,
   NDArray<Float64> dest,
 ) {
+  checkBlasIntDim(n, 'n', 'optimize');
+  if (dest.rank == 1) {
+    checkBlasIntStride(dest.strides[0], 'incy', 'optimize');
+  }
   if (dest.isContiguous) {
     cblas_dcopy(n, src, 1, dest.pointer.cast<ffi.Double>(), 1);
   } else if (dest.rank == 1 && dest.strides[0] > 0) {
@@ -79,8 +89,10 @@ void _copyPointerToArray(
   }
 }
 
-double _ddot(int n, ffi.Pointer<ffi.Double> x, ffi.Pointer<ffi.Double> y) =>
-    cblas_ddot(n, x, 1, y, 1);
+double _ddot(int n, ffi.Pointer<ffi.Double> x, ffi.Pointer<ffi.Double> y) {
+  checkBlasIntDim(n, 'n', 'optimize');
+  return cblas_ddot(n, x, 1, y, 1);
+}
 
 void _daxpy(
   int n,
@@ -88,14 +100,19 @@ void _daxpy(
   ffi.Pointer<ffi.Double> x,
   ffi.Pointer<ffi.Double> y,
 ) {
+  checkBlasIntDim(n, 'n', 'optimize');
   cblas_daxpy(n, alpha, x, 1, y, 1);
 }
 
 void _dscal(int n, double alpha, ffi.Pointer<ffi.Double> x) {
+  checkBlasIntDim(n, 'n', 'optimize');
   cblas_dscal(n, alpha, x, 1);
 }
 
-double _dnrm2(int n, ffi.Pointer<ffi.Double> x) => cblas_dnrm2(n, x, 1);
+double _dnrm2(int n, ffi.Pointer<ffi.Double> x) {
+  checkBlasIntDim(n, 'n', 'optimize');
+  return cblas_dnrm2(n, x, 1);
+}
 
 /// Method selection for multivariate scalar function minimization ([minimize]).
 enum MinimizeMethod {
@@ -526,6 +543,11 @@ OptimizeResult nelder_mead(
   if (xatol < 0 || fatol < 0) {
     throw ArgumentError('Tolerances xatol and fatol must be non-negative.');
   }
+  checkBlasIntDim(x0.shape[0], 'n', 'nelder_mead');
+  checkBlasIntStride(x0.strides[0], 'incx', 'nelder_mead');
+  if (out != null) {
+    checkBlasIntStride(out.strides[0], 'incout', 'nelder_mead');
+  }
 
   return NDArray.scope(() {
     final n = x0.shape[0];
@@ -792,6 +814,14 @@ OptimizeResult lbfgs(
   }
   if (gtol <= 0 || maxiter <= 0) {
     throw ArgumentError('gtol and maxiter must be positive.');
+  }
+  checkBlasIntDim(x0.shape[0], 'n', 'lbfgs');
+  checkBlasIntStride(x0.strides[0], 'incx', 'lbfgs');
+  if (out != null) {
+    checkBlasIntStride(out.strides[0], 'incout', 'lbfgs');
+  }
+  if (outJac != null) {
+    checkBlasIntStride(outJac.strides[0], 'incoutJac', 'lbfgs');
   }
 
   return NDArray.scope(() {

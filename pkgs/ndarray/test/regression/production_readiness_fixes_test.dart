@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'dart:async' show Zone;
+import 'dart:ffi';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
@@ -93,8 +94,8 @@ void main() {
         expect(outSort.getCell([1, 2]), equals(6.0));
 
         // argsort with non-contiguous out
-        final baseArgsort = NDArray.zeros([2, 5], DType.int32);
-        final outArgsort = NDArray<Int32>.view(
+        final baseArgsort = NDArray.zeros([2, 5], DType.int64);
+        final outArgsort = NDArray<Int64>.view(
           baseArgsort,
           shape: [2, 3],
           strides: [5, 1],
@@ -137,8 +138,8 @@ void main() {
           expect(outPart.getCell([0, 0]), lessThanOrEqualTo(7.0));
           expect(outPart.getCell([0, 2]), greaterThanOrEqualTo(7.0));
 
-          final baseArgpart = NDArray.zeros([2, 6], DType.int32);
-          final outArgpart = NDArray<Int32>.view(
+          final baseArgpart = NDArray.zeros([2, 6], DType.int64);
+          final outArgpart = NDArray<Int64>.view(
             baseArgpart,
             shape: [2, 3],
             strides: [6, 1],
@@ -453,12 +454,15 @@ void main() {
   });
 
   group('Numerical Correctness & Input Validation Regressions', () {
-    test('C2: Array with size > 2^31 elements throws UnsupportedError', () {
-      expect(
-        () => NDArray<Uint8>.create([2147483648], DType.uint8),
-        throwsA(isA<UnsupportedError>()),
-      );
-    });
+    test(
+      'C2: Array with shape overflowing 64-bit integer throws ArgumentError',
+      () {
+        expect(
+          () => NDArray<Uint8>.create([3037000500, 3037000500], DType.uint8),
+          throwsArgumentError,
+        );
+      },
+    );
 
     test(
       'C3: Malformed .npz where dataLen does not match shape/dtype throws FormatException',
@@ -673,52 +677,102 @@ void main() {
       });
 
       test(
-        'shape with dim > 2^31 throws UnsupportedError regardless of zero dimension',
+        'shape with dim > 2^31 succeeds when empty and throws on 64-bit C-stride overflow',
         () {
+          final empty = NDArray<Float64>.create([0, 2147483648], DType.float64);
+          expect(empty.shape, equals([0, 2147483648]));
+          expect(empty.strides, equals([2147483648, 1]));
+          expect(empty.size, equals(0));
+          empty.dispose();
+
           expect(
-            () => NDArray<Float64>.create([0, 2147483648], DType.float64),
-            throwsUnsupportedError,
+            () => NDArray<Float64>.create([
+              0,
+              3037000500,
+              3037000500,
+            ], DType.float64),
+            throwsArgumentError,
           );
         },
       );
 
       test(
-        'B4: view with stride > 2^31 - 1 or < -2^31 throws UnsupportedError',
+        'B4: view with 64-bit stride succeeds on size-1 dim and throws on 64-bit span overflow',
         () {
           final a = NDArray<Float64>.create([1], DType.float64);
+          final vPos = NDArray<Float64>.view(
+            a,
+            shape: [1],
+            strides: [0x80000000],
+          );
+          expect(vPos.strides, equals([0x80000000]));
+          final vNeg = NDArray<Float64>.view(
+            a,
+            shape: [1],
+            strides: [-0x80000001],
+          );
+          expect(vNeg.strides, equals([-0x80000001]));
+
           expect(
-            () => NDArray<Float64>.view(a, shape: [1], strides: [0x80000000]),
-            throwsUnsupportedError,
+            () => NDArray<Float64>.view(
+              a,
+              shape: [3],
+              strides: [0x4000000000000000],
+            ),
+            throwsArgumentError,
           );
           expect(
-            () => NDArray<Float64>.view(a, shape: [1], strides: [-0x80000001]),
-            throwsUnsupportedError,
+            () => NDArray<Float64>.view(
+              a,
+              shape: [2],
+              strides: [-0x8000000000000000],
+            ),
+            throwsArgumentError,
           );
           a.dispose();
         },
       );
 
       test(
-        'B4: broadcastBinaryStrides guards commonShape exceeding 32-bit limit',
+        'B4: broadcastBinaryStrides supports > 2^31 - 1 and guards 64-bit overflow',
         () {
+          final res = broadcastBinaryStrides(
+            [1, 100000],
+            [0, 1],
+            [30000, 1],
+            [1, 0],
+          );
+          expect(res.shape, equals([30000, 100000]));
+
           expect(
-            () =>
-                broadcastBinaryStrides([1, 100000], [0, 1], [30000, 1], [1, 0]),
-            throwsUnsupportedError,
+            () => broadcastBinaryStrides(
+              [1, 3037000500],
+              [0, 1],
+              [3037000500, 1],
+              [1, 0],
+            ),
+            throwsArgumentError,
           );
         },
       );
 
-      test('B4: ScratchArena copyInts and copyInt32s guard 32-bit bounds', () {
-        expect(
-          () => ScratchArena.copyInts([0x80000000]),
-          throwsUnsupportedError,
-        );
-        expect(
-          () => ScratchArena.copyInt32s([0x80000000]),
-          throwsUnsupportedError,
-        );
-      });
+      test(
+        'B4: ScratchArena copyInts supports 64-bit and copyInt32s guards 32-bit bounds',
+        () {
+          final marker = ScratchArena.marker;
+          try {
+            final ptr = ScratchArena.copyInts([0x80000000, -0x80000001]);
+            expect(ptr[0], equals(0x80000000));
+            expect(ptr[1], equals(-0x80000001));
+          } finally {
+            ScratchArena.reset(marker);
+          }
+          expect(
+            () => ScratchArena.copyInt32s([0x80000000]),
+            throwsUnsupportedError,
+          );
+        },
+      );
 
       test('Instance arithmetic operators +, -, *, ~/, % on NDArray', () {
         final a = NDArray<Int32>.fromList([10, 20], [2], DType.int32);

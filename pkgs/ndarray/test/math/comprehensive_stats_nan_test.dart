@@ -1528,7 +1528,7 @@ void main() {
             expect(res.shape, [2, 2]);
             expect(res.toList(), [0, 1, 2, 3]);
 
-            final out = NDArray.zeros([2, 2], DType.int32);
+            final out = NDArray.zeros([2, 2], DType.int64);
             final resOut = digitize(x2D, bins, out: out);
             expect(identical(resOut, out), true);
             expect(out.toList(), [0, 1, 2, 3]);

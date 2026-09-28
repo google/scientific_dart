@@ -422,15 +422,27 @@ void main() {
           throwsRangeError,
         );
 
-        // INT32_MAX overflow checks
+        // 64-bit sizes (> 2^31 - 1) succeed on zero-stride views; 64-bit overflow throws ArgumentError
+        final v64 = NDArray.view(a, shape: [65536, 65536], strides: [0, 0]);
+        expect(v64.size, 4294967296);
+        final s64 = asStrided(a, shape: [65536, 65536], strides: [0, 0]);
+        expect(s64.size, 4294967296);
+        final scalarOne = a.slice([Index(0)]);
+        final b64 = broadcastTo(scalarOne, [65536, 65536]);
+        expect(b64.size, 4294967296);
+
         expect(
-          () => NDArray.view(a, shape: [65536, 65536], strides: [0, 0]),
-          throwsUnsupportedError,
+          () =>
+              NDArray.view(a, shape: [3037000500, 3037000500], strides: [0, 0]),
+          throwsArgumentError,
         );
-        expect(() => broadcastTo(a, [65536, 65536]), throwsUnsupportedError);
         expect(
-          () => asStrided(a, shape: [65536, 65536], strides: [0, 0]),
-          throwsUnsupportedError,
+          () => broadcastTo(scalarOne, [3037000500, 3037000500]),
+          throwsArgumentError,
+        );
+        expect(
+          () => asStrided(a, shape: [3037000500, 3037000500], strides: [0, 0]),
+          throwsArgumentError,
         );
 
         // flatten on disposed array throws StateError

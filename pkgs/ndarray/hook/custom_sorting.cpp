@@ -480,7 +480,7 @@ static inline bool eq_complex_impl(T a, T b) {
 // Comparators for Stable Indirect Sorters (Argsort)
 // ----------------------------------------------------------------------------
 
-static inline int compare_indices_double_timsort(int idx_a, int idx_b) {
+static inline int compare_indices_double_timsort(int64_t idx_a, int64_t idx_b) {
     double val_a = global_double_data[idx_a];
     double val_b = global_double_data[idx_b];
     int nan_a = isnan(val_a);
@@ -499,7 +499,7 @@ static inline int compare_indices_double_timsort(int idx_a, int idx_b) {
     return 0;
 }
 
-static inline int compare_indices_float_timsort(int idx_a, int idx_b) {
+static inline int compare_indices_float_timsort(int64_t idx_a, int64_t idx_b) {
     float val_a = global_float_data[idx_a];
     float val_b = global_float_data[idx_b];
     int nan_a = isnan(val_a);
@@ -518,7 +518,7 @@ static inline int compare_indices_float_timsort(int idx_a, int idx_b) {
     return 0;
 }
 
-static inline int compare_indices_int64_timsort(int idx_a, int idx_b) {
+static inline int compare_indices_int64_timsort(int64_t idx_a, int64_t idx_b) {
     long long val_a = global_int64_data[idx_a];
     long long val_b = global_int64_data[idx_b];
     if (val_a < val_b) return -1;
@@ -528,7 +528,7 @@ static inline int compare_indices_int64_timsort(int idx_a, int idx_b) {
     return 0;
 }
 
-static inline int compare_indices_int32_timsort(int idx_a, int idx_b) {
+static inline int compare_indices_int32_timsort(int64_t idx_a, int64_t idx_b) {
     int val_a = global_int32_data[idx_a];
     int val_b = global_int32_data[idx_b];
     if (val_a < val_b) return -1;
@@ -538,7 +538,7 @@ static inline int compare_indices_int32_timsort(int idx_a, int idx_b) {
     return 0;
 }
 
-static inline int compare_indices_int16_timsort(int idx_a, int idx_b) {
+static inline int compare_indices_int16_timsort(int64_t idx_a, int64_t idx_b) {
     int16_t val_a = global_int16_data[idx_a];
     int16_t val_b = global_int16_data[idx_b];
     if (val_a < val_b) return -1;
@@ -548,7 +548,7 @@ static inline int compare_indices_int16_timsort(int idx_a, int idx_b) {
     return 0;
 }
 
-static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
+static inline int compare_indices_uint8_timsort(int64_t idx_a, int64_t idx_b) {
     uint8_t val_a = global_uint8_data[idx_a];
     uint8_t val_b = global_uint8_data[idx_b];
     if (val_a < val_b) return -1;
@@ -563,7 +563,7 @@ static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
 // ----------------------------------------------------------------------------
 
 #define SORT_NAME tim_indices_double
-#define SORT_TYPE int
+#define SORT_TYPE int64_t
 #define SORT_CMP(x, y) compare_indices_double_timsort(x, y)
 #include "third_party/timsort/timsort.h"
 #undef SORT_NAME
@@ -571,7 +571,7 @@ static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
 #undef SORT_CMP
 
 #define SORT_NAME tim_indices_float
-#define SORT_TYPE int
+#define SORT_TYPE int64_t
 #define SORT_CMP(x, y) compare_indices_float_timsort(x, y)
 #include "third_party/timsort/timsort.h"
 #undef SORT_NAME
@@ -579,7 +579,7 @@ static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
 #undef SORT_CMP
 
 #define SORT_NAME tim_indices_int64
-#define SORT_TYPE int
+#define SORT_TYPE int64_t
 #define SORT_CMP(x, y) compare_indices_int64_timsort(x, y)
 #include "third_party/timsort/timsort.h"
 #undef SORT_NAME
@@ -587,7 +587,7 @@ static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
 #undef SORT_CMP
 
 #define SORT_NAME tim_indices_int32
-#define SORT_TYPE int
+#define SORT_TYPE int64_t
 #define SORT_CMP(x, y) compare_indices_int32_timsort(x, y)
 #include "third_party/timsort/timsort.h"
 #undef SORT_NAME
@@ -595,7 +595,7 @@ static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
 #undef SORT_CMP
 
 #define SORT_NAME tim_indices_int16
-#define SORT_TYPE int
+#define SORT_TYPE int64_t
 #define SORT_CMP(x, y) compare_indices_int16_timsort(x, y)
 #include "third_party/timsort/timsort.h"
 #undef SORT_NAME
@@ -603,7 +603,7 @@ static inline int compare_indices_uint8_timsort(int idx_a, int idx_b) {
 #undef SORT_CMP
 
 #define SORT_NAME tim_indices_uint8
-#define SORT_TYPE int
+#define SORT_TYPE int64_t
 #define SORT_CMP(x, y) compare_indices_uint8_timsort(x, y)
 #include "third_party/timsort/timsort.h"
 #undef SORT_NAME
@@ -635,10 +635,10 @@ static inline int standard_compare(T a, T b) {
 }
 
 template <typename T, typename Compare>
-static void multi_nth_element(T *arr, int left, int right, const int *k_list, int k_start, int k_end, Compare cmp) {
+static void multi_nth_element(T *arr, int64_t left, int64_t right, const int64_t *k_list, int64_t k_start, int64_t k_end, Compare cmp) {
     if (k_start > k_end || left >= right) return;
-    int mid_k_idx = k_start + (k_end - k_start) / 2;
-    int k = k_list[mid_k_idx];
+    int64_t mid_k_idx = k_start + (k_end - k_start) / 2;
+    int64_t k = k_list[mid_k_idx];
     if (k < left) {
         multi_nth_element(arr, left, right, k_list, mid_k_idx + 1, k_end, cmp);
         return;
@@ -657,10 +657,10 @@ static void multi_nth_element(T *arr, int left, int right, const int *k_list, in
 }
 
 template <typename Compare>
-static void arg_multi_nth_element(int *indices, int left, int right, const int *k_list, int k_start, int k_end, Compare cmp) {
+static void arg_multi_nth_element(int64_t *indices, int64_t left, int64_t right, const int64_t *k_list, int64_t k_start, int64_t k_end, Compare cmp) {
     if (k_start > k_end || left >= right) return;
-    int mid_k_idx = k_start + (k_end - k_start) / 2;
-    int k = k_list[mid_k_idx];
+    int64_t mid_k_idx = k_start + (k_end - k_start) / 2;
+    int64_t k = k_list[mid_k_idx];
     if (k < left) {
         arg_multi_nth_element(indices, left, right, k_list, mid_k_idx + 1, k_end, cmp);
         return;
@@ -679,21 +679,21 @@ static void arg_multi_nth_element(int *indices, int left, int right, const int *
 }
 
 template <typename T>
-static void partition_impl(T *array, int size, const int *k_list, int k_size) {
+static void partition_impl(T *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (array == nullptr || size <= 1 || k_list == nullptr || k_size <= 0) return;
 
-    int valid_len = size;
+    int64_t valid_len = size;
     if constexpr (std::is_floating_point_v<T>) {
-        int first_nan = -1;
-        for (int i = 0; i < size; i++) {
+        int64_t first_nan = -1;
+        for (int64_t i = 0; i < size; i++) {
             if (std::isnan(array[i])) {
                 first_nan = i;
                 break;
             }
         }
         if (first_nan != -1) {
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (!std::isnan(array[i])) {
                     std::swap(array[write_pos], array[i]);
                     write_pos++;
@@ -705,9 +705,9 @@ static void partition_impl(T *array, int size, const int *k_list, int k_size) {
 
     if (valid_len <= 1) return;
 
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -715,9 +715,9 @@ static void partition_impl(T *array, int size, const int *k_list, int k_size) {
         k_ptr = sorted_k.data();
     }
 
-    int k_start = 0;
+    int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
-    int k_end = k_start;
+    int64_t k_end = k_start;
     while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
 
     if (k_end <= k_start) return;
@@ -731,18 +731,18 @@ static void partition_impl(T *array, int size, const int *k_list, int k_size) {
 }
 
 template <typename T>
-static void argpartition_impl(const T *data, int *indices, int size, const int *k_list, int k_size) {
+static void argpartition_impl(const T *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (data == nullptr || indices == nullptr || size <= 0 || k_list == nullptr || k_size <= 0) return;
     if (size == 1) {
         indices[0] = 0;
         return;
     }
 
-    int valid_len = size;
+    int64_t valid_len = size;
     if constexpr (std::is_floating_point_v<T>) {
-        int left = 0;
-        int right = size - 1;
-        for (int i = 0; i < size; i++) {
+        int64_t left = 0;
+        int64_t right = size - 1;
+        for (int64_t i = 0; i < size; i++) {
             if (std::isnan(data[i])) {
                 indices[right--] = i;
             } else {
@@ -754,16 +754,16 @@ static void argpartition_impl(const T *data, int *indices, int size, const int *
             std::reverse(indices + valid_len, indices + size);
         }
     } else {
-        for (int i = 0; i < size; i++) {
+        for (int64_t i = 0; i < size; i++) {
             indices[i] = i;
         }
     }
 
     if (valid_len <= 1) return;
 
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -771,14 +771,14 @@ static void argpartition_impl(const T *data, int *indices, int size, const int *
         k_ptr = sorted_k.data();
     }
 
-    int k_start = 0;
+    int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
-    int k_end = k_start;
+    int64_t k_end = k_start;
     while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
 
     if (k_end <= k_start) return;
 
-    auto cmp = [data](int a, int b) {
+    auto cmp = [data](int64_t a, int64_t b) {
         return data[a] < data[b];
     };
 
@@ -790,18 +790,18 @@ static void argpartition_impl(const T *data, int *indices, int size, const int *
 }
 
 template <typename T>
-static void argsort_impl(const T *data, int *indices, int size, int kind) {
+static void argsort_impl(const T *data, int64_t *indices, int64_t size, int kind) {
     if (data == nullptr || indices == nullptr || size <= 0) return;
     if (size == 1) {
         indices[0] = 0;
         return;
     }
 
-    int valid_len = size;
+    int64_t valid_len = size;
     if constexpr (std::is_floating_point_v<T>) {
-        int left = 0;
-        int right = size - 1;
-        for (int i = 0; i < size; i++) {
+        int64_t left = 0;
+        int64_t right = size - 1;
+        for (int64_t i = 0; i < size; i++) {
             if (std::isnan(data[i])) {
                 indices[right--] = i;
             } else {
@@ -813,7 +813,7 @@ static void argsort_impl(const T *data, int *indices, int size, int kind) {
             std::reverse(indices + valid_len, indices + size);
         }
     } else {
-        for (int i = 0; i < size; i++) {
+        for (int64_t i = 0; i < size; i++) {
             indices[i] = i;
         }
     }
@@ -823,7 +823,7 @@ static void argsort_impl(const T *data, int *indices, int size, int kind) {
     // O(N) pre-pass to check if already non-decreasing or strictly decreasing
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < valid_len - 1; i++) {
+    for (int64_t i = 0; i < valid_len - 1; i++) {
         T val_cur = data[indices[i]];
         T val_next = data[indices[i + 1]];
         if (val_cur > val_next) {
@@ -843,7 +843,7 @@ static void argsort_impl(const T *data, int *indices, int size, int kind) {
         return;
     }
 
-    auto cmp = [data](int a, int b) {
+    auto cmp = [data](int64_t a, int64_t b) {
         return data[a] < data[b];
     };
 
@@ -858,23 +858,23 @@ static void argsort_impl(const T *data, int *indices, int size, int kind) {
 }
 
 template <typename T>
-static void sort_float_impl(T *array, int size, int kind) {
+static void sort_float_impl(T *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
-    int first_nan = -1;
-    for (int i = 0; i < size; i++) {
+    int64_t first_nan = -1;
+    for (int64_t i = 0; i < size; i++) {
         if (std::isnan(array[i])) {
             first_nan = i;
             break;
         }
     }
-    int non_nan_size = size;
+    int64_t non_nan_size = size;
     if (first_nan != -1) {
         if (kind == 1) { // stable sort: preserve NaN order
             NoThrowBuffer<T> nans;
             if (!nans.push_back(array[first_nan])) return;
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (std::isnan(array[i])) {
                     if (!nans.push_back(array[i])) return;
                 } else {
@@ -886,8 +886,8 @@ static void sort_float_impl(T *array, int size, int kind) {
             }
             non_nan_size = write_pos;
         } else { // unstable sort: in-place partition
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (!std::isnan(array[i])) {
                     std::swap(array[write_pos], array[i]);
                     write_pos++;
@@ -901,7 +901,7 @@ static void sort_float_impl(T *array, int size, int kind) {
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < non_nan_size - 1; i++) {
+    for (int64_t i = 0; i < non_nan_size - 1; i++) {
         if (array[i] > array[i + 1]) {
             is_sorted = false;
             if (!is_rev_sorted) break;
@@ -921,7 +921,7 @@ static void sort_float_impl(T *array, int size, int kind) {
         if (non_nan_size < 128) {
             std::sort(array, array + non_nan_size);
         } else {
-            hwy::VQSort(array, non_nan_size, hwy::SortAscending());
+            hwy::VQSort(array, static_cast<size_t>(non_nan_size), hwy::SortAscending());
         }
     } else if (kind == 2) {
         std::make_heap(array, array + non_nan_size);
@@ -932,12 +932,12 @@ static void sort_float_impl(T *array, int size, int kind) {
 }
 
 template <typename T>
-static void sort_int_impl(T *array, int size, int kind) {
+static void sort_int_impl(T *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < size - 1; i++) {
+    for (int64_t i = 0; i < size - 1; i++) {
         if (array[i] > array[i + 1]) {
             is_sorted = false;
             if (!is_rev_sorted) break;
@@ -958,11 +958,11 @@ static void sort_int_impl(T *array, int size, int kind) {
             std::sort(array, array + size);
         } else {
             if constexpr (std::is_same_v<T, long long> || std::is_same_v<T, int64_t>) {
-                hwy::VQSort((int64_t *)array, size, hwy::SortAscending());
+                hwy::VQSort((int64_t *)array, static_cast<size_t>(size), hwy::SortAscending());
             } else if constexpr (std::is_same_v<T, unsigned long long> || std::is_same_v<T, uint64_t>) {
-                hwy::VQSort((uint64_t *)array, size, hwy::SortAscending());
+                hwy::VQSort((uint64_t *)array, static_cast<size_t>(size), hwy::SortAscending());
             } else {
-                hwy::VQSort(array, size, hwy::SortAscending());
+                hwy::VQSort(array, static_cast<size_t>(size), hwy::SortAscending());
             }
         }
     } else if (kind == 2) {
@@ -975,14 +975,14 @@ static void sort_int_impl(T *array, int size, int kind) {
 
 
 template <typename T, typename Compare>
-static void searchsorted(const T *arr, int size, const T *values, int *out_indices, int num_values, int side_left, const int *sorter, Compare cmp) {
+static void searchsorted(const T *arr, int64_t size, const T *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter, Compare cmp) {
     if (arr == nullptr || values == nullptr || out_indices == nullptr || num_values <= 0) return;
-    for (int v_idx = 0; v_idx < num_values; v_idx++) {
+    for (int64_t v_idx = 0; v_idx < num_values; v_idx++) {
         T val = values[v_idx];
-        int low = 0;
-        int high = size;
+        int64_t low = 0;
+        int64_t high = size;
         while (low < high) {
-            int mid = low + (high - low) / 2;
+            int64_t mid = low + (high - low) / 2;
             T mid_val = (sorter != nullptr) ? arr[sorter[mid]] : arr[mid];
             int comp = cmp(mid_val, val);
             if (side_left) {
@@ -1006,31 +1006,31 @@ static void searchsorted(const T *arr, int size, const T *values, int *out_indic
 template <typename T>
 static void to_bool_mask(
     const T *src,
-    int size,
-    const int *shape,
-    const int *strides,
+    int64_t size,
+    const int64_t *shape,
+    const int64_t *strides,
     int rank,
     int is_contiguous,
     unsigned char *dest
 ) {
     if (src == nullptr || dest == nullptr || size <= 0) return;
     if (is_contiguous) {
-        for (int i = 0; i < size; i++) {
+        for (int64_t i = 0; i < size; i++) {
             dest[i] = is_nonzero(src[i]) ? 1 : 0;
         }
         return;
     }
     if (shape == nullptr || strides == nullptr || rank <= 0) return;
-    NoThrowBuffer<int> coord_vec;
-    int coord_stack[32] = {0};
-    int *coord = coord_stack;
+    NoThrowBuffer<int64_t> coord_vec;
+    int64_t coord_stack[32] = {0};
+    int64_t *coord = coord_stack;
     if (rank > 32) {
         coord_vec.assign(rank, 0);
         if (!coord_vec.ok()) return;
         coord = coord_vec.data();
     }
-    int offset = 0;
-    for (int i = 0; i < size; i++) {
+    int64_t offset = 0;
+    for (int64_t i = 0; i < size; i++) {
         dest[i] = is_nonzero(src[offset]) ? 1 : 0;
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
@@ -1055,10 +1055,10 @@ static inline bool is_nan_check(T val) {
 template <typename T, typename Compare>
 static void argminmax(
     const T *src,
-    const int *stridesSrc,
-    int *dest,
-    const int *stridesDest,
-    const int *shape,
+    const int64_t *stridesSrc,
+    int64_t *dest,
+    const int64_t *stridesDest,
+    const int64_t *shape,
     int rank,
     int axis,
     int is_max,
@@ -1067,15 +1067,15 @@ static void argminmax(
 ) {
     if (src == nullptr || dest == nullptr || shape == nullptr || stridesSrc == nullptr || stridesDest == nullptr || rank <= 0) return;
     if (is_contiguous && axis == -1) {
-        int n = shape[0];
+        int64_t n = shape[0];
         T val0 = src[0];
         if (is_nan_check(val0)) {
             dest[0] = 0;
             return;
         }
-        int idx0 = 0, idx1 = 0, idx2 = 0, idx3 = 0;
+        int64_t idx0 = 0, idx1 = 0, idx2 = 0, idx3 = 0;
         T val1 = val0, val2 = val0, val3 = val0;
-        int i = 1;
+        int64_t i = 1;
         if (is_max) {
             for (; i + 3 < n; i += 4) {
                 T v0 = src[i], v1 = src[i + 1], v2 = src[i + 2], v3 = src[i + 3];
@@ -1126,17 +1126,17 @@ static void argminmax(
         dest[0] = idx0;
         return;
     }
-    int dest_size = 1;
+    int64_t dest_size = 1;
     for (int d = 0; d < rank; d++) {
         if (d != axis) dest_size *= shape[d];
     }
-    NoThrowBuffer<int> coord_dest_vec, strides_dest_vec, shape_dest_vec;
-    int coord_dest_stack[32] = {0};
-    int strides_dest_stack[32] = {0};
-    int shape_dest_stack[32] = {0};
-    int *coord_dest = coord_dest_stack;
-    int *strides_dest_clean = strides_dest_stack;
-    int *shape_dest_clean = shape_dest_stack;
+    NoThrowBuffer<int64_t> coord_dest_vec, strides_dest_vec, shape_dest_vec;
+    int64_t coord_dest_stack[32] = {0};
+    int64_t strides_dest_stack[32] = {0};
+    int64_t shape_dest_stack[32] = {0};
+    int64_t *coord_dest = coord_dest_stack;
+    int64_t *strides_dest_clean = strides_dest_stack;
+    int64_t *shape_dest_clean = shape_dest_stack;
     if (rank > 32) {
         coord_dest_vec.assign(rank, 0);
         strides_dest_vec.assign(rank, 0);
@@ -1154,13 +1154,13 @@ static void argminmax(
             rank_dest++;
         }
     }
-    for (int el = 0; el < dest_size; el++) {
-        int dest_offset = 0;
+    for (int64_t el = 0; el < dest_size; el++) {
+        int64_t dest_offset = 0;
         for (int d = 0; d < rank_dest; d++) {
             dest_offset += coord_dest[d] * strides_dest_clean[d];
         }
-        int best_idx = 0;
-        int base_src_offset = 0;
+        int64_t best_idx = 0;
+        int64_t base_src_offset = 0;
         int rank_dest_idx = 0;
         for (int d = 0; d < rank; d++) {
             if (d != axis) {
@@ -1172,8 +1172,8 @@ static void argminmax(
         if (is_nan_check(best_val)) {
             dest[dest_offset] = 0;
         } else {
-            for (int i = 1; i < shape[axis]; i++) {
-                int src_offset = base_src_offset + i * stridesSrc[axis];
+            for (int64_t i = 1; i < shape[axis]; i++) {
+                int64_t src_offset = base_src_offset + i * stridesSrc[axis];
                 T val = src[src_offset];
                 if (is_nan_check(val)) {
                     best_idx = i;
@@ -1206,34 +1206,34 @@ static void argminmax(
 template <typename T>
 static void count_nonzero(
     const T *src,
-    const int *stridesSrc,
-    int *dest,
-    const int *stridesDest,
-    const int *shape,
+    const int64_t *stridesSrc,
+    int64_t *dest,
+    const int64_t *stridesDest,
+    const int64_t *shape,
     int rank,
     int axis,
     int is_contiguous
 ) {
     if (src == nullptr || dest == nullptr || shape == nullptr || stridesSrc == nullptr || stridesDest == nullptr || rank <= 0) return;
     if (is_contiguous && axis == -1) {
-        int count = 0;
-        for (int i = 0; i < shape[0]; i++) {
+        int64_t count = 0;
+        for (int64_t i = 0; i < shape[0]; i++) {
             if (is_nonzero(src[i])) count++;
         }
         dest[0] = count;
         return;
     }
-    int dest_size = 1;
+    int64_t dest_size = 1;
     for (int d = 0; d < rank; d++) {
         if (d != axis) dest_size *= shape[d];
     }
-    NoThrowBuffer<int> coord_dest_vec, strides_dest_vec, shape_dest_vec;
-    int coord_dest_stack[32] = {0};
-    int strides_dest_stack[32] = {0};
-    int shape_dest_stack[32] = {0};
-    int *coord_dest = coord_dest_stack;
-    int *strides_dest_clean = strides_dest_stack;
-    int *shape_dest_clean = shape_dest_stack;
+    NoThrowBuffer<int64_t> coord_dest_vec, strides_dest_vec, shape_dest_vec;
+    int64_t coord_dest_stack[32] = {0};
+    int64_t strides_dest_stack[32] = {0};
+    int64_t shape_dest_stack[32] = {0};
+    int64_t *coord_dest = coord_dest_stack;
+    int64_t *strides_dest_clean = strides_dest_stack;
+    int64_t *shape_dest_clean = shape_dest_stack;
     if (rank > 32) {
         coord_dest_vec.assign(rank, 0);
         strides_dest_vec.assign(rank, 0);
@@ -1251,13 +1251,13 @@ static void count_nonzero(
             rank_dest++;
         }
     }
-    for (int el = 0; el < dest_size; el++) {
-        int dest_offset = 0;
+    for (int64_t el = 0; el < dest_size; el++) {
+        int64_t dest_offset = 0;
         for (int d = 0; d < rank_dest; d++) {
             dest_offset += coord_dest[d] * strides_dest_clean[d];
         }
-        int count = 0;
-        int base_src_offset = 0;
+        int64_t count = 0;
+        int64_t base_src_offset = 0;
         int rank_dest_idx = 0;
         for (int d = 0; d < rank; d++) {
             if (d != axis) {
@@ -1265,8 +1265,8 @@ static void count_nonzero(
                 rank_dest_idx++;
             }
         }
-        for (int i = 0; i < shape[axis]; i++) {
-            int src_offset = base_src_offset + i * stridesSrc[axis];
+        for (int64_t i = 0; i < shape[axis]; i++) {
+            int64_t src_offset = base_src_offset + i * stridesSrc[axis];
             if (is_nonzero(src[src_offset])) count++;
         }
         dest[dest_offset] = count;
@@ -1284,32 +1284,32 @@ static void count_nonzero(
 // Public Sorters with Kind Routing
 // ----------------------------------------------------------------------------
 
-extern "C" void native_sort_double(double *array, int size, int kind) {
+extern "C" void native_sort_double(double *array, int64_t size, int kind) {
     sort_float_impl(array, size, kind);
 }
 
-extern "C" void native_sort_float(float *array, int size, int kind) {
+extern "C" void native_sort_float(float *array, int64_t size, int kind) {
     sort_float_impl(array, size, kind);
 }
 
-extern "C" void native_sort_int64(long long *array, int size, int kind) {
+extern "C" void native_sort_int64(long long *array, int64_t size, int kind) {
     sort_int_impl(array, size, kind);
 }
 
-extern "C" void native_sort_int32(int *array, int size, int kind) {
+extern "C" void native_sort_int32(int *array, int64_t size, int kind) {
     sort_int_impl(array, size, kind);
 }
 
-extern "C" void native_sort_int16(int16_t *array, int size, int kind) {
+extern "C" void native_sort_int16(int16_t *array, int64_t size, int kind) {
     sort_int_impl(array, size, kind);
 }
 
-extern "C" void native_sort_uint8(uint8_t *array, int size, int kind) {
+extern "C" void native_sort_uint8(uint8_t *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < size - 1; i++) {
+    for (int64_t i = 0; i < size - 1; i++) {
         if (array[i] > array[i + 1]) {
             is_sorted = false;
             if (!is_rev_sorted) break;
@@ -1327,15 +1327,15 @@ extern "C" void native_sort_uint8(uint8_t *array, int size, int kind) {
 
     if (kind == 0 || kind == 1) {
         if (size > 32) {
-            int counts[256] = {0};
-            for (int i = 0; i < size; i++) {
+            int64_t counts[256] = {0};
+            for (int64_t i = 0; i < size; i++) {
                 counts[array[i]]++;
             }
-            int idx = 0;
+            int64_t idx = 0;
             for (int val = 0; val < 256; val++) {
-                int c = counts[val];
+                int64_t c = counts[val];
                 if (c > 0) {
-                    memset(array + idx, val, c);
+                    memset(array + idx, val, static_cast<size_t>(c));
                     idx += c;
                 }
             }
@@ -1348,7 +1348,7 @@ extern "C" void native_sort_uint8(uint8_t *array, int size, int kind) {
     }
 }
 
-extern "C" void native_sort_complex128(double *array, int size, int kind) {
+extern "C" void native_sort_complex128(double *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
     complex128_t *carr = (complex128_t *)array;
     if (kind == 0) {
@@ -1361,7 +1361,7 @@ extern "C" void native_sort_complex128(double *array, int size, int kind) {
     }
 }
 
-extern "C" void native_sort_complex64(float *array, int size, int kind) {
+extern "C" void native_sort_complex64(float *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
     complex64_t *carr = (complex64_t *)array;
     if (kind == 0) {
@@ -1374,12 +1374,12 @@ extern "C" void native_sort_complex64(float *array, int size, int kind) {
     }
 }
 
-extern "C" void native_sort_int8(int8_t *array, int size, int kind) {
+extern "C" void native_sort_int8(int8_t *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < size - 1; i++) {
+    for (int64_t i = 0; i < size - 1; i++) {
         if (array[i] > array[i + 1]) {
             is_sorted = false;
             if (!is_rev_sorted) break;
@@ -1397,15 +1397,15 @@ extern "C" void native_sort_int8(int8_t *array, int size, int kind) {
 
     if (kind == 0 || kind == 1) {
         if (size > 32) {
-            int counts[256] = {0};
-            for (int i = 0; i < size; i++) {
+            int64_t counts[256] = {0};
+            for (int64_t i = 0; i < size; i++) {
                 counts[(uint8_t)(array[i] + 128)]++;
             }
-            int idx = 0;
+            int64_t idx = 0;
             for (int val = 0; val < 256; val++) {
-                int c = counts[val];
+                int64_t c = counts[val];
                 if (c > 0) {
-                    memset(array + idx, (int8_t)(val - 128), c);
+                    memset(array + idx, (int8_t)(val - 128), static_cast<size_t>(c));
                     idx += c;
                 }
             }
@@ -1419,35 +1419,35 @@ extern "C" void native_sort_int8(int8_t *array, int size, int kind) {
     }
 }
 
-extern "C" void native_sort_uint16(uint16_t *array, int size, int kind) {
+extern "C" void native_sort_uint16(uint16_t *array, int64_t size, int kind) {
     sort_int_impl(array, size, kind);
 }
 
-extern "C" void native_sort_uint32(uint32_t *array, int size, int kind) {
+extern "C" void native_sort_uint32(uint32_t *array, int64_t size, int kind) {
     sort_int_impl(array, size, kind);
 }
 
-extern "C" void native_sort_uint64(uint64_t *array, int size, int kind) {
+extern "C" void native_sort_uint64(uint64_t *array, int64_t size, int kind) {
     sort_int_impl(array, size, kind);
 }
 
-extern "C" void native_sort_float16(uint16_t *array, int size, int kind) {
+extern "C" void native_sort_float16(uint16_t *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
-    int first_nan = -1;
-    for (int i = 0; i < size; i++) {
+    int64_t first_nan = -1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_float16(array[i])) {
             first_nan = i;
             break;
         }
     }
-    int non_nan_size = size;
+    int64_t non_nan_size = size;
     if (first_nan != -1) {
         if (kind == 1) {
             NoThrowBuffer<uint16_t> nans;
             if (!nans.push_back(array[first_nan])) return;
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (is_nan_float16(array[i])) {
                     if (!nans.push_back(array[i])) return;
                 } else {
@@ -1459,8 +1459,8 @@ extern "C" void native_sort_float16(uint16_t *array, int size, int kind) {
             }
             non_nan_size = write_pos;
         } else {
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (!is_nan_float16(array[i])) {
                     std::swap(array[write_pos], array[i]);
                     write_pos++;
@@ -1474,7 +1474,7 @@ extern "C" void native_sort_float16(uint16_t *array, int size, int kind) {
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < non_nan_size - 1; i++) {
+    for (int64_t i = 0; i < non_nan_size - 1; i++) {
         float cur = decode_f16_to_f32(array[i]);
         float next = decode_f16_to_f32(array[i + 1]);
         if (cur > next) {
@@ -1494,7 +1494,7 @@ extern "C" void native_sort_float16(uint16_t *array, int size, int kind) {
 
     if (kind == 0) {
         if (non_nan_size >= 128 && hwy::HaveFloat16()) {
-            hwy::VQSort((hwy::float16_t *)array, non_nan_size, hwy::SortAscending());
+            hwy::VQSort((hwy::float16_t *)array, static_cast<size_t>(non_nan_size), hwy::SortAscending());
         } else {
             std::sort(array, array + non_nan_size, Float16Less());
         }
@@ -1506,23 +1506,23 @@ extern "C" void native_sort_float16(uint16_t *array, int size, int kind) {
     }
 }
 
-extern "C" void native_sort_bfloat16(uint16_t *array, int size, int kind) {
+extern "C" void native_sort_bfloat16(uint16_t *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
-    int first_nan = -1;
-    for (int i = 0; i < size; i++) {
+    int64_t first_nan = -1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_bfloat16(array[i])) {
             first_nan = i;
             break;
         }
     }
-    int non_nan_size = size;
+    int64_t non_nan_size = size;
     if (first_nan != -1) {
         if (kind == 1) {
             NoThrowBuffer<uint16_t> nans;
             if (!nans.push_back(array[first_nan])) return;
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (is_nan_bfloat16(array[i])) {
                     if (!nans.push_back(array[i])) return;
                 } else {
@@ -1534,8 +1534,8 @@ extern "C" void native_sort_bfloat16(uint16_t *array, int size, int kind) {
             }
             non_nan_size = write_pos;
         } else {
-            int write_pos = first_nan;
-            for (int i = first_nan + 1; i < size; i++) {
+            int64_t write_pos = first_nan;
+            for (int64_t i = first_nan + 1; i < size; i++) {
                 if (!is_nan_bfloat16(array[i])) {
                     std::swap(array[write_pos], array[i]);
                     write_pos++;
@@ -1549,7 +1549,7 @@ extern "C" void native_sort_bfloat16(uint16_t *array, int size, int kind) {
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < non_nan_size - 1; i++) {
+    for (int64_t i = 0; i < non_nan_size - 1; i++) {
         float cur = decode_bf16_to_f32(array[i]);
         float next = decode_bf16_to_f32(array[i + 1]);
         if (cur > next) {
@@ -1581,63 +1581,63 @@ extern "C" void native_sort_bfloat16(uint16_t *array, int size, int kind) {
 // Public Argsort Sorters with Kind Parameter
 // ----------------------------------------------------------------------------
 
-extern "C" void native_argsort_double(const double *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_double(const double *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_float(const float *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_float(const float *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_int64(const long long *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_int64(const long long *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_int32(const int *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_int32(const int *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_int16(const int16_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_int16(const int16_t *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_uint8(const uint8_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_uint8(const uint8_t *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_int8(const int8_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_int8(const int8_t *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_uint16(const uint16_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_uint16(const uint16_t *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_uint32(const uint32_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_uint32(const uint32_t *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_uint64(const uint64_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_uint64(const uint64_t *data, int64_t *indices, int64_t size, int kind) {
     argsort_impl(data, indices, size, kind);
 }
 
-extern "C" void native_argsort_float16(const uint16_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_float16(const uint16_t *data, int64_t *indices, int64_t size, int kind) {
     if (data == nullptr || indices == nullptr || size <= 0) return;
     if (size == 1) {
         indices[0] = 0;
         return;
     }
 
-    int left = 0;
-    int right = size - 1;
-    for (int i = 0; i < size; i++) {
+    int64_t left = 0;
+    int64_t right = size - 1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_float16(data[i])) {
             indices[right--] = i;
         } else {
             indices[left++] = i;
         }
     }
-    int valid_len = left;
+    int64_t valid_len = left;
     if (valid_len < size) {
         std::reverse(indices + valid_len, indices + size);
     }
@@ -1646,7 +1646,7 @@ extern "C" void native_argsort_float16(const uint16_t *data, int *indices, int s
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < valid_len - 1; i++) {
+    for (int64_t i = 0; i < valid_len - 1; i++) {
         float val_cur = decode_f16_to_f32(data[indices[i]]);
         float val_next = decode_f16_to_f32(data[indices[i + 1]]);
         if (val_cur > val_next) {
@@ -1664,7 +1664,7 @@ extern "C" void native_argsort_float16(const uint16_t *data, int *indices, int s
         return;
     }
 
-    auto cmp = [data](int a, int b) {
+    auto cmp = [data](int64_t a, int64_t b) {
         return decode_f16_to_f32(data[a]) < decode_f16_to_f32(data[b]);
     };
 
@@ -1678,23 +1678,23 @@ extern "C" void native_argsort_float16(const uint16_t *data, int *indices, int s
     }
 }
 
-extern "C" void native_argsort_bfloat16(const uint16_t *data, int *indices, int size, int kind) {
+extern "C" void native_argsort_bfloat16(const uint16_t *data, int64_t *indices, int64_t size, int kind) {
     if (data == nullptr || indices == nullptr || size <= 0) return;
     if (size == 1) {
         indices[0] = 0;
         return;
     }
 
-    int left = 0;
-    int right = size - 1;
-    for (int i = 0; i < size; i++) {
+    int64_t left = 0;
+    int64_t right = size - 1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_bfloat16(data[i])) {
             indices[right--] = i;
         } else {
             indices[left++] = i;
         }
     }
-    int valid_len = left;
+    int64_t valid_len = left;
     if (valid_len < size) {
         std::reverse(indices + valid_len, indices + size);
     }
@@ -1703,7 +1703,7 @@ extern "C" void native_argsort_bfloat16(const uint16_t *data, int *indices, int 
 
     bool is_sorted = true;
     bool is_rev_sorted = true;
-    for (int i = 0; i < valid_len - 1; i++) {
+    for (int64_t i = 0; i < valid_len - 1; i++) {
         float val_cur = decode_bf16_to_f32(data[indices[i]]);
         float val_next = decode_bf16_to_f32(data[indices[i + 1]]);
         if (val_cur > val_next) {
@@ -1721,7 +1721,7 @@ extern "C" void native_argsort_bfloat16(const uint16_t *data, int *indices, int 
         return;
     }
 
-    auto cmp = [data](int a, int b) {
+    auto cmp = [data](int64_t a, int64_t b) {
         return decode_bf16_to_f32(data[a]) < decode_bf16_to_f32(data[b]);
     };
 
@@ -1739,36 +1739,36 @@ extern "C" void native_argsort_bfloat16(const uint16_t *data, int *indices, int 
 // Public Partition Sorters
 // ----------------------------------------------------------------------------
 
-extern "C" void native_partition_double(double *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_double(double *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_float(float *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_float(float *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_int64(long long *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_int64(long long *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_int32(int *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_int32(int *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_int16(int16_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_int16(int16_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_uint8(uint8_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_uint8(uint8_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_complex128(double *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_complex128(double *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (array == nullptr || size <= 1 || k_list == nullptr || k_size <= 0) return;
     complex128_t *carr = (complex128_t *)array;
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -1784,12 +1784,12 @@ extern "C" void native_partition_complex128(double *array, int size, const int *
     }
 }
 
-extern "C" void native_partition_complex64(float *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_complex64(float *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (array == nullptr || size <= 1 || k_list == nullptr || k_size <= 0) return;
     complex64_t *carr = (complex64_t *)array;
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -1805,36 +1805,36 @@ extern "C" void native_partition_complex64(float *array, int size, const int *k_
     }
 }
 
-extern "C" void native_partition_int8(int8_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_int8(int8_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_uint16(uint16_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_uint16(uint16_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_uint32(uint32_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_uint32(uint32_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_uint64(uint64_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_uint64(uint64_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     partition_impl(array, size, k_list, k_size);
 }
 
-extern "C" void native_partition_float16(uint16_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_float16(uint16_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (array == nullptr || size <= 1 || k_list == nullptr || k_size <= 0) return;
 
-    int valid_len = size;
-    int first_nan = -1;
-    for (int i = 0; i < size; i++) {
+    int64_t valid_len = size;
+    int64_t first_nan = -1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_float16(array[i])) {
             first_nan = i;
             break;
         }
     }
     if (first_nan != -1) {
-        int write_pos = first_nan;
-        for (int i = first_nan + 1; i < size; i++) {
+        int64_t write_pos = first_nan;
+        for (int64_t i = first_nan + 1; i < size; i++) {
             if (!is_nan_float16(array[i])) {
                 std::swap(array[write_pos], array[i]);
                 write_pos++;
@@ -1845,9 +1845,9 @@ extern "C" void native_partition_float16(uint16_t *array, int size, const int *k
 
     if (valid_len <= 1) return;
 
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -1855,9 +1855,9 @@ extern "C" void native_partition_float16(uint16_t *array, int size, const int *k
         k_ptr = sorted_k.data();
     }
 
-    int k_start = 0;
+    int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
-    int k_end = k_start;
+    int64_t k_end = k_start;
     while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
 
     if (k_end <= k_start) return;
@@ -1870,20 +1870,20 @@ extern "C" void native_partition_float16(uint16_t *array, int size, const int *k
     }
 }
 
-extern "C" void native_partition_bfloat16(uint16_t *array, int size, const int *k_list, int k_size) {
+extern "C" void native_partition_bfloat16(uint16_t *array, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (array == nullptr || size <= 1 || k_list == nullptr || k_size <= 0) return;
 
-    int valid_len = size;
-    int first_nan = -1;
-    for (int i = 0; i < size; i++) {
+    int64_t valid_len = size;
+    int64_t first_nan = -1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_bfloat16(array[i])) {
             first_nan = i;
             break;
         }
     }
     if (first_nan != -1) {
-        int write_pos = first_nan;
-        for (int i = first_nan + 1; i < size; i++) {
+        int64_t write_pos = first_nan;
+        for (int64_t i = first_nan + 1; i < size; i++) {
             if (!is_nan_bfloat16(array[i])) {
                 std::swap(array[write_pos], array[i]);
                 write_pos++;
@@ -1894,9 +1894,9 @@ extern "C" void native_partition_bfloat16(uint16_t *array, int size, const int *
 
     if (valid_len <= 1) return;
 
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -1904,9 +1904,9 @@ extern "C" void native_partition_bfloat16(uint16_t *array, int size, const int *
         k_ptr = sorted_k.data();
     }
 
-    int k_start = 0;
+    int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
-    int k_end = k_start;
+    int64_t k_end = k_start;
     while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
 
     if (k_end <= k_start) return;
@@ -1923,45 +1923,45 @@ extern "C" void native_partition_bfloat16(uint16_t *array, int size, const int *
 // Public Argpartition Sorters
 // ----------------------------------------------------------------------------
 
-extern "C" void native_argpartition_double(const double *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_double(const double *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_float(const float *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_float(const float *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_int64(const long long *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_int64(const long long *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_int32(const int *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_int32(const int *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_int16(const int16_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_int16(const int16_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_uint8(const uint8_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_uint8(const uint8_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_complex128(const double *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_complex128(const double *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (data == nullptr || indices == nullptr || size <= 0 || k_list == nullptr || k_size <= 0) return;
-    for (int i = 0; i < size; i++) indices[i] = i;
+    for (int64_t i = 0; i < size; i++) indices[i] = i;
     if (size <= 1) return;
     const complex128_t *cdata = (const complex128_t *)data;
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
         std::sort(sorted_k.begin(), sorted_k.end());
         k_ptr = sorted_k.data();
     }
-    auto cmp = [cdata](int a, int b) {
+    auto cmp = [cdata](int64_t a, int64_t b) {
         return comp_complex_impl(cdata[a], cdata[b]);
     };
     if (num_k == 1) {
@@ -1973,21 +1973,21 @@ extern "C" void native_argpartition_complex128(const double *data, int *indices,
     }
 }
 
-extern "C" void native_argpartition_complex64(const float *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_complex64(const float *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (data == nullptr || indices == nullptr || size <= 0 || k_list == nullptr || k_size <= 0) return;
-    for (int i = 0; i < size; i++) indices[i] = i;
+    for (int64_t i = 0; i < size; i++) indices[i] = i;
     if (size <= 1) return;
     const complex64_t *cdata = (const complex64_t *)data;
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
         std::sort(sorted_k.begin(), sorted_k.end());
         k_ptr = sorted_k.data();
     }
-    auto cmp = [cdata](int a, int b) {
+    auto cmp = [cdata](int64_t a, int64_t b) {
         return comp_complex_impl(cdata[a], cdata[b]);
     };
     if (num_k == 1) {
@@ -1999,48 +1999,48 @@ extern "C" void native_argpartition_complex64(const float *data, int *indices, i
     }
 }
 
-extern "C" void native_argpartition_int8(const int8_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_int8(const int8_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_uint16(const uint16_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_uint16(const uint16_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_uint32(const uint32_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_uint32(const uint32_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_uint64(const uint64_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_uint64(const uint64_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     argpartition_impl(data, indices, size, k_list, k_size);
 }
 
-extern "C" void native_argpartition_float16(const uint16_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_float16(const uint16_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (data == nullptr || indices == nullptr || size <= 0 || k_list == nullptr || k_size <= 0) return;
     if (size == 1) {
         indices[0] = 0;
         return;
     }
 
-    int left = 0;
-    int right = size - 1;
-    for (int i = 0; i < size; i++) {
+    int64_t left = 0;
+    int64_t right = size - 1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_float16(data[i])) {
             indices[right--] = i;
         } else {
             indices[left++] = i;
         }
     }
-    int valid_len = left;
+    int64_t valid_len = left;
     if (valid_len < size) {
         std::reverse(indices + valid_len, indices + size);
     }
 
     if (valid_len <= 1) return;
 
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -2048,14 +2048,14 @@ extern "C" void native_argpartition_float16(const uint16_t *data, int *indices, 
         k_ptr = sorted_k.data();
     }
 
-    int k_start = 0;
+    int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
-    int k_end = k_start;
+    int64_t k_end = k_start;
     while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
 
     if (k_end <= k_start) return;
 
-    auto cmp = [data](int a, int b) {
+    auto cmp = [data](int64_t a, int64_t b) {
         return decode_f16_to_f32(data[a]) < decode_f16_to_f32(data[b]);
     };
 
@@ -2066,32 +2066,32 @@ extern "C" void native_argpartition_float16(const uint16_t *data, int *indices, 
     }
 }
 
-extern "C" void native_argpartition_bfloat16(const uint16_t *data, int *indices, int size, const int *k_list, int k_size) {
+extern "C" void native_argpartition_bfloat16(const uint16_t *data, int64_t *indices, int64_t size, const int64_t *k_list, int64_t k_size) {
     if (data == nullptr || indices == nullptr || size <= 0 || k_list == nullptr || k_size <= 0) return;
     if (size == 1) {
         indices[0] = 0;
         return;
     }
 
-    int left = 0;
-    int right = size - 1;
-    for (int i = 0; i < size; i++) {
+    int64_t left = 0;
+    int64_t right = size - 1;
+    for (int64_t i = 0; i < size; i++) {
         if (is_nan_bfloat16(data[i])) {
             indices[right--] = i;
         } else {
             indices[left++] = i;
         }
     }
-    int valid_len = left;
+    int64_t valid_len = left;
     if (valid_len < size) {
         std::reverse(indices + valid_len, indices + size);
     }
 
     if (valid_len <= 1) return;
 
-    NoThrowBuffer<int> sorted_k;
-    const int *k_ptr = k_list;
-    int num_k = k_size;
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
     if (!std::is_sorted(k_list, k_list + k_size)) {
         sorted_k.assign(k_list, k_list + k_size);
         if (!sorted_k.ok()) return;
@@ -2099,14 +2099,14 @@ extern "C" void native_argpartition_bfloat16(const uint16_t *data, int *indices,
         k_ptr = sorted_k.data();
     }
 
-    int k_start = 0;
+    int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
-    int k_end = k_start;
+    int64_t k_end = k_start;
     while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
 
     if (k_end <= k_start) return;
 
-    auto cmp = [data](int a, int b) {
+    auto cmp = [data](int64_t a, int64_t b) {
         return decode_bf16_to_f32(data[a]) < decode_bf16_to_f32(data[b]);
     };
 
@@ -2121,59 +2121,59 @@ extern "C" void native_argpartition_bfloat16(const uint16_t *data, int *indices,
 // Public Searchsorted (Binary Search) functions
 // ----------------------------------------------------------------------------
 
-extern "C" void native_searchsorted_double(const double *array, int size, const double *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_double(const double *array, int64_t size, const double *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_double_inline);
 }
 
-extern "C" void native_searchsorted_float(const float *array, int size, const float *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_float(const float *array, int64_t size, const float *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_float_inline);
 }
 
-extern "C" void native_searchsorted_int64(const long long *array, int size, const long long *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_int64(const long long *array, int64_t size, const long long *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_int64_inline);
 }
 
-extern "C" void native_searchsorted_int32(const int *array, int size, const int *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_int32(const int *array, int64_t size, const int *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_int32_inline);
 }
 
-extern "C" void native_searchsorted_int16(const int16_t *array, int size, const int16_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_int16(const int16_t *array, int64_t size, const int16_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_int16_inline);
 }
 
-extern "C" void native_searchsorted_uint8(const uint8_t *array, int size, const uint8_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_uint8(const uint8_t *array, int64_t size, const uint8_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_uint8_inline);
 }
 
-extern "C" void native_searchsorted_complex128(const double *array, int size, const double *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_complex128(const double *array, int64_t size, const double *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted((const complex128_t *)array, size, (const complex128_t *)values, out_indices, num_values, side_left, sorter, compare_complex128_inline);
 }
 
-extern "C" void native_searchsorted_complex64(const float *array, int size, const float *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_complex64(const float *array, int64_t size, const float *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted((const complex64_t *)array, size, (const complex64_t *)values, out_indices, num_values, side_left, sorter, compare_complex64_inline);
 }
 
-extern "C" void native_searchsorted_int8(const int8_t *array, int size, const int8_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_int8(const int8_t *array, int64_t size, const int8_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, standard_compare<int8_t>);
 }
 
-extern "C" void native_searchsorted_uint16(const uint16_t *array, int size, const uint16_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_uint16(const uint16_t *array, int64_t size, const uint16_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, standard_compare<uint16_t>);
 }
 
-extern "C" void native_searchsorted_uint32(const uint32_t *array, int size, const uint32_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_uint32(const uint32_t *array, int64_t size, const uint32_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, standard_compare<uint32_t>);
 }
 
-extern "C" void native_searchsorted_uint64(const uint64_t *array, int size, const uint64_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_uint64(const uint64_t *array, int64_t size, const uint64_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, standard_compare<uint64_t>);
 }
 
-extern "C" void native_searchsorted_float16(const uint16_t *array, int size, const uint16_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_float16(const uint16_t *array, int64_t size, const uint16_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_float16_inline);
 }
 
-extern "C" void native_searchsorted_bfloat16(const uint16_t *array, int size, const uint16_t *values, int *out_indices, int num_values, int side_left, const int *sorter) {
+extern "C" void native_searchsorted_bfloat16(const uint16_t *array, int64_t size, const uint16_t *values, int64_t *out_indices, int64_t num_values, int side_left, const int64_t *sorter) {
     searchsorted(array, size, values, out_indices, num_values, side_left, sorter, compare_bfloat16_inline);
 }
 
@@ -2198,25 +2198,25 @@ extern "C" void custom_memcpy(void *dest, const void *src, size_t n) {
 
 extern "C" void native_collect_nonzero_coords(
     const unsigned char *cond,
-    int total_size,
-    const int *shape,
-    const int *strides,
+    int64_t total_size,
+    const int64_t *shape,
+    const int64_t *strides,
     int rank,
-    int **out_coords
+    int64_t **out_coords
 ) {
     if (cond == nullptr || shape == nullptr || strides == nullptr || out_coords == nullptr || total_size <= 0 || rank <= 0) return;
-    NoThrowBuffer<int> coord_vec;
-    int coord_stack[32] = {0};
-    int *coord = coord_stack;
+    NoThrowBuffer<int64_t> coord_vec;
+    int64_t coord_stack[32] = {0};
+    int64_t *coord = coord_stack;
     if (rank > 32) {
         coord_vec.assign(rank, 0);
         if (!coord_vec.ok()) return;
         coord = coord_vec.data();
     }
-    int offset = 0;
-    int write_idx = 0;
+    int64_t offset = 0;
+    int64_t write_idx = 0;
 
-    for (int el = 0; el < total_size; el++) {
+    for (int64_t el = 0; el < total_size; el++) {
         if (cond[offset]) {
             for (int d = 0; d < rank; d++) {
                 out_coords[d][write_idx] = coord[d];
@@ -2239,25 +2239,25 @@ extern "C" void native_collect_nonzero_coords(
 
 extern "C" void native_collect_nonzero_coords_grouped(
     const unsigned char *cond,
-    int total_size,
-    const int *shape,
-    const int *strides,
+    int64_t total_size,
+    const int64_t *shape,
+    const int64_t *strides,
     int rank,
-    int *out_coords
+    int64_t *out_coords
 ) {
     if (cond == nullptr || shape == nullptr || strides == nullptr || out_coords == nullptr || total_size <= 0 || rank <= 0) return;
-    NoThrowBuffer<int> coord_vec;
-    int coord_stack[32] = {0};
-    int *coord = coord_stack;
+    NoThrowBuffer<int64_t> coord_vec;
+    int64_t coord_stack[32] = {0};
+    int64_t *coord = coord_stack;
     if (rank > 32) {
         coord_vec.assign(rank, 0);
         if (!coord_vec.ok()) return;
         coord = coord_vec.data();
     }
-    int offset = 0;
-    int write_idx = 0;
+    int64_t offset = 0;
+    int64_t write_idx = 0;
 
-    for (int el = 0; el < total_size; el++) {
+    for (int64_t el = 0; el < total_size; el++) {
         if (cond[offset]) {
             for (int d = 0; d < rank; d++) {
                 out_coords[write_idx * rank + d] = coord[d];
@@ -2278,74 +2278,74 @@ extern "C" void native_collect_nonzero_coords_grouped(
     }
 }
 
-extern "C" void native_to_bool_mask_double(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_double(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const double *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_float(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_float(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const float *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_int64(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_int64(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const long long *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_int32(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_int32(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const int *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_complex128(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_complex128(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const complex128_t *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_complex64(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_complex64(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const complex64_t *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_uint8(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_uint8(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const unsigned char *)src, size, shape, strides, rank, is_contiguous, dest);
 }
-extern "C" void native_to_bool_mask_int16(const void *src, int size, const int *shape, const int *strides, int rank, int is_contiguous, unsigned char *dest) {
+extern "C" void native_to_bool_mask_int16(const void *src, int64_t size, const int64_t *shape, const int64_t *strides, int rank, int is_contiguous, unsigned char *dest) {
     to_bool_mask((const short *)src, size, shape, strides, rank, is_contiguous, dest);
 }
 
-extern "C" void native_argminmax_double(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_max, int is_contiguous) {
+extern "C" void native_argminmax_double(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
     argminmax((const double *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<double>);
 }
-extern "C" void native_argminmax_float(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_max, int is_contiguous) {
+extern "C" void native_argminmax_float(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
     argminmax((const float *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<float>);
 }
-extern "C" void native_argminmax_int64(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_max, int is_contiguous) {
+extern "C" void native_argminmax_int64(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
     argminmax((const long long *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<long long>);
 }
-extern "C" void native_argminmax_int32(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_max, int is_contiguous) {
+extern "C" void native_argminmax_int32(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
     argminmax((const int *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<int>);
 }
-extern "C" void native_argminmax_uint8(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_max, int is_contiguous) {
+extern "C" void native_argminmax_uint8(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
     argminmax((const unsigned char *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<unsigned char>);
 }
-extern "C" void native_argminmax_int16(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_max, int is_contiguous) {
+extern "C" void native_argminmax_int16(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
     argminmax((const short *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<short>);
 }
 
-extern "C" void native_count_nonzero_double(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_double(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const double *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
-extern "C" void native_count_nonzero_float(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_float(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const float *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
-extern "C" void native_count_nonzero_int64(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_int64(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const long long *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
-extern "C" void native_count_nonzero_int32(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_int32(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const int *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
-extern "C" void native_count_nonzero_uint8(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_uint8(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const unsigned char *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
-extern "C" void native_count_nonzero_int16(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_int16(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const short *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
 
-extern "C" void native_count_nonzero_complex128(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_complex128(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const complex128_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
 
-extern "C" void native_count_nonzero_complex64(const void *src, const int *stridesSrc, int *dest, const int *stridesDest, const int *shape, int rank, int axis, int is_contiguous) {
+extern "C" void native_count_nonzero_complex64(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {
     count_nonzero((const complex64_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
 
@@ -2354,21 +2354,21 @@ namespace hwy {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 
-int UnpackMaskImpl(const uint8_t *mask_ptr, int size, int *out_indices) {
-    const hn::ScalableTag<int32_t> d;
+int64_t UnpackMaskImpl(const uint8_t *mask_ptr, int64_t size, int64_t *out_indices) {
+    const hn::ScalableTag<int64_t> d;
     using Rebind8 = hn::Rebind<uint8_t, decltype(d)>;
     const Rebind8 d8;
-    const int L = hn::Lanes(d);
+    const int64_t L = hn::Lanes(d);
 
-    int count = 0;
-    int j = 0;
-    int limit = size - L;
+    int64_t count = 0;
+    int64_t j = 0;
+    int64_t limit = size - L;
     auto v_base = hn::Iota(d, 0);
 
     for (; j <= limit; j += L) {
         auto mask_bytes = hn::LoadU(d8, mask_ptr + j);
-        auto mask_i32 = hn::PromoteTo(d, mask_bytes);
-        auto mask = (mask_i32 != hn::Zero(d));
+        auto mask_i64 = hn::PromoteTo(d, mask_bytes);
+        auto mask = (mask_i64 != hn::Zero(d));
         auto v_index = hn::Add(v_base, hn::Set(d, j));
         count += hn::CompressStore(v_index, mask, d, out_indices + count);
     }
@@ -2385,19 +2385,19 @@ int UnpackMaskImpl(const uint8_t *mask_ptr, int size, int *out_indices) {
 HWY_AFTER_NAMESPACE();
 
 extern "C" {
-int unpack_mask_c(
+int64_t unpack_mask_c(
     const uint8_t *mask_ptr,
-    int size,
-    int stride,
-    int *out_indices
+    int64_t size,
+    int64_t stride,
+    int64_t *out_indices
 ) {
     if (mask_ptr == nullptr || out_indices == nullptr || size <= 0) return 0;
 
     if (stride == 1) {
         return hwy::HWY_NAMESPACE::UnpackMaskImpl(mask_ptr, size, out_indices);
     } else {
-        int count = 0;
-        for (int j = 0; j < size; j++) {
+        int64_t count = 0;
+        for (int64_t j = 0; j < size; j++) {
             if (mask_ptr[j * stride] != 0) {
                 out_indices[count++] = j;
             }
@@ -2408,10 +2408,10 @@ int unpack_mask_c(
 }
 
 extern "C" {
-int native_count_mask(const uint8_t *mask, int size) {
+int64_t native_count_mask(const uint8_t *mask, int64_t size) {
     if (mask == nullptr || size <= 0) return 0;
-    int count = 0;
-    for (int i = 0; i < size; i++) {
+    int64_t count = 0;
+    for (int64_t i = 0; i < size; i++) {
         if (mask[i] != 0) count++;
     }
     return count;
@@ -2422,7 +2422,7 @@ void native_apply_mask(
     const void *src,
     const uint8_t *mask,
     void *dest,
-    int size
+    int64_t size
 ) {
     if (src == nullptr || mask == nullptr || dest == nullptr || size <= 0) return;
     
@@ -2430,8 +2430,8 @@ void native_apply_mask(
         case DTYPE_FLOAT32: { // float32
             const float *s = (const float *)src;
             float *d = (float *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2439,8 +2439,8 @@ void native_apply_mask(
         case DTYPE_FLOAT64: { // float64
             const double *s = (const double *)src;
             double *d = (double *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2449,8 +2449,8 @@ void native_apply_mask(
             struct C64 { float real, imag; };
             const C64 *s = (const C64 *)src;
             C64 *d = (C64 *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2459,8 +2459,8 @@ void native_apply_mask(
             struct C128 { double real, imag; };
             const C128 *s = (const C128 *)src;
             C128 *d = (C128 *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2468,8 +2468,8 @@ void native_apply_mask(
         case DTYPE_INT32: { // int32
             const int32_t *s = (const int32_t *)src;
             int32_t *d = (int32_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2477,8 +2477,8 @@ void native_apply_mask(
         case DTYPE_INT64: { // int64
             const int64_t *s = (const int64_t *)src;
             int64_t *d = (int64_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2486,8 +2486,8 @@ void native_apply_mask(
         case DTYPE_UINT8: { // uint8
             const uint8_t *s = (const uint8_t *)src;
             uint8_t *d = (uint8_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2495,8 +2495,8 @@ void native_apply_mask(
         case DTYPE_INT16: { // int16
             const int16_t *s = (const int16_t *)src;
             int16_t *d = (int16_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2504,8 +2504,8 @@ void native_apply_mask(
         case DTYPE_UINT64: { // uint64
             const uint64_t *s = (const uint64_t *)src;
             uint64_t *d = (uint64_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2513,8 +2513,8 @@ void native_apply_mask(
         case DTYPE_UINT32: { // uint32
             const uint32_t *s = (const uint32_t *)src;
             uint32_t *d = (uint32_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2522,8 +2522,8 @@ void native_apply_mask(
         case DTYPE_UINT16: { // uint16
             const uint16_t *s = (const uint16_t *)src;
             uint16_t *d = (uint16_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2531,8 +2531,8 @@ void native_apply_mask(
         case DTYPE_INT8: { // int8
             const int8_t *s = (const int8_t *)src;
             int8_t *d = (int8_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2541,8 +2541,8 @@ void native_apply_mask(
         case DTYPE_BFLOAT16: {
             const uint16_t *s = (const uint16_t *)src;
             uint16_t *d = (uint16_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2550,8 +2550,8 @@ void native_apply_mask(
         case DTYPE_BOOLEAN: { // boolean
             const uint8_t *s = (const uint8_t *)src;
             uint8_t *d = (uint8_t *)dest;
-            int count = 0;
-            for (int i = 0; i < size; i++) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < size; i++) {
                 if (mask[i]) d[count++] = s[i];
             }
             break;
@@ -2575,19 +2575,19 @@ static inline bool eq_double_impl(double a, double b) {
     return (a == b) || (std::isnan(a) && std::isnan(b));
 }
 
-static int unique_double_fast(const double *src, double *dest, int size) {
+static int64_t unique_double_fast(const double *src, double *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(double));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(double));
     double *non_nan_end = std::partition(dest, dest + size, [](double x) {
         return !std::isnan(x);
     });
-    int non_nan_size = non_nan_end - dest;
+    int64_t non_nan_size = non_nan_end - dest;
     if (non_nan_size > 1) {
-        hwy::VQSort(dest, non_nan_size, hwy::SortAscending());
+        hwy::VQSort(dest, static_cast<size_t>(non_nan_size), hwy::SortAscending());
     }
-    int write_idx = 0;
+    int64_t write_idx = 0;
     if (non_nan_size > 0) {
-        for (int read_idx = 1; read_idx < non_nan_size; read_idx++) {
+        for (int64_t read_idx = 1; read_idx < non_nan_size; read_idx++) {
             if (dest[read_idx] != dest[write_idx]) {
                 write_idx++;
                 dest[write_idx] = dest[read_idx];
@@ -2601,19 +2601,19 @@ static int unique_double_fast(const double *src, double *dest, int size) {
     return write_idx;
 }
 
-static int unique_float_fast(const float *src, float *dest, int size) {
+static int64_t unique_float_fast(const float *src, float *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(float));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(float));
     float *non_nan_end = std::partition(dest, dest + size, [](float x) {
         return !std::isnan(x);
     });
-    int non_nan_size = non_nan_end - dest;
+    int64_t non_nan_size = non_nan_end - dest;
     if (non_nan_size > 1) {
-        hwy::VQSort(dest, non_nan_size, hwy::SortAscending());
+        hwy::VQSort(dest, static_cast<size_t>(non_nan_size), hwy::SortAscending());
     }
-    int write_idx = 0;
+    int64_t write_idx = 0;
     if (non_nan_size > 0) {
-        for (int read_idx = 1; read_idx < non_nan_size; read_idx++) {
+        for (int64_t read_idx = 1; read_idx < non_nan_size; read_idx++) {
             if (dest[read_idx] != dest[write_idx]) {
                 write_idx++;
                 dest[write_idx] = dest[read_idx];
@@ -2627,14 +2627,14 @@ static int unique_float_fast(const float *src, float *dest, int size) {
     return write_idx;
 }
 
-static int unique_int32_fast(const int32_t *src, int32_t *dest, int size) {
+static int64_t unique_int32_fast(const int32_t *src, int32_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(int32_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(int32_t));
     if (size > 1) {
-        hwy::VQSort(dest, size, hwy::SortAscending());
+        hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
     }
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (dest[read_idx] != dest[write_idx]) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2643,14 +2643,14 @@ static int unique_int32_fast(const int32_t *src, int32_t *dest, int size) {
     return write_idx + 1;
 }
 
-static int unique_int64_fast(const int64_t *src, int64_t *dest, int size) {
+static int64_t unique_int64_fast(const int64_t *src, int64_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(int64_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(int64_t));
     if (size > 1) {
-        hwy::VQSort((int64_t *)dest, size, hwy::SortAscending());
+        hwy::VQSort((int64_t *)dest, static_cast<size_t>(size), hwy::SortAscending());
     }
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (dest[read_idx] != dest[write_idx]) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2659,14 +2659,14 @@ static int unique_int64_fast(const int64_t *src, int64_t *dest, int size) {
     return write_idx + 1;
 }
 
-static int unique_int16_fast(const int16_t *src, int16_t *dest, int size) {
+static int64_t unique_int16_fast(const int16_t *src, int16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(int16_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(int16_t));
     if (size > 1) {
-        hwy::VQSort(dest, size, hwy::SortAscending());
+        hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
     }
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (dest[read_idx] != dest[write_idx]) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2675,13 +2675,13 @@ static int unique_int16_fast(const int16_t *src, int16_t *dest, int size) {
     return write_idx + 1;
 }
 
-static int unique_uint8_fast(const uint8_t *src, uint8_t *dest, int size) {
+static int64_t unique_uint8_fast(const uint8_t *src, uint8_t *dest, int64_t size) {
     if (size <= 0) return 0;
     bool present[256] = {false};
-    for (int i = 0; i < size; i++) {
+    for (int64_t i = 0; i < size; i++) {
         present[src[i]] = true;
     }
-    int count = 0;
+    int64_t count = 0;
     for (int v = 0; v < 256; v++) {
         if (present[v]) {
             dest[count++] = (uint8_t)v;
@@ -2690,12 +2690,12 @@ static int unique_uint8_fast(const uint8_t *src, uint8_t *dest, int size) {
     return count;
 }
 
-static int unique_complex128_fast(const complex128_t *src, complex128_t *dest, int size) {
+static int64_t unique_complex128_fast(const complex128_t *src, complex128_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(complex128_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(complex128_t));
     std::sort(dest, dest + size, comp_complex_impl<complex128_t>);
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (!eq_complex_impl(dest[read_idx], dest[write_idx])) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2704,12 +2704,12 @@ static int unique_complex128_fast(const complex128_t *src, complex128_t *dest, i
     return write_idx + 1;
 }
 
-static int unique_complex64_fast(const complex64_t *src, complex64_t *dest, int size) {
+static int64_t unique_complex64_fast(const complex64_t *src, complex64_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(complex64_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(complex64_t));
     std::sort(dest, dest + size, comp_complex_impl<complex64_t>);
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (!eq_complex_impl(dest[read_idx], dest[write_idx])) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2719,39 +2719,39 @@ static int unique_complex64_fast(const complex64_t *src, complex64_t *dest, int 
 }
 
 template<typename T, typename Comp, typename Eq>
-static int unique_template(const T *src, T *dest, int size,
+static int64_t unique_template(const T *src, T *dest, int64_t size,
                            int64_t *out_index, int64_t *out_inverse, int64_t *out_counts,
                            Comp comp, Eq eq) {
     if (size <= 0) return 0;
     
-    NoThrowBuffer<int> idx(size);
+    NoThrowBuffer<int64_t> idx(static_cast<size_t>(size));
     if (!idx.ok()) {
         ndarray_set_oom_flag();
         return -4;
     }
-    for (int i = 0; i < size; i++) idx[i] = i;
+    for (int64_t i = 0; i < size; i++) idx[static_cast<size_t>(i)] = i;
     
-    std::stable_sort(idx.begin(), idx.end(), [&](int a, int b) {
+    std::stable_sort(idx.begin(), idx.end(), [&](int64_t a, int64_t b) {
         return comp(src[a], src[b]);
     });
     
-    int write_idx = 0;
+    int64_t write_idx = 0;
     dest[0] = src[idx[0]];
     if (out_index) out_index[0] = idx[0];
     if (out_inverse) out_inverse[idx[0]] = 0;
     
     int64_t current_count = 1;
     
-    for (int read_idx = 1; read_idx < size; read_idx++) {
-        if (!eq(src[idx[read_idx]], src[idx[read_idx - 1]])) {
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
+        if (!eq(src[idx[static_cast<size_t>(read_idx)]], src[idx[static_cast<size_t>(read_idx - 1)]])) {
             if (out_counts) out_counts[write_idx] = current_count;
             write_idx++;
-            dest[write_idx] = src[idx[read_idx]];
-            if (out_index) out_index[write_idx] = idx[read_idx];
-            if (out_inverse) out_inverse[idx[read_idx]] = write_idx;
+            dest[write_idx] = src[idx[static_cast<size_t>(read_idx)]];
+            if (out_index) out_index[write_idx] = idx[static_cast<size_t>(read_idx)];
+            if (out_inverse) out_inverse[idx[static_cast<size_t>(read_idx)]] = write_idx;
             current_count = 1;
         } else {
-            if (out_inverse) out_inverse[idx[read_idx]] = write_idx;
+            if (out_inverse) out_inverse[idx[static_cast<size_t>(read_idx)]] = write_idx;
             current_count++;
         }
     }
@@ -2807,12 +2807,12 @@ static inline bool eq_bf16_impl(uint16_t a, uint16_t b) {
     return eq_double_impl(decode_bf16_sort(a), decode_bf16_sort(b));
 }
 
-static int unique_fp16_fast(const uint16_t *src, uint16_t *dest, int size) {
+static int64_t unique_fp16_fast(const uint16_t *src, uint16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(uint16_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
     std::sort(dest, dest + size, comp_fp16_impl);
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (!eq_fp16_impl(dest[read_idx], dest[write_idx])) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2821,12 +2821,12 @@ static int unique_fp16_fast(const uint16_t *src, uint16_t *dest, int size) {
     return write_idx + 1;
 }
 
-static int unique_bf16_fast(const uint16_t *src, uint16_t *dest, int size) {
+static int64_t unique_bf16_fast(const uint16_t *src, uint16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(uint16_t));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
     std::sort(dest, dest + size, comp_bf16_impl);
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (!eq_bf16_impl(dest[read_idx], dest[write_idx])) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2836,12 +2836,12 @@ static int unique_bf16_fast(const uint16_t *src, uint16_t *dest, int size) {
 }
 
 template<typename T>
-static int unique_scalar_fast(const T *src, T *dest, int size) {
+static int64_t unique_scalar_fast(const T *src, T *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, size * sizeof(T));
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(T));
     std::sort(dest, dest + size);
-    int write_idx = 0;
-    for (int read_idx = 1; read_idx < size; read_idx++) {
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
         if (dest[read_idx] != dest[write_idx]) {
             write_idx++;
             dest[write_idx] = dest[read_idx];
@@ -2851,7 +2851,7 @@ static int unique_scalar_fast(const T *src, T *dest, int size) {
 }
 
 extern "C" {
-int ndarray_unique(const void *src, void *dest, int size, int dtype,
+int64_t ndarray_unique(const void *src, void *dest, int64_t size, int dtype,
                    int64_t *out_index, int64_t *out_inverse, int64_t *out_counts) {
     if (src == nullptr || dest == nullptr || size <= 0) return 0;
     

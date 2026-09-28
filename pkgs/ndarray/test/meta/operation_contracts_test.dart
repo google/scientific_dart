@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:ndarray/ndarray.dart';
+import 'package:ndarray/src/operations/io.dart' show parseNpyHeader;
 import 'package:test/test.dart';
 
 /// Descriptor for a unary operation `f(a, {out})` on `NDArray<Float64>`.
@@ -66,13 +67,13 @@ final class BooleanResultOpSpec {
   const BooleanResultOpSpec(this.name, this.call);
 }
 
-/// Descriptor for an index/count reduction `f(a, {axis, out})` -> `NDArray<Int32>`.
+/// Descriptor for an index/count reduction `f(a, {axis, out})` -> `NDArray<Int64>`.
 final class IndexReductionOpSpec {
   final String name;
-  final NDArray<Int32> Function(
+  final NDArray<Int64> Function(
     NDArray<Float64> a, {
     int? axis,
-    NDArray<Int32>? out,
+    NDArray<Int64>? out,
   })
   call;
 
@@ -576,14 +577,28 @@ void main() {
           );
           final tView = a.transpose();
           final tCopy = tView.copy();
-          expect(
-            op.call(tView, axis: 0).toList(),
-            equals(op.call(tCopy, axis: 0).toList()),
-          );
-          expect(
-            op.call(tView, axis: 1).toList(),
-            equals(op.call(tCopy, axis: 1).toList()),
-          );
+          final res0 = op.call(tView, axis: 0);
+          final expected0 = op.call(tCopy, axis: 0);
+          expect(res0.dtype, equals(DType.int64));
+          expect(res0.toList(), equals(expected0.toList()));
+
+          final res1 = op.call(tView, axis: 1);
+          final expected1 = op.call(tCopy, axis: 1);
+          expect(res1.dtype, equals(DType.int64));
+          expect(res1.toList(), equals(expected1.toList()));
+
+          // Contiguous out buffer reuse
+          final outContig = NDArray<Int64>.zeros([2], DType.int64);
+          final retContig = op.call(tView, axis: 0, out: outContig);
+          expect(identical(retContig, outContig), isTrue);
+          expect(outContig.toList(), equals(expected0.toList()));
+
+          // Non-contiguous strided out buffer reuse
+          final outBase = NDArray<Int64>.zeros([3, 2], DType.int64);
+          final outStrided = outBase.slice([Slice.all(), Index(0)]);
+          final retStrided = op.call(tView, axis: 1, out: outStrided);
+          expect(identical(retStrided, outStrided), isTrue);
+          expect(outStrided.toList(), equals(expected1.toList()));
         });
       });
     }
@@ -1402,6 +1417,200 @@ void main() {
                   'Operator $opName with out-of-range scalar 255 on Int8 must throw ArgumentError',
             );
           }
+        });
+      },
+    );
+  });
+
+  group('64-bit shapes, strides, overflow guards, and BLAS boundary contracts', () {
+    const dim64 =
+        0x80000000; // 2^31 (2,147,483,648) — exceeds 32-bit signed int
+
+    test(
+      'NDArray views, broadcasting, empty creation, and NPY headers support > 2^31 - 1 dimensions and strides',
+      () {
+        NDArray.scope(() {
+          final base = NDArray<Float64>.fromList([42.0], [1], DType.float64);
+
+          // 0-stride view with > 2^31 - 1 elements
+          final view1D = NDArray<Float64>.view(
+            base,
+            shape: [dim64],
+            strides: [0],
+          );
+          expect(view1D.shape, equals([dim64]));
+          expect(view1D.size, equals(dim64));
+          expect(view1D.getCell([dim64 - 1]), equals(42.0));
+
+          // asStrided with > 2^31 - 1 dimension and > 2^31 - 1 stride on length-1 axis
+          final strided = asStrided<Float64>(
+            base,
+            shape: [1, dim64],
+            strides: [dim64, 0],
+          );
+          expect(strided.shape, equals([1, dim64]));
+          expect(strided.strides, equals([dim64, 0]));
+          expect(strided.size, equals(dim64));
+          expect(strided.getCell([0, dim64 - 1]), equals(42.0));
+
+          // broadcastTo with > 2^31 - 1 target shape
+          final broadcasted = broadcastTo<Float64>(base, [2, dim64]);
+          expect(broadcasted.shape, equals([2, dim64]));
+          expect(broadcasted.size, equals(2 * dim64));
+          expect(broadcasted.getCell([1, dim64 - 1]), equals(42.0));
+
+          // Empty array with > 2^31 - 1 dimension allocates 0 elements safely
+          final emptyLarge = NDArray<Float64>.create([0, dim64], DType.float64);
+          expect(emptyLarge.shape, equals([0, dim64]));
+          expect(emptyLarge.size, equals(0));
+
+          // NPY header parser accepts > 2^31 - 1 dimensions
+          final dict =
+              "{'descr': '<f8', 'fortran_order': False, 'shape': ($dim64,), }";
+          final parsed = parseNpyHeader(dict);
+          expect(parsed.shape, equals([dim64]));
+        });
+      },
+    );
+
+    test(
+      '64-bit signed multiplication, byte-size, and span overflows throw ArgumentError',
+      () {
+        NDArray.scope(() {
+          final base = NDArray<Float64>.fromList(
+            [1.0, 2.0],
+            [2],
+            DType.float64,
+          );
+
+          // Product 3037000500 * 3037000500 > 0x7fffffffffffffff wraps 64-bit signed int
+          expect(
+            () => NDArray<Float64>.create([
+              3037000500,
+              3037000500,
+            ], DType.float64),
+            throwsArgumentError,
+          );
+          expect(
+            () => broadcastTo<Float64>(base, [3037000500, 3037000500]),
+            throwsArgumentError,
+          );
+
+          // Byte-size overflow: totalSize * 8 > 0x7fffffffffffffff
+          expect(
+            () => NDArray<Float64>.create([0x2000000000000000], DType.float64),
+            throwsArgumentError,
+          );
+
+          // Span overflow: (dim - 1) * stride > 0x7fffffffffffffff
+          expect(
+            () => NDArray<Float64>.view(
+              base,
+              shape: [3],
+              strides: [0x4000000000000000],
+            ),
+            throwsArgumentError,
+          );
+        });
+      },
+    );
+
+    test(
+      'OpenBLAS and LAPACK entrypoints throw UnsupportedError when dimensions or strides exceed 32-bit blasint (0x7fffffff)',
+      () {
+        NDArray.scope(() {
+          final base = NDArray<Float64>.fromList(
+            [1.0, 2.0, 3.0, 4.0],
+            [4],
+            DType.float64,
+          );
+          // 2D view with dimension > 0x7fffffff using 0-stride (no extra memory allocated)
+          final tall = NDArray<Float64>.view(
+            base,
+            shape: [dim64, 1],
+            strides: [0, 1],
+          );
+          final wide = NDArray<Float64>.view(
+            base,
+            shape: [1, dim64],
+            strides: [1, 0],
+          );
+          final squareBig = NDArray<Float64>.view(
+            base,
+            shape: [dim64, dim64],
+            strides: [0, 0],
+          );
+          final vecBig = NDArray<Float64>.view(
+            base,
+            shape: [dim64],
+            strides: [0],
+          );
+          // 2x2 view with leading stride > 0x7fffffff (dim=1 along axis 0 so span is 0, or test via 1x2 view)
+          final bigStride1x2 = NDArray<Float64>.view(
+            base,
+            shape: [1, 2],
+            strides: [dim64, 1],
+          );
+          final small2x2 = NDArray<Float64>.fromList(
+            [1.0, 0.0, 0.0, 1.0],
+            [2, 2],
+            DType.float64,
+          );
+
+          expect(() => matmul(tall, wide), throwsUnsupportedError);
+          expect(() => matmul(bigStride1x2, small2x2), throwsUnsupportedError);
+          expect(() => tensordot(tall, wide, axes: 1), throwsUnsupportedError);
+          expect(() => inner(vecBig, vecBig), throwsUnsupportedError);
+          expect(() => vdot(vecBig, vecBig), throwsUnsupportedError);
+          expect(() => multi_dot([tall, wide]), throwsUnsupportedError);
+          expect(() => cholesky(squareBig), throwsUnsupportedError);
+          expect(() => qr(tall), throwsUnsupportedError);
+          expect(() => svd(tall), throwsUnsupportedError);
+          expect(() => det(squareBig), throwsUnsupportedError);
+          expect(() => slogdet(squareBig), throwsUnsupportedError);
+          expect(() => inv(squareBig), throwsUnsupportedError);
+          expect(() => solve(squareBig, tall), throwsUnsupportedError);
+          expect(() => lstsq(tall, vecBig), throwsUnsupportedError);
+          expect(() => pinv(tall), throwsUnsupportedError);
+          expect(() => matrix_power(squareBig, 2), throwsUnsupportedError);
+          expect(() => eigh(squareBig), throwsUnsupportedError);
+          expect(() => eigvalsh(squareBig), throwsUnsupportedError);
+          expect(() => eig(squareBig), throwsUnsupportedError);
+          expect(() => eigvals(squareBig), throwsUnsupportedError);
+          expect(() => schur(squareBig), throwsUnsupportedError);
+          expect(() => hessenberg(squareBig), throwsUnsupportedError);
+          expect(() => norm(tall, ord: 2), throwsUnsupportedError);
+          expect(() => cond(tall), throwsUnsupportedError);
+          expect(() => polyfit(vecBig, vecBig, 1), throwsUnsupportedError);
+          expect(() => roots(vecBig), throwsUnsupportedError);
+          expect(() => nelder_mead((x) => 0.0, vecBig), throwsUnsupportedError);
+          expect(() => lbfgs((x) => 0.0, vecBig), throwsUnsupportedError);
+        });
+      },
+    );
+
+    test(
+      'flatnonzero returns NDArray<Int64> and supports out: and strided views',
+      () {
+        NDArray.scope(() {
+          final a = NDArray<Int32>.fromList(
+            [0, 5, 0, -3, 0, 7],
+            [2, 3],
+            DType.int32,
+          );
+          final idx = flatnonzero(a);
+          expect(idx.dtype, equals(DType.int64));
+          expect(idx.toList(), equals([1, 3, 5]));
+
+          final out = NDArray<Int64>.zeros([3], DType.int64);
+          final res = flatnonzero(a, out: out);
+          expect(sameId(res, out), isTrue);
+          expect(out.toList(), equals([1, 3, 5]));
+
+          // Strided transposed view: [[0, -3], [5, 0], [0, 7]] -> nonzero at flat indices 1, 2, 5
+          final idxT = flatnonzero(a.transpose());
+          expect(idxT.dtype, equals(DType.int64));
+          expect(idxT.toList(), equals([1, 2, 5]));
         });
       },
     );

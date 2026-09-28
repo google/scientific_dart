@@ -31,7 +31,7 @@ void main() {
           expect(identical(resSort, outSort), isTrue);
           expect(outSort.toList(), equals([3.0, 1.0, 2.0, 6.0, 4.0, 5.0]));
 
-          final outArgSort = NDArray.zeros([2, 3], DType.int32);
+          final outArgSort = NDArray.zeros([2, 3], DType.int64);
           final resArgSort = argsort(a, axis: 0, out: outArgSort);
           expect(identical(resArgSort, outArgSort), isTrue);
           expect(outArgSort.toList(), equals([0, 0, 0, 1, 1, 1]));
@@ -40,7 +40,7 @@ void main() {
           final resPart = partition(a, 0, axis: 0, out: outPart);
           expect(identical(resPart, outPart), isTrue);
 
-          final outArgPart = NDArray.zeros([2, 3], DType.int32);
+          final outArgPart = NDArray.zeros([2, 3], DType.int64);
           final resArgPart = argpartition(a, 0, axis: 0, out: outArgPart);
           expect(identical(resArgPart, outArgPart), isTrue);
 
@@ -50,7 +50,7 @@ void main() {
           sort(scalarA, out: outScalar);
           expect(outScalar.scalar, equals(42.0));
 
-          final outScalarIdx = NDArray.zeros([], DType.int32);
+          final outScalarIdx = NDArray.zeros([], DType.int64);
           argsort(scalarA, out: outScalarIdx);
           expect(outScalarIdx.scalar, equals(0));
         });

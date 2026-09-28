@@ -18,7 +18,6 @@ import '../ndarray.dart';
 import '../nditer.dart';
 import 'dart:ffi' as ffi;
 import '../ndarray_bindings.dart';
-import '../ndarray_extensions_bindings.dart';
 import '../scratch_arena.dart';
 
 // Standalone operational relative cross-imports
@@ -108,10 +107,10 @@ void _s_stat_strided_fallback<T extends DTypeTag>(
   List<int> _,
   void Function(
     ffi.Pointer<ffi.Double> src,
-    ffi.Pointer<ffi.Int> srcStrides,
+    ffi.Pointer<ffi.Int64> srcStrides,
     ffi.Pointer<ffi.Double> dest,
-    ffi.Pointer<ffi.Int> destStrides,
-    ffi.Pointer<ffi.Int> shape,
+    ffi.Pointer<ffi.Int64> destStrides,
+    ffi.Pointer<ffi.Int64> shape,
     int rank,
     int axis,
   )

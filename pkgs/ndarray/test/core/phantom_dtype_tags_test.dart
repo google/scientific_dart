@@ -153,11 +153,11 @@ void main() {
           final f64 = NDArray.fromList([0.0, 1.0], [2], DType.float64);
           final NDArray<Float64> s = sin(f64);
           final NDArray<Complex128> f = fft(f64);
-          final NDArray<Int32> idx = argsort(f64);
+          final NDArray<Int64> idx = argsort(f64);
           final NDArray<Float64> total = sum(f64);
           expect(s.dtype, DType.float64);
           expect(f.dtype, DType.complex128);
-          expect(idx.dtype, DType.int32);
+          expect(idx.dtype, DType.int64);
           expect(total.dtype, DType.float64);
 
           final NDArray<AnySpec> erased = f64;

@@ -163,7 +163,7 @@ void main() {
           );
           final indices = argsort(a);
           expect(indices.shape, [4]);
-          expect(indices.dtype, DType.int32);
+          expect(indices.dtype, DType.int64);
           expect(indices.toList(), [
             1,
             3,
@@ -417,12 +417,12 @@ void main() {
           () => NDArray.scope(() {
             final a = NDArray.fromList([10.0, 50.0, 5.0], [3], DType.float64);
 
-            final outFlat = NDArray.zeros([], DType.int32);
+            final outFlat = NDArray.zeros([], DType.int64);
             final resFlat = argmin(a, out: outFlat);
             expect(identical(resFlat, outFlat), true);
             expect(outFlat.scalar, 2);
 
-            final outAxis = NDArray.zeros([1], DType.int32);
+            final outAxis = NDArray.zeros([1], DType.int64);
             final mat = NDArray.fromList(
               [10.0, 50.0, 5.0],
               [1, 3],
@@ -438,7 +438,7 @@ void main() {
           'disposed out array throws StateError',
           () => NDArray.scope(() {
             final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-            final out = NDArray.zeros([], DType.int32);
+            final out = NDArray.zeros([], DType.int64);
             out.dispose();
 
             expect(() => argmin(a, out: out), throwsStateError);
@@ -452,7 +452,7 @@ void main() {
             final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
 
             // Incompatible shape
-            final outShape = NDArray.zeros([2], DType.int32);
+            final outShape = NDArray.zeros([2], DType.int64);
             expect(() => argmin(a, out: outShape), throwsArgumentError);
             expect(() => argmax(a, out: outShape), throwsArgumentError);
 

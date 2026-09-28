@@ -22,61 +22,75 @@ import 'package:test/test.dart';
 
 void main() {
   group('Workstream 3: Security & Build Hardening', () {
-    group('C2: 32-bit Array Size Ceiling Enforcement', () {
-      test('NDArray.create rejects arrays with totalSize > 2^31 - 1', () {
-        expect(
-          () => NDArray.create([2147483648], DType.float64),
-          throwsA(
-            isA<UnsupportedError>().having(
-              (e) => e.message,
-              'message',
-              contains(
-                'NDArray operations currently support arrays up to 2^31 - 1 elements. Got 2147483648.',
-              ),
-            ),
-          ),
-        );
-
-        expect(
-          () => NDArray.create([2, 1073741824], DType.int32),
-          throwsA(
-            isA<UnsupportedError>().having(
-              (e) => e.message,
-              'message',
-              contains(
-                'NDArray operations currently support arrays up to 2^31 - 1 elements.',
-              ),
-            ),
-          ),
-        );
-      });
-
-      test('NDArray.fromPointer rejects arrays with totalSize > 2^31 - 1', () {
-        final dummyPtr = malloc<ffi.Double>(1);
-        try {
+    group('C2: 64-bit Array Size Support & Overflow Guards', () {
+      test(
+        'NDArray.create rejects arrays overflowing 64-bit size or byte count',
+        () {
           expect(
-            () => NDArray.fromPointer(dummyPtr.cast<ffi.Void>(), [
-              2147483648,
-            ], DType.float64),
+            () => NDArray.create([3037000500, 3037000500], DType.float64),
             throwsA(
-              isA<UnsupportedError>().having(
+              isA<ArgumentError>().having(
                 (e) => e.message,
                 'message',
-                contains(
-                  'NDArray operations currently support arrays up to 2^31 - 1 elements. Got 2147483648.',
-                ),
+                contains('overflowing 64-bit integer'),
               ),
             ),
           );
-        } finally {
-          malloc.free(dummyPtr);
-        }
-      });
+
+          expect(
+            () => NDArray.create([0x2000000000000000], DType.float64),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e.message,
+                'message',
+                contains('byte size overflowing 64-bit integer'),
+              ),
+            ),
+          );
+        },
+      );
 
       test(
-        'NDArray.create allows arrays up to 2^31 - 1 within available memory',
+        'NDArray.fromPointer supports > 2^31 - 1 elements and rejects 64-bit overflow',
+        () {
+          final dummyPtr = malloc<ffi.Double>(1);
+          try {
+            NDArray.scope(() {
+              final arr64 = NDArray.fromPointer(dummyPtr.cast<ffi.Void>(), [
+                2147483648,
+              ], DType.float64);
+              expect(arr64.shape, equals([2147483648]));
+              expect(arr64.size, equals(2147483648));
+            });
+
+            expect(
+              () => NDArray.fromPointer(dummyPtr.cast<ffi.Void>(), [
+                3037000500,
+                3037000500,
+              ], DType.float64),
+              throwsArgumentError,
+            );
+            expect(
+              () => NDArray.fromPointer(dummyPtr.cast<ffi.Void>(), [
+                0x2000000000000000,
+              ], DType.float64),
+              throwsArgumentError,
+            );
+          } finally {
+            malloc.free(dummyPtr);
+          }
+        },
+      );
+
+      test(
+        'NDArray.create allows empty arrays with dimension > 2^31 - 1 and normal arrays',
         () {
           NDArray.scope(() {
+            final empty64 = NDArray.create([0, 2147483648], DType.float64);
+            expect(empty64.shape, equals([0, 2147483648]));
+            expect(empty64.strides, equals([2147483648, 1]));
+            expect(empty64.size, 0);
+
             final arr = NDArray.create([100], DType.float64);
             expect(arr.size, 100);
           });

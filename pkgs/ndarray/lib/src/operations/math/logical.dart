@@ -1144,12 +1144,12 @@ NDArray<Boolean> _runBinaryLogical<Ta extends DTypeTag, Tb extends DTypeTag>(
   contiguousFn,
   void Function(
     ffi.Pointer<ffi.Uint8>,
-    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Uint8>,
-    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Uint8>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
     int,
     ffi.Pointer<ffi.Uint8>,
   )

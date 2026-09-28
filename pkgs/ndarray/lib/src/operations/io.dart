@@ -336,7 +336,20 @@ NDArray<DTypeTag> load(String filepath) {
 
     // 5. Allocate matching NDArray with target layout strategies
     final elementCount = checkTotalSize(shape);
+    if (elementCount > 0x7fffffffffffffff ~/ dtype.byteWidth) {
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not result in byte size overflowing 64-bit integer',
+      );
+    }
     final byteSize = elementCount * dtype.byteWidth;
+    final remainingBytes = raf.lengthSync() - raf.positionSync();
+    if (remainingBytes < byteSize) {
+      throw FormatException(
+        'Unexpected EOF while reading NPY payload: expected $byteSize bytes, got $remainingBytes',
+      );
+    }
 
     List<int>? strides;
     // Wire Zero-Copy Column-Major Fortran strides if the file demands it!
@@ -345,7 +358,15 @@ NDArray<DTypeTag> load(String filepath) {
       var stride = 1;
       for (var i = 0; i < shape.length; i++) {
         fStrides[i] = stride;
-        stride *= shape[i];
+        final dim = shape[i];
+        if (stride != 0 && dim > 0 && stride > 0x7fffffffffffffff ~/ dim) {
+          throw ArgumentError.value(
+            shape,
+            'shape',
+            'Must not result in Fortran-contiguous stride overflowing 64-bit integer',
+          );
+        }
+        stride *= dim;
       }
       strides = fStrides;
     }
@@ -694,12 +715,29 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
             var stride = 1;
             for (var s = 0; s < shape.length; s++) {
               fStrides[s] = stride;
-              stride *= shape[s];
+              final dim = shape[s];
+              if (stride != 0 &&
+                  dim > 0 &&
+                  stride > 0x7fffffffffffffff ~/ dim) {
+                throw ArgumentError.value(
+                  shape,
+                  'shape',
+                  'Must not result in Fortran-contiguous stride overflowing 64-bit integer',
+                );
+              }
+              stride *= dim;
             }
             strides = fStrides;
           }
 
           final totalElements = checkTotalSize(shape);
+          if (totalElements > 0x7fffffffffffffff ~/ dtype.byteWidth) {
+            throw ArgumentError.value(
+              shape,
+              'shape',
+              'Must not result in byte size overflowing 64-bit integer',
+            );
+          }
           final expectedBytes = totalElements * dtype.byteWidth;
           if (realDataLen != expectedBytes) {
             throw FormatException(

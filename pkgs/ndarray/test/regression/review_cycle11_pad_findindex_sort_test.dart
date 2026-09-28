@@ -286,18 +286,19 @@ void main() {
 
             // Default out == null
             final resDefault = argpartition(a, 2);
-            expect(resDefault.dtype, DType.int32);
+            expect(resDefault.dtype, DType.int64);
             verifyPartition1D(data, resDefault.toList().cast<int>(), 2);
 
-            // out with DType.int32
+            // out with DType.int32 via argpartitionAs
             final out32 = NDArray.zeros([5], DType.int32);
-            final ret32 = argpartition(a, 2, out: out32);
+            final ret32 = argpartitionAs(a, 2, DType.int32, out: out32);
             expect(identical(ret32, out32), isTrue);
+            expect(out32.dtype, DType.int32);
             verifyPartition1D(data, out32.toList().cast<int>(), 2);
 
             // out with DType.int64
             final out64 = NDArray.zeros([5], DType.int64);
-            final ret64 = argpartitionAs(a, 2, DType.int64, out: out64);
+            final ret64 = argpartition(a, 2, out: out64);
             expect(identical(ret64, out64), isTrue);
             expect(out64.dtype, DType.int64);
             verifyPartition1D(data, out64.toList().cast<int>(), 2);
@@ -319,18 +320,19 @@ void main() {
 
             // Default out == null
             final resDefault = argpartition(a, 2);
-            expect(resDefault.dtype, DType.int32);
+            expect(resDefault.dtype, DType.int64);
             verifyPartition1D(data, resDefault.toList().cast<int>(), 2);
 
-            // out with DType.int32
+            // out with DType.int32 via argpartitionAs
             final out32 = NDArray.zeros([5], DType.int32);
-            final ret32 = argpartition(a, 2, out: out32);
+            final ret32 = argpartitionAs(a, 2, DType.int32, out: out32);
             expect(identical(ret32, out32), isTrue);
+            expect(out32.dtype, DType.int32);
             verifyPartition1D(data, out32.toList().cast<int>(), 2);
 
             // out with DType.int64
             final out64 = NDArray.zeros([5], DType.int64);
-            final ret64 = argpartitionAs(a, 2, DType.int64, out: out64);
+            final ret64 = argpartition(a, 2, out: out64);
             expect(identical(ret64, out64), isTrue);
             expect(out64.dtype, DType.int64);
             verifyPartition1D(data, out64.toList().cast<int>(), 2);

@@ -31,10 +31,10 @@ void main() {
         );
 
         // Stepped view (step = 2)
-        final full = NDArray<Int32>.fromList(
+        final full = NDArray<Int64>.fromList(
           [-1, -1, -1, -1, -1, -1],
           [6],
-          DType.int32,
+          DType.int64,
         );
         final outStepped = full.slice([Slice(start: 0, stop: 6, step: 2)]);
         final res = searchsorted(a, v, out: outStepped);
@@ -44,7 +44,7 @@ void main() {
         expect(full.toList(), equals([1, -1, 3, -1, 0, -1]));
 
         // Reversed view (step = -1)
-        final revFull = NDArray<Int32>.fromList([99, 99, 99], [3], DType.int32);
+        final revFull = NDArray<Int64>.fromList([99, 99, 99], [3], DType.int64);
         final outRev = revFull.slice([Slice(step: -1)]);
         searchsorted(a, v, out: outRev);
         expect(outRev.toList(), equals([1, 3, 0]));
@@ -52,28 +52,37 @@ void main() {
       });
     });
 
-    test('searchsorted with out aliasing a, v, or sorter (Int32 arrays)', () {
-      NDArray.scope(() {
-        // out aliases a
-        final a1 = NDArray<Int32>.fromList([10, 20, 30], [3], DType.int32);
-        final v1 = NDArray<Int32>.fromList([25, 5, 15], [3], DType.int32);
-        searchsorted(a1, v1, out: a1);
-        expect(a1.toList(), equals([2, 0, 1]));
+    test(
+      'searchsorted with out aliasing a, v, or sorter (Int64 and Int32 arrays)',
+      () {
+        NDArray.scope(() {
+          // out aliases a (Int64)
+          final a1 = NDArray<Int64>.fromList([10, 20, 30], [3], DType.int64);
+          final v1 = NDArray<Int64>.fromList([25, 5, 15], [3], DType.int64);
+          searchsorted(a1, v1, out: a1);
+          expect(a1.toList(), equals([2, 0, 1]));
 
-        // out aliases v
-        final a2 = NDArray<Int32>.fromList([10, 20, 30], [3], DType.int32);
-        final v2 = NDArray<Int32>.fromList([25, 5, 15], [3], DType.int32);
-        searchsorted(a2, v2, out: v2);
-        expect(v2.toList(), equals([2, 0, 1]));
+          // out aliases v (Int64)
+          final a2 = NDArray<Int64>.fromList([10, 20, 30], [3], DType.int64);
+          final v2 = NDArray<Int64>.fromList([25, 5, 15], [3], DType.int64);
+          searchsorted(a2, v2, out: v2);
+          expect(v2.toList(), equals([2, 0, 1]));
 
-        // out aliases sorter
-        final a3 = NDArray<Int32>.fromList([30, 10, 20], [3], DType.int32);
-        final sorter3 = NDArray<Int32>.fromList([1, 2, 0], [3], DType.int32);
-        final v3 = NDArray<Int32>.fromList([25, 5, 15], [3], DType.int32);
-        searchsorted(a3, v3, sorter: sorter3, out: sorter3);
-        expect(sorter3.toList(), equals([2, 0, 1]));
-      });
-    });
+          // out aliases sorter (Int64)
+          final a3 = NDArray<Int64>.fromList([30, 10, 20], [3], DType.int64);
+          final sorter3 = NDArray<Int64>.fromList([1, 2, 0], [3], DType.int64);
+          final v3 = NDArray<Int64>.fromList([25, 5, 15], [3], DType.int64);
+          searchsorted(a3, v3, sorter: sorter3, out: sorter3);
+          expect(sorter3.toList(), equals([2, 0, 1]));
+
+          // out aliases a (Int32 via searchsortedAs)
+          final a32 = NDArray<Int32>.fromList([10, 20, 30], [3], DType.int32);
+          final v32 = NDArray<Int32>.fromList([25, 5, 15], [3], DType.int32);
+          searchsortedAs(a32, v32, DType.int32, out: a32);
+          expect(a32.toList(), equals([2, 0, 1]));
+        });
+      },
+    );
 
     test(
       'searchsorted with uint64 values > 2^53 verifies exact comparison',
@@ -96,31 +105,44 @@ void main() {
       },
     );
 
-    test('argsort and argpartition with out aliasing a (Int32 in-place)', () {
-      NDArray.scope(() {
-        // argsort with out: a
-        final aSort = NDArray<Int32>.fromList([30, 10, 20], [3], DType.int32);
-        final resSort = argsort(aSort, out: aSort);
-        expect(identical(resSort, aSort), isTrue);
-        expect(aSort.toList(), equals([1, 2, 0]));
+    test(
+      'argsort and argpartition with out aliasing a (Int64 and Int32 in-place)',
+      () {
+        NDArray.scope(() {
+          // argsort with out: a (Int64)
+          final aSort = NDArray<Int64>.fromList([30, 10, 20], [3], DType.int64);
+          final resSort = argsort(aSort, out: aSort);
+          expect(identical(resSort, aSort), isTrue);
+          expect(aSort.toList(), equals([1, 2, 0]));
 
-        // argpartition with out: a
-        final aPart = NDArray<Int32>.fromList(
-          [40, 10, 30, 20],
-          [4],
-          DType.int32,
-        );
-        final origValues = [40, 10, 30, 20];
-        final resPart = argpartition(aPart, 2, out: aPart);
-        expect(identical(resPart, aPart), isTrue);
-        final partIndices = aPart.toList().cast<int>();
-        // Element at kth=2 in sorted [10, 20, 30, 40] is 30 (original index 2)
-        expect(origValues[partIndices[2]], equals(30));
-        expect(origValues[partIndices[0]], lessThanOrEqualTo(30));
-        expect(origValues[partIndices[1]], lessThanOrEqualTo(30));
-        expect(origValues[partIndices[3]], greaterThanOrEqualTo(30));
-      });
-    });
+          // argsortAs with out: a (Int32)
+          final aSort32 = NDArray<Int32>.fromList(
+            [30, 10, 20],
+            [3],
+            DType.int32,
+          );
+          final resSort32 = argsortAs(aSort32, DType.int32, out: aSort32);
+          expect(identical(resSort32, aSort32), isTrue);
+          expect(aSort32.toList(), equals([1, 2, 0]));
+
+          // argpartition with out: a (Int64)
+          final aPart = NDArray<Int64>.fromList(
+            [40, 10, 30, 20],
+            [4],
+            DType.int64,
+          );
+          final origValues = [40, 10, 30, 20];
+          final resPart = argpartition(aPart, 2, out: aPart);
+          expect(identical(resPart, aPart), isTrue);
+          final partIndices = aPart.toList().cast<int>();
+          // Element at kth=2 in sorted [10, 20, 30, 40] is 30 (original index 2)
+          expect(origValues[partIndices[2]], equals(30));
+          expect(origValues[partIndices[0]], lessThanOrEqualTo(30));
+          expect(origValues[partIndices[1]], lessThanOrEqualTo(30));
+          expect(origValues[partIndices[3]], greaterThanOrEqualTo(30));
+        });
+      },
+    );
 
     test(
       'where with rank = 8 succeeds accurately and rank = 9 throws UnsupportedError without leaking memory',

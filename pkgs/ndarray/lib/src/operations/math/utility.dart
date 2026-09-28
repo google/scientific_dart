@@ -253,5 +253,6 @@ List<int> broadcastShapes(List<int> s1, List<int> s2) {
     }
     common[len - 1 - i] = target;
   }
+  checkTotalSize(common);
   return common;
 }

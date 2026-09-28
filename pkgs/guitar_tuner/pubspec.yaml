@@ -23,7 +23,7 @@ environment:
   sdk: ^3.10.0
 
 dependencies:
-  ndarray: ^0.1.0
+  ndarray: ^0.2.0
   ffi: ^2.2.0
   args: ^2.7.0
   hooks: ^1.0.3
