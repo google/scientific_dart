@@ -28,7 +28,7 @@ import 'package:crypto/crypto.dart';
 const repository = 'google/scientific_dart';
 
 /// Release tag for prebuilt `openblas` binaries.
-const version = 'artifacts-v0.1.0';
+const version = 'artifacts-v0.2.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
@@ -162,5 +162,5 @@ final fileHashes = <(OS, Architecture, String), String>{
   (OS.windows, Architecture.x64, 'openblas'):
       'c8b6f93012b81eb5775955006a1a363d720ba2013b5262052944763e0a736346',
   (OS.windows, Architecture.x64, 'openblas_extensions'):
-      '296b1b2adaa57cf8a583754cfd49ca15523f060a02d3bb50f78cfc54e30c0adc',
+      '80d84126c57346c5f32e3cc73af88eb92d4636385f97fd8450ef07fe643affaf',
 };

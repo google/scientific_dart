@@ -28,7 +28,7 @@ import 'package:crypto/crypto.dart';
 const repository = 'google/scientific_dart';
 
 /// Release tag for prebuilt `pocketfft` binaries.
-const version = 'artifacts-v0.1.0';
+const version = 'artifacts-v0.2.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
@@ -150,5 +150,5 @@ final fileHashes = <(OS, Architecture), String>{
   (OS.macOS, Architecture.x64):
       '435b4d928a49dd0b86309ddb16163187e73bc382f8fed5724b1d1af88d1750f3',
   (OS.windows, Architecture.x64):
-      'd3f40eaa88d8107fe54b7b545fe2b70ee5beafffe90967ff8d875f995904d082',
+      '6dca3a5a60d8cfbf5e14eea21ee0cf4668590a69000ad790ca7f989b95766550',
 };
