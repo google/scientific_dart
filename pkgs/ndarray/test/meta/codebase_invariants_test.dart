@@ -725,13 +725,20 @@ void main() {
               '$baseName — contains `printf`/`std::cout`/`std::cerr` in FFI library.',
             );
           }
+          for (final m in RegExp(
+            r'\bstd::(?:fmodf|floorf|ceilf|fabsf|sqrtf|sinf|cosf|tanf|asinf|acosf|atanf|atan2f|sinhf|coshf|tanhf|expf|logf|log10f|powf|ldexpf|frexpf|modff|rintf|hypotf|copysignf)\b',
+          ).allMatches(stripped)) {
+            violations.add(
+              '$baseName — contains non-portable `${m.group(0)}` (not in `namespace std` on all libstdc++ versions); use the overloaded `std::` name without the `f` suffix.',
+            );
+          }
         }
 
         expect(
           violations,
           isEmpty,
           reason:
-              'C++ `-fno-exceptions` / heap discipline violations:\n'
+              'C++ `-fno-exceptions` / heap / std:: math portability discipline violations:\n'
               '${violations.join('\n')}',
         );
       },

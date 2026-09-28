@@ -4334,7 +4334,7 @@ void v_floor_float(const float *src, float *res, int size, const uint8_t *mask) 
 }
 
 void v_round_float(const float *src, float *res, int size, const uint8_t *mask) {
-    v_unary_impl(src, res, size, mask, [](float x) { return std::rintf(x); });
+    v_unary_impl(src, res, size, mask, [](float x) { return std::nearbyint(x); });
 }
 
 void v_clip_float(const float *src, float *res, float min_val, float max_val, int size, const uint8_t *mask) {
@@ -6109,7 +6109,7 @@ static inline double cpx_abs(cpx_t z) {
 }
 
 static inline float cpx_abs_f(cpx_f_t z) {
-    return std::hypotf(z.r, z.i);
+    return std::hypot(z.r, z.i);
 }
 
 void v_abs_complex128(const cpx_t *src, double *res, int size, const uint8_t *mask) {
@@ -6953,19 +6953,19 @@ static inline double double_floordiv(double a, double b) {
 static inline float float_floordiv(float a, float b) {
     if (b == 0.0f) {
         if (a == 0.0f || std::isnan(a)) return NAN;
-        return std::copysignf(INFINITY, a) * std::copysignf(1.0f, b);
+        return std::copysign(INFINITY, a) * std::copysign(1.0f, b);
     }
     if (std::isnan(a) || std::isnan(b) || std::isinf(a)) {
         return NAN;
     }
     if (std::isinf(b)) {
-        if (a == 0.0f) return std::copysignf(0.0f, a) * std::copysignf(1.0f, b);
+        if (a == 0.0f) return std::copysign(0.0f, a) * std::copysign(1.0f, b);
         return ((std::signbit(a) != 0) == (std::signbit(b) != 0)) ? 0.0f : -1.0f;
     }
     if (a == 0.0f) {
-        return std::copysignf(0.0f, a) * std::copysignf(1.0f, b);
+        return std::copysign(0.0f, a) * std::copysign(1.0f, b);
     }
-    float mod = std::fmodf(a, b);
+    float mod = std::fmod(a, b);
     float div = (a - mod) / b;
     if (mod != 0.0f) {
         if ((b < 0.0f) != (mod < 0.0f)) {
@@ -6975,12 +6975,12 @@ static inline float float_floordiv(float a, float b) {
     }
     float floordiv;
     if (div != 0.0f) {
-        floordiv = std::floorf(div);
+        floordiv = std::floor(div);
         if (div - floordiv > 0.5f) {
             floordiv += 1.0f;
         }
     } else {
-        floordiv = std::copysignf(0.0f, a / b);
+        floordiv = std::copysign(0.0f, a / b);
     }
     return floordiv;
 }
@@ -7017,7 +7017,7 @@ static inline int32_t int32_floordiv(int32_t x, int32_t y) {
 
 static inline double double_remainder(double x, double y) {
     if (y == 0.0 || std::isnan(x) || std::isnan(y) || std::isinf(x)) return NAN;
-    double rem = fmod(x, y);
+    double rem = std::fmod(x, y);
     if (rem != 0.0) {
         if ((rem < 0.0) != (y < 0.0)) {
             rem += y;
@@ -7029,13 +7029,13 @@ static inline double double_remainder(double x, double y) {
 }
 static inline float float_remainder(float x, float y) {
     if (y == 0.0f || std::isnan(x) || std::isnan(y) || std::isinf(x)) return NAN;
-    float rem = fmodf(x, y);
+    float rem = std::fmod(x, y);
     if (rem != 0.0f) {
         if ((rem < 0.0f) != (y < 0.0f)) {
             rem += y;
         }
     } else {
-        rem = std::copysignf(0.0f, y);
+        rem = std::copysign(0.0f, y);
     }
     return rem;
 }
