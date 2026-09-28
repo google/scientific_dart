@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -251,7 +250,7 @@ void main() {
         NDArray.scope(() {
           final c = NDArray.fromList([2.0, 1.0], [2], DType.float64);
           final x = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-          final out = NDArray<double>.zeros([3], DType.float64);
+          final out = NDArray.zeros([3], DType.float64);
 
           final res = polyval(c, x, out: out);
           expect(identical(res, out), isTrue);
@@ -260,7 +259,7 @@ void main() {
           // Float32 out buffer
           final c32 = NDArray.fromList([2.0, 1.0], [2], DType.float32);
           final x32 = NDArray.fromList([1.0, 2.0], [2], DType.float32);
-          final out32 = NDArray<double>.zeros([2], DType.float32);
+          final out32 = NDArray.zeros([2], DType.float32);
           final res32 = polyval(c32, x32, out: out32);
           expect(identical(res32, out32), isTrue);
 
@@ -271,7 +270,7 @@ void main() {
             DType.complex128,
           );
           final xCpx = NDArray.fromList([Complex(2, 0)], [1], DType.complex128);
-          final outCpx = NDArray<Complex>.zeros([1], DType.complex128);
+          final outCpx = NDArray.zeros([1], DType.complex128);
           final resCpx = polyval(cCpx, xCpx, out: outCpx);
           expect(identical(resCpx, outCpx), isTrue);
 
@@ -286,14 +285,14 @@ void main() {
             [1],
             DType.complex64,
           );
-          final outCpx64 = NDArray<Complex>.zeros([1], DType.complex64);
+          final outCpx64 = NDArray.zeros([1], DType.complex64);
           final resCpx64 = polyval(cCpx64, xCpx64, out: outCpx64);
           expect(identical(resCpx64, outCpx64), isTrue);
 
-          final outBadShape = NDArray<double>.zeros([4], DType.float64);
+          final outBadShape = NDArray.zeros([4], DType.float64);
           expect(() => polyval(c, x, out: outBadShape), throwsArgumentError);
 
-          final outBadDtype = NDArray<double>.zeros([3], DType.float32);
+          final outBadDtype = NDArray.zeros([3], DType.float32);
           expect(() => polyval(c, x, out: outBadDtype), throwsArgumentError);
         });
       });
@@ -309,7 +308,7 @@ void main() {
           final dispX = NDArray.fromList([1.0], [1], DType.float64)..dispose();
           expect(() => polyval(validC, dispX), throwsStateError);
 
-          final dispOut = NDArray<double>.zeros([2], DType.float64)..dispose();
+          final dispOut = NDArray.zeros([2], DType.float64)..dispose();
           expect(() => polyval(validC, validX, out: dispOut), throwsStateError);
 
           final c2D = NDArray.zeros([2, 2], DType.float64);
@@ -413,62 +412,65 @@ void main() {
         });
       });
 
-      test('DTypes coverage: Float32, Complex128, Complex64 with weights and rcond', () {
-        NDArray.scope(() {
-          // Float32
-          final x32 = NDArray.fromList([0.0, 1.0, 2.0], [3], DType.float32);
-          final y32 = NDArray.fromList([1.0, 3.0, 5.0], [3], DType.float32);
-          final w32 = NDArray.fromList([1.0, 1.0, 1.0], [3], DType.float32);
-          final p32 = polyfit(x32, y32, 1, w: w32, rcond: 1e-5);
-          expect(p32.dtype, equals(DType.float32));
-          expect(p32.getCell([0]), closeTo(2.0, 1e-4));
-          expect(p32.getCell([1]), closeTo(1.0, 1e-4));
+      test(
+        'DTypes coverage: Float32, Complex128, Complex64 with weights and rcond',
+        () {
+          NDArray.scope(() {
+            // Float32
+            final x32 = NDArray.fromList([0.0, 1.0, 2.0], [3], DType.float32);
+            final y32 = NDArray.fromList([1.0, 3.0, 5.0], [3], DType.float32);
+            final w32 = NDArray.fromList([1.0, 1.0, 1.0], [3], DType.float32);
+            final p32 = polyfit(x32, y32, 1, w: w32, rcond: 1e-5);
+            expect(p32.dtype, equals(DType.float32));
+            expect(p32.getCell([0]), closeTo(2.0, 1e-4));
+            expect(p32.getCell([1]), closeTo(1.0, 1e-4));
 
-          // Complex128
-          final xCpx = NDArray.fromList(
-            [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(2.0, 0.0)],
-            [3],
-            DType.complex128,
-          );
-          final yCpx = NDArray.fromList(
-            [Complex(0.0, 1.0), Complex(1.0, 2.0), Complex(2.0, 3.0)],
-            [3],
-            DType.complex128,
-          );
-          final wCpx = NDArray.fromList(
-            [Complex(1.0, 0.0), Complex(1.0, 0.0), Complex(1.0, 0.0)],
-            [3],
-            DType.complex128,
-          );
-          final pCpx = polyfit(xCpx, yCpx, 1, w: wCpx, rcond: 1e-5);
-          expect(pCpx.dtype, equals(DType.complex128));
-          expect(pCpx.getCell([0]).real, closeTo(1.0, 1e-5));
-          expect(pCpx.getCell([0]).imag, closeTo(1.0, 1e-5));
-          expect(pCpx.getCell([1]).real, closeTo(0.0, 1e-5));
-          expect(pCpx.getCell([1]).imag, closeTo(1.0, 1e-5));
+            // Complex128
+            final xCpx = NDArray.fromList(
+              [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(2.0, 0.0)],
+              [3],
+              DType.complex128,
+            );
+            final yCpx = NDArray.fromList(
+              [Complex(0.0, 1.0), Complex(1.0, 2.0), Complex(2.0, 3.0)],
+              [3],
+              DType.complex128,
+            );
+            final wCpx = NDArray.fromList(
+              [Complex(1.0, 0.0), Complex(1.0, 0.0), Complex(1.0, 0.0)],
+              [3],
+              DType.complex128,
+            );
+            final pCpx = polyfit(xCpx, yCpx, 1, w: wCpx, rcond: 1e-5);
+            expect(pCpx.dtype, equals(DType.complex128));
+            expect(pCpx.getCell([0]).real, closeTo(1.0, 1e-5));
+            expect(pCpx.getCell([0]).imag, closeTo(1.0, 1e-5));
+            expect(pCpx.getCell([1]).real, closeTo(0.0, 1e-5));
+            expect(pCpx.getCell([1]).imag, closeTo(1.0, 1e-5));
 
-          // Complex64
-          final xCpx64 = NDArray.fromList(
-            [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(2.0, 0.0)],
-            [3],
-            DType.complex64,
-          );
-          final yCpx64 = NDArray.fromList(
-            [Complex(1.0, 0.0), Complex(3.0, 0.0), Complex(5.0, 0.0)],
-            [3],
-            DType.complex64,
-          );
-          final wCpx64 = NDArray.fromList(
-            [Complex(1.0, 0.0), Complex(1.0, 0.0), Complex(1.0, 0.0)],
-            [3],
-            DType.complex64,
-          );
-          final pCpx64 = polyfit(xCpx64, yCpx64, 1, w: wCpx64, rcond: 1e-5);
-          expect(pCpx64.dtype, equals(DType.complex64));
-          expect(pCpx64.getCell([0]).real, closeTo(2.0, 1e-4));
-          expect(pCpx64.getCell([1]).real, closeTo(1.0, 1e-4));
-        });
-      });
+            // Complex64
+            final xCpx64 = NDArray.fromList(
+              [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(2.0, 0.0)],
+              [3],
+              DType.complex64,
+            );
+            final yCpx64 = NDArray.fromList(
+              [Complex(1.0, 0.0), Complex(3.0, 0.0), Complex(5.0, 0.0)],
+              [3],
+              DType.complex64,
+            );
+            final wCpx64 = NDArray.fromList(
+              [Complex(1.0, 0.0), Complex(1.0, 0.0), Complex(1.0, 0.0)],
+              [3],
+              DType.complex64,
+            );
+            final pCpx64 = polyfit(xCpx64, yCpx64, 1, w: wCpx64, rcond: 1e-5);
+            expect(pCpx64.dtype, equals(DType.complex64));
+            expect(pCpx64.getCell([0]).real, closeTo(2.0, 1e-4));
+            expect(pCpx64.getCell([1]).real, closeTo(1.0, 1e-4));
+          });
+        },
+      );
 
       test('Strided inputs for polyfit across dtypes', () {
         NDArray.scope(() {
@@ -525,14 +527,14 @@ void main() {
         NDArray.scope(() {
           final x = NDArray.fromList([0.0, 1.0, 2.0], [3], DType.float64);
           final y = NDArray.fromList([1.0, 3.0, 5.0], [3], DType.float64);
-          final out = NDArray<double>.zeros([2], DType.float64);
+          final out = NDArray.zeros([2], DType.float64);
 
           final res = polyfit(x, y, 1, out: out);
           expect(identical(res, out), isTrue);
           expect(out.getCell([0]), closeTo(2.0, 1e-5));
           expect(out.getCell([1]), closeTo(1.0, 1e-5));
 
-          final badOut = NDArray<double>.zeros([3], DType.float64);
+          final badOut = NDArray.zeros([3], DType.float64);
           expect(() => polyfit(x, y, 1, out: badOut), throwsArgumentError);
         });
       });
@@ -553,7 +555,7 @@ void main() {
             ..dispose();
           expect(() => polyfit(x, y, 1, w: dispW), throwsStateError);
 
-          final dispOut = NDArray<double>.zeros([2], DType.float64)..dispose();
+          final dispOut = NDArray.zeros([2], DType.float64)..dispose();
           expect(() => polyfit(x, y, 1, out: dispOut), throwsStateError);
 
           final x2d = NDArray.zeros([2, 2], DType.float64);
@@ -719,7 +721,7 @@ void main() {
       test('Out buffer reuse and validation for roots', () {
         NDArray.scope(() {
           final p = NDArray.fromList([1.0, -3.0, 2.0], [3], DType.float64);
-          final out = NDArray<Complex>.zeros([2], DType.complex128);
+          final out = NDArray.zeros([2], DType.complex128);
 
           final res = roots(p, out: out);
           expect(identical(res, out), isTrue);
@@ -731,11 +733,11 @@ void main() {
           expect(vals[1], closeTo(2.0, 1e-5));
 
           final pConst = NDArray.fromList([5.0], [1], DType.float64);
-          final emptyOut = NDArray<Complex>.zeros([0], DType.complex128);
+          final emptyOut = NDArray.zeros([0], DType.complex128);
           final emptyRes = roots(pConst, out: emptyOut);
           expect(identical(emptyRes, emptyOut), isTrue);
 
-          final badOut = NDArray<Complex>.zeros([3], DType.complex128);
+          final badOut = NDArray.zeros([3], DType.complex128);
           expect(() => roots(p, out: badOut), throwsArgumentError);
         });
       });
@@ -748,8 +750,7 @@ void main() {
             ..dispose();
           expect(() => roots(dispP), throwsStateError);
 
-          final dispOut = NDArray<Complex>.zeros([1], DType.complex128)
-            ..dispose();
+          final dispOut = NDArray.zeros([1], DType.complex128)..dispose();
           expect(() => roots(p, out: dispOut), throwsStateError);
 
           final p2D = NDArray.zeros([2, 2], DType.float64);
@@ -1186,7 +1187,7 @@ void main() {
           expect(() => hermval(c, dispX), throwsStateError);
           expect(() => lagval(c, dispX), throwsStateError);
 
-          final dispOut = NDArray<double>.zeros([2], DType.float64)..dispose();
+          final dispOut = NDArray.zeros([2], DType.float64)..dispose();
           expect(() => chebval(c, x, out: dispOut), throwsStateError);
 
           final c2D = NDArray.zeros([2, 2], DType.float64);

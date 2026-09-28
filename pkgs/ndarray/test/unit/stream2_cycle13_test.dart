@@ -29,7 +29,7 @@ void main() {
           [6],
           DType.float64,
         );
-        final cond = NDArray<bool>.fromList(
+        final cond = NDArray<Boolean>.fromList(
           [true, true, false, false, true, true],
           [6],
           DType.boolean,
@@ -60,45 +60,48 @@ void main() {
       });
     });
 
-    test('3. atUfunc missing C cases (floorDivide, remainder, power) & unsupported op', () {
-      NDArray.scope(() {
-        final aInt = NDArray<int>.fromList([10, 20, 30], [3], DType.int32);
-        final idx = NDArray<int>.fromList([0, 1, 2], [3], DType.int64);
-        final bInt = NDArray<int>.fromList([3, 3, 2], [3], DType.int32);
+    test(
+      '3. atUfunc missing C cases (floorDivide, remainder, power) & unsupported op',
+      () {
+        NDArray.scope(() {
+          final aInt = NDArray.fromList([10, 20, 30], [3], DType.int32);
+          final idx = NDArray.fromList([0, 1, 2], [3], DType.int64);
+          final bInt = NDArray.fromList([3, 3, 2], [3], DType.int32);
 
-        atUfunc(aInt, idx, bInt, op: BinaryOp.floorDivide);
-        expect(aInt.toList(), equals([3, 6, 15]));
+          atUfunc(aInt, idx, bInt, op: BinaryOp.floorDivide);
+          expect(aInt.toList(), equals([3, 6, 15]));
 
-        final aIntMod = NDArray<int>.fromList([10, 20, 30], [3], DType.int32);
-        atUfunc(aIntMod, idx, bInt, op: BinaryOp.remainder);
-        expect(aIntMod.toList(), equals([1, 2, 0]));
+          final aIntMod = NDArray.fromList([10, 20, 30], [3], DType.int32);
+          atUfunc(aIntMod, idx, bInt, op: BinaryOp.remainder);
+          expect(aIntMod.toList(), equals([1, 2, 0]));
 
-        final aIntPow = NDArray<int>.fromList([2, 3, 4], [3], DType.int32);
-        final bPow = NDArray<int>.fromList([3, 2, 1], [3], DType.int32);
-        atUfunc(aIntPow, idx, bPow, op: BinaryOp.power);
-        expect(aIntPow.toList(), equals([8, 9, 4]));
+          final aIntPow = NDArray.fromList([2, 3, 4], [3], DType.int32);
+          final bPow = NDArray.fromList([3, 2, 1], [3], DType.int32);
+          atUfunc(aIntPow, idx, bPow, op: BinaryOp.power);
+          expect(aIntPow.toList(), equals([8, 9, 4]));
 
-        // Float cases
-        final aFloat = NDArray<Float64>.fromList(
-          [10.5, 20.5, 30.5],
-          [3],
-          DType.float64,
-        );
-        final bFloat = NDArray<Float64>.fromList(
-          [3.0, 4.0, 5.0],
-          [3],
-          DType.float64,
-        );
-        atUfunc(aFloat, idx, bFloat, op: BinaryOp.floorDivide);
-        expect(aFloat.toList(), equals([3.0, 5.0, 6.0]));
+          // Float cases
+          final aFloat = NDArray<Float64>.fromList(
+            [10.5, 20.5, 30.5],
+            [3],
+            DType.float64,
+          );
+          final bFloat = NDArray<Float64>.fromList(
+            [3.0, 4.0, 5.0],
+            [3],
+            DType.float64,
+          );
+          atUfunc(aFloat, idx, bFloat, op: BinaryOp.floorDivide);
+          expect(aFloat.toList(), equals([3.0, 5.0, 6.0]));
 
-        // Unsupported binary op
-        expect(
-          () => atUfunc(aFloat, idx, bFloat, op: BinaryOp.gcd),
-          throwsA(isA<UnsupportedError>()),
-        );
-      });
-    });
+          // Unsupported binary op
+          expect(
+            () => atUfunc(aFloat, idx, bFloat, op: BinaryOp.gcd),
+            throwsA(isA<UnsupportedError>()),
+          );
+        });
+      },
+    );
 
     test('4. gamma and erf switch DType fast paths', () {
       NDArray.scope(() {

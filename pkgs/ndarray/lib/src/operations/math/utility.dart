@@ -14,13 +14,9 @@
 
 // ignore_for_file: non_constant_identifier_names
 import 'dart:math' as math;
-
 import 'package:openblas/openblas.dart';
-
 import '../../ndarray.dart';
-
 import 'dart:ffi' as ffi;
-
 import '../../nditer.dart';
 import '../helpers.dart';
 
@@ -66,7 +62,9 @@ void setNumThreads(int numThreads) {
 /// // ([1, 0], 30)
 /// // ([1, 1], 40)
 /// ```
-Iterable<(List<int> coordinate, T value)> ndenumerate<T>(NDArray<T> a) sync* {
+Iterable<(List<int> coordinate, dynamic value)> ndenumerate<T extends DTypeTag>(
+  NDArray<T> a,
+) sync* {
   if (a.isDisposed) {
     throw StateError('Cannot execute ndenumerate() on a disposed array.');
   }
@@ -76,7 +74,7 @@ Iterable<(List<int> coordinate, T value)> ndenumerate<T>(NDArray<T> a) sync* {
   final totalSize = shape.isEmpty ? 1 : shape.reduce((x, y) => x * y);
 
   if (shape.isEmpty) {
-    yield ([], a.getCellFlat(a.offsetElements));
+    yield ([], a.getCellFlat(0));
     return;
   }
 
@@ -120,7 +118,7 @@ NDArray nan_to_num(
   double nan = 0.0,
   double? posinf,
   double? neginf,
-  NDArray<dynamic>? where,
+  NDArray<DTypeTag>? where,
   NDArray? out,
 }) {
   if (a.isDisposed ||
@@ -129,25 +127,51 @@ NDArray nan_to_num(
     throw StateError('Cannot execute nan_to_num() on a disposed array.');
   }
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != a.dtype) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for nan_to_num.',
       );
     }
+    if ((sharesMemory(a, out) &&
+            (!a.isContiguous ||
+                !out.isContiguous ||
+                a.offsetElements != out.offsetElements ||
+                !listEquals(a.strides, out.strides))) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray.create(a.shape, a.dtype);
+        nan_to_num(
+          a,
+          nan: nan,
+          posinf: posinf,
+          neginf: neginf,
+          where: where,
+          out: temp,
+        );
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
 
-  final resultCopy = out ?? NDArray.create(a.shape, a.dtype);
-
-  final maxLimit = a.dtype == DType.float32
-      ? 3.4028234663852886e+38
-      : double.maxFinite;
+  final maxLimit = switch (a.dtype) {
+    DType.float32 => 3.4028234663852886e+38,
+    _ => double.maxFinite,
+  };
   final minLimit = -maxLimit;
 
   final targetPosInf = posinf ?? maxLimit;
   final targetNegInf = neginf ?? minLimit;
 
-  final maskHolder = prepareMask(where, resultCopy.shape);
+  final maskHolder = prepareMask(where, a.shape);
   try {
+    final resultCopy =
+        out ?? NDArray.create(a.shape, a.dtype, zeroInit: where != null);
+    final resDType = resultCopy.dtype;
     final iter = NDIter.broadcast2(resultCopy, a);
     final maskPtr = maskHolder.pointer;
     var flatIdx = 0;
@@ -171,7 +195,7 @@ NDArray nan_to_num(
 
           resultCopy.setCellRaw(idxRes, Complex(r, img));
         } else {
-          var dVal = (val as num).toDouble();
+          var dVal = val is bool ? (val ? 1.0 : 0.0) : (val as num).toDouble();
 
           if (dVal.isNaN) {
             dVal = nan;
@@ -181,10 +205,8 @@ NDArray nan_to_num(
             dVal = targetNegInf;
           }
 
-          resultCopy.setCellRaw(idxRes, castValue(dVal, resultCopy.dtype));
+          resultCopy.setCellRaw(idxRes, castValue(dVal, resDType));
         }
-      } else if (out == null) {
-        resultCopy.setCellRaw(idxRes, a.getCellRaw(idxA));
       }
       flatIdx++;
     }

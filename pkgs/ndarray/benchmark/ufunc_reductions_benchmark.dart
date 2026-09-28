@@ -33,7 +33,7 @@ void main() async {
         DType.float64,
       );
       final mask1d = NDArray.fromList(
-        List.generate(size1d, (i) => i % 2 == 0 ? 1 : 0),
+        List.generate(size1d, (i) => i.isEven ? 1 : 0),
         [size1d],
         DType.uint8,
       );

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import '../../ndarray.dart';
 import '../../ndarray_bindings.dart';
 import '../helpers.dart';
@@ -39,7 +38,11 @@ import '../helpers.dart';
 /// ```dart
 /// final window = hanning(512);
 /// ```
-NDArray<T> hanning<T>(int M, {DType<T>? dtype, NDArray<T>? out}) {
+NDArray<T> hanning<T extends DTypeTag>(
+  int M, {
+  DType<T>? dtype,
+  NDArray<T>? out,
+}) {
   if (out != null && out.isDisposed) {
     throw StateError('Cannot execute hanning() on a disposed out buffer.');
   }
@@ -90,7 +93,19 @@ NDArray<T> hanning<T>(int M, {DType<T>? dtype, NDArray<T>? out}) {
         }
       }
       return result;
-    default:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
       final temp = NDArray<Float64>.create([M], DType.float64);
       try {
         v_hanning_double(temp.pointer.cast(), M);
@@ -130,7 +145,11 @@ NDArray<T> hanning<T>(int M, {DType<T>? dtype, NDArray<T>? out}) {
 /// ```dart
 /// final window = hamming(512);
 /// ```
-NDArray<T> hamming<T>(int M, {DType<T>? dtype, NDArray<T>? out}) {
+NDArray<T> hamming<T extends DTypeTag>(
+  int M, {
+  DType<T>? dtype,
+  NDArray<T>? out,
+}) {
   if (out != null && out.isDisposed) {
     throw StateError('Cannot execute hamming() on a disposed out buffer.');
   }
@@ -181,7 +200,19 @@ NDArray<T> hamming<T>(int M, {DType<T>? dtype, NDArray<T>? out}) {
         }
       }
       return result;
-    default:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
       final temp = NDArray<Float64>.create([M], DType.float64);
       try {
         v_hamming_double(temp.pointer.cast(), M);

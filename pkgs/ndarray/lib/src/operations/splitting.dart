@@ -14,11 +14,17 @@
 
 // ignore_for_file: non_constant_identifier_names
 import '../ndarray.dart';
+import 'helpers.dart';
 
 // Standalone operational relative cross-imports
 
 /// Helper to slice an array along a specific axis between [start] and [stop].
-NDArray<T> _sliceAlongAxis<T>(NDArray<T> a, int axis, int start, int stop) {
+NDArray<T> _sliceAlongAxis<T extends DTypeTag>(
+  NDArray<T> a,
+  int axis,
+  int start,
+  int stop,
+) {
   final selectors = List<Selector>.filled(a.shape.length, Slice.all());
   selectors[axis] = Slice(start: start, stop: stop);
   return a.slice(selectors);
@@ -44,11 +50,11 @@ NDArray<T> _sliceAlongAxis<T>(NDArray<T> a, int axis, int start, int stop) {
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=array_split lang=dart}
+/// {@example /example/splitting_example.dart#array_split lang=dart}
 ///
 /// Refer to the [NumPy array_split reference](https://numpy.org/doc/stable/reference/generated/numpy.array_split.html)
 /// for details.
-List<NDArray<T>> array_split<T>(
+List<NDArray<T>> array_split<T extends DTypeTag>(
   NDArray<T> a,
   int sections, {
   int axis = 0,
@@ -79,27 +85,42 @@ List<NDArray<T>> array_split<T>(
   final rem = L % sections;
   var currentIdx = 0;
 
-  for (var i = 0; i < sections; i++) {
-    final size = i < rem ? S_0 + 1 : S_0;
-    final start = currentIdx;
-    final stop = currentIdx + size;
-    currentIdx = stop;
+  final bool needsCopy =
+      out != null &&
+      out.any((outSub) => !outSub.isDisposed && sharesMemory(a, outSub));
+  final NDArray<T> aSrc = needsCopy ? a.copy() : a;
+  try {
+    for (var i = 0; i < sections; i++) {
+      final size = i < rem ? S_0 + 1 : S_0;
+      final start = currentIdx;
+      final stop = currentIdx + size;
+      currentIdx = stop;
 
-    final sub = _sliceAlongAxis(a, normAxis, start, stop);
-    if (out != null) {
-      final outSub = out[i];
-      if (outSub.isDisposed) {
-        throw StateError('Cannot write to a disposed out array.');
+      final sub = _sliceAlongAxis(aSrc, normAxis, start, stop);
+      if (out != null) {
+        try {
+          final outSub = out[i];
+          if (outSub.isDisposed) {
+            throw StateError('Cannot write to a disposed out array.');
+          }
+          if (!listEquals(outSub.shape, sub.shape) ||
+              outSub.dtype != sub.dtype) {
+            throw ArgumentError(
+              'Incompatible out buffer shape or dtype for split item $i.',
+            );
+          }
+          sub.copy(out: outSub);
+          results.add(outSub);
+        } finally {
+          sub.dispose();
+        }
+      } else {
+        results.add(sub);
       }
-      if (!listEquals(outSub.shape, sub.shape) || outSub.dtype != sub.dtype) {
-        throw ArgumentError(
-          'Incompatible out buffer shape or dtype for split item $i.',
-        );
-      }
-      sub.copy(out: outSub);
-      results.add(outSub);
-    } else {
-      results.add(sub);
+    }
+  } finally {
+    if (needsCopy) {
+      aSrc.dispose();
     }
   }
 
@@ -120,11 +141,11 @@ List<NDArray<T>> array_split<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=array_split lang=dart}
+/// {@example /example/splitting_example.dart#array_split lang=dart}
 ///
 /// Refer to the [NumPy array_split reference](https://numpy.org/doc/stable/reference/generated/numpy.array_split.html)
 /// for details.
-List<NDArray<T>> array_split_at<T>(
+List<NDArray<T>> array_split_at<T extends DTypeTag>(
   NDArray<T> a,
   List<int> indices, {
   int axis = 0,
@@ -142,7 +163,7 @@ List<NDArray<T>> array_split_at<T>(
   final L = a.shape[normAxis];
 
   final boundaries = <int>[0];
-  for (var p in indices) {
+  for (final p in indices) {
     boundaries.add(p.clamp(0, L));
   }
   boundaries.add(L);
@@ -155,24 +176,39 @@ List<NDArray<T>> array_split_at<T>(
 
   final List<NDArray<T>> results = [];
 
-  for (var i = 0; i < boundaries.length - 1; i++) {
-    final start = boundaries[i];
-    final stop = boundaries[i + 1];
-    final sub = _sliceAlongAxis(a, normAxis, start, stop);
-    if (out != null) {
-      final outSub = out[i];
-      if (outSub.isDisposed) {
-        throw StateError('Cannot write to a disposed out array.');
+  final bool needsCopy =
+      out != null &&
+      out.any((outSub) => !outSub.isDisposed && sharesMemory(a, outSub));
+  final NDArray<T> aSrc = needsCopy ? a.copy() : a;
+  try {
+    for (var i = 0; i < boundaries.length - 1; i++) {
+      final start = boundaries[i];
+      final stop = boundaries[i + 1];
+      final sub = _sliceAlongAxis(aSrc, normAxis, start, stop);
+      if (out != null) {
+        try {
+          final outSub = out[i];
+          if (outSub.isDisposed) {
+            throw StateError('Cannot write to a disposed out array.');
+          }
+          if (!listEquals(outSub.shape, sub.shape) ||
+              outSub.dtype != sub.dtype) {
+            throw ArgumentError(
+              'Incompatible out buffer shape or dtype for split item $i.',
+            );
+          }
+          sub.copy(out: outSub);
+          results.add(outSub);
+        } finally {
+          sub.dispose();
+        }
+      } else {
+        results.add(sub);
       }
-      if (!listEquals(outSub.shape, sub.shape) || outSub.dtype != sub.dtype) {
-        throw ArgumentError(
-          'Incompatible out buffer shape or dtype for split item $i.',
-        );
-      }
-      sub.copy(out: outSub);
-      results.add(outSub);
-    } else {
-      results.add(sub);
+    }
+  } finally {
+    if (needsCopy) {
+      aSrc.dispose();
     }
   }
 
@@ -200,11 +236,11 @@ List<NDArray<T>> array_split_at<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=split lang=dart}
+/// {@example /example/splitting_example.dart#split lang=dart}
 ///
 /// Refer to the [NumPy split reference](https://numpy.org/doc/stable/reference/generated/numpy.split.html)
 /// for details.
-List<NDArray<T>> split<T>(
+List<NDArray<T>> split<T extends DTypeTag>(
   NDArray<T> a,
   int sections, {
   int axis = 0,
@@ -248,11 +284,11 @@ List<NDArray<T>> split<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=split lang=dart}
+/// {@example /example/splitting_example.dart#split lang=dart}
 ///
 /// Refer to the [NumPy split reference](https://numpy.org/doc/stable/reference/generated/numpy.split.html)
 /// for details.
-List<NDArray<T>> split_at<T>(
+List<NDArray<T>> split_at<T extends DTypeTag>(
   NDArray<T> a,
   List<int> indices, {
   int axis = 0,
@@ -277,11 +313,11 @@ List<NDArray<T>> split_at<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=hsplit lang=dart}
+/// {@example /example/splitting_example.dart#hsplit lang=dart}
 ///
 /// Refer to the [NumPy hsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.hsplit.html)
 /// for details.
-List<NDArray<T>> hsplit<T>(
+List<NDArray<T>> hsplit<T extends DTypeTag>(
   NDArray<T> a,
   int sections, {
   List<NDArray<T>>? out,
@@ -312,11 +348,11 @@ List<NDArray<T>> hsplit<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=hsplit lang=dart}
+/// {@example /example/splitting_example.dart#hsplit lang=dart}
 ///
 /// Refer to the [NumPy hsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.hsplit.html)
 /// for details.
-List<NDArray<T>> hsplit_at<T>(
+List<NDArray<T>> hsplit_at<T extends DTypeTag>(
   NDArray<T> a,
   List<int> indices, {
   List<NDArray<T>>? out,
@@ -347,11 +383,11 @@ List<NDArray<T>> hsplit_at<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=vsplit lang=dart}
+/// {@example /example/splitting_example.dart#vsplit lang=dart}
 ///
 /// Refer to the [NumPy vsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.vsplit.html)
 /// for details.
-List<NDArray<T>> vsplit<T>(
+List<NDArray<T>> vsplit<T extends DTypeTag>(
   NDArray<T> a,
   int sections, {
   List<NDArray<T>>? out,
@@ -381,11 +417,11 @@ List<NDArray<T>> vsplit<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=vsplit lang=dart}
+/// {@example /example/splitting_example.dart#vsplit lang=dart}
 ///
 /// Refer to the [NumPy vsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.vsplit.html)
 /// for details.
-List<NDArray<T>> vsplit_at<T>(
+List<NDArray<T>> vsplit_at<T extends DTypeTag>(
   NDArray<T> a,
   List<int> indices, {
   List<NDArray<T>>? out,
@@ -419,11 +455,11 @@ List<NDArray<T>> vsplit_at<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=dsplit lang=dart}
+/// {@example /example/splitting_example.dart#dsplit lang=dart}
 ///
 /// Refer to the [NumPy dsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.dsplit.html)
 /// for details.
-List<NDArray<T>> dsplit<T>(
+List<NDArray<T>> dsplit<T extends DTypeTag>(
   NDArray<T> a,
   int sections, {
   List<NDArray<T>>? out,
@@ -453,11 +489,11 @@ List<NDArray<T>> dsplit<T>(
 /// > This operation returns a list of **zero-copy metadata views** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned sub-arrays will **silently mutate the original array [a]**.
 ///
 /// **Example:**
-/// {@example /example/splitting_example.dart region=dsplit lang=dart}
+/// {@example /example/splitting_example.dart#dsplit lang=dart}
 ///
 /// Refer to the [NumPy dsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.dsplit.html)
 /// for details.
-List<NDArray<T>> dsplit_at<T>(
+List<NDArray<T>> dsplit_at<T extends DTypeTag>(
   NDArray<T> a,
   List<int> indices, {
   List<NDArray<T>>? out,

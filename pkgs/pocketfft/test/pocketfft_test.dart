@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
+import 'dart:math' as math;
 import 'package:ffi/ffi.dart';
 import 'package:pocketfft/pocketfft.dart';
 import 'package:test/test.dart';
@@ -185,7 +185,10 @@ void main() {
       expect(() => cache.getPlan(-5), throwsArgumentError);
 
       expect(() => cache.getRealPlan(0), throwsArgumentError);
-      expect(() => cache.getRealPlan(7), throwsArgumentError); // Odd length
+      expect(() => cache.getRealPlan(-3), throwsArgumentError);
+      // Odd lengths are supported by C++ PocketFFT
+      final oddRealPlan = cache.getRealPlan(7);
+      expect(oddRealPlan.address, isNot(0));
 
       expect(() => cache.getNDPlan([]), throwsArgumentError);
       expect(() => cache.getNDPlan([4, 0]), throwsArgumentError);
@@ -217,5 +220,105 @@ void main() {
       clearPocketFFTPlanCache();
       expect(PocketFFTPlanCache.instance.size, equals(0));
     });
+
+    test(
+      'Bluestein prime-length complex FFT (n = 997 and n = 10007) accuracy and speed',
+      () {
+        for (final n in [997, 10007]) {
+          final fwdPlan = cache.getPlan(n, isInverse: false);
+          final invPlan = cache.getPlan(n, isInverse: true);
+          final fin = malloc<kiss_fft_cpx>(n);
+          final fout = malloc<kiss_fft_cpx>(n);
+          final frec = malloc<kiss_fft_cpx>(n);
+
+          try {
+            for (var i = 0; i < n; i++) {
+              fin[i].r = math.sin(0.13 * i) + 0.5 * math.cos(0.07 * i);
+              fin[i].i = math.cos(0.11 * i) - 0.25 * math.sin(0.03 * i);
+            }
+
+            // Warm up plan execution
+            kiss_fft(fwdPlan, fin, fout);
+
+            final sw = Stopwatch()..start();
+            kiss_fft(fwdPlan, fin, fout);
+            kiss_fft(invPlan, fout, frec);
+            sw.stop();
+
+            expect(
+              sw.elapsedMilliseconds,
+              lessThan(50),
+              reason: 'Prime FFT n=$n took ${sw.elapsedMilliseconds}ms',
+            );
+
+            // Check roundtrip accuracy: max abs error < 1e-10
+            var maxRoundtripErr = 0.0;
+            for (var i = 0; i < n; i++) {
+              final errR = (frec[i].r / n - fin[i].r).abs();
+              final errI = (frec[i].i / n - fin[i].i).abs();
+              if (errR > maxRoundtripErr) maxRoundtripErr = errR;
+              if (errI > maxRoundtripErr) maxRoundtripErr = errI;
+            }
+            expect(maxRoundtripErr, lessThan(1e-10));
+
+            // For n = 997, also compare bins against direct O(N^2) DFT
+            if (n == 997) {
+              var maxDftErr = 0.0;
+              for (final k in [0, 1, 2, 17, 498, 996]) {
+                var sumR = 0.0;
+                var sumI = 0.0;
+                for (var j = 0; j < n; j++) {
+                  final angle = -2.0 * math.pi * k * j / n;
+                  final c = math.cos(angle);
+                  final s = math.sin(angle);
+                  sumR += fin[j].r * c - fin[j].i * s;
+                  sumI += fin[j].r * s + fin[j].i * c;
+                }
+                final errR = (fout[k].r - sumR).abs();
+                final errI = (fout[k].i - sumI).abs();
+                if (errR > maxDftErr) maxDftErr = errR;
+                if (errI > maxDftErr) maxDftErr = errI;
+              }
+              expect(maxDftErr, lessThan(1e-10));
+            }
+          } finally {
+            malloc.free(fin);
+            malloc.free(fout);
+            malloc.free(frec);
+          }
+        }
+      },
+    );
+
+    test(
+      'Even and odd real FFT (kiss_fftr / kiss_fftri) roundtrip including prime n = 997',
+      () {
+        for (final n in [1, 2, 5, 7, 8, 997]) {
+          final fwdPlan = cache.getRealPlan(n, isInverse: false);
+          final invPlan = cache.getRealPlan(n, isInverse: true);
+          final freqLen = n ~/ 2 + 1;
+          final timedata = malloc<ffi.Double>(n);
+          final freqdata = malloc<kiss_fft_cpx>(freqLen);
+          final recovered = malloc<ffi.Double>(n);
+
+          try {
+            for (var i = 0; i < n; i++) {
+              timedata[i] = (i + 1) * 0.5 - math.cos(0.3 * i);
+            }
+
+            kiss_fftr(fwdPlan, timedata, freqdata);
+            kiss_fftri(invPlan, freqdata, recovered);
+
+            for (var i = 0; i < n; i++) {
+              expect(recovered[i] / n, closeTo(timedata[i], 1e-10));
+            }
+          } finally {
+            malloc.free(timedata);
+            malloc.free(freqdata);
+            malloc.free(recovered);
+          }
+        }
+      },
+    );
   });
 }

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -115,10 +114,26 @@ void main() {
       });
     });
 
-    test('invalid type', () {
+    test('invalid type and real/integer support', () {
       NDArray.scope(() {
-        final a = NDArray<Float64>.fromList([1.0, 2.0], [2], DType.float64);
-        expect(() => angle(a as dynamic), throwsArgumentError);
+        final boolArray = NDArray<Boolean>.fromList(
+          [true, false],
+          [2],
+          DType.boolean,
+        );
+        expect(() => angle(boolArray as dynamic), throwsArgumentError);
+
+        final f64 = NDArray<Float64>.fromList([1.0, -2.0], [2], DType.float64);
+        final resF64 = angle(f64);
+        expect(resF64.dtype, DType.float64);
+        expect(resF64.getCell([0]), closeTo(0.0, 1e-9));
+        expect(resF64.getCell([1]), closeTo(math.pi, 1e-9));
+
+        final i32 = NDArray<Int32>.fromList([1, -1], [2], DType.int32);
+        final resI32 = angle(i32);
+        expect(resI32.dtype, DType.float64);
+        expect(resI32.getCell([0]), closeTo(0.0, 1e-9));
+        expect(resI32.getCell([1]), closeTo(math.pi, 1e-9));
       });
     });
   });
@@ -376,11 +391,7 @@ void main() {
           DType.complex128,
         );
 
-        final res = correlate<Complex128, Complex128, Complex128>(
-          a,
-          v,
-          mode: ConvMode.valid,
-        );
+        final res = correlate<Complex128>(a, v, mode: ConvMode.valid);
         expect(res.dtype, DType.complex128);
         expect(res.shape, equals([1]));
         final val = res.getCell([0]);

@@ -35,7 +35,7 @@ void main() {
       DType.boolean,
     ];
 
-    NDArray<Object> makeArr(DType dt, List<int> shape, {int seed = 2}) {
+    NDArray<AnySpec> makeArr(DType dt, List<int> shape, {int seed = 2}) {
       final size = shape.reduce((a, b) => a * b);
       final rawList = List<Object>.generate(size, (i) {
         final val = ((i + seed) % 5) + 2;
@@ -46,79 +46,82 @@ void main() {
         return val;
       });
 
-      return NDArray<Object>.fromList(rawList, shape, dt as DType<Object>);
+      return NDArray.fromList(rawList, shape, (dt as DType<AnySpec>));
     }
 
-    test('All Cross-DType Pairs for arctan2, hypot, logaddexp, logaddexp2 across Contiguous, Transposed & Broadcast', () {
-      NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
-          [true, false, true, false, true, false],
-          [2, 3],
-          DType.boolean,
-        );
+    test(
+      'All Cross-DType Pairs for arctan2, hypot, logaddexp, logaddexp2 across Contiguous, Transposed & Broadcast',
+      () {
+        NDArray.scope(() {
+          final mask = NDArray<Boolean>.fromList(
+            [true, false, true, false, true, false],
+            [2, 3],
+            DType.boolean,
+          );
 
-        for (final dtA in all15DTypes) {
-          for (final dtB in all15DTypes) {
-            // Contiguous
-            final aContig = makeArr(dtA, [2, 3], seed: 1);
-            final bContig = makeArr(dtB, [2, 3], seed: 2);
+          for (final dtA in all15DTypes) {
+            for (final dtB in all15DTypes) {
+              // Contiguous
+              final aContig = makeArr(dtA, [2, 3], seed: 1);
+              final bContig = makeArr(dtB, [2, 3], seed: 2);
 
-            // Transposed non-contiguous
-            final aBase = makeArr(dtA, [3, 2], seed: 1);
-            final bBase = makeArr(dtB, [3, 2], seed: 2);
-            final aTrans = aBase.transpose();
-            final bTrans = bBase.transpose();
+              // Transposed non-contiguous
+              final aBase = makeArr(dtA, [3, 2], seed: 1);
+              final bBase = makeArr(dtB, [3, 2], seed: 2);
+              final aTrans = aBase.transpose();
+              final bTrans = bBase.transpose();
 
-            // Broadcast
-            final bBcast = makeArr(dtB, [1, 3], seed: 3);
+              // Broadcast
+              final bBcast = makeArr(dtB, [1, 3], seed: 3);
 
-            final rHypot1 = hypot(aContig, bContig);
-            expect(rHypot1.shape, [2, 3]);
+              final rHypot1 = hypot(aContig, bContig);
+              expect(rHypot1.shape, [2, 3]);
 
-            final rHypot2 = hypot(aTrans, bTrans, where: mask);
-            expect(rHypot2.shape, [2, 3]);
+              final rHypot2 = hypot(aTrans, bTrans, where: mask);
+              expect(rHypot2.shape, [2, 3]);
 
-            final rHypot3 = hypot(aContig, bBcast);
-            expect(rHypot3.shape, [2, 3]);
+              final rHypot3 = hypot(aContig, bBcast);
+              expect(rHypot3.shape, [2, 3]);
 
-            if (!dtA.isComplex && !dtB.isComplex) {
-              final rLog1 = logaddexp(aContig, bContig);
-              expect(rLog1.shape, [2, 3]);
+              if (!dtA.isComplex && !dtB.isComplex) {
+                final rLog1 = logaddexp(aContig, bContig);
+                expect(rLog1.shape, [2, 3]);
 
-              final rLog21 = logaddexp2(aContig, bContig);
-              expect(rLog21.shape, [2, 3]);
+                final rLog21 = logaddexp2(aContig, bContig);
+                expect(rLog21.shape, [2, 3]);
 
-              final rLog2 = logaddexp(aTrans, bTrans, where: mask);
-              expect(rLog2.shape, [2, 3]);
+                final rLog2 = logaddexp(aTrans, bTrans, where: mask);
+                expect(rLog2.shape, [2, 3]);
 
-              final rLog22 = logaddexp2(aTrans, bTrans, where: mask);
-              expect(rLog22.shape, [2, 3]);
+                final rLog22 = logaddexp2(aTrans, bTrans, where: mask);
+                expect(rLog22.shape, [2, 3]);
 
-              final rLog3 = logaddexp(aContig, bBcast);
-              expect(rLog3.shape, [2, 3]);
+                final rLog3 = logaddexp(aContig, bBcast);
+                expect(rLog3.shape, [2, 3]);
 
-              final rLog23 = logaddexp2(aContig, bBcast);
-              expect(rLog23.shape, [2, 3]);
+                final rLog23 = logaddexp2(aContig, bBcast);
+                expect(rLog23.shape, [2, 3]);
 
-              final rAtan21 = atan2(aContig, bContig);
-              expect(rAtan21.shape, [2, 3]);
+                final rAtan21 = atan2(aContig, bContig);
+                expect(rAtan21.shape, [2, 3]);
 
-              final rAtan22 = atan2(aTrans, bTrans, where: mask);
-              expect(rAtan22.shape, [2, 3]);
+                final rAtan22 = atan2(aTrans, bTrans, where: mask);
+                expect(rAtan22.shape, [2, 3]);
 
-              final rAtan23 = atan2(aContig, bBcast);
-              expect(rAtan23.shape, [2, 3]);
+                final rAtan23 = atan2(aContig, bBcast);
+                expect(rAtan23.shape, [2, 3]);
+              }
             }
           }
-        }
-      });
-    });
+        });
+      },
+    );
 
     test(
       'All Unary Transcendental Functions across Contiguous & Transposed Views',
       () {
         NDArray.scope(() {
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false, true, false],
             [2, 3],
             DType.boolean,

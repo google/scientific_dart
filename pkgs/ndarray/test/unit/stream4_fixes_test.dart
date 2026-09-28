@@ -31,7 +31,7 @@ void main() {
           expect(identical(resSort, outSort), isTrue);
           expect(outSort.toList(), equals([3.0, 1.0, 2.0, 6.0, 4.0, 5.0]));
 
-          final outArgSort = NDArray<int>.zeros([2, 3], DType.int32);
+          final outArgSort = NDArray.zeros([2, 3], DType.int32);
           final resArgSort = argsort(a, axis: 0, out: outArgSort);
           expect(identical(resArgSort, outArgSort), isTrue);
           expect(outArgSort.toList(), equals([0, 0, 0, 1, 1, 1]));
@@ -40,7 +40,7 @@ void main() {
           final resPart = partition(a, 0, axis: 0, out: outPart);
           expect(identical(resPart, outPart), isTrue);
 
-          final outArgPart = NDArray<int>.zeros([2, 3], DType.int32);
+          final outArgPart = NDArray.zeros([2, 3], DType.int32);
           final resArgPart = argpartition(a, 0, axis: 0, out: outArgPart);
           expect(identical(resArgPart, outArgPart), isTrue);
 
@@ -50,7 +50,7 @@ void main() {
           sort(scalarA, out: outScalar);
           expect(outScalar.scalar, equals(42.0));
 
-          final outScalarIdx = NDArray<int>.zeros([], DType.int32);
+          final outScalarIdx = NDArray.zeros([], DType.int32);
           argsort(scalarA, out: outScalarIdx);
           expect(outScalarIdx.scalar, equals(0));
         });
@@ -119,31 +119,39 @@ void main() {
       );
     });
 
-    test('6. Spacers logspace and geomspace with numSamples == 0 and named records', () {
-      NDArray.scope(() {
-        final ls0 = logspace(1.0, 3.0, 0);
-        expect(ls0.shape, equals([0]));
-        expect(ls0.toList(), equals([]));
+    test(
+      '6. Spacers logspace and geomspace with numSamples == 0 and named records',
+      () {
+        NDArray.scope(() {
+          final ls0 = logspace(1.0, 3.0, 0, dtype: DType.float64);
+          expect(ls0.shape, equals([0]));
+          expect(ls0.toList(), equals([]));
 
-        final gs0 = geomspace(1.0, 100.0, 0);
-        expect(gs0.shape, equals([0]));
-        expect(gs0.toList(), equals([]));
+          final gs0 = geomspace(1.0, 100.0, 0, dtype: DType.float64);
+          expect(gs0.shape, equals([0]));
+          expect(gs0.toList(), equals([]));
 
-        final (:samples, :step) = linspaceWithStep(0.0, 10.0, 5);
-        expect(samples.toList(), equals([0.0, 2.5, 5.0, 7.5, 10.0]));
-        expect(step, equals(2.5));
+          final (:samples, :step) = linspaceWithStep(
+            0.0,
+            10.0,
+            5,
+            dtype: DType.float64,
+          );
+          expect(samples.toList(), equals([0.0, 2.5, 5.0, 7.5, 10.0]));
+          expect(step, equals(2.5));
 
-        final start = NDArray.fromList([0.0, 10.0], [2], DType.float64);
-        final stop = NDArray.fromList([1.0, 12.0], [2], DType.float64);
-        final (samples: gridSamples, step: gridStep) = linspaceGridWithStep(
-          start,
-          stop,
-          3,
-        );
-        expect(gridSamples.shape, equals([3, 2]));
-        expect(gridStep.toList(), equals([0.5, 1.0]));
-      });
-    });
+          final start = NDArray.fromList([0.0, 10.0], [2], DType.float64);
+          final stop = NDArray.fromList([1.0, 12.0], [2], DType.float64);
+          final (samples: gridSamples, step: gridStep) = linspaceGridWithStep(
+            start,
+            stop,
+            3,
+          );
+          expect(gridSamples.shape, equals([3, 2]));
+          expect(gridStep.toList(), equals([0.5, 1.0]));
+        });
+      },
+    );
 
     test('7. Financial PaymentDue strongly-typed enum and doc contracts', () {
       NDArray.scope(() {
@@ -154,10 +162,7 @@ void main() {
 
         final resEnd = fv(rate, nper, pmt, pvVal, when: PaymentDue.end);
         final resBegin = fv(rate, nper, pmt, pvVal, when: PaymentDue.begin);
-        expect(
-          resBegin.getCell([0]).toDouble(),
-          greaterThan(resEnd.getCell([0]).toDouble()),
-        );
+        expect(resBegin.getCell([0]), greaterThan(resEnd.getCell([0])));
       });
     });
 
@@ -185,7 +190,7 @@ void main() {
         final fp = NDArray.fromList([10.0, 20.0, 30.0], [3], DType.float64);
         final interpRes = interp(x, xp, fp);
         expect(interpRes, isA<NDArray<Float64>>());
-        expect(interpRes.getCell([0]).toDouble(), equals(25.0));
+        expect(interpRes.getCell([0]), equals(25.0));
       });
     });
     test(
@@ -193,17 +198,35 @@ void main() {
       () {
         NDArray.scope(() {
           final outLin = NDArray<Float64>.zeros([5], DType.float64);
-          final resLin = linspace(0.0, 10.0, 5, out: outLin);
+          final resLin = linspace(
+            0.0,
+            10.0,
+            5,
+            dtype: DType.float64,
+            out: outLin,
+          );
           expect(identical(resLin, outLin), isTrue);
           expect(outLin.toList(), equals([0.0, 2.5, 5.0, 7.5, 10.0]));
 
           final outLog = NDArray<Float64>.zeros([3], DType.float64);
-          final resLog = logspace(0.0, 2.0, 3, out: outLog);
+          final resLog = logspace(
+            0.0,
+            2.0,
+            3,
+            dtype: DType.float64,
+            out: outLog,
+          );
           expect(identical(resLog, outLog), isTrue);
           expect(outLog.toList(), equals([1.0, 10.0, 100.0]));
 
           final outGeom = NDArray<Float64>.zeros([3], DType.float64);
-          final resGeom = geomspace(1.0, 100.0, 3, out: outGeom);
+          final resGeom = geomspace(
+            1.0,
+            100.0,
+            3,
+            dtype: DType.float64,
+            out: outGeom,
+          );
           expect(identical(resGeom, outGeom), isTrue);
           expect(outGeom.toList(), equals([1.0, 10.0, 100.0]));
         });

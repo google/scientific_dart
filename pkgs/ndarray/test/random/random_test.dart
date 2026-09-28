@@ -510,7 +510,7 @@ void main() {
       test('choice and shuffle edge cases and exceptions', () {
         NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final disposed = NDArray<int>.create([3], DType.int32)..dispose();
+          final disposed = NDArray.create([3], DType.int32)..dispose();
 
           // Disposed exceptions
           expect(() => choice(disposed), throwsStateError);
@@ -536,9 +536,9 @@ void main() {
           );
 
           // Out buffer mismatch
-          final outBad = NDArray<int>.create([4], DType.int32);
+          final outBad = NDArray.create([4], DType.int32);
           expect(() => choice(a, size: [3], out: outBad), throwsArgumentError);
-          final outDisposed = NDArray<int>.create([3], DType.int32)..dispose();
+          final outDisposed = NDArray.create([3], DType.int32)..dispose();
           expect(
             () => choice(a, size: [3], out: outDisposed),
             throwsStateError,
@@ -594,7 +594,7 @@ void main() {
           expect(i64Sample.dtype, DType.int64);
 
           final f32 = NDArray.fromList([1.5, 2.5, 3.5], [3], DType.float32);
-          final f32Out = NDArray<double>.create([3], DType.float32);
+          final f32Out = NDArray.create([3], DType.float32);
           permutation(f32, seed: 42, out: f32Out);
           expect(f32Out.toList(), containsAll([1.5, 2.5, 3.5]));
         });
@@ -640,7 +640,7 @@ void main() {
 
           // Choice with out recycler buffer
           final pool = NDArray.fromList([10, 20, 30, 40, 50], [5], DType.int32);
-          final outChoice = NDArray<int>.create([2, 3], DType.int32);
+          final outChoice = NDArray.create([2, 3], DType.int32);
           choice(pool, size: [2, 3], replace: true, seed: 42, out: outChoice);
           expect(outChoice.shape, [2, 3]);
           for (var i = 0; i < 6; i++) {
@@ -651,7 +651,7 @@ void main() {
 
       test('shuffle 0-length and 1-length arrays', () {
         NDArray.scope(() {
-          final a0 = NDArray<double>.create([0], DType.float64);
+          final a0 = NDArray.create([0], DType.float64);
           shuffle(a0);
           expect(a0.size, 0);
 
@@ -919,28 +919,31 @@ void main() {
       }),
     );
 
-    test('binomial() validation, zero trials, zero stddev, and zero-avoidance checks', () {
-      expect(
-        () => binomial([5], n: 10, p: 0.5, dtype: DType.float64 as dynamic),
-        throwsArgumentError,
-      );
-      expect(() => binomial([5], n: -1, p: 0.5), throwsArgumentError);
-      expect(() => binomial([5], n: 10, p: 1.5), throwsArgumentError);
+    test(
+      'binomial() validation, zero trials, zero stddev, and zero-avoidance checks',
+      () {
+        expect(
+          () => binomial([5], n: 10, p: 0.5, dtype: DType.float64 as dynamic),
+          throwsArgumentError,
+        );
+        expect(() => binomial([5], n: -1, p: 0.5), throwsArgumentError);
+        expect(() => binomial([5], n: 10, p: 1.5), throwsArgumentError);
 
-      final zeroTrials = binomial([5], n: 0, p: 0.5);
-      expect(zeroTrials.toList(), [0, 0, 0, 0, 0]);
+        final zeroTrials = binomial([5], n: 0, p: 0.5);
+        expect(zeroTrials.toList(), [0, 0, 0, 0, 0]);
 
-      final zeroStddev = binomial([5], n: 100, p: 1.0);
-      expect(zeroStddev.toList(), [100, 100, 100, 100, 100]);
+        final zeroStddev = binomial([5], n: 100, p: 1.0);
+        expect(zeroStddev.toList(), [100, 100, 100, 100, 100]);
 
-      final a = binomial([2], n: 100, p: 0.5);
-      expect(a.shape, [2]);
-      expect(a.dtype, DType.int64);
+        final a = binomial([2], n: 100, p: 0.5);
+        expect(a.shape, [2]);
+        expect(a.dtype, DType.int64);
 
-      final oddLength = binomial([5], n: 100, p: 0.5);
-      expect(oddLength.shape, [5]);
-      expect(oddLength.dtype, DType.int64);
-    });
+        final oddLength = binomial([5], n: 100, p: 0.5);
+        expect(oddLength.shape, [5]);
+        expect(oddLength.dtype, DType.int64);
+      },
+    );
 
     test(
       'uniform() and normal() Float32, and randint() Int32 coverage',
@@ -1015,75 +1018,68 @@ void main() {
       }),
     );
 
-    test(
-      'Multinomial Distribution multinomial() trial simulation correctness',
-      () {
-        final pvals = NDArray.fromList([0.2, 0.5, 0.3], [3], DType.float64);
+    test('Multinomial Distribution multinomial() trial simulation correctness', () {
+      final pvals = NDArray.fromList([0.2, 0.5, 0.3], [3], DType.float64);
 
-        // Draw 1000 samples of 10 trials (shape [1000, 3])
-        final samples = multinomial(10, pvals, size: [1000]);
+      // Draw 1000 samples of 10 trials (shape [1000, 3])
+      final samples = multinomial(10, pvals, size: [1000]);
 
-        expect(samples.shape, [1000, 3]);
-        expect(samples.dtype, DType.int32);
+      expect(samples.shape, [1000, 3]);
+      expect(samples.dtype, DType.int32);
 
-        // Test multinomial with pvals requiring normalization (does not sum to 1.0)
-        final nonNormalizedPvals = NDArray.fromList(
-          [0.2, 0.6, 0.3],
-          [3],
-          DType.float64,
-        );
-        final samplesNonNorm = multinomial(10, nonNormalizedPvals, size: [5]);
-        expect(samplesNonNorm.shape, [5, 3]);
+      // Test multinomial with pvals requiring normalization (does not sum to 1.0)
+      final nonNormalizedPvals = NDArray.fromList(
+        [0.2, 0.6, 0.3],
+        [3],
+        DType.float64,
+      );
+      final samplesNonNorm = multinomial(10, nonNormalizedPvals, size: [5]);
+      expect(samplesNonNorm.shape, [5, 3]);
 
-        // For every sample, the sum of category counts must exactly equal the trials 'n' (10)!
-        for (var i = 0; i < 1000; i++) {
-          final sum =
-              samples.getCell([i, 0]) +
-              samples.getCell([i, 1]) +
-              samples.getCell([i, 2]);
-          expect(sum, 10);
-        }
+      // For every sample, the sum of category counts must exactly equal the trials 'n' (10)!
+      for (var i = 0; i < 1000; i++) {
+        final sum =
+            samples.getCell([i, 0]) +
+            samples.getCell([i, 1]) +
+            samples.getCell([i, 2]);
+        expect(sum, 10);
+      }
 
-        // Statistical ratios should converge close to [0.2, 0.5, 0.3]
-        var count0 = 0.0;
-        var count1 = 0.0;
-        var count2 = 0.0;
-        for (var i = 0; i < 1000; i++) {
-          count0 += samples.getCell([i, 0]);
-          count1 += samples.getCell([i, 1]);
-          count2 += samples.getCell([i, 2]);
-        }
-        final r0 = count0 / 10000.0;
-        final r1 = count1 / 10000.0;
-        final r2 = count2 / 10000.0;
+      // Statistical ratios should converge close to [0.2, 0.5, 0.3]
+      var count0 = 0.0;
+      var count1 = 0.0;
+      var count2 = 0.0;
+      for (var i = 0; i < 1000; i++) {
+        count0 += samples.getCell([i, 0]);
+        count1 += samples.getCell([i, 1]);
+        count2 += samples.getCell([i, 2]);
+      }
+      final r0 = count0 / 10000.0;
+      final r1 = count1 / 10000.0;
+      final r2 = count2 / 10000.0;
 
-        expect(r0, closeTo(0.2, 0.05));
-        expect(r1, closeTo(0.5, 0.05));
-        expect(r2, closeTo(0.3, 0.05));
+      expect(r0, closeTo(0.2, 0.05));
+      expect(r1, closeTo(0.5, 0.05));
+      expect(r2, closeTo(0.3, 0.05));
 
-        // Verify exceptions throwing
-        expect(
-          () => multinomial(-5, pvals),
-          throwsArgumentError,
-        ); // negative trials
+      // Verify exceptions throwing
+      expect(
+        () => multinomial(-5, pvals),
+        throwsArgumentError,
+      ); // negative trials
 
-        final badShapePvals = NDArray.fromList(
-          [0.5, 0.5],
-          [1, 2],
-          DType.float64,
-        );
-        expect(
-          () => multinomial(10, badShapePvals),
-          throwsArgumentError,
-        ); // bad shape pvals
+      final badShapePvals = NDArray.fromList([0.5, 0.5], [1, 2], DType.float64);
+      expect(
+        () => multinomial(10, badShapePvals),
+        throwsArgumentError,
+      ); // bad shape pvals
 
-        final negativePvals = NDArray.fromList([-0.2, 1.2], [2], DType.float64);
-        expect(
-          () => multinomial(10, negativePvals),
-          throwsArgumentError,
-        ); // negative probability
-      },
-    );
+      final negativePvals = NDArray.fromList([-0.2, 1.2], [2], DType.float64);
+      expect(
+        () => multinomial(10, negativePvals),
+        throwsArgumentError,
+      ); // negative probability
+    });
 
     test(
       'Random generators support out parameter recycler buffer reuse',

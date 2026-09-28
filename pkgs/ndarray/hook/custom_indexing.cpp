@@ -23,8 +23,84 @@
 
 #include "custom_indexing.h"
 #include <cstdint>
-#include <vector>
+#include <cstdlib>
 #include <cstring>
+#include <algorithm>
+#include <type_traits>
+
+template <typename T>
+struct NoThrowBuffer {
+    T *ptr_ = nullptr;
+    size_t size_ = 0;
+    size_t cap_ = 0;
+    bool ok_ = true;
+
+    NoThrowBuffer() noexcept = default;
+    explicit NoThrowBuffer(size_t n) noexcept {
+        resize(n);
+    }
+    NoThrowBuffer(size_t n, T val) noexcept {
+        assign(n, val);
+    }
+    ~NoThrowBuffer() noexcept {
+        std::free(ptr_);
+    }
+    NoThrowBuffer(const NoThrowBuffer &) = delete;
+    NoThrowBuffer &operator=(const NoThrowBuffer &) = delete;
+
+    bool resize(size_t n) noexcept {
+        std::free(ptr_);
+        ptr_ = nullptr;
+        size_ = 0;
+        cap_ = 0;
+        if (n == 0) {
+            ok_ = true;
+            return true;
+        }
+        if (n > static_cast<size_t>(-1) / sizeof(T)) {
+            ok_ = false;
+            return false;
+        }
+        ptr_ = static_cast<T *>(std::calloc(n, sizeof(T)));
+        if (!ptr_) {
+            ok_ = false;
+            return false;
+        }
+        size_ = n;
+        cap_ = n;
+        ok_ = true;
+        return true;
+    }
+
+    bool assign(size_t n, T val) noexcept {
+        if (!resize(n)) return false;
+        const unsigned char *bytes = reinterpret_cast<const unsigned char *>(&val);
+        bool is_zero = true;
+        for (size_t b = 0; b < sizeof(T); ++b) {
+            if (bytes[b] != 0) {
+                is_zero = false;
+                break;
+            }
+        }
+        if (!is_zero) {
+            for (size_t i = 0; i < n; ++i) {
+                ptr_[i] = val;
+            }
+        }
+        return true;
+    }
+
+    T *data() noexcept { return ptr_; }
+    const T *data() const noexcept { return ptr_; }
+    T *begin() noexcept { return ptr_; }
+    T *end() noexcept { return ptr_ + size_; }
+    const T *begin() const noexcept { return ptr_; }
+    const T *end() const noexcept { return ptr_ + size_; }
+    size_t size() const noexcept { return size_; }
+    bool ok() const noexcept { return ok_; }
+    T &operator[](size_t i) noexcept { return ptr_[i]; }
+    const T &operator[](size_t i) const noexcept { return ptr_[i]; }
+};
 
 #if defined(_MSC_VER)
 #define RESTRICT __restrict
@@ -82,11 +158,20 @@ static int take_along_axis_impl(
         if (arr_s == 1 && idx_s == 1 && out_s == 1) {
             for (int64_t i = 0; i < total_elements; i++) {
                 IndexT raw_idx = idx_ptr[i];
-                int64_t idx = (int64_t)raw_idx;
-                if (idx < 0) idx += axis_size;
-                if ((uint64_t)idx >= (uint64_t)axis_size) {
-                    *out_error_idx = (int64_t)raw_idx;
-                    return -1;
+                int64_t idx;
+                if (std::is_signed<IndexT>::value) {
+                    idx = (int64_t)raw_idx;
+                    if (idx < 0) idx += axis_size;
+                    if (idx < 0 || idx >= axis_size) {
+                        *out_error_idx = (int64_t)raw_idx;
+                        return -1;
+                    }
+                } else {
+                    if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                        *out_error_idx = (int64_t)raw_idx;
+                        return -1;
+                    }
+                    idx = (int64_t)raw_idx;
                 }
                 dest[i] = src[idx];
             }
@@ -94,11 +179,20 @@ static int take_along_axis_impl(
         } else {
             for (int64_t i = 0; i < total_elements; i++) {
                 IndexT raw_idx = idx_ptr[i * idx_s];
-                int64_t idx = (int64_t)raw_idx;
-                if (idx < 0) idx += axis_size;
-                if ((uint64_t)idx >= (uint64_t)axis_size) {
-                    *out_error_idx = (int64_t)raw_idx;
-                    return -1;
+                int64_t idx;
+                if (std::is_signed<IndexT>::value) {
+                    idx = (int64_t)raw_idx;
+                    if (idx < 0) idx += axis_size;
+                    if (idx < 0 || idx >= axis_size) {
+                        *out_error_idx = (int64_t)raw_idx;
+                        return -1;
+                    }
+                } else {
+                    if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                        *out_error_idx = (int64_t)raw_idx;
+                        return -1;
+                    }
+                    idx = (int64_t)raw_idx;
                 }
                 dest[i * out_s] = src[idx * arr_s];
             }
@@ -126,11 +220,20 @@ static int take_along_axis_impl(
                     T *row_dest = dest + i * N_out;
                     for (int64_t j = 0; j < N_out; j++) {
                         IndexT raw_idx = row_idx[j * idx_s1];
-                        int64_t idx = (int64_t)raw_idx;
-                        if (idx < 0) idx += axis_size;
-                        if ((uint64_t)idx >= (uint64_t)axis_size) {
-                            *out_error_idx = (int64_t)raw_idx;
-                            return -1;
+                        int64_t idx;
+                        if (std::is_signed<IndexT>::value) {
+                            idx = (int64_t)raw_idx;
+                            if (idx < 0) idx += axis_size;
+                            if (idx < 0 || idx >= axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                        } else {
+                            if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                            idx = (int64_t)raw_idx;
                         }
                         row_dest[j] = src[idx * arr_row_stride + j];
                     }
@@ -152,11 +255,20 @@ static int take_along_axis_impl(
                     T *row_dest = dest + i * N_out;
                     for (int64_t j = 0; j < N_out; j++) {
                         IndexT raw_idx = row_idx[j * idx_s1];
-                        int64_t idx = (int64_t)raw_idx;
-                        if (idx < 0) idx += axis_size;
-                        if ((uint64_t)idx >= (uint64_t)axis_size) {
-                            *out_error_idx = (int64_t)raw_idx;
-                            return -1;
+                        int64_t idx;
+                        if (std::is_signed<IndexT>::value) {
+                            idx = (int64_t)raw_idx;
+                            if (idx < 0) idx += axis_size;
+                            if (idx < 0 || idx >= axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                        } else {
+                            if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                            idx = (int64_t)raw_idx;
                         }
                         row_dest[j] = row_src[idx];
                     }
@@ -169,12 +281,13 @@ static int take_along_axis_impl(
     // --- General Multi-Dimensional Strided Path ---
     int64_t eff_idx_strides[32];
     int64_t eff_arr_base_strides[32];
-    std::vector<int64_t> eff_idx_vec, eff_arr_vec;
+    NoThrowBuffer<int64_t> eff_idx_vec, eff_arr_vec;
     int64_t *p_eff_idx = eff_idx_strides;
     int64_t *p_eff_arr = eff_arr_base_strides;
     if (rank > 32) {
-        eff_idx_vec.resize(rank);
-        eff_arr_vec.resize(rank);
+        if (!eff_idx_vec.resize(rank) || !eff_arr_vec.resize(rank)) {
+            return -4;
+        }
         p_eff_idx = eff_idx_vec.data();
         p_eff_arr = eff_arr_vec.data();
     }
@@ -191,10 +304,12 @@ static int take_along_axis_impl(
     const int64_t axis_stride = arr_strides[axis];
 
     int64_t coord_stack[32] = {0};
-    std::vector<int64_t> coord_vec;
+    NoThrowBuffer<int64_t> coord_vec;
     int64_t *coord = coord_stack;
     if (rank > 32) {
-        coord_vec.assign(rank, 0);
+        if (!coord_vec.assign(rank, 0)) {
+            return -4;
+        }
         coord = coord_vec.data();
     }
 
@@ -204,11 +319,20 @@ static int take_along_axis_impl(
 
     for (int64_t el = 0; el < total_elements; el++) {
         IndexT raw_idx = idx_ptr[offsetIdx];
-        int64_t idx = (int64_t)raw_idx;
-        if (idx < 0) idx += axis_size;
-        if ((uint64_t)idx >= (uint64_t)axis_size) {
-            *out_error_idx = (int64_t)raw_idx;
-            return -1;
+        int64_t idx;
+        if (std::is_signed<IndexT>::value) {
+            idx = (int64_t)raw_idx;
+            if (idx < 0) idx += axis_size;
+            if (idx < 0 || idx >= axis_size) {
+                *out_error_idx = (int64_t)raw_idx;
+                return -1;
+            }
+        } else {
+            if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                *out_error_idx = (int64_t)raw_idx;
+                return -1;
+            }
+            idx = (int64_t)raw_idx;
         }
         int64_t offsetArr = baseOffsetArr + idx * axis_stride;
         dest[offsetOut] = src[offsetArr];
@@ -272,18 +396,22 @@ static int dispatch_take_along_axis_by_dtype(
                 idx_ptr, idx_shape, idx_strides,
                 (int32_t *)dest, out_shape, out_strides,
                 rank, axis, out_error_idx);
+        case DTYPE_INT16:
+        case DTYPE_UINT16:
+        case DTYPE_FLOAT16:
+        case DTYPE_BFLOAT16:
+            return take_along_axis_impl<uint16_t, IndexT>(
+                (const uint16_t *)src, arr_shape, arr_strides,
+                idx_ptr, idx_shape, idx_strides,
+                (uint16_t *)dest, out_shape, out_strides,
+                rank, axis, out_error_idx);
+        case DTYPE_INT8:
         case DTYPE_UINT8:
         case DTYPE_BOOLEAN:
             return take_along_axis_impl<uint8_t, IndexT>(
                 (const uint8_t *)src, arr_shape, arr_strides,
                 idx_ptr, idx_shape, idx_strides,
                 (uint8_t *)dest, out_shape, out_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_INT16:
-            return take_along_axis_impl<int16_t, IndexT>(
-                (const int16_t *)src, arr_shape, arr_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (int16_t *)dest, out_shape, out_strides,
                 rank, axis, out_error_idx);
         case DTYPE_UINT64:
             return take_along_axis_impl<uint64_t, IndexT>(
@@ -296,25 +424,6 @@ static int dispatch_take_along_axis_by_dtype(
                 (const uint32_t *)src, arr_shape, arr_strides,
                 idx_ptr, idx_shape, idx_strides,
                 (uint32_t *)dest, out_shape, out_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_UINT16:
-            return take_along_axis_impl<uint16_t, IndexT>(
-                (const uint16_t *)src, arr_shape, arr_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (uint16_t *)dest, out_shape, out_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_INT8:
-            return take_along_axis_impl<int8_t, IndexT>(
-                (const int8_t *)src, arr_shape, arr_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (int8_t *)dest, out_shape, out_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_FLOAT16:
-        case DTYPE_BFLOAT16:
-            return take_along_axis_impl<uint16_t, IndexT>(
-                (const uint16_t *)src, arr_shape, arr_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (uint16_t *)dest, out_shape, out_strides,
                 rank, axis, out_error_idx);
         case DTYPE_COMPLEX128:
             return take_along_axis_impl<complex128_t, IndexT>(
@@ -357,28 +466,49 @@ extern "C" int native_take_along_axis(
         return -3;
     }
 
-    if (index_dtype == DTYPE_INT64) {
-        return dispatch_take_along_axis_by_dtype<int64_t>(
-            dtype, src, arr_shape, arr_strides,
-            (const int64_t *)indices, idx_shape, idx_strides,
-            dest, out_shape, out_strides, rank, axis, out_error_idx);
-    } else if (index_dtype == DTYPE_INT32) {
-        return dispatch_take_along_axis_by_dtype<int32_t>(
-            dtype, src, arr_shape, arr_strides,
-            (const int32_t *)indices, idx_shape, idx_strides,
-            dest, out_shape, out_strides, rank, axis, out_error_idx);
-    } else if (index_dtype == DTYPE_INT16) {
-        return dispatch_take_along_axis_by_dtype<int16_t>(
-            dtype, src, arr_shape, arr_strides,
-            (const int16_t *)indices, idx_shape, idx_strides,
-            dest, out_shape, out_strides, rank, axis, out_error_idx);
-    } else if (index_dtype == DTYPE_UINT8) {
-        return dispatch_take_along_axis_by_dtype<uint8_t>(
-            dtype, src, arr_shape, arr_strides,
-            (const uint8_t *)indices, idx_shape, idx_strides,
-            dest, out_shape, out_strides, rank, axis, out_error_idx);
-    } else {
-        return -2;
+    switch (index_dtype) {
+        case DTYPE_INT64:
+            return dispatch_take_along_axis_by_dtype<int64_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const int64_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_INT32:
+            return dispatch_take_along_axis_by_dtype<int32_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const int32_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_INT16:
+            return dispatch_take_along_axis_by_dtype<int16_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const int16_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_INT8:
+            return dispatch_take_along_axis_by_dtype<int8_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const int8_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT64:
+            return dispatch_take_along_axis_by_dtype<uint64_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const uint64_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT32:
+            return dispatch_take_along_axis_by_dtype<uint32_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const uint32_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT16:
+            return dispatch_take_along_axis_by_dtype<uint16_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const uint16_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT8:
+            return dispatch_take_along_axis_by_dtype<uint8_t>(
+                dtype, src, arr_shape, arr_strides,
+                (const uint8_t *)indices, idx_shape, idx_strides,
+                dest, out_shape, out_strides, rank, axis, out_error_idx);
+        default:
+            return -2;
     }
 }
 
@@ -419,11 +549,20 @@ static int put_along_axis_impl(
 
         for (int64_t i = 0; i < total_elements; i++) {
             IndexT raw_idx = idx_ptr[i * idx_s];
-            int64_t idx = (int64_t)raw_idx;
-            if (idx < 0) idx += axis_size;
-            if ((uint64_t)idx >= (uint64_t)axis_size) {
-                *out_error_idx = (int64_t)raw_idx;
-                return -1;
+            int64_t idx;
+            if (std::is_signed<IndexT>::value) {
+                idx = (int64_t)raw_idx;
+                if (idx < 0) idx += axis_size;
+                if (idx < 0 || idx >= axis_size) {
+                    *out_error_idx = (int64_t)raw_idx;
+                    return -1;
+                }
+            } else {
+                if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                    *out_error_idx = (int64_t)raw_idx;
+                    return -1;
+                }
+                idx = (int64_t)raw_idx;
             }
             target[idx * tgt_s] = val_ptr[i * val_s];
         }
@@ -450,11 +589,20 @@ static int put_along_axis_impl(
                     const T *row_val = val_ptr + i * val_s0;
                     for (int64_t j = 0; j < N_idx; j++) {
                         IndexT raw_idx = row_idx[j * idx_s1];
-                        int64_t idx = (int64_t)raw_idx;
-                        if (idx < 0) idx += axis_size;
-                        if ((uint64_t)idx >= (uint64_t)axis_size) {
-                            *out_error_idx = (int64_t)raw_idx;
-                            return -1;
+                        int64_t idx;
+                        if (std::is_signed<IndexT>::value) {
+                            idx = (int64_t)raw_idx;
+                            if (idx < 0) idx += axis_size;
+                            if (idx < 0 || idx >= axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                        } else {
+                            if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                            idx = (int64_t)raw_idx;
                         }
                         target[idx * tgt_row_stride + j] = row_val[j * val_s1];
                     }
@@ -477,11 +625,20 @@ static int put_along_axis_impl(
                     const T *row_val = val_ptr + i * val_s0;
                     for (int64_t j = 0; j < N_idx; j++) {
                         IndexT raw_idx = row_idx[j * idx_s1];
-                        int64_t idx = (int64_t)raw_idx;
-                        if (idx < 0) idx += axis_size;
-                        if ((uint64_t)idx >= (uint64_t)axis_size) {
-                            *out_error_idx = (int64_t)raw_idx;
-                            return -1;
+                        int64_t idx;
+                        if (std::is_signed<IndexT>::value) {
+                            idx = (int64_t)raw_idx;
+                            if (idx < 0) idx += axis_size;
+                            if (idx < 0 || idx >= axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                        } else {
+                            if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                                *out_error_idx = (int64_t)raw_idx;
+                                return -1;
+                            }
+                            idx = (int64_t)raw_idx;
                         }
                         row_tgt[idx] = row_val[j * val_s1];
                     }
@@ -494,12 +651,13 @@ static int put_along_axis_impl(
     // --- General Multi-Dimensional Strided Path ---
     int64_t eff_val_strides[32];
     int64_t eff_tgt_base_strides[32];
-    std::vector<int64_t> eff_val_vec, eff_tgt_vec;
+    NoThrowBuffer<int64_t> eff_val_vec, eff_tgt_vec;
     int64_t *p_eff_val = eff_val_strides;
     int64_t *p_eff_tgt = eff_tgt_base_strides;
     if (rank > 32) {
-        eff_val_vec.resize(rank);
-        eff_tgt_vec.resize(rank);
+        if (!eff_val_vec.resize(rank) || !eff_tgt_vec.resize(rank)) {
+            return -4;
+        }
         p_eff_val = eff_val_vec.data();
         p_eff_tgt = eff_tgt_vec.data();
     }
@@ -516,10 +674,12 @@ static int put_along_axis_impl(
     const int64_t axis_stride = target_strides[axis];
 
     int64_t coord_stack[32] = {0};
-    std::vector<int64_t> coord_vec;
+    NoThrowBuffer<int64_t> coord_vec;
     int64_t *coord = coord_stack;
     if (rank > 32) {
-        coord_vec.assign(rank, 0);
+        if (!coord_vec.assign(rank, 0)) {
+            return -4;
+        }
         coord = coord_vec.data();
     }
 
@@ -529,11 +689,20 @@ static int put_along_axis_impl(
 
     for (int64_t el = 0; el < total_elements; el++) {
         IndexT raw_idx = idx_ptr[offsetIdx];
-        int64_t idx = (int64_t)raw_idx;
-        if (idx < 0) idx += axis_size;
-        if ((uint64_t)idx >= (uint64_t)axis_size) {
-            *out_error_idx = (int64_t)raw_idx;
-            return -1;
+        int64_t idx;
+        if (std::is_signed<IndexT>::value) {
+            idx = (int64_t)raw_idx;
+            if (idx < 0) idx += axis_size;
+            if (idx < 0 || idx >= axis_size) {
+                *out_error_idx = (int64_t)raw_idx;
+                return -1;
+            }
+        } else {
+            if ((uint64_t)raw_idx >= (uint64_t)axis_size) {
+                *out_error_idx = (int64_t)raw_idx;
+                return -1;
+            }
+            idx = (int64_t)raw_idx;
         }
         int64_t offsetTarget = baseOffsetTarget + idx * axis_stride;
         target[offsetTarget] = val_ptr[offsetVal];
@@ -597,18 +766,22 @@ static int dispatch_put_along_axis_by_dtype(
                 idx_ptr, idx_shape, idx_strides,
                 (const int32_t *)values, val_shape, val_strides,
                 rank, axis, out_error_idx);
+        case DTYPE_INT16:
+        case DTYPE_UINT16:
+        case DTYPE_FLOAT16:
+        case DTYPE_BFLOAT16:
+            return put_along_axis_impl<uint16_t, IndexT>(
+                (uint16_t *)target, target_shape, target_strides,
+                idx_ptr, idx_shape, idx_strides,
+                (const uint16_t *)values, val_shape, val_strides,
+                rank, axis, out_error_idx);
+        case DTYPE_INT8:
         case DTYPE_UINT8:
         case DTYPE_BOOLEAN:
             return put_along_axis_impl<uint8_t, IndexT>(
                 (uint8_t *)target, target_shape, target_strides,
                 idx_ptr, idx_shape, idx_strides,
                 (const uint8_t *)values, val_shape, val_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_INT16:
-            return put_along_axis_impl<int16_t, IndexT>(
-                (int16_t *)target, target_shape, target_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (const int16_t *)values, val_shape, val_strides,
                 rank, axis, out_error_idx);
         case DTYPE_UINT64:
             return put_along_axis_impl<uint64_t, IndexT>(
@@ -621,25 +794,6 @@ static int dispatch_put_along_axis_by_dtype(
                 (uint32_t *)target, target_shape, target_strides,
                 idx_ptr, idx_shape, idx_strides,
                 (const uint32_t *)values, val_shape, val_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_UINT16:
-            return put_along_axis_impl<uint16_t, IndexT>(
-                (uint16_t *)target, target_shape, target_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (const uint16_t *)values, val_shape, val_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_INT8:
-            return put_along_axis_impl<int8_t, IndexT>(
-                (int8_t *)target, target_shape, target_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (const int8_t *)values, val_shape, val_strides,
-                rank, axis, out_error_idx);
-        case DTYPE_FLOAT16:
-        case DTYPE_BFLOAT16:
-            return put_along_axis_impl<uint16_t, IndexT>(
-                (uint16_t *)target, target_shape, target_strides,
-                idx_ptr, idx_shape, idx_strides,
-                (const uint16_t *)values, val_shape, val_strides,
                 rank, axis, out_error_idx);
         case DTYPE_COMPLEX128:
             return put_along_axis_impl<complex128_t, IndexT>(
@@ -682,28 +836,49 @@ extern "C" int native_put_along_axis(
         return -3;
     }
 
-    if (index_dtype == DTYPE_INT64) {
-        return dispatch_put_along_axis_by_dtype<int64_t>(
-            dtype, target, target_shape, target_strides,
-            (const int64_t *)indices, idx_shape, idx_strides,
-            values, val_shape, val_strides, rank, axis, out_error_idx);
-    } else if (index_dtype == DTYPE_INT32) {
-        return dispatch_put_along_axis_by_dtype<int32_t>(
-            dtype, target, target_shape, target_strides,
-            (const int32_t *)indices, idx_shape, idx_strides,
-            values, val_shape, val_strides, rank, axis, out_error_idx);
-    } else if (index_dtype == DTYPE_INT16) {
-        return dispatch_put_along_axis_by_dtype<int16_t>(
-            dtype, target, target_shape, target_strides,
-            (const int16_t *)indices, idx_shape, idx_strides,
-            values, val_shape, val_strides, rank, axis, out_error_idx);
-    } else if (index_dtype == DTYPE_UINT8) {
-        return dispatch_put_along_axis_by_dtype<uint8_t>(
-            dtype, target, target_shape, target_strides,
-            (const uint8_t *)indices, idx_shape, idx_strides,
-            values, val_shape, val_strides, rank, axis, out_error_idx);
-    } else {
-        return -2;
+    switch (index_dtype) {
+        case DTYPE_INT64:
+            return dispatch_put_along_axis_by_dtype<int64_t>(
+                dtype, target, target_shape, target_strides,
+                (const int64_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_INT32:
+            return dispatch_put_along_axis_by_dtype<int32_t>(
+                dtype, target, target_shape, target_strides,
+                (const int32_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_INT16:
+            return dispatch_put_along_axis_by_dtype<int16_t>(
+                dtype, target, target_shape, target_strides,
+                (const int16_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_INT8:
+            return dispatch_put_along_axis_by_dtype<int8_t>(
+                dtype, target, target_shape, target_strides,
+                (const int8_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT64:
+            return dispatch_put_along_axis_by_dtype<uint64_t>(
+                dtype, target, target_shape, target_strides,
+                (const uint64_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT32:
+            return dispatch_put_along_axis_by_dtype<uint32_t>(
+                dtype, target, target_shape, target_strides,
+                (const uint32_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT16:
+            return dispatch_put_along_axis_by_dtype<uint16_t>(
+                dtype, target, target_shape, target_strides,
+                (const uint16_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        case DTYPE_UINT8:
+            return dispatch_put_along_axis_by_dtype<uint8_t>(
+                dtype, target, target_shape, target_strides,
+                (const uint8_t *)indices, idx_shape, idx_strides,
+                values, val_shape, val_strides, rank, axis, out_error_idx);
+        default:
+            return -2;
     }
 }
 
@@ -874,12 +1049,13 @@ extern "C" int native_tile_contiguous(
     // --- N-D General Path ---
     size_t src_block_bytes[32];
     size_t dest_block_bytes[32];
-    std::vector<size_t> src_block_vec, dest_block_vec;
+    NoThrowBuffer<size_t> src_block_vec, dest_block_vec;
     size_t *p_src_block = src_block_bytes;
     size_t *p_dest_block = dest_block_bytes;
     if (rank > 32) {
-        src_block_vec.resize(rank);
-        dest_block_vec.resize(rank);
+        if (!src_block_vec.resize(rank) || !dest_block_vec.resize(rank)) {
+            return -4;
+        }
         p_src_block = src_block_vec.data();
         p_dest_block = dest_block_vec.data();
     }
@@ -929,10 +1105,12 @@ static int tile_strided_impl(
     if (total_elements == 0) return 0;
 
     int64_t coord_stack[32] = {0};
-    std::vector<int64_t> coord_vec;
+    NoThrowBuffer<int64_t> coord_vec;
     int64_t *coord = coord_stack;
     if (rank > 32) {
-        coord_vec.assign(rank, 0);
+        if (!coord_vec.assign(rank, 0)) {
+            return -4;
+        }
         coord = coord_vec.data();
     }
 
@@ -1271,15 +1449,15 @@ static int pad_2d_impl(
     // Precompute horizontal index maps if needed
     int64_t map_left_stack[256];
     int64_t map_right_stack[256];
-    std::vector<int64_t> map_left_vec, map_right_vec;
+    NoThrowBuffer<int64_t> map_left_vec, map_right_vec;
     int64_t *p_map_left = map_left_stack;
     int64_t *p_map_right = map_right_stack;
     if (pad_left > 256) {
-        map_left_vec.resize(pad_left);
+        if (!map_left_vec.resize(pad_left)) return -4;
         p_map_left = map_left_vec.data();
     }
     if (pad_right > 256) {
-        map_right_vec.resize(pad_right);
+        if (!map_right_vec.resize(pad_right)) return -4;
         p_map_right = map_right_vec.data();
     }
 
@@ -1454,10 +1632,10 @@ static int pad_nd_impl(
     int64_t inner_pad_after = pad_after[rank - 1];
 
     int64_t dest_strides[32];
-    std::vector<int64_t> dest_strides_vec;
+    NoThrowBuffer<int64_t> dest_strides_vec;
     int64_t *p_dest_strides = dest_strides;
     if (rank > 32) {
-        dest_strides_vec.resize(rank);
+        if (!dest_strides_vec.resize(rank)) return -4;
         p_dest_strides = dest_strides_vec.data();
     }
     p_dest_strides[rank - 1] = 1;
@@ -1471,25 +1649,25 @@ static int pad_nd_impl(
     }
 
     int64_t coord[32] = {0};
-    std::vector<int64_t> coord_vec;
+    NoThrowBuffer<int64_t> coord_vec;
     int64_t *p_coord = coord;
     if (rank > 32) {
-        coord_vec.assign(rank, 0);
+        if (!coord_vec.assign(rank, 0)) return -4;
         p_coord = coord_vec.data();
     }
 
     // Precompute inner left and right index maps
     int64_t map_left_stack[256];
     int64_t map_right_stack[256];
-    std::vector<int64_t> map_left_vec, map_right_vec;
+    NoThrowBuffer<int64_t> map_left_vec, map_right_vec;
     int64_t *p_map_left = map_left_stack;
     int64_t *p_map_right = map_right_stack;
     if (inner_pad_before > 256) {
-        map_left_vec.resize(inner_pad_before);
+        if (!map_left_vec.resize(inner_pad_before)) return -4;
         p_map_left = map_left_vec.data();
     }
     if (inner_pad_after > 256) {
-        map_right_vec.resize(inner_pad_after);
+        if (!map_right_vec.resize(inner_pad_after)) return -4;
         p_map_right = map_right_vec.data();
     }
 
@@ -1529,32 +1707,24 @@ static int pad_nd_impl(
                 }
             }
 
-            // If not uniform constant, fill inner left and right borders
-            if (!(mode == 0 && is_uniform_constant)) {
-                if (inner_pad_before > 0) {
-                    if (mode == 0) {
-                        fill_typed<T>(dest_row_base, inner_pad_before, cb_inner);
-                    } else if (inner_len > 0) {
-                        if (mode == 1) {
-                            fill_typed<T>(dest_row_base, inner_pad_before, dest_row_interior[0]);
-                        } else {
-                            for (int64_t c = 0; c < inner_pad_before; c++) {
-                                dest_row_base[c] = dest_row_interior[p_map_left[c]];
-                            }
+            // For non-constant modes, fill inner left and right borders
+            if (mode != 0) {
+                if (inner_pad_before > 0 && inner_len > 0) {
+                    if (mode == 1) {
+                        fill_typed<T>(dest_row_base, inner_pad_before, dest_row_interior[0]);
+                    } else {
+                        for (int64_t c = 0; c < inner_pad_before; c++) {
+                            dest_row_base[c] = dest_row_interior[p_map_left[c]];
                         }
                     }
                 }
-                if (inner_pad_after > 0) {
+                if (inner_pad_after > 0 && inner_len > 0) {
                     T *dest_row_right = dest_row_interior + inner_len;
-                    if (mode == 0) {
-                        fill_typed<T>(dest_row_right, inner_pad_after, ca_inner);
-                    } else if (inner_len > 0) {
-                        if (mode == 1) {
-                            fill_typed<T>(dest_row_right, inner_pad_after, dest_row_interior[inner_len - 1]);
-                        } else {
-                            for (int64_t c = 0; c < inner_pad_after; c++) {
-                                dest_row_right[c] = dest_row_interior[p_map_right[c]];
-                            }
+                    if (mode == 1) {
+                        fill_typed<T>(dest_row_right, inner_pad_after, dest_row_interior[inner_len - 1]);
+                    } else {
+                        for (int64_t c = 0; c < inner_pad_after; c++) {
+                            dest_row_right[c] = dest_row_interior[p_map_right[c]];
                         }
                     }
                 }
@@ -1579,6 +1749,42 @@ static int pad_nd_impl(
         return 0;
     }
 
+    if (mode == 0) {
+        // Non-uniform constant mode: pad axes in forward order 0 .. rank - 1
+        // so later axes overwrite earlier axes at corner/edge intersections,
+        // matching sequential axis-by-axis padding.
+        for (int64_t dim = 0; dim < rank; dim++) {
+            int64_t b_dim = pad_before[dim];
+            int64_t a_dim = pad_after[dim];
+            if (b_dim == 0 && a_dim == 0) {
+                continue;
+            }
+
+            int64_t s_dim = src_shape[dim];
+            int64_t d_dim = dest_shape[dim];
+            int64_t block_elements = p_dest_strides[dim];
+            int64_t slice_stride = d_dim * block_elements;
+            T cb_dim = const_before ? const_before[dim] : T{};
+            T ca_dim = const_after ? const_after[dim] : T{};
+
+            int64_t outer_dest_elements = 1;
+            for (int64_t d = 0; d < dim; d++) {
+                outer_dest_elements *= dest_shape[d];
+            }
+
+            for (int64_t el = 0; el < outer_dest_elements; el++) {
+                T *base = dest + el * slice_stride;
+                if (b_dim > 0) {
+                    fill_typed<T>(base, b_dim * block_elements, cb_dim);
+                }
+                if (a_dim > 0) {
+                    fill_typed<T>(base + (b_dim + s_dim) * block_elements, a_dim * block_elements, ca_dim);
+                }
+            }
+        }
+        return 0;
+    }
+
     // Step 2: Pad outer axes from rank - 2 down to 0
     for (int64_t dim = rank - 2; dim >= 0; dim--) {
         int64_t b_dim = pad_before[dim];
@@ -1600,10 +1806,10 @@ static int pad_nd_impl(
         }
 
         int64_t coord_dim[32] = {0};
-        std::vector<int64_t> coord_dim_vec;
+        NoThrowBuffer<int64_t> coord_dim_vec;
         int64_t *p_coord_dim = coord_dim;
         if (dim > 32) {
-            coord_dim_vec.assign(dim, 0);
+            if (!coord_dim_vec.assign(dim, 0)) return -4;
             p_coord_dim = coord_dim_vec.data();
         }
 
@@ -1887,7 +2093,7 @@ static inline size_t get_roll_dtype_itemsize(int dtype) {
         case DTYPE_COMPLEX128:
             return 16;
         default:
-            return 0;
+            abort();
     }
 }
 
@@ -1923,44 +2129,40 @@ extern "C" int native_roll_1d(
 
     if (s == 0) {
         if (src != dest) {
-            memcpy(dest, src, (size_t)size * itemsize);
+            memmove(dest, src, (size_t)size * itemsize);
         }
         return 0;
     }
 
+    size_t total_bytes = (size_t)size * itemsize;
     size_t b1 = (size_t)s * itemsize;
     size_t b2 = (size_t)(size - s) * itemsize;
     const uint8_t *s_ptr = (const uint8_t *)src;
     uint8_t *d_ptr = (uint8_t *)dest;
 
-    if (src != dest) {
+    bool overlaps = d_ptr < s_ptr + total_bytes && s_ptr < d_ptr + total_bytes;
+    if (!overlaps) {
         memcpy(d_ptr, s_ptr + b2, b1);
         memcpy(d_ptr + b1, s_ptr, b2);
     } else {
-        if (b1 <= b2) {
-            std::vector<uint8_t> tmp(b1);
-            memcpy(tmp.data(), s_ptr + b2, b1);
-            memmove(d_ptr + b1, s_ptr, b2);
-            memcpy(d_ptr, tmp.data(), b1);
-        } else {
-            std::vector<uint8_t> tmp(b2);
-            memcpy(tmp.data(), s_ptr, b2);
-            memmove(d_ptr, s_ptr + b2, b1);
-            memcpy(d_ptr + b1, tmp.data(), b2);
-        }
+        NoThrowBuffer<uint8_t> tmp(total_bytes);
+        if (!tmp.ok()) return -4;
+        memcpy(tmp.data(), s_ptr + b2, b1);
+        memcpy(tmp.data() + b1, s_ptr, b2);
+        memcpy(d_ptr, tmp.data(), total_bytes);
     }
     return 0;
 }
 
 template <typename T>
 static int roll_strided_impl(
-    const T *RESTRICT src,
+    const T *src,
     const int64_t *RESTRICT shape,
     const int64_t *RESTRICT src_strides,
     int64_t rank,
     int64_t shift,
     int64_t axis,
-    T *RESTRICT dest,
+    T *dest,
     const int64_t *RESTRICT dest_strides
 ) {
     if (rank <= 0) {
@@ -1980,22 +2182,38 @@ static int roll_strided_impl(
     int64_t s = shift % axis_size;
     if (s < 0) s += axis_size;
 
-    std::vector<int64_t> coords(rank, 0);
+    NoThrowBuffer<T> temp(total_elements);
+    NoThrowBuffer<int64_t> coords(rank, 0);
+    if (!temp.ok() || !coords.ok()) return -4;
 
     for (int64_t idx = 0; idx < total_elements; idx++) {
         int64_t src_offset = 0;
+        for (int64_t d = 0; d < rank; d++) {
+            src_offset += coords[d] * src_strides[d];
+        }
+        temp[idx] = src[src_offset];
+
+        for (int64_t d = rank - 1; d >= 0; d--) {
+            coords[d]++;
+            if (coords[d] < shape[d]) {
+                break;
+            }
+            coords[d] = 0;
+        }
+    }
+
+    std::fill(coords.begin(), coords.end(), 0);
+    for (int64_t idx = 0; idx < total_elements; idx++) {
         int64_t dest_offset = 0;
         for (int64_t d = 0; d < rank; d++) {
             if (d == axis) {
                 int64_t dest_coord_axis = (coords[d] + s) % axis_size;
-                src_offset += coords[d] * src_strides[d];
                 dest_offset += dest_coord_axis * dest_strides[d];
             } else {
-                src_offset += coords[d] * src_strides[d];
                 dest_offset += coords[d] * dest_strides[d];
             }
         }
-        dest[dest_offset] = src[src_offset];
+        dest[dest_offset] = temp[idx];
 
         for (int64_t d = rank - 1; d >= 0; d--) {
             coords[d]++;
@@ -2090,7 +2308,7 @@ static int roll_contiguous_impl(
 ) {
     if (rank <= 0) {
         if (src != dest) {
-            memcpy(dest, src, itemsize);
+            memmove(dest, src, itemsize);
         }
         return 0;
     }
@@ -2104,36 +2322,33 @@ static int roll_contiguous_impl(
     }
     if (total_elements == 0) return 0;
 
+    size_t total_bytes = (size_t)total_elements * itemsize;
     int64_t s = shift % axis_size;
     if (s < 0) s += axis_size;
 
     if (s == 0) {
         if (src != dest) {
-            memcpy(dest, src, (size_t)total_elements * itemsize);
+            memmove(dest, src, total_bytes);
         }
         return 0;
     }
 
+    const uint8_t *s_ptr = (const uint8_t *)src;
+    uint8_t *d_ptr = (uint8_t *)dest;
+    bool overlaps = d_ptr < s_ptr + total_bytes && s_ptr < d_ptr + total_bytes;
+
     if (rank == 1) {
         size_t b1 = (size_t)s * itemsize;
         size_t b2 = (size_t)(axis_size - s) * itemsize;
-        const uint8_t *s_ptr = (const uint8_t *)src;
-        uint8_t *d_ptr = (uint8_t *)dest;
-        if (src != dest) {
+        if (!overlaps) {
             memcpy(d_ptr, s_ptr + b2, b1);
             memcpy(d_ptr + b1, s_ptr, b2);
         } else {
-            if (b1 <= b2) {
-                std::vector<uint8_t> tmp(b1);
-                memcpy(tmp.data(), s_ptr + b2, b1);
-                memmove(d_ptr + b1, s_ptr, b2);
-                memcpy(d_ptr, tmp.data(), b1);
-            } else {
-                std::vector<uint8_t> tmp(b2);
-                memcpy(tmp.data(), s_ptr, b2);
-                memmove(d_ptr, s_ptr + b2, b1);
-                memcpy(d_ptr + b1, tmp.data(), b2);
-            }
+            NoThrowBuffer<uint8_t> tmp(total_bytes);
+            if (!tmp.ok()) return -4;
+            memcpy(tmp.data(), s_ptr + b2, b1);
+            memcpy(tmp.data() + b1, s_ptr, b2);
+            memcpy(d_ptr, tmp.data(), total_bytes);
         }
         return 0;
     }
@@ -2153,10 +2368,7 @@ static int roll_contiguous_impl(
     size_t b1 = (size_t)s * chunk_bytes;
     size_t b2 = (size_t)(axis_size - s) * chunk_bytes;
 
-    const uint8_t *s_ptr = (const uint8_t *)src;
-    uint8_t *d_ptr = (uint8_t *)dest;
-
-    if (src != dest) {
+    if (!overlaps) {
         for (int64_t o = 0; o < outer_count; o++) {
             const uint8_t *src_outer = s_ptr + o * outer_stride_bytes;
             uint8_t *dest_outer = d_ptr + o * outer_stride_bytes;
@@ -2164,21 +2376,15 @@ static int roll_contiguous_impl(
             memcpy(dest_outer + b1, src_outer, b2);
         }
     } else {
-        size_t min_b = (b1 <= b2) ? b1 : b2;
-        std::vector<uint8_t> tmp(min_b);
+        NoThrowBuffer<uint8_t> tmp(total_bytes);
+        if (!tmp.ok()) return -4;
         for (int64_t o = 0; o < outer_count; o++) {
             const uint8_t *src_outer = s_ptr + o * outer_stride_bytes;
-            uint8_t *dest_outer = d_ptr + o * outer_stride_bytes;
-            if (b1 <= b2) {
-                memcpy(tmp.data(), src_outer + b2, b1);
-                memmove(dest_outer + b1, src_outer, b2);
-                memcpy(dest_outer, tmp.data(), b1);
-            } else {
-                memcpy(tmp.data(), src_outer, b2);
-                memmove(dest_outer, src_outer + b2, b1);
-                memcpy(dest_outer + b1, tmp.data(), b2);
-            }
+            uint8_t *tmp_outer = tmp.data() + o * outer_stride_bytes;
+            memcpy(tmp_outer, src_outer + b2, b1);
+            memcpy(tmp_outer + b1, src_outer, b2);
         }
+        memcpy(d_ptr, tmp.data(), total_bytes);
     }
 
     return 0;

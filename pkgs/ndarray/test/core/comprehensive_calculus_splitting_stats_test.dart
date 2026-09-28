@@ -17,42 +17,45 @@ import 'package:ndarray/ndarray.dart';
 
 void main() {
   group('Comprehensive Calculus, Splitting & Stats Suite', () {
-    test('Multi-dimensional splitting (split, array_split, hsplit, vsplit, dsplit)', () {
-      NDArray.scope(() {
-        final a2d = NDArray.fromList(List.generate(24, (i) => i.toDouble()), [
-          4,
-          6,
-        ], DType.float64);
+    test(
+      'Multi-dimensional splitting (split, array_split, hsplit, vsplit, dsplit)',
+      () {
+        NDArray.scope(() {
+          final a2d = NDArray.fromList(List.generate(24, (i) => i.toDouble()), [
+            4,
+            6,
+          ], DType.float64);
 
-        final hsplits = hsplit(a2d, 3);
-        expect(hsplits.length, 3);
-        expect(hsplits[0].shape, [4, 2]);
+          final hsplits = hsplit(a2d, 3);
+          expect(hsplits.length, 3);
+          expect(hsplits[0].shape, [4, 2]);
 
-        final vsplits = vsplit(a2d, 2);
-        expect(vsplits.length, 2);
-        expect(vsplits[0].shape, [2, 6]);
+          final vsplits = vsplit(a2d, 2);
+          expect(vsplits.length, 2);
+          expect(vsplits[0].shape, [2, 6]);
 
-        final splitSections = split(a2d, 2, axis: 0);
-        expect(splitSections.length, 2);
+          final splitSections = split(a2d, 2, axis: 0);
+          expect(splitSections.length, 2);
 
-        final arrSplits = array_split(a2d, 5, axis: 1);
-        expect(arrSplits.length, 5);
+          final arrSplits = array_split(a2d, 5, axis: 1);
+          expect(arrSplits.length, 5);
 
-        // 3D dsplit
-        final a3d = NDArray.fromList(List.generate(24, (i) => i.toDouble()), [
-          2,
-          3,
-          4,
-        ], DType.float64);
+          // 3D dsplit
+          final a3d = NDArray.fromList(List.generate(24, (i) => i.toDouble()), [
+            2,
+            3,
+            4,
+          ], DType.float64);
 
-        final dsplits = dsplit(a3d, 2);
-        expect(dsplits.length, 2);
-        expect(dsplits[0].shape, [2, 3, 2]);
+          final dsplits = dsplit(a3d, 2);
+          expect(dsplits.length, 2);
+          expect(dsplits[0].shape, [2, 3, 2]);
 
-        final split3dIdx = split(a3d, 2, axis: 2);
-        expect(split3dIdx.length, 2);
-      });
-    });
+          final split3dIdx = split(a3d, 2, axis: 2);
+          expect(split3dIdx.length, 2);
+        });
+      },
+    );
 
     test('Calculus (gradient, gradientArray, diff, trapz)', () {
       NDArray.scope(() {

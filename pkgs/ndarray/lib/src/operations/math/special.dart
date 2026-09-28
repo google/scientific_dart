@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import '../../ndarray.dart';
 import '../../ndarray_bindings.dart';
 import '../../scratch_arena.dart';
@@ -51,23 +50,18 @@ import '../helpers.dart';
 /// final b = i0(a);
 /// print(b.toList()); // [1.0, ~1.266066, ~2.279585]
 /// ```
-NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
+NDArray<R> i0<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute i0() on a disposed array.');
-  }
-
-  // Handle integer and boolean types by promoting to float64 (double)
-  if (a.dtype.isInteger || a.dtype == DType.boolean) {
-    final promoted = promoteToDouble(a);
-    final res = i0<double, double>(
-      promoted,
-      where: where,
-      out: out as NDArray<double>?,
-    );
-    promoted.dispose();
-    return res as NDArray<R>;
   }
 
   final DType<R> targetDType = switch (a.dtype) {
@@ -76,20 +70,38 @@ NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
     _ => DType.float64 as DType<R>,
   };
 
-  final NDArray<R> result;
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for i0.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType);
   }
 
-  final maskHolder = prepareMask(where, result.shape);
+  // Handle integer, boolean, and half-precision float types by promoting to float64
+  final aDType = a.dtype as DType<DTypeTag>;
+  if (aDType.isInteger ||
+      aDType == DType.boolean ||
+      aDType == DType.float16 ||
+      aDType == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      return i0<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+          as NDArray<R>;
+    } finally {
+      if (!identical(promoted, a)) {
+        promoted.dispose();
+      }
+    }
+  }
+
+  final maskHolder = prepareMask(where, a.shape);
   try {
+    final NDArray<R> result =
+        out ?? NDArray.create(a.shape, targetDType, zeroInit: where != null);
+
     void dispatchContiguous(NDArray src, NDArray dest) {
       switch (src.dtype) {
         case DType.float64:
@@ -124,7 +136,17 @@ NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
             maskHolder.pointer,
           );
           break;
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
           throw UnsupportedError(
             'Unsupported dtype for i0 contiguous dispatch: ${src.dtype}',
           );
@@ -134,10 +156,10 @@ NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
     void dispatchStrided(NDArray src, NDArray dest) {
       final rank = src.shape.length;
       final marker = ScratchArena.marker;
-      final cShape = ScratchArena.copyInts(src.shape);
-      final cStridesSrc = ScratchArena.copyInts(src.strides);
-      final cStridesDest = ScratchArena.copyInts(dest.strides);
       try {
+        final cShape = ScratchArena.copyInts(src.shape);
+        final cStridesSrc = ScratchArena.copyInts(src.strides);
+        final cStridesDest = ScratchArena.copyInts(dest.strides);
         switch (src.dtype) {
           case DType.float64:
             s_i0_double(
@@ -183,7 +205,17 @@ NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
               maskHolder.pointer,
             );
             break;
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               'Unsupported dtype for i0 strided dispatch: ${src.dtype}',
             );
@@ -197,22 +229,30 @@ NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
       dispatchContiguous(a, result);
     } else {
       final rank = a.shape.length;
-      if (rank <= 8) {
+      if (rank <= 32) {
         dispatchStrided(a, result);
       } else {
         final tempA = a.isContiguous ? a : a.copy();
-        final tempResult = result.isContiguous
-            ? result
-            : NDArray.create(result.shape, result.dtype);
-
-        dispatchContiguous(tempA, tempResult);
-
-        if (!identical(tempResult, result)) {
-          tempResult.copy(out: result);
-          tempResult.dispose();
-        }
-        if (!identical(tempA, a)) {
-          tempA.dispose();
+        try {
+          final tempResult = result.isContiguous
+              ? result
+              : (where != null
+                    ? result.copy()
+                    : NDArray.create(result.shape, result.dtype));
+          try {
+            dispatchContiguous(tempA, tempResult);
+            if (!identical(tempResult, result)) {
+              tempResult.copy(out: result);
+            }
+          } finally {
+            if (!identical(tempResult, result)) {
+              tempResult.dispose();
+            }
+          }
+        } finally {
+          if (!identical(tempA, a)) {
+            tempA.dispose();
+          }
         }
       }
     }
@@ -243,9 +283,12 @@ NDArray<R> i0<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
 /// final b = gamma(a);
 /// print(b.toList()); // [1.0, 1.0, 2.0, 6.0]
 /// ```
-NDArray<R> gamma<T, R>(
-  NDArray<T> a, {
-  NDArray<dynamic>? where,
+NDArray<R> gamma<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
   if (a.isDisposed ||
@@ -257,33 +300,45 @@ NDArray<R> gamma<T, R>(
     throw UnsupportedError("Complex numbers are not supported for gamma.");
   }
 
-  if (a.dtype.isInteger || a.dtype == DType.boolean) {
-    final promoted = promoteToDouble(a);
-    final res = gamma<double, double>(
-      promoted,
-      where: where,
-      out: out as NDArray<double>?,
-    );
-    promoted.dispose();
-    return res as NDArray<R>;
-  }
-
-  final targetDType =
-      (a.dtype == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
-  final NDArray<R> result;
+  final DType<R> targetDType = switch (a.dtype) {
+    DType.float32 => DType.float32 as DType<R>,
+    _ => DType.float64 as DType<R>,
+  };
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype for gamma.",
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType);
   }
 
-  final maskHolder = prepareMask(where, result.shape);
+  final aDType = a.dtype as DType<DTypeTag>;
+  if (aDType.isInteger ||
+      aDType == DType.boolean ||
+      aDType == DType.float16 ||
+      aDType == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      return gamma<Float64>(
+            promoted,
+            where: where,
+            out: out as NDArray<Float64>?,
+          )
+          as NDArray<R>;
+    } finally {
+      if (!identical(promoted, a)) {
+        promoted.dispose();
+      }
+    }
+  }
+
+  final maskHolder = prepareMask(where, a.shape);
   try {
+    final NDArray<R> result =
+        out ?? NDArray.create(a.shape, targetDType, zeroInit: where != null);
+
     void dispatchContiguous(NDArray src, NDArray dest) {
       switch (src.dtype) {
         case DType.float64:
@@ -300,7 +355,19 @@ NDArray<R> gamma<T, R>(
             src.size,
             maskHolder.pointer,
           );
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
           throw UnsupportedError('Unsupported dtype: ${src.dtype}');
       }
     }
@@ -308,10 +375,10 @@ NDArray<R> gamma<T, R>(
     void dispatchStrided(NDArray src, NDArray dest) {
       final rank = src.shape.length;
       final marker = ScratchArena.marker;
-      final cShape = ScratchArena.copyInts(src.shape);
-      final cStridesSrc = ScratchArena.copyInts(src.strides);
-      final cStridesDest = ScratchArena.copyInts(dest.strides);
       try {
+        final cShape = ScratchArena.copyInts(src.shape);
+        final cStridesSrc = ScratchArena.copyInts(src.strides);
+        final cStridesDest = ScratchArena.copyInts(dest.strides);
         switch (src.dtype) {
           case DType.float64:
             s_gamma_double(
@@ -333,7 +400,19 @@ NDArray<R> gamma<T, R>(
               rank,
               maskHolder.pointer,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
+          case DType.complex128:
+          case DType.complex64:
             throw UnsupportedError('Unsupported dtype: ${src.dtype}');
         }
       } finally {
@@ -345,22 +424,30 @@ NDArray<R> gamma<T, R>(
       dispatchContiguous(a, result);
     } else {
       final rank = a.shape.length;
-      if (rank <= 8) {
+      if (rank <= 32) {
         dispatchStrided(a, result);
       } else {
         final tempA = a.isContiguous ? a : a.copy();
-        final tempResult = result.isContiguous
-            ? result
-            : NDArray.create(result.shape, result.dtype);
-
-        dispatchContiguous(tempA, tempResult);
-
-        if (!identical(tempResult, result)) {
-          tempResult.copy(out: result);
-          tempResult.dispose();
-        }
-        if (!identical(tempA, a)) {
-          tempA.dispose();
+        try {
+          final tempResult = result.isContiguous
+              ? result
+              : (where != null
+                    ? result.copy()
+                    : NDArray.create(result.shape, result.dtype));
+          try {
+            dispatchContiguous(tempA, tempResult);
+            if (!identical(tempResult, result)) {
+              tempResult.copy(out: result);
+            }
+          } finally {
+            if (!identical(tempResult, result)) {
+              tempResult.dispose();
+            }
+          }
+        } finally {
+          if (!identical(tempA, a)) {
+            tempA.dispose();
+          }
         }
       }
     }
@@ -391,7 +478,14 @@ NDArray<R> gamma<T, R>(
 /// final b = erf(a);
 /// print(b.toList()); // [0.0, ~0.8427]
 /// ```
-NDArray<R> erf<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
+NDArray<R> erf<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
@@ -401,33 +495,41 @@ NDArray<R> erf<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
     throw UnsupportedError("Complex numbers are not supported for erf.");
   }
 
-  if (a.dtype.isInteger || a.dtype == DType.boolean) {
-    final promoted = promoteToDouble(a);
-    final res = erf<double, double>(
-      promoted,
-      where: where,
-      out: out as NDArray<double>?,
-    );
-    promoted.dispose();
-    return res as NDArray<R>;
-  }
-
-  final targetDType =
-      (a.dtype == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
-  final NDArray<R> result;
+  final DType<R> targetDType = switch (a.dtype) {
+    DType.float32 => DType.float32 as DType<R>,
+    _ => DType.float64 as DType<R>,
+  };
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype for erf.",
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType);
   }
 
-  final maskHolder = prepareMask(where, result.shape);
+  final aDType = a.dtype as DType<DTypeTag>;
+  if (aDType.isInteger ||
+      aDType == DType.boolean ||
+      aDType == DType.float16 ||
+      aDType == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      return erf<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+          as NDArray<R>;
+    } finally {
+      if (!identical(promoted, a)) {
+        promoted.dispose();
+      }
+    }
+  }
+
+  final maskHolder = prepareMask(where, a.shape);
   try {
+    final NDArray<R> result =
+        out ?? NDArray.create(a.shape, targetDType, zeroInit: where != null);
+
     void dispatchContiguous(NDArray src, NDArray dest) {
       switch (src.dtype) {
         case DType.float64:
@@ -444,7 +546,19 @@ NDArray<R> erf<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
             src.size,
             maskHolder.pointer,
           );
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
           throw UnsupportedError('Unsupported dtype: ${src.dtype}');
       }
     }
@@ -452,10 +566,10 @@ NDArray<R> erf<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
     void dispatchStrided(NDArray src, NDArray dest) {
       final rank = src.shape.length;
       final marker = ScratchArena.marker;
-      final cShape = ScratchArena.copyInts(src.shape);
-      final cStridesSrc = ScratchArena.copyInts(src.strides);
-      final cStridesDest = ScratchArena.copyInts(dest.strides);
       try {
+        final cShape = ScratchArena.copyInts(src.shape);
+        final cStridesSrc = ScratchArena.copyInts(src.strides);
+        final cStridesDest = ScratchArena.copyInts(dest.strides);
         switch (src.dtype) {
           case DType.float64:
             s_erf_double(
@@ -477,7 +591,19 @@ NDArray<R> erf<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
               rank,
               maskHolder.pointer,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
+          case DType.complex128:
+          case DType.complex64:
             throw UnsupportedError('Unsupported dtype: ${src.dtype}');
         }
       } finally {
@@ -489,22 +615,30 @@ NDArray<R> erf<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
       dispatchContiguous(a, result);
     } else {
       final rank = a.shape.length;
-      if (rank <= 8) {
+      if (rank <= 32) {
         dispatchStrided(a, result);
       } else {
         final tempA = a.isContiguous ? a : a.copy();
-        final tempResult = result.isContiguous
-            ? result
-            : NDArray.create(result.shape, result.dtype);
-
-        dispatchContiguous(tempA, tempResult);
-
-        if (!identical(tempResult, result)) {
-          tempResult.copy(out: result);
-          tempResult.dispose();
-        }
-        if (!identical(tempA, a)) {
-          tempA.dispose();
+        try {
+          final tempResult = result.isContiguous
+              ? result
+              : (where != null
+                    ? result.copy()
+                    : NDArray.create(result.shape, result.dtype));
+          try {
+            dispatchContiguous(tempA, tempResult);
+            if (!identical(tempResult, result)) {
+              tempResult.copy(out: result);
+            }
+          } finally {
+            if (!identical(tempResult, result)) {
+              tempResult.dispose();
+            }
+          }
+        } finally {
+          if (!identical(tempA, a)) {
+            tempA.dispose();
+          }
         }
       }
     }

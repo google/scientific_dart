@@ -19,103 +19,84 @@ import 'package:ndarray/ndarray.dart';
 void main() {
   print('=== NDArray Master Scientific & ML Signal Denoising Tutorial ===\n');
 
-  // 1. Generate pure time-domain signal
-  // Sample a 10 Hz sine wave at 128 Hz for 1 second (128 points)
-  const samplingRate = 128.0;
-  const numPoints = 128;
+  NDArray.scope(() {
+    // 1. Generate pure time-domain signal using vectorized operations
+    // Sample a 10 Hz sine wave at 128 Hz for 1 second (128 points)
+    const samplingRate = 128.0;
+    const numPoints = 128;
 
-  final time = NDArray.create([numPoints], DType.float64);
-  final pureSignal = NDArray.create([numPoints], DType.float64);
-  addTearDown(() => time.dispose());
-  addTearDown(() => pureSignal.dispose());
-
-  final timeData = time.toList();
-  final pureData = pureSignal.toList();
-
-  for (var i = 0; i < numPoints; i++) {
-    final t = i / samplingRate;
-    timeData[i] = Float64(t);
-    pureData[i] = Float64(
-      5.0 * math.sin(2.0 * math.pi * 10.0 * t),
-    ); // 10Hz sine wave, amplitude 5
-  }
-  print('1. Generated pure 10 Hz sine wave signal (size: 128 points).');
-
-  // 2. Inject RNG Gaussian Noise to simulate real-world measurement sensors
-  // Noise distribution: loc = 0.0, scale = 0.5
-  final noise = normal([numPoints], loc: 0.0, scale: 0.5, seed: 42);
-  addTearDown(() => noise.dispose());
-
-  // Combine pure signal + noise element-wise!
-  final noisySignal = add(pureSignal, noise);
-  addTearDown(() => noisySignal.dispose());
-  print(
-    '2. Injected RNG Gaussian noise (loc = 0.0, scale = 1.5) element-wise.',
-  );
-
-  // 3. Execute FFI-Accelerated mixed-radix FFT to map signal to frequency space
-  final fftCoeffs = fft(noisySignal);
-  addTearDown(() => fftCoeffs.dispose);
-  print(
-    '3. Executed mixed-radix FFI FFT to transform signal to frequency space.',
-  );
-
-  // 4. Low-pass Filter: Filter out high frequencies (noise) above 15 Hz!
-  // We zero out any frequency bin corresponding to > 15 Hz
-  final halfLen = numPoints ~/ 2;
-  var filteredBinsCount = 0;
-
-  for (var i = 0; i <= halfLen; i++) {
-    final freq = i * samplingRate / numPoints;
-    if (freq > 15.0) {
-      // Symmetrically zero out positive and corresponding negative high frequency bins!
-      fftCoeffs[i] = Complex(0.0, 0.0);
-      if (i > 0 && i < halfLen) {
-        fftCoeffs[numPoints - i] = Complex(0.0, 0.0);
-      }
-      filteredBinsCount++;
-    }
-  }
-  print(
-    '4. Low-pass filter applied: zeroed out $filteredBinsCount high-frequency noise bins (> 15 Hz).',
-  );
-
-  // 5. Restoration: Inverse Fourier Transform (IFFT) back to time domain!
-  final restoredComplex = ifft(fftCoeffs);
-  addTearDown(() => restoredComplex.dispose());
-
-  // Extract real component of the reconstructed signal
-  final reconstructed = NDArray.create([numPoints], DType.float64);
-  addTearDown(() => reconstructed.dispose());
-  final List<double> reconstructedData = reconstructed.toList();
-  for (var i = 0; i < numPoints; i++) {
-    reconstructedData[i] = restoredComplex[i].real;
-  }
-  print('5. Executed FFI IFFT to restore signal back to time-domain.');
-
-  // 6. Compare reconstructed signal against original pure signal!
-  // Check if they are approximately equal within rtol = 0.3 tolerance (since filtering keeps primary wave)
-  final isApproximatelyClose = allClose(
-    pureSignal,
-    reconstructed,
-    rtol: 0.3,
-    atol: 0.5,
-  );
-  print('\n=== Verification Results ===');
-  print(
-    'Is restored signal approximately close to pure signal? $isApproximatelyClose',
-  );
-
-  // Print first few restored coordinates compared to raw noise
-  print('\nFirst 5 samples comparison:');
-  print('Index | Noisy Signal | Restored Signal | Pure Signal');
-  for (var i = 0; i < 5; i++) {
-    print(
-      '  $i   |  ${noisySignal[i].toStringAsFixed(2).padLeft(11)} |  ${reconstructed[i].toStringAsFixed(2).padLeft(14)} |  ${pureSignal[i].toStringAsFixed(2).padLeft(10)}',
+    final time = NDArray<Float64>.arange(
+      0.0,
+      numPoints / samplingRate,
+      step: 1.0 / samplingRate,
+      dtype: DType.float64,
     );
-  }
-}
 
-// Simple tear-down helper
-final List<void Function()> _teardowns = [];
-void addTearDown(void Function() f) => _teardowns.add(f);
+    // 10 Hz sine wave with amplitude 5.0: y(t) = 5.0 * sin(2 * pi * 10.0 * t)
+    final angle = time * (2.0 * math.pi * 10.0);
+    final NDArray<Float64> pureSignal = multiply(
+      sin(angle),
+      NDArray.scalar(5.0, dtype: DType.float64),
+    );
+    print(
+      '1. Generated pure 10 Hz sine wave signal (size: $numPoints points).',
+    );
+
+    // 2. Inject RNG Gaussian Noise to simulate real-world measurement sensors
+    final noise = normal<Float64>(
+      [numPoints],
+      loc: 0.0,
+      scale: 0.5,
+      dtype: DType.float64,
+      seed: 42,
+    );
+    final NDArray<Float64> noisySignal = add(pureSignal, noise);
+    print(
+      '2. Injected RNG Gaussian noise (loc = 0.0, scale = 0.5) element-wise.',
+    );
+
+    // 3. Execute FFI-Accelerated Real FFT (rfft) to map signal to frequency space
+    final fftCoeffs = rfft(noisySignal);
+    final freqs = rfftfreq(numPoints, d: 1.0 / samplingRate);
+    print(
+      '3. Executed mixed-radix FFI Real FFT (rfft) to transform signal to frequency space.',
+    );
+
+    // 4. Vectorized Low-pass Filter: Zero out high frequencies (noise) above 15 Hz!
+    final highFreqMask = freqs > 15.0;
+    fftCoeffs.setByMaskScalar(highFreqMask, Complex(0.0, 0.0));
+    print(
+      '4. Low-pass filter applied: zeroed out high-frequency noise bins (> 15 Hz) via boolean mask.',
+    );
+
+    // 5. Restoration: Inverse Real Fourier Transform (irfft) back to time domain!
+    final reconstructed = irfft(fftCoeffs, n: numPoints);
+    print(
+      '5. Executed FFI Inverse Real FFT (irfft) to restore time-domain signal.',
+    );
+
+    // 6. Compare reconstructed signal against original pure signal!
+    final isApproximatelyClose = allClose(
+      pureSignal,
+      reconstructed,
+      rtol: 0.3,
+      atol: 0.5,
+    );
+    print('\n=== Verification Results ===');
+    print(
+      'Is restored signal approximately close to pure signal? $isApproximatelyClose',
+    );
+
+    // Print first 5 samples comparison
+    print('\nFirst 5 samples comparison:');
+    print('Index | Noisy Signal | Restored Signal | Pure Signal');
+    for (var i = 0; i < 5; i++) {
+      final noisyVal = noisySignal.getCell([i]);
+      final restoredVal = reconstructed.getCell([i]);
+      final pureVal = pureSignal.getCell([i]);
+      print(
+        '  $i   |  ${noisyVal.toStringAsFixed(2).padLeft(11)} |  ${restoredVal.toStringAsFixed(2).padLeft(14)} |  ${pureVal.toStringAsFixed(2).padLeft(10)}',
+      );
+    }
+  });
+}

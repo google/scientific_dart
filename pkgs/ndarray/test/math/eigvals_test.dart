@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:typed_data';
-
 import 'package:test/test.dart';
 import 'package:ndarray/ndarray.dart';
 
@@ -142,7 +141,7 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final outW = NDArray<Complex>.zeros([2], DType.complex128);
+        final outW = NDArray.zeros([2], DType.complex128);
 
         final w = eigvals(a, out: outW);
 

@@ -51,5 +51,26 @@ void main() {
 }
 ```
 
+## Build Configuration (`hooks.user_defines`)
+
+By default (`buildMode: fetch`), `package:pocketfft` downloads a prebuilt shared library verified against pinned SHA-256 digests and the embedded native source hash, automatically falling back to `buildMode: source` if prebuilt binaries are unavailable or stale.
+
+Configure custom build options via `hooks.user_defines` in your root `pubspec.yaml`:
+
+```yaml
+hooks:
+  user_defines:
+    pocketfft:
+      # 'fetch' (default), 'source', or 'local'
+      buildMode: source
+      # Optional C sanitizers ('address', 'undefined', 'address,undefined'):
+      # sanitize: address,undefined
+      # Optional coverage instrumentation (true / false):
+      # coverage: false
+      # Path to prebuilt binary or directory when buildMode is 'local':
+      # localPath: /path/to/dist
+```
+
 ## License
-This package is licensed under the [Apache License, Version 2.0](LICENSE).
+This package is licensed under the **[Apache License, Version 2.0](https://github.com/google/scientific_dart/blob/main/pkgs/pocketfft/LICENSE)**.
+

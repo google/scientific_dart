@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import 'package:criterion/criterion.dart';
 import 'package:ndarray/ndarray.dart';
 import 'package:openblas/openblas.dart';
@@ -29,9 +28,9 @@ void main() async {
       // 1. Float64 Addition (Dart out-parameter vs FFI cblas_daxpy)
       c.group('Float64 Addition (Pre-allocated Output)', () {
         for (final size in sizes) {
-          final a = NDArray<double>.ones([size], DType.float64);
-          final b = NDArray<double>.ones([size], DType.float64);
-          final out = NDArray<double>.create([size], DType.float64);
+          final a = NDArray<DTypeTag>.ones([size], DType.float64);
+          final b = NDArray<DTypeTag>.ones([size], DType.float64);
+          final out = NDArray<DTypeTag>.create([size], DType.float64);
 
           c.bench('Dart add(out: outBuf) [$size]', () {
             add(a, b, out: out);
@@ -53,8 +52,8 @@ void main() async {
       c.group('Float64 Addition (With New Allocation)', () {
         c.benchWith<void, int>('Dart add(a, b)', sizes, (size) {
           NDArray.scope(() {
-            final a = NDArray<double>.ones([size], DType.float64);
-            final b = NDArray<double>.ones([size], DType.float64);
+            final a = NDArray<DTypeTag>.ones([size], DType.float64);
+            final b = NDArray<DTypeTag>.ones([size], DType.float64);
             final r = add(a, b);
             blackhole(r);
           });
@@ -66,23 +65,23 @@ void main() async {
         final stridedSizes = [100, 1000, 10000, 100000];
         for (final size in stridedSizes) {
           final sizeHalf = size ~/ 2;
-          final a = NDArray<double>.ones([size], DType.float32);
-          final b = NDArray<double>.ones([size], DType.float32);
-          final aView = NDArray<double>.view(
+          final a = NDArray<DTypeTag>.ones([size], DType.float32);
+          final b = NDArray<DTypeTag>.ones([size], DType.float32);
+          final aView = NDArray<DTypeTag>.view(
             a,
             shape: [sizeHalf],
             strides: [2],
           );
-          final bView = NDArray<double>.view(
+          final bView = NDArray<DTypeTag>.view(
             b,
             shape: [sizeHalf],
             strides: [2],
           );
-          final outView = NDArray<double>.create([sizeHalf], DType.float32);
+          final outView = NDArray<DTypeTag>.create([sizeHalf], DType.float32);
 
-          final aContig = NDArray<double>.ones([sizeHalf], DType.float32);
-          final bContig = NDArray<double>.ones([sizeHalf], DType.float32);
-          final outContig = NDArray<double>.create([sizeHalf], DType.float32);
+          final aContig = NDArray<DTypeTag>.ones([sizeHalf], DType.float32);
+          final bContig = NDArray<DTypeTag>.ones([sizeHalf], DType.float32);
+          final outContig = NDArray<DTypeTag>.create([sizeHalf], DType.float32);
 
           c.bench('Scalar Strided add() [$sizeHalf]', () {
             add(aView, bView, out: outView);

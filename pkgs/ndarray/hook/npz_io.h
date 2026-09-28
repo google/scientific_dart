@@ -98,6 +98,7 @@ NDARRAY_EXPORT int npz_reader_extract_data(
     size_t index,
     size_t header_len,
     void* dest_ptr,
+    size_t dest_capacity,
     size_t data_len);
 
 /**

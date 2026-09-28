@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import 'package:criterion/criterion.dart';
 import 'package:ffi/ffi.dart';
 import 'package:pocketfft/pocketfft.dart';

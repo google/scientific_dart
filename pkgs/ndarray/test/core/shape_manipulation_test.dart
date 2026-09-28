@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:typed_data';
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -41,7 +40,7 @@ void main() {
             expect(b.toList(), [1.0, 2.0, 3.0, 4.0]);
 
             // Verify it shares memory (view behavior)
-            b.data[0] = Float64(99.0);
+            b.data[0] = 99.0;
             expect(a.data[0], 99.0);
           }),
         );
@@ -129,7 +128,7 @@ void main() {
             expect(b.toList(), [1.0, 2.0]);
 
             // View verification
-            b.data[0] = Float64(42.0);
+            b.data[0] = 42.0;
             expect(a.data[0], 42.0);
           }),
         );
@@ -235,7 +234,7 @@ void main() {
             expect(b.toList(), [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
 
             // View verification
-            b.data[0] = Float64(11.0); // updates a.data[0]
+            b.data[0] = 11.0; // updates a.data[0]
             expect(a.data[0], 11.0);
           }),
         );
@@ -331,7 +330,7 @@ void main() {
             expect(b.toList(), [1.0, 2.0, 1.0, 2.0, 1.0, 2.0]);
 
             // Verify it allocates new memory (copy behavior)
-            b.data[0] = Float64(99.0);
+            b.data[0] = 99.0;
             expect(a.data[0], 1.0);
           }),
         );
@@ -447,36 +446,28 @@ void main() {
           'Tile all DTypes',
           () => NDArray.scope(() {
             // Int64
-            final i64 = NDArray<Int64>.fromList(
-              [Int64(10), Int64(20)],
-              [2],
-              DType.int64,
-            );
+            final i64 = NDArray<Int64>.fromList([10, 20], [2], DType.int64);
             expect(tile(i64, [3]).toList(), [10, 20, 10, 20, 10, 20]);
 
             // Int16
-            final i16 = NDArray<Int16>.fromList(
-              [Int16(1), Int16(2)],
-              [2],
-              DType.int16,
-            );
+            final i16 = NDArray<Int16>.fromList([1, 2], [2], DType.int16);
             expect(tile(i16, [2]).toList(), [1, 2, 1, 2]);
 
             // Uint8
-            final u8 = NDArray<Uint8>.fromList(
-              [Uint8(255), Uint8(0)],
-              [2],
-              DType.uint8,
-            );
+            final u8 = NDArray<Uint8>.fromList([255, 0], [2], DType.uint8);
             expect(tile(u8, [2]).toList(), [255, 0, 255, 0]);
 
             // Boolean
-            final b = NDArray<bool>.fromList([true, false], [2], DType.boolean);
+            final b = NDArray<Boolean>.fromList(
+              [true, false],
+              [2],
+              DType.boolean,
+            );
             expect(tile(b, [2]).toList(), [true, false, true, false]);
 
             // Complex128
             final c128 = NDArray<Complex128>.fromList(
-              [Complex128(1.0, 2.0), Complex128(3.0, 4.0)],
+              [Complex(1.0, 2.0), Complex(3.0, 4.0)],
               [2],
               DType.complex128,
             );
@@ -489,7 +480,7 @@ void main() {
 
             // Complex64
             final c64 = NDArray<Complex64>.fromList(
-              [Complex64(1.0, 2.0), Complex64(3.0, 4.0)],
+              [Complex(1.0, 2.0), Complex(3.0, 4.0)],
               [2],
               DType.complex64,
             );
@@ -505,10 +496,7 @@ void main() {
         test(
           'Tile 0D scalar array',
           () => NDArray.scope(() {
-            final s = NDArray<Float64>.scalar(
-              Float64(42.0),
-              dtype: DType.float64,
-            );
+            final s = NDArray<Float64>.scalar(42.0, dtype: DType.float64);
             final t0 = tile(s, []);
             expect(t0.shape, isEmpty);
             expect(t0.scalar, 42.0);
@@ -573,7 +561,7 @@ void main() {
             expect(b.toList(), [1.0, 1.0, 2.0, 2.0, 3.0, 3.0]);
 
             // Copy verification
-            b.data[0] = Float64(99.0);
+            b.data[0] = 99.0;
             expect(a.data[0], 1.0);
           }),
         );
@@ -679,7 +667,7 @@ void main() {
             expect(b.dtype, DType.float64);
             expect(b.toList(), [10.0, 20.0, 30.0]);
 
-            b.data[0] = Float64(99.0);
+            b.data[0] = 99.0;
             expect(a.data[0], 10.0);
           }),
         );
@@ -701,7 +689,7 @@ void main() {
             expect(b.isContiguous, true);
             expect(b.toList(), [1.0, 3.0, 2.0, 4.0]);
 
-            b.data[0] = Float64(99.0);
+            b.data[0] = 99.0;
             expect(parent.data[0], 1.0);
           }),
         );
@@ -725,7 +713,7 @@ void main() {
             expect(b.dtype, DType.float64);
             expect(b.toList(), [10.0, 20.0, 30.0]);
 
-            b.data[0] = Float64(99.0);
+            b.data[0] = 99.0;
             expect(a.data[0], 10.0);
           }),
         );
@@ -747,7 +735,7 @@ void main() {
           'Basic flip 1D Float64',
           () => NDArray.scope(() {
             final a = NDArray<Float64>.fromList(
-              <Float64>[Float64(1.0), Float64(2.0), Float64(3.0), Float64(4.0)],
+              <double>[1.0, 2.0, 3.0, 4.0],
               [4],
               DType.float64,
             );
@@ -756,8 +744,8 @@ void main() {
             expect(flipped.toList(), [4.0, 3.0, 2.0, 1.0]);
 
             // Verify it is a zero-copy view
-            flipped.setCell([0], Float64(99.0));
-            expect(a.getCell([3]).value, 99.0);
+            flipped.setCell([0], 99.0);
+            expect(a.getCell([3]), 99.0);
           }),
         );
 
@@ -765,14 +753,7 @@ void main() {
           'Flip 2D along specific axes',
           () => NDArray.scope(() {
             final a = NDArray<Float64>.fromList(
-              <Float64>[
-                Float64(1.0),
-                Float64(2.0),
-                Float64(3.0),
-                Float64(4.0),
-                Float64(5.0),
-                Float64(6.0),
-              ],
+              <double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
               [2, 3],
               DType.float64,
             );
@@ -865,7 +846,7 @@ void main() {
           'Basic roll 1D flat',
           () => NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
-              [Int32(10), Int32(20), Int32(30), Int32(40), Int32(50)],
+              [10, 20, 30, 40, 50],
               [5],
               DType.int32,
             );
@@ -883,8 +864,8 @@ void main() {
             expect(rolledLarge.toList(), [40, 50, 10, 20, 30]);
 
             // Verify it is a copy (independent memory)
-            rolledPos.setCell([0], Int32(99));
-            expect(a.getCell([0]).value, 10);
+            rolledPos.setCell([0], 99);
+            expect(a.getCell([0]), 10);
           }),
         );
 
@@ -987,35 +968,25 @@ void main() {
 
             // complex128
             final c128 = NDArray.fromList(
-              [
-                Complex128(1, 2),
-                Complex128(3, 4),
-                Complex128(5, 6),
-                Complex128(7, 8),
-              ],
+              [Complex(1, 2), Complex(3, 4), Complex(5, 6), Complex(7, 8)],
               [2, 2],
               DType.complex128,
             );
             final rolledC128 = roll(c128, 1, axis: 0);
-            expect(rolledC128.getCell([0, 0]), Complex128(5, 6));
-            expect(rolledC128.getCell([0, 1]), Complex128(7, 8));
-            expect(rolledC128.getCell([1, 0]), Complex128(1, 2));
-            expect(rolledC128.getCell([1, 1]), Complex128(3, 4));
+            expect(rolledC128.getCell([0, 0]), Complex(5, 6));
+            expect(rolledC128.getCell([0, 1]), Complex(7, 8));
+            expect(rolledC128.getCell([1, 0]), Complex(1, 2));
+            expect(rolledC128.getCell([1, 1]), Complex(3, 4));
 
             // complex64
             final c64 = NDArray.fromList(
-              [
-                Complex64(1, 2),
-                Complex64(3, 4),
-                Complex64(5, 6),
-                Complex64(7, 8),
-              ],
+              [Complex(1, 2), Complex(3, 4), Complex(5, 6), Complex(7, 8)],
               [2, 2],
               DType.complex64,
             );
             final rolledC64 = roll(c64, 1, axis: 1);
-            expect(rolledC64.getCell([0, 0]), Complex64(3, 4));
-            expect(rolledC64.getCell([0, 1]), Complex64(1, 2));
+            expect(rolledC64.getCell([0, 0]), Complex(3, 4));
+            expect(rolledC64.getCell([0, 1]), Complex(1, 2));
           }),
         );
 
@@ -1116,11 +1087,7 @@ void main() {
       group('split & array_split Tests', () {
         test('basic 1D equal split', () {
           NDArray.scope(() {
-            final a = NDArray<Int32>.fromList(
-              [Int32(1), Int32(2), Int32(3), Int32(4)],
-              [4],
-              DType.int32,
-            );
+            final a = NDArray<Int32>.fromList([1, 2, 3, 4], [4], DType.int32);
             final splits = split(a, 2);
 
             expect(splits.length, 2);
@@ -1130,8 +1097,8 @@ void main() {
             expect(splits[1].toList(), [3, 4]);
 
             // Modifying sub-array view affects original
-            splits[0].setCell([0], Int32(99));
-            expect(a.getCell([0]).value, 99);
+            splits[0].setCell([0], 99);
+            expect(a.getCell([0]), 99);
           });
         });
 
@@ -1158,7 +1125,7 @@ void main() {
         test('split_at with list of indices', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
-              [Int32(10), Int32(20), Int32(30), Int32(40), Int32(50)],
+              [10, 20, 30, 40, 50],
               [5],
               DType.int32,
             );
@@ -1213,11 +1180,7 @@ void main() {
 
         test('hsplit 1D array splits along axis 0', () {
           NDArray.scope(() {
-            final a = NDArray<Int32>.fromList(
-              [Int32(1), Int32(2), Int32(3), Int32(4)],
-              [4],
-              DType.int32,
-            );
+            final a = NDArray<Int32>.fromList([1, 2, 3, 4], [4], DType.int32);
             final splits = hsplit(a, 2);
 
             expect(splits.length, 2);
@@ -1262,7 +1225,7 @@ void main() {
         test('dsplit 3D array equal split', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
-              List<Int32>.generate(16, (i) => Int32(i + 1)),
+              List<int>.generate(16, (i) => i + 1),
               [2, 2, 4],
               DType.int32,
             );
@@ -1275,15 +1238,15 @@ void main() {
             expect(splits[1].toList(), [3, 4, 7, 8, 11, 12, 15, 16]);
 
             // Zero-copy check: mutating sub-array affects original
-            splits[0].setCell([0, 0, 0], Int32(99));
-            expect(a.getCell([0, 0, 0]).value, 99);
+            splits[0].setCell([0, 0, 0], 99);
+            expect(a.getCell([0, 0, 0]), 99);
           });
         });
 
         test('dsplit_at 3D array at indices', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
-              List<Int32>.generate(16, (i) => Int32(i + 1)),
+              List<int>.generate(16, (i) => i + 1),
               [2, 2, 4],
               DType.int32,
             );
@@ -1327,7 +1290,7 @@ void main() {
         test('dsplit disposed array throws', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
-              List<Int32>.generate(16, (i) => Int32(i + 1)),
+              List<int>.generate(16, (i) => i + 1),
               [2, 2, 4],
               DType.int32,
             );
@@ -1404,7 +1367,7 @@ void main() {
         'stack() validation errors throws exceptions',
         () => NDArray.scope(() {
           // Empty list throws ArgumentError
-          expect(() => stack(<NDArray<Object>>[]), throwsArgumentError);
+          expect(() => stack(<NDArray<AnySpec>>[]), throwsArgumentError);
 
           final a = NDArray.fromList([1, 2], [2], DType.int32);
           final wrongShape = NDArray.fromList([1, 2, 3], [3], DType.int32);
@@ -1529,7 +1492,7 @@ void main() {
         test('out parameter: correct shape/dtype', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-            final out = NDArray<int>.create([6], DType.int32);
+            final out = NDArray.create([6], DType.int32);
             final r = repeat(a, rep(2), out: out);
             expect(identical(r, out), true);
             expect(r.toList(), [1, 1, 2, 2, 3, 3]);
@@ -1539,8 +1502,8 @@ void main() {
         test('out parameter: incorrect shape/dtype', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-            final outWrongShape = NDArray<int>.create([5], DType.int32);
-            final outWrongDType = NDArray<double>.create([6], DType.float64);
+            final outWrongShape = NDArray.create([5], DType.int32);
+            final outWrongDType = NDArray.create([6], DType.float64);
 
             expect(
               () => repeat(a, rep(2), out: outWrongShape),
@@ -1560,7 +1523,7 @@ void main() {
             expect(rF.dtype, DType.float64);
             expect(rF.toList(), [1.0, 1.0, 2.0, 2.0]);
 
-            final c = NDArray<Complex>.fromList(
+            final c = NDArray.fromList(
               [Complex(1, 2), Complex(3, 4)],
               [2],
               DType.complex128,
@@ -1702,7 +1665,7 @@ void main() {
         test('out parameter: correct shape/dtype', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2], [2], DType.int32);
-            final out = NDArray<int>.create([4], DType.int32);
+            final out = NDArray.create([4], DType.int32);
             final t = tile(a, rep(2), out: out);
             expect(identical(t, out), true);
             expect(t.toList(), [1, 2, 1, 2]);
@@ -1712,8 +1675,8 @@ void main() {
         test('out parameter: incorrect shape/dtype', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2], [2], DType.int32);
-            final outWrongShape = NDArray<int>.create([5], DType.int32);
-            final outWrongDType = NDArray<double>.create([4], DType.float64);
+            final outWrongShape = NDArray.create([5], DType.int32);
+            final outWrongDType = NDArray.create([4], DType.float64);
 
             expect(
               () => tile(a, rep(2), out: outWrongShape),
@@ -1733,7 +1696,7 @@ void main() {
             expect(tF.dtype, DType.float64);
             expect(tF.toList(), [1.0, 2.0, 1.0, 2.0]);
 
-            final c = NDArray<Complex>.fromList(
+            final c = NDArray.fromList(
               [Complex(1, 2), Complex(3, 4)],
               [2],
               DType.complex128,
@@ -1827,7 +1790,7 @@ void main() {
       test(
         'Constant Mode - 2D Int with different before/after',
         () => NDArray.scope(() {
-          final arr = NDArray<int>.fromList([1, 2, 3, 4], [2, 2], DType.int32);
+          final arr = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
           final padded = pad(
             arr,
             PadWidth.axes([(1, 2), (2, 1)]),
@@ -1928,11 +1891,7 @@ void main() {
       test(
         'Symmetric Mode - 1D Large Pad',
         () => NDArray.scope(() {
-          final arr = NDArray<double>.fromList(
-            [1.0, 2.0, 3.0],
-            [3],
-            DType.float64,
-          );
+          final arr = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
           final padded = pad(arr, PadWidth.all(5), mode: PaddingMode.symmetric);
           expect(padded.toList(), [
             2.0,
@@ -2139,7 +2098,7 @@ void main() {
         'Out Parameter Reuse',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final out = NDArray<int>.zeros([5], DType.int32);
+          final out = NDArray.zeros([5], DType.int32);
           final r = pad(
             a,
             PadWidth.all(1),
@@ -2287,7 +2246,7 @@ void main() {
       test(
         '4D Padding - Edge',
         () => NDArray.scope(() {
-          final a = NDArray<double>.ones([2, 2, 2, 2], DType.float64);
+          final a = NDArray.ones([2, 2, 2, 2], DType.float64);
           final r = pad(a, PadWidth.all(1), mode: PadMode.edge);
           expect(r.shape, [4, 4, 4, 4]);
           for (final val in r.toList()) {
@@ -2371,7 +2330,7 @@ void main() {
       test(
         'Preconditions - 0-D Array',
         () => NDArray.scope(() {
-          final a = NDArray<int>.scalar(1, dtype: DType.int32);
+          final a = NDArray.scalar(1, dtype: DType.int32);
           expect(() => pad(a, PadWidth.all(1)), throwsArgumentError);
         }),
       );
@@ -2397,7 +2356,7 @@ void main() {
         expect(reshaped.toList(), [1.0, 3.0, 2.0, 4.0]);
 
         // Verify memory decoupling (modifying reshaped does NOT affect parent)
-        reshaped.setCell([0], Float64(99.0));
+        reshaped.setCell([0], 99.0);
         expect(parent.getCell([0, 0]), 1.0);
       }),
     );
@@ -2504,7 +2463,7 @@ void main() {
     test(
       'concatenate() validation errors throws exceptions',
       () => NDArray.scope(() {
-        expect(() => concatenate(<NDArray<Object>>[]), throwsArgumentError);
+        expect(() => concatenate(<NDArray<AnySpec>>[]), throwsArgumentError);
 
         final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
         final wrongRank = NDArray.fromList([1.0, 2.0], [1, 2], DType.float64);
@@ -2513,12 +2472,12 @@ void main() {
         expect(() => concatenate([a, a], axis: 5), throwsRangeError);
         expect(() => concatenate([a, a], axis: -5), throwsRangeError);
         expect(
-          () => concatenate(<NDArray<Object>>[a, wrongDType]),
+          () => concatenate(<NDArray<AnySpec>>[a, wrongDType]),
           throwsArgumentError,
         );
 
         expect(
-          () => concatenate(<NDArray<Object>>[a, wrongRank]),
+          () => concatenate(<NDArray<AnySpec>>[a, wrongRank]),
           throwsArgumentError,
         );
 
@@ -2533,7 +2492,7 @@ void main() {
           DType.float64,
         );
         expect(
-          () => concatenate(<NDArray<double>>[mat1, mat2], axis: 0),
+          () => concatenate(<NDArray<AnySpec>>[mat1, mat2], axis: 0),
           throwsArgumentError,
         );
       }),
@@ -2631,6 +2590,36 @@ void main() {
         final mgridRes = mgrid([GridRange(0, 2), GridRange(0, 3)]);
         expect(mgridRes.shape, [2, 2, 3]);
         mgridRes.dispose();
+      });
+
+      test('rot90 error message validation includes formatted rank', () {
+        final a1d = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+        expect(
+          () => rot90(a1d),
+          throwsA(
+            isA<ArgumentError>().having(
+              (e) => e.message,
+              'message',
+              contains('(was rank 1).'),
+            ),
+          ),
+        );
+
+        final a2d = NDArray.fromList(
+          [1.0, 2.0, 3.0, 4.0],
+          [2, 2],
+          DType.float64,
+        );
+        expect(
+          () => rot90(a2d, 1, [0, 5]),
+          throwsA(
+            isA<RangeError>().having(
+              (e) => e.message,
+              'message',
+              contains('for array of rank 2.'),
+            ),
+          ),
+        );
       });
     });
   });

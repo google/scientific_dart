@@ -87,7 +87,7 @@ final class Float16Utils {
         return sign == 1 ? -0.0 : 0.0;
       }
       // Subnormal in float16
-      var val = frac16 / 1024.0 * 6.103515625e-5; // 2^-14
+      final val = frac16 / 1024.0 * 6.103515625e-5; // 2^-14
       return sign == 1 ? -val : val;
     }
 

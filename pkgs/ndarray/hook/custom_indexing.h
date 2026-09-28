@@ -128,6 +128,26 @@ int native_pad_nd(
     int is_uniform_constant
 );
 
+int native_roll_1d(
+    int dtype,
+    const void *src,
+    int64_t size,
+    int64_t shift,
+    void *dest
+);
+
+int native_roll_nd(
+    int dtype,
+    const void *src,
+    const int64_t *shape,
+    const int64_t *src_strides,
+    int64_t rank,
+    int64_t shift,
+    int64_t axis,
+    void *dest,
+    const int64_t *dest_strides
+);
+
 #ifdef __cplusplus
 }
 #endif

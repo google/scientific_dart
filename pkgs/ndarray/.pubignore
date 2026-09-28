@@ -1,0 +1,22 @@
+# Exclude local build artifacts and caches
+.dart_tool/
+build/
+third_party/highway/hwy_build/
+
+# Exclude non-build Highway documentation, tests, benchmarks, and CI configs
+# while keeping CMakeLists.txt, cmake/, and hwy/ library sources required for source builds.
+third_party/highway/.bcr/
+third_party/highway/.github/
+third_party/highway/debian/
+third_party/highway/docs/
+third_party/highway/g3doc/
+third_party/highway/hwy/examples/
+third_party/highway/hwy/tests/
+third_party/highway/hwy/*_test.cc
+third_party/highway/hwy/contrib/**/*_test.cc
+third_party/highway/hwy/nanobenchmark_test.cc
+third_party/highway/BUILD
+third_party/highway/MODULE.bazel
+third_party/highway/WORKSPACE
+third_party/highway/run_tests.bat
+third_party/highway/run_tests.sh

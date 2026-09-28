@@ -13,11 +13,10 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import '../ndarray.dart';
 import '../ndarray_bindings.dart' as bindings;
 import '../scratch_arena.dart';
-import 'helpers.dart' show encodeDType;
+import 'helpers.dart' show encodeDType, sharesMemory;
 import 'math.dart';
 import 'stats.dart';
 import 'linalg.dart';
@@ -67,12 +66,12 @@ NDArray<Float64> _promoteToFloat64(NDArray a) {
     throw StateError('Cannot perform operation on a disposed array.');
   }
   if (a.dtype == DType.float64) {
-    return a as NDArray<Float64>;
+    if (a is NDArray<Float64>) return a;
+    return NDArray<Float64>.view(a, shape: a.shape, strides: a.strides);
   }
   final res = NDArray<Float64>.create(a.shape, DType.float64);
   final ndim = a.shape.length;
   final marker = ScratchArena.marker;
-
   try {
     final cBuffer = ScratchArena.getStridedBuffer(ndim);
     final cShape = cBuffer;
@@ -119,7 +118,7 @@ NDArray<Float64> _promoteToFloat64(NDArray a) {
 /// - Space complexity is $O(M^2)$ for the output array.
 ///
 /// {@example /example/distance_example.dart}
-NDArray<Float64> pdist<T extends Object>(
+NDArray<Float64> pdist<T extends DTypeTag>(
   NDArray<T> x, {
   DistanceMetric metric = DistanceMetric.euclidean,
   NDArray<Float64>? out,
@@ -163,15 +162,24 @@ NDArray<Float64> pdist<T extends Object>(
     }
   }
 
+  final bool useTempOut =
+      out != null && (!out.isContiguous || sharesMemory(x, out));
+
   return NDArray.scope(() {
-    final result = out ?? NDArray<Float64>.create([outSize], DType.float64);
+    final target = (out != null && !useTempOut)
+        ? out
+        : NDArray<Float64>.create([outSize], DType.float64);
 
     if (metric == DistanceMetric.cosine) {
-      _pdistCosine(x, out: result);
+      _pdistCosine(x, out: target);
+      if (useTempOut) {
+        target.copy(out: out);
+        return out;
+      }
       if (out != null) {
-        return result;
+        return target;
       } else {
-        return result.detachToParentScope();
+        return target.detachToParentScope();
       }
     }
 
@@ -185,14 +193,18 @@ NDArray<Float64> pdist<T extends Object>(
       x.strides[0],
       x.strides[1],
       metricVal,
-      result.pointer.cast(),
-      result.strides[0],
+      target.pointer.cast(),
+      target.strides[0],
     );
 
+    if (useTempOut) {
+      target.copy(out: out);
+      return out;
+    }
     if (out != null) {
-      return result;
+      return target;
     } else {
-      return result.detachToParentScope();
+      return target.detachToParentScope();
     }
   });
 }
@@ -219,7 +231,7 @@ NDArray<Float64> pdist<T extends Object>(
 /// - Space complexity is $O(M K)$ for the output array.
 ///
 /// {@example /example/distance_example.dart}
-NDArray<Float64> cdist<Ta extends Object, Tb extends Object>(
+NDArray<Float64> cdist<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> xa,
   NDArray<Tb> xb, {
   DistanceMetric metric = DistanceMetric.euclidean,
@@ -259,28 +271,38 @@ NDArray<Float64> cdist<Ta extends Object, Tb extends Object>(
     }
   }
 
+  final bool useTempOut =
+      out != null &&
+      (!out.isContiguous || sharesMemory(xa, out) || sharesMemory(xb, out));
+
   return NDArray.scope(() {
-    final result = out ?? NDArray<Float64>.create(outShape, DType.float64);
+    final target = (out != null && !useTempOut)
+        ? out
+        : NDArray<Float64>.create(outShape, DType.float64);
 
     if (m == 0 || k == 0) {
       if (out != null) {
-        return result;
+        return out;
       } else {
-        return result.detachToParentScope();
+        return target.detachToParentScope();
       }
     }
 
     if (metric == DistanceMetric.cosine) {
-      _cdistCosine(xa, xb, out: result);
+      _cdistCosine(xa, xb, out: target);
+      if (useTempOut) {
+        target.copy(out: out);
+        return out;
+      }
       if (out != null) {
-        return result;
+        return target;
       } else {
-        return result.detachToParentScope();
+        return target.detachToParentScope();
       }
     }
 
-    NDArray<Object> xaReal = xa;
-    NDArray<Object> xbReal = xb;
+    NDArray<DTypeTag> xaReal = xa;
+    NDArray<DTypeTag> xbReal = xb;
     if (xa.dtype != xb.dtype) {
       xaReal = _promoteToFloat64(xa);
       xbReal = _promoteToFloat64(xb);
@@ -300,30 +322,38 @@ NDArray<Float64> cdist<Ta extends Object, Tb extends Object>(
       xbReal.strides[0],
       xbReal.strides[1],
       metricVal,
-      result.pointer.cast(),
-      result.strides[0],
-      result.strides[1],
+      target.pointer.cast(),
+      target.strides[0],
+      target.strides[1],
     );
 
+    if (useTempOut) {
+      target.copy(out: out);
+      return out;
+    }
     if (out != null) {
-      return result;
+      return target;
     } else {
-      return result.detachToParentScope();
+      return target.detachToParentScope();
     }
   });
 }
 
 /// Helper for optimized Cosine pdist implementation in Dart.
 /// Cosine pdist is implemented using ndarray operations, not in a single intrinsic.
-NDArray<Float64> _pdistCosine<T extends Object>(
+NDArray<Float64> _pdistCosine<T extends DTypeTag>(
   NDArray<T> x, {
   NDArray<Float64>? out,
 }) {
   final m = x.shape[0];
   final outSize = m * (m - 1) ~/ 2;
+  final bool useTempOut =
+      out != null && (!out.isContiguous || sharesMemory(x, out));
 
   return NDArray.scope(() {
-    final result = out ?? NDArray<Float64>.create([outSize], DType.float64);
+    final target = (out != null && !useTempOut)
+        ? out
+        : NDArray<Float64>.create([outSize], DType.float64);
 
     final xDouble = _promoteToFloat64(x);
 
@@ -331,24 +361,18 @@ NDArray<Float64> _pdistCosine<T extends Object>(
     final NDArray<Float64> xSum = sum(xSq, axis: 1);
     final NDArray<Float64> normX = sqrt(xSum);
 
-    final NDArray<Float64> dot = matmul<Float64, Float64, Float64>(
-      xDouble,
-      xDouble.transposed,
-    );
+    final NDArray<Float64> dot = matmul<Float64>(xDouble, xDouble.transposed);
 
     final NDArray<Float64> normX2D = normX.reshape([m, 1]);
     final NDArray<Float64> normXT2D = normX.reshape([1, m]);
-    final NDArray<Float64> denom = matmul<Float64, Float64, Float64>(
-      normX2D,
-      normXT2D,
-    );
+    final NDArray<Float64> denom = matmul<Float64>(normX2D, normXT2D);
 
     final NDArray<Float64> div = divide(dot, denom);
-    final one = NDArray<Float64>.fromList([Float64(1.0)], [1], DType.float64);
+    final one = NDArray<Float64>.fromList([1.0], [1], DType.float64);
     final NDArray<Float64> cosDistMatrix = subtract(one, div);
 
     final flatPtr = cosDistMatrix.pointer.cast<ffi.Double>();
-    final resPtr = result.pointer.cast<ffi.Double>();
+    final resPtr = target.pointer.cast<ffi.Double>();
     var idx = 0;
     for (var i = 0; i < m; i++) {
       final rowOffset = i * m;
@@ -357,17 +381,21 @@ NDArray<Float64> _pdistCosine<T extends Object>(
       }
     }
 
+    if (useTempOut) {
+      target.copy(out: out);
+      return out;
+    }
     if (out != null) {
-      return result;
+      return target;
     } else {
-      return result.detachToParentScope();
+      return target.detachToParentScope();
     }
   });
 }
 
 /// Helper for optimized Cosine cdist implementation in Dart.
 /// Cosine cdist is implemented using ndarray operations, not in a single intrinsic.
-NDArray<Float64> _cdistCosine<Ta extends Object, Tb extends Object>(
+NDArray<Float64> _cdistCosine<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> xa,
   NDArray<Tb> xb, {
   NDArray<Float64>? out,
@@ -390,20 +418,14 @@ NDArray<Float64> _cdistCosine<Ta extends Object, Tb extends Object>(
     final NDArray<Float64> xbSum = sum(xbSq, axis: 1);
     final NDArray<Float64> normXb = sqrt(xbSum);
 
-    final NDArray<Float64> dot = matmul<Float64, Float64, Float64>(
-      xaDouble,
-      xbDouble.transposed,
-    );
+    final NDArray<Float64> dot = matmul<Float64>(xaDouble, xbDouble.transposed);
 
     final NDArray<Float64> normXa2D = normXa.reshape([m, 1]);
     final NDArray<Float64> normXb2D = normXb.reshape([1, k]);
-    final NDArray<Float64> denom = matmul<Float64, Float64, Float64>(
-      normXa2D,
-      normXb2D,
-    );
+    final NDArray<Float64> denom = matmul<Float64>(normXa2D, normXb2D);
 
     final NDArray<Float64> div = divide(dot, denom);
-    final one = NDArray<Float64>.fromList([Float64(1.0)], [1], DType.float64);
+    final one = NDArray<Float64>.fromList([1.0], [1], DType.float64);
     subtract(one, div, out: result);
 
     if (out != null) {

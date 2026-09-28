@@ -41,8 +41,8 @@ void main() {
     final res = lstsq<Float64, Float64, Float64>(a, b);
 
     print('\nLeast-Squares Solution (x):');
-    print('  Intercept (c): ${res.x[0].toStringAsFixed(4)}');
-    print('  Slope (m):     ${res.x[1].toStringAsFixed(4)}');
+    print('  Intercept (c): ${res.x.getCell([0]).toStringAsFixed(4)}');
+    print('  Slope (m):     ${res.x.getCell([1]).toStringAsFixed(4)}');
 
     print('\nSums of Squared Residuals:');
     print('  ${res.residuals.toList()}');
@@ -61,7 +61,8 @@ void _printMatrix(NDArray a) {
   for (var r = 0; r < rows; r++) {
     final rowStr = [];
     for (var c = 0; c < cols; c++) {
-      rowStr.add(a[r * cols + c].toStringAsFixed(4).padLeft(9));
+      final val = a.getCell([r, c]);
+      rowStr.add((val as num).toStringAsFixed(4).padLeft(9));
     }
     print(' [ ${rowStr.join(', ')} ]');
   }

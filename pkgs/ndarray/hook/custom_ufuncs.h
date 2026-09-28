@@ -1429,6 +1429,17 @@ void pad_axis_int64(
     int statLengthBefore, int statLengthAfter
 );
 
+void pad_axis_uint64(
+    const uint64_t *src, const int *shapeSrc, const int *stridesSrc,
+    uint64_t *dest, const int *shapeDest,
+    int rank, int axis,
+    int padBefore, int padAfter,
+    int mode,
+    uint64_t constantBefore, uint64_t constantAfter,
+    uint64_t endBefore, uint64_t endAfter,
+    int statLengthBefore, int statLengthAfter
+);
+
 void pad_axis_int32(
     const int32_t *src, const int *shapeSrc, const int *stridesSrc,
     int32_t *dest, const int *shapeDest,
@@ -1645,6 +1656,30 @@ void s_nanmin_double(const double *src, const int *stridesSrc, double *dest, con
 void s_nanmax_double(const double *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis);
 void s_nanmin_float(const float *src, const int *stridesSrc, float *dest, const int *stridesDest, const int *shape, int rank, int axis);
 void s_nanmax_float(const float *src, const int *stridesSrc, float *dest, const int *stridesDest, const int *shape, int rank, int axis);
+
+double r_nansum_double(const double *src, int size);
+double r_nansum_float(const float *src, int size);
+double r_nanmean_double(const double *src, int size);
+double r_nanmean_float(const float *src, int size);
+double r_nanvar_double(const double *src, int size);
+double r_nanvar_float(const float *src, int size);
+
+void s_nansum_double(const double *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis);
+void s_nansum_float(const float *src, const int *stridesSrc, float *dest, const int *stridesDest, const int *shape, int rank, int axis);
+void s_nanmean_double(const double *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis);
+void s_nanmean_float(const float *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis);
+void s_nanvar_double(const double *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis);
+void s_nanvar_float(const float *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis);
+
+void native_copy_strided(
+    const void *src,
+    const int *stridesSrc,
+    void *dest,
+    const int *stridesDest,
+    const int *shape,
+    int rank,
+    int itemSize
+);
 int ndarray_find_index(
     int op, int dtype,
     const void *a, const int *stridesA,
@@ -1698,12 +1733,46 @@ void s_abs_uint8(const uint8_t *src, const int *stridesSrc, uint8_t *res, const 
 void v_pow_int64(const int64_t *x1, const int64_t *x2, int64_t *res, int size, const uint8_t *mask);
 void v_pow_int32(const int32_t *x1, const int32_t *x2, int32_t *res, int size, const uint8_t *mask);
 void v_pow_int16(const int16_t *x1, const int16_t *x2, int16_t *res, int size, const uint8_t *mask);
+void v_pow_int8(const int8_t *x1, const int8_t *x2, int8_t *res, int size, const uint8_t *mask);
+void v_pow_uint64(const uint64_t *x1, const uint64_t *x2, uint64_t *res, int size, const uint8_t *mask);
+void v_pow_uint32(const uint32_t *x1, const uint32_t *x2, uint32_t *res, int size, const uint8_t *mask);
+void v_pow_uint16(const uint16_t *x1, const uint16_t *x2, uint16_t *res, int size, const uint8_t *mask);
 void v_pow_uint8(const uint8_t *x1, const uint8_t *x2, uint8_t *res, int size, const uint8_t *mask);
+void v_pow_float16(const uint16_t *x1, const uint16_t *x2, uint16_t *res, int size, const uint8_t *mask);
+void v_pow_bfloat16(const uint16_t *x1, const uint16_t *x2, uint16_t *res, int size, const uint8_t *mask);
+void v_pow_boolean(const uint8_t *x1, const uint8_t *x2, uint8_t *res, int size, const uint8_t *mask);
 
 void s_pow_int64(const int64_t *x1, const int *stridesX1, const int64_t *x2, const int *stridesX2, int64_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
 void s_pow_int32(const int32_t *x1, const int *stridesX1, const int32_t *x2, const int *stridesX2, int32_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
 void s_pow_int16(const int16_t *x1, const int *stridesX1, const int16_t *x2, const int *stridesX2, int16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_int8(const int8_t *x1, const int *stridesX1, const int8_t *x2, const int *stridesX2, int8_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_uint64(const uint64_t *x1, const int *stridesX1, const uint64_t *x2, const int *stridesX2, uint64_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_uint32(const uint32_t *x1, const int *stridesX1, const uint32_t *x2, const int *stridesX2, uint32_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_uint16(const uint16_t *x1, const int *stridesX1, const uint16_t *x2, const int *stridesX2, uint16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
 void s_pow_uint8(const uint8_t *x1, const int *stridesX1, const uint8_t *x2, const int *stridesX2, uint8_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_float16(const uint16_t *x1, const int *stridesX1, const uint16_t *x2, const int *stridesX2, uint16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_bfloat16(const uint16_t *x1, const int *stridesX1, const uint16_t *x2, const int *stridesX2, uint16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_pow_boolean(const uint8_t *x1, const int *stridesX1, const uint8_t *x2, const int *stridesX2, uint8_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+
+void v_square_int16(const int16_t *src, int16_t *res, int size, const uint8_t *mask);
+void v_square_int8(const int8_t *src, int8_t *res, int size, const uint8_t *mask);
+void v_square_uint64(const uint64_t *src, uint64_t *res, int size, const uint8_t *mask);
+void v_square_uint32(const uint32_t *src, uint32_t *res, int size, const uint8_t *mask);
+void v_square_uint16(const uint16_t *src, uint16_t *res, int size, const uint8_t *mask);
+void v_square_uint8(const uint8_t *src, uint8_t *res, int size, const uint8_t *mask);
+void v_square_float16(const uint16_t *src, uint16_t *res, int size, const uint8_t *mask);
+void v_square_bfloat16(const uint16_t *src, uint16_t *res, int size, const uint8_t *mask);
+void v_square_boolean(const uint8_t *src, uint8_t *res, int size, const uint8_t *mask);
+
+void s_square_int16(const int16_t *src, const int *stridesSrc, int16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_int8(const int8_t *src, const int *stridesSrc, int8_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_uint64(const uint64_t *src, const int *stridesSrc, uint64_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_uint32(const uint32_t *src, const int *stridesSrc, uint32_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_uint16(const uint16_t *src, const int *stridesSrc, uint16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_uint8(const uint8_t *src, const int *stridesSrc, uint8_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_float16(const uint16_t *src, const int *stridesSrc, uint16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_bfloat16(const uint16_t *src, const int *stridesSrc, uint16_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
+void s_square_boolean(const uint8_t *src, const int *stridesSrc, uint8_t *res, const int *stridesRes, const int *shape, int rank, const uint8_t *mask);
 
 /* Bincount operations */
 void v_bincount_int32(const int32_t *src, int64_t *res, int size, int res_size);

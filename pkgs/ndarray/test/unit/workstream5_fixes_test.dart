@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:io';
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -143,7 +142,7 @@ void main() {
       expect(normalizedAxes, equals([(0, 0), (1, 1)]));
 
       // Padding a 0-sized array
-      final emptyArr = NDArray<double>.zeros([0, 5], DType.float64);
+      final emptyArr = NDArray.zeros([0, 5], DType.float64);
       final padded = pad(
         emptyArr,
         PadWidth.all(1),
@@ -154,11 +153,16 @@ void main() {
     });
 
     test('7. linspace with 0 samples', () {
-      final ls0 = linspace(0.0, 10.0, 0);
+      final ls0 = linspace(0.0, 10.0, 0, dtype: DType.float64);
       expect(ls0.shape, equals([0]));
       expect(ls0.toList(), equals([]));
 
-      final (samples: lsStepArr, step: step) = linspaceWithStep(0.0, 10.0, 0);
+      final (samples: lsStepArr, step: step) = linspaceWithStep(
+        0.0,
+        10.0,
+        0,
+        dtype: DType.float64,
+      );
       expect(lsStepArr.shape, equals([0]));
       expect(step.isNaN, isTrue);
 
@@ -203,23 +207,23 @@ void main() {
       NDArray.scope(() {
         final x0 = NDArray<Float64>.fromList([0.0, 0.0], [2], DType.float64);
         final resNM = nelder_mead((x) {
-          final px = x.getCell([0]).toDouble();
-          final py = x.getCell([1]).toDouble();
+          final px = x.getCell([0]);
+          final py = x.getCell([1]);
           return (px - 3.0) * (px - 3.0) + (py + 2.0) * (py + 2.0);
         }, x0);
         expect(resNM.success, isTrue);
-        expect(resNM.x.getCell([0]).toDouble(), closeTo(3.0, 1e-2));
-        expect(resNM.x.getCell([1]).toDouble(), closeTo(-2.0, 1e-2));
+        expect(resNM.x.getCell([0]), closeTo(3.0, 1e-2));
+        expect(resNM.x.getCell([1]), closeTo(-2.0, 1e-2));
 
         final resLBFGS = lbfgs(
           (x) => 0.0,
           x0,
           funAndGrad: (x) {
-            final px = x.getCell([0]).toDouble();
-            final py = x.getCell([1]).toDouble();
+            final px = x.getCell([0]);
+            final py = x.getCell([1]);
             final fVal = (px - 3.0) * (px - 3.0) + (py + 2.0) * (py + 2.0);
             final g = NDArray<Float64>.fromList(
-              [Float64(2.0 * (px - 3.0)), Float64(2.0 * (py + 2.0))],
+              [2.0 * (px - 3.0), 2.0 * (py + 2.0)],
               [2],
               DType.float64,
             );
@@ -227,8 +231,8 @@ void main() {
           },
         );
         expect(resLBFGS.success, isTrue);
-        expect(resLBFGS.x.getCell([0]).toDouble(), closeTo(3.0, 1e-2));
-        expect(resLBFGS.x.getCell([1]).toDouble(), closeTo(-2.0, 1e-2));
+        expect(resLBFGS.x.getCell([0]), closeTo(3.0, 1e-2));
+        expect(resLBFGS.x.getCell([1]), closeTo(-2.0, 1e-2));
       });
     });
 
@@ -241,10 +245,7 @@ void main() {
       final fvEndEnum = fv(rate, nper, pmt, pvVal, when: PaymentDue.end);
       final fvBeginEnum = fv(rate, nper, pmt, pvVal, when: PaymentDue.begin);
 
-      expect(
-        fvBeginEnum.getCell([0]).toDouble(),
-        isNot(equals(fvEndEnum.getCell([0]).toDouble())),
-      );
+      expect(fvBeginEnum.getCell([0]), isNot(equals(fvEndEnum.getCell([0]))));
     });
 
     test('11. loadz / savez roundtrip with Uint8List compatibility', () {

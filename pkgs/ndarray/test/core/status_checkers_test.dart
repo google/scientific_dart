@@ -14,7 +14,6 @@
 
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
-
 import 'dart:typed_data';
 
 void main() {
@@ -98,7 +97,7 @@ void main() {
     test(
       'isnan, isinf, isfinite complex arrays (Complex128 and Complex64)',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.fromList(
+        final a = NDArray.fromList(
           [
             Complex(1.0, 0.0),
             Complex(double.nan, 1.0),
@@ -117,7 +116,7 @@ void main() {
         final finiteA = isfinite(a);
         expect(finiteA.toList(), [true, false, false]);
 
-        final b = NDArray<Complex>.fromList(
+        final b = NDArray.fromList(
           [
             Complex(1.0, 0.0),
             Complex(double.nan, 1.0),

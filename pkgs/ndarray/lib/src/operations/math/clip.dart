@@ -12,14 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:ffi' as ffi;
-
 import '../../ndarray.dart';
 import '../../ndarray_bindings.dart';
 import '../../scratch_arena.dart';
 import '../helpers.dart';
 import '../broadcasting.dart';
+import 'utility.dart';
 
 /// Clip (limit) the values in an array using scalar bounds.
 ///
@@ -45,11 +44,11 @@ import '../broadcasting.dart';
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy clip](https://numpy.org/doc/stable/reference/generated/numpy.clip.html)
-NDArray<T> clip<T>(
+NDArray<T> clip<T extends DTypeTag>(
   NDArray<T> a, {
   num? min,
   num? max,
-  NDArray<dynamic>? where,
+  NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
   if (a.isDisposed ||
@@ -60,9 +59,8 @@ NDArray<T> clip<T>(
   if (a.dtype == DType.complex128 || a.dtype == DType.complex64) {
     throw UnsupportedError('Complex numbers are not supported for clip');
   }
-  final result = out ?? NDArray<T>.create(a.shape, a.dtype);
   if (out != null) {
-    if (!listEquals(out.shape, a.shape)) {
+    if (!out.isWriteable || !listEquals(out.shape, a.shape)) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape for clip.',
       );
@@ -72,10 +70,22 @@ NDArray<T> clip<T>(
         'Provided out buffer has incompatible DType for clip.',
       );
     }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        clip<T>(a, min: min, max: max, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
-  final maskHolder = prepareMask(where, result.shape);
+  final maskHolder = prepareMask(where, a.shape);
 
   try {
+    final result =
+        out ?? NDArray<T>.create(a.shape, a.dtype, zeroInit: where != null);
     final resolvedMin = min ?? _getMinLimit(a.dtype);
     final resolvedMax = max ?? _getMaxLimit(a.dtype);
 
@@ -103,41 +113,81 @@ NDArray<T> clip<T>(
             maskHolder.pointer,
           );
           return result;
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
           break;
       }
     }
 
-    if (a.dtype.isInteger) {
-      final mn = resolvedMin.toInt();
-      final mx = resolvedMax.toInt();
-      unaryOp<dynamic, dynamic>(
-        result,
-        a,
-        a.shape,
-        a.strides,
-        result.strides,
-        0,
-        a.offsetElements,
-        result.offsetElements,
-        (x) => castValue((x as num).toInt().clamp(mn, mx), a.dtype),
-        maskHolder.pointer,
-      );
-    } else {
-      final mn = resolvedMin.toDouble();
-      final mx = resolvedMax.toDouble();
-      unaryOp<dynamic, dynamic>(
-        result,
-        a,
-        a.shape,
-        a.strides,
-        result.strides,
-        0,
-        a.offsetElements,
-        result.offsetElements,
-        (x) => castValue((x as num).toDouble().clamp(mn, mx), a.dtype),
-        maskHolder.pointer,
-      );
+    switch (a.dtype) {
+      case DType.uint64:
+        final mn = _toUint64Bound(min, isMax: false);
+        final mx = _toUint64Bound(max, isMax: true);
+        unaryOp<DTypeTag, DTypeTag>(
+          result,
+          a,
+          a.shape,
+          a.strides,
+          result.strides,
+          0,
+          a.offsetElements,
+          result.offsetElements,
+          (x) => _clampUint64(x as int, mn, mx),
+          maskHolder.pointer,
+        );
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+        final mn = resolvedMin.toInt();
+        final mx = resolvedMax.toInt();
+        unaryOp<DTypeTag, DTypeTag>(
+          result,
+          a,
+          a.shape,
+          a.strides,
+          result.strides,
+          0,
+          a.offsetElements,
+          result.offsetElements,
+          (x) => castValue((x as num).toInt().clamp(mn, mx), a.dtype),
+          maskHolder.pointer,
+        );
+      case DType.float64:
+      case DType.float32:
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.boolean:
+      case DType.complex128:
+      case DType.complex64:
+        final mn = resolvedMin.toDouble();
+        final mx = resolvedMax.toDouble();
+        unaryOp<DTypeTag, DTypeTag>(
+          result,
+          a,
+          a.shape,
+          a.strides,
+          result.strides,
+          0,
+          a.offsetElements,
+          result.offsetElements,
+          (x) => castValue((x as num).toDouble().clamp(mn, mx), a.dtype),
+          maskHolder.pointer,
+        );
     }
     return result;
   } finally {
@@ -176,11 +226,11 @@ NDArray<T> clip<T>(
 /// ```
 ///
 /// Reference: [NumPy clip](https://numpy.org/doc/stable/reference/generated/numpy.clip.html)
-NDArray<T> clipArray<T>(
+NDArray<T> clipArray<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<T>? min,
   NDArray<T>? max,
-  NDArray<dynamic>? where,
+  NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
   if (a.isDisposed ||
@@ -204,48 +254,62 @@ NDArray<T> clipArray<T>(
     );
   }
 
-  final bool ownsMin = min == null;
-  final minArr =
-      min ??
-      (NDArray<T>.create([], a.dtype)
-        ..setCellRaw(0, _getMinLimit(a.dtype) as T));
+  var commonShape = a.shape;
+  if (min != null) commonShape = broadcastShapes(commonShape, min.shape);
+  if (max != null) commonShape = broadcastShapes(commonShape, max.shape);
 
-  final bool ownsMax = max == null;
-  final maxArr =
-      max ??
-      (NDArray<T>.create([], a.dtype)
-        ..setCellRaw(0, _getMaxLimit(a.dtype) as T));
+  if (out != null) {
+    if (!out.isWriteable || !listEquals(out.shape, commonShape)) {
+      throw ArgumentError(
+        'Provided out buffer has incompatible shape for clipArray.',
+      );
+    }
+    if (out.dtype != a.dtype) {
+      throw ArgumentError(
+        'Provided out buffer has incompatible DType for clipArray.',
+      );
+    }
+    if (sharesMemory(a, out) ||
+        (min != null && sharesMemory(min, out)) ||
+        (max != null && sharesMemory(max, out)) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, a.dtype);
+        clipArray<T>(a, min: min, max: max, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
 
+  final maskHolder = prepareMask(where, commonShape);
   try {
-    NDArray? dummy;
-    List<int> commonShape;
-    try {
-      final b1 = broadcast(a, minArr);
-      dummy = NDArray.create(b1.shape, a.dtype);
-      final b2 = broadcast(dummy, maxArr);
-      commonShape = b2.shape;
-    } finally {
-      dummy?.dispose();
-    }
+    final bool ownsMin = min == null || min.dtype != a.dtype;
+    final bool ownsMax = max == null || max.dtype != a.dtype;
+    NDArray? minArr;
+    NDArray? maxArr;
+    NDArray? broadcastA;
+    NDArray? broadcastMin;
+    NDArray? broadcastMax;
 
-    final result = out ?? NDArray<T>.create(commonShape, a.dtype);
-    if (out != null) {
-      if (!listEquals(out.shape, commonShape)) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape for clipArray.',
-        );
-      }
-      if (out.dtype != a.dtype) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible DType for clipArray.',
-        );
-      }
-    }
-    final maskHolder = prepareMask(where, result.shape);
     try {
-      final broadcastA = broadcastTo(a, commonShape);
-      final broadcastMin = broadcastTo(minArr, commonShape);
-      final broadcastMax = broadcastTo(maxArr, commonShape);
+      minArr = min == null
+          ? (NDArray<T>.create([], a.dtype)
+              ..setCellRaw(0, _getMinLimit(a.dtype)))
+          : (min.dtype == a.dtype ? min : castNDArray(min, a.dtype));
+      maxArr = max == null
+          ? (NDArray<T>.create([], a.dtype)
+              ..setCellRaw(0, _getMaxLimit(a.dtype)))
+          : (max.dtype == a.dtype ? max : castNDArray(max, a.dtype));
+
+      final result =
+          out ??
+          NDArray<T>.create(commonShape, a.dtype, zeroInit: where != null);
+      broadcastA = broadcastTo(a, commonShape);
+      broadcastMin = broadcastTo(minArr, commonShape);
+      broadcastMax = broadcastTo(maxArr, commonShape);
 
       final marker = ScratchArena.marker;
       try {
@@ -268,20 +332,13 @@ NDArray<T> clipArray<T>(
         switch (a.dtype) {
           case DType.float64:
             s_clip_double(
-              (broadcastA.pointer.cast<ffi.Double>() +
-                      broadcastA.offsetElements)
-                  .cast(),
+              broadcastA.pointer.cast<ffi.Double>(),
               cStridesA,
-              (broadcastMin.pointer.cast<ffi.Double>() +
-                      broadcastMin.offsetElements)
-                  .cast(),
+              broadcastMin.pointer.cast<ffi.Double>(),
               cStridesMin,
-              (broadcastMax.pointer.cast<ffi.Double>() +
-                      broadcastMax.offsetElements)
-                  .cast(),
+              broadcastMax.pointer.cast<ffi.Double>(),
               cStridesMax,
-              (result.pointer.cast<ffi.Double>() + result.offsetElements)
-                  .cast(),
+              result.pointer.cast<ffi.Double>(),
               cStridesRes,
               cShape,
               ndim,
@@ -290,18 +347,13 @@ NDArray<T> clipArray<T>(
             return result;
           case DType.float32:
             s_clip_float(
-              (broadcastA.pointer.cast<ffi.Float>() + broadcastA.offsetElements)
-                  .cast(),
+              broadcastA.pointer.cast<ffi.Float>(),
               cStridesA,
-              (broadcastMin.pointer.cast<ffi.Float>() +
-                      broadcastMin.offsetElements)
-                  .cast(),
+              broadcastMin.pointer.cast<ffi.Float>(),
               cStridesMin,
-              (broadcastMax.pointer.cast<ffi.Float>() +
-                      broadcastMax.offsetElements)
-                  .cast(),
+              broadcastMax.pointer.cast<ffi.Float>(),
               cStridesMax,
-              (result.pointer.cast<ffi.Float>() + result.offsetElements).cast(),
+              result.pointer.cast<ffi.Float>(),
               cStridesRes,
               cShape,
               ndim,
@@ -310,18 +362,13 @@ NDArray<T> clipArray<T>(
             return result;
           case DType.int64:
             s_clip_int64(
-              (broadcastA.pointer.cast<ffi.Int64>() + broadcastA.offsetElements)
-                  .cast(),
+              broadcastA.pointer.cast<ffi.Int64>(),
               cStridesA,
-              (broadcastMin.pointer.cast<ffi.Int64>() +
-                      broadcastMin.offsetElements)
-                  .cast(),
+              broadcastMin.pointer.cast<ffi.Int64>(),
               cStridesMin,
-              (broadcastMax.pointer.cast<ffi.Int64>() +
-                      broadcastMax.offsetElements)
-                  .cast(),
+              broadcastMax.pointer.cast<ffi.Int64>(),
               cStridesMax,
-              (result.pointer.cast<ffi.Int64>() + result.offsetElements).cast(),
+              result.pointer.cast<ffi.Int64>(),
               cStridesRes,
               cShape,
               ndim,
@@ -330,18 +377,13 @@ NDArray<T> clipArray<T>(
             return result;
           case DType.int32:
             s_clip_int32(
-              (broadcastA.pointer.cast<ffi.Int32>() + broadcastA.offsetElements)
-                  .cast(),
+              broadcastA.pointer.cast<ffi.Int32>(),
               cStridesA,
-              (broadcastMin.pointer.cast<ffi.Int32>() +
-                      broadcastMin.offsetElements)
-                  .cast(),
+              broadcastMin.pointer.cast<ffi.Int32>(),
               cStridesMin,
-              (broadcastMax.pointer.cast<ffi.Int32>() +
-                      broadcastMax.offsetElements)
-                  .cast(),
+              broadcastMax.pointer.cast<ffi.Int32>(),
               cStridesMax,
-              (result.pointer.cast<ffi.Int32>() + result.offsetElements).cast(),
+              result.pointer.cast<ffi.Int32>(),
               cStridesRes,
               cShape,
               ndim,
@@ -350,18 +392,13 @@ NDArray<T> clipArray<T>(
             return result;
           case DType.uint8:
             s_clip_uint8(
-              (broadcastA.pointer.cast<ffi.Uint8>() + broadcastA.offsetElements)
-                  .cast(),
+              broadcastA.pointer.cast<ffi.Uint8>(),
               cStridesA,
-              (broadcastMin.pointer.cast<ffi.Uint8>() +
-                      broadcastMin.offsetElements)
-                  .cast(),
+              broadcastMin.pointer.cast<ffi.Uint8>(),
               cStridesMin,
-              (broadcastMax.pointer.cast<ffi.Uint8>() +
-                      broadcastMax.offsetElements)
-                  .cast(),
+              broadcastMax.pointer.cast<ffi.Uint8>(),
               cStridesMax,
-              (result.pointer.cast<ffi.Uint8>() + result.offsetElements).cast(),
+              result.pointer.cast<ffi.Uint8>(),
               cStridesRes,
               cShape,
               ndim,
@@ -370,58 +407,109 @@ NDArray<T> clipArray<T>(
             return result;
           case DType.int16:
             s_clip_int16(
-              (broadcastA.pointer.cast<ffi.Int16>() + broadcastA.offsetElements)
-                  .cast(),
+              broadcastA.pointer.cast<ffi.Int16>(),
               cStridesA,
-              (broadcastMin.pointer.cast<ffi.Int16>() +
-                      broadcastMin.offsetElements)
-                  .cast(),
+              broadcastMin.pointer.cast<ffi.Int16>(),
               cStridesMin,
-              (broadcastMax.pointer.cast<ffi.Int16>() +
-                      broadcastMax.offsetElements)
-                  .cast(),
+              broadcastMax.pointer.cast<ffi.Int16>(),
               cStridesMax,
-              (result.pointer.cast<ffi.Int16>() + result.offsetElements).cast(),
+              result.pointer.cast<ffi.Int16>(),
               cStridesRes,
               cShape,
               ndim,
               maskHolder.pointer,
             );
             return result;
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.boolean:
+          case DType.complex128:
+          case DType.complex64:
             break;
         }
       } finally {
         ScratchArena.reset(marker);
       }
 
-      ternaryOp<dynamic, dynamic, dynamic, dynamic>(
-        result,
-        broadcastA,
-        broadcastMin,
-        broadcastMax,
-        commonShape,
-        broadcastA.strides,
-        broadcastMin.strides,
-        broadcastMax.strides,
-        result.strides,
-        0,
-        broadcastA.offsetElements,
-        broadcastMin.offsetElements,
-        broadcastMax.offsetElements,
-        result.offsetElements,
-        (x, mn, mx) =>
-            castValue((x as num).clamp(mn as num, mx as num), a.dtype),
-        maskHolder.pointer,
-      );
+      switch (a.dtype) {
+        case DType.uint64:
+          ternaryOp<DTypeTag, DTypeTag, DTypeTag, DTypeTag>(
+            result,
+            broadcastA,
+            broadcastMin,
+            broadcastMax,
+            commonShape,
+            broadcastA.strides,
+            broadcastMin.strides,
+            broadcastMax.strides,
+            result.strides,
+            0,
+            broadcastA.offsetElements,
+            broadcastMin.offsetElements,
+            broadcastMax.offsetElements,
+            result.offsetElements,
+            (x, mn, mx) => _clampUint64(
+              x as int,
+              _toUint64Bound(mn, isMax: false),
+              _toUint64Bound(mx, isMax: true),
+            ),
+            maskHolder.pointer,
+          );
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          ternaryOp<DTypeTag, DTypeTag, DTypeTag, DTypeTag>(
+            result,
+            broadcastA,
+            broadcastMin,
+            broadcastMax,
+            commonShape,
+            broadcastA.strides,
+            broadcastMin.strides,
+            broadcastMax.strides,
+            result.strides,
+            0,
+            broadcastA.offsetElements,
+            broadcastMin.offsetElements,
+            broadcastMax.offsetElements,
+            result.offsetElements,
+            (x, mn, mx) =>
+                castValue((x as num).clamp(mn as num, mx as num), a.dtype),
+            maskHolder.pointer,
+          );
+      }
 
       return result;
     } finally {
-      maskHolder.dispose();
+      if (broadcastA != null && !identical(broadcastA, a)) {
+        broadcastA.dispose();
+      }
+      if (broadcastMin != null && !identical(broadcastMin, minArr)) {
+        broadcastMin.dispose();
+      }
+      if (broadcastMax != null && !identical(broadcastMax, maxArr)) {
+        broadcastMax.dispose();
+      }
+      if (ownsMin) minArr?.dispose();
+      if (ownsMax) maxArr?.dispose();
     }
   } finally {
-    if (ownsMin) minArr.dispose();
-    if (ownsMax) maxArr.dispose();
+    maskHolder.dispose();
   }
 }
 
@@ -445,7 +533,9 @@ num _getMinLimit(DType dtype) {
     case DType.uint16:
     case DType.uint8:
       return 0;
-    default:
+    case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
       return double.negativeInfinity;
   }
 }
@@ -466,14 +556,40 @@ num _getMaxLimit(DType dtype) {
     case DType.int8:
       return 127;
     case DType.uint64:
-      return 9223372036854775807;
+      return -1;
     case DType.uint32:
       return 4294967295;
     case DType.uint16:
       return 65535;
     case DType.uint8:
       return 255;
-    default:
+    case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
       return double.infinity;
   }
+}
+
+int _toUint64Bound(dynamic val, {required bool isMax}) {
+  if (val == null) return isMax ? -1 : 0;
+  if (val is int) return val;
+  if (val is double) {
+    if (val.isNaN) return isMax ? -1 : 0;
+    if (val.isInfinite) return val > 0 ? -1 : 0;
+    if (val <= 0) return 0;
+    if (val >= 18446744073709551615.0) return -1;
+    if (val >= 9223372036854775808.0) {
+      return BigInt.from(val).toSigned(64).toInt();
+    }
+    return val.toInt();
+  }
+  if (val is num) return val.toInt();
+  return isMax ? -1 : 0;
+}
+
+int _clampUint64(int x, int mn, int mx) {
+  var res = x;
+  if (uint64Compare(res, mn) < 0) res = mn;
+  if (uint64Compare(res, mx) > 0) res = mx;
+  return res;
 }

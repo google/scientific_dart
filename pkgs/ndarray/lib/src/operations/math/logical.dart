@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:ffi' as ffi;
-
 import '../../ndarray.dart';
 import '../../ndarray_bindings.dart';
 import '../../scratch_arena.dart';
@@ -39,31 +37,36 @@ import '../helpers.dart';
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_not](https://numpy.org/doc/stable/reference/generated/numpy.logical_not.html)
-NDArray<bool> logical_not<T>(
+NDArray<Boolean> logicalNot<T extends DTypeTag>(
   NDArray<T> a, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute logical_not() on a disposed array.');
+    throw StateError('Cannot execute logicalNot() on a disposed array.');
   }
-  final NDArray<bool> result;
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for logical_not.',
+        'Provided out buffer has incompatible shape or dtype for logicalNot.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray<bool>.create(a.shape, DType.boolean);
   }
   final marker = ScratchArena.marker;
   try {
-    final maskHolder = prepareMask(where, result.shape);
+    final maskHolder = prepareMask(where, a.shape);
     try {
+      final NDArray<Boolean> result =
+          out ??
+          NDArray<Boolean>.create(
+            a.shape,
+            DType.boolean,
+            zeroInit: where != null,
+          );
       final ffi.Pointer<ffi.Uint8> aBoolPtr;
       final List<int> aBoolStrides;
       if (a.dtype == DType.boolean) {
@@ -93,13 +96,16 @@ NDArray<bool> logical_not<T>(
             case DType.float16:
             case DType.bfloat16:
               final doubleA = castNDArray(a, DType.float64);
-              v_to_bool_double(
-                doubleA.pointer.cast(),
-                aBoolPtr,
-                a.size,
-                ffi.nullptr,
-              );
-              doubleA.dispose();
+              try {
+                v_to_bool_double(
+                  doubleA.pointer.cast(),
+                  aBoolPtr,
+                  a.size,
+                  ffi.nullptr,
+                );
+              } finally {
+                doubleA.dispose();
+              }
             case DType.complex128:
               v_to_bool_complex128(
                 a.pointer.cast(),
@@ -196,17 +202,20 @@ NDArray<bool> logical_not<T>(
             case DType.float16:
             case DType.bfloat16:
               final doubleA = castNDArray(a, DType.float64);
-              final doubleStridesA = ScratchArena.copyInts(doubleA.strides);
-              s_to_bool_double(
-                doubleA.pointer.cast(),
-                doubleStridesA,
-                aBoolPtr,
-                cStridesTemp,
-                cShape,
-                ndim,
-                ffi.nullptr,
-              );
-              doubleA.dispose();
+              try {
+                final doubleStridesA = ScratchArena.copyInts(doubleA.strides);
+                s_to_bool_double(
+                  doubleA.pointer.cast(),
+                  doubleStridesA,
+                  aBoolPtr,
+                  cStridesTemp,
+                  cShape,
+                  ndim,
+                  ffi.nullptr,
+                );
+              } finally {
+                doubleA.dispose();
+              }
             case DType.complex128:
               s_to_bool_complex128(
                 a.pointer.cast(),
@@ -288,11 +297,11 @@ NDArray<bool> logical_not<T>(
 /// ```
 ///
 /// Reference: [NumPy equal](https://numpy.org/doc/stable/reference/generated/numpy.equal.html)
-NDArray<bool> equal<Ta, Tb>(
+NDArray<Boolean> equal<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -304,25 +313,25 @@ NDArray<bool> equal<Ta, Tb>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, commonShape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype.",
       );
     }
   }
 
-  final result = out ?? NDArray<bool>.create(commonShape, DType.boolean);
-
-  _compareHelper(
+  return _compareHelper(
     a,
     b,
-    result,
+    commonShape,
     broadcastResult.stridesA,
     broadcastResult.stridesB,
     CMP_OP_EQ,
     where: where,
+    out: out,
   );
-  return result;
 }
 
 /// Computes the element-wise inequality of [a] != [b] with broadcasting support.
@@ -340,11 +349,11 @@ NDArray<bool> equal<Ta, Tb>(
 /// ```
 ///
 /// Reference: [NumPy not_equal](https://numpy.org/doc/stable/reference/generated/numpy.not_equal.html)
-NDArray<bool> notEqual<Ta, Tb>(
+NDArray<Boolean> notEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -356,25 +365,25 @@ NDArray<bool> notEqual<Ta, Tb>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, commonShape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype.",
       );
     }
   }
 
-  final result = out ?? NDArray<bool>.create(commonShape, DType.boolean);
-
-  _compareHelper(
+  return _compareHelper(
     a,
     b,
-    result,
+    commonShape,
     broadcastResult.stridesA,
     broadcastResult.stridesB,
     CMP_OP_NE,
     where: where,
+    out: out,
   );
-  return result;
 }
 
 /// Computes the element-wise comparison of [a] > [b] with broadcasting support.
@@ -394,11 +403,11 @@ NDArray<bool> notEqual<Ta, Tb>(
 /// ```
 ///
 /// Reference: [NumPy greater](https://numpy.org/doc/stable/reference/generated/numpy.greater.html)
-NDArray<bool> greater<Ta, Tb>(
+NDArray<Boolean> greater<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -415,25 +424,25 @@ NDArray<bool> greater<Ta, Tb>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, commonShape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype.",
       );
     }
   }
 
-  final result = out ?? NDArray<bool>.create(commonShape, DType.boolean);
-
-  _compareHelper(
+  return _compareHelper(
     a,
     b,
-    result,
+    commonShape,
     broadcastResult.stridesA,
     broadcastResult.stridesB,
     CMP_OP_GT,
     where: where,
+    out: out,
   );
-  return result;
 }
 
 /// Computes the element-wise comparison of [a] >= [b] with broadcasting support.
@@ -453,11 +462,11 @@ NDArray<bool> greater<Ta, Tb>(
 /// ```
 ///
 /// Reference: [NumPy greater_equal](https://numpy.org/doc/stable/reference/generated/numpy.greater_equal.html)
-NDArray<bool> greaterEqual<Ta, Tb>(
+NDArray<Boolean> greaterEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -474,25 +483,25 @@ NDArray<bool> greaterEqual<Ta, Tb>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, commonShape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype.",
       );
     }
   }
 
-  final result = out ?? NDArray<bool>.create(commonShape, DType.boolean);
-
-  _compareHelper(
+  return _compareHelper(
     a,
     b,
-    result,
+    commonShape,
     broadcastResult.stridesA,
     broadcastResult.stridesB,
     CMP_OP_GE,
     where: where,
+    out: out,
   );
-  return result;
 }
 
 /// Computes the element-wise comparison of [a] < [b] with broadcasting support.
@@ -512,11 +521,11 @@ NDArray<bool> greaterEqual<Ta, Tb>(
 /// ```
 ///
 /// Reference: [NumPy less](https://numpy.org/doc/stable/reference/generated/numpy.less.html)
-NDArray<bool> less<Ta, Tb>(
+NDArray<Boolean> less<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -533,25 +542,25 @@ NDArray<bool> less<Ta, Tb>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, commonShape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype.",
       );
     }
   }
 
-  final result = out ?? NDArray<bool>.create(commonShape, DType.boolean);
-
-  _compareHelper(
+  return _compareHelper(
     a,
     b,
-    result,
+    commonShape,
     broadcastResult.stridesA,
     broadcastResult.stridesB,
     CMP_OP_LT,
     where: where,
+    out: out,
   );
-  return result;
 }
 
 /// Computes the element-wise comparison of [a] <= [b] with broadcasting support.
@@ -571,11 +580,11 @@ NDArray<bool> less<Ta, Tb>(
 /// ```
 ///
 /// Reference: [NumPy less_equal](https://numpy.org/doc/stable/reference/generated/numpy.less_equal.html)
-NDArray<bool> lessEqual<Ta, Tb>(
+NDArray<Boolean> lessEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -592,100 +601,138 @@ NDArray<bool> lessEqual<Ta, Tb>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, commonShape) ||
+        out.dtype != DType.boolean) {
       throw ArgumentError(
         "Provided out buffer has incompatible shape or dtype.",
       );
     }
   }
 
-  final result = out ?? NDArray<bool>.create(commonShape, DType.boolean);
-
-  _compareHelper(
+  return _compareHelper(
     a,
     b,
-    result,
+    commonShape,
     broadcastResult.stridesA,
     broadcastResult.stridesB,
     CMP_OP_LE,
     where: where,
+    out: out,
   );
-  return result;
 }
 
-void _compareHelper(
+NDArray<Boolean> _compareHelper(
   NDArray a,
   NDArray b,
-  NDArray<bool> result,
+  List<int> commonShape,
   List<int> stridesA,
   List<int> stridesB,
   int op, {
-  NDArray<dynamic>? where,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
-  final rank = result.shape.length;
+  final rank = commonShape.length;
   final marker = ScratchArena.marker;
-  final cShape = result.shape.isEmpty
-      ? ffi.nullptr
-      : ScratchArena.copyInts(result.shape);
-  final cStridesA = stridesA.isEmpty
-      ? ffi.nullptr
-      : ScratchArena.copyInts(stridesA);
-  final cStridesB = stridesB.isEmpty
-      ? ffi.nullptr
-      : ScratchArena.copyInts(stridesB);
-  final cStridesRes = result.strides.isEmpty
-      ? ffi.nullptr
-      : ScratchArena.copyInts(result.strides);
-
   try {
-    if (where == null) {
-      ndarray_compare(
-        op,
-        a.dtype.index,
-        b.dtype.index,
-        a.pointer.cast(),
-        cStridesA,
-        b.pointer.cast(),
-        cStridesB,
-        result.pointer.cast(),
-        cStridesRes,
-        cShape,
-        rank,
-      );
-    } else {
-      final maskHolder = prepareMask(where, result.shape);
-      try {
-        final tempRes = NDArray<bool>.create(result.shape, DType.boolean);
-        ndarray_compare(
-          op,
-          a.dtype.index,
-          b.dtype.index,
-          a.pointer.cast(),
-          cStridesA,
-          b.pointer.cast(),
-          cStridesB,
-          tempRes.pointer.cast(),
-          tempRes.strides.isEmpty
-              ? ffi.nullptr
-              : ScratchArena.copyInts(tempRes.strides),
-          cShape,
-          rank,
-        );
-        unaryOp<bool, bool>(
-          result,
-          tempRes,
-          result.shape,
-          tempRes.strides,
-          result.strides,
-          0,
-          tempRes.offsetElements,
-          result.offsetElements,
-          (x) => x,
-          maskHolder.pointer,
-        );
-      } finally {
-        maskHolder.dispose();
+    final maskHolder = where != null ? prepareMask(where, commonShape) : null;
+    try {
+      final result =
+          out ??
+          NDArray<Boolean>.create(
+            commonShape,
+            DType.boolean,
+            zeroInit: where != null,
+          );
+      final cShape = commonShape.isEmpty
+          ? ffi.nullptr
+          : ScratchArena.copyInts(commonShape);
+      final cStridesA = stridesA.isEmpty
+          ? ffi.nullptr
+          : ScratchArena.copyInts(stridesA);
+      final cStridesB = stridesB.isEmpty
+          ? ffi.nullptr
+          : ScratchArena.copyInts(stridesB);
+      final cStridesRes = result.strides.isEmpty
+          ? ffi.nullptr
+          : ScratchArena.copyInts(result.strides);
+
+      if (maskHolder == null) {
+        if (out != null &&
+            (sharesMemory(a, result) || sharesMemory(b, result))) {
+          final tempRes = NDArray<Boolean>.create(commonShape, DType.boolean);
+          try {
+            ndarray_compare(
+              op,
+              a.dtype.index,
+              b.dtype.index,
+              a.pointer.cast(),
+              cStridesA,
+              b.pointer.cast(),
+              cStridesB,
+              tempRes.pointer.cast(),
+              tempRes.strides.isEmpty
+                  ? ffi.nullptr
+                  : ScratchArena.copyInts(tempRes.strides),
+              cShape,
+              rank,
+            );
+            tempRes.copy(out: result);
+          } finally {
+            tempRes.dispose();
+          }
+        } else {
+          ndarray_compare(
+            op,
+            a.dtype.index,
+            b.dtype.index,
+            a.pointer.cast(),
+            cStridesA,
+            b.pointer.cast(),
+            cStridesB,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            rank,
+          );
+        }
+      } else {
+        final tempRes = NDArray<Boolean>.create(commonShape, DType.boolean);
+        try {
+          ndarray_compare(
+            op,
+            a.dtype.index,
+            b.dtype.index,
+            a.pointer.cast(),
+            cStridesA,
+            b.pointer.cast(),
+            cStridesB,
+            tempRes.pointer.cast(),
+            tempRes.strides.isEmpty
+                ? ffi.nullptr
+                : ScratchArena.copyInts(tempRes.strides),
+            cShape,
+            rank,
+          );
+          unaryOp<Boolean, Boolean>(
+            result,
+            tempRes,
+            commonShape,
+            tempRes.strides,
+            result.strides,
+            0,
+            tempRes.offsetElements,
+            result.offsetElements,
+            (x) => x,
+            maskHolder.pointer,
+          );
+        } finally {
+          tempRes.dispose();
+        }
       }
+      return result;
+    } finally {
+      maskHolder?.dispose();
     }
   } finally {
     ScratchArena.reset(marker);
@@ -713,17 +760,17 @@ void _compareHelper(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_and](https://numpy.org/doc/stable/reference/generated/numpy.logical_and.html)
-NDArray<bool> logical_and<Ta, Tb>(
+NDArray<Boolean> logicalAnd<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute logical_and() on a disposed array.');
+    throw StateError('Cannot execute logicalAnd() on a disposed array.');
   }
   return _runBinaryLogical(
     a,
@@ -732,7 +779,7 @@ NDArray<bool> logical_and<Ta, Tb>(
     out,
     v_logical_and,
     s_logical_and,
-    'logical_and',
+    'logicalAnd',
   );
 }
 
@@ -757,17 +804,17 @@ NDArray<bool> logical_and<Ta, Tb>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_or](https://numpy.org/doc/stable/reference/generated/numpy.logical_or.html)
-NDArray<bool> logical_or<Ta, Tb>(
+NDArray<Boolean> logicalOr<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute logical_or() on a disposed array.');
+    throw StateError('Cannot execute logicalOr() on a disposed array.');
   }
   return _runBinaryLogical(
     a,
@@ -776,7 +823,7 @@ NDArray<bool> logical_or<Ta, Tb>(
     out,
     v_logical_or,
     s_logical_or,
-    'logical_or',
+    'logicalOr',
   );
 }
 
@@ -801,17 +848,17 @@ NDArray<bool> logical_or<Ta, Tb>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_xor](https://numpy.org/doc/stable/reference/generated/numpy.logical_xor.html)
-NDArray<bool> logical_xor<Ta, Tb>(
+NDArray<Boolean> logicalXor<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b, {
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute logical_xor() on a disposed array.');
+    throw StateError('Cannot execute logicalXor() on a disposed array.');
   }
   return _runBinaryLogical(
     a,
@@ -820,7 +867,7 @@ NDArray<bool> logical_xor<Ta, Tb>(
     out,
     v_logical_xor,
     s_logical_xor,
-    'logical_xor',
+    'logicalXor',
   );
 }
 
@@ -895,14 +942,22 @@ ffi.Pointer<ffi.Uint8> _castToBoolean(
       case DType.float16:
       case DType.bfloat16:
         final doubleX = castNDArray(x, DType.float64);
-        v_to_bool_double(doubleX.pointer.cast(), destPtr, x.size, ffi.nullptr);
-        doubleX.dispose();
+        try {
+          v_to_bool_double(
+            doubleX.pointer.cast(),
+            destPtr,
+            x.size,
+            ffi.nullptr,
+          );
+        } finally {
+          doubleX.dispose();
+        }
       case DType.complex128:
         v_to_bool_complex128(x.pointer.cast(), destPtr, x.size, ffi.nullptr);
       case DType.complex64:
         v_to_bool_complex64(x.pointer.cast(), destPtr, x.size, ffi.nullptr);
       case DType.boolean:
-        break;
+        v_to_bool_uint8(x.pointer.cast(), destPtr, x.size, ffi.nullptr);
     }
   } else {
     final ndim = x.shape.length;
@@ -983,17 +1038,20 @@ ffi.Pointer<ffi.Uint8> _castToBoolean(
       case DType.float16:
       case DType.bfloat16:
         final doubleX = castNDArray(x, DType.float64);
-        final doubleStridesX = ScratchArena.copyInts(doubleX.strides);
-        s_to_bool_double(
-          doubleX.pointer.cast(),
-          doubleStridesX,
-          destPtr,
-          cStridesTemp,
-          cShape,
-          ndim,
-          ffi.nullptr,
-        );
-        doubleX.dispose();
+        try {
+          final doubleStridesX = ScratchArena.copyInts(doubleX.strides);
+          s_to_bool_double(
+            doubleX.pointer.cast(),
+            doubleStridesX,
+            destPtr,
+            cStridesTemp,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        } finally {
+          doubleX.dispose();
+        }
       case DType.complex128:
         s_to_bool_complex128(
           x.pointer.cast(),
@@ -1015,17 +1073,25 @@ ffi.Pointer<ffi.Uint8> _castToBoolean(
           ffi.nullptr,
         );
       case DType.boolean:
-        break;
+        s_to_bool_uint8(
+          x.pointer.cast(),
+          cStridesX,
+          destPtr,
+          cStridesTemp,
+          cShape,
+          ndim,
+          ffi.nullptr,
+        );
     }
   }
   return destPtr;
 }
 
-NDArray<bool> _runBinaryLogical<Ta, Tb>(
+NDArray<Boolean> _runBinaryLogical<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> a,
   NDArray<Tb> b,
-  NDArray<dynamic>? where,
-  NDArray<bool>? out,
+  NDArray<DTypeTag>? where,
+  NDArray<Boolean>? out,
   void Function(
     ffi.Pointer<ffi.Uint8>,
     ffi.Pointer<ffi.Uint8>,
@@ -1086,20 +1152,25 @@ NDArray<bool> _runBinaryLogical<Ta, Tb>(
     final stridesA = broadcastResult.stridesA;
     final stridesB = broadcastResult.stridesB;
 
-    final NDArray<bool> result;
     if (out != null) {
-      if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+      if (!out.isWriteable ||
+          !listEquals(out.shape, commonShape) ||
+          out.dtype != DType.boolean) {
         throw ArgumentError(
           'Provided out buffer has incompatible shape or dtype for $opName.',
         );
       }
-      result = out;
-    } else {
-      result = NDArray<bool>.create(commonShape, DType.boolean);
     }
 
-    final maskHolder = prepareMask(where, result.shape);
+    final maskHolder = prepareMask(where, commonShape);
     try {
+      final NDArray<Boolean> result =
+          out ??
+          NDArray<Boolean>.create(
+            commonShape,
+            DType.boolean,
+            zeroInit: where != null,
+          );
       final isContig =
           a.isContiguous &&
           b.isContiguous &&

@@ -13,10 +13,7 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import 'package:ndarray/ndarray.dart';
-import 'package:ndarray/src/ndarray.dart';
-import 'package:ndarray/src/scratch_arena.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -187,21 +184,22 @@ void main() {
       });
     });
 
-    group('NDArray hashCode for Uint8 and Int16', () {
-      test('Uint8 array hashCode computation', () {
+    group('NDArray contentHashCode and hashCode for Uint8 and Int16', () {
+      test('Uint8 array contentHashCode computation', () {
         final a = NDArray<Uint8>.fromList([1, 2, 3, 4], [2, 2], DType.uint8);
         final b = NDArray<Uint8>.fromList([1, 2, 3, 4], [2, 2], DType.uint8);
         final c = NDArray<Uint8>.fromList([1, 2, 3, 5], [2, 2], DType.uint8);
 
-        expect(a.hashCode, equals(b.hashCode));
-        expect(a.hashCode, isNot(equals(c.hashCode)));
+        expect(a.contentHashCode, equals(b.contentHashCode));
+        expect(a.contentHashCode, isNot(equals(c.contentHashCode)));
+        expect(a.hashCode, equals(identityHashCode(a)));
 
         a.dispose();
         b.dispose();
         c.dispose();
       });
 
-      test('Int16 array hashCode computation', () {
+      test('Int16 array contentHashCode computation', () {
         final a = NDArray<Int16>.fromList(
           [100, 200, 300, 400],
           [2, 2],
@@ -218,22 +216,23 @@ void main() {
           DType.int16,
         );
 
-        expect(a.hashCode, equals(b.hashCode));
-        expect(a.hashCode, isNot(equals(c.hashCode)));
+        expect(a.contentHashCode, equals(b.contentHashCode));
+        expect(a.contentHashCode, isNot(equals(c.contentHashCode)));
+        expect(a.hashCode, equals(identityHashCode(a)));
 
         a.dispose();
         b.dispose();
         c.dispose();
       });
 
-      test('Strided non-contiguous Uint8 and Int16 hashCode', () {
+      test('Strided non-contiguous Uint8 and Int16 contentHashCode', () {
         final a = NDArray<Uint8>.fromList(
           [1, 2, 3, 4, 5, 6],
           [2, 3],
           DType.uint8,
         );
         final aT = a.transpose();
-        expect(aT.hashCode, isA<int>());
+        expect(aT.contentHashCode, isA<int>());
 
         final b = NDArray<Int16>.fromList(
           [10, 20, 30, 40, 50, 60],
@@ -241,18 +240,18 @@ void main() {
           DType.int16,
         );
         final bT = b.transpose();
-        expect(bT.hashCode, isA<int>());
+        expect(bT.contentHashCode, isA<int>());
 
         a.dispose();
         b.dispose();
       });
 
-      test('Empty Uint8 and Int16 array hashCode', () {
+      test('Empty Uint8 and Int16 array contentHashCode', () {
         final emptyU8 = NDArray<Uint8>.zeros([0], DType.uint8);
         final emptyI16 = NDArray<Int16>.zeros([0], DType.int16);
 
-        expect(emptyU8.hashCode, isA<int>());
-        expect(emptyI16.hashCode, isA<int>());
+        expect(emptyU8.contentHashCode, isA<int>());
+        expect(emptyI16.contentHashCode, isA<int>());
 
         emptyU8.dispose();
         emptyI16.dispose();

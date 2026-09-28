@@ -1,0 +1,43 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: notebook
+description: A notebook and REPL interface for Dart and NDArray.
+version: 0.0.1
+resolution: workspace
+repository: https://github.com/google/scientific_dart/tree/main/pkgs/notebook
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  vm_service: ">=14.3.0 <17.0.0"
+  ndarray: ^0.1.0
+  symbolic_dart: ^0.0.1
+  resource_scope: ^0.1.0
+  path: ^1.9.1
+  analyzer: ^13.3.0
+  vector_math: ^2.4.0
+  dart_style: ^3.0.0
+  markdown: ^7.2.0
+  code_editor: ^0.1.0
+  web: ^1.0.0
+  gpuarray: ^0.0.1
+
+dev_dependencies:
+  lints: ^6.1.0
+  test: ^1.25.0
+  puppeteer: ^3.0.0
+
+

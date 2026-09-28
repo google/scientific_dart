@@ -37,8 +37,6 @@ void main() {
     final recovery = matmul(temp, a);
     print('\nReconstructed Matrix (A * A+ * A):');
     _printMatrix(recovery);
-    temp.dispose();
-    recovery.dispose();
 
     // 2. Compute Matrix Power of a 2x2 transition matrix
     final t = NDArray.fromList([0.8, 0.2, 0.1, 0.9], [2, 2], DType.float64);
@@ -54,9 +52,6 @@ void main() {
     final tInv = matrix_power(t, -1);
     print('\nTransition Matrix Inverse (T^-1):');
     _printMatrix(tInv);
-
-    t10.dispose();
-    tInv.dispose();
   });
 }
 
@@ -66,7 +61,8 @@ void _printMatrix(NDArray a) {
   for (var r = 0; r < rows; r++) {
     final rowStr = [];
     for (var c = 0; c < cols; c++) {
-      rowStr.add(a[r * cols + c].toStringAsFixed(4).padLeft(9));
+      final val = a.getCell([r, c]);
+      rowStr.add((val as num).toStringAsFixed(4).padLeft(9));
     }
     print(' [ ${rowStr.join(', ')} ]');
   }

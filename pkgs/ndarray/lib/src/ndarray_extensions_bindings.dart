@@ -18,222 +18,6 @@ library;
 
 import 'dart:ffi' as ffi;
 
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_det_double(
-  ffi.Pointer<ffi.Double> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Double> res,
-  ffi.Pointer<ffi.Int> stridesRes,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Double> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_det_float(
-  ffi.Pointer<ffi.Float> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Float> res,
-  ffi.Pointer<ffi.Int> stridesRes,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Float> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_det_complex_double(
-  ffi.Pointer<ffi.Double> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Double> res,
-  ffi.Pointer<ffi.Int> stridesRes,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Double> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_det_complex_float(
-  ffi.Pointer<ffi.Float> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Float> res,
-  ffi.Pointer<ffi.Int> stridesRes,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Float> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_slogdet_double(
-  ffi.Pointer<ffi.Double> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Double> sign,
-  ffi.Pointer<ffi.Int> stridesSign,
-  ffi.Pointer<ffi.Double> logdet,
-  ffi.Pointer<ffi.Int> stridesLogdet,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Double> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_slogdet_float(
-  ffi.Pointer<ffi.Float> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Float> sign,
-  ffi.Pointer<ffi.Int> stridesSign,
-  ffi.Pointer<ffi.Float> logdet,
-  ffi.Pointer<ffi.Int> stridesLogdet,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Float> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Double>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_slogdet_complex_double(
-  ffi.Pointer<ffi.Double> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Double> sign,
-  ffi.Pointer<ffi.Int> stridesSign,
-  ffi.Pointer<ffi.Double> logdet,
-  ffi.Pointer<ffi.Int> stridesLogdet,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Double> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
-@ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Int,
-    ffi.Pointer<ffi.Float>,
-    ffi.Pointer<ffi.Int>,
-    ffi.Pointer<ffi.Void>,
-  )
->()
-external void s_slogdet_complex_float(
-  ffi.Pointer<ffi.Float> a,
-  ffi.Pointer<ffi.Int> stridesA,
-  ffi.Pointer<ffi.Float> sign,
-  ffi.Pointer<ffi.Int> stridesSign,
-  ffi.Pointer<ffi.Float> logdet,
-  ffi.Pointer<ffi.Int> stridesLogdet,
-  ffi.Pointer<ffi.Int> shape,
-  int rank,
-  ffi.Pointer<ffi.Float> aCopy,
-  ffi.Pointer<ffi.Int> ipiv,
-  ffi.Pointer<ffi.Void> lapack_getrf,
-);
-
 /// NPZ native zip archive serialization
 @ffi.Native<
   ffi.Int Function(
@@ -299,6 +83,7 @@ external int npz_reader_get_entry_info(
     ffi.Size,
     ffi.Pointer<ffi.Void>,
     ffi.Size,
+    ffi.Size,
   )
 >()
 external int npz_reader_extract_data(
@@ -306,6 +91,7 @@ external int npz_reader_extract_data(
   int index,
   int header_len,
   ffi.Pointer<ffi.Void> dest_ptr,
+  int dest_capacity,
   int data_len,
 );
 
@@ -687,4 +473,169 @@ external void native_choice_weighted_without_replacement(
   int sampleCount,
   int itemSize,
   int seed,
+);
+
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Double>, ffi.Int)>()
+external double r_nansum_double(ffi.Pointer<ffi.Double> src, int size);
+
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Float>, ffi.Int)>()
+external double r_nansum_float(ffi.Pointer<ffi.Float> src, int size);
+
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Double>, ffi.Int)>()
+external double r_nanmean_double(ffi.Pointer<ffi.Double> src, int size);
+
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Float>, ffi.Int)>()
+external double r_nanmean_float(ffi.Pointer<ffi.Float> src, int size);
+
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Double>, ffi.Int)>()
+external double r_nanvar_double(ffi.Pointer<ffi.Double> src, int size);
+
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Float>, ffi.Int)>()
+external double r_nanvar_float(ffi.Pointer<ffi.Float> src, int size);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nansum_double(
+  ffi.Pointer<ffi.Double> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nansum_float(
+  ffi.Pointer<ffi.Float> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Float> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanmean_double(
+  ffi.Pointer<ffi.Double> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanmean_float(
+  ffi.Pointer<ffi.Float> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanvar_double(
+  ffi.Pointer<ffi.Double> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanvar_float(
+  ffi.Pointer<ffi.Float> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void native_copy_strided(
+  ffi.Pointer<ffi.Void> src,
+  ffi.Pointer<ffi.Int> stridesSrc,
+  ffi.Pointer<ffi.Void> dest,
+  ffi.Pointer<ffi.Int> stridesDest,
+  ffi.Pointer<ffi.Int> shape,
+  int rank,
+  int itemSize,
 );

@@ -92,12 +92,12 @@ void _mapCoordInPlace(
 /// **Example:**
 /// ```dart
 /// final a = NDArray<Float64>.fromList([10, 20, 30, 40, 50, 60], [2, 3], DType.float64);
-/// final indices = NDArray<int>.fromList([2, 0, 1, 1], [2, 2], DType.int32);
+/// final indices = NDArray<DTypeTag>.fromList([2, 0, 1, 1], [2, 2], DType.int32);
 /// final result = take_along_axis(a, indices, 1);
 /// ```
-NDArray<T> take_along_axis<T extends Object>(
+NDArray<T> take_along_axis<T extends DTypeTag>(
   NDArray<T> arr,
-  NDArray<int> indices,
+  NDArray<DTypeTag> indices,
   int axis, {
   NDArray<T>? out,
 }) {
@@ -137,100 +137,108 @@ NDArray<T> take_along_axis<T extends Object>(
         'out dtype (${out.dtype}) must match arr dtype (${arr.dtype})',
       );
     }
-    if (!listEquals(out.shape, targetShape)) {
+    if (!out.isWriteable || !listEquals(out.shape, targetShape)) {
       throw ArgumentError(
         'out shape (${out.shape}) must match target shape ($targetShape)',
       );
     }
+    if (sharesMemory(arr, out) || sharesMemory(indices, out)) {
+      return NDArray.scope(() {
+        final temp = take_along_axis(arr, indices, axis);
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
 
-  return NDArray.scope(() {
-    final result = out ?? NDArray<T>.create(targetShape, arr.dtype);
-    final marker = ScratchArena.marker;
-    try {
-      final cArrShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cArrStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cIdxShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cIdxStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cOutShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cOutStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cOutErrorIdx = ScratchArena.allocate<ffi.Int64>(
-        ffi.sizeOf<ffi.Int64>(),
-      );
+  final result = out ?? NDArray<T>.create(targetShape, arr.dtype);
+  final marker = ScratchArena.marker;
+  try {
+    final cArrShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cArrStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cIdxShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cIdxStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cOutShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cOutStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cOutErrorIdx = ScratchArena.allocate<ffi.Int64>(
+      ffi.sizeOf<ffi.Int64>(),
+    );
 
-      for (var i = 0; i < rank; i++) {
-        cArrShape[i] = arr.shape[i];
-        cArrStrides[i] = arr.strides[i];
-        cIdxShape[i] = indices.shape[i];
-        cIdxStrides[i] = indices.strides[i];
-        cOutShape[i] = targetShape[i];
-        cOutStrides[i] = result.strides[i];
-      }
-
-      final status = switch (arr.dtype) {
-        DType.float64 ||
-        DType.float32 ||
-        DType.float16 ||
-        DType.bfloat16 ||
-        DType.int64 ||
-        DType.int32 ||
-        DType.int16 ||
-        DType.int8 ||
-        DType.uint64 ||
-        DType.uint32 ||
-        DType.uint16 ||
-        DType.uint8 ||
-        DType.boolean ||
-        DType.complex128 ||
-        DType.complex64 => native_take_along_axis(
-          arr.dtype.index,
-          indices.dtype.index,
-          arr.pointer,
-          cArrShape,
-          cArrStrides,
-          indices.pointer,
-          cIdxShape,
-          cIdxStrides,
-          result.pointer,
-          cOutShape,
-          cOutStrides,
-          rank,
-          normAxis,
-          cOutErrorIdx,
-        ),
-      };
-
-      if (status != 0) {
-        if (status == -1) {
-          final badIdx = cOutErrorIdx.value;
-          final axisSize = arr.shape[normAxis];
-          throw RangeError.range(
-            badIdx,
-            0,
-            axisSize - 1,
-            'index along axis $normAxis',
-          );
-        }
-        throw ArgumentError('take_along_axis failed with status $status');
-      }
-
-      return result.detachToParentScope();
-    } finally {
-      ScratchArena.reset(marker);
+    for (var i = 0; i < rank; i++) {
+      cArrShape[i] = arr.shape[i];
+      cArrStrides[i] = arr.strides[i];
+      cIdxShape[i] = indices.shape[i];
+      cIdxStrides[i] = indices.strides[i];
+      cOutShape[i] = targetShape[i];
+      cOutStrides[i] = result.strides[i];
     }
-  });
+
+    final status = switch (arr.dtype) {
+      DType.float64 ||
+      DType.float32 ||
+      DType.float16 ||
+      DType.bfloat16 ||
+      DType.int64 ||
+      DType.int32 ||
+      DType.int16 ||
+      DType.int8 ||
+      DType.uint64 ||
+      DType.uint32 ||
+      DType.uint16 ||
+      DType.uint8 ||
+      DType.boolean ||
+      DType.complex128 ||
+      DType.complex64 => native_take_along_axis(
+        arr.dtype.index,
+        indices.dtype.index,
+        arr.pointer,
+        cArrShape,
+        cArrStrides,
+        indices.pointer,
+        cIdxShape,
+        cIdxStrides,
+        result.pointer,
+        cOutShape,
+        cOutStrides,
+        rank,
+        normAxis,
+        cOutErrorIdx,
+      ),
+    };
+
+    if (status != 0) {
+      if (out == null) {
+        result.dispose();
+      }
+      if (status == -1) {
+        final badIdx = cOutErrorIdx.value;
+        final axisSize = arr.shape[normAxis];
+        throw RangeError.range(
+          badIdx,
+          0,
+          axisSize - 1,
+          'index along axis $normAxis',
+        );
+      }
+      throw ArgumentError('take_along_axis failed with status $status');
+    }
+
+    return result;
+  } finally {
+    ScratchArena.reset(marker);
+  }
 }
 
 /// Puts values into an array along a specified [axis] using 1D index arrays.
@@ -253,13 +261,13 @@ NDArray<T> take_along_axis<T extends Object>(
 /// **Example:**
 /// ```dart
 /// final a = NDArray<Float64>.fromList([10, 20, 30, 40, 50, 60], [2, 3], DType.float64);
-/// final indices = NDArray<int>.fromList([2, 0, 1, 1], [2, 2], DType.int32);
+/// final indices = NDArray<DTypeTag>.fromList([2, 0, 1, 1], [2, 2], DType.int32);
 /// final values = NDArray<Float64>.fromList([99, 88, 77, 66], [2, 2], DType.float64);
 /// put_along_axis(a, indices, values, 1);
 /// ```
-NDArray<T> put_along_axis<T extends Object>(
+NDArray<T> put_along_axis<T extends DTypeTag>(
   NDArray<T> arr,
-  NDArray<int> indices,
+  NDArray<DTypeTag> indices,
   Object values,
   int axis, {
   NDArray<T>? out,
@@ -276,82 +284,121 @@ NDArray<T> put_along_axis<T extends Object>(
     throw RangeError.range(normAxis, 0, rank - 1, 'axis');
   }
 
-  return NDArray.scope(() {
-    final valuesArr = values is NDArray<T>
-        ? values
-        : toNDArray(values, arr.dtype);
-    if (valuesArr.isDisposed) {
-      throw StateError('Cannot execute put_along_axis with disposed values.');
+  final bool valuesAllocated = values is! NDArray || values.dtype != arr.dtype;
+  final NDArray<T> valuesArr = toNDArray<T>(values, arr.dtype);
+  if (valuesArr.isDisposed) {
+    if (valuesAllocated) valuesArr.dispose();
+    throw StateError('Cannot execute put_along_axis with disposed values.');
+  }
+
+  final valRank = valuesArr.shape.length;
+  if (valRank > rank) {
+    if (valuesAllocated) valuesArr.dispose();
+    throw ArgumentError(
+      'values rank ($valRank) cannot be greater than arr rank ($rank)',
+    );
+  }
+
+  final NDArray<T> target;
+  if (out != null) {
+    if (out.dtype != arr.dtype) {
+      if (valuesAllocated) valuesArr.dispose();
+      throw ArgumentError('out dtype must match arr dtype');
     }
-
-    final valRank = valuesArr.shape.length;
-    if (valRank > rank) {
-      throw ArgumentError(
-        'values rank ($valRank) cannot be greater than arr rank ($rank)',
-      );
+    if (!out.isWriteable || !listEquals(out.shape, arr.shape)) {
+      if (valuesAllocated) valuesArr.dispose();
+      throw ArgumentError('out shape must match arr shape');
     }
-
-    final NDArray<T> target;
-    if (out != null) {
-      if (out.dtype != arr.dtype) {
-        throw ArgumentError('out dtype must match arr dtype');
-      }
-      if (!listEquals(out.shape, arr.shape)) {
-        throw ArgumentError('out shape must match arr shape');
-      }
-      if (!identical(out, arr)) {
-        arr.copy(out: out);
-      }
-      target = out;
-    } else {
-      target = arr;
-    }
-
-    final marker = ScratchArena.marker;
-    try {
-      final cTargetShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cTargetStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cIdxShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cIdxStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cValShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cValStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cOutErrorIdx = ScratchArena.allocate<ffi.Int64>(
-        ffi.sizeOf<ffi.Int64>(),
-      );
-
-      for (var i = 0; i < rank; i++) {
-        cTargetShape[i] = target.shape[i];
-        cTargetStrides[i] = target.strides[i];
-        cIdxShape[i] = indices.shape[i];
-        cIdxStrides[i] = indices.strides[i];
-
-        final valDimIndex = i - (rank - valRank);
-        if (valDimIndex < 0) {
-          cValShape[i] = 1;
-          cValStrides[i] = 0;
-        } else {
-          final valDim = valuesArr.shape[valDimIndex];
-          final idxDim = indices.shape[i];
-          if (valDim != idxDim && valDim != 1) {
-            throw ArgumentError(
-              'Incompatible shapes for put_along_axis: indices shape ${indices.shape} and values shape ${valuesArr.shape}',
-            );
-          }
-          cValShape[i] = valDim;
-          cValStrides[i] = valuesArr.strides[valDimIndex];
+    if (sharesMemory(arr, out) ||
+        sharesMemory(indices, out) ||
+        sharesMemory(valuesArr, out)) {
+      try {
+        return NDArray.scope(() {
+          final temp = NDArray<T>.create(arr.shape, arr.dtype);
+          put_along_axis(arr, indices, valuesArr, axis, out: temp);
+          temp.copy(out: out);
+          return out;
+        });
+      } finally {
+        if (valuesAllocated) {
+          valuesArr.dispose();
         }
+      }
+    }
+    target = out;
+  } else {
+    if (!arr.isWriteable) {
+      if (valuesAllocated) valuesArr.dispose();
+      throw ArgumentError(
+        'Assignment destination is a read-only broadcast view.',
+      );
+    }
+    if (sharesMemory(arr, indices) || sharesMemory(arr, valuesArr)) {
+      try {
+        return put_along_axis(arr, indices, valuesArr, axis, out: arr);
+      } finally {
+        if (valuesAllocated) {
+          valuesArr.dispose();
+        }
+      }
+    }
+    target = arr;
+  }
+
+  final marker = ScratchArena.marker;
+  try {
+    final cTargetShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cTargetStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cIdxShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cIdxStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cValShape = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cValStrides = ScratchArena.allocate<ffi.Int64>(
+      rank * ffi.sizeOf<ffi.Int64>(),
+    );
+    final cOutErrorIdx = ScratchArena.allocate<ffi.Int64>(
+      ffi.sizeOf<ffi.Int64>(),
+    );
+
+    for (var i = 0; i < rank; i++) {
+      cTargetShape[i] = target.shape[i];
+      cTargetStrides[i] = target.strides[i];
+      cIdxShape[i] = indices.shape[i];
+      cIdxStrides[i] = indices.strides[i];
+
+      final valDimIndex = i - (rank - valRank);
+      if (valDimIndex < 0) {
+        cValShape[i] = 1;
+        cValStrides[i] = 0;
+      } else {
+        final valDim = valuesArr.shape[valDimIndex];
+        final idxDim = indices.shape[i];
+        if (valDim != idxDim && valDim != 1) {
+          throw ArgumentError(
+            'Incompatible shapes for put_along_axis: indices shape ${indices.shape} and values shape ${valuesArr.shape}',
+          );
+        }
+        cValShape[i] = valDim;
+        cValStrides[i] = valuesArr.strides[valDimIndex];
+      }
+    }
+
+    return NDArray.scope(() {
+      final tempTarget = arr.copy();
+      final cTempStrides = ScratchArena.allocate<ffi.Int64>(
+        rank * ffi.sizeOf<ffi.Int64>(),
+      );
+      for (var i = 0; i < rank; i++) {
+        cTempStrides[i] = tempTarget.strides[i];
       }
 
       final status = switch (arr.dtype) {
@@ -372,9 +419,9 @@ NDArray<T> put_along_axis<T extends Object>(
         DType.complex64 => native_put_along_axis(
           arr.dtype.index,
           indices.dtype.index,
-          target.pointer,
+          tempTarget.pointer,
           cTargetShape,
-          cTargetStrides,
+          cTempStrides,
           indices.pointer,
           cIdxShape,
           cIdxStrides,
@@ -401,11 +448,15 @@ NDArray<T> put_along_axis<T extends Object>(
         throw ArgumentError('put_along_axis failed with status $status');
       }
 
-      return target.detachToParentScope();
-    } finally {
-      ScratchArena.reset(marker);
+      tempTarget.copy(out: target);
+      return target;
+    });
+  } finally {
+    ScratchArena.reset(marker);
+    if (valuesAllocated) {
+      valuesArr.dispose();
     }
-  });
+  }
 }
 
 /// Constructs an array from an index array ([a]) and a list of arrays or scalars ([choices]).
@@ -430,11 +481,11 @@ NDArray<T> put_along_axis<T extends Object>(
 ///   NDArray<Float64>.fromList([0, 1, 2, 3], [2, 2], DType.float64),
 ///   NDArray<Float64>.fromList([10, 11, 12, 13], [2, 2], DType.float64),
 /// ];
-/// final a = NDArray<int>.fromList([0, 1, 1, 0], [2, 2], DType.int32);
+/// final a = NDArray<DTypeTag>.fromList([0, 1, 1, 0], [2, 2], DType.int32);
 /// final result = choose(a, choices);
 /// ```
-NDArray<T> choose<T extends Object>(
-  NDArray<int> a,
+NDArray<T> choose<T extends DTypeTag>(
+  NDArray<DTypeTag> a,
   List<Object> choices, {
   NDArray<T>? out,
   ChooseMode mode = ChooseMode.raise,
@@ -446,35 +497,49 @@ NDArray<T> choose<T extends Object>(
     throw ArgumentError('choices list must not be empty');
   }
 
+  for (var i = 0; i < choices.length; i++) {
+    final c = choices[i];
+    if (c is NDArray && c.isDisposed) {
+      throw StateError(
+        'Cannot execute choose with a disposed choice array at index $i.',
+      );
+    }
+  }
+
   return NDArray.scope(() {
+    final hasArray = choices.any((c) => c is NDArray);
+    DType getItemDType(Object item) {
+      if (item is NDArray) return item.dtype;
+      if (item is int) {
+        if (hasArray) {
+          final arrayIntDTypes = choices
+              .whereType<NDArray>()
+              .map((a) => a.dtype)
+              .where((dt) => dt.isInteger);
+          if (arrayIntDTypes.isNotEmpty) {
+            return arrayIntDTypes.first;
+          }
+        }
+        return DType.int64;
+      }
+      if (item is bool) return DType.boolean;
+      if (item is Complex) return DType.complex128;
+      return DType.float64;
+    }
+
     final resolvedDType =
         (out?.dtype) ??
         (() {
-          final first = choices.first;
-          DType dt = first is NDArray
-              ? first.dtype
-              : toNDArray(first, DType.float64).dtype;
+          DType dt = getItemDType(choices.first);
           for (var i = 1; i < choices.length; i++) {
-            final item = choices[i];
-            final itemDt = item is NDArray
-                ? item.dtype
-                : toNDArray(item, DType.float64).dtype;
-            dt = resolveDType(dt, itemDt);
+            dt = resolveDType(dt, getItemDType(choices[i]));
           }
           return dt as DType<T>;
         })();
 
     final choiceArrays = choices
-        .map((c) => c is NDArray<T> ? c : toNDArray(c, resolvedDType))
+        .map((c) => toNDArray<T>(c, resolvedDType))
         .toList();
-
-    for (var i = 0; i < choiceArrays.length; i++) {
-      if (choiceArrays[i].isDisposed) {
-        throw StateError(
-          'Cannot execute choose with a disposed choice array at index $i.',
-        );
-      }
-    }
 
     final allShapes = <List<int>>[a.shape, ...choiceArrays.map((c) => c.shape)];
     final targetShape = _broadcastMultiShapes(allShapes);
@@ -483,15 +548,350 @@ NDArray<T> choose<T extends Object>(
       if (out.dtype != resolvedDType) {
         throw ArgumentError('out dtype must match resolved choices dtype');
       }
-      if (!listEquals(out.shape, targetShape)) {
+      if (!out.isWriteable || !listEquals(out.shape, targetShape)) {
         throw ArgumentError(
           'out shape must match broadcast shape ($targetShape)',
         );
       }
     }
 
-    final result = out ?? NDArray<T>.create(targetShape, resolvedDType);
+    final bool needsTemp =
+        out != null &&
+        (!out.isContiguous ||
+            sharesMemory(a, out) ||
+            choices.any((c) => c is NDArray && sharesMemory(c, out)) ||
+            choiceArrays.any((c) => sharesMemory(c, out)));
+    final result = needsTemp || out == null
+        ? NDArray<T>.create(targetShape, resolvedDType)
+        : out;
     final nChoices = choiceArrays.length;
+
+    // Fast path: contiguous arrays or scalar choice/index arrays
+    final canFastPath =
+        result.isContiguous &&
+        ((a.isContiguous && a.size == result.size) || a.size == 1) &&
+        choiceArrays.every(
+          (c) => (c.isContiguous && c.size == result.size) || c.size == 1,
+        );
+
+    if (canFastPath) {
+      final totalElements = result.size;
+      final aIsScalar = a.size == 1;
+
+      // Extract a pointer reader function based on a.dtype
+      int Function(int) getIdx;
+      switch (a.dtype) {
+        case DType.int64:
+          final ptr = a.pointer.cast<ffi.Int64>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.int32:
+          final ptr = a.pointer.cast<ffi.Int32>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.int16:
+          final ptr = a.pointer.cast<ffi.Int16>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.int8:
+          final ptr = a.pointer.cast<ffi.Int8>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.uint64:
+          final ptr = a.pointer.cast<ffi.Uint64>();
+          final twoPow63Mod = ((1 << 62) % nChoices) * 2;
+          int normalizeUint64(int raw) {
+            if (raw >= 0) return raw;
+            return mode == ChooseMode.wrap
+                ? ((raw & 0x7FFFFFFFFFFFFFFF) % nChoices + twoPow63Mod) %
+                      nChoices
+                : nChoices;
+          }
+          getIdx = aIsScalar
+              ? ((_) => normalizeUint64(ptr[0]))
+              : ((i) => normalizeUint64(ptr[i]));
+          break;
+        case DType.uint32:
+          final ptr = a.pointer.cast<ffi.Uint32>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.uint16:
+          final ptr = a.pointer.cast<ffi.Uint16>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.uint8:
+          final ptr = a.pointer.cast<ffi.Uint8>();
+          getIdx = aIsScalar ? ((_) => ptr[0]) : ((i) => ptr[i]);
+          break;
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          throw UnsupportedError('Unsupported index dtype: ${a.dtype}');
+      }
+
+      final isScalarChoice = choiceArrays.map((c) => c.size == 1).toList();
+
+      switch (resolvedDType) {
+        case DType.float64:
+          final resPtr = result.pointer.cast<ffi.Double>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Double>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            resPtr[i] = isScalarChoice[idx] ? srcPtr[0] : srcPtr[i];
+          }
+          break;
+
+        case DType.float32:
+          final resPtr = result.pointer.cast<ffi.Float>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Float>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            resPtr[i] = isScalarChoice[idx] ? srcPtr[0] : srcPtr[i];
+          }
+          break;
+
+        case DType.int64 || DType.uint64:
+          final resPtr = result.pointer.cast<ffi.Int64>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Int64>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            resPtr[i] = isScalarChoice[idx] ? srcPtr[0] : srcPtr[i];
+          }
+          break;
+
+        case DType.int32 || DType.uint32:
+          final resPtr = result.pointer.cast<ffi.Int32>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Int32>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            resPtr[i] = isScalarChoice[idx] ? srcPtr[0] : srcPtr[i];
+          }
+          break;
+
+        case DType.int16 || DType.uint16 || DType.float16 || DType.bfloat16:
+          final resPtr = result.pointer.cast<ffi.Int16>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Int16>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            resPtr[i] = isScalarChoice[idx] ? srcPtr[0] : srcPtr[i];
+          }
+          break;
+
+        case DType.int8 || DType.uint8 || DType.boolean:
+          final resPtr = result.pointer.cast<ffi.Uint8>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Uint8>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            resPtr[i] = isScalarChoice[idx] ? srcPtr[0] : srcPtr[i];
+          }
+          break;
+
+        case DType.complex128:
+          final resPtr = result.pointer.cast<ffi.Double>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Double>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            final srcIdx = isScalarChoice[idx] ? 0 : (i << 1);
+            final dstIdx = i << 1;
+            resPtr[dstIdx] = srcPtr[srcIdx];
+            resPtr[dstIdx + 1] = srcPtr[srcIdx + 1];
+          }
+          break;
+
+        case DType.complex64:
+          final resPtr = result.pointer.cast<ffi.Float>();
+          final cPtrs = choiceArrays
+              .map((c) => c.pointer.cast<ffi.Float>())
+              .toList();
+          for (var i = 0; i < totalElements; i++) {
+            var idx = getIdx(i);
+            switch (mode) {
+              case ChooseMode.raise:
+                if (idx < 0 || idx >= nChoices) {
+                  throw RangeError.range(idx, 0, nChoices - 1, 'choice index');
+                }
+                break;
+              case ChooseMode.wrap:
+                idx = idx % nChoices;
+                if (idx < 0) idx += nChoices;
+                break;
+              case ChooseMode.clip:
+                if (idx < 0) {
+                  idx = 0;
+                } else if (idx >= nChoices) {
+                  idx = nChoices - 1;
+                }
+                break;
+            }
+            final srcPtr = cPtrs[idx];
+            final srcIdx = isScalarChoice[idx] ? 0 : (i << 1);
+            final dstIdx = i << 1;
+            resPtr[dstIdx] = srcPtr[srcIdx];
+            resPtr[dstIdx + 1] = srcPtr[srcIdx + 1];
+          }
+          break;
+      }
+
+      if (out != null) {
+        if (needsTemp) {
+          result.copy(out: out);
+        }
+        return out;
+      }
+      return result.detachToParentScope();
+    }
+
     final marker = ScratchArena.marker;
     try {
       final aCoord = List<int>.filled(a.shape.length, 0);
@@ -499,11 +899,19 @@ NDArray<T> choose<T extends Object>(
           .map((c) => List<int>.filled(c.shape.length, 0))
           .toList();
 
+      final twoPow63Mod = ((1 << 62) % nChoices) * 2;
+      final isUint64 = a.dtype == DType.uint64;
       final iter = NDIter(result);
       while (iter.moveNext()) {
         final coords = iter.coords;
         _mapCoordInPlace(coords, a.shape, aCoord);
-        var idxVal = a.getCell(aCoord);
+        var idxVal = a.getCell(aCoord) as int;
+        if (isUint64 && idxVal < 0) {
+          idxVal = mode == ChooseMode.wrap
+              ? ((idxVal & 0x7FFFFFFFFFFFFFFF) % nChoices + twoPow63Mod) %
+                    nChoices
+              : nChoices;
+        }
 
         switch (mode) {
           case ChooseMode.raise:
@@ -531,6 +939,12 @@ NDArray<T> choose<T extends Object>(
         result.setCell(coords, val);
       }
 
+      if (out != null) {
+        if (needsTemp) {
+          result.copy(out: out);
+        }
+        return out;
+      }
       return result.detachToParentScope();
     } finally {
       ScratchArena.reset(marker);
@@ -559,13 +973,16 @@ NDArray<T> choose<T extends Object>(
 /// final choices = [x * 10, x * 100];
 /// final result = select(conds, choices, defaultValue: -1.0);
 /// ```
-NDArray<T> select<T extends Object>(
-  List<NDArray<bool>> condlist,
+NDArray<T> select<T extends DTypeTag>(
+  List<NDArray<Boolean>> condlist,
   List<Object> choicelist, {
   Object? defaultValue,
   DType<T>? dtype,
   NDArray<T>? out,
 }) {
+  if (out != null && out.isDisposed) {
+    throw StateError('Cannot execute select with a disposed out array.');
+  }
   if (condlist.isEmpty || choicelist.isEmpty) {
     throw ArgumentError('condlist and choicelist must not be empty');
   }
@@ -606,21 +1023,26 @@ NDArray<T> select<T extends Object>(
           return dt as DType<T>;
         })();
 
-    final choiceArrays = choicelist
-        .map((c) => c is NDArray<T> ? c : toNDArray(c, resolvedDType))
-        .toList();
-    for (var i = 0; i < choiceArrays.length; i++) {
-      if (choiceArrays[i].isDisposed) {
+    for (var i = 0; i < choicelist.length; i++) {
+      final c = choicelist[i];
+      if (c is NDArray && c.isDisposed) {
         throw StateError(
           'Cannot execute select with a disposed choice array at index $i.',
         );
       }
     }
+    if (defaultValue is NDArray && defaultValue.isDisposed) {
+      throw StateError(
+        'Cannot execute select with a disposed defaultValue array.',
+      );
+    }
+
+    final choiceArrays = choicelist
+        .map((c) => toNDArray<T>(c, resolvedDType))
+        .toList();
 
     final defaultValObj = defaultValue ?? 0;
-    final defaultArr = defaultValObj is NDArray<T>
-        ? defaultValObj
-        : toNDArray(defaultValObj, resolvedDType);
+    final defaultArr = toNDArray<T>(defaultValObj, resolvedDType);
     if (defaultArr.isDisposed) {
       throw StateError('Cannot execute select with a disposed default array.');
     }
@@ -639,14 +1061,23 @@ NDArray<T> select<T extends Object>(
       if (out.dtype != resolvedDType) {
         throw ArgumentError('out dtype must match resolved dtype');
       }
-      if (!listEquals(out.shape, targetShape)) {
+      if (!out.isWriteable || !listEquals(out.shape, targetShape)) {
         throw ArgumentError(
           'out shape must match broadcast shape ($targetShape)',
         );
       }
     }
 
-    final result = out ?? NDArray<T>.create(targetShape, resolvedDType);
+    final bool needsTemp =
+        out != null &&
+        (condlist.any((c) => sharesMemory(c, out)) ||
+            choicelist.any((c) => c is NDArray && sharesMemory(c, out)) ||
+            choiceArrays.any((c) => sharesMemory(c, out)) ||
+            (defaultValue is NDArray && sharesMemory(defaultValue, out)) ||
+            sharesMemory(defaultArr, out));
+    final result = needsTemp || out == null
+        ? NDArray<T>.create(targetShape, resolvedDType)
+        : out;
     final nConds = condlist.length;
     final marker = ScratchArena.marker;
     try {
@@ -657,6 +1088,7 @@ NDArray<T> select<T extends Object>(
           .map((c) => List<int>.filled(c.shape.length, 0))
           .toList();
       final defaultCoord = List<int>.filled(defaultArr.shape.length, 0);
+      final resDType = result.dtype;
 
       final iter = NDIter(result);
       while (iter.moveNext()) {
@@ -677,14 +1109,20 @@ NDArray<T> select<T extends Object>(
           final choiceCoord = choiceCoords[selectedIdx];
           _mapCoordInPlace(coords, choiceArr.shape, choiceCoord);
           final val = choiceArr.getCell(choiceCoord);
-          result.setCell(coords, castValue(val, result.dtype));
+          result.setCell(coords, castValue(val, resDType));
         } else {
           _mapCoordInPlace(coords, defaultArr.shape, defaultCoord);
           final val = defaultArr.getCell(defaultCoord);
-          result.setCell(coords, castValue(val, result.dtype));
+          result.setCell(coords, castValue(val, resDType));
         }
       }
 
+      if (out != null) {
+        if (needsTemp) {
+          result.copy(out: out);
+        }
+        return out;
+      }
       return result.detachToParentScope();
     } finally {
       ScratchArena.reset(marker);

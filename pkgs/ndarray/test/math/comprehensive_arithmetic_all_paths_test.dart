@@ -34,57 +34,60 @@ void main() {
       DType.complex64,
     ];
 
-    test('4D Array Arithmetic across DTypes (Contiguous & Strided with out & where)', () {
-      NDArray.scope(() {
-        for (final dt in allDTypes) {
-          final a = NDArray.fromList(
-            List.generate(16, (i) {
-              final v = (i % 5) + 2;
-              if (dt == DType.complex128 || dt == DType.complex64) {
-                return Complex(v.toDouble(), 1.0);
-              }
-              return v;
-            }),
-            [2, 2, 2, 2],
-            dt,
-          );
+    test(
+      '4D Array Arithmetic across DTypes (Contiguous & Strided with out & where)',
+      () {
+        NDArray.scope(() {
+          for (final dt in allDTypes) {
+            final a = NDArray.fromList(
+              List.generate(16, (i) {
+                final v = (i % 5) + 2;
+                if (dt == DType.complex128 || dt == DType.complex64) {
+                  return Complex(v.toDouble(), 1.0);
+                }
+                return v;
+              }),
+              [2, 2, 2, 2],
+              dt,
+            );
 
-          final b = NDArray.fromList(
-            List.generate(16, (i) {
-              final v = (i % 3) + 2;
-              if (dt == DType.complex128 || dt == DType.complex64) {
-                return Complex(v.toDouble(), 1.0);
-              }
-              return v;
-            }),
-            [2, 2, 2, 2],
-            dt,
-          );
+            final b = NDArray.fromList(
+              List.generate(16, (i) {
+                final v = (i % 3) + 2;
+                if (dt == DType.complex128 || dt == DType.complex64) {
+                  return Complex(v.toDouble(), 1.0);
+                }
+                return v;
+              }),
+              [2, 2, 2, 2],
+              dt,
+            );
 
-          final mask = NDArray<bool>.fromList(
-            List.generate(16, (i) => i % 2 == 0),
-            [2, 2, 2, 2],
-            DType.boolean,
-          );
+            final mask = NDArray<Boolean>.fromList(
+              List.generate(16, (i) => i.isEven),
+              [2, 2, 2, 2],
+              DType.boolean,
+            );
 
-          final rAdd = add(a, b, where: mask);
-          expect(rAdd.shape, [2, 2, 2, 2]);
+            final rAdd = add(a, b, where: mask);
+            expect(rAdd.shape, [2, 2, 2, 2]);
 
-          final rSub = subtract(a, b, where: mask);
-          expect(rSub.shape, [2, 2, 2, 2]);
+            final rSub = subtract(a, b, where: mask);
+            expect(rSub.shape, [2, 2, 2, 2]);
 
-          final rMul = multiply(a, b, where: mask);
-          expect(rMul.shape, [2, 2, 2, 2]);
+            final rMul = multiply(a, b, where: mask);
+            expect(rMul.shape, [2, 2, 2, 2]);
 
-          final rDiv = divide(a, b, where: mask);
-          expect(rDiv.shape, [2, 2, 2, 2]);
+            final rDiv = divide(a, b, where: mask);
+            expect(rDiv.shape, [2, 2, 2, 2]);
 
-          final outArr = NDArray.create([2, 2, 2, 2], rAdd.dtype);
-          add(a, b, out: outArr, where: mask);
-          expect(outArr.shape, [2, 2, 2, 2]);
-        }
-      });
-    });
+            final outArr = NDArray.create([2, 2, 2, 2], rAdd.dtype);
+            add(a, b, out: outArr, where: mask);
+            expect(outArr.shape, [2, 2, 2, 2]);
+          }
+        });
+      },
+    );
 
     test('Scalar broadcasting with 0-D scalar arrays across all DTypes', () {
       NDArray.scope(() {
@@ -155,31 +158,34 @@ void main() {
       });
     });
 
-    test('StateError and ArgumentError exception paths on disposed inputs and incompatible shapes', () {
-      NDArray.scope(() {
-        final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-        final b = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+    test(
+      'StateError and ArgumentError exception paths on disposed inputs and incompatible shapes',
+      () {
+        NDArray.scope(() {
+          final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+          final b = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
 
-        // Incompatible shape
-        expect(() => add(a, b), throwsArgumentError);
-        expect(() => subtract(a, b), throwsArgumentError);
-        expect(() => multiply(a, b), throwsArgumentError);
-        expect(() => divide(a, b), throwsArgumentError);
+          // Incompatible shape
+          expect(() => add(a, b), throwsArgumentError);
+          expect(() => subtract(a, b), throwsArgumentError);
+          expect(() => multiply(a, b), throwsArgumentError);
+          expect(() => divide(a, b), throwsArgumentError);
 
-        final outBad = NDArray.create([4], DType.float64);
-        expect(() => add(a, a, out: outBad), throwsArgumentError);
+          final outBad = NDArray.create([4], DType.float64);
+          expect(() => add(a, a, out: outBad), throwsArgumentError);
 
-        // Disposed array
-        final disposedArr = NDArray.fromList([1.0], [1], DType.float64);
-        disposedArr.dispose();
+          // Disposed array
+          final disposedArr = NDArray.fromList([1.0], [1], DType.float64);
+          disposedArr.dispose();
 
-        expect(() => add(disposedArr, a), throwsStateError);
-        expect(() => add(a, disposedArr), throwsStateError);
-        expect(() => positive(disposedArr), throwsStateError);
-        expect(() => negative(disposedArr), throwsStateError);
-        expect(() => abs(disposedArr), throwsStateError);
-        expect(() => sqrt(disposedArr), throwsStateError);
-      });
-    });
+          expect(() => add(disposedArr, a), throwsStateError);
+          expect(() => add(a, disposedArr), throwsStateError);
+          expect(() => positive(disposedArr), throwsStateError);
+          expect(() => negative(disposedArr), throwsStateError);
+          expect(() => abs(disposedArr), throwsStateError);
+          expect(() => sqrt(disposedArr), throwsStateError);
+        });
+      },
+    );
   });
 }

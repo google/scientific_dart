@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:ffi';
-
 import 'package:ffi/ffi.dart';
 import 'package:openblas/src/openblas_bindings.dart';
 import 'package:test/test.dart';

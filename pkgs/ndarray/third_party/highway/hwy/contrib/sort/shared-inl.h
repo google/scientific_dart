@@ -130,7 +130,6 @@ static_assert(SortConstants::MaxBufBytes<2>(64) <= 1280, "Unexpectedly high");
 // due to https://gcc.gnu.org/bugzilla/show_bug.cgi?id=97696.
 #undef VQSORT_ENABLED
 #if (HWY_TARGET == HWY_SCALAR) ||                 \
-    (HWY_COMPILER_MSVC && !HWY_IS_DEBUG_BUILD) || \
     (HWY_ARCH_ARM_V7 && HWY_IS_DEBUG_BUILD) ||    \
     (HWY_ARCH_ARM_A64 && HWY_COMPILER_GCC_ACTUAL && HWY_IS_ASAN)
 #define VQSORT_ENABLED 0

@@ -13,8 +13,9 @@
 // limitations under the License.
 
 // ignore_for_file: non_constant_identifier_names
-import 'dart:math' as math;
 import 'dart:ffi' as ffi;
+
+import 'package:openblas/openblas.dart';
 
 import '../ndarray.dart';
 import '../scratch_arena.dart';
@@ -31,21 +32,55 @@ enum RootMethod {
   secant,
 }
 
-/// Method selection for multivariate scalar function minimization ([minimize]).
-
 void _dcopy(int n, ffi.Pointer<ffi.Double> src, ffi.Pointer<ffi.Double> dest) {
-  for (var i = 0; i < n; i++) {
-    dest[i] = src[i];
+  cblas_dcopy(n, src, 1, dest, 1);
+}
+
+void _copyArrayToPointer(
+  int n,
+  NDArray<Float64> arr,
+  ffi.Pointer<ffi.Double> dest,
+) {
+  if (arr.isContiguous) {
+    cblas_dcopy(n, arr.pointer.cast<ffi.Double>(), 1, dest, 1);
+  } else if (arr.rank == 1 && arr.strides[0] > 0) {
+    cblas_dcopy(n, arr.pointer.cast<ffi.Double>(), arr.strides[0], dest, 1);
+  } else if (arr.rank == 1) {
+    final stride = arr.strides[0];
+    final ptr = arr.pointer.cast<ffi.Double>();
+    for (var i = 0; i < n; i++) {
+      dest[i] = ptr[i * stride];
+    }
+  } else {
+    final contig = arr.copy();
+    try {
+      cblas_dcopy(n, contig.pointer.cast<ffi.Double>(), 1, dest, 1);
+    } finally {
+      contig.dispose();
+    }
   }
 }
 
-double _ddot(int n, ffi.Pointer<ffi.Double> x, ffi.Pointer<ffi.Double> y) {
-  var sum = 0.0;
-  for (var i = 0; i < n; i++) {
-    sum += x[i] * y[i];
+void _copyPointerToArray(
+  int n,
+  ffi.Pointer<ffi.Double> src,
+  NDArray<Float64> dest,
+) {
+  if (dest.isContiguous) {
+    cblas_dcopy(n, src, 1, dest.pointer.cast<ffi.Double>(), 1);
+  } else if (dest.rank == 1 && dest.strides[0] > 0) {
+    cblas_dcopy(n, src, 1, dest.pointer.cast<ffi.Double>(), dest.strides[0]);
+  } else {
+    final stride = dest.strides[0];
+    final ptr = dest.pointer.cast<ffi.Double>();
+    for (var i = 0; i < n; i++) {
+      ptr[i * stride] = src[i];
+    }
   }
-  return sum;
 }
+
+double _ddot(int n, ffi.Pointer<ffi.Double> x, ffi.Pointer<ffi.Double> y) =>
+    cblas_ddot(n, x, 1, y, 1);
 
 void _daxpy(
   int n,
@@ -53,25 +88,16 @@ void _daxpy(
   ffi.Pointer<ffi.Double> x,
   ffi.Pointer<ffi.Double> y,
 ) {
-  for (var i = 0; i < n; i++) {
-    y[i] += alpha * x[i];
-  }
+  cblas_daxpy(n, alpha, x, 1, y, 1);
 }
 
 void _dscal(int n, double alpha, ffi.Pointer<ffi.Double> x) {
-  for (var i = 0; i < n; i++) {
-    x[i] *= alpha;
-  }
+  cblas_dscal(n, alpha, x, 1);
 }
 
-double _dnrm2(int n, ffi.Pointer<ffi.Double> x) {
-  var sumSq = 0.0;
-  for (var i = 0; i < n; i++) {
-    sumSq += x[i] * x[i];
-  }
-  return math.sqrt(sumSq);
-}
+double _dnrm2(int n, ffi.Pointer<ffi.Double> x) => cblas_dnrm2(n, x, 1);
 
+/// Method selection for multivariate scalar function minimization ([minimize]).
 enum MinimizeMethod {
   /// Nelder-Mead simplex algorithm (derivative-free).
   nelderMead,
@@ -171,7 +197,7 @@ RootScalarResult brentq(
     );
   }
 
-  if (fa.isNaN || fb.isNaN || fa * fb > 0) {
+  if (fa.isNaN || fb.isNaN || (fa > 0.0) == (fb > 0.0)) {
     throw ArgumentError(
       'f(a) and f(b) must have different signs. Got f(a)=$fa, f(b)=$fb.',
     );
@@ -193,7 +219,7 @@ RootScalarResult brentq(
       );
     }
 
-    if ((fb > 0 && fc > 0) || (fb < 0 && fc < 0)) {
+    if ((fb > 0.0) == (fc > 0.0)) {
       c = a;
       fc = fa;
       d = b - a;
@@ -223,7 +249,7 @@ RootScalarResult brentq(
     }
 
     if (e.abs() >= tol1 && fa.abs() > fb.abs()) {
-      var s = fb / fa;
+      final s = fb / fa;
       var p = 0.0;
       var q = 0.0;
       if (a == c) {
@@ -438,16 +464,26 @@ RootScalarResult root_scalar(
       if (x0 == null) {
         throw ArgumentError('$method requires initial guess x0.');
       }
-      return newton(f, x0, fprime: fprime, tol: tol, maxiter: maxiter);
+      return newton(
+        f,
+        x0,
+        fprime: method == RootMethod.newton ? fprime : null,
+        tol: tol,
+        maxiter: maxiter,
+      );
   }
 }
 
 /// Minimizes a multivariate scalar objective function using the Nelder-Mead simplex algorithm.
 ///
-/// All heavy vector updates and distance calculations are offloaded to C OpenBLAS intrinsics.
+/// All heavy vector updates and distance calculations are offloaded to C OpenBLAS intrinsics
+/// using a fixed pool of pre-allocated scratch buffers.
 ///
-/// It is an error if [x0] is disposed.
-/// It is an error if [x0] is not a 1-dimensional array.
+/// If [out] is provided, the optimal parameter vector is written directly into [out] and
+/// returned as the `x` field of the [OptimizeResult].
+///
+/// It is an error if [x0] or [out] is disposed.
+/// It is an error if [x0] is not a 1-dimensional array, or if [out] does not match [x0]'s shape and dtype.
 /// It is an error if [xatol] or [fatol] is negative.
 ///
 /// ### References & Further Reading
@@ -463,15 +499,29 @@ OptimizeResult nelder_mead(
   int? maxiter,
   int? maxfev,
   bool adaptive = false,
+  NDArray<Float64>? out,
 }) {
   if (x0.isDisposed) {
     throw StateError('Cannot execute nelder_mead on disposed x0 array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write nelder_mead result to a disposed out array.',
+    );
   }
   if (x0.shape.length != 1) {
     throw ArgumentError('x0 must be a 1D vector for nelder_mead.');
   }
   if (x0.size == 0) {
     throw ArgumentError('Initial vector x0 must not be empty.');
+  }
+  if (out != null &&
+      (out.shape.length != 1 ||
+          out.shape[0] != x0.shape[0] ||
+          out.dtype != DType.float64)) {
+    throw ArgumentError(
+      'out must be a 1D Float64 array of length ${x0.shape[0]}.',
+    );
   }
   if (xatol < 0 || fatol < 0) {
     throw ArgumentError('Tolerances xatol and fatol must be non-negative.');
@@ -500,8 +550,7 @@ OptimizeResult nelder_mead(
       final pXE = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
       final pXC = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
 
-      final x0Ptr = x0.pointer.cast<ffi.Double>();
-      _dcopy(n, x0Ptr, pSim[0]);
+      _copyArrayToPointer(n, x0, pSim[0]);
 
       for (int i = 0; i < n; i++) {
         _dcopy(n, pSim[0], pSim[i + 1]);
@@ -514,7 +563,7 @@ OptimizeResult nelder_mead(
       final pArrPtr = pArr.pointer.cast<ffi.Double>();
       double evalPoint(ffi.Pointer<ffi.Double> ptr) {
         _dcopy(n, ptr, pArrPtr);
-        final val = fun(pArr);
+        final val = NDArray.scope(() => fun(pArr));
         nfev++;
         return val;
       }
@@ -523,6 +572,10 @@ OptimizeResult nelder_mead(
         pFSim[i] = evalPoint(pSim[i]);
       }
 
+      final idx = List<int>.generate(n + 1, (i) => i);
+      final tempSim = List<ffi.Pointer<ffi.Double>>.filled(n + 1, ffi.nullptr);
+      final tempFSim = List<double>.filled(n + 1, 0.0);
+
       int nit = 0;
       bool success = false;
       String msg = 'Maximum iterations or evaluations reached';
@@ -530,14 +583,15 @@ OptimizeResult nelder_mead(
       while (nit < limitIter && nfev < limitFev) {
         nit++;
 
-        final idx = List<int>.generate(n + 1, (i) => i);
+        for (int i = 0; i <= n; i++) {
+          idx[i] = i;
+        }
         idx.sort((a, b) => pFSim[a].compareTo(pFSim[b]));
 
-        final tempSim = List<ffi.Pointer<ffi.Double>>.generate(
-          n + 1,
-          (i) => pSim[idx[i]],
-        );
-        final tempFSim = List<double>.generate(n + 1, (i) => pFSim[idx[i]]);
+        for (int i = 0; i <= n; i++) {
+          tempSim[i] = pSim[idx[i]];
+          tempFSim[i] = pFSim[idx[i]];
+        }
         for (int i = 0; i <= n; i++) {
           pSim[i] = tempSim[i];
           pFSim[i] = tempFSim[i];
@@ -563,10 +617,7 @@ OptimizeResult nelder_mead(
           break;
         }
 
-        final u8Ptr = pXBar.cast<ffi.Uint8>();
-        for (int b = 0; b < n * doubleBytes; b++) {
-          u8Ptr[b] = 0;
-        }
+        _dscal(n, 0.0, pXBar);
         for (int i = 0; i < n; i++) {
           _daxpy(n, 1.0, pSim[i], pXBar);
         }
@@ -628,11 +679,18 @@ OptimizeResult nelder_mead(
         }
       }
 
-      final resArr = NDArray<Float64>.create([n], DType.float64);
-      _dcopy(n, pSim[0], resArr.pointer.cast<ffi.Double>());
+      final NDArray<Float64> resArr;
+      if (out != null) {
+        _copyPointerToArray(n, pSim[0], out);
+        resArr = out;
+      } else {
+        resArr = NDArray<Float64>.create([n], DType.float64);
+        _dcopy(n, pSim[0], resArr.pointer.cast<ffi.Double>());
+        resArr.detachToParentScope();
+      }
 
       return (
-        x: resArr.detachToParentScope(),
+        x: resArr,
         fun: pFSim[0],
         success: success,
         nit: nit,
@@ -655,6 +713,7 @@ OptimizeResult nelderMead(
   int? maxiter,
   int? maxfev,
   bool adaptive = false,
+  NDArray<Float64>? out,
 }) => nelder_mead(
   fun,
   x0,
@@ -663,13 +722,19 @@ OptimizeResult nelderMead(
   maxiter: maxiter,
   maxfev: maxfev,
   adaptive: adaptive,
+  out: out,
 );
 
 /// Minimizes a multivariate scalar objective function using the L-BFGS quasi-Newton algorithm.
 ///
-/// All heavy matrix-free two-loop recursion step calculations and vector updates are offloaded to C OpenBLAS intrinsics.
+/// All heavy matrix-free two-loop recursion step calculations and vector updates are offloaded
+/// to C OpenBLAS intrinsics using a fixed ring-buffer pool of pre-allocated temporaries.
 ///
-/// It is an error if [x0] is disposed.
+/// If [out] or [outJac] is provided, the final parameter vector and/or gradient vector are written
+/// directly into those buffers. If [jacInto] is provided, gradients are computed in-place into a
+/// pre-allocated gradient buffer without allocating a new [NDArray] per step.
+///
+/// It is an error if [x0], [out], or [outJac] is disposed.
 /// It is an error if [x0] is not a 1-dimensional array.
 /// It is an error if [m] is less than or equal to zero.
 /// It is an error if [gtol] is less than or equal to zero or [maxiter] is less than or equal to zero.
@@ -683,19 +748,44 @@ OptimizeResult lbfgs(
   double Function(NDArray<Float64>) fun,
   NDArray<Float64> x0, {
   NDArray<Float64> Function(NDArray<Float64>)? jac,
+  void Function(NDArray<Float64> x, NDArray<Float64> out)? jacInto,
   (double, NDArray<Float64>) Function(NDArray<Float64>)? funAndGrad,
   int m = 10,
   double gtol = 1e-5,
   int maxiter = 15000,
+  NDArray<Float64>? out,
+  NDArray<Float64>? outJac,
 }) {
   if (x0.isDisposed) {
     throw StateError('Cannot execute lbfgs on disposed x0 array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError('Cannot write lbfgs result to a disposed out array.');
+  }
+  if (outJac != null && outJac.isDisposed) {
+    throw StateError('Cannot write lbfgs gradient to a disposed outJac array.');
   }
   if (x0.shape.length != 1) {
     throw ArgumentError('x0 must be a 1D vector for lbfgs.');
   }
   if (x0.size == 0) {
     throw ArgumentError('Initial vector x0 must not be empty.');
+  }
+  if (out != null &&
+      (out.shape.length != 1 ||
+          out.shape[0] != x0.shape[0] ||
+          out.dtype != DType.float64)) {
+    throw ArgumentError(
+      'out must be a 1D Float64 array of length ${x0.shape[0]}.',
+    );
+  }
+  if (outJac != null &&
+      (outJac.shape.length != 1 ||
+          outJac.shape[0] != x0.shape[0] ||
+          outJac.dtype != DType.float64)) {
+    throw ArgumentError(
+      'outJac must be a 1D Float64 array of length ${x0.shape[0]}.',
+    );
   }
   if (m <= 0) {
     throw ArgumentError('m must be strictly positive.');
@@ -708,7 +798,6 @@ OptimizeResult lbfgs(
     final n = x0.shape[0];
     final doubleBytes = ffi.sizeOf<ffi.Double>();
     final arenaMarker = ScratchArena.marker;
-
     try {
       final pXCurr = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
       final pGCurr = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
@@ -721,9 +810,20 @@ OptimizeResult lbfgs(
       final pY = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
       final pXTemp = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
 
+      final sPool = List<ffi.Pointer<ffi.Double>>.generate(
+        m,
+        (_) => ScratchArena.allocate<ffi.Double>(n * doubleBytes),
+      );
+      final yPool = List<ffi.Pointer<ffi.Double>>.generate(
+        m,
+        (_) => ScratchArena.allocate<ffi.Double>(n * doubleBytes),
+      );
+
       int nfev = 0;
       final xArr = NDArray<Float64>.create([n], DType.float64);
       final xArrPtr = xArr.pointer.cast<ffi.Double>();
+      final gBufArr = NDArray<Float64>.create([n], DType.float64);
+      final gBufPtr = gBufArr.pointer.cast<ffi.Double>();
       final xPlus = NDArray<Float64>.create([n], DType.float64);
       final xPlusPtr = xPlus.pointer.cast<ffi.Double>();
       final xMinus = NDArray<Float64>.create([n], DType.float64);
@@ -736,29 +836,41 @@ OptimizeResult lbfgs(
         _dcopy(n, pX, xArrPtr);
 
         if (funAndGrad != null) {
-          final (fVal, gArr) = funAndGrad(xArr);
-          nfev++;
-          _dcopy(n, gArr.pointer.cast<ffi.Double>(), pGOut);
-          return (fVal, pGOut);
+          return NDArray.scope(() {
+            final (fVal, gArr) = funAndGrad(xArr);
+            nfev++;
+            _copyArrayToPointer(n, gArr, pGOut);
+            return (fVal, pGOut);
+          });
+        } else if (jacInto != null) {
+          return NDArray.scope(() {
+            final fVal = fun(xArr);
+            nfev++;
+            jacInto(xArr, gBufArr);
+            _dcopy(n, gBufPtr, pGOut);
+            return (fVal, pGOut);
+          });
         } else if (jac != null) {
-          final fVal = fun(xArr);
-          nfev++;
-          final gArr = jac(xArr);
-          _dcopy(n, gArr.pointer.cast<ffi.Double>(), pGOut);
-          return (fVal, pGOut);
+          return NDArray.scope(() {
+            final fVal = fun(xArr);
+            nfev++;
+            final gArr = jac(xArr);
+            _copyArrayToPointer(n, gArr, pGOut);
+            return (fVal, pGOut);
+          });
         } else {
-          final fVal = fun(xArr);
+          final fVal = NDArray.scope(() => fun(xArr));
           nfev++;
-          final h = 1e-8;
+          const h = 1e-8;
           for (int i = 0; i < n; i++) {
             _dcopy(n, pX, pXTemp);
             pXTemp[i] += h;
             _dcopy(n, pXTemp, xPlusPtr);
-            final fPlus = fun(xPlus);
+            final fPlus = NDArray.scope(() => fun(xPlus));
 
             pXTemp[i] = pX[i] - h;
             _dcopy(n, pXTemp, xMinusPtr);
-            final fMinus = fun(xMinus);
+            final fMinus = NDArray.scope(() => fun(xMinus));
 
             pGOut[i] = (fPlus - fMinus) / (2.0 * h);
             nfev += 2;
@@ -767,12 +879,13 @@ OptimizeResult lbfgs(
         }
       }
 
-      _dcopy(n, x0.pointer.cast<ffi.Double>(), pXCurr);
+      _copyArrayToPointer(n, x0, pXCurr);
       var (fCurr, _) = evalFunAndGrad(pXCurr, pGCurr);
 
       final pSHist = <ffi.Pointer<ffi.Double>>[];
       final pYHist = <ffi.Pointer<ffi.Double>>[];
       final rhoHist = <double>[];
+      final alphaArr = List<double>.filled(m, 0.0);
 
       int nit = 0;
       bool success = false;
@@ -783,7 +896,8 @@ OptimizeResult lbfgs(
 
         double gNorm = 0.0;
         for (int i = 0; i < n; i++) {
-          if (pGCurr[i].abs() > gNorm) gNorm = pGCurr[i].abs();
+          final absG = pGCurr[i].abs();
+          if (absG > gNorm) gNorm = absG;
         }
 
         if (gNorm <= gtol) {
@@ -794,7 +908,6 @@ OptimizeResult lbfgs(
 
         _dcopy(n, pGCurr, pQ);
         final k = pSHist.length;
-        final alphaArr = List<double>.filled(k, 0.0);
 
         for (int i = k - 1; i >= 0; i--) {
           final sq = _ddot(n, pSHist[i], pQ);
@@ -822,7 +935,7 @@ OptimizeResult lbfgs(
         _dscal(n, -1.0, pP);
 
         double alphaStep = 1.0;
-        double c1 = 1e-4;
+        const c1 = 1e-4;
         final dg = _ddot(n, pGCurr, pP);
 
         double fNext = fCurr;
@@ -856,17 +969,20 @@ OptimizeResult lbfgs(
         final ys = _ddot(n, pY, pS);
 
         if (ys > 1e-10) {
+          final ffi.Pointer<ffi.Double> targetS;
+          final ffi.Pointer<ffi.Double> targetY;
           if (pSHist.length >= m) {
-            pSHist.removeAt(0);
-            pYHist.removeAt(0);
+            targetS = pSHist.removeAt(0);
+            targetY = pYHist.removeAt(0);
             rhoHist.removeAt(0);
+          } else {
+            targetS = sPool[pSHist.length];
+            targetY = yPool[pYHist.length];
           }
-          final newS = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
-          final newY = ScratchArena.allocate<ffi.Double>(n * doubleBytes);
-          _dcopy(n, pS, newS);
-          _dcopy(n, pY, newY);
-          pSHist.add(newS);
-          pYHist.add(newY);
+          _dcopy(n, pS, targetS);
+          _dcopy(n, pY, targetY);
+          pSHist.add(targetS);
+          pYHist.add(targetY);
           rhoHist.add(1.0 / ys);
         }
 
@@ -875,19 +991,34 @@ OptimizeResult lbfgs(
         fCurr = fNext;
       }
 
-      final resX = NDArray<Float64>.create([n], DType.float64);
-      final resJac = NDArray<Float64>.create([n], DType.float64);
-      _dcopy(n, pXCurr, resX.pointer.cast<ffi.Double>());
-      _dcopy(n, pGCurr, resJac.pointer.cast<ffi.Double>());
+      final NDArray<Float64> resX;
+      if (out != null) {
+        _copyPointerToArray(n, pXCurr, out);
+        resX = out;
+      } else {
+        resX = NDArray<Float64>.create([n], DType.float64);
+        _dcopy(n, pXCurr, resX.pointer.cast<ffi.Double>());
+        resX.detachToParentScope();
+      }
+
+      final NDArray<Float64> resJac;
+      if (outJac != null) {
+        _copyPointerToArray(n, pGCurr, outJac);
+        resJac = outJac;
+      } else {
+        resJac = NDArray<Float64>.create([n], DType.float64);
+        _dcopy(n, pGCurr, resJac.pointer.cast<ffi.Double>());
+        resJac.detachToParentScope();
+      }
 
       return (
-        x: resX.detachToParentScope(),
+        x: resX,
         fun: fCurr,
         success: success,
         nit: nit,
         nfev: nfev,
         message: msg,
-        jac: resJac.detachToParentScope(),
+        jac: resJac,
       );
     } finally {
       ScratchArena.reset(arenaMarker);
@@ -901,7 +1032,7 @@ OptimizeResult lbfgs(
 /// - [MinimizeMethod.nelderMead]: Derivative-free simplex method via [nelder_mead].
 /// - [MinimizeMethod.lbfgs]: Quasi-Newton gradient method via [lbfgs].
 ///
-/// It is an error if [x0] is disposed or if [x0] is not a 1-dimensional vector.
+/// It is an error if [x0], [out], or [outJac] is disposed or if [x0] is not a 1-dimensional vector.
 ///
 /// ### References & Further Reading
 /// - [SciPy minimize Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html)
@@ -912,9 +1043,12 @@ OptimizeResult minimize(
   NDArray<Float64> x0, {
   MinimizeMethod method = MinimizeMethod.nelderMead,
   NDArray<Float64> Function(NDArray<Float64>)? jac,
+  void Function(NDArray<Float64> x, NDArray<Float64> out)? jacInto,
   (double, NDArray<Float64>) Function(NDArray<Float64>)? funAndGrad,
   double? tol,
   int? maxiter,
+  NDArray<Float64>? out,
+  NDArray<Float64>? outJac,
 }) {
   switch (method) {
     case MinimizeMethod.nelderMead:
@@ -924,15 +1058,19 @@ OptimizeResult minimize(
         fatol: tol ?? 1e-4,
         xatol: tol ?? 1e-4,
         maxiter: maxiter,
+        out: out,
       );
     case MinimizeMethod.lbfgs:
       return lbfgs(
         fun,
         x0,
         jac: jac,
+        jacInto: jacInto,
         funAndGrad: funAndGrad,
         gtol: tol ?? 1e-5,
         maxiter: maxiter ?? 15000,
+        out: out,
+        outJac: outJac,
       );
   }
 }

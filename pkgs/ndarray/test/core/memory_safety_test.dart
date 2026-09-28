@@ -14,11 +14,9 @@
 
 import 'dart:ffi' as ffi;
 import 'dart:io';
-
 import 'package:ffi/ffi.dart';
 import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/ndarray.dart';
-import 'package:ndarray/src/scratch_arena.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -209,7 +207,7 @@ void main() {
           final result = NDArray.returning<Float64>(() {
             a = NDArray<Float64>.zeros([10], DType.float64);
             b = NDArray<Float64>.ones([10], DType.float64);
-            c = add<Float64, Float64, Float64>(a, b);
+            c = add<Float64>(a, b);
             return c;
           });
 
@@ -230,7 +228,7 @@ void main() {
           innerRes = NDArray.returning<Float64>(() {
             final temp = NDArray<Float64>.zeros([5], DType.float64);
             final ones = NDArray<Float64>.ones([5], DType.float64);
-            return add<Float64, Float64, Float64>(temp, ones);
+            return add<Float64>(temp, ones);
           });
 
           // Inside outer scope, innerRes is alive because it was promoted to outer scope
@@ -479,6 +477,27 @@ void main() {
           ScratchArena.reset(marker);
         }
       });
+
+      test('reset throws StateError on stale or out-of-order marker', () {
+        final markerStart = ScratchArena.marker;
+        ScratchArena.allocate<ffi.Uint8>(128);
+        final markerMid = ScratchArena.marker;
+        ScratchArena.allocate<ffi.Uint8>(128);
+        final markerAhead = ScratchArena.marker;
+
+        // Reset back to markerMid
+        ScratchArena.reset(markerMid);
+
+        // Attempting to reset to markerAhead (which was allocated after markerMid and is now ahead of current offset) throws StateError
+        expect(() => ScratchArena.reset(markerAhead), throwsStateError);
+
+        // Reset all the way back to markerStart
+        ScratchArena.reset(markerStart);
+
+        // Attempting to reset to markerMid or markerAhead (both stale/ahead of markerStart) throws StateError
+        expect(() => ScratchArena.reset(markerMid), throwsStateError);
+        expect(() => ScratchArena.reset(markerAhead), throwsStateError);
+      });
     });
 
     group('Pointer Safety Tests', () {
@@ -591,7 +610,7 @@ void main() {
           pointer[i] = (i + 1) * 10.0;
         }
 
-        final arr = NDArray<double>.fromPointer(pointer.cast(), [
+        final arr = NDArray<AnySpec>.fromPointer(pointer.cast(), [
           2,
           2,
         ], DType.float64);
@@ -625,7 +644,7 @@ void main() {
           pointer[i] = (i + 1) * 2.0;
         }
 
-        final arr = NDArray<double>.fromPointer(
+        final arr = NDArray<AnySpec>.fromPointer(
           pointer.cast(),
           [4],
           DType.float64,
@@ -647,10 +666,10 @@ void main() {
         pointer[0] = 1.0;
         pointer[1] = 2.0;
 
-        NDArray<double>? arrRef;
+        NDArray<AnySpec>? arrRef;
 
         NDArray.scope(() {
-          final arr = NDArray<double>.fromPointer(pointer.cast(), [
+          final arr = NDArray<AnySpec>.fromPointer(pointer.cast(), [
             2,
           ], DType.float64);
           arrRef = arr;
@@ -671,10 +690,19 @@ void main() {
       test('spacers numSamples non-negative check', () {
         NDArray.scope(() {
           // logspace and geomspace return empty for numSamples == 0 and throw for negative
-          expect(logspace(0.0, 3.0, 0).size, equals(0));
-          expect(() => logspace(0.0, 3.0, -5), throwsArgumentError);
-          expect(geomspace(1.0, 100.0, 0).size, equals(0));
-          expect(() => geomspace(1.0, 100.0, -3), throwsArgumentError);
+          expect(logspace(0.0, 3.0, 0, dtype: DType.float64).size, equals(0));
+          expect(
+            () => logspace(0.0, 3.0, -5, dtype: DType.float64),
+            throwsArgumentError,
+          );
+          expect(
+            geomspace(1.0, 100.0, 0, dtype: DType.float64).size,
+            equals(0),
+          );
+          expect(
+            () => geomspace(1.0, 100.0, -3, dtype: DType.float64),
+            throwsArgumentError,
+          );
         });
       });
 
@@ -808,10 +836,10 @@ void main() {
       });
 
       test('financial operations throw StateError on disposed arrays', () {
-        final rate = NDArray.scalar(Float64(0.05), dtype: DType.float64);
-        final nper = NDArray.scalar(Float64(10.0), dtype: DType.float64);
-        final pmt = NDArray.scalar(Float64(-100.0), dtype: DType.float64);
-        final pvArr = NDArray.scalar(Float64(1000.0), dtype: DType.float64);
+        final rate = NDArray.scalar(0.05, dtype: DType.float64);
+        final nper = NDArray.scalar(10.0, dtype: DType.float64);
+        final pmt = NDArray.scalar(-100.0, dtype: DType.float64);
+        final pvArr = NDArray.scalar(1000.0, dtype: DType.float64);
         final values = NDArray.fromList(
           [-100.0, 39.0, 59.0, 55.0, 20.0],
           [5],

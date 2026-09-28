@@ -21,17 +21,17 @@ void main() async {
     (c) {
       final y1d = NDArray.zeros([1000000], DType.float64);
       for (var i = 0; i < 1000000; i++) {
-        y1d.data[i] = Float64(i.toDouble());
+        y1d.data[i] = i.toDouble();
       }
 
       final f1d = NDArray.zeros([1000000], DType.float64);
       for (var i = 0; i < 1000000; i++) {
-        f1d.data[i] = Float64(i.toDouble() * i.toDouble());
+        f1d.data[i] = i.toDouble() * i.toDouble();
       }
 
       final f2d = NDArray.zeros([1000, 1000], DType.float64);
       for (var i = 0; i < 1000000; i++) {
-        f2d.data[i] = Float64(i.toDouble());
+        f2d.data[i] = i.toDouble();
       }
 
       c.bench('Calculus | trapz 1D (Float64) [size=1,000,000]', () {

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import 'package:ffi/ffi.dart' as pkg_ffi;
 
 import 'pocketfft_bindings.dart';
@@ -65,7 +64,7 @@ final class Complex1DPlanKey extends PocketFFTPlanKey {
 
 /// Cache key for a 1D real FFT plan ([kiss_fftr_cfg]).
 final class Real1DPlanKey extends PocketFFTPlanKey {
-  /// The real signal transform length ($N$, must be even).
+  /// The real signal transform length ($N$).
   final int length;
 
   /// Whether this plan computes an inverse transform ($1$) or forward ($0$).
@@ -195,7 +194,7 @@ final class PocketFFTPlanCache {
     while (_cache.length > _maxCapacity) {
       final oldestKey = _cache.keys.first;
       final oldestPtr = _cache.remove(oldestKey)!;
-      free(oldestPtr);
+      pkg_ffi.malloc.free(oldestPtr);
     }
   }
 
@@ -243,20 +242,35 @@ final class PocketFFTPlanCache {
       return cached.cast<kiss_fft_state>();
     }
 
-    final cfg = kiss_fft_alloc(
-      length,
-      isInverse ? 1 : 0,
-      ffi.nullptr,
-      ffi.nullptr,
-    );
-    if (cfg.address == 0) {
-      throw StateError(
-        'Failed to allocate native kiss_fft_cfg plan for length $length',
+    final pLen = pkg_ffi.malloc<ffi.Size>();
+    try {
+      pLen.value = 0;
+      kiss_fft_alloc(length, isInverse ? 1 : 0, ffi.nullptr, pLen);
+      final needed = pLen.value;
+      if (needed <= 0) {
+        throw StateError(
+          'Failed to query native kiss_fft_cfg plan size for length $length',
+        );
+      }
+      final buf = pkg_ffi.malloc<ffi.Uint8>(needed);
+      final cfg = kiss_fft_alloc(
+        length,
+        isInverse ? 1 : 0,
+        buf.cast<ffi.Void>(),
+        pLen,
       );
-    }
+      if (cfg.address == 0) {
+        pkg_ffi.malloc.free(buf);
+        throw StateError(
+          'Failed to allocate native kiss_fft_cfg plan for length $length',
+        );
+      }
 
-    _insert(key, cfg.cast<ffi.Void>());
-    return cfg;
+      _insert(key, cfg.cast<ffi.Void>());
+      return cfg;
+    } finally {
+      pkg_ffi.malloc.free(pLen);
+    }
   }
 
   /// Retrieves or creates a 1D real FFT configuration for the given [length]
@@ -267,7 +281,6 @@ final class PocketFFTPlanCache {
   ///
   /// **Preconditions:**
   /// - It is an error if [length] is less than or equal to 0.
-  /// - It is an error if [length] is odd (must be even).
   /// - It is an error if this cache is disposed.
   ///
   /// **Throws:**
@@ -287,13 +300,6 @@ final class PocketFFTPlanCache {
         'Transform length must be strictly positive',
       );
     }
-    if (length % 2 != 0) {
-      throw ArgumentError.value(
-        length,
-        'length',
-        'Real FFT plan length must be even',
-      );
-    }
 
     final key = Real1DPlanKey(length, isInverse: isInverse);
     final cached = _cache.remove(key);
@@ -302,20 +308,35 @@ final class PocketFFTPlanCache {
       return cached.cast<kiss_fftr_state>();
     }
 
-    final cfg = kiss_fftr_alloc(
-      length,
-      isInverse ? 1 : 0,
-      ffi.nullptr,
-      ffi.nullptr,
-    );
-    if (cfg.address == 0) {
-      throw StateError(
-        'Failed to allocate native kiss_fftr_cfg plan for length $length',
+    final pLen = pkg_ffi.malloc<ffi.Size>();
+    try {
+      pLen.value = 0;
+      kiss_fftr_alloc(length, isInverse ? 1 : 0, ffi.nullptr, pLen);
+      final needed = pLen.value;
+      if (needed <= 0) {
+        throw StateError(
+          'Failed to query native kiss_fftr_cfg plan size for length $length',
+        );
+      }
+      final buf = pkg_ffi.malloc<ffi.Uint8>(needed);
+      final cfg = kiss_fftr_alloc(
+        length,
+        isInverse ? 1 : 0,
+        buf.cast<ffi.Void>(),
+        pLen,
       );
-    }
+      if (cfg.address == 0) {
+        pkg_ffi.malloc.free(buf);
+        throw StateError(
+          'Failed to allocate native kiss_fftr_cfg plan for length $length',
+        );
+      }
 
-    _insert(key, cfg.cast<ffi.Void>());
-    return cfg;
+      _insert(key, cfg.cast<ffi.Void>());
+      return cfg;
+    } finally {
+      pkg_ffi.malloc.free(pLen);
+    }
   }
 
   /// Retrieves or creates an N-dimensional complex FFT configuration for the given [dimensions]
@@ -364,18 +385,29 @@ final class PocketFFTPlanCache {
 
     final ndims = dimensions.length;
     final pDims = pkg_ffi.malloc<ffi.Int>(ndims);
+    final pLen = pkg_ffi.malloc<ffi.Size>();
     try {
       for (var i = 0; i < ndims; i++) {
         pDims[i] = dimensions[i];
       }
+      pLen.value = 0;
+      kiss_fftnd_alloc(pDims, ndims, isInverse ? 1 : 0, ffi.nullptr, pLen);
+      final needed = pLen.value;
+      if (needed <= 0) {
+        throw StateError(
+          'Failed to query native kiss_fftnd_cfg plan size for dimensions $dimensions',
+        );
+      }
+      final buf = pkg_ffi.malloc<ffi.Uint8>(needed);
       final cfg = kiss_fftnd_alloc(
         pDims,
         ndims,
         isInverse ? 1 : 0,
-        ffi.nullptr,
-        ffi.nullptr,
+        buf.cast<ffi.Void>(),
+        pLen,
       );
       if (cfg.address == 0) {
+        pkg_ffi.malloc.free(buf);
         throw StateError(
           'Failed to allocate native kiss_fftnd_cfg plan for dimensions $dimensions',
         );
@@ -384,6 +416,7 @@ final class PocketFFTPlanCache {
       return cfg;
     } finally {
       pkg_ffi.malloc.free(pDims);
+      pkg_ffi.malloc.free(pLen);
     }
   }
 
@@ -391,7 +424,7 @@ final class PocketFFTPlanCache {
     while (_cache.length >= _maxCapacity) {
       final oldestKey = _cache.keys.first;
       final oldestPtr = _cache.remove(oldestKey)!;
-      free(oldestPtr);
+      pkg_ffi.malloc.free(oldestPtr);
     }
     _cache[key] = ptr;
   }
@@ -404,7 +437,7 @@ final class PocketFFTPlanCache {
       throw StateError('Cannot clear a disposed cache.');
     }
     for (final ptr in _cache.values) {
-      free(ptr);
+      pkg_ffi.malloc.free(ptr);
     }
     _cache.clear();
   }
@@ -413,7 +446,7 @@ final class PocketFFTPlanCache {
   void dispose() {
     if (_isDisposed) return;
     for (final ptr in _cache.values) {
-      free(ptr);
+      pkg_ffi.malloc.free(ptr);
     }
     _cache.clear();
     _isDisposed = true;

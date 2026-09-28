@@ -16,20 +16,22 @@ name: pocketfft
 description: Native AOT FFI bindings for high-performance mixed-radix Fast Fourier Transforms.
 version: 0.1.0
 resolution: workspace
-repository: https://github.com/google/scientific_dart
+repository: https://github.com/google/scientific_dart/tree/main/pkgs/pocketfft
 
 environment:
   sdk: ^3.10.0
 
 dependencies:
   ffi: ^2.2.0
-  hooks: ^1.0.3
-  code_assets: ^1.0.0
+  hooks: '>=1.0.3 <3.0.0'
+  code_assets: '>=1.0.0 <3.0.0'
   archive: ^3.6.1
+  crypto: ^3.0.7
 
 dev_dependencies:
   lints: ^6.1.0
   test: ^1.31.1
+  ffigen: ^20.1.1
   criterion:
     git: https://github.com/sigurdm/criterion.git
-  ffigen: ^20.1.1
+

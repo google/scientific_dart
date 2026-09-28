@@ -12,19 +12,88 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:math' as math;
-
 import '../ndarray.dart';
-
 import 'dart:ffi' as ffi;
-
 import '../ndarray_bindings.dart';
 import '../scratch_arena.dart';
 
 // Standalone operational relative cross-imports
 import 'spacers.dart';
 import 'broadcasting.dart';
+
+/// Throws [OutOfMemoryError] if a native C/C++ kernel signaled an allocation failure.
+void checkNativeOom() {
+  if (ndarray_consume_oom_flag() != 0) {
+    throw OutOfMemoryError();
+  }
+}
+
+/// Checks if two arrays share the same underlying memory buffer.
+bool sharesMemory(NDArray x, NDArray y) {
+  if (identical(x, y)) return true;
+  if (x.pointer.address != 0 &&
+      y.pointer.address != 0 &&
+      x.size > 0 &&
+      y.size > 0) {
+    int minRel(NDArray arr) {
+      int m = 0;
+      for (int i = 0; i < arr.rank; i++) {
+        if (arr.shape[i] > 1 && arr.strides[i] < 0) {
+          m += (arr.shape[i] - 1) * arr.strides[i];
+        }
+      }
+      return m;
+    }
+
+    int maxRel(NDArray arr) {
+      int m = 0;
+      for (int i = 0; i < arr.rank; i++) {
+        if (arr.shape[i] > 1 && arr.strides[i] > 0) {
+          m += (arr.shape[i] - 1) * arr.strides[i];
+        }
+      }
+      return m;
+    }
+
+    final xStart = x.pointer.address + minRel(x) * x.dtype.byteWidth;
+    final xEnd = x.pointer.address + (maxRel(x) + 1) * x.dtype.byteWidth;
+    final yStart = y.pointer.address + minRel(y) * y.dtype.byteWidth;
+    final yEnd = y.pointer.address + (maxRel(y) + 1) * y.dtype.byteWidth;
+    if (xStart < yEnd && yStart < xEnd) return true;
+  }
+  return false;
+}
+
+bool _pointerOverlapsArray(
+  ffi.Pointer<ffi.Uint8>? ptr,
+  int byteLen,
+  NDArray arr,
+) {
+  if (ptr == null ||
+      ptr == ffi.nullptr ||
+      byteLen <= 0 ||
+      arr.pointer.address == 0 ||
+      arr.size == 0) {
+    return false;
+  }
+  int minRel = 0;
+  int maxRel = 0;
+  for (int i = 0; i < arr.rank; i++) {
+    if (arr.shape[i] > 1) {
+      if (arr.strides[i] < 0) {
+        minRel += (arr.shape[i] - 1) * arr.strides[i];
+      } else {
+        maxRel += (arr.shape[i] - 1) * arr.strides[i];
+      }
+    }
+  }
+  final arrStart = arr.pointer.address + minRel * arr.dtype.byteWidth;
+  final arrEnd = arr.pointer.address + (maxRel + 1) * arr.dtype.byteWidth;
+  final ptrStart = ptr.address;
+  final ptrEnd = ptr.address + byteLen;
+  return ptrStart < arrEnd && arrStart < ptrEnd;
+}
 
 int mapSortKind(SortKind kind) {
   switch (kind) {
@@ -137,18 +206,12 @@ DType resolveDType(DType a, DType b) {
   return DType.float64;
 }
 
-DType<T> defaultDType<T>() {
-  if (T == Complex) return DType.complex128 as DType<T>;
-  if (T == int) return DType.int64 as DType<T>;
-  if (T == bool) return DType.boolean as DType<T>;
-  return DType.float64 as DType<T>;
-}
-
 Object normalizeScalar(Object o, DType dtype) {
   switch (dtype) {
     case DType.complex64:
     case DType.complex128:
       if (o is Complex) return o;
+      if (o is double && o.isNaN) return Complex(double.nan, double.nan);
       if (o is num) return Complex(o.toDouble(), 0.0);
       if (o is bool) return Complex(o ? 1.0 : 0.0, 0.0);
       return Complex((o as dynamic).toDouble() as double, 0.0);
@@ -168,9 +231,14 @@ Object normalizeScalar(Object o, DType dtype) {
     case DType.uint32:
     case DType.uint16:
     case DType.uint8:
+      if (o is double && (o.isNaN || o.isInfinite)) return 0;
       if (o is num) return o.toInt();
       if (o is bool) return o ? 1 : 0;
-      if (o is Complex) return o.real.toInt();
+      if (o is Complex) {
+        final r = o.real;
+        if (r.isNaN || r.isInfinite) return 0;
+        return r.toInt();
+      }
       return (o as dynamic).toInt() as int;
     case DType.boolean:
       if (o is bool) return o;
@@ -180,133 +248,149 @@ Object normalizeScalar(Object o, DType dtype) {
   }
 }
 
-NDArray<T> toNDArray<T>(Object o, DType<T> dtype) {
+NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
   if (o is NDArray) {
     if (o.isDisposed) {
       throw StateError('Cannot convert a disposed NDArray to NDArray.');
     }
-    if (o.dtype == dtype) return o as NDArray<T>;
+    if (o.dtype == dtype) {
+      if (o is NDArray<T>) return o;
+      return NDArray<T>.view(o, shape: o.shape, strides: o.strides);
+    }
     return castNDArray(o, dtype);
   }
   final normalized = normalizeScalar(o, dtype);
-  return NDArray<T>.scalar(normalized as T, dtype: dtype);
+  return NDArray<T>.scalar(normalized, dtype: dtype);
 }
 
-({NDArray<T> samples, T step}) linspaceInternal<T>(
-  T start,
-  T stop,
+({NDArray<T> samples, dynamic step}) linspaceInternal<T extends DTypeTag>(
+  Object? start,
+  Object? stop,
   int numSamples, {
   bool endpoint = true,
-  DType<T>? dtype,
+  required DType<T> dtype,
   NDArray<T>? out,
 }) {
   if (numSamples < 0) throw ArgumentError('numSamples must be non-negative');
 
-  final resolvedDType = dtype ?? defaultDType<T>();
+  final resolvedDType = dtype;
 
-  if (numSamples == 0) {
-    final arr = NDArray<T>.create([0], resolvedDType);
-    final step = normalizeScalar(double.nan, resolvedDType) as T;
-    return (samples: arr, step: step);
-  }
-
-  final div = endpoint ? (numSamples - 1) : numSamples;
   if (out != null) {
     if (out.isDisposed) throw StateError('Cannot write to disposed out array');
     if (!listEquals(out.shape, [numSamples]) || out.dtype != resolvedDType) {
       throw ArgumentError('Incompatible out array shape or dtype');
     }
   }
-  final arr = out ?? NDArray<T>.create([numSamples], resolvedDType);
-  T step;
 
-  switch (resolvedDType) {
-    case DType.float64:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      v_linspace_double(arr.pointer.cast(), s, stp, numSamples);
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.float32:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      v_linspace_float(arr.pointer.cast(), s, stp, numSamples);
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.complex128:
-      final s = normalizeScalar(start as Object, DType.complex128) as Complex;
-      final e = normalizeScalar(stop as Object, DType.complex128) as Complex;
-      final stp = numSamples <= 1 ? Complex(0, 0) : (e - s) / div;
-      v_linspace_complex128(
-        arr.pointer.cast(),
-        s.real,
-        s.imag,
-        stp.real,
-        stp.imag,
-        numSamples,
-      );
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.complex64:
-      final s = normalizeScalar(start as Object, DType.complex128) as Complex;
-      final e = normalizeScalar(stop as Object, DType.complex128) as Complex;
-      final stp = numSamples <= 1 ? Complex(0, 0) : (e - s) / div;
-      v_linspace_complex64(
-        arr.pointer.cast(),
-        s.real,
-        s.imag,
-        stp.real,
-        stp.imag,
-        numSamples,
-      );
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.int64:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      v_linspace_int64(arr.pointer.cast(), s, stp, numSamples);
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.int32:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      v_linspace_int32(arr.pointer.cast(), s, stp, numSamples);
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.int16:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      v_linspace_int16(arr.pointer.cast(), s, stp, numSamples);
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.uint8:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      v_linspace_uint8(arr.pointer.cast(), s, stp, numSamples);
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.float16:
-    case DType.bfloat16:
-    case DType.int8:
-    case DType.uint64:
-    case DType.uint32:
-    case DType.uint16:
-      final s = (start as num).toDouble();
-      final e = (stop as num).toDouble();
-      final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
-      final temp = NDArray<Float64>.create([numSamples], DType.float64);
-      v_linspace_double(temp.pointer.cast(), s, stp, numSamples);
-      final casted = castNDArray(temp, resolvedDType);
-      casted.copy(out: arr);
-      temp.dispose();
-      casted.dispose();
-      step = normalizeScalar(stp, resolvedDType) as T;
-    case DType.boolean:
-      throw UnsupportedError('linspace not supported for boolean arrays');
+  if (numSamples == 0) {
+    final arr = out ?? NDArray<T>.create([0], resolvedDType);
+    final step = normalizeScalar(double.nan, resolvedDType);
+    return (samples: arr, step: step);
   }
 
-  return (samples: arr, step: step);
+  final div = endpoint ? (numSamples - 1) : numSamples;
+  final bool useTempOut = out != null && !out.isContiguous;
+
+  return NDArray.scope(() {
+    final arr = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create([numSamples], resolvedDType);
+    dynamic step;
+
+    switch (resolvedDType) {
+      case DType.float64:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        v_linspace_double(arr.pointer.cast(), s, stp, numSamples);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.float32:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        v_linspace_float(arr.pointer.cast(), s, stp, numSamples);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.complex128:
+        final s = normalizeScalar(start as Object, DType.complex128) as Complex;
+        final e = normalizeScalar(stop as Object, DType.complex128) as Complex;
+        final stp = numSamples <= 1 ? Complex(0, 0) : (e - s) / div;
+        v_linspace_complex128(
+          arr.pointer.cast(),
+          s.real,
+          s.imag,
+          stp.real,
+          stp.imag,
+          numSamples,
+        );
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.complex64:
+        final s = normalizeScalar(start as Object, DType.complex128) as Complex;
+        final e = normalizeScalar(stop as Object, DType.complex128) as Complex;
+        final stp = numSamples <= 1 ? Complex(0, 0) : (e - s) / div;
+        v_linspace_complex64(
+          arr.pointer.cast(),
+          s.real,
+          s.imag,
+          stp.real,
+          stp.imag,
+          numSamples,
+        );
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.int64:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        v_linspace_int64(arr.pointer.cast(), s, stp, numSamples);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.int32:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        v_linspace_int32(arr.pointer.cast(), s, stp, numSamples);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.int16:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        v_linspace_int16(arr.pointer.cast(), s, stp, numSamples);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.uint8:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        v_linspace_uint8(arr.pointer.cast(), s, stp, numSamples);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        final temp = NDArray<Float64>.create([numSamples], DType.float64);
+        v_linspace_double(temp.pointer.cast(), s, stp, numSamples);
+        final casted = castNDArray(temp, resolvedDType);
+        casted.copy(out: arr);
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.boolean:
+        throw UnsupportedError('linspace not supported for boolean arrays');
+    }
+
+    if (useTempOut) {
+      arr.copy(out: out);
+      return (samples: out, step: step);
+    }
+    if (out == null) {
+      arr.detachToParentScope();
+    }
+    return (samples: arr, step: step);
+  });
 }
 
-void elementWiseOp<Ta, Tb, Tr>(
+void
+elementWiseOp<Ta extends DTypeTag, Tb extends DTypeTag, Tr extends DTypeTag>(
   NDArray<Tr> result,
   NDArray<Ta> a,
   NDArray<Tb> b,
@@ -318,10 +402,64 @@ void elementWiseOp<Ta, Tb, Tr>(
   int offsetA,
   int offsetB,
   int offsetResult,
-  Tr Function(Ta, Tb) op, [
+  dynamic Function(dynamic, dynamic) op, [
   ffi.Pointer<ffi.Uint8>? whereMask,
   int flatIndex = 0,
 ]) {
+  if (dim == 0) {
+    final totalElements = shape.fold<int>(1, (acc, v) => acc * v);
+    if (totalElements > 0 &&
+        (sharesMemory(a, result) ||
+            sharesMemory(b, result) ||
+            _pointerOverlapsArray(whereMask, totalElements, result))) {
+      final tempOut = NDArray<Tr>.create(shape, result.dtype);
+      try {
+        if (whereMask != null && whereMask != ffi.nullptr) {
+          unaryOp<Tr, Tr>(
+            tempOut,
+            result,
+            shape,
+            stridesResult,
+            tempOut.strides,
+            0,
+            offsetResult,
+            0,
+            (v) => v,
+          );
+        }
+        elementWiseOp<Ta, Tb, Tr>(
+          tempOut,
+          a,
+          b,
+          shape,
+          stridesA,
+          stridesB,
+          tempOut.strides,
+          0,
+          offsetA,
+          offsetB,
+          0,
+          op,
+          whereMask,
+          flatIndex,
+        );
+        unaryOp<Tr, Tr>(
+          result,
+          tempOut,
+          shape,
+          tempOut.strides,
+          stridesResult,
+          0,
+          0,
+          offsetResult,
+          (v) => v,
+        );
+      } finally {
+        tempOut.dispose();
+      }
+      return;
+    }
+  }
   if (dim == shape.length) {
     if (whereMask == null ||
         whereMask == ffi.nullptr ||
@@ -399,7 +537,6 @@ NDArray<Float64> promoteToDouble(NDArray a) {
   final res = NDArray<Float64>.create(a.shape, DType.float64);
   final ndim = a.shape.length;
   final marker = ScratchArena.marker;
-
   try {
     final cBuffer = ScratchArena.getStridedBuffer(ndim);
     final cShape = cBuffer;
@@ -425,14 +562,13 @@ NDArray<Float64> promoteToDouble(NDArray a) {
   return res;
 }
 
-NDArray<Complex> promoteToComplex(NDArray a) {
+NDArray<DTypeTag> promoteToComplex(NDArray a) {
   if (a.isDisposed) {
     throw StateError('Cannot execute promoteToComplex on a disposed array.');
   }
-  final res = NDArray<Complex>.create(a.shape, DType.complex128);
+  final res = NDArray<DTypeTag>.create(a.shape, DType.complex128);
   final ndim = a.shape.length;
   final marker = ScratchArena.marker;
-
   try {
     final cBuffer = ScratchArena.getStridedBuffer(ndim);
     final cShape = cBuffer;
@@ -459,10 +595,10 @@ NDArray<Complex> promoteToComplex(NDArray a) {
 }
 
 /// Recursive helper to accumulate sum and count of non-NaN elements along an axis.
-void nanReduceRecursive<T>(
+void nanReduceRecursive<T extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> result,
-  NDArray<int> counts,
+  NDArray<DTypeTag> counts,
   List<int> coordA,
   List<int> coordRes,
   int axis,
@@ -474,7 +610,7 @@ void nanReduceRecursive<T>(
     if (val is double && val.isNaN) return;
     if (val is Complex && (val.real.isNaN || val.imag.isNaN)) return;
     final current = result.getCell(coordRes);
-    result.setCell(coordRes, ((current as dynamic) + val) as T);
+    result.setCell(coordRes, ((current as dynamic) + val));
     counts.setCell(coordRes, counts.getCell(coordRes) + 1);
     return;
   }
@@ -533,14 +669,14 @@ void walkStackCoords(
 }
 
 /// Recursive helper to traverse and reduce an array along an axis.
-void reduceRecursive<S extends Object, D extends Object>(
+void reduceRecursive<S extends DTypeTag, D extends DTypeTag>(
   NDArray<S> src,
   NDArray<D> dest,
   List<int> currentPos,
   List<int> destPos,
   int targetAxis,
   int currentDim,
-  D Function(D acc, S val) op, {
+  dynamic Function(dynamic acc, dynamic val) op, {
   List<int>? destStrides,
 }) {
   if (currentDim == src.shape.length) {
@@ -584,7 +720,7 @@ void reduceRecursive<S extends Object, D extends Object>(
   }
 }
 
-void unaryOp<Ta, Tr>(
+void unaryOp<Ta extends DTypeTag, Tr extends DTypeTag>(
   NDArray<Tr> result,
   NDArray<Ta> a,
   List<int> shape,
@@ -593,10 +729,60 @@ void unaryOp<Ta, Tr>(
   int dim,
   int offsetA,
   int offsetResult,
-  Tr Function(Ta) op, [
+  dynamic Function(dynamic) op, [
   ffi.Pointer<ffi.Uint8>? whereMask,
   int flatIndex = 0,
 ]) {
+  if (dim == 0) {
+    final totalElements = shape.fold<int>(1, (acc, v) => acc * v);
+    if (totalElements > 0 &&
+        (sharesMemory(a, result) ||
+            _pointerOverlapsArray(whereMask, totalElements, result))) {
+      final tempOut = NDArray<Tr>.create(shape, result.dtype);
+      try {
+        if (whereMask != null && whereMask != ffi.nullptr) {
+          unaryOp<Tr, Tr>(
+            tempOut,
+            result,
+            shape,
+            stridesResult,
+            tempOut.strides,
+            0,
+            offsetResult,
+            0,
+            (v) => v,
+          );
+        }
+        unaryOp<Ta, Tr>(
+          tempOut,
+          a,
+          shape,
+          stridesA,
+          tempOut.strides,
+          0,
+          offsetA,
+          0,
+          op,
+          whereMask,
+          flatIndex,
+        );
+        unaryOp<Tr, Tr>(
+          result,
+          tempOut,
+          shape,
+          tempOut.strides,
+          stridesResult,
+          0,
+          0,
+          offsetResult,
+          (v) => v,
+        );
+      } finally {
+        tempOut.dispose();
+      }
+      return;
+    }
+  }
   if (dim == shape.length) {
     if (whereMask == null ||
         whereMask == ffi.nullptr ||
@@ -628,7 +814,12 @@ void unaryOp<Ta, Tr>(
   }
 }
 
-void ternaryOp<Ta, Tb, Tc, Tr>(
+void ternaryOp<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  Tc extends DTypeTag,
+  Tr extends DTypeTag
+>(
   NDArray<Tr> result,
   NDArray<Ta> a,
   NDArray<Tb> b,
@@ -643,10 +834,68 @@ void ternaryOp<Ta, Tb, Tc, Tr>(
   int offsetB,
   int offsetC,
   int offsetResult,
-  Tr Function(Ta, Tb, Tc) op, [
+  dynamic Function(dynamic, dynamic, dynamic) op, [
   ffi.Pointer<ffi.Uint8>? whereMask,
   int flatIndex = 0,
 ]) {
+  if (dim == 0) {
+    final totalElements = shape.fold<int>(1, (acc, v) => acc * v);
+    if (totalElements > 0 &&
+        (sharesMemory(a, result) ||
+            sharesMemory(b, result) ||
+            sharesMemory(c, result) ||
+            _pointerOverlapsArray(whereMask, totalElements, result))) {
+      final tempOut = NDArray<Tr>.create(shape, result.dtype);
+      try {
+        if (whereMask != null && whereMask != ffi.nullptr) {
+          unaryOp<Tr, Tr>(
+            tempOut,
+            result,
+            shape,
+            stridesResult,
+            tempOut.strides,
+            0,
+            offsetResult,
+            0,
+            (v) => v,
+          );
+        }
+        ternaryOp<Ta, Tb, Tc, Tr>(
+          tempOut,
+          a,
+          b,
+          c,
+          shape,
+          stridesA,
+          stridesB,
+          stridesC,
+          tempOut.strides,
+          0,
+          offsetA,
+          offsetB,
+          offsetC,
+          0,
+          op,
+          whereMask,
+          flatIndex,
+        );
+        unaryOp<Tr, Tr>(
+          result,
+          tempOut,
+          shape,
+          tempOut.strides,
+          stridesResult,
+          0,
+          0,
+          offsetResult,
+          (v) => v,
+        );
+      } finally {
+        tempOut.dispose();
+      }
+      return;
+    }
+  }
   if (dim == shape.length) {
     if (whereMask == null ||
         whereMask == ffi.nullptr ||
@@ -744,26 +993,52 @@ List<int> broadcast3Shapes(List<int> s1, List<int> s2, List<int> s3) {
   return common;
 }
 
-dynamic castValue(dynamic val, DType dtype) {
+dynamic castValue(dynamic val, DType dtype, {DType? sourceDType}) {
   switch (dtype) {
     case DType.complex128:
     case DType.complex64:
       if (val is Complex) return val;
+      if (val is int && sourceDType == DType.uint64) {
+        return Complex(BigInt.from(val).toUnsigned(64).toDouble(), 0.0);
+      }
       if (val is num) return Complex(val.toDouble(), 0.0);
       return Complex(0.0, 0.0);
     case DType.float64:
     case DType.float32:
     case DType.float16:
     case DType.bfloat16:
+      if (val is int && sourceDType == DType.uint64) {
+        return BigInt.from(val).toUnsigned(64).toDouble();
+      }
       if (val is num) return val.toDouble();
       if (val is Complex) return val.real;
       if (val is bool) return val ? 1.0 : 0.0;
       return 0.0;
+    case DType.uint64:
+      if (val is double) {
+        if (val.isNaN || val.isInfinite || val <= 0) return 0;
+        if (val >= 18446744073709551615.0) return -1;
+        if (val >= 9223372036854775808.0) {
+          return BigInt.from(val).toSigned(64).toInt();
+        }
+        return val.toInt();
+      }
+      if (val is num) return val.toInt();
+      if (val is Complex) {
+        final r = val.real;
+        if (r.isNaN || r.isInfinite || r <= 0) return 0;
+        if (r >= 18446744073709551615.0) return -1;
+        if (r >= 9223372036854775808.0) {
+          return BigInt.from(r).toSigned(64).toInt();
+        }
+        return r.toInt();
+      }
+      if (val is bool) return val ? 1 : 0;
+      return 0;
     case DType.int64:
     case DType.int32:
     case DType.int16:
     case DType.int8:
-    case DType.uint64:
     case DType.uint32:
     case DType.uint16:
     case DType.uint8:
@@ -781,19 +1056,31 @@ dynamic castValue(dynamic val, DType dtype) {
 
 enum CumOpType { sum, prod, min, max }
 
-NDArray<R> cumOpFFI<T, R>(
+NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> a,
   int axis,
   NDArray<R> result,
   CumOpType opType,
 ) {
+  if (!result.isWriteable) {
+    throw ArgumentError(
+      'Assignment destination is a read-only broadcast view.',
+    );
+  }
+  if (sharesMemory(a, result)) {
+    return NDArray.scope(() {
+      final temp = NDArray<R>.create(result.shape, result.dtype);
+      cumOpFFI<T, R>(a, axis, temp, opType);
+      return temp.copy(out: result);
+    });
+  }
   final rank = a.shape.length;
   final marker = ScratchArena.marker;
-  final cShape = ScratchArena.copyInts(a.shape);
-  final cStridesA = ScratchArena.copyInts(a.strides);
-  final cStridesRes = ScratchArena.copyInts(result.strides);
-
   try {
+    final cShape = ScratchArena.copyInts(a.shape);
+    final cStridesA = ScratchArena.copyInts(a.strides);
+    final cStridesRes = ScratchArena.copyInts(result.strides);
+
     switch (opType) {
       case CumOpType.sum:
         final dtype = a.dtype;
@@ -867,7 +1154,13 @@ NDArray<R> cumOpFFI<T, R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            _cumOpFallbackHelper(a, result, axis, s_cumsum_double);
+            _cumOpFallbackHelper(
+              a,
+              result,
+              axis,
+              s_cumsum_double,
+              CumOpType.sum,
+            );
         }
 
       case CumOpType.prod:
@@ -942,7 +1235,13 @@ NDArray<R> cumOpFFI<T, R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            _cumOpFallbackHelper(a, result, axis, s_cumprod_double);
+            _cumOpFallbackHelper(
+              a,
+              result,
+              axis,
+              s_cumprod_double,
+              CumOpType.prod,
+            );
         }
 
       case CumOpType.min:
@@ -997,7 +1296,13 @@ NDArray<R> cumOpFFI<T, R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            _cumOpFallbackHelper(a, result, axis, s_cummin_double);
+            _cumOpFallbackHelper(
+              a,
+              result,
+              axis,
+              s_cummin_double,
+              CumOpType.min,
+            );
           case DType.complex128:
           case DType.complex64:
             throw ArgumentError(
@@ -1057,7 +1362,13 @@ NDArray<R> cumOpFFI<T, R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            _cumOpFallbackHelper(a, result, axis, s_cummax_double);
+            _cumOpFallbackHelper(
+              a,
+              result,
+              axis,
+              s_cummax_double,
+              CumOpType.max,
+            );
           case DType.complex128:
           case DType.complex64:
             throw ArgumentError(
@@ -1071,46 +1382,94 @@ NDArray<R> cumOpFFI<T, R>(
   return result;
 }
 
-NDArray<R> castNDArray<R>(NDArray a, DType<R> targetDType) {
-  if (a.dtype == targetDType && a is NDArray<R>) return a;
-  final list = a.toList();
-  if (targetDType.isFloating) {
-    final doubleList = list.map((e) {
-      if (e is num) return e.toDouble();
-      if (e is bool) return e ? 1.0 : 0.0;
-      if (e is Complex) return e.real;
-      return (e as dynamic).toDouble() as double;
-    }).toList();
-    return NDArray<R>.fromList(doubleList, a.shape, targetDType);
-  } else if (targetDType.isInteger) {
-    final intList = list.map((e) {
-      if (e is num) return e.toInt();
-      if (e is bool) return e ? 1 : 0;
-      if (e is Complex) return e.real.toInt();
-      return (e as dynamic).toInt() as int;
-    }).toList();
-    return NDArray<R>.fromList(intList, a.shape, targetDType);
-  } else if (targetDType == DType.boolean) {
-    final boolList = list.map((e) {
-      if (e is bool) return e;
-      if (e is num) return e != 0;
-      if (e is Complex) return e.real != 0 || e.imag != 0;
-      return e != 0;
-    }).toList();
-    return NDArray<R>.fromList(boolList, a.shape, targetDType);
-  } else if (targetDType.isComplex) {
-    final cpxList = list.map((e) {
-      if (e is Complex) return e;
-      if (e is num) return Complex(e.toDouble(), 0.0);
-      if (e is bool) return Complex(e ? 1.0 : 0.0, 0.0);
-      return Complex((e as dynamic).toDouble() as double, 0.0);
-    }).toList();
-    return NDArray<R>.fromList(cpxList, a.shape, targetDType);
+int _dtypeToCode(DType dtype) {
+  switch (dtype) {
+    case DType.float64:
+      return 0;
+    case DType.float32:
+      return 1;
+    case DType.float16:
+      return 2;
+    case DType.bfloat16:
+      return 3;
+    case DType.int64:
+      return 4;
+    case DType.int32:
+      return 5;
+    case DType.int16:
+      return 6;
+    case DType.int8:
+      return 7;
+    case DType.uint64:
+      return 8;
+    case DType.uint32:
+      return 9;
+    case DType.uint16:
+      return 10;
+    case DType.uint8:
+      return 11;
+    case DType.complex128:
+      return 12;
+    case DType.complex64:
+      return 13;
+    case DType.boolean:
+      return 14;
   }
-  return NDArray<R>.fromList(list.cast<R>(), a.shape, targetDType);
 }
 
-void _cumOpFallbackHelper<T, R>(
+/// Casts [a] to the specified [targetDType], returning a new [NDArray] (or a view if [a] already has [targetDType]).
+NDArray<R> castNDArray<R extends DTypeTag>(NDArray a, DType<R> targetDType) {
+  if (a.dtype == targetDType) {
+    if (a is NDArray<R>) return a;
+    return NDArray<R>.view(a, shape: a.shape, strides: a.strides);
+  }
+
+  final result = NDArray<R>.create(a.shape, targetDType);
+  if (a.size == 0) {
+    return result;
+  }
+
+  if (a.rank == 0) {
+    final scalarVal = a.scalar;
+    final converted = castValue(scalarVal, targetDType, sourceDType: a.dtype);
+    result.setCellRaw(0, converted);
+    return result;
+  }
+
+  final rank = a.shape.length;
+  final marker = ScratchArena.marker;
+  try {
+    final cBuffer = ScratchArena.getStridedBuffer(rank, 3);
+    final cShape = cBuffer;
+    final cStridesA = cBuffer + rank;
+    final cStridesRes = cBuffer + (rank * 2);
+
+    for (var i = 0; i < rank; i++) {
+      cShape[i] = a.shape[i];
+      cStridesA[i] = a.strides[i];
+      cStridesRes[i] = result.strides[i];
+    }
+
+    final srcDTypeCode = _dtypeToCode(a.dtype);
+    final dstDTypeCode = _dtypeToCode(targetDType);
+
+    s_cast_generic(
+      a.pointer.cast(),
+      cStridesA,
+      srcDTypeCode,
+      result.pointer.cast(),
+      dstDTypeCode,
+      cShape,
+      rank,
+    );
+  } finally {
+    ScratchArena.reset(marker);
+  }
+
+  return result;
+}
+
+void _cumOpFallbackHelper<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<R> result,
   int axis,
@@ -1124,7 +1483,109 @@ void _cumOpFallbackHelper<T, R>(
     int axis,
   )
   ffiFunc,
+  CumOpType opType,
 ) {
+  if (a.dtype.isInteger ||
+      result.dtype.isInteger ||
+      a.dtype == DType.boolean ||
+      result.dtype == DType.boolean) {
+    final shape = a.shape;
+    if (shape.isEmpty || a.size == 0) return;
+    final rank = shape.length;
+    final axisLen = shape[axis];
+    final outerCount = a.size ~/ axisLen;
+    final coord = List<int>.filled(rank, 0);
+    final isUnsigned = a.dtype == DType.uint64 || result.dtype == DType.uint64;
+    final accSourceDType = isUnsigned ? DType.uint64 : DType.int64;
+
+    int toIntVal(dynamic v) {
+      if (v is bool) return v ? 1 : 0;
+      if (v is int) return v;
+      if (v is double) {
+        if (isUnsigned) {
+          if (v.isNaN || v <= 0.0) return 0;
+          if (v.isInfinite || v >= 18446744073709551616.0) return -1;
+          if (v >= 9223372036854775808.0) {
+            return BigInt.from(v).toSigned(64).toInt();
+          }
+          return v.toInt();
+        }
+        return v.toInt();
+      }
+      return (v as num).toInt();
+    }
+
+    for (int outer = 0; outer < outerCount; outer++) {
+      int baseOffsetA = a.offsetElements;
+      int baseOffsetRes = result.offsetElements;
+      for (int d = 0; d < rank; d++) {
+        if (d != axis) {
+          baseOffsetA += coord[d] * a.strides[d];
+          baseOffsetRes += coord[d] * result.strides[d];
+        }
+      }
+
+      int acc = 0;
+      final resDType = result.dtype;
+      final resIsBool = resDType == DType.boolean;
+      final resIsIntOrBool = resDType.isInteger || resIsBool;
+      for (int i = 0; i < axisLen; i++) {
+        final val = a.getCellRaw(baseOffsetA + i * a.strides[axis]);
+        final vInt = toIntVal(val);
+        if (i == 0) {
+          acc = vInt;
+        } else {
+          switch (opType) {
+            case CumOpType.sum:
+              if (resIsBool) {
+                acc = (acc != 0 || vInt != 0) ? 1 : 0;
+              } else {
+                acc = acc + vInt;
+              }
+            case CumOpType.prod:
+              if (resIsBool) {
+                acc = (acc != 0 && vInt != 0) ? 1 : 0;
+              } else {
+                acc = acc * vInt;
+              }
+            case CumOpType.min:
+              if (resIsBool) {
+                acc = (acc != 0 && vInt != 0) ? 1 : 0;
+              } else if (isUnsigned) {
+                if (uint64Compare(vInt, acc) < 0) acc = vInt;
+              } else {
+                if (vInt < acc) acc = vInt;
+              }
+            case CumOpType.max:
+              if (resIsBool) {
+                acc = (acc != 0 || vInt != 0) ? 1 : 0;
+              } else if (isUnsigned) {
+                if (uint64Compare(vInt, acc) > 0) acc = vInt;
+              } else {
+                if (vInt > acc) acc = vInt;
+              }
+          }
+        }
+        final resIdx = baseOffsetRes + i * result.strides[axis];
+        result.setCellRaw(
+          resIdx,
+          castValue(acc, resDType, sourceDType: accSourceDType),
+        );
+        if (resIsIntOrBool) {
+          acc = toIntVal(result.getCellRaw(resIdx));
+        }
+      }
+
+      for (int d = rank - 1; d >= 0; d--) {
+        if (d == axis) continue;
+        coord[d]++;
+        if (coord[d] < shape[d]) break;
+        coord[d] = 0;
+      }
+    }
+    return;
+  }
+
   NDArray.scope(() {
     final doubleA = castNDArray(a, DType.float64);
     final doubleRes = NDArray<Float64>.create(doubleA.shape, DType.float64);
@@ -1161,7 +1622,7 @@ final class MaskHolder {
   final ffi.Pointer<ffi.Uint8> pointer;
 
   /// Optional temporary array allocation requiring disposal after kernel execution.
-  final NDArray<dynamic>? _tempAllocated;
+  final NDArray<DTypeTag>? _tempAllocated;
 
   /// Creates a new [MaskHolder] with the given [pointer] and optional [_tempAllocated].
   MaskHolder(this.pointer, [this._tempAllocated]);
@@ -1183,7 +1644,7 @@ final class MaskHolder {
 /// Returns a [MaskHolder] containing the native pointer and any transient allocations.
 /// Time complexity is $O(1)$ for contiguous masks of matching shape, or $O(N)$
 /// where $N$ is the element count when broadcasting or copying strided masks.
-MaskHolder prepareMask(NDArray<dynamic>? where, List<int> targetShape) {
+MaskHolder prepareMask(NDArray<DTypeTag>? where, List<int> targetShape) {
   if (where == null) {
     return MaskHolder(ffi.nullptr);
   }

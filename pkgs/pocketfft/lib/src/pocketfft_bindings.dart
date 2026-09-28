@@ -3116,14 +3116,10 @@ final class drand48_data extends ffi.Struct {
   external int __a;
 }
 
-typedef __compar_fn_tFunction = ffi.Int Function(
-  ffi.Pointer<ffi.Void>,
-  ffi.Pointer<ffi.Void>,
-);
-typedef Dart__compar_fn_tFunction = int Function(
-  ffi.Pointer<ffi.Void>,
-  ffi.Pointer<ffi.Void>,
-);
+typedef __compar_fn_tFunction =
+    ffi.Int Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>);
+typedef Dart__compar_fn_tFunction =
+    int Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>);
 typedef __compar_fn_t = ffi.Pointer<ffi.NativeFunction<__compar_fn_tFunction>>;
 
 final class UnnamedUnion extends ffi.Union {

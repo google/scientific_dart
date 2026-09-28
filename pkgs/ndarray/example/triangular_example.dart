@@ -48,7 +48,7 @@ void main() {
     _printMatrix(upperKM1);
 
     // 5. Memory-efficient Recycling Buffer Reuse
-    final recycler = NDArray<double>.zeros([3, 3], DType.float64);
+    final recycler = NDArray<DTypeTag>.zeros([3, 3], DType.float64);
     final recycledLower = tril(a, k: 0, out: recycler);
     print(
       '\nRecycled Output Buffer (identical check): ${identical(recycledLower, recycler) ? "PASS" : "FAIL"}',
@@ -63,7 +63,8 @@ void _printMatrix(NDArray a) {
   for (var r = 0; r < rows; r++) {
     final rowStr = [];
     for (var c = 0; c < cols; c++) {
-      rowStr.add(a[r * cols + c].toStringAsFixed(1).padLeft(5));
+      final val = a.getCell([r, c]);
+      rowStr.add((val as num).toStringAsFixed(1).padLeft(5));
     }
     print(' [ ${rowStr.join(', ')} ]');
   }

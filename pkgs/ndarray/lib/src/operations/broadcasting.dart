@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import '../ndarray.dart';
 
 // Standalone operational relative cross-imports
@@ -95,6 +94,7 @@ BroadcastResult broadcastBinaryStrides(
     }
   }
 
+  checkTotalSize(commonShape);
   return BroadcastResult(commonShape, newStridesA, newStridesB);
 }
 
@@ -167,10 +167,15 @@ BroadcastResult broadcast(NDArray a, NDArray b) {
 ///
 /// Refer to the [NumPy broadcast_to reference](https://numpy.org/doc/stable/reference/generated/numpy.broadcast_to.html)
 /// for additional details.
-NDArray<T> broadcastTo<T>(NDArray<T> a, List<int> targetShape) {
+NDArray<T> broadcastTo<T extends DTypeTag>(
+  NDArray<T> a,
+  List<int> targetShape,
+) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
   }
+
+  checkTotalSize(targetShape);
 
   final shapeA = a.shape;
   final stridesA = a.strides;

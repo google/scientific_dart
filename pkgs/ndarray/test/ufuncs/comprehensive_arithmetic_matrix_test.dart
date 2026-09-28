@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import "dart:math" as math;
 import "dart:ffi" as ffi;
-
 import "package:ndarray/ndarray.dart";
 import "package:ndarray/src/operations/helpers.dart";
 import "package:test/test.dart";
@@ -50,7 +48,7 @@ void main() {
       case DType.bfloat16:
         return seed.toDouble() + 1.5;
       case DType.boolean:
-        return seed % 2 == 1;
+        return seed.isOdd;
       default:
         return (seed % 10) + 1;
     }
@@ -82,90 +80,96 @@ void main() {
         shape,
         DType.complex64,
       ),
-      DType.boolean => NDArray<bool>.fromList(list, shape, DType.boolean),
+      DType.boolean => NDArray<Boolean>.fromList(list, shape, DType.boolean),
     };
   }
 
   group("Workstream 1: Parametrized Binary Arithmetic across all 15 DTypes", () {
-    test("Homogeneous binary arithmetic (add, subtract, multiply, divide) on all 15 DTypes", () {
-      NDArray.scope(() {
-        for (final dtype in allDTypes) {
-          final a = createArray([2, 3], dtype, seedOffset: 1);
-          final b = createArray([2, 3], dtype, seedOffset: 2);
+    test(
+      "Homogeneous binary arithmetic (add, subtract, multiply, divide) on all 15 DTypes",
+      () {
+        NDArray.scope(() {
+          for (final dtype in allDTypes) {
+            final a = createArray([2, 3], dtype, seedOffset: 1);
+            final b = createArray([2, 3], dtype, seedOffset: 2);
 
-          // add
-          final sum = add(a, b);
-          expect(sum.shape, [2, 3]);
-          expect(sum.dtype, resolveDType(dtype, dtype));
+            // add
+            final sum = add(a, b);
+            expect(sum.shape, [2, 3]);
+            expect(sum.dtype, resolveDType(dtype, dtype));
 
-          // subtract
-          final diff = subtract(a, b);
-          expect(diff.shape, [2, 3]);
-          expect(diff.dtype, resolveDType(dtype, dtype));
+            // subtract
+            final diff = subtract(a, b);
+            expect(diff.shape, [2, 3]);
+            expect(diff.dtype, resolveDType(dtype, dtype));
 
-          // multiply
-          final prod = multiply(a, b);
-          expect(prod.shape, [2, 3]);
-          expect(prod.dtype, resolveDType(dtype, dtype));
+            // multiply
+            final prod = multiply(a, b);
+            expect(prod.shape, [2, 3]);
+            expect(prod.dtype, resolveDType(dtype, dtype));
 
-          // divide
-          final quot = divide(a, b);
-          expect(quot.shape, [2, 3]);
-          if (dtype.isComplex) {
-            expect(quot.dtype.isComplex, true);
-          } else {
-            expect(quot.dtype.isFloating, true);
+            // divide
+            final quot = divide(a, b);
+            expect(quot.shape, [2, 3]);
+            if (dtype.isComplex) {
+              expect(quot.dtype.isComplex, true);
+            } else {
+              expect(quot.dtype.isFloating, true);
+            }
           }
-        }
-      });
-    });
+        });
+      },
+    );
 
-    test("Cross-DType binary arithmetic combinations for add, subtract, multiply, divide", () {
-      NDArray.scope(() {
-        final keyDTypes = [
-          DType.float64,
-          DType.float32,
-          DType.float16,
-          DType.bfloat16,
-          DType.int64,
-          DType.int32,
-          DType.int16,
-          DType.int8,
-          DType.uint64,
-          DType.uint32,
-          DType.uint16,
-          DType.uint8,
-          DType.complex128,
-          DType.complex64,
-          DType.boolean,
-        ];
+    test(
+      "Cross-DType binary arithmetic combinations for add, subtract, multiply, divide",
+      () {
+        NDArray.scope(() {
+          final keyDTypes = [
+            DType.float64,
+            DType.float32,
+            DType.float16,
+            DType.bfloat16,
+            DType.int64,
+            DType.int32,
+            DType.int16,
+            DType.int8,
+            DType.uint64,
+            DType.uint32,
+            DType.uint16,
+            DType.uint8,
+            DType.complex128,
+            DType.complex64,
+            DType.boolean,
+          ];
 
-        for (var i = 0; i < keyDTypes.length; i++) {
-          for (var j = 0; j < keyDTypes.length; j++) {
-            final dtA = keyDTypes[i];
-            final dtB = keyDTypes[j];
+          for (var i = 0; i < keyDTypes.length; i++) {
+            for (var j = 0; j < keyDTypes.length; j++) {
+              final dtA = keyDTypes[i];
+              final dtB = keyDTypes[j];
 
-            final a = createArray([2, 2], dtA, seedOffset: 1);
-            final b = createArray([2, 2], dtB, seedOffset: 2);
+              final a = createArray([2, 2], dtA, seedOffset: 1);
+              final b = createArray([2, 2], dtB, seedOffset: 2);
 
-            final sum = add<dynamic, dynamic, dynamic>(a, b);
-            expect(sum.shape, [2, 2]);
-            expect(sum.dtype, resolveDType(dtA, dtB));
+              final sum = add<DTypeTag>(a, b);
+              expect(sum.shape, [2, 2]);
+              expect(sum.dtype, resolveDType(dtA, dtB));
 
-            final diff = subtract<dynamic, dynamic, dynamic>(a, b);
-            expect(diff.shape, [2, 2]);
-            expect(diff.dtype, resolveDType(dtA, dtB));
+              final diff = subtract<DTypeTag>(a, b);
+              expect(diff.shape, [2, 2]);
+              expect(diff.dtype, resolveDType(dtA, dtB));
 
-            final prod = multiply<dynamic, dynamic, dynamic>(a, b);
-            expect(prod.shape, [2, 2]);
-            expect(prod.dtype, resolveDType(dtA, dtB));
+              final prod = multiply<DTypeTag>(a, b);
+              expect(prod.shape, [2, 2]);
+              expect(prod.dtype, resolveDType(dtA, dtB));
 
-            final quot = divide<dynamic, dynamic, dynamic>(a, b);
-            expect(quot.shape, [2, 2]);
+              final quot = divide<DTypeTag, DTypeTag, DTypeTag>(a, b);
+              expect(quot.shape, [2, 2]);
+            }
           }
-        }
-      });
-    });
+        });
+      },
+    );
 
     test(
       "Contiguous vs Non-contiguous / Strided Transposed Views for arithmetic",
@@ -257,44 +261,54 @@ void main() {
       });
     });
 
-    test("In-place out destination parameter buffer reuse and compatibility checks", () {
-      NDArray.scope(() {
-        final a = NDArray.fromList(
-          [10.0, 20.0, 30.0, 40.0],
-          [2, 2],
-          DType.float64,
-        );
-        final b = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-        final outBuffer = NDArray<Float64>.create([2, 2], DType.float64);
+    test(
+      "In-place out destination parameter buffer reuse and compatibility checks",
+      () {
+        NDArray.scope(() {
+          final a = NDArray.fromList(
+            [10.0, 20.0, 30.0, 40.0],
+            [2, 2],
+            DType.float64,
+          );
+          final b = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0],
+            [2, 2],
+            DType.float64,
+          );
+          final outBuffer = NDArray<Float64>.create([2, 2], DType.float64);
 
-        final res = add<double, double, double>(a, b, out: outBuffer);
-        expect(identical(res, outBuffer), true);
-        expect(outBuffer.toList(), [11.0, 22.0, 33.0, 44.0]);
+          final res = add<DTypeTag>(a, b, out: outBuffer);
+          expect(identical(res, outBuffer), true);
+          expect(outBuffer.toList(), [11.0, 22.0, 33.0, 44.0]);
 
-        // Strided out buffer
-        final fullOut = NDArray<Float64>.zeros([2, 4], DType.float64);
-        final stridedOut = fullOut.slice([Slice.all(), Slice(step: 2)]);
-        expect(stridedOut.isContiguous, false);
-        expect(stridedOut.shape, [2, 2]);
+          // Strided out buffer
+          final fullOut = NDArray<Float64>.zeros([2, 4], DType.float64);
+          final stridedOut = fullOut.slice([Slice.all(), Slice(step: 2)]);
+          expect(stridedOut.isContiguous, false);
+          expect(stridedOut.shape, [2, 2]);
 
-        final resStrided = add<double, double, double>(a, b, out: stridedOut);
-        expect(resStrided.toList(), [11.0, 22.0, 33.0, 44.0]);
+          final resStrided = add<DTypeTag>(a, b, out: stridedOut);
+          expect(resStrided.toList(), [11.0, 22.0, 33.0, 44.0]);
 
-        // Incompatible shape throws ArgumentError
-        final invalidShapeOut = NDArray<Float64>.create([3, 2], DType.float64);
-        expect(
-          () => add<double, double, double>(a, b, out: invalidShapeOut),
-          throwsArgumentError,
-        );
+          // Incompatible shape throws ArgumentError
+          final invalidShapeOut = NDArray<Float64>.create([
+            3,
+            2,
+          ], DType.float64);
+          expect(
+            () => add<DTypeTag>(a, b, out: invalidShapeOut),
+            throwsArgumentError,
+          );
 
-        // Incompatible dtype throws ArgumentError
-        final invalidDTypeOut = NDArray<Int32>.create([2, 2], DType.int32);
-        expect(
-          () => add<double, double, int>(a, b, out: invalidDTypeOut),
-          throwsArgumentError,
-        );
-      });
-    });
+          // Incompatible dtype throws ArgumentError
+          final invalidDTypeOut = NDArray<Int32>.create([2, 2], DType.int32);
+          expect(
+            () => add<DTypeTag>(a, b, out: invalidDTypeOut),
+            throwsArgumentError,
+          );
+        });
+      },
+    );
 
     test("Optional where boolean and uint8 mask parameters for arithmetic", () {
       NDArray.scope(() {
@@ -385,7 +399,7 @@ void main() {
   });
 
   group("Workstream 1: Specialized Binary Mathematical Functions", () {
-    test("floor_divide (and BinaryOp.floorDivide) across numeric DTypes", () {
+    test("floorDivide (and BinaryOp.floorDivide) across numeric DTypes", () {
       NDArray.scope(() {
         final intTypes = [
           DType.int64,
@@ -401,13 +415,13 @@ void main() {
         for (final dtype in intTypes) {
           final x1 = NDArray.fromList([7, 15, 20, 25], [2, 2], dtype);
           final x2 = NDArray.fromList([3, 4, 6, 7], [2, 2], dtype);
-          final res = floor_divide(x1, x2);
+          final res = floorDivide(x1, x2);
           expect(res.shape, [2, 2]);
           expect(res.toList(), [2, 3, 3, 3]);
 
           // Strided
           final x1T = x1.transpose([1, 0]);
-          final resT = floor_divide(x1T, x2);
+          final resT = floorDivide(x1T, x2);
           expect(resT.shape, [2, 2]);
 
           // out and where
@@ -417,11 +431,11 @@ void main() {
             [2, 2],
             DType.boolean,
           );
-          floor_divide(x1, x2, where: mask, out: outBuf);
+          floorDivide(x1, x2, where: mask, out: outBuf);
           expect(outBuf.toList(), [2, 0, 3, 0]);
         }
 
-        // Float floor_divide
+        // Float floorDivide
         final f64_1 = NDArray.fromList(
           [7.5, -7.5, 8.0, -8.0],
           [4],
@@ -432,17 +446,17 @@ void main() {
           [4],
           DType.float64,
         );
-        final f64Res = floor_divide(f64_1, f64_2);
+        final f64Res = floorDivide(f64_1, f64_2);
         expect(f64Res.toList(), [3.0, -4.0, 2.0, -3.0]);
 
         final f32_1 = NDArray.fromList([7.5, -7.5], [2], DType.float32);
         final f32_2 = NDArray.fromList([2.0, 2.0], [2], DType.float32);
-        final f32Res = floor_divide(f32_1, f32_2);
+        final f32Res = floorDivide(f32_1, f32_2);
         expect(f32Res.toList(), [3.0, -4.0]);
 
-        // Complex floor_divide throws UnsupportedError
+        // Complex floorDivide throws UnsupportedError
         final cpx = NDArray.fromList([Complex(1, 2)], [1], DType.complex128);
-        expect(() => floor_divide(cpx, cpx), throwsUnsupportedError);
+        expect(() => floorDivide(cpx, cpx), throwsUnsupportedError);
       });
     });
 
@@ -857,85 +871,116 @@ void main() {
   });
 
   group("Workstream 1: Floating Point Classification and Comparisons", () {
-    test("isnan, isinf, isfinite across float64, float32, float16, complex, and int dtypes", () {
-      NDArray.scope(() {
-        final floatVals = [
-          1.0,
-          double.nan,
-          double.infinity,
-          double.negativeInfinity,
-          0.0,
-          -0.0,
-        ];
+    test(
+      "isnan, isinf, isfinite across float64, float32, float16, complex, and int dtypes",
+      () {
+        NDArray.scope(() {
+          final floatVals = [
+            1.0,
+            double.nan,
+            double.infinity,
+            double.negativeInfinity,
+            0.0,
+            -0.0,
+          ];
 
-        // Float64
-        final f64 = NDArray.fromList(floatVals, [6], DType.float64);
-        expect(isnan(f64).toList(), [false, true, false, false, false, false]);
-        expect(isinf(f64).toList(), [false, false, true, true, false, false]);
-        expect(isfinite(f64).toList(), [true, false, false, false, true, true]);
+          // Float64
+          final f64 = NDArray.fromList(floatVals, [6], DType.float64);
+          expect(isnan(f64).toList(), [
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+          ]);
+          expect(isinf(f64).toList(), [false, false, true, true, false, false]);
+          expect(isfinite(f64).toList(), [
+            true,
+            false,
+            false,
+            false,
+            true,
+            true,
+          ]);
 
-        // Float32
-        final f32 = NDArray.fromList(floatVals, [6], DType.float32);
-        expect(isnan(f32).toList(), [false, true, false, false, false, false]);
-        expect(isinf(f32).toList(), [false, false, true, true, false, false]);
-        expect(isfinite(f32).toList(), [true, false, false, false, true, true]);
+          // Float32
+          final f32 = NDArray.fromList(floatVals, [6], DType.float32);
+          expect(isnan(f32).toList(), [
+            false,
+            true,
+            false,
+            false,
+            false,
+            false,
+          ]);
+          expect(isinf(f32).toList(), [false, false, true, true, false, false]);
+          expect(isfinite(f32).toList(), [
+            true,
+            false,
+            false,
+            false,
+            true,
+            true,
+          ]);
 
-        // Float16 & BFloat16
-        final f16 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float16);
-        expect(isfinite(f16).toList(), [true, true, true]);
+          // Float16 & BFloat16
+          final f16 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float16);
+          expect(isfinite(f16).toList(), [true, true, true]);
 
-        final bf16 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.bfloat16);
-        expect(isfinite(bf16).toList(), [true, true, true]);
+          final bf16 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.bfloat16);
+          expect(isfinite(bf16).toList(), [true, true, true]);
 
-        // Complex128 & Complex64
-        final cVals = [
-          Complex(1.0, 2.0),
-          Complex(double.nan, 0.0),
-          Complex(0.0, double.infinity),
-          Complex(double.negativeInfinity, double.nan),
-        ];
-        final c128 = NDArray.fromList(cVals, [4], DType.complex128);
-        expect(isnan(c128).toList(), [false, true, false, true]);
-        expect(isinf(c128).toList(), [false, false, true, true]);
-        expect(isfinite(c128).toList(), [true, false, false, false]);
+          // Complex128 & Complex64
+          final cVals = [
+            Complex(1.0, 2.0),
+            Complex(double.nan, 0.0),
+            Complex(0.0, double.infinity),
+            Complex(double.negativeInfinity, double.nan),
+          ];
+          final c128 = NDArray.fromList(cVals, [4], DType.complex128);
+          expect(isnan(c128).toList(), [false, true, false, true]);
+          expect(isinf(c128).toList(), [false, false, true, true]);
+          expect(isfinite(c128).toList(), [true, false, false, false]);
 
-        final c64 = NDArray.fromList(cVals, [4], DType.complex64);
-        expect(isnan(c64).toList(), [false, true, false, true]);
-        expect(isinf(c64).toList(), [false, false, true, true]);
-        expect(isfinite(c64).toList(), [true, false, false, false]);
+          final c64 = NDArray.fromList(cVals, [4], DType.complex64);
+          expect(isnan(c64).toList(), [false, true, false, true]);
+          expect(isinf(c64).toList(), [false, false, true, true]);
+          expect(isfinite(c64).toList(), [true, false, false, false]);
 
-        // Integer arrays are always not nan, not inf, and finite
-        final i32 = NDArray.fromList([10, 20, -30], [3], DType.int32);
-        expect(isnan(i32).toList(), [false, false, false]);
-        expect(isinf(i32).toList(), [false, false, false]);
-        expect(isfinite(i32).toList(), [true, true, true]);
+          // Integer arrays are always not nan, not inf, and finite
+          final i32 = NDArray.fromList([10, 20, -30], [3], DType.int32);
+          expect(isnan(i32).toList(), [false, false, false]);
+          expect(isinf(i32).toList(), [false, false, false]);
+          expect(isfinite(i32).toList(), [true, true, true]);
 
-        final u8 = NDArray.fromList([0, 100, 255], [3], DType.uint8);
-        expect(isnan(u8).toList(), [false, false, false]);
-        expect(isinf(u8).toList(), [false, false, false]);
-        expect(isfinite(u8).toList(), [true, true, true]);
+          final u8 = NDArray.fromList([0, 100, 255], [3], DType.uint8);
+          expect(isnan(u8).toList(), [false, false, false]);
+          expect(isinf(u8).toList(), [false, false, false]);
+          expect(isfinite(u8).toList(), [true, true, true]);
 
-        // Strided views
-        final f64_2d = NDArray.fromList(floatVals, [
-          2,
-          3,
-        ], DType.float64).transpose([1, 0]);
-        expect(f64_2d.isContiguous, false);
-        expect(isnan(f64_2d).shape, [3, 2]);
-        expect(isinf(f64_2d).shape, [3, 2]);
-        expect(isfinite(f64_2d).shape, [3, 2]);
+          // Strided views
+          final f64_2d = NDArray.fromList(floatVals, [
+            2,
+            3,
+          ], DType.float64).transpose([1, 0]);
+          expect(f64_2d.isContiguous, false);
+          expect(isnan(f64_2d).shape, [3, 2]);
+          expect(isinf(f64_2d).shape, [3, 2]);
+          expect(isfinite(f64_2d).shape, [3, 2]);
 
-        // out parameter & where mask
-        final outBool = NDArray.zeros([6], DType.boolean);
-        final mask = NDArray.fromList(
-          [true, true, false, false, true, true],
-          [6],
-          DType.boolean,
-        );
-        isnan(f64, where: mask, out: outBool);
-        expect(outBool.toList(), [false, true, false, false, false, false]);
-      });
-    });
+          // out parameter & where mask
+          final outBool = NDArray.zeros([6], DType.boolean);
+          final mask = NDArray.fromList(
+            [true, true, false, false, true, true],
+            [6],
+            DType.boolean,
+          );
+          isnan(f64, where: mask, out: outBool);
+          expect(outBool.toList(), [false, true, false, false, false, false]);
+        });
+      },
+    );
 
     test("isClose and allClose approximate equality evaluations", () {
       NDArray.scope(() {
@@ -1022,14 +1067,6 @@ void main() {
       expect(resolveDType(DType.complex64, DType.float32), DType.complex64);
     });
 
-    test("defaultDType for generic type parameters", () {
-      expect(defaultDType<Complex>(), DType.complex128);
-      expect(defaultDType<int>(), DType.int64);
-      expect(defaultDType<bool>(), DType.boolean);
-      expect(defaultDType<double>(), DType.float64);
-      expect(defaultDType<num>(), DType.float64);
-    });
-
     test("normalizeScalar across all 15 DTypes with num, Complex, bool", () {
       for (final dtype in allDTypes) {
         final normNum = normalizeScalar(42, dtype);
@@ -1069,110 +1106,116 @@ void main() {
       });
     });
 
-    test("linspaceInternal across numeric/complex DTypes, endpoint, 0 samples, and boolean error", () {
-      NDArray.scope(() {
-        // 0 samples
-        final zeroRes = linspaceInternal(0.0, 10.0, 0, dtype: DType.float64);
-        expect(zeroRes.samples.shape, [0]);
-        expect(zeroRes.step.isNaN, true);
+    test(
+      "linspaceInternal across numeric/complex DTypes, endpoint, 0 samples, and boolean error",
+      () {
+        NDArray.scope(() {
+          // 0 samples
+          final zeroRes = linspaceInternal(0.0, 10.0, 0, dtype: DType.float64);
+          expect(zeroRes.samples.shape, [0]);
+          expect(zeroRes.step.isNaN, true);
 
-        // Float64 endpoint true/false
-        final lsF64 = linspaceInternal(
-          0.0,
-          10.0,
-          5,
-          endpoint: true,
-          dtype: DType.float64,
-        );
-        expect(lsF64.samples.toList(), [0.0, 2.5, 5.0, 7.5, 10.0]);
-        expect(lsF64.step, 2.5);
+          // Float64 endpoint true/false
+          final lsF64 = linspaceInternal(
+            0.0,
+            10.0,
+            5,
+            endpoint: true,
+            dtype: DType.float64,
+          );
+          expect(lsF64.samples.toList(), [0.0, 2.5, 5.0, 7.5, 10.0]);
+          expect(lsF64.step, 2.5);
 
-        final lsF64NoEnd = linspaceInternal(
-          0.0,
-          10.0,
-          5,
-          endpoint: false,
-          dtype: DType.float64,
-        );
-        expect(lsF64NoEnd.samples.toList(), [0.0, 2.0, 4.0, 6.0, 8.0]);
-        expect(lsF64NoEnd.step, 2.0);
+          final lsF64NoEnd = linspaceInternal(
+            0.0,
+            10.0,
+            5,
+            endpoint: false,
+            dtype: DType.float64,
+          );
+          expect(lsF64NoEnd.samples.toList(), [0.0, 2.0, 4.0, 6.0, 8.0]);
+          expect(lsF64NoEnd.step, 2.0);
 
-        // Float32
-        final lsF32 = linspaceInternal(0.0, 4.0, 5, dtype: DType.float32);
-        expect(lsF32.samples.dtype, DType.float32);
-        expect(lsF32.samples.toList(), [0.0, 1.0, 2.0, 3.0, 4.0]);
+          // Float32
+          final lsF32 = linspaceInternal(0.0, 4.0, 5, dtype: DType.float32);
+          expect(lsF32.samples.dtype, DType.float32);
+          expect(lsF32.samples.toList(), [0.0, 1.0, 2.0, 3.0, 4.0]);
 
-        // Complex128 & Complex64
-        final lsC128 = linspaceInternal(
-          Complex(0, 0),
-          Complex(4, 8),
-          5,
-          dtype: DType.complex128,
-        );
-        expect(lsC128.samples.dtype, DType.complex128);
-        expect(lsC128.samples.toList()[4].real, 4.0);
-        expect(lsC128.samples.toList()[4].imag, 8.0);
+          // Complex128 & Complex64
+          final lsC128 = linspaceInternal(
+            Complex(0, 0),
+            Complex(4, 8),
+            5,
+            dtype: DType.complex128,
+          );
+          expect(lsC128.samples.dtype, DType.complex128);
+          expect(lsC128.samples.toList()[4].real, 4.0);
+          expect(lsC128.samples.toList()[4].imag, 8.0);
 
-        final lsC64 = linspaceInternal(
-          Complex(0, 0),
-          Complex(2, 4),
-          3,
-          dtype: DType.complex64,
-        );
-        expect(lsC64.samples.dtype, DType.complex64);
+          final lsC64 = linspaceInternal(
+            Complex(0, 0),
+            Complex(2, 4),
+            3,
+            dtype: DType.complex64,
+          );
+          expect(lsC64.samples.dtype, DType.complex64);
 
-        // Integers: int64, int32, int16, uint8, float16, bfloat16, int8, uint64, uint32, uint16
-        for (final dtype in [
-          DType.int64,
-          DType.int32,
-          DType.int16,
-          DType.uint8,
-          DType.float16,
-          DType.bfloat16,
-          DType.int8,
-          DType.uint64,
-          DType.uint32,
-          DType.uint16,
-        ]) {
-          final ls = linspaceInternal(0, 10, 5, dtype: dtype);
-          expect(ls.samples.shape, [5]);
-        }
+          // Integers: int64, int32, int16, uint8, float16, bfloat16, int8, uint64, uint32, uint16
+          for (final dtype in [
+            DType.int64,
+            DType.int32,
+            DType.int16,
+            DType.uint8,
+            DType.float16,
+            DType.bfloat16,
+            DType.int8,
+            DType.uint64,
+            DType.uint32,
+            DType.uint16,
+          ]) {
+            final ls = linspaceInternal(0, 10, 5, dtype: dtype);
+            expect(ls.samples.shape, [5]);
+          }
 
-        // Out buffer
-        final outBuf = NDArray<Float64>.create([5], DType.float64);
-        final lsOut = linspaceInternal(
-          0.0,
-          10.0,
-          5,
-          dtype: DType.float64,
-          out: outBuf,
-        );
-        expect(identical(lsOut.samples, outBuf), true);
-
-        // Disposed out buffer throws StateError
-        final disposedOut = NDArray<Float64>.create([5], DType.float64);
-        disposedOut.dispose();
-        expect(
-          () => linspaceInternal(
+          // Out buffer
+          final outBuf = NDArray<Float64>.create([5], DType.float64);
+          final lsOut = linspaceInternal(
             0.0,
             10.0,
             5,
             dtype: DType.float64,
-            out: disposedOut,
-          ),
-          throwsStateError,
-        );
+            out: outBuf,
+          );
+          expect(identical(lsOut.samples, outBuf), true);
 
-        // Negative numSamples throws ArgumentError
-        expect(() => linspaceInternal(0.0, 10.0, -1), throwsArgumentError);
+          // Disposed out buffer throws StateError
+          final disposedOut = NDArray<Float64>.create([5], DType.float64);
+          disposedOut.dispose();
+          expect(
+            () => linspaceInternal(
+              0.0,
+              10.0,
+              5,
+              dtype: DType.float64,
+              out: disposedOut,
+            ),
+            throwsStateError,
+          );
 
-        // Boolean throws UnsupportedError
-        expect(
-          () => linspaceInternal(false, true, 5, dtype: DType.boolean),
-          throwsUnsupportedError,
-        );
-      });
-    });
+          // Negative numSamples throws ArgumentError
+          expect(
+            () => linspaceInternal(0.0, 10.0, -1, dtype: DType.float64),
+            throwsArgumentError,
+          );
+
+          // Boolean throws UnsupportedError
+          expect(
+            () => linspaceInternal(false, true, 5, dtype: DType.boolean),
+            throwsUnsupportedError,
+          );
+        });
+      },
+    );
 
     test("cumOpFFI for sum, prod, min, max across all 15 DTypes", () {
       NDArray.scope(() {
@@ -1350,7 +1393,7 @@ void main() {
         final res = NDArray<Float64>.zeros([2, 2], DType.float64);
 
         // unaryOp
-        unaryOp<double, double>(
+        unaryOp<DTypeTag, DTypeTag>(
           res,
           a,
           [2, 2],
@@ -1359,12 +1402,12 @@ void main() {
           0,
           a.offsetElements,
           res.offsetElements,
-          (x) => x * 2.0,
+          (x) => (x as double) * 2.0,
         );
         expect(res.toList(), [2.0, 4.0, 6.0, 8.0]);
 
         // elementWiseOp
-        elementWiseOp<double, double, double>(
+        elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
           res,
           a,
           b,
@@ -1381,7 +1424,7 @@ void main() {
         expect(res.toList(), [11.0, 22.0, 33.0, 44.0]);
 
         // ternaryOp
-        ternaryOp<double, double, double, double>(
+        ternaryOp<DTypeTag, DTypeTag, DTypeTag, DTypeTag>(
           res,
           a,
           b,
@@ -1420,7 +1463,7 @@ void main() {
           DType.float64,
         );
         final dest = NDArray<Float64>.zeros([2], DType.float64);
-        reduceRecursive<double, double>(
+        reduceRecursive<DTypeTag, DTypeTag>(
           src,
           dest,
           List.filled(2, 0),
@@ -1439,7 +1482,7 @@ void main() {
         );
         final nanDest = NDArray<Float64>.zeros([2], DType.float64);
         final counts = NDArray<Int64>.zeros([2], DType.int64);
-        nanReduceRecursive<double>(
+        nanReduceRecursive<DTypeTag>(
           nanSrc,
           nanDest,
           counts,

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 library;
 
 export 'operations/math.dart';
@@ -26,7 +25,7 @@ export 'operations/broadcasting.dart';
 export 'operations/splitting.dart';
 export 'operations/shaping_meshes.dart';
 export 'operations/repeating_tiling.dart';
-export 'operations/io.dart';
+export 'operations/io.dart' hide parseNpyHeader;
 export 'operations/random.dart';
 export 'operations/fft.dart';
 export 'operations/calculus.dart';

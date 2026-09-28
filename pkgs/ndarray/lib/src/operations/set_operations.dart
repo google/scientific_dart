@@ -13,9 +13,10 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
+import 'dart:typed_data';
 import '../ndarray.dart';
 import '../ndarray_bindings.dart';
+import '../scratch_arena.dart';
 import 'helpers.dart';
 import 'sorting.dart';
 
@@ -28,7 +29,7 @@ import 'sorting.dart';
 /// It is an error if [ar] has an unsupported dtype.
 ///
 /// It is an error if [ar] is disposed.
-dynamic unique<T extends Object>(
+dynamic unique<T extends DTypeTag>(
   NDArray<T> ar, {
   bool returnIndex = false,
   bool returnInverse = false,
@@ -45,24 +46,42 @@ dynamic unique<T extends Object>(
     throw ArgumentError('Incompatible out buffer dtype.');
   }
 
-  final flat = (ar.rank == 1 && ar.isContiguous) ? ar : ar.flatten();
-  NDArray<T>? dest;
-  NDArray<int>? outIndex;
-  NDArray<int>? outInverse;
-  NDArray<int>? outCounts;
+  return NDArray.scope(() {
+    final flat = (ar.rank == 1 && ar.isContiguous) ? ar : ar.flatten();
 
-  try {
-    dest = NDArray<T>.create(flat.shape, flat.dtype);
+    if (!returnIndex &&
+        !returnInverse &&
+        flat.dtype.isInteger &&
+        flat.dtype != DType.uint64 &&
+        flat.size > 64) {
+      final tableRes = _tryUniqueTable<T>(
+        flat,
+        returnCounts: returnCounts,
+        out: out,
+      );
+      if (tableRes != null) {
+        if (returnCounts) {
+          return (
+            values: tableRes.values,
+            index: null,
+            inverse: null,
+            counts: tableRes.counts,
+          );
+        }
+        return tableRes.values;
+      }
+    }
 
-    if (returnIndex) {
-      outIndex = NDArray<int>.create([flat.size], DType.int64);
-    }
-    if (returnInverse) {
-      outInverse = NDArray<int>.create([flat.size], DType.int64);
-    }
-    if (returnCounts) {
-      outCounts = NDArray<int>.create([flat.size], DType.int64);
-    }
+    final dest = NDArray<T>.create(flat.shape, flat.dtype);
+    final outIndex = returnIndex
+        ? NDArray<DTypeTag>.create([flat.size], DType.int64)
+        : null;
+    final outInverse = returnInverse
+        ? NDArray<DTypeTag>.create([flat.size], DType.int64)
+        : null;
+    final outCounts = returnCounts
+        ? NDArray<DTypeTag>.create([flat.size], DType.int64)
+        : null;
 
     final pIndex = outIndex != null
         ? outIndex.pointer.cast<ffi.Int64>()
@@ -84,18 +103,32 @@ dynamic unique<T extends Object>(
       pCounts,
     );
 
+    if (uniqueCount < 0) {
+      throw OutOfMemoryError();
+    }
+
     if (uniqueCount == 0) {
-      final empty = out ?? NDArray<T>.create([0], flat.dtype);
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
+      final empty =
+          out ?? (NDArray<T>.create([0], flat.dtype)..detachToParentScope());
 
       if (returnIndex || returnInverse || returnCounts) {
         return (
           values: empty,
-          index: returnIndex ? NDArray<int>.create([0], DType.int64) : null,
-          inverse: returnInverse ? NDArray<int>.create([0], DType.int64) : null,
-          counts: returnCounts ? NDArray<int>.create([0], DType.int64) : null,
+          index: returnIndex
+              ? (NDArray<DTypeTag>.create([0], DType.int64)
+                  ..detachToParentScope())
+              : null,
+          inverse: returnInverse
+              ? (NDArray<DTypeTag>.create([0], DType.int64)
+                  ..detachToParentScope())
+              : null,
+          counts: returnCounts
+              ? (NDArray<DTypeTag>.create([0], DType.int64)
+                  ..detachToParentScope())
+              : null,
         );
       }
       return empty;
@@ -105,46 +138,31 @@ dynamic unique<T extends Object>(
       throw ArgumentError('Incompatible out buffer shape.');
     }
 
+    final validView = dest.slice([Slice(start: 0, stop: uniqueCount)]);
     final NDArray<T> result;
     if (out != null) {
-      custom_memcpy(
-        out.pointer.cast(),
-        dest.pointer.cast(),
-        uniqueCount * ar.dtype.byteWidth,
-      );
+      validView.copy(out: out);
       result = out;
     } else {
-      result = NDArray<T>.create([uniqueCount], flat.dtype);
-      custom_memcpy(
-        result.pointer.cast(),
-        dest.pointer.cast(),
-        uniqueCount * ar.dtype.byteWidth,
-      );
+      result = validView.copy()..detachToParentScope();
     }
 
-    NDArray<int>? indexResult;
+    NDArray<DTypeTag>? indexResult;
     if (outIndex != null) {
-      indexResult = NDArray<int>.create([uniqueCount], DType.int64);
-      custom_memcpy(
-        indexResult.pointer.cast(),
-        outIndex.pointer.cast(),
-        uniqueCount * 8,
-      );
+      indexResult = outIndex.slice([Slice(start: 0, stop: uniqueCount)]).copy()
+        ..detachToParentScope();
     }
 
-    NDArray<int>? inverseResult;
+    NDArray<DTypeTag>? inverseResult;
     if (outInverse != null) {
-      inverseResult = outInverse.copy();
+      inverseResult = outInverse.copy()..detachToParentScope();
     }
 
-    NDArray<int>? countsResult;
+    NDArray<DTypeTag>? countsResult;
     if (outCounts != null) {
-      countsResult = NDArray<int>.create([uniqueCount], DType.int64);
-      custom_memcpy(
-        countsResult.pointer.cast(),
-        outCounts.pointer.cast(),
-        uniqueCount * 8,
-      );
+      countsResult = outCounts.slice([
+        Slice(start: 0, stop: uniqueCount),
+      ]).copy()..detachToParentScope();
     }
 
     if (returnIndex || returnInverse || returnCounts) {
@@ -157,15 +175,7 @@ dynamic unique<T extends Object>(
     }
 
     return result;
-  } finally {
-    dest?.dispose();
-    outIndex?.dispose();
-    outInverse?.dispose();
-    outCounts?.dispose();
-    if (flat != ar) {
-      flat.dispose();
-    }
-  }
+  });
 }
 
 /// Finds the intersection of two arrays.
@@ -173,7 +183,7 @@ dynamic unique<T extends Object>(
 /// Returns the sorted, unique values that are in both of the input arrays.
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
-NDArray<T> intersect1d<T extends Object>(
+NDArray<T> intersect1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   bool assumeUnique = false,
@@ -187,25 +197,29 @@ NDArray<T> intersect1d<T extends Object>(
       'Cannot write intersect1d result to a disposed output array.',
     );
   }
-  if (out != null && out.dtype != ar1.dtype) {
+  final DType<T> commonDType =
+      (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
+          as DType<T>;
+  if (out != null && out.dtype != commonDType) {
     throw ArgumentError('Incompatible out buffer dtype.');
   }
 
-  final flat1 = (ar1.rank == 1 && ar1.isContiguous) ? ar1 : ar1.flatten();
-  final flat2 = (ar2.rank == 1 && ar2.isContiguous) ? ar2 : ar2.flatten();
+  return NDArray.scope(() {
+    final NDArray<T> c1 = ar1.dtype == commonDType
+        ? ar1
+        : castNDArray<T>(ar1, commonDType);
+    final NDArray<T> c2 = ar2.dtype == commonDType
+        ? ar2
+        : castNDArray<T>(ar2, commonDType);
+    final NDArray<T> flat1 = (c1.rank == 1 && c1.isContiguous)
+        ? c1
+        : c1.flatten();
+    final NDArray<T> flat2 = (c2.rank == 1 && c2.isContiguous)
+        ? c2
+        : c2.flatten();
 
-  NDArray<T>? u1;
-  NDArray<T>? u2;
-  NDArray<T>? dest;
-
-  try {
-    if (assumeUnique) {
-      u1 = sort<T>(flat1);
-      u2 = sort<T>(flat2);
-    } else {
-      u1 = unique<T>(flat1) as NDArray<T>;
-      u2 = unique<T>(flat2) as NDArray<T>;
-    }
+    final NDArray u1 = assumeUnique ? sort(flat1) : unique(flat1) as NDArray;
+    final NDArray u2 = assumeUnique ? sort(flat2) : unique(flat2) as NDArray;
 
     final maxDstSize = u1.size < u2.size ? u1.size : u2.size;
 
@@ -213,10 +227,11 @@ NDArray<T> intersect1d<T extends Object>(
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
-    dest = NDArray<T>.create([maxDstSize], ar1.dtype);
+    final dest = NDArray<T>.create([maxDstSize], commonDType);
 
     final intersectionCount = ndarray_intersect1d(
       u1.pointer.cast(),
@@ -224,44 +239,29 @@ NDArray<T> intersect1d<T extends Object>(
       u2.pointer.cast(),
       u2.size,
       dest.pointer.cast(),
-      encodeDType(ar1.dtype),
+      encodeDType(commonDType),
     );
 
     if (intersectionCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [intersectionCount])) {
       throw ArgumentError('Incompatible out buffer shape.');
     }
 
-    final NDArray<T> result;
+    final validView = dest.slice([Slice(start: 0, stop: intersectionCount)]);
     if (out != null) {
-      custom_memcpy(
-        out.pointer.cast(),
-        dest.pointer.cast(),
-        intersectionCount * ar1.dtype.byteWidth,
-      );
-      result = out;
+      validView.copy(out: out);
+      return out;
     } else {
-      result = NDArray<T>.create([intersectionCount], ar1.dtype);
-      custom_memcpy(
-        result.pointer.cast(),
-        dest.pointer.cast(),
-        intersectionCount * ar1.dtype.byteWidth,
-      );
+      return validView.copy()..detachToParentScope();
     }
-    return result;
-  } finally {
-    dest?.dispose();
-    u1?.dispose();
-    u2?.dispose();
-    if (flat1 != ar1) flat1.dispose();
-    if (flat2 != ar2) flat2.dispose();
-  }
+  });
 }
 
 /// Finds the set difference of two arrays.
@@ -269,7 +269,7 @@ NDArray<T> intersect1d<T extends Object>(
 /// Returns the unique values in [ar1] that are not in [ar2].
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
-NDArray<T> setdiff1d<T extends Object>(
+NDArray<T> setdiff1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   bool assumeUnique = false,
@@ -283,25 +283,29 @@ NDArray<T> setdiff1d<T extends Object>(
       'Cannot write setdiff1d result to a disposed output array.',
     );
   }
-  if (out != null && out.dtype != ar1.dtype) {
+  final DType<T> commonDType =
+      (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
+          as DType<T>;
+  if (out != null && out.dtype != commonDType) {
     throw ArgumentError('Incompatible out buffer dtype.');
   }
 
-  final flat1 = (ar1.rank == 1 && ar1.isContiguous) ? ar1 : ar1.flatten();
-  final flat2 = (ar2.rank == 1 && ar2.isContiguous) ? ar2 : ar2.flatten();
+  return NDArray.scope(() {
+    final NDArray<T> c1 = ar1.dtype == commonDType
+        ? ar1
+        : castNDArray<T>(ar1, commonDType);
+    final NDArray<T> c2 = ar2.dtype == commonDType
+        ? ar2
+        : castNDArray<T>(ar2, commonDType);
+    final NDArray<T> flat1 = (c1.rank == 1 && c1.isContiguous)
+        ? c1
+        : c1.flatten();
+    final NDArray<T> flat2 = (c2.rank == 1 && c2.isContiguous)
+        ? c2
+        : c2.flatten();
 
-  NDArray<T>? u1;
-  NDArray<T>? u2;
-  NDArray<T>? dest;
-
-  try {
-    if (assumeUnique) {
-      u1 = sort<T>(flat1);
-      u2 = sort<T>(flat2);
-    } else {
-      u1 = unique<T>(flat1) as NDArray<T>;
-      u2 = unique<T>(flat2) as NDArray<T>;
-    }
+    final NDArray u1 = assumeUnique ? sort(flat1) : unique(flat1) as NDArray;
+    final NDArray u2 = assumeUnique ? sort(flat2) : unique(flat2) as NDArray;
 
     final maxDstSize = u1.size;
 
@@ -309,10 +313,11 @@ NDArray<T> setdiff1d<T extends Object>(
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
-    dest = NDArray<T>.create([maxDstSize], ar1.dtype);
+    final dest = NDArray<T>.create([maxDstSize], commonDType);
 
     final diffCount = ndarray_setdiff1d(
       u1.pointer.cast(),
@@ -320,44 +325,29 @@ NDArray<T> setdiff1d<T extends Object>(
       u2.pointer.cast(),
       u2.size,
       dest.pointer.cast(),
-      encodeDType(ar1.dtype),
+      encodeDType(commonDType),
     );
 
     if (diffCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [diffCount])) {
       throw ArgumentError('Incompatible out buffer shape.');
     }
 
-    final NDArray<T> result;
+    final validView = dest.slice([Slice(start: 0, stop: diffCount)]);
     if (out != null) {
-      custom_memcpy(
-        out.pointer.cast(),
-        dest.pointer.cast(),
-        diffCount * ar1.dtype.byteWidth,
-      );
-      result = out;
+      validView.copy(out: out);
+      return out;
     } else {
-      result = NDArray<T>.create([diffCount], ar1.dtype);
-      custom_memcpy(
-        result.pointer.cast(),
-        dest.pointer.cast(),
-        diffCount * ar1.dtype.byteWidth,
-      );
+      return validView.copy()..detachToParentScope();
     }
-    return result;
-  } finally {
-    dest?.dispose();
-    u1?.dispose();
-    u2?.dispose();
-    if (flat1 != ar1) flat1.dispose();
-    if (flat2 != ar2) flat2.dispose();
-  }
+  });
 }
 
 /// Finds the set exclusive-or of two arrays.
@@ -365,7 +355,7 @@ NDArray<T> setdiff1d<T extends Object>(
 /// Returns the sorted, unique values that are in only one (not both) of the input arrays.
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
-NDArray<T> setxor1d<T extends Object>(
+NDArray<T> setxor1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   bool assumeUnique = false,
@@ -379,25 +369,29 @@ NDArray<T> setxor1d<T extends Object>(
       'Cannot write setxor1d result to a disposed output array.',
     );
   }
-  if (out != null && out.dtype != ar1.dtype) {
+  final DType<T> commonDType =
+      (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
+          as DType<T>;
+  if (out != null && out.dtype != commonDType) {
     throw ArgumentError('Incompatible out buffer dtype.');
   }
 
-  final flat1 = (ar1.rank == 1 && ar1.isContiguous) ? ar1 : ar1.flatten();
-  final flat2 = (ar2.rank == 1 && ar2.isContiguous) ? ar2 : ar2.flatten();
+  return NDArray.scope(() {
+    final NDArray<T> c1 = ar1.dtype == commonDType
+        ? ar1
+        : castNDArray<T>(ar1, commonDType);
+    final NDArray<T> c2 = ar2.dtype == commonDType
+        ? ar2
+        : castNDArray<T>(ar2, commonDType);
+    final NDArray<T> flat1 = (c1.rank == 1 && c1.isContiguous)
+        ? c1
+        : c1.flatten();
+    final NDArray<T> flat2 = (c2.rank == 1 && c2.isContiguous)
+        ? c2
+        : c2.flatten();
 
-  NDArray<T>? u1;
-  NDArray<T>? u2;
-  NDArray<T>? dest;
-
-  try {
-    if (assumeUnique) {
-      u1 = sort<T>(flat1);
-      u2 = sort<T>(flat2);
-    } else {
-      u1 = unique<T>(flat1) as NDArray<T>;
-      u2 = unique<T>(flat2) as NDArray<T>;
-    }
+    final NDArray u1 = assumeUnique ? sort(flat1) : unique(flat1) as NDArray;
+    final NDArray u2 = assumeUnique ? sort(flat2) : unique(flat2) as NDArray;
 
     final maxDstSize = u1.size + u2.size;
 
@@ -405,10 +399,11 @@ NDArray<T> setxor1d<T extends Object>(
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
-    dest = NDArray<T>.create([maxDstSize], ar1.dtype);
+    final dest = NDArray<T>.create([maxDstSize], commonDType);
 
     final xorCount = ndarray_setxor1d(
       u1.pointer.cast(),
@@ -416,44 +411,29 @@ NDArray<T> setxor1d<T extends Object>(
       u2.pointer.cast(),
       u2.size,
       dest.pointer.cast(),
-      encodeDType(ar1.dtype),
+      encodeDType(commonDType),
     );
 
     if (xorCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [xorCount])) {
       throw ArgumentError('Incompatible out buffer shape.');
     }
 
-    final NDArray<T> result;
+    final validView = dest.slice([Slice(start: 0, stop: xorCount)]);
     if (out != null) {
-      custom_memcpy(
-        out.pointer.cast(),
-        dest.pointer.cast(),
-        xorCount * ar1.dtype.byteWidth,
-      );
-      result = out;
+      validView.copy(out: out);
+      return out;
     } else {
-      result = NDArray<T>.create([xorCount], ar1.dtype);
-      custom_memcpy(
-        result.pointer.cast(),
-        dest.pointer.cast(),
-        xorCount * ar1.dtype.byteWidth,
-      );
+      return validView.copy()..detachToParentScope();
     }
-    return result;
-  } finally {
-    dest?.dispose();
-    u1?.dispose();
-    u2?.dispose();
-    if (flat1 != ar1) flat1.dispose();
-    if (flat2 != ar2) flat2.dispose();
-  }
+  });
 }
 
 /// Finds the union of two arrays.
@@ -461,7 +441,7 @@ NDArray<T> setxor1d<T extends Object>(
 /// Returns the unique, sorted array of values that are in either of the two input arrays.
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
-NDArray<T> union1d<T extends Object>(
+NDArray<T> union1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   NDArray<T>? out,
@@ -472,20 +452,29 @@ NDArray<T> union1d<T extends Object>(
   if (out != null && out.isDisposed) {
     throw StateError('Cannot write union1d result to a disposed output array.');
   }
-  if (out != null && out.dtype != ar1.dtype) {
+  final DType<T> commonDType =
+      (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
+          as DType<T>;
+  if (out != null && out.dtype != commonDType) {
     throw ArgumentError('Incompatible out buffer dtype.');
   }
 
-  final flat1 = (ar1.rank == 1 && ar1.isContiguous) ? ar1 : ar1.flatten();
-  final flat2 = (ar2.rank == 1 && ar2.isContiguous) ? ar2 : ar2.flatten();
+  return NDArray.scope(() {
+    final NDArray<T> c1 = ar1.dtype == commonDType
+        ? ar1
+        : castNDArray<T>(ar1, commonDType);
+    final NDArray<T> c2 = ar2.dtype == commonDType
+        ? ar2
+        : castNDArray<T>(ar2, commonDType);
+    final NDArray<T> flat1 = (c1.rank == 1 && c1.isContiguous)
+        ? c1
+        : c1.flatten();
+    final NDArray<T> flat2 = (c2.rank == 1 && c2.isContiguous)
+        ? c2
+        : c2.flatten();
 
-  NDArray<T>? u1;
-  NDArray<T>? u2;
-  NDArray<T>? dest;
-
-  try {
-    u1 = unique<T>(flat1) as NDArray<T>;
-    u2 = unique<T>(flat2) as NDArray<T>;
+    final NDArray u1 = unique(flat1) as NDArray;
+    final NDArray u2 = unique(flat2) as NDArray;
 
     final maxDstSize = u1.size + u2.size;
 
@@ -493,10 +482,11 @@ NDArray<T> union1d<T extends Object>(
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
-    dest = NDArray<T>.create([maxDstSize], ar1.dtype);
+    final dest = NDArray<T>.create([maxDstSize], commonDType);
 
     final unionCount = ndarray_union1d(
       u1.pointer.cast(),
@@ -504,44 +494,29 @@ NDArray<T> union1d<T extends Object>(
       u2.pointer.cast(),
       u2.size,
       dest.pointer.cast(),
-      encodeDType(ar1.dtype),
+      encodeDType(commonDType),
     );
 
     if (unionCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
         throw ArgumentError('Incompatible out buffer shape.');
       }
-      return out ?? NDArray<T>.create([0], ar1.dtype);
+      return out ??
+          (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [unionCount])) {
       throw ArgumentError('Incompatible out buffer shape.');
     }
 
-    final NDArray<T> result;
+    final validView = dest.slice([Slice(start: 0, stop: unionCount)]);
     if (out != null) {
-      custom_memcpy(
-        out.pointer.cast(),
-        dest.pointer.cast(),
-        unionCount * ar1.dtype.byteWidth,
-      );
-      result = out;
+      validView.copy(out: out);
+      return out;
     } else {
-      result = NDArray<T>.create([unionCount], ar1.dtype);
-      custom_memcpy(
-        result.pointer.cast(),
-        dest.pointer.cast(),
-        unionCount * ar1.dtype.byteWidth,
-      );
+      return validView.copy()..detachToParentScope();
     }
-    return result;
-  } finally {
-    dest?.dispose();
-    u1?.dispose();
-    u2?.dispose();
-    if (flat1 != ar1) flat1.dispose();
-    if (flat2 != ar2) flat2.dispose();
-  }
+  });
 }
 
 /// Tests whether each element of an array is also present in a second array.
@@ -549,12 +524,12 @@ NDArray<T> union1d<T extends Object>(
 /// Returns a boolean array of the same shape as [element] that is `true` where an element of [element] is in [testElements] and `false` otherwise.
 ///
 /// It is an error if [element] or [testElements] is disposed.
-NDArray<bool> isin<T extends Object>(
+NDArray<Boolean> isin<T extends DTypeTag>(
   NDArray<T> element,
   NDArray<T> testElements, {
   bool assumeUnique = false,
   bool invert = false,
-  NDArray<bool>? out,
+  NDArray<Boolean>? out,
 }) {
   if (element.isDisposed || testElements.isDisposed) {
     throw StateError('Cannot execute isin on disposed array(s).');
@@ -568,45 +543,813 @@ NDArray<bool> isin<T extends Object>(
     }
   }
 
-  final flatTest = (testElements.rank == 1 && testElements.isContiguous)
-      ? testElements
-      : testElements.flatten();
-  NDArray<T>? uTest;
-  NDArray<T>? contigElement;
+  final DType<T> commonDType =
+      (element.dtype == testElements.dtype
+              ? element.dtype
+              : resolveDType(element.dtype, testElements.dtype))
+          as DType<T>;
+
+  final bool useTempOut =
+      out != null &&
+      (!out.isContiguous ||
+          sharesMemory(element, out) ||
+          sharesMemory(testElements, out));
+
+  return NDArray.scope(() {
+    final NDArray<T> cElement = element.dtype == commonDType
+        ? element
+        : castNDArray<T>(element, commonDType);
+    final NDArray<T> cTest = testElements.dtype == commonDType
+        ? testElements
+        : castNDArray<T>(testElements, commonDType);
+
+    final dest = (out != null && !useTempOut)
+        ? out
+        : NDArray<Boolean>.create(element.shape, DType.boolean);
+
+    if (element.size == 0) {
+      // Empty input array, result is empty boolean array.
+    } else if (testElements.size == 0) {
+      dest.fill(invert);
+    } else {
+      final NDArray<T> contigElement = cElement.isContiguous
+          ? cElement
+          : cElement.copy();
+      final NDArray<T> flatTest = (cTest.rank == 1 && cTest.isContiguous)
+          ? cTest
+          : cTest.flatten();
+
+      if (!_tryIsinTable<T>(
+        contigElement,
+        flatTest,
+        dest,
+        commonDType,
+        invert,
+      )) {
+        final NDArray uTest = assumeUnique
+            ? sort(flatTest)
+            : unique(flatTest) as NDArray;
+
+        ndarray_isin(
+          contigElement.pointer.cast(),
+          element.size,
+          uTest.pointer.cast(),
+          uTest.size,
+          dest.pointer.cast(),
+          encodeDType(commonDType),
+          invert ? 1 : 0,
+        );
+      }
+    }
+
+    if (useTempOut) {
+      dest.copy(out: out);
+      return out;
+    }
+    if (out == null) {
+      dest.detachToParentScope();
+    }
+    return dest;
+  });
+}
+
+bool _tryIsinTable<T extends DTypeTag>(
+  NDArray<T> contigElement,
+  NDArray<T> flatTest,
+  NDArray<Boolean> dest,
+  DType<T> dtype,
+  bool invert,
+) {
+  final elemSize = contigElement.size;
+  final testSize = flatTest.size;
+  const maxTableRange = 10000000;
+
+  switch (dtype) {
+    case DType.int32:
+      final pTest = flatTest.pointer.cast<ffi.Int32>();
+      final minVal = r_min_int32_t(pTest, testSize);
+      final maxVal = r_max_int32_t(pTest, testSize);
+      if (maxVal < minVal) return false;
+      final range = maxVal - minVal + 1;
+      if (range > maxTableRange || range <= 0) return false;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Int32>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.int64:
+      final pTest = flatTest.pointer.cast<ffi.Int64>();
+      final minVal = r_min_int64_t(pTest, testSize);
+      final maxVal = r_max_int64_t(pTest, testSize);
+      if (maxVal < minVal) return false;
+      final diff = maxVal - minVal;
+      if (diff < 0 || diff >= maxTableRange) return false;
+      final range = diff + 1;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Int64>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.int16:
+      final pTest = flatTest.pointer.cast<ffi.Int16>();
+      final minVal = r_min_int16_t(pTest, testSize);
+      final maxVal = r_max_int16_t(pTest, testSize);
+      if (maxVal < minVal) return false;
+      final range = maxVal - minVal + 1;
+      if (range > 65536 || range <= 0) return false;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Int16>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.int8:
+      final pTest = flatTest.pointer.cast<ffi.Int8>();
+      var minVal = pTest[0];
+      var maxVal = pTest[0];
+      for (var i = 1; i < testSize; i++) {
+        final v = pTest[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      final range = maxVal - minVal + 1;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Int8>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.uint8:
+      final pTest = flatTest.pointer.cast<ffi.Uint8>();
+      final minVal = r_min_uint8_t(pTest, testSize);
+      final maxVal = r_max_uint8_t(pTest, testSize);
+      final range = maxVal - minVal + 1;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Uint8>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.uint16:
+      final pTest = flatTest.pointer.cast<ffi.Uint16>();
+      var minVal = pTest[0];
+      var maxVal = pTest[0];
+      for (var i = 1; i < testSize; i++) {
+        final v = pTest[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      final range = maxVal - minVal + 1;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Uint16>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.uint32:
+      final pTest = flatTest.pointer.cast<ffi.Uint32>();
+      var minVal = pTest[0];
+      var maxVal = pTest[0];
+      for (var i = 1; i < testSize; i++) {
+        final v = pTest[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      if (maxVal < minVal) return false;
+      final range = maxVal - minVal + 1;
+      if (range > maxTableRange || range <= 0) return false;
+      final table = Uint8List(range);
+      for (var i = 0; i < testSize; i++) {
+        table[pTest[i] - minVal] = 1;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Uint32>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (invert) {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 0
+              : 1;
+        }
+      } else {
+        for (var i = 0; i < elemSize; i++) {
+          final v = pElem[i];
+          pDest[i] = (v >= minVal && v <= maxVal && table[v - minVal] == 1)
+              ? 1
+              : 0;
+        }
+      }
+      return true;
+
+    case DType.boolean:
+      final pTest = flatTest.pointer.cast<ffi.Uint8>();
+      var hasZero = false;
+      var hasOne = false;
+      for (var i = 0; i < testSize; i++) {
+        if (pTest[i] == 0) hasZero = true;
+        if (pTest[i] != 0) hasOne = true;
+        if (hasZero && hasOne) break;
+      }
+      final pElem = contigElement.pointer.cast<ffi.Uint8>();
+      final pDest = dest.pointer.cast<ffi.Uint8>();
+      if (hasZero && hasOne) {
+        pDest.asTypedList(elemSize).fillRange(0, elemSize, invert ? 0 : 1);
+      } else if (hasOne) {
+        if (invert) {
+          for (var i = 0; i < elemSize; i++) {
+            pDest[i] = pElem[i] != 0 ? 0 : 1;
+          }
+        } else {
+          for (var i = 0; i < elemSize; i++) {
+            pDest[i] = pElem[i] != 0 ? 1 : 0;
+          }
+        }
+      } else if (hasZero) {
+        if (invert) {
+          for (var i = 0; i < elemSize; i++) {
+            pDest[i] = pElem[i] == 0 ? 0 : 1;
+          }
+        } else {
+          for (var i = 0; i < elemSize; i++) {
+            pDest[i] = pElem[i] == 0 ? 1 : 0;
+          }
+        }
+      } else {
+        pDest.asTypedList(elemSize).fillRange(0, elemSize, invert ? 1 : 0);
+      }
+      return true;
+
+    case DType.float64:
+    case DType.float32:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.uint64:
+    case DType.complex128:
+    case DType.complex64:
+      return false;
+  }
+}
+
+(int, int)? _minMaxInt<T extends DTypeTag>(NDArray<T> values) {
+  final size = values.size;
+  if (size == 0) return null;
+  final ptr = values.pointer;
+  switch (values.dtype) {
+    case DType.int32:
+      final p = ptr.cast<ffi.Int32>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.int64:
+      final p = ptr.cast<ffi.Int64>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.int16:
+      final p = ptr.cast<ffi.Int16>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.int8:
+      final p = ptr.cast<ffi.Int8>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.uint32:
+      final p = ptr.cast<ffi.Uint32>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.uint16:
+      final p = ptr.cast<ffi.Uint16>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.uint8:
+      final p = ptr.cast<ffi.Uint8>();
+      var minVal = p[0];
+      var maxVal = minVal;
+      for (var i = 1; i < size; i++) {
+        final v = p[i];
+        if (v < minVal) minVal = v;
+        if (v > maxVal) maxVal = v;
+      }
+      return (minVal, maxVal);
+    case DType.float64:
+    case DType.float32:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.uint64:
+    case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
+      return null;
+  }
+}
+
+({NDArray<T> values, NDArray<DTypeTag>? counts})? _tryUniqueTable<
+  T extends DTypeTag
+>(NDArray<T> values, {required bool returnCounts, NDArray<T>? out}) {
+  final mm = _minMaxInt(values);
+  if (mm == null) return null;
+  final (minVal, maxVal) = mm;
+  if (maxVal < minVal) return null;
+  final span = maxVal - minVal;
+  const maxSpan = 16777216;
+  if (span < 0 || span > maxSpan) return null;
+  final maxAllowedSpan = values.size * 16 > 262144 ? values.size * 16 : 262144;
+  if (span > maxAllowedSpan) return null;
+
+  final size = values.size;
+  final tableSize = span + 1;
+  final ptr = values.pointer;
+  final marker = ScratchArena.marker;
 
   try {
-    if (assumeUnique) {
-      uTest = sort<T>(flatTest);
+    if (!returnCounts) {
+      final tablePtr = ScratchArena.allocate<ffi.Uint8>(tableSize);
+      tablePtr.asTypedList(tableSize).fillRange(0, tableSize, 0);
+
+      var uniqueCount = 0;
+      switch (values.dtype) {
+        case DType.int32:
+          final p = ptr.cast<ffi.Int32>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.int64:
+          final p = ptr.cast<ffi.Int64>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.int16:
+          final p = ptr.cast<ffi.Int16>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.int8:
+          final p = ptr.cast<ffi.Int8>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.uint32:
+          final p = ptr.cast<ffi.Uint32>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.uint16:
+          final p = ptr.cast<ffi.Uint16>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.uint8:
+          final p = ptr.cast<ffi.Uint8>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              tablePtr[idx] = 1;
+              uniqueCount++;
+            }
+          }
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.uint64:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          return null;
+      }
+
+      if (out != null && !listEquals(out.shape, [uniqueCount])) {
+        throw ArgumentError('Incompatible out buffer shape.');
+      }
+
+      final bool useTempOut =
+          out != null && (!out.isContiguous || sharesMemory(values, out));
+      final NDArray<T> res = (out != null && !useTempOut)
+          ? out
+          : NDArray<T>.create([uniqueCount], values.dtype);
+
+      final resPtr = res.pointer;
+      var outIdx = 0;
+      switch (values.dtype) {
+        case DType.int32:
+          final pRes = resPtr.cast<ffi.Int32>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.int64:
+          final pRes = resPtr.cast<ffi.Int64>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.int16:
+          final pRes = resPtr.cast<ffi.Int16>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.int8:
+          final pRes = resPtr.cast<ffi.Int8>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.uint32:
+          final pRes = resPtr.cast<ffi.Uint32>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.uint16:
+          final pRes = resPtr.cast<ffi.Uint16>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.uint8:
+          final pRes = resPtr.cast<ffi.Uint8>();
+          for (var idx = 0; idx <= span; idx++) {
+            if (tablePtr[idx] != 0) {
+              pRes[outIdx++] = minVal + idx;
+            }
+          }
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.uint64:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          return null;
+      }
+
+      if (useTempOut) {
+        res.copy(out: out);
+        return (values: out, counts: null);
+      }
+      if (out == null) {
+        res.detachToParentScope();
+      }
+      return (values: res, counts: null);
     } else {
-      uTest = unique<T>(flatTest) as NDArray<T>;
+      final tableBytes = tableSize * 4;
+      final tablePtr = ScratchArena.allocate<ffi.Int32>(tableBytes);
+      tablePtr
+          .cast<ffi.Uint8>()
+          .asTypedList(tableBytes)
+          .fillRange(0, tableBytes, 0);
+
+      var uniqueCount = 0;
+      switch (values.dtype) {
+        case DType.int32:
+          final p = ptr.cast<ffi.Int32>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.int64:
+          final p = ptr.cast<ffi.Int64>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.int16:
+          final p = ptr.cast<ffi.Int16>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.int8:
+          final p = ptr.cast<ffi.Int8>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.uint32:
+          final p = ptr.cast<ffi.Uint32>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.uint16:
+          final p = ptr.cast<ffi.Uint16>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.uint8:
+          final p = ptr.cast<ffi.Uint8>();
+          for (var i = 0; i < size; i++) {
+            final idx = p[i] - minVal;
+            if (tablePtr[idx] == 0) {
+              uniqueCount++;
+            }
+            tablePtr[idx]++;
+          }
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.uint64:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          return null;
+      }
+
+      if (out != null && !listEquals(out.shape, [uniqueCount])) {
+        throw ArgumentError('Incompatible out buffer shape.');
+      }
+
+      final bool useTempOut =
+          out != null && (!out.isContiguous || sharesMemory(values, out));
+      final NDArray<T> res = (out != null && !useTempOut)
+          ? out
+          : NDArray<T>.create([uniqueCount], values.dtype);
+      final counts = NDArray<DTypeTag>.create([uniqueCount], DType.int64);
+
+      final resPtr = res.pointer;
+      final pCounts = counts.pointer.cast<ffi.Int64>();
+      var outIdx = 0;
+      switch (values.dtype) {
+        case DType.int32:
+          final pRes = resPtr.cast<ffi.Int32>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.int64:
+          final pRes = resPtr.cast<ffi.Int64>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.int16:
+          final pRes = resPtr.cast<ffi.Int16>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.int8:
+          final pRes = resPtr.cast<ffi.Int8>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.uint32:
+          final pRes = resPtr.cast<ffi.Uint32>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.uint16:
+          final pRes = resPtr.cast<ffi.Uint16>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.uint8:
+          final pRes = resPtr.cast<ffi.Uint8>();
+          for (var idx = 0; idx <= span; idx++) {
+            final c = tablePtr[idx];
+            if (c != 0) {
+              pRes[outIdx] = minVal + idx;
+              pCounts[outIdx] = c;
+              outIdx++;
+            }
+          }
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.uint64:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          return null;
+      }
+
+      if (useTempOut) {
+        res.copy(out: out);
+      } else if (out == null) {
+        res.detachToParentScope();
+      }
+      counts.detachToParentScope();
+      return (values: out ?? res, counts: counts);
     }
-
-    if (element.isContiguous) {
-      contigElement = element;
-    } else {
-      contigElement = element.copy();
-    }
-
-    final dest = out ?? NDArray<bool>.create(element.shape, DType.boolean);
-
-    ndarray_isin(
-      contigElement.pointer.cast(),
-      element.size,
-      uTest.pointer.cast(),
-      uTest.size,
-      dest.pointer.cast(),
-      encodeDType(element.dtype),
-      invert ? 1 : 0,
-    );
-
-    return dest;
   } finally {
-    if (contigElement != null && contigElement != element) {
-      contigElement.dispose();
-    }
-    uTest?.dispose();
-    if (flatTest != testElements) {
-      flatTest.dispose();
-    }
+    ScratchArena.reset(marker);
   }
 }

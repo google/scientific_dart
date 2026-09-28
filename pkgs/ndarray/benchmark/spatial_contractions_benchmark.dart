@@ -24,14 +24,14 @@ void main() async {
       const numPoints = 500;
       const pointDim = 20;
 
-      final pointsA = linspace<double>(
+      final pointsA = linspace<DTypeTag>(
         0.0,
         10.0,
         numPoints * pointDim,
         dtype: DType.float64,
       ).reshape([numPoints, pointDim]);
 
-      final pointsB = linspace<double>(
+      final pointsB = linspace<DTypeTag>(
         5.0,
         15.0,
         numPoints * pointDim,
@@ -60,14 +60,14 @@ void main() async {
 
       c.group('2. Tensor Dot & Contractions', () {
         const matDim = 200;
-        final matA = linspace<double>(
+        final matA = linspace<DTypeTag>(
           0.0,
           10.0,
           matDim * matDim,
           dtype: DType.float64,
         ).reshape([matDim, matDim]);
 
-        final matB = linspace<double>(
+        final matB = linspace<DTypeTag>(
           5.0,
           15.0,
           matDim * matDim,
@@ -82,13 +82,13 @@ void main() async {
         }, throughput: Throughput.elements(matDim * matDim));
 
         const tensorDim = 40;
-        final tA = linspace<double>(
+        final tA = linspace<DTypeTag>(
           0.0,
           1.0,
           tensorDim * tensorDim * tensorDim,
           dtype: DType.float64,
         ).reshape([tensorDim, tensorDim, tensorDim]);
-        final tB = linspace<double>(
+        final tB = linspace<DTypeTag>(
           0.0,
           1.0,
           tensorDim * tensorDim * tensorDim,
@@ -102,8 +102,8 @@ void main() async {
         });
 
         const vLen = 1000;
-        final vA = linspace<double>(0.0, 10.0, vLen, dtype: DType.float64);
-        final vB = linspace<double>(5.0, 15.0, vLen, dtype: DType.float64);
+        final vA = linspace<DTypeTag>(0.0, 10.0, vLen, dtype: DType.float64);
+        final vB = linspace<DTypeTag>(5.0, 15.0, vLen, dtype: DType.float64);
 
         c.bench('outer(vA, vB) [1000 x 1000 -> 1M]', () {
           final res = outer(vA, vB);
@@ -113,13 +113,13 @@ void main() async {
 
         const krA = 50;
         const krB = 10;
-        final kA = linspace<double>(
+        final kA = linspace<DTypeTag>(
           0.0,
           1.0,
           krA * krA,
           dtype: DType.float64,
         ).reshape([krA, krA]);
-        final kB = linspace<double>(
+        final kB = linspace<DTypeTag>(
           0.0,
           1.0,
           krB * krB,

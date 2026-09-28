@@ -14,10 +14,8 @@
 
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
-
 import 'dart:io';
 import 'dart:typed_data';
-
 import 'package:archive/archive.dart';
 
 void main() {
@@ -107,7 +105,7 @@ void main() {
       test(
         'Complex128 array round-trip',
         () => NDArray.scope(() {
-          final a = NDArray<Complex>.fromList(
+          final a = NDArray.fromList(
             [Complex(1.0, -2.0), Complex(0.0, 3.5)],
             [2],
             DType.complex128,
@@ -128,7 +126,7 @@ void main() {
       test(
         'Complex64 array round-trip',
         () => NDArray.scope(() {
-          final a = NDArray<Complex>.fromList(
+          final a = NDArray.fromList(
             [Complex(1.5, -2.5), Complex(0.0, 3.0)],
             [2],
             DType.complex64,
@@ -221,15 +219,16 @@ void main() {
               "{'descr': '$descr', 'fortran_order': True, 'shape': (2, 3)}";
 
           final prefixLen = 6 + 2 + 2;
-          var paddedHeaderLen =
+          final paddedHeaderLen =
               ((prefixLen + headerStr.length + 1) + 63) ~/ 64 * 64 - prefixLen;
           final padCount = paddedHeaderLen - headerStr.length - 1;
           final paddedHeader = "$headerStr${' ' * padCount}\n";
 
           final headerBytes = Uint8List.fromList(paddedHeader.codeUnits);
           final lenBytes = Uint8List(2);
-          ByteData.view(lenBytes.buffer)
-              .setUint16(0, headerBytes.length, Endian.little);
+          ByteData.view(
+            lenBytes.buffer,
+          ).setUint16(0, headerBytes.length, Endian.little);
 
           final rawData = Float64List.fromList([1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
           final rawDataBytes = Uint8List.view(rawData.buffer);
@@ -297,15 +296,16 @@ void main() {
               "{'descr': '$descr', 'fortran_order': True, 'shape': (2, 3)}";
 
           final prefixLen = 6 + 2 + 2;
-          var paddedHeaderLen =
+          final paddedHeaderLen =
               ((prefixLen + headerStr.length + 1) + 63) ~/ 64 * 64 - prefixLen;
           final padCount = paddedHeaderLen - headerStr.length - 1;
           final paddedHeader = "$headerStr${' ' * padCount}\n";
 
           final headerBytes = Uint8List.fromList(paddedHeader.codeUnits);
           final lenBytes = Uint8List(2);
-          ByteData.view(lenBytes.buffer)
-              .setUint16(0, headerBytes.length, Endian.little);
+          ByteData.view(
+            lenBytes.buffer,
+          ).setUint16(0, headerBytes.length, Endian.little);
 
           // 6 doubles for data [1.0, 4.0, 2.0, 5.0, 3.0, 6.0]
           final rawData = Float64List.fromList([1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
@@ -416,7 +416,7 @@ void main() {
           final path = '${tempDir.path}/bad_descr.npy';
           _writeFakeNpy(
             path,
-            "{'descr': '<u2', 'fortran_order': False, 'shape': (2,)}",
+            "{'descr': '<f16', 'fortran_order': False, 'shape': (2,)}",
           );
           expect(() => load(path), throwsUnsupportedError);
         }),
@@ -520,6 +520,35 @@ void main() {
           expect(() => loadz(path), throwsFormatException);
         },
       );
+
+      test(
+        'loadz() throws FormatException when NPZ entry fails CRC32 check',
+        () => NDArray.scope(() {
+          final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
+          final path = '${tempDir.path}/corrupted_crc.npz';
+          savez(path, {'a': a}, compressed: false);
+
+          // Flip a byte inside the raw float64 payload (leaving ZIP headers and CRC32 intact)
+          final bytes = File(path).readAsBytesSync();
+          // Find the NPY magic inside the ZIP and corrupt the last byte of the 32-byte float64 payload
+          for (var i = 0; i < bytes.length - 6; i++) {
+            if (bytes[i] == 0x93 &&
+                bytes[i + 1] == 0x4e &&
+                bytes[i + 2] == 0x55 &&
+                bytes[i + 3] == 0x4d &&
+                bytes[i + 4] == 0x50 &&
+                bytes[i + 5] == 0x59) {
+              final hlen = bytes[i + 8] | (bytes[i + 9] << 8);
+              final dataStart = i + 10 + hlen;
+              bytes[dataStart] ^= 0xff;
+              break;
+            }
+          }
+          File(path).writeAsBytesSync(bytes, flush: true);
+
+          expect(() => loadz(path), throwsFormatException);
+        }),
+      );
     });
 
     group('Additional I/O Coverage Tests', () {
@@ -537,8 +566,9 @@ void main() {
           expect(loaded.toList(), [1.0, 1.0]);
 
           file.deleteSync();
-          Directory('${tempDir.path}/nested_non_existent')
-              .deleteSync(recursive: true);
+          Directory(
+            '${tempDir.path}/nested_non_existent',
+          ).deleteSync(recursive: true);
         }),
       );
 
@@ -578,8 +608,9 @@ void main() {
           expect(loaded['arr']!.toList(), [1.0, 1.0]);
 
           file.deleteSync();
-          Directory('${tempDir.path}/nested_npz_dir')
-              .deleteSync(recursive: true);
+          Directory(
+            '${tempDir.path}/nested_npz_dir',
+          ).deleteSync(recursive: true);
         }),
       );
     });
@@ -591,15 +622,16 @@ void main() {
             '{"descr": "<f8", "fortran_order": False, "shape": (2, 2)}';
 
         final prefixLen = 6 + 2 + 2;
-        var paddedHeaderLen =
+        final paddedHeaderLen =
             ((prefixLen + headerStr.length + 1) + 63) ~/ 64 * 64 - prefixLen;
         final padCount = paddedHeaderLen - headerStr.length - 1;
         final paddedHeader = "$headerStr${' ' * padCount}\n";
 
         final headerBytes = Uint8List.fromList(paddedHeader.codeUnits);
         final lenBytes = Uint8List(2);
-        ByteData.view(lenBytes.buffer)
-            .setUint16(0, headerBytes.length, Endian.little);
+        ByteData.view(
+          lenBytes.buffer,
+        ).setUint16(0, headerBytes.length, Endian.little);
 
         final rawData = Float64List.fromList([1.0, 2.0, 3.0, 4.0]);
         final rawDataBytes = Uint8List.view(rawData.buffer);
@@ -679,7 +711,7 @@ void main() {
         expect(bLoaded.toList(), [true, true, false, false]);
 
         // 5. complex128
-        final c128 = NDArray<Complex>.fromList(
+        final c128 = NDArray.fromList(
           [
             Complex(1.0, 1.0),
             Complex(2.0, 2.0),
@@ -700,7 +732,7 @@ void main() {
         ]);
 
         // 6. complex64
-        final c64 = NDArray<Complex>.fromList(
+        final c64 = NDArray.fromList(
           [
             Complex(1.0, 1.0),
             Complex(2.0, 2.0),
@@ -740,32 +772,190 @@ void main() {
         expect(i16Loaded.dtype, DType.int16);
       }),
     );
+    group('Adversarial & Malformed NPY / NPZ Header Robustness', () {
+      test(
+        'Negative shape dimension in .npy throws FormatException',
+        () => NDArray.scope(() {
+          final path1 = '${tempDir.path}/negative_dim_2d.npy';
+          _writeFakeNpy(
+            path1,
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (-1, 4)}",
+          );
+          expect(() => load(path1), throwsFormatException);
+
+          final path2 = '${tempDir.path}/negative_dim_1d.npy';
+          _writeFakeNpy(
+            path2,
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (-5,)}",
+          );
+          expect(() => load(path2), throwsFormatException);
+        }),
+      );
+
+      test(
+        'Overflowing shape dimension (> 2^31 - 1 elements) in .npy throws cleanly',
+        () => NDArray.scope(() {
+          final path = '${tempDir.path}/overflow_dim.npy';
+          _writeFakeNpy(
+            path,
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (3000000000,)}",
+          );
+          expect(
+            () => load(path),
+            throwsA(
+              anyOf(
+                isA<FormatException>(),
+                isA<ArgumentError>(),
+                isA<UnsupportedError>(),
+              ),
+            ),
+          );
+        }),
+      );
+
+      test(
+        'Overflowing shape 64-bit product in .npy throws cleanly',
+        () => NDArray.scope(() {
+          final path1 = '${tempDir.path}/product_overflow_64.npy';
+          _writeFakeNpy(
+            path1,
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (3037000500, 3037000500)}",
+          );
+          expect(
+            () => load(path1),
+            throwsA(
+              anyOf(
+                isA<FormatException>(),
+                isA<ArgumentError>(),
+                isA<UnsupportedError>(),
+              ),
+            ),
+          );
+
+          final path2 = '${tempDir.path}/product_overflow_31.npy';
+          _writeFakeNpy(
+            path2,
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (50000, 50000)}",
+          );
+          expect(
+            () => load(path2),
+            throwsA(
+              anyOf(
+                isA<FormatException>(),
+                isA<ArgumentError>(),
+                isA<UnsupportedError>(),
+              ),
+            ),
+          );
+        }),
+      );
+
+      test('Truncated .npy payload throws FormatException', () {
+        final path = '${tempDir.path}/truncated_payload.npy';
+        _writeFakeNpy(
+          path,
+          "{'descr': '<f8', 'fortran_order': False, 'shape': (10,)}",
+          payloadBytes: Uint8List(16),
+        );
+        expect(() => load(path), throwsFormatException);
+      });
+
+      test(
+        'Negative shape dimension in .npz archive entry throws FormatException',
+        () {
+          final npzPath = '${tempDir.path}/corrupt_negative_dim.npz';
+          final npyBytes = _buildFakeNpyBytes(
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (-1, 4)}",
+            payloadBytes: Uint8List(32),
+          );
+          final archive = Archive();
+          archive.addFile(ArchiveFile('bad.npy', npyBytes.length, npyBytes));
+          File(npzPath).writeAsBytesSync(ZipEncoder().encode(archive)!);
+
+          expect(() => loadz(npzPath), throwsFormatException);
+        },
+      );
+
+      test('Overflowing shape in .npz archive entry throws cleanly', () {
+        final npzPath = '${tempDir.path}/corrupt_overflow_dim.npz';
+        final npyBytes = _buildFakeNpyBytes(
+          "{'descr': '<f8', 'fortran_order': False, 'shape': (3037000500, 3037000500)}",
+          payloadBytes: Uint8List(16),
+        );
+        final archive = Archive();
+        archive.addFile(ArchiveFile('bad.npy', npyBytes.length, npyBytes));
+        File(npzPath).writeAsBytesSync(ZipEncoder().encode(archive)!);
+
+        expect(
+          () => loadz(npzPath),
+          throwsA(
+            anyOf(
+              isA<FormatException>(),
+              isA<ArgumentError>(),
+              isA<UnsupportedError>(),
+            ),
+          ),
+        );
+      });
+
+      test(
+        'Truncated payload in .npz archive entry throws FormatException',
+        () {
+          final npzPath = '${tempDir.path}/corrupt_truncated_payload.npz';
+          final npyBytes = _buildFakeNpyBytes(
+            "{'descr': '<f8', 'fortran_order': False, 'shape': (5,)}",
+            payloadBytes: Uint8List(8),
+          );
+          final archive = Archive();
+          archive.addFile(ArchiveFile('bad.npy', npyBytes.length, npyBytes));
+          File(npzPath).writeAsBytesSync(ZipEncoder().encode(archive)!);
+
+          expect(() => loadz(npzPath), throwsFormatException);
+        },
+      );
+    });
   });
 }
 
-void _writeFakeNpy(
-  String path,
+Uint8List _buildFakeNpyBytes(
   String headerStr, {
   List<int> version = const [1, 0],
+  List<int>? payloadBytes,
 }) {
   final prefixLen = 6 + 2 + 2;
-  var paddedHeaderLen =
+  final paddedHeaderLen =
       ((prefixLen + headerStr.length + 1) + 63) ~/ 64 * 64 - prefixLen;
   final padCount = paddedHeaderLen - headerStr.length - 1;
   final paddedHeader = "$headerStr${' ' * padCount}\n";
 
   final headerBytes = Uint8List.fromList(paddedHeader.codeUnits);
   final lenBytes = Uint8List(2);
-  ByteData.view(lenBytes.buffer)
-      .setUint16(0, headerBytes.length, Endian.little);
+  ByteData.view(
+    lenBytes.buffer,
+  ).setUint16(0, headerBytes.length, Endian.little);
 
-  final fullBuffer = Uint8List(6 + 2 + 2 + headerBytes.length + 16);
+  final payload = payloadBytes ?? Uint8List(16);
+  final fullBuffer = Uint8List(6 + 2 + 2 + headerBytes.length + payload.length);
   fullBuffer.setRange(0, 6, const [0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59]);
   fullBuffer.setRange(6, 8, version);
   fullBuffer.setRange(8, 10, lenBytes);
   fullBuffer.setRange(10, 10 + headerBytes.length, headerBytes);
+  fullBuffer.setRange(10 + headerBytes.length, fullBuffer.length, payload);
+  return fullBuffer;
+}
 
-  File(path).writeAsBytesSync(fullBuffer, flush: true);
+void _writeFakeNpy(
+  String path,
+  String headerStr, {
+  List<int> version = const [1, 0],
+  List<int>? payloadBytes,
+}) {
+  final bytes = _buildFakeNpyBytes(
+    headerStr,
+    version: version,
+    payloadBytes: payloadBytes,
+  );
+  File(path).writeAsBytesSync(bytes, flush: true);
 }
 
 // Simple helper function to map DType to descriptor string for test creation

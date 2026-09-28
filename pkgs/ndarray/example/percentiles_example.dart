@@ -59,14 +59,14 @@ void main() {
     // Target index: 4 * 0.4 = 1.6.
     // Interpolation: 20 + 0.6 * (35 - 20) = 29.0
     final p40 = percentile(data, 40.0);
-    print('40th percentile: ${p40[0]}'); // Expected: 29.0
+    print('40th percentile: ${p40.scalar}'); // Expected: 29.0
 
     final p75 = percentile(data, 75.0);
-    print('75th percentile: ${p75[0]}'); // Expected: 40.0 (index 3)
+    print('75th percentile: ${p75.scalar}'); // Expected: 40.0 (index 3)
 
     print('\n--- Quantile Examples ---');
     // Quantile is same as percentile but q is in [0, 1]
     final q04 = quantile(data, 0.4);
-    print('0.4 quantile: ${q04[0]}'); // Expected: 29.0
+    print('0.4 quantile: ${q04.scalar}'); // Expected: 29.0
   });
 }

@@ -87,11 +87,7 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final res = a.reduce(
-          op: BinaryOp.add,
-          keepdims: true,
-          initial: Float64(10.0),
-        );
+        final res = a.reduce(op: BinaryOp.add, keepdims: true, initial: 10.0);
         expect(res.shape, equals([1, 1]));
         expect(res.getCell([0, 0]), equals(20.0));
       });
@@ -121,7 +117,7 @@ void main() {
         expect(ints.reduce(op: BinaryOp.bitwiseOr).scalar, equals(7));
         expect(ints.reduce(op: BinaryOp.bitwiseXor).scalar, equals(5));
 
-        final bools = NDArray<bool>.fromList(
+        final bools = NDArray<Boolean>.fromList(
           [true, true, false],
           [3],
           DType.boolean,
@@ -208,7 +204,7 @@ void main() {
           [8],
           DType.float64,
         );
-        final indices = NDArray<int>.fromList([0, 4, 1, 5], [4], DType.int64);
+        final indices = NDArray.fromList([0, 4, 1, 5], [4], DType.int64);
         // Step 0: slice [0:4] -> sum(0..3) = 6.0
         // Step 1: slice [4:1] (start >= end) -> element a[4] = 4.0
         // Step 2: slice [1:5] -> sum(1..4) = 10.0
@@ -254,11 +250,7 @@ void main() {
           [3],
           DType.float64,
         );
-        final indices = NDArray<int>.fromList(
-          [0, 1, 0, 1, 0],
-          [5],
-          DType.int64,
-        );
+        final indices = NDArray.fromList([0, 1, 0, 1, 0], [5], DType.int64);
         final b = NDArray<Float64>.fromList(
           [1.0, 10.0, 2.0, 20.0, 3.0],
           [5],
@@ -276,7 +268,7 @@ void main() {
     test('at scatter multiplication on integer array', () {
       NDArray.scope(() {
         final a = NDArray<Int64>.fromList([1, 1, 1], [3], DType.int64);
-        final indices = NDArray<int>.fromList([0, 0, 1], [3], DType.int64);
+        final indices = NDArray.fromList([0, 0, 1], [3], DType.int64);
         final b = NDArray<Int64>.fromList([2, 3, 5], [3], DType.int64);
 
         a.at(indices, b, op: BinaryOp.multiply);
@@ -290,7 +282,7 @@ void main() {
   group('Error Handling & Edge Cases', () {
     test('Disposed array throws StateError for all ufunc methods', () {
       final a = NDArray<Float64>.fromList([1.0, 2.0], [2], DType.float64);
-      final indices = NDArray<int>.fromList([0], [1], DType.int64);
+      final indices = NDArray.fromList([0], [1], DType.int64);
       final b = NDArray<Float64>.fromList([5.0], [1], DType.float64);
       a.dispose();
 
@@ -314,7 +306,7 @@ void main() {
         );
         expect(
           () => a.reduceat(
-            NDArray<int>.fromList([0], [1], DType.int64),
+            NDArray.fromList([0], [1], DType.int64),
             op: BinaryOp.add,
             axis: 2,
           ),
@@ -327,7 +319,7 @@ void main() {
       NDArray.scope(() {
         final empty = NDArray<Float64>.zeros([0], DType.float64);
         expect(() => empty.reduce(op: BinaryOp.add), throwsArgumentError);
-        final initRes = empty.reduce(op: BinaryOp.add, initial: Float64(42.0));
+        final initRes = empty.reduce(op: BinaryOp.add, initial: 42.0);
         expect(initRes.scalar, equals(42.0));
       });
     });
@@ -335,7 +327,7 @@ void main() {
     test('Complex number product reduction and accumulation', () {
       NDArray.scope(() {
         final c = NDArray<Complex128>.fromList(
-          [Complex128(1.0, 2.0), Complex128(3.0, 4.0)],
+          [Complex(1.0, 2.0), Complex(3.0, 4.0)],
           [2],
           DType.complex128,
         );
@@ -380,7 +372,7 @@ void main() {
         final cumsum = accumulate(a, op: BinaryOp.add);
         expect(cumsum.toList(), equals([1.0, 3.0, 6.0, 10.0]));
 
-        final indices = NDArray<int>.fromList([0, 2], [2], DType.int64);
+        final indices = NDArray.fromList([0, 2], [2], DType.int64);
         final redAt = reduceat(a, indices, op: BinaryOp.add);
         expect(redAt.toList(), equals([3.0, 7.0]));
 
@@ -389,7 +381,7 @@ void main() {
         expect(outRes.shape, equals([4, 2]));
 
         final target = NDArray<Float64>.zeros([3], DType.float64);
-        final atIndices = NDArray<int>.fromList([0, 0, 1], [3], DType.int64);
+        final atIndices = NDArray.fromList([0, 0, 1], [3], DType.int64);
         final valBuffer = NDArray<Float64>.fromList(
           [2.0, 3.0, 5.0],
           [3],

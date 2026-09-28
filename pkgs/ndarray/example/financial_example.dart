@@ -21,19 +21,19 @@ void main() {
     // an additional monthly savings of $100. Assume the interest rate is
     // 5% (annually) compounded monthly?
     final NDArray<Float64> rate = NDArray<Float64>.scalar(
-      Float64(0.05 / 12),
+      0.05 / 12,
       dtype: DType.float64,
     );
     final NDArray<Float64> nper = NDArray<Float64>.scalar(
-      Float64(10.0 * 12),
+      10.0 * 12,
       dtype: DType.float64,
     );
     final NDArray<Float64> pmt = NDArray<Float64>.scalar(
-      Float64(-100.0),
+      -100.0,
       dtype: DType.float64,
     );
     final NDArray<Float64> pvVal = NDArray<Float64>.scalar(
-      Float64(-100.0),
+      -100.0,
       dtype: DType.float64,
     );
 
@@ -46,7 +46,7 @@ void main() {
     // What is the present value (investment) needed to get $15,692.93 after
     // 10 years of saving $100/month at 5% annual interest?
     final NDArray<Float64> fvVal = NDArray<Float64>.scalar(
-      Float64(15692.92889433575),
+      15692.92889433575,
       dtype: DType.float64,
     );
     final NDArray<Float64> pvResult = pv(rate, nper, pmt, fvVal);
@@ -57,18 +57,12 @@ void main() {
     // 3. Net Present Value (npv)
     // Cash flows: invest 100, then withdraw 39, 59, 55, 20
     final NDArray<Float64> cashFlows = NDArray.fromList(
-      <Float64>[
-        Float64(-100.0),
-        Float64(39.0),
-        Float64(59.0),
-        Float64(55.0),
-        Float64(20.0),
-      ],
+      <double>[-100.0, 39.0, 59.0, 55.0, 20.0],
       [5],
       DType.float64,
     );
     final NDArray<Float64> discountRate = NDArray<Float64>.scalar(
-      Float64(0.08),
+      0.08,
       dtype: DType.float64,
     );
     final NDArray<Float64> npvResult = npv(discountRate, cashFlows);

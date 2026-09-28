@@ -19,10 +19,33 @@ workspace:
   - pkgs/openblas
   - pkgs/ndarray
   - pkgs/pocketfft
+  - pkgs/guitar_tuner
+  - pkgs/ndarray_ma
+  - pkgs/notebook
+  - pkgs/code_editor
+  - pkgs/symbolic_dart
   - pkgs/resource_scope
+  - pkgs/gpuarray
+  - pkgs/scientific_dart_analysis_plugin
 dependencies:
+  args: ^2.7.0
+  code_assets: '>=1.0.0 <3.0.0'
+  crypto: ^3.0.7
+  hooks: '>=1.0.3 <3.0.0'
   http: ^1.6.0
 
 dev_dependencies:
   ffigen: ^20.1.1
 
+hooks:
+  user_defines:
+    ndarray:
+      buildMode: source
+    openblas:
+      buildMode: source
+    pocketfft:
+      buildMode: source
+    symbolic_dart:
+      buildMode: source
+    gpuarray:
+      buildMode: fetch

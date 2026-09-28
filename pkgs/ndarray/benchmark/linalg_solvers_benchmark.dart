@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:criterion/criterion.dart';
 import 'package:ndarray/ndarray.dart';
 
@@ -24,9 +23,9 @@ void main() async {
     'NDArray Linear Algebra Solvers & Invariants Benchmark Suite',
     (c) {
       // Helper to generate well-conditioned invertible matrices
-      NDArray<double> makeInvertible(int n) {
+      NDArray<AnySpec> makeInvertible(int n) {
         final rand = math.Random(42);
-        final a = NDArray<double>.zeros([n, n], DType.float64);
+        final a = NDArray<AnySpec>.zeros([n, n], DType.float64);
         for (var i = 0; i < n; i++) {
           for (var j = 0; j < n; j++) {
             a.setCell([i, j], (rand.nextDouble() - 0.5) * 2.0);
@@ -41,7 +40,7 @@ void main() async {
       c.group('1. Linear System Solvers (LAPACK dgesv & dgels)', () {
         for (final n in [50, 100, 200]) {
           final A = makeInvertible(n);
-          final b = NDArray<double>.ones([n, 1], DType.float64);
+          final b = NDArray<AnySpec>.ones([n, 1], DType.float64);
 
           c.bench(
             'solve(A, b) [${n}x$n]',
@@ -58,12 +57,12 @@ void main() async {
         const m = 200;
         const k = 50;
         final rand = math.Random(42);
-        final aRect = NDArray<double>.fromList(
+        final aRect = NDArray<AnySpec>.fromList(
           List.generate(m * k, (_) => rand.nextDouble()),
           [m, k],
           DType.float64,
         );
-        final bRect = NDArray<double>.ones([m, 1], DType.float64);
+        final bRect = NDArray<AnySpec>.ones([m, 1], DType.float64);
 
         c.bench('lstsq(A, b) [200x50]', () {
           final res = lstsq(aRect, bRect);

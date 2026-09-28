@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import '../ndarray.dart';
-
 import 'dart:ffi' as ffi;
-
 import '../ndarray_bindings.dart';
 import '../scratch_arena.dart';
 
 // Standalone operational relative cross-imports
+import 'helpers.dart';
+import 'manipulation.dart';
 
 /// Represents the spacing between points for calculus operations along a single axis.
 ///
@@ -54,7 +53,7 @@ final class CoordinateSpacing<V extends Object> extends Spacing<V> {
 }
 
 // Helper for list equality comparison
-bool _listEquals(List a, List b) {
+bool _listEquals(List<dynamic> a, List<dynamic> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
     if (a[i] != b[i]) return false;
@@ -82,13 +81,13 @@ bool _listEquals(List a, List b) {
 ///
 /// **Preconditions:**
 /// - Input [y] must not be disposed.
-/// - Input [y] must be a floating-point or complex type.
+/// - Input [y] must be a numeric (floating-point, integer, or complex) type.
 /// - [axis] must be within bounds `[-y.rank, y.rank - 1]`.
 /// - If [spacing] is [CoordinateSpacing], its length must match `y.shape[axis]`.
 /// - If [spacing] is complex, input [y] must also be complex.
 /// - If [out] is provided, it must match the resolved shape and dtype.
 /// - It is an error if [y] or [out] is disposed.
-/// - It is an error if [y] has an integer or boolean dtype.
+/// - It is an error if [y] has a boolean dtype.
 /// - It is an error if complex spacing is used with a real input array.
 /// - It is an error if [axis] is out of bounds or coordinate spacing length is mismatched.
 ///
@@ -97,8 +96,8 @@ bool _listEquals(List a, List b) {
 /// final y = NDArray.fromList([1.0, 2.0, 4.0], [3], DType.float64);
 /// final res = trapz(y, spacing: Spacing.step(1.0)); // 4.5
 /// ```
-NDArray<T> trapz<T extends Object>(
-  NDArray<T> y, {
+NDArray<T> trapz<T extends DTypeTag>(
+  NDArray y, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = -1,
   NDArray<T>? out,
@@ -110,14 +109,20 @@ NDArray<T> trapz<T extends Object>(
     throw StateError('Cannot write trapz result to a disposed output array.');
   }
 
-  if (y.dtype.isInteger || y.dtype == DType.boolean) {
+  if (y.dtype == DType.boolean) {
     throw ArgumentError(
-      'Calculus operations are not supported on integer or boolean arrays. '
+      'Calculus operations are not supported on boolean arrays. '
       'Cast to a floating-point or complex type first.',
     );
   }
 
-  if (spacing is Spacing<Complex> && !y.dtype.isComplex) {
+  final bool isComplexSpacing = switch (spacing) {
+    Spacing<Complex>() => true,
+    StepSpacing(:final value) => value is Complex,
+    CoordinateSpacing(:final values) =>
+      values.isNotEmpty && values.first is Complex,
+  };
+  if (isComplexSpacing && !y.dtype.isComplex) {
     throw ArgumentError(
       'Complex spacing requires a complex input array. '
       'Cast the array to complex first.',
@@ -142,146 +147,126 @@ NDArray<T> trapz<T extends Object>(
   }
 
   final targetShape = List<int>.from(y.shape)..removeAt(targetAxis);
-  final result = out ?? NDArray<T>.zeros(targetShape, y.dtype);
+
+  if (y.dtype.isInteger) {
+    if (out != null) {
+      if (!_listEquals(out.shape, targetShape) || out.dtype == DType.boolean) {
+        throw ArgumentError('Incompatible out buffer shape or dtype.');
+      }
+    }
+    return NDArray.scope(() {
+      final doubleY = castNDArray<Float64>(y, DType.float64);
+      final Spacing doubleSpacing = switch (spacing) {
+        StepSpacing(:final value) => Spacing.step((value as num).toDouble()),
+        CoordinateSpacing(:final values) => Spacing.coordinates([
+          for (final v in values) (v as num).toDouble(),
+        ]),
+      };
+      final doubleRes = trapz<Float64>(
+        doubleY,
+        spacing: doubleSpacing,
+        axis: axis,
+      );
+      if (out != null) {
+        final casted = castNDArray(doubleRes, out.dtype);
+        casted.copy(out: out);
+        return out;
+      }
+      return doubleRes.detachToParentScope() as NDArray<T>;
+    });
+  }
+
   if (out != null) {
     if (!_listEquals(out.shape, targetShape) || out.dtype != y.dtype) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
+    if (sharesMemory(y, out)) {
+      return NDArray.scope(() {
+        final temp = trapz<T>(y, spacing: spacing, axis: axis);
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
 
-  final rank = y.shape.length;
-  final marker = ScratchArena.marker;
-  final cShape = ScratchArena.copyInts(y.shape);
-  final cStridesY = ScratchArena.copyInts(y.strides);
-  final cStridesRes = ScratchArena.copyInts(result.strides);
-
-  try {
-    switch (spacing) {
-      case StepSpacing():
-        final value = spacing.value;
-        if (value is Complex) {
-          switch (y.dtype) {
-            case DType.complex128:
-              final dxStruct = ScratchArena.allocate<cpx_t>(
-                ffi.sizeOf<cpx_t>(),
-              );
-              dxStruct.ref.r = value.real;
-              dxStruct.ref.i = value.imag;
-              s_trapz_complex128_all(
-                y.pointer.cast(),
-                cStridesY,
-                ffi.nullptr,
-                0,
-                dxStruct.ref,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-              );
-            case DType.complex64:
-              final dxStruct = ScratchArena.allocate<cpx_f_t>(
-                ffi.sizeOf<cpx_f_t>(),
-              );
-              dxStruct.ref.r = value.real;
-              dxStruct.ref.i = value.imag;
-              s_trapz_complex64_all(
-                y.pointer.cast(),
-                cStridesY,
-                ffi.nullptr,
-                0,
-                dxStruct.ref,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-              );
-            default:
-              throw ArgumentError('Unsupported DType for trapz: ${y.dtype}');
-          }
-        } else if (value is num) {
-          final dxVal = value.toDouble();
-          final dtype = y.dtype;
-          switch (dtype) {
-            case DType.float64:
-              s_trapz_double(
-                y.pointer.cast(),
-                cStridesY,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-              );
-            case DType.float32:
-              s_trapz_float(
-                y.pointer.cast(),
-                cStridesY,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-              );
-            case DType.complex128:
-              s_trapz_complex128(
-                y.pointer.cast(),
-                cStridesY,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-              );
-            case DType.complex64:
-              s_trapz_complex64(
-                y.pointer.cast(),
-                cStridesY,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-              );
-            default:
-              throw ArgumentError('Unsupported DType for trapz');
-          }
+  switch (y.dtype) {
+    case DType.float16:
+    case DType.bfloat16:
+      return NDArray.scope(() {
+        final doubleY = castNDArray<Float64>(y, DType.float64);
+        final doubleRes = trapz<Float64>(doubleY, spacing: spacing, axis: axis);
+        final NDArray casted = switch (y.dtype) {
+          DType.float16 => castNDArray<Float16>(doubleRes, DType.float16),
+          _ => castNDArray<BFloat16>(doubleRes, DType.bfloat16),
+        };
+        if (out != null) {
+          casted.copy(out: out);
+          return out;
         }
+        return casted.detachToParentScope() as NDArray<T>;
+      });
+    case DType.float64:
+    case DType.float32:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
+      break;
+  }
 
-      case CoordinateSpacing():
-        final values = spacing.values;
-        if (values.every((e) => e is Complex)) {
-          final complexValues = values.cast<Complex>();
-          switch (y.dtype) {
-            case DType.complex128:
-              final dxStruct = ScratchArena.allocate<cpx_t>(
-                ffi.sizeOf<cpx_t>(),
-              );
-              dxStruct.ref.r = 1.0;
-              dxStruct.ref.i = 0.0;
-              NDArray<Complex>? spacingArray;
-              try {
-                spacingArray = NDArray<Complex>.fromList(complexValues, [
-                  N,
-                ], DType.complex128);
+  return NDArray.scope(() {
+    final NDArray<T> result =
+        out ??
+        (switch (y.dtype) {
+              DType.float64 => NDArray<Float64>.zeros(
+                targetShape,
+                DType.float64,
+              ),
+              DType.float32 => NDArray<Float32>.zeros(
+                targetShape,
+                DType.float32,
+              ),
+              DType.complex128 => NDArray<Complex128>.zeros(
+                targetShape,
+                DType.complex128,
+              ),
+              DType.complex64 => NDArray<Complex64>.zeros(
+                targetShape,
+                DType.complex64,
+              ),
+              _ => NDArray.zeros(targetShape, y.dtype),
+            }
+            as NDArray<T>);
+
+    final rank = y.shape.length;
+    final marker = ScratchArena.marker;
+    try {
+      final cShape = ScratchArena.copyInts(y.shape);
+      final cStridesY = ScratchArena.copyInts(y.strides);
+      final cStridesRes = ScratchArena.copyInts(result.strides);
+      switch (spacing) {
+        case StepSpacing():
+          final value = spacing.value;
+          if (value is Complex) {
+            switch (y.dtype) {
+              case DType.complex128:
+                final dxStruct = ScratchArena.allocate<cpx_t>(
+                  ffi.sizeOf<cpx_t>(),
+                );
+                dxStruct.ref.r = value.real;
+                dxStruct.ref.i = value.imag;
                 s_trapz_complex128_all(
                   y.pointer.cast(),
                   cStridesY,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
+                  ffi.nullptr,
+                  0,
                   dxStruct.ref,
                   result.pointer.cast(),
                   cStridesRes,
@@ -289,25 +274,17 @@ NDArray<T> trapz<T extends Object>(
                   rank,
                   targetAxis,
                 );
-              } finally {
-                spacingArray?.dispose();
-              }
-            case DType.complex64:
-              final dxStruct = ScratchArena.allocate<cpx_f_t>(
-                ffi.sizeOf<cpx_f_t>(),
-              );
-              dxStruct.ref.r = 1.0;
-              dxStruct.ref.i = 0.0;
-              NDArray<Complex>? spacingArray;
-              try {
-                spacingArray = NDArray<Complex>.fromList(complexValues, [
-                  N,
-                ], DType.complex64);
+              case DType.complex64:
+                final dxStruct = ScratchArena.allocate<cpx_f_t>(
+                  ffi.sizeOf<cpx_f_t>(),
+                );
+                dxStruct.ref.r = value.real;
+                dxStruct.ref.i = value.imag;
                 s_trapz_complex64_all(
                   y.pointer.cast(),
                   cStridesY,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
+                  ffi.nullptr,
+                  0,
                   dxStruct.ref,
                   result.pointer.cast(),
                   cStridesRes,
@@ -315,40 +292,32 @@ NDArray<T> trapz<T extends Object>(
                   rank,
                   targetAxis,
                 );
-              } finally {
-                spacingArray?.dispose();
-              }
-            default:
-              throw ArgumentError('Unsupported DType for trapz: ${y.dtype}');
-          }
-        } else {
-          NDArray<num>? spacingArray;
-          try {
-            final bool useFloat =
-                y.dtype == DType.float32 || y.dtype == DType.complex64;
-            if (useFloat) {
-              spacingArray = NDArray<Float32>.create([N], DType.float32);
-              var i = 0;
-              for (final val in values) {
-                spacingArray.setCellFlat(i++, Float32((val as num).toDouble()));
-              }
-            } else {
-              spacingArray = NDArray<Float64>.create([N], DType.float64);
-              var i = 0;
-              for (final val in values) {
-                spacingArray.setCellFlat(i++, Float64((val as num).toDouble()));
-              }
+              case DType.float64:
+              case DType.float32:
+              case DType.float16:
+              case DType.bfloat16:
+              case DType.int64:
+              case DType.int32:
+              case DType.int16:
+              case DType.int8:
+              case DType.uint64:
+              case DType.uint32:
+              case DType.uint16:
+              case DType.uint8:
+              case DType.boolean:
+                throw ArgumentError('Unsupported DType for trapz: ${y.dtype}');
             }
-
+          } else if (value is num) {
+            final dxVal = value.toDouble();
             final dtype = y.dtype;
             switch (dtype) {
               case DType.float64:
                 s_trapz_double(
                   y.pointer.cast(),
                   cStridesY,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -359,9 +328,9 @@ NDArray<T> trapz<T extends Object>(
                 s_trapz_float(
                   y.pointer.cast(),
                   cStridesY,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -372,9 +341,9 @@ NDArray<T> trapz<T extends Object>(
                 s_trapz_complex128(
                   y.pointer.cast(),
                   cStridesY,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -385,28 +354,202 @@ NDArray<T> trapz<T extends Object>(
                 s_trapz_complex64(
                   y.pointer.cast(),
                   cStridesY,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
                   rank,
                   targetAxis,
                 );
-              default:
+              case DType.float16:
+              case DType.bfloat16:
+              case DType.int64:
+              case DType.int32:
+              case DType.int16:
+              case DType.int8:
+              case DType.uint64:
+              case DType.uint32:
+              case DType.uint16:
+              case DType.uint8:
+              case DType.boolean:
                 throw ArgumentError('Unsupported DType for trapz');
             }
-          } finally {
-            spacingArray?.dispose();
           }
-        }
-    }
-  } finally {
-    ScratchArena.reset(marker);
-  }
 
-  return result;
+        case CoordinateSpacing():
+          final values = spacing.values;
+          if (values.every((e) => e is Complex)) {
+            final complexValues = values.cast<Complex>();
+            switch (y.dtype) {
+              case DType.complex128:
+                final dxStruct = ScratchArena.allocate<cpx_t>(
+                  ffi.sizeOf<cpx_t>(),
+                );
+                dxStruct.ref.r = 1.0;
+                dxStruct.ref.i = 0.0;
+                NDArray<DTypeTag>? spacingArray;
+                try {
+                  spacingArray = NDArray<DTypeTag>.fromList(complexValues, [
+                    N,
+                  ], DType.complex128);
+                  s_trapz_complex128_all(
+                    y.pointer.cast(),
+                    cStridesY,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    dxStruct.ref,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                  );
+                } finally {
+                  spacingArray?.dispose();
+                }
+              case DType.complex64:
+                final dxStruct = ScratchArena.allocate<cpx_f_t>(
+                  ffi.sizeOf<cpx_f_t>(),
+                );
+                dxStruct.ref.r = 1.0;
+                dxStruct.ref.i = 0.0;
+                NDArray<DTypeTag>? spacingArray;
+                try {
+                  spacingArray = NDArray<DTypeTag>.fromList(complexValues, [
+                    N,
+                  ], DType.complex64);
+                  s_trapz_complex64_all(
+                    y.pointer.cast(),
+                    cStridesY,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    dxStruct.ref,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                  );
+                } finally {
+                  spacingArray?.dispose();
+                }
+              case DType.float64:
+              case DType.float32:
+              case DType.float16:
+              case DType.bfloat16:
+              case DType.int64:
+              case DType.int32:
+              case DType.int16:
+              case DType.int8:
+              case DType.uint64:
+              case DType.uint32:
+              case DType.uint16:
+              case DType.uint8:
+              case DType.boolean:
+                throw ArgumentError('Unsupported DType for trapz: ${y.dtype}');
+            }
+          } else {
+            NDArray<DTypeTag>? spacingArray;
+            try {
+              final bool useFloat =
+                  y.dtype == DType.float32 || y.dtype == DType.complex64;
+              if (useFloat) {
+                spacingArray = NDArray<Float32>.create([N], DType.float32);
+                var i = 0;
+                for (final val in values) {
+                  spacingArray.setCellFlat(i++, (val as num).toDouble());
+                }
+              } else {
+                spacingArray = NDArray<Float64>.create([N], DType.float64);
+                var i = 0;
+                for (final val in values) {
+                  spacingArray.setCellFlat(i++, (val as num).toDouble());
+                }
+              }
+
+              final dtype = y.dtype;
+              switch (dtype) {
+                case DType.float64:
+                  s_trapz_double(
+                    y.pointer.cast(),
+                    cStridesY,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                  );
+                case DType.float32:
+                  s_trapz_float(
+                    y.pointer.cast(),
+                    cStridesY,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                  );
+                case DType.complex128:
+                  s_trapz_complex128(
+                    y.pointer.cast(),
+                    cStridesY,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                  );
+                case DType.complex64:
+                  s_trapz_complex64(
+                    y.pointer.cast(),
+                    cStridesY,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                  );
+                case DType.float16:
+                case DType.bfloat16:
+                case DType.int64:
+                case DType.int32:
+                case DType.int16:
+                case DType.int8:
+                case DType.uint64:
+                case DType.uint32:
+                case DType.uint16:
+                case DType.uint8:
+                case DType.boolean:
+                  throw ArgumentError('Unsupported DType for trapz');
+              }
+            } finally {
+              spacingArray?.dispose();
+            }
+          }
+      }
+    } finally {
+      ScratchArena.reset(marker);
+    }
+
+    if (out == null) {
+      result.detachToParentScope();
+    }
+    return result;
+  });
 }
 
 /// Calculates the N-Dimensional gradient along a single axis.
@@ -445,7 +588,7 @@ NDArray<T> trapz<T extends Object>(
 /// - If [spacing] is complex, input [f] must also be complex.
 /// - If [out] is provided, it must match the resolved shape and dtype.
 /// - It is an error if [f] or [out] is disposed.
-/// - It is an error if [f] has an integer or boolean dtype.
+/// - It is an error if [f] has a boolean dtype.
 /// - It is an error if complex spacing is used with a real input array.
 /// - It is an error if [axis] is out of bounds or spacing is invalid.
 /// - It is an error if [edgeOrder] is not 1 or 2.
@@ -458,8 +601,8 @@ NDArray<T> trapz<T extends Object>(
 /// final f = NDArray.fromList([1.0, 2.0, 4.0, 7.0], [4], DType.float64);
 /// final res = gradient(f, spacing: Spacing.step(1.0)); // [1.0, 1.5, 2.5, 3.0]
 /// ```
-NDArray<T> gradient<T extends Object>(
-  NDArray<T> f, {
+NDArray<T> gradient<T extends DTypeTag>(
+  NDArray f, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = 0,
   int edgeOrder = 1,
@@ -477,14 +620,19 @@ NDArray<T> gradient<T extends Object>(
     throw ArgumentError('edgeOrder must be 1 or 2 (was $edgeOrder).');
   }
 
-  if (f.dtype.isInteger || f.dtype == DType.boolean) {
+  if (f.dtype == DType.boolean) {
     throw ArgumentError(
-      'Calculus operations are not supported on integer or boolean arrays. '
+      'Calculus operations are not supported on boolean arrays. '
       'Cast to a floating-point or complex type first.',
     );
   }
 
-  if (spacing is Spacing<Complex> && !f.dtype.isComplex) {
+  final bool isComplexSpacing = switch (spacing) {
+    Spacing<Complex>() => true,
+    StepSpacing(:final value) => value is Complex,
+    CoordinateSpacing(:final values) => values.any((v) => v is Complex),
+  };
+  if (isComplexSpacing && !f.dtype.isComplex) {
     throw ArgumentError(
       'Complex spacing requires a complex input array. '
       'Cast the array to complex first.',
@@ -514,152 +662,113 @@ NDArray<T> gradient<T extends Object>(
     }
   }
 
-  final result = out ?? NDArray<T>.zeros(f.shape, f.dtype);
+  if (f.dtype.isInteger) {
+    if (out != null) {
+      if (!_listEquals(out.shape, f.shape) || out.dtype == DType.boolean) {
+        throw ArgumentError('Incompatible out buffer shape or dtype.');
+      }
+    }
+    return NDArray.scope(() {
+      final doubleF = castNDArray<Float64>(f, DType.float64);
+      final doubleRes = gradient<Float64>(
+        doubleF,
+        spacing: spacing,
+        axis: axis,
+        edgeOrder: edgeOrder,
+      );
+      if (out != null) {
+        if (out.dtype == DType.float64) {
+          doubleRes.copy(out: out as NDArray<Float64>);
+        } else {
+          final casted = castNDArray(doubleRes, out.dtype);
+          casted.copy(out: out);
+        }
+        return out;
+      }
+      return doubleRes.detachToParentScope() as NDArray<T>;
+    });
+  }
+
   if (out != null) {
     if (!_listEquals(out.shape, f.shape) || out.dtype != f.dtype) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
+    if (sharesMemory(f, out)) {
+      return NDArray.scope(() {
+        final temp = gradient<T>(
+          f,
+          spacing: spacing,
+          axis: axis,
+          edgeOrder: edgeOrder,
+        );
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
 
-  final rank = f.shape.length;
-  final marker = ScratchArena.marker;
-  final cShape = ScratchArena.copyInts(f.shape);
-  final cStridesF = ScratchArena.copyInts(f.strides);
-  final cStridesRes = ScratchArena.copyInts(result.strides);
+  if (f.dtype == DType.float16 || f.dtype == DType.bfloat16) {
+    return NDArray.scope(() {
+      final doubleF = castNDArray<Float64>(f, DType.float64);
+      final doubleRes = gradient<Float64>(
+        doubleF,
+        spacing: spacing,
+        axis: axis,
+        edgeOrder: edgeOrder,
+      );
+      final NDArray casted = f.dtype == DType.float16
+          ? castNDArray<Float16>(doubleRes, DType.float16)
+          : castNDArray<BFloat16>(doubleRes, DType.bfloat16);
+      if (out != null) {
+        casted.copy(out: out);
+        return out;
+      }
+      return casted.detachToParentScope() as NDArray<T>;
+    });
+  }
 
-  try {
-    switch (spacing) {
-      case StepSpacing():
-        final value = spacing.value;
-        if (value is Complex) {
-          switch (f.dtype) {
-            case DType.complex128:
-              final dxStruct = ScratchArena.allocate<cpx_t>(
-                ffi.sizeOf<cpx_t>(),
-              );
-              dxStruct.ref.r = value.real;
-              dxStruct.ref.i = value.imag;
-              s_gradient_complex128_all(
-                f.pointer.cast(),
-                cStridesF,
-                ffi.nullptr,
-                0,
-                dxStruct.ref,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-                edgeOrder,
-              );
-            case DType.complex64:
-              final dxStruct = ScratchArena.allocate<cpx_f_t>(
-                ffi.sizeOf<cpx_f_t>(),
-              );
-              dxStruct.ref.r = value.real;
-              dxStruct.ref.i = value.imag;
-              s_gradient_complex64_all(
-                f.pointer.cast(),
-                cStridesF,
-                ffi.nullptr,
-                0,
-                dxStruct.ref,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-                edgeOrder,
-              );
-            default:
-              throw ArgumentError('Unsupported DType for gradient: ${f.dtype}');
-          }
-        } else if (value is num) {
-          final dxVal = value.toDouble();
-          final dtype = f.dtype;
-          switch (dtype) {
-            case DType.float64:
-              s_gradient_double(
-                f.pointer.cast(),
-                cStridesF,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-                edgeOrder,
-              );
-            case DType.float32:
-              s_gradient_float(
-                f.pointer.cast(),
-                cStridesF,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-                edgeOrder,
-              );
-            case DType.complex128:
-              s_gradient_complex128(
-                f.pointer.cast(),
-                cStridesF,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-                edgeOrder,
-              );
-            case DType.complex64:
-              s_gradient_complex64(
-                f.pointer.cast(),
-                cStridesF,
-                ffi.nullptr,
-                0,
-                dxVal,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                rank,
-                targetAxis,
-                edgeOrder,
-              );
-            default:
-              throw ArgumentError('Unsupported DType for gradient');
-          }
-        }
+  return NDArray.scope(() {
+    final NDArray<T> result =
+        out ??
+        (switch (f.dtype) {
+              DType.float64 => NDArray<Float64>.zeros(f.shape, DType.float64),
+              DType.float32 => NDArray<Float32>.zeros(f.shape, DType.float32),
+              DType.complex128 => NDArray<Complex128>.zeros(
+                f.shape,
+                DType.complex128,
+              ),
+              DType.complex64 => NDArray<Complex64>.zeros(
+                f.shape,
+                DType.complex64,
+              ),
+              _ => throw ArgumentError(
+                'Unsupported DType for gradient: ${f.dtype}',
+              ),
+            }
+            as NDArray<T>);
 
-      case CoordinateSpacing():
-        final values = spacing.values;
-        if (values.every((e) => e is Complex)) {
-          final complexValues = values.cast<Complex>();
-          switch (f.dtype) {
-            case DType.complex128:
-              final dxStruct = ScratchArena.allocate<cpx_t>(
-                ffi.sizeOf<cpx_t>(),
-              );
-              dxStruct.ref.r = 1.0;
-              dxStruct.ref.i = 0.0;
-              NDArray<Complex>? spacingArray;
-              try {
-                spacingArray = NDArray<Complex>.fromList(complexValues, [
-                  N,
-                ], DType.complex128);
+    final rank = f.shape.length;
+    final marker = ScratchArena.marker;
+    try {
+      final cShape = ScratchArena.copyInts(f.shape);
+      final cStridesF = ScratchArena.copyInts(f.strides);
+      final cStridesRes = ScratchArena.copyInts(result.strides);
+      switch (spacing) {
+        case StepSpacing():
+          final value = spacing.value;
+          if (value is Complex) {
+            switch (f.dtype) {
+              case DType.complex128:
+                final dxStruct = ScratchArena.allocate<cpx_t>(
+                  ffi.sizeOf<cpx_t>(),
+                );
+                dxStruct.ref.r = value.real;
+                dxStruct.ref.i = value.imag;
                 s_gradient_complex128_all(
                   f.pointer.cast(),
                   cStridesF,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
+                  ffi.nullptr,
+                  0,
                   dxStruct.ref,
                   result.pointer.cast(),
                   cStridesRes,
@@ -668,25 +777,17 @@ NDArray<T> gradient<T extends Object>(
                   targetAxis,
                   edgeOrder,
                 );
-              } finally {
-                spacingArray?.dispose();
-              }
-            case DType.complex64:
-              final dxStruct = ScratchArena.allocate<cpx_f_t>(
-                ffi.sizeOf<cpx_f_t>(),
-              );
-              dxStruct.ref.r = 1.0;
-              dxStruct.ref.i = 0.0;
-              NDArray<Complex>? spacingArray;
-              try {
-                spacingArray = NDArray<Complex>.fromList(complexValues, [
-                  N,
-                ], DType.complex64);
+              case DType.complex64:
+                final dxStruct = ScratchArena.allocate<cpx_f_t>(
+                  ffi.sizeOf<cpx_f_t>(),
+                );
+                dxStruct.ref.r = value.real;
+                dxStruct.ref.i = value.imag;
                 s_gradient_complex64_all(
                   f.pointer.cast(),
                   cStridesF,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
+                  ffi.nullptr,
+                  0,
                   dxStruct.ref,
                   result.pointer.cast(),
                   cStridesRes,
@@ -695,39 +796,34 @@ NDArray<T> gradient<T extends Object>(
                   targetAxis,
                   edgeOrder,
                 );
-              } finally {
-                spacingArray?.dispose();
-              }
-            default:
-              throw ArgumentError('Unsupported DType for gradient: ${f.dtype}');
-          }
-        } else {
-          NDArray<num>? spacingArray;
-          try {
-            final bool useFloat =
-                f.dtype == DType.float32 || f.dtype == DType.complex64;
-            if (useFloat) {
-              spacingArray = NDArray<Float32>.create([N], DType.float32);
-              var i = 0;
-              for (final val in values) {
-                spacingArray.setCellFlat(i++, Float32((val as num).toDouble()));
-              }
-            } else {
-              spacingArray = NDArray<Float64>.create([N], DType.float64);
-              var i = 0;
-              for (final val in values) {
-                spacingArray.setCellFlat(i++, Float64((val as num).toDouble()));
-              }
+              case DType.float64:
+              case DType.float32:
+              case DType.float16:
+              case DType.bfloat16:
+              case DType.int64:
+              case DType.int32:
+              case DType.int16:
+              case DType.int8:
+              case DType.uint64:
+              case DType.uint32:
+              case DType.uint16:
+              case DType.uint8:
+              case DType.boolean:
+                throw ArgumentError(
+                  'Unsupported DType for gradient: ${f.dtype}',
+                );
             }
+          } else if (value is num) {
+            final dxVal = value.toDouble();
             final dtype = f.dtype;
             switch (dtype) {
               case DType.float64:
                 s_gradient_double(
                   f.pointer.cast(),
                   cStridesF,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -739,9 +835,9 @@ NDArray<T> gradient<T extends Object>(
                 s_gradient_float(
                   f.pointer.cast(),
                   cStridesF,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -753,9 +849,9 @@ NDArray<T> gradient<T extends Object>(
                 s_gradient_complex128(
                   f.pointer.cast(),
                   cStridesF,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -767,9 +863,9 @@ NDArray<T> gradient<T extends Object>(
                 s_gradient_complex64(
                   f.pointer.cast(),
                   cStridesF,
-                  spacingArray.pointer.cast(),
-                  spacingArray.strides[0],
-                  0.0,
+                  ffi.nullptr,
+                  0,
+                  dxVal,
                   result.pointer.cast(),
                   cStridesRes,
                   cShape,
@@ -777,19 +873,200 @@ NDArray<T> gradient<T extends Object>(
                   targetAxis,
                   edgeOrder,
                 );
-              default:
+              case DType.float16:
+              case DType.bfloat16:
+              case DType.int64:
+              case DType.int32:
+              case DType.int16:
+              case DType.int8:
+              case DType.uint64:
+              case DType.uint32:
+              case DType.uint16:
+              case DType.uint8:
+              case DType.boolean:
                 throw ArgumentError('Unsupported DType for gradient');
             }
-          } finally {
-            spacingArray?.dispose();
           }
-        }
-    }
-  } finally {
-    ScratchArena.reset(marker);
-  }
 
-  return result;
+        case CoordinateSpacing():
+          final values = spacing.values;
+          if (values.every((e) => e is Complex)) {
+            final complexValues = values.cast<Complex>();
+            switch (f.dtype) {
+              case DType.complex128:
+                final dxStruct = ScratchArena.allocate<cpx_t>(
+                  ffi.sizeOf<cpx_t>(),
+                );
+                dxStruct.ref.r = 1.0;
+                dxStruct.ref.i = 0.0;
+                NDArray<DTypeTag>? spacingArray;
+                try {
+                  spacingArray = NDArray<DTypeTag>.fromList(complexValues, [
+                    N,
+                  ], DType.complex128);
+                  s_gradient_complex128_all(
+                    f.pointer.cast(),
+                    cStridesF,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    dxStruct.ref,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                    edgeOrder,
+                  );
+                } finally {
+                  spacingArray?.dispose();
+                }
+              case DType.complex64:
+                final dxStruct = ScratchArena.allocate<cpx_f_t>(
+                  ffi.sizeOf<cpx_f_t>(),
+                );
+                dxStruct.ref.r = 1.0;
+                dxStruct.ref.i = 0.0;
+                NDArray<DTypeTag>? spacingArray;
+                try {
+                  spacingArray = NDArray<DTypeTag>.fromList(complexValues, [
+                    N,
+                  ], DType.complex64);
+                  s_gradient_complex64_all(
+                    f.pointer.cast(),
+                    cStridesF,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    dxStruct.ref,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                    edgeOrder,
+                  );
+                } finally {
+                  spacingArray?.dispose();
+                }
+              case DType.float64:
+              case DType.float32:
+              case DType.float16:
+              case DType.bfloat16:
+              case DType.int64:
+              case DType.int32:
+              case DType.int16:
+              case DType.int8:
+              case DType.uint64:
+              case DType.uint32:
+              case DType.uint16:
+              case DType.uint8:
+              case DType.boolean:
+                throw ArgumentError(
+                  'Unsupported DType for gradient: ${f.dtype}',
+                );
+            }
+          } else {
+            NDArray<DTypeTag>? spacingArray;
+            try {
+              final bool useFloat =
+                  f.dtype == DType.float32 || f.dtype == DType.complex64;
+              if (useFloat) {
+                spacingArray = NDArray<Float32>.create([N], DType.float32);
+                var i = 0;
+                for (final val in values) {
+                  spacingArray.setCellFlat(i++, (val as num).toDouble());
+                }
+              } else {
+                spacingArray = NDArray<Float64>.create([N], DType.float64);
+                var i = 0;
+                for (final val in values) {
+                  spacingArray.setCellFlat(i++, (val as num).toDouble());
+                }
+              }
+              final dtype = f.dtype;
+              switch (dtype) {
+                case DType.float64:
+                  s_gradient_double(
+                    f.pointer.cast(),
+                    cStridesF,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                    edgeOrder,
+                  );
+                case DType.float32:
+                  s_gradient_float(
+                    f.pointer.cast(),
+                    cStridesF,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                    edgeOrder,
+                  );
+                case DType.complex128:
+                  s_gradient_complex128(
+                    f.pointer.cast(),
+                    cStridesF,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                    edgeOrder,
+                  );
+                case DType.complex64:
+                  s_gradient_complex64(
+                    f.pointer.cast(),
+                    cStridesF,
+                    spacingArray.pointer.cast(),
+                    spacingArray.strides[0],
+                    0.0,
+                    result.pointer.cast(),
+                    cStridesRes,
+                    cShape,
+                    rank,
+                    targetAxis,
+                    edgeOrder,
+                  );
+                case DType.float16:
+                case DType.bfloat16:
+                case DType.int64:
+                case DType.int32:
+                case DType.int16:
+                case DType.int8:
+                case DType.uint64:
+                case DType.uint32:
+                case DType.uint16:
+                case DType.uint8:
+                case DType.boolean:
+                  throw ArgumentError('Unsupported DType for gradient');
+              }
+            } finally {
+              spacingArray?.dispose();
+            }
+          }
+      }
+    } finally {
+      ScratchArena.reset(marker);
+    }
+
+    if (out == null) {
+      result.detachToParentScope();
+    }
+    return result;
+  });
 }
 
 /// Calculates the n-dimensional gradient along multiple axes.
@@ -823,7 +1100,7 @@ NDArray<T> gradient<T extends Object>(
 /// - [spacing] and [spacings] are mutually exclusive.
 /// - If provided, [spacings] length must match the number of axes being differentiated.
 /// - It is an error if [f] is disposed.
-/// - It is an error if [f] has an integer or boolean dtype.
+/// - It is an error if [f] has a boolean dtype.
 /// - It is an error if [axis] contains out of bounds or duplicate indices.
 /// - It is an error if both [spacing] and [spacings] are provided.
 /// - It is an error if [spacings] length does not match the number of axes.
@@ -840,8 +1117,8 @@ NDArray<T> gradient<T extends Object>(
 /// // Specific per axis:
 /// final grads2 = gradientArray(f, spacings: [Spacing.step(1.0), Spacing.step(2.0)]);
 /// ```
-List<NDArray<T>> gradientArray<T extends Object>(
-  NDArray<T> f, {
+List<NDArray<T>> gradientArray<T extends DTypeTag>(
+  NDArray f, {
   Spacing? spacing,
   List<Spacing>? spacings,
   List<int>? axis,
@@ -852,9 +1129,9 @@ List<NDArray<T>> gradientArray<T extends Object>(
     throw StateError('Cannot execute gradientArray() on a disposed array.');
   }
 
-  if (f.dtype.isInteger || f.dtype == DType.boolean) {
+  if (f.dtype == DType.boolean) {
     throw ArgumentError(
-      'Calculus operations are not supported on integer or boolean arrays. '
+      'Calculus operations are not supported on boolean arrays. '
       'Cast to a floating-point or complex type first.',
     );
   }
@@ -869,7 +1146,7 @@ List<NDArray<T>> gradientArray<T extends Object>(
     targetAxes = List<int>.generate(f.shape.length, (i) => i);
   } else {
     targetAxes = [];
-    for (var ax in axis) {
+    for (final ax in axis) {
       var resolvedAx = ax;
       if (resolvedAx < 0) {
         resolvedAx = f.shape.length + resolvedAx;
@@ -913,14 +1190,27 @@ List<NDArray<T>> gradientArray<T extends Object>(
           'Cannot write gradient result to a disposed output array at index $i.',
         );
       }
-      if (!listEquals(out[i].shape, f.shape) || out[i].dtype != f.dtype) {
+      if (!listEquals(out[i].shape, f.shape) ||
+          (f.dtype.isInteger
+              ? out[i].dtype == DType.boolean
+              : out[i].dtype != f.dtype)) {
         throw ArgumentError(
           'Provided out buffer at index $i has incompatible shape or dtype.',
         );
       }
-      if (!out[i].isContiguous) {
-        throw ArgumentError('Provided out buffers must be contiguous.');
-      }
+    }
+    if (targetAxes.length > 1 && out.any((o) => sharesMemory(f, o))) {
+      return NDArray.scope(() {
+        final fCopy = f.copy();
+        return gradientArray<T>(
+          fCopy,
+          spacing: spacing,
+          spacings: spacings,
+          axis: axis,
+          edgeOrder: edgeOrder,
+          out: out,
+        );
+      });
     }
   }
 
@@ -939,7 +1229,7 @@ List<NDArray<T>> gradientArray<T extends Object>(
   } catch (e) {
     // Clean up any successful allocations if one fails
     if (out == null) {
-      for (var res in results) {
+      for (final res in results) {
         res.dispose();
       }
     }

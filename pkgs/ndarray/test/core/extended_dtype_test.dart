@@ -14,6 +14,7 @@
 
 import 'package:test/test.dart';
 import 'package:ndarray/ndarray.dart';
+import 'package:resource_scope/resource_scope.dart';
 
 void main() {
   group(
@@ -61,8 +62,9 @@ void main() {
 
         // NaN
         expect(
-          Float16Utils.decodeFloat16(Float16Utils.encodeFloat16(double.nan))
-              .isNaN,
+          Float16Utils.decodeFloat16(
+            Float16Utils.encodeFloat16(double.nan),
+          ).isNaN,
           isTrue,
         );
       });

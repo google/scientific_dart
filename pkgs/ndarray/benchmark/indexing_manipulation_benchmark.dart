@@ -23,8 +23,8 @@ void main() async {
   await criterion(
     'NDArray Indexing, Slicing & Manipulation Benchmark Suite',
     (c) {
-      final a1d = linspace<double>(0.0, 100.0, size, dtype: DType.float64);
-      final mat2d = NDArray<double>.arange(
+      final a1d = linspace<DTypeTag>(0.0, 100.0, size, dtype: DType.float64);
+      final mat2d = NDArray<DTypeTag>.arange(
         0.0,
         (matrixDim * matrixDim).toDouble(),
         dtype: DType.float64,
@@ -64,7 +64,7 @@ void main() async {
       });
 
       c.group('2. Advanced Indexing & Selection', () {
-        final indices = NDArray<int>.arange(
+        final indices = NDArray<DTypeTag>.arange(
           0.0,
           matrixDim.toDouble(),
           dtype: DType.int32,
@@ -76,7 +76,7 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(matrixDim));
 
-        final putValues = NDArray<double>.ones([matrixDim, 1], DType.float64);
+        final putValues = NDArray<DTypeTag>.ones([matrixDim, 1], DType.float64);
         c.bench('put_along_axis [500x500, axis=0]', () {
           put_along_axis(mat2d, indices, putValues, 0);
           blackhole(mat2d);
@@ -89,11 +89,11 @@ void main() async {
         }, throughput: Throughput.elements(matrixDim));
 
         final choices = [
-          NDArray<double>.zeros([10000], DType.float64),
-          NDArray<double>.ones([10000], DType.float64),
-          linspace<double>(0.0, 10.0, 10000, dtype: DType.float64),
+          NDArray<DTypeTag>.zeros([10000], DType.float64),
+          NDArray<DTypeTag>.ones([10000], DType.float64),
+          linspace<DTypeTag>(0.0, 10.0, 10000, dtype: DType.float64),
         ];
-        final selector = NDArray<int>.fromList(
+        final selector = NDArray<DTypeTag>.fromList(
           List.generate(10000, (i) => i % 3),
           [10000],
           DType.int32,
@@ -107,8 +107,8 @@ void main() async {
       });
 
       c.group('3. Array Assembly & Joining', () {
-        final blockA = NDArray<double>.ones([250, 500], DType.float64);
-        final blockB = NDArray<double>.zeros([250, 500], DType.float64);
+        final blockA = NDArray<DTypeTag>.ones([250, 500], DType.float64);
+        final blockB = NDArray<DTypeTag>.zeros([250, 500], DType.float64);
 
         c.bench(
           'concatenate([A, B], axis=0) [250x500 + 250x500 -> 500x500]',
@@ -126,14 +126,19 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(250 * 500 * 2));
 
-        final smallTile = NDArray<double>.ones([50, 50], DType.float64);
+        final smallTile = NDArray<DTypeTag>.ones([50, 50], DType.float64);
         c.bench('tile([50, 50], [10, 10]) -> [500, 500]', () {
           final res = tile(smallTile, [10, 10]);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(500 * 500));
 
-        final repVec = linspace<double>(0.0, 10.0, 1000, dtype: DType.float64);
+        final repVec = linspace<DTypeTag>(
+          0.0,
+          10.0,
+          1000,
+          dtype: DType.float64,
+        );
         c.bench('repeat([1000], repeats=50) -> [50,000]', () {
           final res = repeat(repVec, [50]);
           blackhole(res);

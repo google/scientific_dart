@@ -16,7 +16,7 @@ import 'package:ndarray/ndarray.dart';
 
 void main() {
   NDArray.scope(() {
-    final arr = NDArray<double>.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+    final arr = NDArray<DTypeTag>.fromList([1.0, 2.0, 3.0], [3], DType.float64);
 
     // Constant padding
     final constantPadded = pad(

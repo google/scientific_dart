@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -138,7 +137,7 @@ void main() {
           final view = parent.slice([const Slice(start: 0, stop: 5, step: 2)]);
           expect(view.isContiguous, isFalse);
 
-          final out = NDArray<double>.zeros([], DType.float64);
+          final out = NDArray.zeros([], DType.float64);
           final res = trapz(view, out: out);
           expect(identical(res, out), isTrue);
           expect(out.scalar, closeTo(4.5, 1e-9));
@@ -153,11 +152,13 @@ void main() {
             ..dispose();
           expect(() => trapz(disp), throwsStateError);
 
-          final dispOut = NDArray<double>.zeros([], DType.float64)..dispose();
+          final dispOut = NDArray.zeros([], DType.float64)..dispose();
           expect(() => trapz(valid, out: dispOut), throwsStateError);
 
           final intArr = NDArray.fromList([1, 2, 3], [3], DType.int64);
-          expect(() => trapz(intArr), throwsArgumentError);
+          final intRes = trapz(intArr);
+          expect(intRes.dtype, DType.float64);
+          expect((intRes.scalar as num).toDouble(), closeTo(4.0, 1e-12));
 
           final boolArr = NDArray.fromList([true, false], [2], DType.boolean);
           expect(() => trapz(boolArr), throwsArgumentError);
@@ -175,7 +176,7 @@ void main() {
             throwsArgumentError,
           );
 
-          final badOutShape = NDArray<double>.zeros([2], DType.float64);
+          final badOutShape = NDArray.zeros([2], DType.float64);
           expect(() => trapz(valid, out: badOutShape), throwsArgumentError);
         });
       });
@@ -262,8 +263,8 @@ void main() {
           expect(gradsCustom[0].getCell([0, 0]), closeTo(1.5, 1e-9));
 
           // gradientArray with out parameter
-          final out0 = NDArray<double>.zeros([3, 3], DType.float64);
-          final out1 = NDArray<double>.zeros([3, 3], DType.float64);
+          final out0 = NDArray.zeros([3, 3], DType.float64);
+          final out1 = NDArray.zeros([3, 3], DType.float64);
           final gradsOut = gradientArray(grid, out: [out0, out1]);
           expect(identical(gradsOut[0], out0), isTrue);
           expect(identical(gradsOut[1], out1), isTrue);
@@ -367,104 +368,107 @@ void main() {
   });
 
   group('Comprehensive Statistics Operations', () {
-    group('multi-DType reductions: sum, prod, mean, std, var, min, max, ptp', () {
-      test(
-        'sum across various integer, float, complex, and boolean DTypes',
-        () {
-          NDArray.scope(() {
-            // Float64
-            final f64 = NDArray.fromList(
-              [1.0, 2.0, 3.0, 4.0],
-              [4],
-              DType.float64,
-            );
-            expect(sum(f64).scalar, closeTo(10.0, 1e-9));
+    group(
+      'multi-DType reductions: sum, prod, mean, std, var, min, max, ptp',
+      () {
+        test(
+          'sum across various integer, float, complex, and boolean DTypes',
+          () {
+            NDArray.scope(() {
+              // Float64
+              final f64 = NDArray.fromList(
+                [1.0, 2.0, 3.0, 4.0],
+                [4],
+                DType.float64,
+              );
+              expect(sum(f64).scalar, closeTo(10.0, 1e-9));
 
-            // Float32
-            final f32 = NDArray.fromList(
-              [1.0, 2.0, 3.0, 4.0],
-              [4],
-              DType.float32,
-            );
-            expect(sum(f32).scalar, closeTo(10.0, 1e-5));
+              // Float32
+              final f32 = NDArray.fromList(
+                [1.0, 2.0, 3.0, 4.0],
+                [4],
+                DType.float32,
+              );
+              expect(sum(f32).scalar, closeTo(10.0, 1e-5));
 
-            // Int64
-            final i64 = NDArray.fromList([10, 20, 30], [3], DType.int64);
-            expect(sum(i64).scalar, equals(60));
+              // Int64
+              final i64 = NDArray.fromList([10, 20, 30], [3], DType.int64);
+              expect(sum(i64).scalar, equals(60));
 
-            // Int32
-            final i32 = NDArray.fromList([10, 20, 30], [3], DType.int32);
-            expect(sum(i32).scalar, equals(60));
+              // Int32
+              final i32 = NDArray.fromList([10, 20, 30], [3], DType.int32);
+              expect(sum(i32).scalar, equals(60));
 
-            // Uint8
-            final u8 = NDArray.fromList([5, 10, 15], [3], DType.uint8);
-            expect(sum(u8).scalar, equals(30));
+              // Uint8
+              final u8 = NDArray.fromList([5, 10, 15], [3], DType.uint8);
+              expect(sum(u8).scalar, equals(30));
 
-            // Complex128
-            final c128 = NDArray.fromList(
-              [Complex(1, 2), Complex(3, 4)],
-              [2],
-              DType.complex128,
-            );
-            expect(sum(c128).scalar, equals(Complex(4.0, 6.0)));
+              // Complex128
+              final c128 = NDArray.fromList(
+                [Complex(1, 2), Complex(3, 4)],
+                [2],
+                DType.complex128,
+              );
+              expect(sum(c128).scalar, equals(Complex(4.0, 6.0)));
 
-            // Boolean
-            final bools = NDArray.fromList(
-              [true, false, true, true],
-              [4],
-              DType.boolean,
-            );
-            expect(sum(bools).scalar, isTrue);
+              // Boolean
+              final bools = NDArray.fromList(
+                [true, false, true, true],
+                [4],
+                DType.boolean,
+              );
+              expect(sumAs(bools, DType.int64).scalar, equals(3));
 
-            // Empty array sum
-            final empty = NDArray.zeros([0], DType.float64);
-            expect(sum(empty).scalar, equals(0.0));
-          });
-        },
-      );
+              // Empty array sum
+              final empty = NDArray.zeros([0], DType.float64);
+              expect(sum(empty).scalar, equals(0.0));
+            });
+          },
+        );
 
-      test(
-        'prod, mean, std, variance, min, max, ptp multi-axis and keepdims',
-        () {
-          NDArray.scope(() {
-            final m = NDArray.fromList(
-              [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-              [2, 3],
-              DType.float64,
-            );
+        test(
+          'prod, mean, std, variance, min, max, ptp multi-axis and keepdims',
+          () {
+            NDArray.scope(() {
+              final m = NDArray.fromList(
+                [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+                [2, 3],
+                DType.float64,
+              );
 
-            // prod
-            expect(prod(m).scalar, closeTo(720.0, 1e-9));
-            expect(prod(m, axis: 0).toList(), equals([4.0, 10.0, 18.0]));
-            expect(prod(m, axis: 1).toList(), equals([6.0, 120.0]));
+              // prod
+              expect(prod(m).scalar, closeTo(720.0, 1e-9));
+              expect(prod(m, axis: 0).toList(), equals([4.0, 10.0, 18.0]));
+              expect(prod(m, axis: 1).toList(), equals([6.0, 120.0]));
 
-            // mean
-            expect(mean(m).scalar, closeTo(3.5, 1e-9));
-            expect(mean(m, axis: 0, keepdims: true).shape, equals([1, 3]));
-            expect(mean(m, axis: 0).toList(), equals([2.5, 3.5, 4.5]));
-            expect(mean(m, axis: 1).toList(), equals([2.0, 5.0]));
+              // mean
+              expect(mean(m).scalar, closeTo(3.5, 1e-9));
+              expect(mean(m, axis: 0, keepdims: true).shape, equals([1, 3]));
+              expect(mean(m, axis: 0).toList(), equals([2.5, 3.5, 4.5]));
+              expect(mean(m, axis: 1).toList(), equals([2.0, 5.0]));
 
-            // std and variance
-            expect(
-              variance(m).scalar,
-              closeTo(35.0 / 12.0, 1e-5),
-            ); // population var: ( (1-3.5)^2 + ... ) / 6 = 17.5 / 6 = 2.916667
-            expect(std(m).scalar, closeTo(math.sqrt(17.5 / 6.0), 1e-5));
-            expect(
-              variance(m, ddof: 1).scalar,
-              closeTo(17.5 / 5.0, 1e-5),
-            ); // sample var: 17.5 / 5 = 3.5
+              // std and variance
+              expect(
+                variance(m).scalar,
+                closeTo(35.0 / 12.0, 1e-5),
+              ); // population var: ( (1-3.5)^2 + ... ) / 6 = 17.5 / 6 = 2.916667
+              expect(std(m).scalar, closeTo(math.sqrt(17.5 / 6.0), 1e-5));
+              expect(
+                variance(m, ddof: 1).scalar,
+                closeTo(17.5 / 5.0, 1e-5),
+              ); // sample var: 17.5 / 5 = 3.5
 
-            // min, max, ptp
-            expect(min(m).scalar, equals(1.0));
-            expect(max(m).scalar, equals(6.0));
-            expect(ptp(m).scalar, equals(5.0)); // 6.0 - 1.0 = 5.0
-            expect(ptp(m, axis: 0).toList(), equals([3.0, 3.0, 3.0]));
-            expect(ptp(m, axis: 1).toList(), equals([2.0, 2.0]));
-          });
-        },
-      );
-    });
+              // min, max, ptp
+              expect(min(m).scalar, equals(1.0));
+              expect(max(m).scalar, equals(6.0));
+              expect(ptp(m).scalar, equals(5.0)); // 6.0 - 1.0 = 5.0
+              expect(ptp(m, axis: 0).toList(), equals([3.0, 3.0, 3.0]));
+              expect(ptp(m, axis: 1).toList(), equals([2.0, 2.0]));
+            });
+          },
+        );
+      },
+    );
 
     group('average (weighted and unweighted)', () {
       test('1D unweighted and weighted average', () {

@@ -56,7 +56,7 @@ Dataset generateConcentricCircles(
     uniform([numPoints, 2], dtype: DType.float64, seed: seed, out: x);
 
     final two = NDArray.scalar(2.0, dtype: DType.float64);
-    final one = NDArray<Float64>.scalar(Float64(1.0), dtype: DType.float64);
+    final one = NDArray<Float64>.scalar(1.0, dtype: DType.float64);
 
     // Scale to [-1, 1)
     multiply(x, two, out: x);
@@ -70,11 +70,11 @@ Dataset generateConcentricCircles(
     sum(xSquared, axis: 1, out: d2);
 
     final r2 = NDArray.scalar(radius * radius, dtype: DType.float64);
-    final mask = NDArray<bool>.create([numPoints], DType.boolean);
+    final mask = NDArray<Boolean>.create([numPoints], DType.boolean);
     less(d2, r2, out: mask);
 
     final y = NDArray<Float64>.create([numPoints, 1], DType.float64);
-    final zero = NDArray<Float64>.scalar(Float64(0.0), dtype: DType.float64);
+    final zero = NDArray<Float64>.scalar(0.0, dtype: DType.float64);
 
     final mask2D = mask.reshape([numPoints, 1]);
     where(mask2D, one, zero, y);
@@ -228,8 +228,8 @@ final class MLP {
     db2_1D = db2.reshape([outputDim]);
     db1_1D = db1.reshape([hiddenDim]);
 
-    one = NDArray<Float64>.scalar(Float64(1.0), dtype: DType.float64);
-    zero = NDArray<Float64>.scalar(Float64(0.0), dtype: DType.float64);
+    one = NDArray<Float64>.scalar(1.0, dtype: DType.float64);
+    zero = NDArray<Float64>.scalar(0.0, dtype: DType.float64);
   }
 
   /// Disposes all allocated arrays and views.
@@ -336,7 +336,7 @@ double calculateLoss(NDArray<Float64> A2, NDArray<Float64> Y) {
     log(logA2, out: logA2);
 
     final oneMinusA2 = NDArray<Float64>.create(A2.shape, DType.float64);
-    final one = NDArray<Float64>.scalar(Float64(1.0), dtype: DType.float64);
+    final one = NDArray<Float64>.scalar(1.0, dtype: DType.float64);
     subtract(one, A2, out: oneMinusA2);
     clip(oneMinusA2, min: 1e-15, max: 1.0 - 1e-15, out: oneMinusA2);
     log(oneMinusA2, out: oneMinusA2);
@@ -365,18 +365,18 @@ double calculateLoss(NDArray<Float64> A2, NDArray<Float64> Y) {
 double calculateAccuracy(NDArray<Float64> A2, NDArray<Float64> Y) {
   return NDArray.scope(() {
     final threshold = NDArray.scalar(0.5, dtype: DType.float64);
-    final predictions = NDArray<bool>.create(A2.shape, DType.boolean);
+    final predictions = NDArray<Boolean>.create(A2.shape, DType.boolean);
     greater(A2, threshold, out: predictions);
 
-    final yBool = NDArray<bool>.create(Y.shape, DType.boolean);
+    final yBool = NDArray<Boolean>.create(Y.shape, DType.boolean);
     greater(Y, threshold, out: yBool);
 
-    final correct = NDArray<bool>.create(A2.shape, DType.boolean);
+    final correct = NDArray<Boolean>.create(A2.shape, DType.boolean);
     equal(predictions, yBool, out: correct);
 
     final correctDouble = NDArray<Float64>.create(A2.shape, DType.float64);
-    final one = NDArray<Float64>.scalar(Float64(1.0), dtype: DType.float64);
-    final zero = NDArray<Float64>.scalar(Float64(0.0), dtype: DType.float64);
+    final one = NDArray<Float64>.scalar(1.0, dtype: DType.float64);
+    final zero = NDArray<Float64>.scalar(0.0, dtype: DType.float64);
     where(correct, one, zero, correctDouble);
 
     final correctSum = sum(correctDouble);
@@ -387,98 +387,102 @@ double calculateAccuracy(NDArray<Float64> A2, NDArray<Float64> Y) {
 }
 
 void main() {
-  const numPoints = 200;
-  const hiddenDim = 8;
-  const epochs = 5000;
-  const learningRate = 2.0;
+  NDArray.scope(() {
+    const numPoints = 200;
+    const hiddenDim = 8;
+    const epochs = 5000;
+    const learningRate = 2.0;
 
-  print('Generating synthetic concentric circles dataset...');
-  final dataset = generateConcentricCircles(numPoints, seed: 42);
-  print(
-    'Dataset generated. X shape: ${dataset.x.shape}, Y shape: ${dataset.y.shape}',
-  );
+    print('Generating synthetic concentric circles dataset...');
+    final dataset = generateConcentricCircles(numPoints, seed: 42);
+    print(
+      'Dataset generated. X shape: ${dataset.x.shape}, Y shape: ${dataset.y.shape}',
+    );
 
-  // Split into train and test (50/50)
-  const trainSize = numPoints ~/ 2;
+    // Split into train and test (50/50)
+    const trainSize = numPoints ~/ 2;
 
-  // We use views for train/test split
-  final xTrain = dataset.x.slice([
-    const Slice(start: 0, stop: trainSize),
-    const Slice.all(),
-  ]);
-  final yTrain = dataset.y.slice([
-    const Slice(start: 0, stop: trainSize),
-    const Slice.all(),
-  ]);
-  final xTest = dataset.x.slice([
-    const Slice(start: trainSize, stop: numPoints),
-    const Slice.all(),
-  ]);
-  final yTest = dataset.y.slice([
-    const Slice(start: trainSize, stop: numPoints),
-    const Slice.all(),
-  ]);
+    // We use views for train/test split
+    final xTrain = dataset.x.slice([
+      const Slice(start: 0, stop: trainSize),
+      const Slice.all(),
+    ]);
+    final yTrain = dataset.y.slice([
+      const Slice(start: 0, stop: trainSize),
+      const Slice.all(),
+    ]);
+    final xTest = dataset.x.slice([
+      const Slice(start: trainSize, stop: numPoints),
+      const Slice.all(),
+    ]);
+    final yTest = dataset.y.slice([
+      const Slice(start: trainSize, stop: numPoints),
+      const Slice.all(),
+    ]);
 
-  final xTrain_T = xTrain.transposed;
+    final xTrain_T = xTrain.transposed;
 
-  print('Initializing MLP...');
-  final mlp = MLP(
-    inputDim: 2,
-    hiddenDim: hiddenDim,
-    outputDim: 1,
-    batchSize: trainSize,
-    learningRate: learningRate,
-  );
+    print('Initializing MLP...');
+    final mlp = MLP(
+      inputDim: 2,
+      hiddenDim: hiddenDim,
+      outputDim: 1,
+      batchSize: trainSize,
+      learningRate: learningRate,
+    );
 
-  print('Starting training loop...');
-  print('Epoch\tLoss\tTrain Acc\tTest Acc');
+    print('Starting training loop...');
+    print('Epoch\tLoss\tTrain Acc\tTest Acc');
 
-  for (var epoch = 1; epoch <= epochs; epoch++) {
-    // We run the training step inside a scope to ensure any temporary allocations are freed.
-    // Since we use out: parameters, there should be almost zero allocations,
-    // but scope is good for safety.
+    for (var epoch = 1; epoch <= epochs; epoch++) {
+      // We run the training step inside a scope to ensure any temporary allocations are freed.
+      // Since we use out: parameters, there should be almost zero allocations,
+      // but scope is good for safety.
+      NDArray.scope(() {
+        mlp.forward(xTrain);
+        mlp.backward(xTrain, yTrain, xTrain_T);
+        mlp.update();
+      });
+
+      if (epoch % 100 == 0 || epoch == 1) {
+        NDArray.scope(() {
+          // Evaluate on train
+          mlp.forward(xTrain);
+          final trainLoss = calculateLoss(mlp.A2, yTrain);
+          final trainAcc = calculateAccuracy(mlp.A2, yTrain);
+
+          // Evaluate on test
+          mlp.forward(xTest);
+          final testAcc = calculateAccuracy(mlp.A2, yTest);
+
+          print(
+            '$epoch\t${trainLoss.toStringAsFixed(6)}\t${(trainAcc * 100).toStringAsFixed(2)}%\t\t${(testAcc * 100).toStringAsFixed(2)}%',
+          );
+        });
+      }
+    }
+
+    // Final verification
     NDArray.scope(() {
-      mlp.forward(xTrain);
-      mlp.backward(xTrain, yTrain, xTrain_T);
-      mlp.update();
+      mlp.forward(xTest);
+      final finalTestAcc = calculateAccuracy(mlp.A2, yTest);
+      print(
+        '\nFinal Test Accuracy: ${(finalTestAcc * 100).toStringAsFixed(2)}%',
+      );
+      if (finalTestAcc > 0.85) {
+        print('🏆 Training SUCCESSFUL! Accuracy is above 85%.');
+      } else {
+        print('❌ Training FAILED. Accuracy is too low.');
+      }
     });
 
-    if (epoch % 100 == 0 || epoch == 1) {
-      NDArray.scope(() {
-        // Evaluate on train
-        mlp.forward(xTrain);
-        final trainLoss = calculateLoss(mlp.A2, yTrain);
-        final trainAcc = calculateAccuracy(mlp.A2, yTrain);
-
-        // Evaluate on test
-        mlp.forward(xTest);
-        final testAcc = calculateAccuracy(mlp.A2, yTest);
-
-        print(
-          '$epoch\t${trainLoss.toStringAsFixed(6)}\t${(trainAcc * 100).toStringAsFixed(2)}%\t\t${(testAcc * 100).toStringAsFixed(2)}%',
-        );
-      });
-    }
-  }
-
-  // Final verification
-  NDArray.scope(() {
-    mlp.forward(xTest);
-    final finalTestAcc = calculateAccuracy(mlp.A2, yTest);
-    print('\nFinal Test Accuracy: ${(finalTestAcc * 100).toStringAsFixed(2)}%');
-    if (finalTestAcc > 0.85) {
-      print('🏆 Training SUCCESSFUL! Accuracy is above 85%.');
-    } else {
-      print('❌ Training FAILED. Accuracy is too low.');
-    }
+    // Clean up
+    mlp.dispose();
+    xTrain.dispose();
+    yTrain.dispose();
+    xTest.dispose();
+    yTest.dispose();
+    xTrain_T.dispose();
+    dataset.dispose();
   });
-
-  // Clean up
-  mlp.dispose();
-  xTrain.dispose();
-  yTrain.dispose();
-  xTest.dispose();
-  yTest.dispose();
-  xTrain_T.dispose();
-  dataset.dispose();
 }

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import 'package:ffi/ffi.dart';
 import 'package:openblas/openblas.dart';
 

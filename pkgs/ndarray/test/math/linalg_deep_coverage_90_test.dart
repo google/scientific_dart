@@ -14,7 +14,6 @@
 
 import 'dart:math' as math;
 import 'dart:typed_data';
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -27,40 +26,32 @@ void main() {
       test(
         'matmul 1D dot product across all 4 floating/complex types',
         () => NDArray.scope(() {
-          final v1 = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0, 3.0]),
-            [3],
-            DType.float64,
-          );
-          final v2 = NDArray<double>.fromList(
-            Float64List.fromList([4.0, 5.0, 6.0]),
-            [3],
-            DType.float64,
-          );
+          final v1 = NDArray.fromList(Float64List.fromList([1.0, 2.0, 3.0]), [
+            3,
+          ], DType.float64);
+          final v2 = NDArray.fromList(Float64List.fromList([4.0, 5.0, 6.0]), [
+            3,
+          ], DType.float64);
           final dot64 = matmul(v1, v2);
           expect(dot64.shape, <int>[]);
           expect(dot64.scalar, closeTo(32.0, 1e-6));
 
-          final vf1 = NDArray<double>.fromList(
-            Float32List.fromList([1.0, 2.0, 3.0]),
-            [3],
-            DType.float32,
-          );
-          final vf2 = NDArray<double>.fromList(
-            Float32List.fromList([4.0, 5.0, 6.0]),
-            [3],
-            DType.float32,
-          );
+          final vf1 = NDArray.fromList(Float32List.fromList([1.0, 2.0, 3.0]), [
+            3,
+          ], DType.float32);
+          final vf2 = NDArray.fromList(Float32List.fromList([4.0, 5.0, 6.0]), [
+            3,
+          ], DType.float32);
           final dot32 = matmul(vf1, vf2);
           expect(dot32.shape, <int>[]);
           expect(dot32.scalar, closeTo(32.0, 1e-5));
 
-          final c1 = NDArray<Complex>.fromList(
+          final c1 = NDArray.fromList(
             [Complex(1.0, 2.0), Complex(3.0, 4.0)],
             [2],
             DType.complex128,
           );
-          final c2 = NDArray<Complex>.fromList(
+          final c2 = NDArray.fromList(
             [Complex(5.0, 6.0), Complex(7.0, 8.0)],
             [2],
             DType.complex128,
@@ -70,12 +61,12 @@ void main() {
           expect(dotC128.scalar.real, closeTo(-18.0, 1e-6));
           expect(dotC128.scalar.imag, closeTo(68.0, 1e-6));
 
-          final cf1 = NDArray<Complex>.fromList(
+          final cf1 = NDArray.fromList(
             [Complex(1.0, 2.0), Complex(3.0, 4.0)],
             [2],
             DType.complex64,
           );
-          final cf2 = NDArray<Complex>.fromList(
+          final cf2 = NDArray.fromList(
             [Complex(5.0, 6.0), Complex(7.0, 8.0)],
             [2],
             DType.complex64,
@@ -90,12 +81,10 @@ void main() {
       test(
         'matmul vector-matrix (1D x 2D) and matrix-vector (2D x 1D)',
         () => NDArray.scope(() {
-          final vec = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0]),
-            [2],
-            DType.float64,
-          );
-          final mat = NDArray<double>.fromList(
+          final vec = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
+            2,
+          ], DType.float64);
+          final mat = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
             [2, 3],
             DType.float64,
@@ -109,11 +98,9 @@ void main() {
             closeTo(15.0, 1e-6),
           ]);
 
-          final vec3 = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0, 3.0]),
-            [3],
-            DType.float64,
-          );
+          final vec3 = NDArray.fromList(Float64List.fromList([1.0, 2.0, 3.0]), [
+            3,
+          ], DType.float64);
           final res2 = matmul(mat, vec3);
           expect(res2.shape, [2]);
           expect(res2.toList(), [closeTo(14.0, 1e-6), closeTo(32.0, 1e-6)]);
@@ -123,17 +110,17 @@ void main() {
       test(
         'matmul non-contiguous views and out buffer recycling',
         () => NDArray.scope(() {
-          final m1 = NDArray<double>.fromList(
+          final m1 = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
             [2, 2],
             DType.float64,
           );
-          final m2 = NDArray<double>.fromList(
+          final m2 = NDArray.fromList(
             Float64List.fromList([5.0, 6.0, 7.0, 8.0]),
             [2, 2],
             DType.float64,
           );
-          final outBuf = NDArray<double>.zeros([2, 2], DType.float64);
+          final outBuf = NDArray.zeros([2, 2], DType.float64);
 
           final res = matmul(m1.transpose(), m2, out: outBuf);
           expect(identical(res, outBuf), isTrue);
@@ -141,7 +128,7 @@ void main() {
           expect(res.toList(), [26.0, 30.0, 38.0, 44.0]);
 
           // Incompatible out buffer shape throws error
-          final badOut = NDArray<double>.zeros([3, 3], DType.float64);
+          final badOut = NDArray.zeros([3, 3], DType.float64);
           expect(() => matmul(m1, m2, out: badOut), throwsArgumentError);
         }),
       );
@@ -149,12 +136,12 @@ void main() {
       test(
         'matmul batch broadcasting stack: [2, 1, 2, 2] x [1, 3, 2, 2] -> [2, 3, 2, 2]',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([1.0, 0.0, 0.0, 1.0, 2.0, 0.0, 0.0, 2.0]),
             [2, 1, 2, 2],
             DType.float64,
           );
-          final b = NDArray<double>.fromList(
+          final b = NDArray.fromList(
             Float64List.fromList([
               1.0,
               2.0,
@@ -181,30 +168,30 @@ void main() {
       test(
         'multi_dot with 3, 4, 5 matrix chains of mismatched dimensions',
         () => NDArray.scope(() {
-          final m1 = NDArray<double>.ones([2, 3], DType.float64);
-          final m2 = NDArray<double>.ones([3, 4], DType.float64);
-          final m3 = NDArray<double>.ones([4, 2], DType.float64);
+          final m1 = NDArray.ones([2, 3], DType.float64);
+          final m2 = NDArray.ones([3, 4], DType.float64);
+          final m3 = NDArray.ones([4, 2], DType.float64);
           final res3 = multi_dot([m1, m2, m3]);
           expect(res3.shape, [2, 2]);
           for (final val in res3.toList()) {
             expect(val, closeTo(12.0, 1e-6));
           }
 
-          final a1 = NDArray<double>.ones([2, 5], DType.float64);
-          final a2 = NDArray<double>.ones([5, 2], DType.float64);
-          final a3 = NDArray<double>.ones([2, 4], DType.float64);
-          final a4 = NDArray<double>.ones([4, 3], DType.float64);
+          final a1 = NDArray.ones([2, 5], DType.float64);
+          final a2 = NDArray.ones([5, 2], DType.float64);
+          final a3 = NDArray.ones([2, 4], DType.float64);
+          final a4 = NDArray.ones([4, 3], DType.float64);
           final res4 = multi_dot([a1, a2, a3, a4]);
           expect(res4.shape, [2, 3]);
           for (final val in res4.toList()) {
             expect(val, closeTo(40.0, 1e-6));
           }
 
-          final b1 = NDArray<double>.ones([2, 3], DType.float64);
-          final b2 = NDArray<double>.ones([3, 2], DType.float64);
-          final b3 = NDArray<double>.ones([2, 4], DType.float64);
-          final b4 = NDArray<double>.ones([4, 2], DType.float64);
-          final b5 = NDArray<double>.ones([2, 2], DType.float64);
+          final b1 = NDArray.ones([2, 3], DType.float64);
+          final b2 = NDArray.ones([3, 2], DType.float64);
+          final b3 = NDArray.ones([2, 4], DType.float64);
+          final b4 = NDArray.ones([4, 2], DType.float64);
+          final b5 = NDArray.ones([2, 2], DType.float64);
           final res5 = multi_dot([b1, b2, b3, b4, b5]);
           expect(res5.shape, [2, 2]);
           for (final val in res5.toList()) {
@@ -216,18 +203,18 @@ void main() {
       test(
         'multi_dot with 1D vector at beginning and end',
         () => NDArray.scope(() {
-          final v = NDArray<double>.ones([3], DType.float64);
-          final m1 = NDArray<double>.ones([3, 4], DType.float64);
-          final m2 = NDArray<double>.ones([4, 2], DType.float64);
+          final v = NDArray.ones([3], DType.float64);
+          final m1 = NDArray.ones([3, 4], DType.float64);
+          final m2 = NDArray.ones([4, 2], DType.float64);
           final resStart = multi_dot([v, m1, m2]);
           expect(resStart.shape, [2]);
           for (final val in resStart.toList()) {
             expect(val, closeTo(12.0, 1e-6));
           }
 
-          final n1 = NDArray<double>.ones([2, 3], DType.float64);
-          final n2 = NDArray<double>.ones([3, 4], DType.float64);
-          final vEnd = NDArray<double>.ones([4], DType.float64);
+          final n1 = NDArray.ones([2, 3], DType.float64);
+          final n2 = NDArray.ones([3, 4], DType.float64);
+          final vEnd = NDArray.ones([4], DType.float64);
           final resEnd = multi_dot([n1, n2, vEnd]);
           expect(resEnd.shape, [2]);
           for (final val in resEnd.toList()) {
@@ -243,11 +230,11 @@ void main() {
       test(
         'multi_dot error conditions',
         () => NDArray.scope(() {
-          expect(() => multi_dot<double>([]), throwsArgumentError);
-          final m = NDArray<double>.ones([2, 2], DType.float64);
-          expect(() => multi_dot<double>([m]), throwsArgumentError);
-          final m3d = NDArray<double>.ones([2, 2, 2], DType.float64);
-          expect(() => multi_dot<double>([m, m3d]), throwsArgumentError);
+          expect(() => multi_dot<DTypeTag>([]), throwsArgumentError);
+          final m = NDArray.ones([2, 2], DType.float64);
+          expect(() => multi_dot<DTypeTag>([m]), throwsArgumentError);
+          final m3d = NDArray.ones([2, 2, 2], DType.float64);
+          expect(() => multi_dot<DTypeTag>([m, m3d]), throwsArgumentError);
         }),
       );
     });
@@ -260,7 +247,7 @@ void main() {
         'inv for Float64, Float32, Complex128, and Complex64',
         () => NDArray.scope(() {
           // Float64
-          final a64 = NDArray<double>.fromList(
+          final a64 = NDArray.fromList(
             Float64List.fromList([4.0, 7.0, 2.0, 6.0]),
             [2, 2],
             DType.float64,
@@ -274,17 +261,17 @@ void main() {
           expect(id64.getCell([1, 1]), closeTo(1.0, 1e-5));
 
           // Float32 with out buffer
-          final a32 = NDArray<double>.fromList(
+          final a32 = NDArray.fromList(
             Float32List.fromList([4.0, 7.0, 2.0, 6.0]),
             [2, 2],
             DType.float32,
           );
-          final out32 = NDArray<double>.zeros([2, 2], DType.float32);
+          final out32 = NDArray.zeros([2, 2], DType.float32);
           final a32Inv = inv(a32, out: out32);
           expect(identical(a32Inv, out32), isTrue);
 
           // Complex128
-          final a = NDArray<Complex>.fromList(
+          final a = NDArray.fromList(
             [
               Complex(1.0, 2.0),
               Complex(3.0, 4.0),
@@ -309,7 +296,7 @@ void main() {
           expect(ident.getCell([1, 1]).imag, closeTo(0.0, 1e-5));
 
           // Singular matrix throws SingularMatrixException
-          final sing = NDArray<double>.fromList(
+          final sing = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 2.0, 4.0]),
             [2, 2],
             DType.float64,
@@ -321,7 +308,7 @@ void main() {
       test(
         'pinv with tall [4, 2], wide [2, 4], custom rcond, and Complex64',
         () => NDArray.scope(() {
-          final tall = NDArray<double>.fromList(
+          final tall = NDArray.fromList(
             Float64List.fromList([1.0, 0.0, 0.0, 1.0, 1.0, 1.0, 2.0, 1.0]),
             [4, 2],
             DType.float64,
@@ -335,7 +322,7 @@ void main() {
           expect(pA.getCell([1, 0]), closeTo(0.0, 1e-5));
           expect(pA.getCell([1, 1]), closeTo(1.0, 1e-5));
 
-          final wide = NDArray<double>.fromList(
+          final wide = NDArray.fromList(
             Float32List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
             [2, 4],
             DType.float32,
@@ -344,7 +331,7 @@ void main() {
           expect(pWide.shape, [4, 2]);
           expect(pWide.dtype, DType.float32);
 
-          final cpx = NDArray<Complex>.fromList(
+          final cpx = NDArray.fromList(
             [
               Complex(1.0, 1.0),
               Complex(0.0, 1.0),
@@ -365,7 +352,7 @@ void main() {
       test(
         'matrix_power with powers: 0, 1, 2, 4, -1, -2, -3',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
             [2, 2],
             DType.float64,
@@ -409,14 +396,14 @@ void main() {
       test(
         'matrix_power on 3D and complex matrices',
         () => NDArray.scope(() {
-          final batch = NDArray<double>.fromList(
+          final batch = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0, 2.0, 0.0, 0.0, 2.0]),
             [2, 2, 2],
             DType.float64,
           );
           expect(() => matrix_power(batch, 3), throwsArgumentError);
 
-          final cMat = NDArray<Complex>.fromList(
+          final cMat = NDArray.fromList(
             [
               Complex(0.0, 1.0),
               Complex(0.0, 0.0),
@@ -440,7 +427,7 @@ void main() {
       test(
         'det for 2D, 3D, 4D batch matrices across Float32, Float64, Complex64, Complex128',
         () => NDArray.scope(() {
-          final a64 = NDArray<double>.fromList(
+          final a64 = NDArray.fromList(
             Float64List.fromList([3.0, 8.0, 4.0, 6.0]),
             [2, 2],
             DType.float64,
@@ -449,7 +436,7 @@ void main() {
           expect(d64.shape, <int>[]);
           expect(d64.scalar, closeTo(-14.0, 1e-6));
 
-          final a32 = NDArray<double>.fromList(
+          final a32 = NDArray.fromList(
             Float32List.fromList([1.0, 2.0, 3.0, 4.0, 2.0, 0.0, 0.0, 2.0]),
             [2, 2, 2],
             DType.float32,
@@ -459,7 +446,7 @@ void main() {
           expect(d32.toList()[0], closeTo(-2.0, 1e-5));
           expect(d32.toList()[1], closeTo(4.0, 1e-5));
 
-          final cpx4d = NDArray<Complex>.fromList(
+          final cpx4d = NDArray.fromList(
             [
               Complex(1.0, 0.0),
               Complex(0.0, 0.0),
@@ -483,7 +470,7 @@ void main() {
       test(
         'slogdet for positive, negative, singular, complex, and batch matrices',
         () => NDArray.scope(() {
-          final posMat = NDArray<double>.fromList(
+          final posMat = NDArray.fromList(
             Float64List.fromList([2.0, 0.0, 0.0, 3.0]),
             [2, 2],
             DType.float64,
@@ -493,7 +480,7 @@ void main() {
           expect(sPos.logabsdet.scalar, closeTo(math.log(6.0), 1e-6));
           sPos.dispose();
 
-          final negMat = NDArray<double>.fromList(
+          final negMat = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
             [2, 2],
             DType.float64,
@@ -503,7 +490,7 @@ void main() {
           expect(sNeg.logabsdet.scalar, closeTo(math.log(2.0), 1e-6));
           sNeg.dispose();
 
-          final singMat = NDArray<double>.fromList(
+          final singMat = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 2.0, 4.0]),
             [2, 2],
             DType.float64,
@@ -513,7 +500,7 @@ void main() {
           expect(sSing.logabsdet.scalar, equals(double.negativeInfinity));
           sSing.dispose();
 
-          final cMat = NDArray<Complex>.fromList(
+          final cMat = NDArray.fromList(
             [
               Complex(0.0, 1.0),
               Complex(0.0, 0.0),
@@ -539,22 +526,20 @@ void main() {
       test(
         'solve with 1D RHS and 2D RHS across Float64, Float32, Complex128',
         () => NDArray.scope(() {
-          final a64 = NDArray<double>.fromList(
+          final a64 = NDArray.fromList(
             Float64List.fromList([3.0, 1.0, 1.0, 2.0]),
             [2, 2],
             DType.float64,
           );
-          final b1d = NDArray<double>.fromList(
-            Float64List.fromList([9.0, 8.0]),
-            [2],
-            DType.float64,
-          );
+          final b1d = NDArray.fromList(Float64List.fromList([9.0, 8.0]), [
+            2,
+          ], DType.float64);
           final x1d = solve(a64, b1d);
           expect(x1d.shape, [2]);
           expect(x1d.toList()[0], closeTo(2.0, 1e-6));
           expect(x1d.toList()[1], closeTo(3.0, 1e-6));
 
-          final b2d = NDArray<double>.fromList(
+          final b2d = NDArray.fromList(
             Float64List.fromList([9.0, 3.0, 8.0, 1.0]),
             [2, 2],
             DType.float64,
@@ -566,7 +551,7 @@ void main() {
           expect(x2d.getCell([0, 1]), closeTo(1.0, 1e-6));
           expect(x2d.getCell([1, 1]), closeTo(0.0, 1e-6));
 
-          final aCpx = NDArray<Complex>.fromList(
+          final aCpx = NDArray.fromList(
             [
               Complex(1.0, 1.0),
               Complex(0.0, 1.0),
@@ -576,7 +561,7 @@ void main() {
             [2, 2],
             DType.complex128,
           );
-          final bCpx = NDArray<Complex>.fromList(
+          final bCpx = NDArray.fromList(
             [Complex(1.0, 2.0), Complex(3.0, 1.0)],
             [2],
             DType.complex128,
@@ -595,12 +580,12 @@ void main() {
       test(
         'lstsq with overdetermined, underdetermined, singular, and custom rcond',
         () => NDArray.scope(() {
-          final aOver = NDArray<double>.fromList(
+          final aOver = NDArray.fromList(
             Float64List.fromList([1.0, 1.0, 1.0, 2.0, 1.0, 3.0]),
             [3, 2],
             DType.float64,
           );
-          final bOver = NDArray<double>.fromList(
+          final bOver = NDArray.fromList(
             Float64List.fromList([6.0, 5.0, 7.0]),
             [3],
             DType.float64,
@@ -612,23 +597,21 @@ void main() {
           expect(resOver.s.shape, [2]);
           resOver.dispose();
 
-          final aUnder = NDArray<double>.fromList(
+          final aUnder = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
             [2, 3],
             DType.float64,
           );
-          final bUnder = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0]),
-            [2],
-            DType.float64,
-          );
+          final bUnder = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
+            2,
+          ], DType.float64);
           final resUnder = lstsq(aUnder, bUnder);
           expect(resUnder.x.shape, [3]);
           expect(resUnder.rank, equals(2));
           expect(resUnder.residuals.size, equals(0));
           resUnder.dispose();
 
-          final aCpx = NDArray<Complex>.fromList(
+          final aCpx = NDArray.fromList(
             [
               Complex(1.0, 0.0),
               Complex(0.0, 1.0),
@@ -640,7 +623,7 @@ void main() {
             [3, 2],
             DType.complex64,
           );
-          final bCpx = NDArray<Complex>.fromList(
+          final bCpx = NDArray.fromList(
             [Complex(1.0, 1.0), Complex(2.0, 0.0), Complex(0.0, 2.0)],
             [3],
             DType.complex64,
@@ -660,7 +643,7 @@ void main() {
       test(
         'qr decomposition for square, tall, wide, batch, and all 4 dtypes',
         () => NDArray.scope(() {
-          final tall = NDArray<double>.fromList(
+          final tall = NDArray.fromList(
             Float64List.fromList([
               12.0,
               -51.0,
@@ -694,7 +677,7 @@ void main() {
           }
           resQr.dispose();
 
-          final batch = NDArray<double>.fromList(
+          final batch = NDArray.fromList(
             Float32List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
             [2, 2, 2],
             DType.float32,
@@ -704,7 +687,7 @@ void main() {
           expect(batchQr.r.shape, [2, 2, 2]);
           batchQr.dispose();
 
-          final cpxMat = NDArray<Complex>.fromList(
+          final cpxMat = NDArray.fromList(
             [
               Complex(1.0, 2.0),
               Complex(3.0, 4.0),
@@ -725,7 +708,7 @@ void main() {
       test(
         'cholesky decomposition with lower and upper triangular forms',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([
               4.0,
               12.0,
@@ -749,7 +732,7 @@ void main() {
             expect(recon.toList()[i], closeTo(a.toList()[i], 1e-5));
           }
 
-          final batchA = NDArray<double>.fromList(
+          final batchA = NDArray.fromList(
             Float32List.fromList([4.0, 2.0, 2.0, 5.0, 9.0, 3.0, 3.0, 10.0]),
             [2, 2, 2],
             DType.float32,
@@ -758,7 +741,7 @@ void main() {
           expect(batchL.shape, [2, 2, 2]);
           expect(batchL.dtype, DType.float32);
 
-          final nonPosDef = NDArray<double>.fromList(
+          final nonPosDef = NDArray.fromList(
             Float64List.fromList([-1.0, 0.0, 0.0, -1.0]),
             [2, 2],
             DType.float64,
@@ -770,7 +753,7 @@ void main() {
       test(
         'svd decomposition verification',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
             [3, 2],
             DType.float64,
@@ -793,7 +776,7 @@ void main() {
       test(
         'eig and eigvals for general non-symmetric matrices with complex eigenvalues',
         () => NDArray.scope(() {
-          final rot = NDArray<double>.fromList(
+          final rot = NDArray.fromList(
             Float64List.fromList([0.0, -1.0, 1.0, 0.0]),
             [2, 2],
             DType.float64,
@@ -817,7 +800,7 @@ void main() {
       test(
         'eigh and eigvalsh for symmetric / Hermitian matrices with upper and lower options',
         () => NDArray.scope(() {
-          final sym = NDArray<double>.fromList(
+          final sym = NDArray.fromList(
             Float64List.fromList([2.0, 1.0, 1.0, 2.0]),
             [2, 2],
             DType.float64,
@@ -845,7 +828,7 @@ void main() {
       test(
         'schur and hessenberg reductions',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]),
             [3, 3],
             DType.float64,
@@ -872,11 +855,9 @@ void main() {
       test(
         'vector norms: 0, 1, 2, 3, inf, -inf, -1, -2 across real and complex vectors',
         () => NDArray.scope(() {
-          final v = NDArray<double>.fromList(
-            Float64List.fromList([3.0, -4.0, 0.0]),
-            [3],
-            DType.float64,
-          );
+          final v = NDArray.fromList(Float64List.fromList([3.0, -4.0, 0.0]), [
+            3,
+          ], DType.float64);
 
           final n0 = norm(v, ord: 0);
           expect(n0.scalar, equals(2.0));
@@ -893,7 +874,7 @@ void main() {
           final nNegInf = norm(v, ord: -double.infinity);
           expect(nNegInf.scalar, closeTo(0.0, 1e-6));
 
-          final vCpx = NDArray<Complex>.fromList(
+          final vCpx = NDArray.fromList(
             [Complex(3.0, 4.0), Complex(0.0, 0.0)],
             [2],
             DType.complex128,
@@ -906,7 +887,7 @@ void main() {
       test(
         'matrix norms: fro, nuc, 1, -1, 2, -2, inf, -inf with axis and keepdims',
         () => NDArray.scope(() {
-          final m = NDArray<double>.fromList(
+          final m = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
             [2, 2],
             DType.float64,
@@ -948,7 +929,7 @@ void main() {
       test(
         'matrix conditioning verification using norm products',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([4.0, 7.0, 2.0, 6.0]),
             [2, 2],
             DType.float64,
@@ -979,12 +960,10 @@ void main() {
       test(
         'outer product across different numerical types and shapes',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0, 3.0]),
-            [3],
-            DType.float64,
-          );
-          final b = NDArray<int>.fromList(Int32List.fromList([10, 20]), [
+          final a = NDArray.fromList(Float64List.fromList([1.0, 2.0, 3.0]), [
+            3,
+          ], DType.float64);
+          final b = NDArray.fromList(Int32List.fromList([10, 20]), [
             2,
           ], DType.int32);
 
@@ -993,12 +972,12 @@ void main() {
           expect(res.dtype, DType.float64);
           expect(res.toList(), [10.0, 20.0, 20.0, 40.0, 30.0, 60.0]);
 
-          final c1 = NDArray<Complex>.fromList(
+          final c1 = NDArray.fromList(
             [Complex(1.0, 1.0), Complex(2.0, 0.0)],
             [2],
             DType.complex128,
           );
-          final c2 = NDArray<Complex>.fromList(
+          final c2 = NDArray.fromList(
             [Complex(0.0, 1.0), Complex(3.0, 0.0)],
             [2],
             DType.complex128,
@@ -1012,39 +991,31 @@ void main() {
       test(
         'cross product of 2D and 3D vectors along various axes',
         () => NDArray.scope(() {
-          final x = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 0.0, 0.0]),
-            [3],
-            DType.float64,
-          );
-          final y = NDArray<double>.fromList(
-            Float64List.fromList([0.0, 1.0, 0.0]),
-            [3],
-            DType.float64,
-          );
+          final x = NDArray.fromList(Float64List.fromList([1.0, 0.0, 0.0]), [
+            3,
+          ], DType.float64);
+          final y = NDArray.fromList(Float64List.fromList([0.0, 1.0, 0.0]), [
+            3,
+          ], DType.float64);
           final z = cross(x, y);
           expect(z.shape, [3]);
           expect(z.toList(), [0.0, 0.0, 1.0]);
 
-          final v1 = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0]),
-            [2],
-            DType.float64,
-          );
-          final v2 = NDArray<double>.fromList(
-            Float64List.fromList([3.0, 4.0]),
-            [2],
-            DType.float64,
-          );
+          final v1 = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
+            2,
+          ], DType.float64);
+          final v2 = NDArray.fromList(Float64List.fromList([3.0, 4.0]), [
+            2,
+          ], DType.float64);
           final cross2d = cross(v1, v2);
           expect(cross2d.scalar, closeTo(-2.0, 1e-6));
 
-          final b1 = NDArray<double>.fromList(
+          final b1 = NDArray.fromList(
             Float64List.fromList([1.0, 0.0, 0.0, 0.0, 1.0, 0.0]),
             [2, 3],
             DType.float64,
           );
-          final b2 = NDArray<double>.fromList(
+          final b2 = NDArray.fromList(
             Float64List.fromList([0.0, 1.0, 0.0, 0.0, 0.0, 1.0]),
             [2, 3],
             DType.float64,
@@ -1063,7 +1034,7 @@ void main() {
       test(
         'rot90 in 2D and 3D tensors with custom k and axes',
         () => NDArray.scope(() {
-          final m = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final m = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
@@ -1077,7 +1048,7 @@ void main() {
           expect(rot90(m, -2).toList(), [4, 3, 2, 1]);
           expect(rot90(m, -3).toList(), [2, 4, 1, 3]);
 
-          final t3d = NDArray<int>.fromList(
+          final t3d = NDArray.fromList(
             Int32List.fromList(List.generate(8, (i) => i)),
             [2, 2, 2],
             DType.int32,
@@ -1090,13 +1061,13 @@ void main() {
       test(
         'flip, fliplr, flipud across 1D, 2D, 3D',
         () => NDArray.scope(() {
-          final a1d = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final a1d = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             4,
           ], DType.int32);
           final f1d = flip(a1d);
           expect(f1d.toList(), [4, 3, 2, 1]);
 
-          final a2d = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final a2d = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
@@ -1111,17 +1082,15 @@ void main() {
       test(
         'roll with 1D, 2D, multi-axis, positive/negative shifts',
         () => NDArray.scope(() {
-          final a1d = NDArray<int>.fromList(
-            Int32List.fromList([0, 1, 2, 3, 4]),
-            [5],
-            DType.int32,
-          );
+          final a1d = NDArray.fromList(Int32List.fromList([0, 1, 2, 3, 4]), [
+            5,
+          ], DType.int32);
           expect(roll(a1d, 2).toList(), [3, 4, 0, 1, 2]);
           expect(roll(a1d, -2).toList(), [2, 3, 4, 0, 1]);
           expect(roll(a1d, 0).toList(), [0, 1, 2, 3, 4]);
           expect(roll(a1d, 7).toList(), [3, 4, 0, 1, 2]);
 
-          final a2d = NDArray<int>.fromList(
+          final a2d = NDArray.fromList(
             Int32List.fromList(List.generate(6, (i) => i)),
             [2, 3],
             DType.int32,
@@ -1140,7 +1109,7 @@ void main() {
       test(
         'squeeze and expand_dims',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             1,
             2,
             1,
@@ -1165,7 +1134,7 @@ void main() {
       test(
         'broadcastTo and broadcast',
         () => NDArray.scope(() {
-          final v = NDArray<double>.fromList(Float64List.fromList([1.0, 2.0]), [
+          final v = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
             2,
           ], DType.float64);
           final b2d = broadcastTo(v, [3, 2]);
@@ -1177,8 +1146,8 @@ void main() {
 
           expect(() => broadcastTo(v, [3, 3]), throwsArgumentError);
 
-          final m1 = NDArray<double>.ones([2, 1], DType.float64);
-          final m2 = NDArray<double>.ones([1, 3], DType.float64);
+          final m1 = NDArray.ones([2, 1], DType.float64);
+          final m2 = NDArray.ones([1, 3], DType.float64);
           final bRes = broadcast(m1, m2);
           expect(bRes.shape, [2, 3]);
         }),
@@ -1187,11 +1156,11 @@ void main() {
       test(
         'concatenate, stack, vstack, hstack',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
-          final b = NDArray<int>.fromList(Int32List.fromList([5, 6, 7, 8]), [
+          final b = NDArray.fromList(Int32List.fromList([5, 6, 7, 8]), [
             2,
             2,
           ], DType.int32);
@@ -1218,7 +1187,7 @@ void main() {
       test(
         'diag, tril, triu',
         () => NDArray.scope(() {
-          final v = NDArray<int>.fromList(Int32List.fromList([1, 2, 3]), [
+          final v = NDArray.fromList(Int32List.fromList([1, 2, 3]), [
             3,
           ], DType.int32);
           final d0 = diag(v);
@@ -1231,7 +1200,7 @@ void main() {
           expect(d1.getCell([1, 2]), equals(2));
           expect(d1.getCell([2, 3]), equals(3));
 
-          final m = NDArray<int>.fromList(
+          final m = NDArray.fromList(
             Int32List.fromList([1, 2, 3, 4, 5, 6, 7, 8, 9]),
             [3, 3],
             DType.int32,
@@ -1251,7 +1220,7 @@ void main() {
       test(
         'diff with orders n=1, 2, 3 and various axes',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 4.0, 7.0, 11.0]),
             [5],
             DType.float64,
@@ -1270,14 +1239,14 @@ void main() {
       test(
         'slidingWindowView on 1D and 2D arrays',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4, 5]), [
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4, 5]), [
             5,
           ], DType.int32);
           final sw = slidingWindowView(a, [3]);
           expect(sw.shape, [3, 3]);
           expect(sw.toList(), [1, 2, 3, 2, 3, 4, 3, 4, 5]);
 
-          final a2d = NDArray<int>.fromList(
+          final a2d = NDArray.fromList(
             Int32List.fromList(List.generate(9, (i) => i)),
             [3, 3],
             DType.int32,
@@ -1295,11 +1264,9 @@ void main() {
       test(
         'split and array_split equal and unequal splits',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(
-            Int32List.fromList([1, 2, 3, 4, 5, 6]),
-            [6],
-            DType.int32,
-          );
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4, 5, 6]), [
+            6,
+          ], DType.int32);
 
           final s3 = split(a, 3);
           expect(s3.length, 3);
@@ -1328,7 +1295,7 @@ void main() {
       test(
         'split_at and array_split_at coordinate slices',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(
+          final a = NDArray.fromList(
             Int32List.fromList([10, 20, 30, 40, 50, 60]),
             [6],
             DType.int32,
@@ -1351,7 +1318,7 @@ void main() {
       test(
         'hsplit, vsplit, dsplit across 1D, 2D, 3D',
         () => NDArray.scope(() {
-          final v1d = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final v1d = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             4,
           ], DType.int32);
           final hs1 = hsplit(v1d, 2);
@@ -1359,7 +1326,7 @@ void main() {
           expect(hs1[0].toList(), [1, 2]);
           expect(hs1[1].toList(), [3, 4]);
 
-          final m2d = NDArray<int>.fromList(
+          final m2d = NDArray.fromList(
             Int32List.fromList([1, 2, 3, 4, 5, 6, 7, 8]),
             [2, 4],
             DType.int32,
@@ -1376,7 +1343,7 @@ void main() {
           expect(vs2[0].toList(), [1, 2, 3, 4]);
           expect(vs2[1].toList(), [5, 6, 7, 8]);
 
-          final t3d = NDArray<int>.fromList(
+          final t3d = NDArray.fromList(
             Int32List.fromList(List.generate(16, (i) => i)),
             [2, 2, 4],
             DType.int32,
@@ -1399,11 +1366,11 @@ void main() {
       test(
         'tensordot across single and multi axes',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
-          final b = NDArray<int>.fromList(Int32List.fromList([5, 6, 7, 8]), [
+          final b = NDArray.fromList(Int32List.fromList([5, 6, 7, 8]), [
             2,
             2,
           ], DType.int32);
@@ -1430,21 +1397,21 @@ void main() {
       test(
         'inner, vdot, kron',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(Int32List.fromList([1, 2, 3]), [
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3]), [
             3,
           ], DType.int32);
-          final b = NDArray<int>.fromList(Int32List.fromList([4, 5, 6]), [
+          final b = NDArray.fromList(Int32List.fromList([4, 5, 6]), [
             3,
           ], DType.int32);
           final inRes = inner(a, b);
           expect(inRes.scalar, equals(32));
 
-          final c1 = NDArray<Complex>.fromList(
+          final c1 = NDArray.fromList(
             [Complex(1.0, 2.0), Complex(3.0, 4.0)],
             [2],
             DType.complex128,
           );
-          final c2 = NDArray<Complex>.fromList(
+          final c2 = NDArray.fromList(
             [Complex(5.0, 6.0), Complex(7.0, 8.0)],
             [2],
             DType.complex128,
@@ -1453,11 +1420,11 @@ void main() {
           expect(vd.scalar.real, closeTo(70.0, 1e-6));
           expect(vd.scalar.imag, closeTo(-8.0, 1e-6));
 
-          final k1 = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final k1 = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
-          final k2 = NDArray<int>.fromList(Int32List.fromList([0, 5, 6, 7]), [
+          final k2 = NDArray.fromList(Int32List.fromList([0, 5, 6, 7]), [
             2,
             2,
           ], DType.int32);
@@ -1473,11 +1440,11 @@ void main() {
       test(
         'einsum with matrix multiplication and trace subscripts',
         () => NDArray.scope(() {
-          final a = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
-          final b = NDArray<int>.fromList(Int32List.fromList([5, 6, 7, 8]), [
+          final b = NDArray.fromList(Int32List.fromList([5, 6, 7, 8]), [
             2,
             2,
           ], DType.int32);
@@ -1500,7 +1467,7 @@ void main() {
         'det and slogdet on 0x0 and 1x1 matrices and batch 0x0',
         () => NDArray.scope(() {
           // 0x0 matrix
-          final empty2d = NDArray<double>.zeros([0, 0], DType.float64);
+          final empty2d = NDArray.zeros([0, 0], DType.float64);
           final dEmpty = det(empty2d);
           expect(dEmpty.scalar, equals(1.0));
 
@@ -1510,7 +1477,7 @@ void main() {
           sEmpty.dispose();
 
           // 1x1 matrix
-          final one2d = NDArray<double>.fromList(Float64List.fromList([42.0]), [
+          final one2d = NDArray.fromList(Float64List.fromList([42.0]), [
             1,
             1,
           ], DType.float64);
@@ -1523,7 +1490,7 @@ void main() {
           sOne.dispose();
 
           // 3D batch of 0x0 matrices: [2, 0, 0]
-          final emptyBatch = NDArray<double>.zeros([2, 0, 0], DType.float64);
+          final emptyBatch = NDArray.zeros([2, 0, 0], DType.float64);
           final dEmptyBatch = det(emptyBatch);
           expect(dEmptyBatch.shape, [2]);
           expect(dEmptyBatch.toList(), [1.0, 1.0]);
@@ -1541,13 +1508,13 @@ void main() {
         'eig and eigh 3D batch and out parameter buffers',
         () => NDArray.scope(() {
           // 3D batch eig
-          final batch = NDArray<double>.fromList(
+          final batch = NDArray.fromList(
             Float64List.fromList([2.0, 0.0, 0.0, 3.0, 4.0, 0.0, 0.0, 5.0]),
             [2, 2, 2],
             DType.float64,
           );
-          final outVals = NDArray<Complex>.zeros([2, 2], DType.complex128);
-          final outVecs = NDArray<Complex>.zeros([2, 2, 2], DType.complex128);
+          final outVals = NDArray.zeros([2, 2], DType.complex128);
+          final outVecs = NDArray.zeros([2, 2, 2], DType.complex128);
           final resEig = eig(
             batch,
             out: (eigenvalues: outVals, eigenvectors: outVecs),
@@ -1561,8 +1528,8 @@ void main() {
           resEig.dispose();
 
           // 3D batch eigh
-          final outValsH = NDArray<double>.zeros([2, 2], DType.float64);
-          final outVecsH = NDArray<double>.zeros([2, 2, 2], DType.float64);
+          final outValsH = NDArray.zeros([2, 2], DType.float64);
+          final outVecsH = NDArray.zeros([2, 2, 2], DType.float64);
           final resEigh = eigh(
             batch,
             outEigenvalues: outValsH,
@@ -1579,7 +1546,7 @@ void main() {
       test(
         'schur and hessenberg out parameter buffers and 1x1 matrix',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(Float64List.fromList([5.0]), [
+          final a = NDArray.fromList(Float64List.fromList([5.0]), [
             1,
             1,
           ], DType.float64);
@@ -1594,20 +1561,20 @@ void main() {
           resHess.dispose();
 
           // 2x2 with out buffers
-          final m = NDArray<double>.fromList(
+          final m = NDArray.fromList(
             Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
             [2, 2],
             DType.float64,
           );
-          final outT = NDArray<double>.zeros([2, 2], DType.float64);
-          final outZ = NDArray<double>.zeros([2, 2], DType.float64);
+          final outT = NDArray.zeros([2, 2], DType.float64);
+          final outZ = NDArray.zeros([2, 2], DType.float64);
           final sBuf = schur(m, outT: outT, outZ: outZ);
           expect(identical(sBuf.t, outT), isTrue);
           expect(identical(sBuf.z, outZ), isTrue);
           sBuf.dispose();
 
-          final outH = NDArray<double>.zeros([2, 2], DType.float64);
-          final outQ = NDArray<double>.zeros([2, 2], DType.float64);
+          final outH = NDArray.zeros([2, 2], DType.float64);
+          final outQ = NDArray.zeros([2, 2], DType.float64);
           final hBuf = hessenberg(m, outH: outH, outQ: outQ);
           expect(identical(hBuf.h, outH), isTrue);
           expect(identical(hBuf.q, outQ), isTrue);
@@ -1618,17 +1585,17 @@ void main() {
       test(
         'solve batch 3D systems and out buffer',
         () => NDArray.scope(() {
-          final aBatch = NDArray<double>.fromList(
+          final aBatch = NDArray.fromList(
             Float64List.fromList([2.0, 0.0, 0.0, 3.0, 1.0, 0.0, 0.0, 4.0]),
             [2, 2, 2],
             DType.float64,
           );
-          final bBatch = NDArray<double>.fromList(
+          final bBatch = NDArray.fromList(
             Float64List.fromList([4.0, 6.0, 3.0, 8.0]),
             [2, 2],
             DType.float64,
           );
-          final outBuf = NDArray<double>.zeros([2, 2], DType.float64);
+          final outBuf = NDArray.zeros([2, 2], DType.float64);
           final x = solve(aBatch, bBatch, out: outBuf);
           expect(identical(x, outBuf), isTrue);
           expect(x.shape, [2, 2]);
@@ -1644,7 +1611,7 @@ void main() {
       test(
         'norm on 3D and 4D tensors with axis tuples and keepdims',
         () => NDArray.scope(() {
-          final t3d = NDArray<double>.fromList(
+          final t3d = NDArray.fromList(
             Float64List.fromList(List.generate(24, (i) => (i + 1).toDouble())),
             [2, 3, 4],
             DType.float64,
@@ -1663,11 +1630,9 @@ void main() {
           expect(nKeep.shape, [2, 1, 1]);
 
           // Vector norm with p=3.0
-          final v = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 2.0, 3.0]),
-            [3],
-            DType.float64,
-          );
+          final v = NDArray.fromList(Float64List.fromList([1.0, 2.0, 3.0]), [
+            3,
+          ], DType.float64);
           final nP3 = norm(v, ord: 3);
           // (1 + 8 + 27)^(1/3) = 36^(1/3) ≈ 3.3019
           expect(nP3.scalar, closeTo(math.pow(36.0, 1.0 / 3.0), 1e-5));
@@ -1677,17 +1642,13 @@ void main() {
       test(
         'cross with axisa, axisb, axisc and out buffer',
         () => NDArray.scope(() {
-          final a = NDArray<double>.fromList(
-            Float64List.fromList([1.0, 0.0, 0.0]),
-            [3],
-            DType.float64,
-          );
-          final b = NDArray<double>.fromList(
-            Float64List.fromList([0.0, 1.0, 0.0]),
-            [3],
-            DType.float64,
-          );
-          final outCross = NDArray<double>.zeros([3], DType.float64);
+          final a = NDArray.fromList(Float64List.fromList([1.0, 0.0, 0.0]), [
+            3,
+          ], DType.float64);
+          final b = NDArray.fromList(Float64List.fromList([0.0, 1.0, 0.0]), [
+            3,
+          ], DType.float64);
+          final outCross = NDArray.zeros([3], DType.float64);
 
           final res = cross(a, b, axisa: 0, axisb: 0, axisc: 0, out: outCross);
           expect(identical(res, outCross), isTrue);
@@ -1698,7 +1659,7 @@ void main() {
       test(
         'manipulation roll with axis null (flattened) and 3D tensors',
         () => NDArray.scope(() {
-          final m2d = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final m2d = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
@@ -1706,7 +1667,7 @@ void main() {
           expect(rFlat.shape, [2, 2]);
           expect(rFlat.toList(), [4, 1, 2, 3]);
 
-          final t3d = NDArray<int>.fromList(
+          final t3d = NDArray.fromList(
             Int32List.fromList(List.generate(8, (i) => i)),
             [2, 2, 2],
             DType.int32,
@@ -1719,7 +1680,7 @@ void main() {
       test(
         'diag on rectangular matrices with large k offsets',
         () => NDArray.scope(() {
-          final rect = NDArray<int>.fromList(
+          final rect = NDArray.fromList(
             Int32List.fromList([1, 2, 3, 4, 5, 6]),
             [2, 3],
             DType.int32,
@@ -1742,16 +1703,16 @@ void main() {
       test(
         'tril and triu with large k and out buffers',
         () => NDArray.scope(() {
-          final m = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final m = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);
-          final outL = NDArray<int>.zeros([2, 2], DType.int32);
+          final outL = NDArray.zeros([2, 2], DType.int32);
           final lRes = tril(m, k: 10, out: outL); // all elements kept
           expect(identical(lRes, outL), isTrue);
           expect(lRes.toList(), [1, 2, 3, 4]);
 
-          final outU = NDArray<int>.zeros([2, 2], DType.int32);
+          final outU = NDArray.zeros([2, 2], DType.int32);
           final uRes = triu(m, k: -10, out: outU); // all elements kept
           expect(identical(uRes, outU), isTrue);
           expect(uRes.toList(), [1, 2, 3, 4]);
@@ -1761,10 +1722,10 @@ void main() {
       test(
         'einsum with outer product and diagonal extraction',
         () => NDArray.scope(() {
-          final v1 = NDArray<int>.fromList(Int32List.fromList([1, 2]), [
+          final v1 = NDArray.fromList(Int32List.fromList([1, 2]), [
             2,
           ], DType.int32);
-          final v2 = NDArray<int>.fromList(Int32List.fromList([3, 4]), [
+          final v2 = NDArray.fromList(Int32List.fromList([3, 4]), [
             2,
           ], DType.int32);
 
@@ -1774,7 +1735,7 @@ void main() {
           expect(outProd.toList(), [3, 4, 6, 8]);
 
           // Diagonal extraction: 'ii->i'
-          final mat = NDArray<int>.fromList(Int32List.fromList([1, 2, 3, 4]), [
+          final mat = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
             2,
             2,
           ], DType.int32);

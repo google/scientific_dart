@@ -84,7 +84,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final arr = NDArray<Complex>.fromList(
+          final arr = NDArray.fromList(
             [
               Complex(3.0, 1.0),
               Complex(1.0, 5.0),
@@ -143,7 +143,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final arr = NDArray<Complex>.fromList(
+          final arr = NDArray.fromList(
             [
               Complex(3.0, 1.0),
               Complex(1.0, 5.0),
@@ -272,7 +272,7 @@ void main() {
         final argsortScalar = argsort(scalar);
         expect(argsortScalar.scalar, 0);
 
-        final outArgsortScalar = NDArray<int>.create(<int>[], DType.int32);
+        final outArgsortScalar = NDArray.create(<int>[], DType.int32);
         argsort(scalar, out: outArgsortScalar);
         expect(outArgsortScalar.scalar, 0);
 
@@ -282,17 +282,17 @@ void main() {
         expect(argsort(empty).shape, [0]);
 
         final a = NDArray.fromList([3, 1, 2], [3], DType.int32);
-        final outSort = NDArray<int>.create([3], DType.int32);
+        final outSort = NDArray.create([3], DType.int32);
         final resSort = sort(a, out: outSort);
         expect(identical(resSort, outSort), true);
         expect(outSort.toList(), [1, 2, 3]);
 
-        final outArgsort64 = NDArray<int>.create([3], DType.int64);
-        final resArgsort64 = argsort(a, out: outArgsort64);
+        final outArgsort64 = NDArray.create([3], DType.int64);
+        final resArgsort64 = argsortAs(a, DType.int64, out: outArgsort64);
         expect(identical(resArgsort64, outArgsort64), true);
         expect(outArgsort64.toList(), [1, 2, 0]);
 
-        final badOutShape = NDArray<int>.create([2], DType.int32);
+        final badOutShape = NDArray.create([2], DType.int32);
         expect(() => sort(a, out: badOutShape), throwsA(isA<ArgumentError>()));
         expect(
           () => argsort(a, out: badOutShape),
@@ -355,7 +355,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final arr = NDArray<Complex>.fromList(
+          final arr = NDArray.fromList(
             [
               Complex(4.0, 1.0),
               Complex(1.0, 2.0),
@@ -422,7 +422,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final arr = NDArray<Complex>.fromList(
+          final arr = NDArray.fromList(
             [
               Complex(4.0, 1.0),
               Complex(1.0, 2.0),
@@ -473,8 +473,8 @@ void main() {
         final p2d = partition(a2d, 1, axis: 0);
         expect(p2d.shape, [3, 2]);
 
-        final out64 = NDArray<int>.create([5], DType.int64);
-        argpartition(a, 2, out: out64);
+        final out64 = NDArray.create([5], DType.int64);
+        argpartitionAs(a, 2, DType.int64, out: out64);
         expect(out64.dtype, DType.int64);
 
         final scalar = NDArray.scalar(10, dtype: DType.int32);
@@ -529,7 +529,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final a = NDArray<Complex>.fromList(
+          final a = NDArray.fromList(
             [
               Complex(1.0, 0.0),
               Complex(2.0, 1.0),
@@ -539,7 +539,7 @@ void main() {
             [4],
             dtype,
           );
-          final v = NDArray<Complex>.fromList(
+          final v = NDArray.fromList(
             [Complex(2.0, 1.0), Complex(2.0, 3.0)],
             [2],
             dtype,
@@ -580,8 +580,8 @@ void main() {
         expect(res.shape, [2, 2]);
         expect(res.toList(), [1, 2, 4, 0]);
 
-        final out64 = NDArray<int>.create([2, 2], DType.int64);
-        searchsorted(a, v2d, sorter: sorter, out: out64);
+        final out64 = NDArray.create([2, 2], DType.int64);
+        searchsortedAs(a, v2d, DType.int64, sorter: sorter, out: out64);
         expect(out64.dtype, DType.int64);
         expect(out64.toList(), [1, 2, 4, 0]);
 
@@ -651,7 +651,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final x = NDArray<Complex>.fromList(
+          final x = NDArray.fromList(
             [
               Complex(1.0, 1.0),
               Complex(2.0, 2.0),
@@ -661,7 +661,7 @@ void main() {
             [2, 2],
             dtype,
           );
-          final y = NDArray<Complex>.fromList(
+          final y = NDArray.fromList(
             [
               Complex(-1.0, -1.0),
               Complex(-2.0, -2.0),
@@ -703,7 +703,7 @@ void main() {
           [2, 2],
           DType.boolean,
         );
-        final coords = where(cond) as List<NDArray<int>>;
+        final coords = where(cond) as List<NDArray<AnySpec>>;
         expect(coords.length, 2);
         expect(coords[0].toList(), [0, 1, 1]);
         expect(coords[1].toList(), [0, 0, 1]);
@@ -757,7 +757,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final a = NDArray<Complex>.fromList(
+          final a = NDArray.fromList(
             [
               Complex(0.0, 0.0),
               Complex(1.0, 0.0),
@@ -804,7 +804,7 @@ void main() {
         expect(count_nonzero(a, axis: 1).toList(), [2, 1]);
         expect(count_nonzero(a, axis: -1).toList(), [2, 1]);
 
-        final out = NDArray<int>.create([3], DType.int32);
+        final out = NDArray.create([3], DType.int32);
         count_nonzero(a, axis: 0, out: out);
         expect(out.toList(), [1, 0, 2]);
 
@@ -924,7 +924,7 @@ void main() {
         ]);
         expect(findIndex(a, CompareOp.equal, 999.0), null);
 
-        final cArr = NDArray<Complex>.fromList(
+        final cArr = NDArray.fromList(
           [Complex(1.0, 2.0), Complex(3.0, 4.0)],
           [2],
           DType.complex128,
@@ -996,8 +996,8 @@ void main() {
         expect(splitAx1[0].shape, [3, 2]);
         expect(splitAx1[1].shape, [3, 2]);
 
-        final out1 = NDArray<int>.create([3, 2], DType.int32);
-        final out2 = NDArray<int>.create([3, 2], DType.int32);
+        final out1 = NDArray.create([3, 2], DType.int32);
+        final out2 = NDArray.create([3, 2], DType.int32);
         split(a2d, 2, axis: 1, out: [out1, out2]);
         expect(out1.shape, [3, 2]);
         expect(out2.shape, [3, 2]);
@@ -1189,7 +1189,7 @@ void main() {
         }
 
         for (final dtype in [DType.complex128, DType.complex64]) {
-          final a = NDArray<Complex>.fromList(
+          final a = NDArray.fromList(
             [Complex(1.0, 2.0), Complex(3.0, 4.0)],
             [2],
             dtype,

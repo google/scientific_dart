@@ -15,16 +15,18 @@ Before diving into code, understand the five structural differences between Pyth
    - **`package:ndarray`**: Array buffers are allocated directly on the unmanaged C heap (`malloc`/`calloc`) to enable zero-overhead FFI calls to OpenBLAS, LAPACK, and PocketFFT kernels. Relying on the Dart GC alone can lead to native memory saturation because Dart is blind to large unmanaged C heap sizes.
    - **Rule**: Always wrap computations in `NDArray.scope(() { ... })` to automatically dispose intermediate arrays, or explicitly call `.dispose()`. Use `NDArray.returning(() { ... })` or `.detachFromScope()` / `.detachToParentScope()` when returning arrays out of a scope.
 
-2. **Strong Generic Typing (`NDArray<T>` & `DType<T>`)**:
-   - **NumPy**: `np.ndarray` has a dynamic runtime `.dtype` attribute (`float64`, `int32`, `complex128`, etc.).
-   - **`package:ndarray`**: Uses Dart generics `NDArray<T>` paired with runtime `DType<T>` descriptors (`DType.float64`, `DType.float32`, `DType.int64`, `DType.int32`, `DType.complex128`, `DType.boolean`). Always prefer `NDArray<Float64>` or `NDArray<Float32>` over `NDArray<double>` for formal type boundaries.
+2. **Static `DType` Typing (`NDArray<Float64>`, `NDArray<Int32>`, etc.)**:
+   - **NumPy**: `np.ndarray` is dynamically typed; `float64_arr + int32_arr` promotes automatically at runtime.
+   - **`package:ndarray`**: Arrays carry their data type in their Dart type (`NDArray<Float64>`, `NDArray<Float32>`, `NDArray<Int32>`, `NDArray<Boolean>`), inferred from `DType.float64`, `DType.int32`, etc.
+     - Standard operators (`a + b`, `add(a, b)`) require both arrays to have the **same** type.
+     - To combine different types, use `*As` (`addAs(f64, i32, dtype: DType.float64)`) or convert explicitly (`f64 + i32.astype(DType.float64)`). See **[Section 2.C.1: Mixed-Type Arithmetic](#c1-mixed-type-arithmetic-float64--int32-float32--float64-etc)**.
 
 3. **Explicit Statically-Typed Access vs. Polymorphic Overloads**:
    - **NumPy**: Square brackets `arr[...]` handle scalar indexing, slicing, boolean masking, and fancy indexing.
-   - **`package:ndarray`**: Overloads operator `[]` and `[]=` for NumPy-like polymorphic indexing, **plus** provides zero-overhead, statically-typed explicit accessors:
+   - **`package:ndarray`**: Overloads operator `[]` and `[]=` for NumPy-like polymorphic indexing, **plus** provides zero-overhead, statically-typed explicit accessors that return and accept the corresponding Dart type (`double`, `int`, `bool`, or `Complex`):
      - Multi-dimensional cell read/write: `.getCell([row, col])` and `.setCell([row, col], val)`.
-     - 0-Dimensional scalar access: `.scalar` getter (do **not** access the `@internal` `.data` getter directly).
-     - Explicit mutations: `.setByMask(mask, vals)`, `.setIndices(indices, vals)`.
+     - 0-Dimensional scalar access: `.scalar` getter (prefer `.scalar` or `.toList()` over indexing `.data` directly, as `.data` is a raw 1-D buffer view that bypasses shapes, strides, and view offsets).
+     - Explicit mutations: `.setByMask(mask, vals)`, `.setByMaskScalar(mask, scalarVal)`, `.setIndices(indices, vals)`.
 
 4. **Strongly-Typed Enums over Magic Strings**:
    - **NumPy**: Uses magic string options (e.g., `side='left'`, `method='weibull'`).
@@ -32,7 +34,11 @@ Before diving into code, understand the five structural differences between Pyth
 
 5. **Integer Division by Zero Safety (`~/` and `%`)**:
    - **NumPy / C++**: Division by zero on integer arrays is undefined C behavior (`SIGFPE` crash).
-   - **`package:ndarray`**: True floating-point division (`/`) follows IEEE 754 (`double.nan`, `double.infinity`). Integer floor division (`~/`) and remainder (`%`) check for `0` divisors in the C kernel and throw an explicit `UnsupportedError('Integer division by zero')` to prevent uncatchable `SIGFPE` process crashes, since integer types lack representable `NaN` or `Infinity` states.
+   - **`package:ndarray`**: True floating-point division (`/`) follows IEEE 754 (`double.nan`, `double.infinity`) and automatically promotes integer arrays (`NDArray<Int32> / NDArray<Int32>` $\to$ `NDArray<Float64>`). Integer floor division (`~/`) and remainder (`%`) check for `0` divisors in the C kernel and throw an explicit `UnsupportedError('Integer division by zero')` to prevent uncatchable `SIGFPE` process crashes, since integer types lack representable `NaN` or `Infinity` states.
+
+6. **Top-Level Math Functions and `dart:math` Namespace Conflicts**:
+   - **NumPy**: Typically imported as `import numpy as np`, namespacing math functions under `np.sin`, `np.cos`, `np.sqrt`, etc.
+   - **`package:ndarray`**: Exports top-level vectorized math functions (`sin`, `cos`, `sqrt`, `max`, `min`, `exp`, `log`, etc.) directly from `package:ndarray/ndarray.dart`. Files that also use `dart:math` for scalar operations should import `dart:math` with a prefix (`import 'dart:math' as math;`) or import `ndarray` with a prefix (`import 'package:ndarray/ndarray.dart' as np;`) to avoid identifier collisions.
 
 ---
 
@@ -42,8 +48,8 @@ Before diving into code, understand the five structural differences between Pyth
 
 | NumPy (`import numpy as np`) | Dart `package:ndarray` (`import 'package:ndarray/ndarray.dart'`) | Notes / Differences |
 | :--- | :--- | :--- |
-| `np.array([1.0, 2.0, 3.0])` | `NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64)` | Explicit shape list and `DType` required. |
-| `np.array([[1, 2], [3, 4]])` | `NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32)` | Flat list input accompanied by target `[2, 2]` shape. |
+| `np.array([1.0, 2.0, 3.0])` | `NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64)` | Infers `NDArray<Float64>` from `DType.float64`. |
+| `np.array([[1, 2], [3, 4]])` | `NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32)` | Infers `NDArray<Int32>` from `DType.int32`. |
 | `np.zeros((2, 3), dtype=np.float64)` | `NDArray.zeros([2, 3], DType.float64)` | Allocates zero-initialized C memory via `calloc`. |
 | `np.ones((2, 3), dtype=np.float32)` | `NDArray.ones([2, 3], DType.float32)` | Fills array with `1.0`. |
 | `np.full((2, 2), 42)` | `NDArray.full([2, 2], 42, dtype: DType.int32)` | Fills array with specified scalar value. |
@@ -51,7 +57,7 @@ Before diving into code, understand the five structural differences between Pyth
 | `np.linspace(0, 1, 5)` | `linspace(0.0, 1.0, 5, dtype: DType.float64)` | Returns `numSamples` evenly spaced samples. |
 | `np.eye(3)` | `NDArray.eye(3, DType.float64)` | Creates `n x n` identity matrix. |
 | `np.array(42)` (0-D scalar) | `NDArray.scalar(42, dtype: DType.int32)` | Creates a 0-D array with empty shape `[]`. Retrieve via `.scalar`. |
-| `np.random.normal(0, 1, (3, 3))` | `normal([3, 3], loc: 0.0, scale: 1.0)` | Generates Gaussian RNG sample array. |
+| `np.random.normal(0, 1, (3, 3))` | `normal([3, 3], loc: 0.0, scale: 1.0)` | Generates Gaussian RNG sample array (`NDArray<Float64>`). |
 
 ---
 
@@ -74,18 +80,83 @@ Before diving into code, understand the five structural differences between Pyth
 
 | NumPy Operation | Dart `package:ndarray` Equivalent | Description |
 | :--- | :--- | :--- |
-| `a + b`, `np.add(a, b)` | `a + b` or `add(a, b)` | Element-wise addition with broadcasting. |
-| `a - b`, `np.subtract(a, b)`| `a - b` or `subtract(a, b)` | Element-wise subtraction with broadcasting. |
-| `a * b`, `np.multiply(a, b)`| `a * b` or `multiply(a, b)` | Element-wise Hadamard multiplication. |
-| `a / b`, `np.divide(a, b)` | `a / b` or `divide(a, b)` | True IEEE 754 floating-point division (`nan`/`inf`). |
-| `a // b` | `a ~/ b` or `floor_divide(a, b)` | Floor integer/float division (checks `0` divisor upfront). |
+| `a + b`, `np.add(a, b)` | `a + b` or `add(a, b)` (same dtype) / `addAs(a, b, dtype: ...)` (mixed) | Element-wise addition with broadcasting. |
+| `a - b`, `np.subtract(a, b)`| `a - b` or `subtract(a, b)` (same dtype) / `subtractAs(a, b, dtype: ...)` | Element-wise subtraction with broadcasting. |
+| `a * b`, `np.multiply(a, b)`| `a * b` or `multiply(a, b)` (same dtype) / `multiplyAs(a, b, dtype: ...)` | Element-wise Hadamard multiplication. |
+| `a / b`, `np.divide(a, b)` | `a / b` or `divide(a, b)` (auto-promotes ints to `Float64`) / `divideAs(...)` | True IEEE 754 floating-point division (`nan`/`inf`). |
+| `a // b` | `a ~/ b` or `floorDivide(a, b)` | Floor integer/float division (checks `0` divisor upfront). |
 | `a % b`, `np.remainder(a,b)`| `a % b` or `remainder(a, b)` | Element-wise remainder. |
 | `-a` | `-a` or `negative(a)` | Element-wise negation. |
-| `a @ b`, `np.matmul(a, b)` | `matmul(a, b)` | OpenBLAS / LAPACK matrix multiplication. |
-| `np.sin(a)`, `np.cos(a)` | `sin(a)`, `cos(a)`, `tan(a)` | Trigonometric universal functions. |
-| `np.exp(a)`, `np.log(a)` | `exp(a)`, `log(a)`, `log10(a)` | Exponential & logarithmic ufuncs. |
+| `a @ b`, `np.matmul(a, b)` | `matmul(a, b)` (same dtype) / `matmulAs(a, b, dtype: ...)` (mixed) | OpenBLAS / LAPACK matrix multiplication. |
+| `np.sin(a)`, `np.cos(a)` | `sin(a)`, `cos(a)`, `tan(a)` | Trigonometric universal functions (ints infer `NDArray<Float64>`). |
+| `np.exp(a)`, `np.log(a)` | `exp(a)`, `log(a)`, `log10(a)` | Exponential & logarithmic ufuncs (ints infer `NDArray<Float64>`). |
 | `np.sqrt(a)`, `np.power(a,2)`| `sqrt(a)`, `power(a, b)` | Square root and exponentiation. |
 | `np.nan_to_num(a, nan=0)` | `nan_to_num(a, nan: 0.0)` | Replaces NaNs and infinities with specified numbers. |
+
+---
+
+### C.1. Mixed-Type Arithmetic (`Float64` + `Int32`, `Float32` + `Float64`, etc.)
+
+In Python/NumPy, `a + b` inspects the two operands' dtypes at runtime (`np.result_type(a, b)`) and dynamically chooses the output dtype.
+
+In Dart, `NDArray<T>` is statically typed by its element type tag (`Float64`, `Float32`, `Int32`, `Complex128`, etc.). The standard same-type operators (`a + b`, `add(a, b)`, `matmul(a, b)`) require both arrays to have the **same** type parameter `T` so that `add(f64a, f64b)` statically returns `NDArray<Float64>` without requiring explicit type arguments.
+
+When combining arrays of **different** dtypes, choose one of the four patterns below depending on your use case:
+
+#### 1. Single-Pass Mixed-Type Kernels via `*As` (`addAs`, `subtractAs`, `multiplyAs`, `divideAs`, `matmulAs`) — *Fastest (Zero Copy)*
+Every binary operation and linear algebra contraction has a `*As` counterpart (`addAs`, `subtractAs`, `multiplyAs`, `divideAs`, `floorDivideAs`, `remainderAs`, `powerAs`, `maximumAs`, `minimumAs`, `matmulAs`, `dotAs`, `tensordotAs`, etc.).
+Under the hood, `package:ndarray`'s C++/Highway SIMD kernels natively accept mixed input pointer types and promote on the fly in registers—**without allocating a temporary converted copy of either input array**:
+
+```dart
+final f64 = NDArray.fromList([1.5, 2.5, 3.5], [3], DType.float64); // NDArray<Float64>
+final i32 = NDArray.fromList([10, 20, 30], [3], DType.int32);      // NDArray<Int32>
+
+// Pattern 1A: Specify target `dtype:` — Dart infers `NDArray<Float64>` automatically!
+final sum1 = addAs(f64, i32, dtype: DType.float64); // static type: NDArray<Float64>
+
+// Pattern 1B: Specify output type `<Float64>` — uses NumPy's `DType.promote` at runtime
+final sum2 = addAs<Float64>(f64, i32);              // static type: NDArray<Float64>
+
+// Pattern 1C: Provide a pre-allocated `out:` buffer — infers `NDArray<Float64>`, zero allocations
+final out = NDArray.empty([3], DType.float64);
+addAs(f64, i32, out: out);
+```
+
+#### 2. Explicit `.astype(...)` Conversion with Infix Operators (`+`, `-`, `*`)
+When writing chained mathematical expressions with infix operators (`+`, `-`, `*`), promote the narrower operand explicitly with `.astype(...)` inside an `NDArray.scope` (which automatically frees the temporary converted array when the scope exits):
+
+```dart
+final result = NDArray.scope(() {
+  final res = (f64 + i32.astype(DType.float64)) * 2.0; // static type: NDArray<Float64>
+  return res.detachToParentScope();
+});
+```
+
+#### 3. Array + Dart Scalar Arithmetic (`arr + 2.0`, `arr * 5`)
+Arithmetic and comparison operators between an `NDArray<T>` and a Dart scalar (`num` or `Complex`) work directly without converting the array, preserving the array's static type `NDArray<T>`:
+
+```dart
+final f32 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float32);
+final scaled = (f32 * 2) + 0.5; // static type remains NDArray<Float32>
+```
+
+#### 4. Automatic Float Promotion for True Division (`/`) and Unary Math (`sin`, `exp`, `mean`)
+Single-operand functions and true division (`/`) that promote integer arrays to floating-point in NumPy automatically infer the promoted return type at compile time:
+
+```dart
+final i32 = NDArray.fromList([1, 2, 4], [3], DType.int32);   // NDArray<Int32>
+final f32 = NDArray.fromList([1.0, 2.0], [2], DType.float32); // NDArray<Float32>
+
+// Integer arrays automatically promote to NDArray<Float64>:
+final quotI32 = i32 / i32;     // inferred static type: NDArray<Float64>
+final sinI32  = sin(i32);      // inferred static type: NDArray<Float64>
+final meanI32 = mean(i32);     // inferred static type: NDArray<Float64>
+
+// Float32 arrays preserve NDArray<Float32>:
+final quotF32 = f32 / f32;     // inferred static type: NDArray<Float32>
+final sinF32  = sin(f32);      // inferred static type: NDArray<Float32>
+final meanF32 = mean(f32);     // inferred static type: NDArray<Float32>
+```
 
 ---
 
@@ -93,9 +164,9 @@ Before diving into code, understand the five structural differences between Pyth
 
 | NumPy Operation | Dart `package:ndarray` Equivalent | Notes |
 | :--- | :--- | :--- |
-| `a > b`, `a <= b` | `a > b`, `a <= b` | Returns boolean mask `NDArray<bool>`. |
-| `a == b`, `a != b` | `equal(a, b)`, `not_equal(a, b)` | **IMPORTANT**: Dart `a == b` tests object identity (`bool`). Use `equal(a, b)` for element-wise `NDArray<bool>` comparison! |
-| `np.isclose(a, b)` | `isClose(a, b, rtol: 1e-5, atol: 1e-8)` | Element-wise approximate floating-point comparison. |
+| `a > b`, `a <= b` | `a > b`, `a <= b` | Returns boolean mask `NDArray<Boolean>`. |
+| `a == b`, `a != b` | `equal(a, b)`, `notEqual(a, b)` | **IMPORTANT**: Dart `a == b` tests object identity (`bool`). Use `equal(a, b)` for element-wise `NDArray<Boolean>` comparison! |
+| `np.isclose(a, b)` | `isClose(a, b, rtol: 1e-5, atol: 1e-8)` | Element-wise approximate floating-point comparison (`NDArray<Boolean>`). |
 | `np.allclose(a, b)` | `allClose(a, b, rtol: 1e-5)` | Returns a single `bool` if all elements match within tolerance. |
 
 ---
@@ -104,12 +175,12 @@ Before diving into code, understand the five structural differences between Pyth
 
 | NumPy Syntax | Dart Polymorphic Syntax (`[]`) | Dart Explicit Statically-Typed Accessor |
 | :--- | :--- | :--- |
-| `val = arr[0, 1]` | `arr[[0, 1]]` | `arr.getCell([0, 1])` *(Recommended)* |
-| `arr[1, 0] = 99` | `arr[[1, 0]] = 99` | `arr.setCell([1, 0], 99)` *(Recommended)* |
+| `val = arr[0, 1]` | `arr[[0, 1]]` | `arr.getCell([0, 1])` *(Recommended — returns `double`/`int`/`bool`/`Complex`)* |
+| `arr[1, 0] = 99` | `arr[[1, 0]] = 99` | `arr.setCell([1, 0], 99)` *(Recommended — accepts `double`/`int`/`bool`/`Complex`)* |
 | `row = arr[1]` | `arr[1]` | `slice([Index(1)])` |
 | `sub = arr[1:3, :]` | `arr[[Slice(start: 1, stop: 3), Slice.all()]]` | `slice([Slice(start: 1, stop: 3), Slice.all()])` |
 | `fancy = arr[[0, 2]]` | `arr[[ [0, 2] ]]` (rows) | `take([0, 2])` |
-| `arr[arr < 0] = 0` | `arr[arr < 0] = 0` | `arr.setByMaskScalar(arr < 0, Float64(0.0))` |
+| `arr[arr < 0] = 0` | `arr[arr < 0] = 0` | `arr.setByMaskScalar(arr < 0, 0.0)` |
 | `filtered = arr[mask]` | `arr[mask]` | `applyMask(arr, mask)` |
 
 ---
@@ -216,8 +287,8 @@ void main() {
     final mat = a.reshape([3, 4]);
     print('Matrix shape: ${mat.shape}, strides: ${mat.strides}');
 
-    // 2. Explicit Statically Typed Cell Access
-    mat.setCell([1, 2], Float64(999.0));
+    // 2. Explicit Statically Typed Cell Access (inferred double from Float64)
+    mat.setCell([1, 2], 999.0);
     print('Cell [1, 2] modified to: ${mat.getCell([1, 2])}');
 
     // 3. Zero-Copy Transpose View
@@ -226,17 +297,21 @@ void main() {
     print('Transposed shape: ${transposed.shape}');
 
     // 4. Element-wise Math & ufuncs
-    final scaled = add(multiply(mat, Float64(2.0)), Float64(10.0));
+    final scaled = (mat * 2.0) + 10.0;
     final sinMat = sin(scaled);
 
-    // 5. Reductions & Comparison Masking
-    final rowSums = sum(scaled, axis: 1);
+    // 5. Mixed-Type Arithmetic (Float64 + Int32 -> Float64 via addAs)
+    final offsets = NDArray.fromList([1, 2, 3, 4], [1, 4], DType.int32);
+    final shifted = addAs(scaled, offsets, dtype: DType.float64);
+
+    // 6. Reductions & Comparison Masking
+    final rowSums = sum(shifted, axis: 1);
     print('Row sums (axis 1): ${rowSums.toList()}');
 
     // Boolean filtering: zero out elements < 50
-    final mask = scaled < Float64(50.0);
-    scaled.setByMaskScalar(mask, Float64(0.0));
-    print('After clipping < 50 to 0:\n$scaled');
+    final mask = shifted < 50.0;
+    shifted.setByMaskScalar(mask, 0.0);
+    print('After clipping < 50 to 0:\n$shifted');
   });
 }
 ```

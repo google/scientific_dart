@@ -12,78 +12,116 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import time
-import numpy as np
+from numpy_bench_helper import NumpyBenchSuite, np
+
 
 def main():
     size1d = 1000000
     dim2d = 1000
-    iterations = 100
-    warmup = 10
 
-    print("================================================================")
-    print("NumPy (Python) Ufunc Reductions & Masked Functions Benchmark")
-    print("================================================================")
-    print(f"Array Size 1D: {size1d} elements")
-    print(f"Array Size 2D: {dim2d}x{dim2d} elements")
-    print(f"Iterations: {iterations} (after {warmup} warmup runs)\n")
+    suite = NumpyBenchSuite(
+        "NumPy (Python) Ufunc Reductions & Masked Functions Benchmark",
+        "ufunc_reductions",
+    )
 
-    a1d = np.array([i % 100 * 1.0 for i in range(size1d)], dtype=np.float64)
-    b1d = np.array([(i % 50 + 1) * 1.0 for i in range(size1d)], dtype=np.float64)
-    mask1d = np.array([1 if i % 2 == 0 else 0 for i in range(size1d)], dtype=bool)
+    a1d = (np.arange(size1d, dtype=np.float64) % 100.0).astype(np.float64)
+    b1d = ((np.arange(size1d, dtype=np.float64) % 50.0) + 1.0).astype(np.float64)
+    mask1d = (np.arange(size1d) % 2 == 0)
 
-    a2d = np.array([(i % 100) * 1.0 for i in range(dim2d * dim2d)], dtype=np.float64).reshape((dim2d, dim2d))
-    b2d = np.array([(i % 50 + 1) * 1.0 for i in range(dim2d * dim2d)], dtype=np.float64).reshape((dim2d, dim2d))
+    a2d = (np.arange(dim2d * dim2d, dtype=np.float64) % 100.0).reshape(
+        (dim2d, dim2d)
+    )
+    b2d = ((np.arange(dim2d * dim2d, dtype=np.float64) % 50.0) + 1.0).reshape(
+        (dim2d, dim2d)
+    )
 
-    aOuter = np.array([i * 1.0 for i in range(1000)], dtype=np.float64)
-    bOuter = np.array([(i + 1) * 1.0 for i in range(1000)], dtype=np.float64)
+    a_outer = np.arange(1000, dtype=np.float64)
+    b_outer = np.arange(1, 1001, dtype=np.float64)
 
-    indicesAt = np.array([(i * 97) % size1d for i in range(10000)], dtype=np.int64)
-    valsAt = np.array([i * 1.0 for i in range(10000)], dtype=np.float64)
-
-    indicesReduceat = np.array([i * 1000 for i in range(1000)], dtype=np.int64)
+    indices_at = ((np.arange(10000, dtype=np.int64) * 97) % size1d).astype(
+        np.int64
+    )
+    vals_at = np.arange(10000, dtype=np.float64)
+    indices_reduceat = (np.arange(1000, dtype=np.int64) * 1000).astype(np.int64)
 
     out1d = np.zeros(size1d, dtype=np.float64)
-    out2d = np.zeros((dim2d, dim2d), dtype=np.float64)
 
-    def bench(name, fn):
-        for _ in range(warmup):
-            fn()
-        start = time.perf_counter()
-        for _ in range(iterations):
-            fn()
-        elapsed = time.perf_counter() - start
-        avg_us = (elapsed / iterations) * 1e6
-        avg_ms = avg_us / 1000.0
-        print(f"{name:<42}: {avg_us:>10.2f} us ({avg_ms:>6.3f} ms)")
-        return avg_us
+    suite.group("1. Reductions")
+    suite.bench(
+        "reduce(add) [1D 1M global]",
+        lambda: np.add.reduce(a1d),
+        iterations=100,
+    )
+    suite.bench(
+        "reduce(add) [2D 1000x1000 axis:0]",
+        lambda: np.add.reduce(a2d, axis=0),
+        iterations=100,
+    )
+    suite.bench(
+        "reduce(multiply) [1D 100K global]",
+        lambda: np.multiply.reduce(a1d[:100000]),
+        iterations=100,
+    )
 
-    # 1. Reductions
-    bench("reduce(add) [1D 1M global]", lambda: np.add.reduce(a1d))
-    bench("reduce(add) [2D 1000x1000 axis:0]", lambda: np.add.reduce(a2d, axis=0))
-    bench("reduce(multiply) [1D 100K global]", lambda: np.multiply.reduce(a1d[:100000]))
+    suite.group("2. Accumulate")
+    suite.bench(
+        "accumulate(add) [1D 1M cumsum]",
+        lambda: np.add.accumulate(a1d),
+        iterations=100,
+    )
+    suite.bench(
+        "accumulate(add) [2D 1000x1000 axis:0]",
+        lambda: np.add.accumulate(a2d, axis=0),
+        iterations=100,
+    )
 
-    # 2. Accumulate
-    bench("accumulate(add) [1D 1M cumsum]", lambda: np.add.accumulate(a1d))
-    bench("accumulate(add) [2D 1000x1000 axis:0]", lambda: np.add.accumulate(a2d, axis=0))
+    suite.group("3. Outer Product")
+    suite.bench(
+        "outer(add) [1000 x 1000]",
+        lambda: np.add.outer(a_outer, b_outer),
+        iterations=100,
+    )
+    suite.bench(
+        "outer(multiply) [1000 x 1000]",
+        lambda: np.multiply.outer(a_outer, b_outer),
+        iterations=100,
+    )
 
-    # 3. Outer
-    bench("outer(add) [1000 x 1000]", lambda: np.add.outer(aOuter, bOuter))
-    bench("outer(multiply) [1000 x 1000]", lambda: np.multiply.outer(aOuter, bOuter))
+    suite.group("4. Segment Reduction & Scatter (reduceat & at)")
+    suite.bench(
+        "reduceat(add) [1M array, 1000 segments]",
+        lambda: np.add.reduceat(a1d, indices_reduceat),
+        iterations=100,
+    )
+    suite.bench(
+        "at(add) [1M array, 10K scatter updates]",
+        lambda: np.add.at(a1d, indices_at, vals_at),
+        iterations=100,
+    )
 
-    # 4. Reduceat
-    bench("reduceat(add) [1M array, 1000 segments]", lambda: np.add.reduceat(a1d, indicesReduceat))
+    suite.group("5. Masked Functions (where=)")
+    suite.bench(
+        "add(where=mask) [1D 1M contiguous]",
+        lambda: np.add(a1d, b1d, where=mask1d, out=out1d),
+        iterations=100,
+    )
+    suite.bench(
+        "multiply(where=mask) [1D 1M contiguous]",
+        lambda: np.multiply(a1d, b1d, where=mask1d, out=out1d),
+        iterations=100,
+    )
 
-    # 5. At (unbuffered scatter update)
-    bench("at(add) [1M array, 10K indices]", lambda: np.add.at(a1d, indicesAt, valsAt))
+    a_strided = a2d.ravel()[::2]
+    b_strided = b2d.ravel()[::2]
+    out_strided = np.zeros(a_strided.shape[0], dtype=np.float64)
+    suite.bench(
+        "add(where=mask) [1D strided view step=2]",
+        lambda: np.add(a_strided, b_strided, out=out_strided),
+        iterations=100,
+    )
 
-    # 6. Masked Functions (where=)
-    bench("add(where=mask) [1D 1M contiguous]", lambda: np.add(a1d, b1d, where=mask1d, out=out1d))
-    bench("multiply(where=mask) [1D 1M contiguous]", lambda: np.multiply(a1d, b1d, where=mask1d, out=out1d))
+    suite.finish()
 
-    aStrided = a2d.ravel()
-    bStrided = b2d.ravel()
-    bench("add(where=mask) [1D 1M strided view]", lambda: np.add(aStrided[::2], bStrided[::2]))
 
 if __name__ == "__main__":
     main()

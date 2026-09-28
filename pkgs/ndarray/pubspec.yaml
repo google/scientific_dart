@@ -13,29 +13,42 @@
 # limitations under the License.
 
 name: ndarray
-description: N-dimensional arrays and numerical operations.
+description: High-performance N-dimensional arrays and numerical operations with SIMD acceleration and BLAS/LAPACK bindings.
 version: 0.1.0
 resolution: workspace
-repository: https://github.com/google/scientific_dart
+repository: https://github.com/google/scientific_dart/tree/main/pkgs/ndarray
+topics:
+  - numerical
+  - math
+  - ffi
+  - science
+  - matrix
 
 environment:
   sdk: ^3.10.0
+
+platforms:
+  linux:
+  macos:
+  windows:
 
 # Add regular dependencies here.
 dependencies:
   openblas: ^0.1.0
   ffi: ^2.2.0
   pocketfft: ^0.1.0
-  hooks: ^1.0.3
-  code_assets: ^1.0.0
+  hooks: '>=1.0.3 <3.0.0'
+  code_assets: '>=1.0.0 <3.0.0'
+  crypto: ^3.0.7
   meta: ^1.18.2
   resource_scope: ^0.1.0
 
 dev_dependencies:
+  analyzer: any
   archive: ^3.6.1
   lints: ^6.1.0
   test: ^1.31.1
-  criterion:
-    git: https://github.com/sigurdm/criterion.git
   coverage: ^1.15.0
   ffigen: ^20.1.1
+  criterion:
+    git: https://github.com/sigurdm/criterion.git

@@ -15,7 +15,6 @@
 import 'dart:ffi';
 import 'dart:math' as math;
 import 'dart:typed_data';
-
 import 'package:ffi/ffi.dart';
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
@@ -119,8 +118,14 @@ void main() {
         final ar2 = NDArray.arange(2.0, 10.0, step: 2.0, dtype: DType.float64);
         expect(ar2.toList(), equals([2.0, 4.0, 6.0, 8.0]));
 
-        expect(() => NDArray.arange(0.0, 5.0, step: 0.0), throwsArgumentError);
-        expect(() => NDArray.arange(5.0, 0.0, step: 1.0), throwsArgumentError);
+        expect(
+          () => NDArray.arange(0.0, 5.0, step: 0.0, dtype: DType.float64),
+          throwsArgumentError,
+        );
+        expect(
+          () => NDArray.arange(5.0, 0.0, step: 1.0, dtype: DType.float64),
+          throwsArgumentError,
+        );
       });
     });
 
@@ -158,7 +163,7 @@ void main() {
 
     test('Shape comparison, fill, and invalid shape error checks', () {
       NDArray.scope(() {
-        final a = NDArray<double>.zeros([2, 3], DType.float64);
+        final a = NDArray.zeros([2, 3], DType.float64);
         final b = NDArray.ones([2, 3], DType.int32);
         final c = NDArray.zeros([3, 2], DType.float64);
         expect(a.hasSameShape(b), isTrue);
@@ -305,7 +310,7 @@ void main() {
         expect(a[[1, 2]], equals(6));
 
         // Single integer row access
-        final row0 = a[0] as NDArray<int>;
+        final row0 = a[0] as NDArray<AnySpec>;
         expect(row0.shape, equals([3]));
         expect(row0.toList(), equals([1, 2, 3]));
 
@@ -328,7 +333,7 @@ void main() {
           DType.boolean,
         );
 
-        final masked = a[mask] as NDArray<int>;
+        final masked = a[mask] as NDArray<AnySpec>;
         expect(masked.shape, equals([3]));
         expect(masked.toList(), equals([10, 30, 50]));
 
@@ -340,7 +345,7 @@ void main() {
 
     test('expandDims and squeeze', () {
       NDArray.scope(() {
-        final a = NDArray<double>.zeros([2, 3], DType.float64);
+        final a = NDArray.zeros([2, 3], DType.float64);
         final exp0 = a.expandDims(0);
         expect(exp0.shape, equals([1, 2, 3]));
 
@@ -402,7 +407,7 @@ void main() {
             DType.float64,
           );
 
-          final out = NDArray<double>.zeros([2, 3], DType.float64);
+          final out = NDArray.zeros([2, 3], DType.float64);
           put_along_axis(a, idx, vals, 1, out: out);
           expect(out.toList(), equals([10.0, 99.0, 88.0, 77.0, 66.0, 60.0]));
         });
@@ -490,7 +495,7 @@ void main() {
           expect(res.toList(), equals([1.0, 20.0, 3.0, 40.0]));
 
           // 1-arg nonzero coordinates
-          final coords = where(cond) as List<NDArray<int>>;
+          final coords = where(cond) as List<NDArray<AnySpec>>;
           expect(coords.length, equals(1));
           expect(coords[0].toList(), equals([0, 2]));
         });
@@ -552,7 +557,7 @@ void main() {
     test('NDEnumerate coordinates and values', () {
       NDArray.scope(() {
         final a = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
-        final en = NDEnumerate<int>(a);
+        final en = NDEnumerate<DTypeTag>(a);
         final collected = <int>[];
         while (en.moveNext()) {
           collected.add(en.value);
@@ -562,7 +567,7 @@ void main() {
     });
 
     test('NDArray.scope, returning, unmanaged, and leak tracking', () {
-      NDArray<double>? escaped;
+      NDArray<AnySpec>? escaped;
       NDArray.scope(() {
         final inside = NDArray.zeros([4], DType.float64);
         escaped = inside.detachToParentScope();
@@ -590,55 +595,62 @@ void main() {
   });
 
   group('6. Fast Fourier Transforms: 1D, 2D & N-D FFT/IFFT across DTypes', () {
-    test('1D fft & ifft across float32, float64, complex64, complex128, int32, bool', () {
-      NDArray.scope(() {
-        // Float64 input
-        final f64 = NDArray.fromList([1.0, 0.0, 0.0, 0.0], [4], DType.float64);
-        final resF64 = fft(f64);
-        expect(resF64.dtype, equals(DType.complex128));
-        for (var i = 0; i < 4; i++) {
-          final c = resF64.getCell([i]);
-          expect(c.real, closeTo(1.0, 1e-10));
-          expect(c.imag, closeTo(0.0, 1e-10));
-        }
-        final invF64 = ifft(resF64);
-        expect(invF64.getCell([0]).real, closeTo(1.0, 1e-10));
-        expect(invF64.getCell([1]).real, closeTo(0.0, 1e-10));
+    test(
+      '1D fft & ifft across float32, float64, complex64, complex128, int32, bool',
+      () {
+        NDArray.scope(() {
+          // Float64 input
+          final f64 = NDArray.fromList(
+            [1.0, 0.0, 0.0, 0.0],
+            [4],
+            DType.float64,
+          );
+          final resF64 = fft(f64);
+          expect(resF64.dtype, equals(DType.complex128));
+          for (var i = 0; i < 4; i++) {
+            final c = resF64.getCell([i]);
+            expect(c.real, closeTo(1.0, 1e-10));
+            expect(c.imag, closeTo(0.0, 1e-10));
+          }
+          final invF64 = ifft(resF64);
+          expect(invF64.getCell([0]).real, closeTo(1.0, 1e-10));
+          expect(invF64.getCell([1]).real, closeTo(0.0, 1e-10));
 
-        // Float32 input promotes to complex64
-        final f32 = NDArray.fromList([2.0, 2.0], [2], DType.float32);
-        final resF32 = fft(f32);
-        expect(resF32.dtype, equals(DType.complex64));
-        expect(resF32.getCell([0]).real, closeTo(4.0, 1e-5));
-        expect(resF32.getCell([1]).real, closeTo(0.0, 1e-5));
+          // Float32 input promotes to complex64
+          final f32 = NDArray.fromList([2.0, 2.0], [2], DType.float32);
+          final resF32 = fft(f32);
+          expect(resF32.dtype, equals(DType.complex64));
+          expect(resF32.getCell([0]).real, closeTo(4.0, 1e-5));
+          expect(resF32.getCell([1]).real, closeTo(0.0, 1e-5));
 
-        // Complex128 input
-        final c128 = NDArray.fromList(
-          [Complex(1.0, 2.0), Complex(3.0, 4.0)],
-          [2],
-          DType.complex128,
-        );
-        final resC128 = fft(c128);
-        expect(resC128.getCell([0]).real, closeTo(4.0, 1e-10));
-        expect(resC128.getCell([0]).imag, closeTo(6.0, 1e-10));
+          // Complex128 input
+          final c128 = NDArray.fromList(
+            [Complex(1.0, 2.0), Complex(3.0, 4.0)],
+            [2],
+            DType.complex128,
+          );
+          final resC128 = fft(c128);
+          expect(resC128.getCell([0]).real, closeTo(4.0, 1e-10));
+          expect(resC128.getCell([0]).imag, closeTo(6.0, 1e-10));
 
-        // Int32 input
-        final i32 = NDArray.fromList([1, 1, 1, 1], [4], DType.int32);
-        final resI32 = fft(i32);
-        expect(resI32.getCell([0]).real, closeTo(4.0, 1e-10));
-        expect(resI32.getCell([0]).real, closeTo(4.0, 1e-10));
+          // Int32 input
+          final i32 = NDArray.fromList([1, 1, 1, 1], [4], DType.int32);
+          final resI32 = fft(i32);
+          expect(resI32.getCell([0]).real, closeTo(4.0, 1e-10));
+          expect(resI32.getCell([0]).real, closeTo(4.0, 1e-10));
 
-        // Boolean input
-        final bArr = NDArray.fromList(
-          [true, true, false, false],
-          [4],
-          DType.boolean,
-        );
-        final resBool = fft(bArr);
-        expect(resBool.dtype, equals(DType.complex128));
-        expect(resBool.getCell([0]).real, closeTo(2.0, 1e-10));
-      });
-    });
+          // Boolean input
+          final bArr = NDArray.fromList(
+            [true, true, false, false],
+            [4],
+            DType.boolean,
+          );
+          final resBool = fft(bArr);
+          expect(resBool.dtype, equals(DType.complex128));
+          expect(resBool.getCell([0]).real, closeTo(2.0, 1e-10));
+        });
+      },
+    );
 
     test('1D fft with target length n padding and truncation', () {
       NDArray.scope(() {
@@ -744,95 +756,105 @@ void main() {
     });
   });
 
-  group('8. FFT Frequencies & Spectral Shifts: fftfreq, rfftfreq, fftshift, ifftshift', () {
-    test('fftfreq for even and odd lengths', () {
-      NDArray.scope(() {
-        final fEven = fftfreq(8, d: 1.0);
-        expect(fEven.shape, equals([8]));
-        expect(
-          fEven.toList(),
-          equals([0.0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]),
-        );
+  group(
+    '8. FFT Frequencies & Spectral Shifts: fftfreq, rfftfreq, fftshift, ifftshift',
+    () {
+      test('fftfreq for even and odd lengths', () {
+        NDArray.scope(() {
+          final fEven = fftfreq(8, d: 1.0);
+          expect(fEven.shape, equals([8]));
+          expect(
+            fEven.toList(),
+            equals([0.0, 0.125, 0.25, 0.375, -0.5, -0.375, -0.25, -0.125]),
+          );
 
-        final fOdd = fftfreq(5, d: 1.0);
-        expect(fOdd.shape, equals([5]));
-        expect(fOdd.toList(), equals([0.0, 0.2, 0.4, -0.4, -0.2]));
+          final fOdd = fftfreq(5, d: 1.0);
+          expect(fOdd.shape, equals([5]));
+          expect(fOdd.toList(), equals([0.0, 0.2, 0.4, -0.4, -0.2]));
 
-        final rf = rfftfreq(5, d: 1.0);
-        expect(rf.shape, equals([3]));
-        expect(rf.toList(), equals([0.0, 0.2, 0.4]));
+          final rf = rfftfreq(5, d: 1.0);
+          expect(rf.shape, equals([3]));
+          expect(rf.toList(), equals([0.0, 0.2, 0.4]));
 
-        // Spacing d = 0.5
-        final fSpaced = fftfreq(4, d: 0.5);
-        expect(fSpaced.toList(), equals([0.0, 0.5, -1.0, -0.5]));
+          // Spacing d = 0.5
+          final fSpaced = fftfreq(4, d: 0.5);
+          expect(fSpaced.toList(), equals([0.0, 0.5, -1.0, -0.5]));
+        });
       });
-    });
 
+      test(
+        'fftshift and ifftshift 1D, 2D, and 3D round-trips with explicit axes',
+        () {
+          NDArray.scope(() {
+            final a1Even = NDArray.fromList(
+              [0, 1, 2, 3, 4, 5],
+              [6],
+              DType.int32,
+            );
+            final s1Even = fftshift(a1Even);
+            expect(s1Even.toList(), equals([3, 4, 5, 0, 1, 2]));
+            expect(ifftshift(s1Even).toList(), equals(a1Even.toList()));
+
+            final a1Odd = NDArray.fromList([0, 1, 2, 3, 4], [5], DType.int32);
+            final s1Odd = fftshift(a1Odd);
+            expect(s1Odd.toList(), equals([3, 4, 0, 1, 2]));
+            expect(ifftshift(s1Odd).toList(), equals(a1Odd.toList()));
+
+            // 2D shift with axes
+            final a2 = NDArray.fromList(
+              [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+              [3, 4],
+              DType.int32,
+            );
+            final s2 = fftshift(a2, axes: [0, 1]);
+            expect(ifftshift(s2, axes: [0, 1]).toList(), equals(a2.toList()));
+
+            // Clear plan cache
+            clearFFTPlanCache();
+          });
+        },
+      );
+    },
+  );
+
+  group('9. Standard Polynomials: polyval, polyfit, roots', () {
     test(
-      'fftshift and ifftshift 1D, 2D, and 3D round-trips with explicit axes',
+      'polyval Horner evaluation across float64, float32, complex128, complex64',
       () {
         NDArray.scope(() {
-          final a1Even = NDArray.fromList([0, 1, 2, 3, 4, 5], [6], DType.int32);
-          final s1Even = fftshift(a1Even);
-          expect(s1Even.toList(), equals([3, 4, 5, 0, 1, 2]));
-          expect(ifftshift(s1Even).toList(), equals(a1Even.toList()));
+          // p(x) = 2x^2 - 4x + 5
+          final c = NDArray.fromList([2.0, -4.0, 5.0], [3], DType.float64);
+          final x = NDArray.fromList([0.0, 1.0, 2.0, 3.0], [4], DType.float64);
+          final y = polyval(c, x);
+          expect(y.toList(), equals([5.0, 3.0, 5.0, 11.0]));
 
-          final a1Odd = NDArray.fromList([0, 1, 2, 3, 4], [5], DType.int32);
-          final s1Odd = fftshift(a1Odd);
-          expect(s1Odd.toList(), equals([3, 4, 0, 1, 2]));
-          expect(ifftshift(s1Odd).toList(), equals(a1Odd.toList()));
+          // Float32 evaluation
+          final c32 = NDArray.fromList([1.0, 2.0], [2], DType.float32);
+          final x32 = NDArray.fromList([3.0, 4.0], [2], DType.float32);
+          final y32 = polyval(c32, x32);
+          expect(y32.dtype, equals(DType.float32));
+          expect(y32.getCell([0]), closeTo(5.0, 1e-5));
+          expect(y32.getCell([1]), closeTo(6.0, 1e-5));
 
-          // 2D shift with axes
-          final a2 = NDArray.fromList(
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-            [3, 4],
-            DType.int32,
+          // Complex128 evaluation
+          final cComp = NDArray.fromList(
+            [Complex(1.0, 1.0), Complex(2.0, 0.0)],
+            [2],
+            DType.complex128,
           );
-          final s2 = fftshift(a2, axes: [0, 1]);
-          expect(ifftshift(s2, axes: [0, 1]).toList(), equals(a2.toList()));
-
-          // Clear plan cache
-          clearFFTPlanCache();
+          final xComp = NDArray.fromList(
+            [Complex(0.0, 1.0)],
+            [1],
+            DType.complex128,
+          );
+          final yComp = polyval(cComp, xComp);
+          expect(yComp.dtype, equals(DType.complex128));
+          // (1+i)*i + 2 = (i - 1) + 2 = 1 + i
+          expect(yComp.getCell([0]).real, closeTo(1.0, 1e-10));
+          expect(yComp.getCell([0]).imag, closeTo(1.0, 1e-10));
         });
       },
     );
-  });
-
-  group('9. Standard Polynomials: polyval, polyfit, roots', () {
-    test('polyval Horner evaluation across float64, float32, complex128, complex64', () {
-      NDArray.scope(() {
-        // p(x) = 2x^2 - 4x + 5
-        final c = NDArray.fromList([2.0, -4.0, 5.0], [3], DType.float64);
-        final x = NDArray.fromList([0.0, 1.0, 2.0, 3.0], [4], DType.float64);
-        final y = polyval(c, x);
-        expect(y.toList(), equals([5.0, 3.0, 5.0, 11.0]));
-
-        // Float32 evaluation
-        final c32 = NDArray.fromList([1.0, 2.0], [2], DType.float32);
-        final x32 = NDArray.fromList([3.0, 4.0], [2], DType.float32);
-        final y32 = polyval(c32, x32);
-        expect(y32.dtype, equals(DType.float32));
-        expect(y32.getCell([0]), closeTo(5.0, 1e-5));
-        expect(y32.getCell([1]), closeTo(6.0, 1e-5));
-
-        // Complex128 evaluation
-        final cComp = NDArray.fromList(
-          [Complex(1.0, 1.0), Complex(2.0, 0.0)],
-          [2],
-          DType.complex128,
-        );
-        final xComp = NDArray.fromList(
-          [Complex(0.0, 1.0)],
-          [1],
-          DType.complex128,
-        );
-        final yComp = polyval(cComp, xComp);
-        expect(yComp.dtype, equals(DType.complex128));
-        // (1+i)*i + 2 = (i - 1) + 2 = 1 + i
-        expect(yComp.getCell([0]).real, closeTo(1.0, 1e-10));
-        expect(yComp.getCell([0]).imag, closeTo(1.0, 1e-10));
-      });
-    });
 
     test('polyfit least-squares polynomial fitting with full options', () {
       NDArray.scope(() {

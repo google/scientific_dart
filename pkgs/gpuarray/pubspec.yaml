@@ -1,0 +1,48 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: gpuarray
+description: GPU-accelerated N-dimensional array computing with seamless NDArray interoperability.
+version: 0.0.1
+publish_to: none
+resolution: workspace
+repository: https://github.com/google/scientific_dart/tree/main/pkgs/gpuarray
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  ndarray:
+    path: ../ndarray
+  resource_scope:
+    path: ../resource_scope
+  ffi: ^2.2.0
+  meta: ^1.18.2
+  web: ^1.1.1
+  hooks: ^1.0.3
+  code_assets: ^1.0.0
+  archive: ^3.6.1
+  crypto: ^3.0.6
+
+dev_dependencies:
+  test: ^1.31.1
+  lints: ^6.1.0
+  criterion:
+    git: https://github.com/sigurdm/criterion.git
+
+hooks:
+  user_defines:
+    gpuarray:
+      buildMode: fetch
+

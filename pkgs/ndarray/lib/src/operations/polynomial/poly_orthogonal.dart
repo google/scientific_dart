@@ -73,14 +73,17 @@ bool _isZeroScalar(Object a) {
   return (a as num) == 0;
 }
 
-NDArray<R> _ensureDType<T, R>(NDArray<T> a, DType<R> targetDType) {
+NDArray<R> _ensureDType<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<T> a,
+  DType<R> targetDType,
+) {
   if (a.dtype == targetDType) {
     return a as NDArray<R>;
   }
   return castNDArray(a, targetDType);
 }
 
-void _copyInto<R>(NDArray src, NDArray<R> out) {
+void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
   src.copy(out: out);
 }
 
@@ -96,11 +99,14 @@ void _copyInto<R>(NDArray src, NDArray<R> out) {
 /// - It is an error if coefficient array is invalid or [out] buffer mismatches.
 ///
 /// Reference: [NumPy chebval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html)
-NDArray<R> chebval<T1, T2, R>(
-  NDArray<T1> arg1,
-  NDArray<T2> arg2, {
-  NDArray<R>? out,
-}) {
+NDArray<R> chebval<
+  T1 extends DTypeTag,
+  T2 extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<T1> arg1, NDArray<T2> arg2, {NDArray<R>? out}) {
+  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot access a disposed NDArray.');
+  }
   NDArray cArr;
   NDArray xArr;
   if (arg1.shape.length != 1 && arg2.shape.length == 1) {
@@ -119,11 +125,14 @@ NDArray<R> chebval<T1, T2, R>(
 /// Supports flexible argument order (c, x) or (x, c).
 ///
 /// Reference: [NumPy legval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.legendre.legval.html)
-NDArray<R> legval<T1, T2, R>(
+NDArray<R> legval<T1 extends DTypeTag, T2 extends DTypeTag, R extends DTypeTag>(
   NDArray<T1> arg1,
   NDArray<T2> arg2, {
   NDArray<R>? out,
 }) {
+  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot access a disposed NDArray.');
+  }
   NDArray cArr;
   NDArray xArr;
   if (arg1.shape.length != 1 && arg2.shape.length == 1) {
@@ -142,11 +151,14 @@ NDArray<R> legval<T1, T2, R>(
 /// Supports flexible argument order (c, x) or (x, c).
 ///
 /// Reference: [NumPy hermval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.hermite.hermval.html)
-NDArray<R> hermval<T1, T2, R>(
-  NDArray<T1> arg1,
-  NDArray<T2> arg2, {
-  NDArray<R>? out,
-}) {
+NDArray<R> hermval<
+  T1 extends DTypeTag,
+  T2 extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<T1> arg1, NDArray<T2> arg2, {NDArray<R>? out}) {
+  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot access a disposed NDArray.');
+  }
   NDArray cArr;
   NDArray xArr;
   if (arg1.shape.length != 1 && arg2.shape.length == 1) {
@@ -165,11 +177,14 @@ NDArray<R> hermval<T1, T2, R>(
 /// Supports flexible argument order (c, x) or (x, c).
 ///
 /// Reference: [NumPy lagval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.laguerre.lagval.html)
-NDArray<R> lagval<T1, T2, R>(
+NDArray<R> lagval<T1 extends DTypeTag, T2 extends DTypeTag, R extends DTypeTag>(
   NDArray<T1> arg1,
   NDArray<T2> arg2, {
   NDArray<R>? out,
 }) {
+  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot access a disposed NDArray.');
+  }
   NDArray cArr;
   NDArray xArr;
   if (arg1.shape.length != 1 && arg2.shape.length == 1) {
@@ -182,12 +197,11 @@ NDArray<R> lagval<T1, T2, R>(
   return _evalClenshaw(cArr, xArr, _OrthoKind.laguerre, out: out);
 }
 
-NDArray<R> _evalClenshaw<Tc, Tx, R>(
-  NDArray<Tc> c,
-  NDArray<Tx> x,
-  _OrthoKind kind, {
-  NDArray<R>? out,
-}) {
+NDArray<R> _evalClenshaw<
+  Tc extends DTypeTag,
+  Tx extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<Tc> c, NDArray<Tx> x, _OrthoKind kind, {NDArray<R>? out}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute series evaluation on a disposed array.");
   }
@@ -214,7 +228,11 @@ NDArray<R> _evalClenshaw<Tc, Tx, R>(
   return NDArray.scope(() {
     final cCast = _ensureDType(c, targetDType);
     final xCast = _ensureDType(x, targetDType);
-    final res = out ?? NDArray<R>.zeros(x.shape, targetDType);
+    final aliased =
+        out != null && (sharesMemory(c, out) || sharesMemory(x, out));
+    final res = (out != null && !aliased)
+        ? out
+        : NDArray<R>.zeros(x.shape, targetDType);
 
     final isContiguous =
         cCast.isContiguous && xCast.isContiguous && res.isContiguous;
@@ -384,7 +402,17 @@ NDArray<R> _evalClenshaw<Tc, Tx, R>(
                   totalElements,
                 );
             }
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for orthogonal series evaluation.",
             );
@@ -606,7 +634,17 @@ NDArray<R> _evalClenshaw<Tc, Tx, R>(
                   ndim,
                 );
             }
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for orthogonal series evaluation.",
             );
@@ -617,6 +655,9 @@ NDArray<R> _evalClenshaw<Tc, Tx, R>(
     }
 
     if (out != null) {
+      if (aliased) {
+        res.copy(out: out);
+      }
       return out;
     }
     return res.detachToParentScope();
@@ -624,29 +665,41 @@ NDArray<R> _evalClenshaw<Tc, Tx, R>(
 }
 
 /// Finds roots of a Chebyshev series.
-NDArray<Complex> chebroots<T>(NDArray<T> c, {NDArray<Complex>? out}) {
+NDArray<DTypeTag> chebroots<T extends DTypeTag>(
+  NDArray<T> c, {
+  NDArray<DTypeTag>? out,
+}) {
   return _orthoRoots(c, _OrthoKind.chebyshev, out: out);
 }
 
 /// Finds roots of a Legendre series.
-NDArray<Complex> legroots<T>(NDArray<T> c, {NDArray<Complex>? out}) {
+NDArray<DTypeTag> legroots<T extends DTypeTag>(
+  NDArray<T> c, {
+  NDArray<DTypeTag>? out,
+}) {
   return _orthoRoots(c, _OrthoKind.legendre, out: out);
 }
 
 /// Finds roots of a Hermite series.
-NDArray<Complex> hermroots<T>(NDArray<T> c, {NDArray<Complex>? out}) {
+NDArray<DTypeTag> hermroots<T extends DTypeTag>(
+  NDArray<T> c, {
+  NDArray<DTypeTag>? out,
+}) {
   return _orthoRoots(c, _OrthoKind.hermite, out: out);
 }
 
 /// Finds roots of a Laguerre series.
-NDArray<Complex> lagroots<T>(NDArray<T> c, {NDArray<Complex>? out}) {
+NDArray<DTypeTag> lagroots<T extends DTypeTag>(
+  NDArray<T> c, {
+  NDArray<DTypeTag>? out,
+}) {
   return _orthoRoots(c, _OrthoKind.laguerre, out: out);
 }
 
-NDArray<Complex> _orthoRoots<T>(
+NDArray<DTypeTag> _orthoRoots<T extends DTypeTag>(
   NDArray<T> c,
   _OrthoKind kind, {
-  NDArray<Complex>? out,
+  NDArray<DTypeTag>? out,
 }) {
   if (c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute root finding on a disposed array.");
@@ -655,14 +708,32 @@ NDArray<Complex> _orthoRoots<T>(
     throw ArgumentError("Coefficient array c must be 1-dimensional.");
   }
 
+  final DType<DTypeTag> targetComplexDType = c.dtype == DType.complex64
+      ? DType.complex64
+      : DType.complex128;
+
   return NDArray.scope(() {
     var n = c.shape[0] - 1;
     while (n > 0) {
       if (!_isZeroScalar(c.getCellFlat(n) as Object)) break;
       n--;
     }
+    final deg = n <= 0 ? 0 : n;
+    if (out != null) {
+      if (!listEquals(out.shape, [deg]) || out.dtype != targetComplexDType) {
+        throw ArgumentError(
+          "Incompatible out buffer shape or dtype for roots result (expected shape [$deg] and dtype $targetComplexDType, got shape ${out.shape} and dtype ${out.dtype}).",
+        );
+      }
+      if (!out.isContiguous || sharesMemory(c, out)) {
+        final temp = _orthoRoots<T>(c, kind);
+        _copyInto(temp, out);
+        return out;
+      }
+    }
+
     if (n <= 0) {
-      final res = NDArray<Complex>.zeros([0], DType.complex128);
+      final res = NDArray<DTypeTag>.zeros([0], targetComplexDType);
       if (out != null) {
         _copyInto(res, out);
         return out;
@@ -689,10 +760,10 @@ NDArray<Complex> _orthoRoots<T>(
       final complexRoot = rootVal is Complex
           ? rootVal
           : Complex((rootVal as num).toDouble(), 0.0);
-      final res = NDArray<Complex>.fromList(
+      final res = NDArray<DTypeTag>.fromList(
         [complexRoot],
         [1],
-        DType.complex128,
+        targetComplexDType,
       );
       if (out != null) {
         _copyInto(res, out);
@@ -707,9 +778,21 @@ NDArray<Complex> _orthoRoots<T>(
     switch (c.dtype) {
       case DType.complex64:
       case DType.complex128:
-        cMat = NDArray<Complex>.zeros([n, n], c.dtype as DType<Complex>);
+        cMat = NDArray<DTypeTag>.zeros([n, n], c.dtype as DType<DTypeTag>);
         break;
-      default:
+      case DType.float64:
+      case DType.float32:
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+      case DType.boolean:
         cMat = NDArray<Float64>.zeros([n, n], DType.float64);
         break;
     }
@@ -829,7 +912,7 @@ NDArray<Complex> _orthoRoots<T>(
         }
         break;
     }
-    final res = eigvals(cMat, out: out);
+    final res = eigvals(cMat as NDArray<AnySpec>, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });

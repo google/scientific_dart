@@ -15,16 +15,18 @@
 import 'package:ndarray/ndarray.dart';
 
 void main() {
-  print('===========================================================');
-  print('      NumPy to package:ndarray Quickstart Tutorial         ');
-  print('===========================================================\n');
+  NDArray.scope(() {
+    print('===========================================================');
+    print('      NumPy to package:ndarray Quickstart Tutorial         ');
+    print('===========================================================\n');
 
-  runModule1CreationAndScope();
-  runModule2IndexingAndSlicing();
-  runModule3MathAndUfuncs();
-  runModule4ViewsVsCopies();
-  runModule5StackingAndSplitting();
-  runModule6ReductionsAndLinAlg();
+    runModule1CreationAndScope();
+    runModule2IndexingAndSlicing();
+    runModule3MathAndUfuncs();
+    runModule4ViewsVsCopies();
+    runModule5StackingAndSplitting();
+    runModule6ReductionsAndLinAlg();
+  });
 }
 
 void runModule1CreationAndScope() {
@@ -76,7 +78,7 @@ void runModule2IndexingAndSlicing() {
     // 1. Explicit Statically Typed Access (Zero Overhead, No Polymorphism)
     final cellVal = mat.getCell([1, 2]);
     print('Explicit mat.getCell([1, 2]): $cellVal');
-    mat.setCell([1, 2], Float64(888.0));
+    mat.setCell([1, 2], 888.0);
     print('After mat.setCell([1, 2], 888.0): cell is ${mat.getCell([1, 2])}');
 
     // 2. Polymorphic Overloaded Operator [] (NumPy parity)
@@ -98,8 +100,8 @@ void runModule2IndexingAndSlicing() {
     print('Fancy row selection mat[[ [0, 2] ]]:\n$fancyRows');
 
     // Masking: clip all values > 10 to 10.0
-    final mask = mat > Float64(10.0);
-    mat.setByMaskScalar(mask, Float64(10.0));
+    final mask = mat > 10.0;
+    mat.setByMaskScalar(mask, 10.0);
     print('After clipping values > 10 to 10.0:\n$mat\n');
   });
 }
@@ -138,7 +140,7 @@ void runModule4ViewsVsCopies() {
     // 1. Zero-copy reshape view
     final reshaped = orig.reshape([4]);
     print('reshaped isView? ${reshaped.isView}');
-    reshaped.setCell([0], Float64(999.0)); // Mutates orig!
+    reshaped.setCell([0], 999.0); // Mutates orig!
     print(
       'After mutating reshaped view, orig cell [0, 0] is: ${orig.getCell([0, 0])}',
     );
@@ -151,7 +153,7 @@ void runModule4ViewsVsCopies() {
 
     // 3. Deep C-contiguous copy
     final deepCopy = orig.copy();
-    deepCopy.setCell([0, 0], Float64(1.0)); // Completely decoupled!
+    deepCopy.setCell([0, 0], 1.0); // Completely decoupled!
     print(
       'After mutating deepCopy[0,0]=1.0, orig[0,0] remains: ${orig.getCell([0, 0])}\n',
     );

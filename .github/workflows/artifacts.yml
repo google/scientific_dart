@@ -1,0 +1,186 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Native Artifacts & Provenance
+
+on:
+  push:
+    tags:
+      - 'artifacts-v*'
+      - 'v*'
+  pull_request:
+    paths:
+      - 'pkgs/pocketfft/hook/**'
+      - 'pkgs/pocketfft/lib/src/hook_helpers/**'
+      - 'pkgs/openblas/hook/**'
+      - 'pkgs/openblas/lib/src/hook_helpers/**'
+      - 'pkgs/ndarray/hook/**'
+      - 'pkgs/ndarray/lib/src/hook_helpers/**'
+      - 'tool/build_artifacts.dart'
+      - 'tool/regenerate_hashes.dart'
+      - '.github/workflows/artifacts.yml'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional release tag to publish artifacts under (e.g. artifacts-v0.0.2)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  build-native-artifacts:
+    name: Build (${{ matrix.target_os }}-${{ matrix.target_arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target_os: linux
+            target_arch: x64
+          - runner: ubuntu-24.04-arm
+            target_os: linux
+            target_arch: arm64
+          - runner: macos-latest
+            target_os: macos
+            target_arch: arm64
+          - runner: macos-latest
+            target_os: macos
+            target_arch: x64
+          - runner: windows-latest
+            target_os: windows
+            target_arch: x64
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Install Linux Build Dependencies
+        if: matrix.target_os == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gfortran build-essential cmake
+
+      - name: Set up MSVC Developer Command Prompt
+        if: matrix.target_os == 'windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Dependencies
+        run: dart pub get
+
+      - name: Cache Native Build Intermediates
+        uses: actions/cache@v4
+        with:
+          path: .dart_tool/artifact_builder/
+          key: artifact-builder-${{ matrix.target_os }}-${{ matrix.target_arch }}-${{ hashFiles('pkgs/*/hook/**') }}
+          restore-keys: |
+            artifact-builder-${{ matrix.target_os }}-${{ matrix.target_arch }}-
+
+      - name: Build Native Artifacts
+        run: dart tool/build_artifacts.dart --os ${{ matrix.target_os }} --architecture ${{ matrix.target_arch }} --output-dir dist
+
+      - name: Verify Exported Native Symbols & Embedded Source Hash
+        run: dart tool/check_native_symbols.dart --os ${{ matrix.target_os }} --architecture ${{ matrix.target_arch }} --artifact-dir dist
+
+      - name: Upload Platform Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-libs-${{ matrix.target_os }}-${{ matrix.target_arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  attest-and-release:
+    name: Attest SLSA Provenance & Release
+    needs: build-native-artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download All Built Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: native-libs-*
+          path: dist
+          merge-multiple: true
+
+      - name: Generate Unified SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          rm -f SHA256SUMS.txt
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Generate SLSA v1.0 Build Provenance Attestation
+        id: attest
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: 'dist/*'
+
+      - name: Copy Attestation Bundle into dist
+        if: steps.attest.outputs.bundle-path != ''
+        run: |
+          cp "${{ steps.attest.outputs.bundle-path }}" dist/provenance.intoto.jsonl
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Smoke Test `regenerate_hashes.dart` & `local` Build Mode
+        run: |
+          dart pub get
+          TAG="${{ inputs.tag || github.ref_name }}"
+          dart tool/regenerate_hashes.dart "$TAG" --local-dir dist --skip-provenance
+          dart tool/check_artifact_hashes.dart --strict
+          (cd pkgs/pocketfft && POCKETFFT_BUILD_MODE=local LOCAL_POCKETFFT_BINARY="$PWD/../../dist" dart test)
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') || inputs.tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          files: dist/*
+          fail_on_unmatched_files: true
+          body: |
+            Prebuilt native binary artifacts for `scientific_dart` (`pocketfft`, `openblas`, `ndarray`) at `${{ inputs.tag || github.ref_name }}`.
+
+            ### SLSA Build Provenance Verification
+            All binary artifacts in this release are cryptographically attested with SLSA v1.0 build provenance via GitHub Artifact Attestations (Sigstore/Fulcio).
+
+            Verify any artifact using the GitHub CLI:
+            ```bash
+            gh attestation verify <artifact-file> --repo ${{ github.repository }}
+            ```
+
+            To update the pinned SHA-256 hashes in the repository after verifying provenance:
+            ```bash
+            dart tool/regenerate_hashes.dart ${{ inputs.tag || github.ref_name }}
+            ```

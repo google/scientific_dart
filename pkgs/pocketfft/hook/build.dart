@@ -15,9 +15,11 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:archive/archive.dart';
 import 'package:code_assets/code_assets.dart';
+import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
+import 'package:pocketfft/src/hook_helpers/build_options.dart';
+import 'package:pocketfft/src/hook_helpers/hashes.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -25,132 +27,392 @@ void main(List<String> args) async {
       return;
     }
 
-    final srcDir = Directory.fromUri(input.packageRoot.resolve('hook/src/'));
-    if (!srcDir.existsSync()) {
-      srcDir.createSync(recursive: true);
+    final BuildOptions buildOptions;
+    try {
+      buildOptions = BuildOptions.fromDefines(input.userDefines);
+    } catch (e) {
+      throw ArgumentError(BuildOptions.usageError(e));
+    }
+    print('pocketfft build options: $buildOptions');
+
+    final currentSourceHash = computeNativeSourceHash(input.packageRoot);
+    if (currentSourceHash != nativeSourceHash &&
+        buildOptions.buildMode == BuildModeEnum.source) {
+      print(
+        'WARNING: Native sources in package:${input.packageName}/hook/ '
+        '(${currentSourceHash.substring(0, 12)}) differ from prebuilt release '
+        '$version (${nativeSourceHash.substring(0, 12)}). '
+        'Remember to build & attest new release artifacts and run '
+        '`dart tool/regenerate_hashes.dart <tag>` before publishing.',
+      );
     }
 
-    // 1. Download and extract KissFFT if not present
-    final logHeader = File.fromUri(srcDir.uri.resolve('kiss_fft_log.h'));
-    if (!logHeader.existsSync()) {
-      print('Downloading KissFFT source files archive from GitHub...');
-      final client = HttpClient();
+    BuildMode buildMode = switch (buildOptions.buildMode) {
+      BuildModeEnum.fetch => FetchMode(input),
+      BuildModeEnum.local => LocalMode(input, buildOptions.localPath),
+      BuildModeEnum.source => SourceMode(
+        input,
+        buildOptions.checkoutPath,
+        buildOptions,
+      ),
+    };
+
+    Uri builtLibrary;
+    if (buildOptions.buildMode == BuildModeEnum.fetch &&
+        !buildOptions.isExplicit &&
+        currentSourceHash != nativeSourceHash) {
+      print(
+        'Prebuilt pocketfft binary for release $version differs from local '
+        'native sources in hook/; falling back to `buildMode: source`.',
+      );
+      buildMode = SourceMode(input, buildOptions.checkoutPath, buildOptions);
+      builtLibrary = await buildMode.build();
+    } else {
       try {
-        final request = await client.getUrl(
-          Uri.parse(
-            'https://github.com/mborgerding/kissfft/archive/6e9e673e420c4bf47d4a60c57c578f93e4ec192f.tar.gz',
-          ),
-        );
-        final response = await request.close();
-        if (response.statusCode != 200) {
-          throw HttpException(
-            'Failed to download KissFFT archive: status ${response.statusCode}',
+        builtLibrary = await buildMode.build();
+      } catch (e) {
+        if (buildOptions.buildMode == BuildModeEnum.fetch &&
+            !buildOptions.isExplicit) {
+          print(
+            'Prebuilt pocketfft binary unavailable ($e); '
+            'falling back to `buildMode: source`.',
           );
+          buildMode = SourceMode(
+            input,
+            buildOptions.checkoutPath,
+            buildOptions,
+          );
+          builtLibrary = await buildMode.build();
+        } else {
+          rethrow;
         }
-
-        final bytesBuilder = BytesBuilder();
-        await for (final chunk in response) {
-          bytesBuilder.add(chunk);
-        }
-        final tarGzBytes = bytesBuilder.toBytes();
-
-        final unzippedBytes = GZipDecoder().decodeBytes(tarGzBytes);
-        final archive = TarDecoder().decodeBytes(unzippedBytes);
-
-        for (final file in archive) {
-          if (file.isFile) {
-            final baseName = file.name.split('/').last;
-            if (baseName.endsWith('.c') || baseName.endsWith('.h')) {
-              final outFile = File.fromUri(srcDir.uri.resolve(baseName));
-              outFile.writeAsBytesSync(file.content as List<int>, flush: true);
-              print('Extracted: $baseName');
-            }
-          }
-        }
-      } finally {
-        client.close();
       }
     }
 
-    // 2. Get cross-compiler or host compiler from modern input config
-    final packageName = input.packageName;
+    output.assets.code.add(
+      CodeAsset(
+        package: input.packageName,
+        name: 'pocketfft',
+        linkMode: DynamicLoadingBundled(),
+        file: builtLibrary,
+      ),
+    );
+    output.dependencies.addAll(buildMode.dependencies);
+    output.dependencies.add(input.packageRoot.resolve('pubspec.yaml'));
+  });
+}
+
+String _canonicalLibName(OS os) => os == OS.windows
+    ? 'libpocketfft.dll'
+    : ((os == OS.macOS || os == OS.iOS)
+          ? 'libpocketfft.dylib'
+          : 'libpocketfft.so');
+
+sealed class BuildMode {
+  final BuildInput input;
+
+  const BuildMode(this.input);
+
+  List<Uri> get dependencies;
+
+  Future<Uri> build();
+}
+
+final class FetchMode extends BuildMode {
+  FetchMode(super.input);
+
+  @override
+  Future<Uri> build() async {
+    final currentSourceHash = computeNativeSourceHash(input.packageRoot);
+    if (currentSourceHash != nativeSourceHash) {
+      throw StateError(
+        'Prebuilt pocketfft binary for release $version is out of date with native sources in hook/!\n'
+        'Pinned nativeSourceHash: $nativeSourceHash\n'
+        'Current hook/ hash:      $currentSourceHash\n'
+        'If you are the package author, build and attest new release artifacts (.github/workflows/artifacts.yml) and run:\n'
+        '  dart tool/regenerate_hashes.dart <new-release-tag>\n'
+        '${BuildOptions.usageError('Switch to `buildMode: source` while developing native code.')}',
+      );
+    }
+
     final os = input.config.code.targetOS;
+    final arch = input.config.code.targetArchitecture;
+    final artifactName = pocketfftArtifactName(os, arch);
+    final expectedHash = fileHashes[(os, arch)];
+
+    if (expectedHash == null || expectedHash.startsWith('00000000')) {
+      throw StateError(
+        'No prebuilt pocketfft binary hash is pinned for ($os, $arch) in release $version.\n'
+        '${BuildOptions.usageError('Switch to `buildMode: source` or `buildMode: local`.')}',
+      );
+    }
+
+    final libName = _canonicalLibName(os);
+    final cachedLibrary = File.fromUri(
+      input.outputDirectoryShared
+          .resolve('pocketfft-$version/${os.name}-${arch.name}/')
+          .resolve(libName),
+    );
+
+    if (await cachedLibrary.exists()) {
+      final cachedBytes = await cachedLibrary.readAsBytes();
+      final cachedHash = sha256.convert(cachedBytes).toString();
+      if (cachedHash == expectedHash) {
+        verifyArtifactSourceHash(
+          cachedBytes,
+          currentSourceHash: currentSourceHash,
+        );
+        print('Using cached pocketfft binary from ${cachedLibrary.path}.');
+        return cachedLibrary.uri;
+      }
+    }
+
+    final remoteUri = Uri.parse(
+      'https://github.com/$repository/releases/download/$version/$artifactName',
+    );
+    print('Fetching prebuilt pocketfft binary from $remoteUri...');
+    final bytes = await _downloadBytesWithRedirects(remoteUri);
+    final actualHash = sha256.convert(bytes).toString();
+    if (actualHash != expectedHash) {
+      throw StateError(
+        'SHA-256 mismatch for prebuilt pocketfft binary at $remoteUri:\n'
+        'Expected: $expectedHash\n'
+        'Actual:   $actualHash',
+      );
+    }
+    verifyArtifactSourceHash(bytes, currentSourceHash: currentSourceHash);
+
+    await cachedLibrary.parent.create(recursive: true);
+    await cachedLibrary.writeAsBytes(bytes, flush: true);
+    return cachedLibrary.uri;
+  }
+
+  @override
+  List<Uri> get dependencies => [
+    for (final file in nativeSourceFiles(input.packageRoot)) file.uri,
+  ];
+}
+
+final class LocalMode extends BuildMode {
+  final Uri? localPath;
+
+  LocalMode(super.input, this.localPath);
+
+  File _resolveLocalFile() {
+    if (localPath == null) {
+      throw ArgumentError(
+        '`localPath` is not set in `hooks.user_defines.pocketfft` '
+        '(or `LOCAL_POCKETFFT_BINARY` environment variable).',
+      );
+    }
+    final os = input.config.code.targetOS;
+    final entityPath = localPath!.toFilePath(windows: Platform.isWindows);
+    if (FileSystemEntity.isDirectorySync(entityPath)) {
+      final candidate = File.fromUri(
+        Directory(entityPath).uri.resolve(_canonicalLibName(os)),
+      );
+      if (candidate.existsSync()) return candidate;
+      final artifactCandidate = File.fromUri(
+        Directory(entityPath).uri.resolve(
+          pocketfftArtifactName(os, input.config.code.targetArchitecture),
+        ),
+      );
+      if (artifactCandidate.existsSync()) return artifactCandidate;
+      throw FileSystemException(
+        'Could not find ${_canonicalLibName(os)} in localPath directory.',
+        entityPath,
+      );
+    }
+    final file = File(entityPath);
+    if (!file.existsSync()) {
+      throw FileSystemException(
+        'Could not find local pocketfft binary.',
+        entityPath,
+      );
+    }
+    return file;
+  }
+
+  @override
+  Future<Uri> build() async {
+    final sourceFile = _resolveLocalFile();
+    final targetUri = input.outputDirectory.resolve(
+      _canonicalLibName(input.config.code.targetOS),
+    );
+    final targetFile = File.fromUri(targetUri);
+    await targetFile.parent.create(recursive: true);
+    await sourceFile.copy(targetFile.path);
+    return targetFile.uri;
+  }
+
+  @override
+  List<Uri> get dependencies => [_resolveLocalFile().uri];
+}
+
+final class SourceMode extends BuildMode {
+  final Uri? checkoutPath;
+  final BuildOptions? buildOptions;
+
+  SourceMode(super.input, this.checkoutPath, [this.buildOptions]);
+
+  Uri get _root => checkoutPath ?? input.packageRoot;
+
+  String _resolveCxxCompiler(String cCompilerPath, OS os, bool isMSVC) {
+    if (isMSVC) return cCompilerPath;
+    if (cCompilerPath == 'cc') return 'c++';
+    if (cCompilerPath.endsWith('/clang') || cCompilerPath.endsWith(r'\clang')) {
+      final candidate = '$cCompilerPath++';
+      if (File(candidate).existsSync()) return candidate;
+    } else if (cCompilerPath == 'clang') {
+      return 'clang++';
+    } else if (cCompilerPath.endsWith('/gcc') ||
+        cCompilerPath.endsWith(r'\gcc')) {
+      final candidate =
+          '${cCompilerPath.substring(0, cCompilerPath.length - 3)}g++';
+      if (File(candidate).existsSync()) return candidate;
+    } else if (cCompilerPath == 'gcc') {
+      return 'g++';
+    } else if (cCompilerPath.endsWith('/cc') ||
+        cCompilerPath.endsWith(r'\cc')) {
+      final candidate =
+          '${cCompilerPath.substring(0, cCompilerPath.length - 2)}c++';
+      if (File(candidate).existsSync()) return candidate;
+    }
+    return cCompilerPath;
+  }
+
+  @override
+  Future<Uri> build() async {
+    final os = input.config.code.targetOS;
+    final arch = input.config.code.targetArchitecture;
     final cCompiler = input.config.code.cCompiler;
 
-    final libName = os == OS.windows
-        ? 'libpocketfft.dll'
-        : (os == OS.macOS ? 'libpocketfft.dylib' : 'libpocketfft.so');
+    final hookDir = Directory.fromUri(_root.resolve('hook/'));
+    final wrapperFile = File.fromUri(
+      hookDir.uri.resolve('pocketfft_wrapper.cpp'),
+    );
+    if (!wrapperFile.existsSync()) {
+      throw FileSystemException(
+        'Missing PocketFFT C++ wrapper source in hook/.',
+        wrapperFile.path,
+      );
+    }
 
+    final libName = _canonicalLibName(os);
     final outputDir = Directory.fromUri(input.outputDirectory);
     if (!outputDir.existsSync()) {
       outputDir.createSync(recursive: true);
     }
     final libFile = File.fromUri(outputDir.uri.resolve(libName));
 
-    // 3. Compile plain-C source code using Process.run for extreme reliability
-    final compilerPath =
-        cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
-    print('Compiling pocketfft plain C files via compiler: $compilerPath');
+    final currentSourceHash = computeNativeSourceHash(_root);
+    final stampFile = File.fromUri(
+      outputDir.uri.resolve('source_hash_stamp.cpp'),
+    );
+    await stampFile.writeAsString('''
+#if defined(_WIN32)
+#define STAMP_EXPORT extern "C" __declspec(dllexport)
+#define STAMP_USED
+#else
+#define STAMP_EXPORT extern "C" __attribute__((visibility("default"), used))
+#define STAMP_USED __attribute__((used))
+#endif
 
-    final compilerLower = compilerPath.toLowerCase();
+STAMP_USED static const char _pocketfft_source_hash_marker[] =
+    "$sourceHashMarkerPrefix$currentSourceHash";
+
+STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
+  return _pocketfft_source_hash_marker;
+}
+''');
+
+    final rawCompilerPath =
+        cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'c++');
+    final compilerLower = rawCompilerPath.toLowerCase();
     final isGNU =
         compilerLower.contains('gcc') ||
         compilerLower.contains('clang') ||
-        compilerLower.contains('g++');
+        compilerLower.contains('g++') ||
+        compilerLower.contains('c++');
     final isMSVC = os == OS.windows && !isGNU;
+    final compilerPath = _resolveCxxCompiler(rawCompilerPath, os, isMSVC);
+
+    final sanitize = buildOptions?.sanitize;
+    final coverage = buildOptions?.coverage ?? false;
+    if (isMSVC && (sanitize != null || coverage)) {
+      throw UnsupportedError(
+        'Native sanitizers and coverage are not supported with MSVC on Windows.',
+      );
+    }
+    final sanitizeFlags = (sanitize != null && sanitize.isNotEmpty)
+        ? <String>[
+            '-fsanitize=$sanitize',
+            '-fno-sanitize-recover=all',
+            '-fno-omit-frame-pointer',
+            '-g',
+          ]
+        : const <String>[];
+    final coverageFlags = coverage
+        ? const <String>['--coverage', '-O1', '-g']
+        : const <String>[];
+
     final compileArgs = isMSVC
         ? <String>[
             '/LD',
+            '/MD',
             '/O2',
+            '/std:c++17',
             '/EHsc',
-            '/Dkiss_fft_scalar=double',
+            '/DPOCKETFFT_NO_MULTITHREADING=1',
+            '/DPOCKETFFT_CACHE_SIZE=64',
             '/I',
-            srcDir.uri.toFilePath(),
-            srcDir.uri.resolve('kiss_fft.c').toFilePath(),
-            srcDir.uri.resolve('kiss_fftr.c').toFilePath(),
-            srcDir.uri.resolve('kiss_fftnd.c').toFilePath(),
+            hookDir.path,
+            wrapperFile.path,
+            stampFile.path,
             '/Fe:${libFile.path}',
             '/link',
             '/EXPORT:kiss_fft_alloc',
             '/EXPORT:kiss_fft',
+            '/EXPORT:kiss_fft_stride',
+            '/EXPORT:kiss_fft_cleanup',
+            '/EXPORT:kiss_fft_next_fast_size',
             '/EXPORT:kiss_fftr_alloc',
             '/EXPORT:kiss_fftr',
             '/EXPORT:kiss_fftri',
             '/EXPORT:kiss_fftnd_alloc',
             '/EXPORT:kiss_fftnd',
+            '/EXPORT:free',
+            '/EXPORT:pocketfft_embedded_source_hash',
           ]
         : <String>[
+            if (os == OS.macOS || os == OS.iOS) ...[
+              '-arch',
+              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+              '-Wl,-install_name,@rpath/$libName',
+              '-Wl,-headerpad_max_install_names',
+            ],
+            '-std=c++17',
             '-shared',
             '-fPIC',
             '-O3',
-            '-ffast-math',
-            '-Dkiss_fft_scalar=double',
+            ...sanitizeFlags,
+            ...coverageFlags,
+            if (os == OS.android) '-Wl,-z,max-page-size=16384',
+            '-DPOCKETFFT_NO_MULTITHREADING=1',
+            '-DPOCKETFFT_CACHE_SIZE=64',
+            if (os != OS.windows) '-DPOCKETFFT_USE_POSIX_MEMALIGN=1',
             '-I',
-            srcDir.uri.toFilePath(),
-            srcDir.uri.resolve('kiss_fft.c').toFilePath(),
-            srcDir.uri.resolve('kiss_fftr.c').toFilePath(),
-            srcDir.uri.resolve('kiss_fftnd.c').toFilePath(),
+            hookDir.path,
+            wrapperFile.path,
+            stampFile.path,
             '-o',
             libFile.path,
             if (os != OS.windows) '-lm',
           ];
 
-    print(
-      'Environment Keys: ${Platform.environment.keys.where((k) => k.toUpperCase().contains("INC") || k.toUpperCase().contains("LIB") || k.toUpperCase() == "PATH").toList()}',
-    );
-    print(
-      'Environment PATH: ${Platform.environment['PATH'] ?? Platform.environment['Path'] ?? Platform.environment['path']}',
-    );
-    print(
-      'Environment INCLUDE: ${Platform.environment['INCLUDE'] ?? Platform.environment['Include'] ?? Platform.environment['include']}',
-    );
-    print(
-      'Environment LIB: ${Platform.environment['LIB'] ?? Platform.environment['Lib'] ?? Platform.environment['lib']}',
-    );
-
     final runEnv = <String, String>{...Platform.environment};
     if (isMSVC) {
-      final msvcEnv = await getMSVCEnvironment();
+      final msvcEnv = await getMSVCEnvironment(arch);
       for (final key in ['INCLUDE', 'LIB', 'LIBPATH']) {
         final val = msvcEnv[key] ?? msvcEnv[key.toLowerCase()];
         if (val != null) {
@@ -166,44 +428,57 @@ void main(List<String> args) async {
     );
     if (res.exitCode != 0) {
       throw StateError(
-        'PocketFFT native C compilation failed (exit ${res.exitCode}):\n'
+        'PocketFFT native C++ compilation failed (exit ${res.exitCode}):\n'
         'stdout: ${res.stdout}\n'
         'stderr: ${res.stderr}',
       );
     }
-    print('Compiled shared library binary successfully at: ${libFile.path}');
 
-    // 4. Register the dynamic CodeAsset in the hooks pipeline
-    if (libFile.existsSync()) {
-      output.assets.code.add(
-        CodeAsset(
-          package: packageName,
-          name: 'pocketfft',
-          linkMode: DynamicLoadingBundled(),
-          file: libFile.uri,
-        ),
-      );
-      output.dependencies.add(srcDir.uri.resolve('kiss_fft.c'));
-      output.dependencies.add(srcDir.uri.resolve('kiss_fftr.c'));
-      output.dependencies.add(srcDir.uri.resolve('kiss_fftnd.c'));
-      output.dependencies.add(srcDir.uri.resolve('kiss_fft.h'));
-      output.dependencies.add(srcDir.uri.resolve('kiss_fft_log.h'));
-      output.dependencies.add(srcDir.uri.resolve('kiss_fftnd.h'));
-      output.dependencies.add(srcDir.uri.resolve('kiss_fftr.h'));
-      output.dependencies.add(srcDir.uri.resolve('_kiss_fft_guts.h'));
-      print('Registered pocketfft native dynamic code asset successfully.');
-    }
-  });
+    return libFile.uri;
+  }
+
+  @override
+  List<Uri> get dependencies => [
+    for (final file in nativeSourceFiles(_root)) file.uri,
+  ];
 }
 
-/// Helper function to query Visual Studio to obtain the proper environment variables
-/// (like INCLUDE, LIB, and LIBPATH) for MSVC compilation on Windows.
-Future<Map<String, String>> getMSVCEnvironment() async {
+Future<Uint8List> _downloadBytesWithRedirects(Uri url) async {
+  final client = HttpClient();
+  try {
+    var currentUrl = url;
+    for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
+      final request = await client.getUrl(currentUrl);
+      final response = await request.close();
+      if (response.statusCode >= 300 &&
+          response.statusCode < 400 &&
+          response.headers.value(HttpHeaders.locationHeader) != null) {
+        currentUrl = currentUrl.resolve(
+          response.headers.value(HttpHeaders.locationHeader)!,
+        );
+        continue;
+      }
+      if (response.statusCode != 200) {
+        throw HttpException(
+          'Failed to download $currentUrl (HTTP ${response.statusCode})',
+        );
+      }
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    }
+    throw HttpException('Too many redirects while downloading $url');
+  } finally {
+    client.close();
+  }
+}
+
+Future<Map<String, String>> getMSVCEnvironment(Architecture targetArch) async {
   if (!Platform.isWindows) return {};
 
-  // Find vswhere.exe
-  String vswherePath = 'vswhere.exe'; // Try PATH first
-  // Fallback to default installer directory if not in PATH
+  String vswherePath = 'vswhere.exe';
   final programFilesX86 =
       Platform.environment['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
   final defaultVswhere =
@@ -213,62 +488,39 @@ Future<Map<String, String>> getMSVCEnvironment() async {
   }
 
   try {
-    // Run vswhere to find Visual Studio installation path
     final vswhereRes = await Process.run(vswherePath, [
       '-latest',
       '-property',
       'installationPath',
     ]);
-    if (vswhereRes.exitCode != 0) {
-      print('vswhere failed with exit code ${vswhereRes.exitCode}');
-      return {};
-    }
+    if (vswhereRes.exitCode != 0) return {};
 
     final vsPath = vswhereRes.stdout.toString().trim();
-    if (vsPath.isEmpty) {
-      print('vswhere returned empty path');
-      return {};
-    }
+    if (vsPath.isEmpty) return {};
 
     final vcvarsPath = '$vsPath\\VC\\Auxiliary\\Build\\vcvarsall.bat';
-    if (!await File(vcvarsPath).exists()) {
-      print('vcvarsall.bat not found at $vcvarsPath');
-      return {};
-    }
+    if (!await File(vcvarsPath).exists()) return {};
 
-    // To avoid Dart process argument escaping issues on Windows, we write a temporary
-    // batch file that calls vcvarsall.bat and prints the environment, then run it.
+    final vcvarsArch = targetArch == Architecture.arm64
+        ? 'arm64'
+        : (targetArch == Architecture.ia32 ? 'x86' : 'amd64');
+
     final tempDir = Directory.systemTemp;
     final tempFile = File(
       '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}.bat',
     );
-    try {
-      await tempFile.writeAsString(
-        '@echo off\ncall "$vcvarsPath" amd64\nset\n',
-      );
-    } catch (e) {
-      print('Failed to write temporary batch file: $e');
-      return {};
-    }
-
+    await tempFile.writeAsString(
+      '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',
+    );
     final envRes = await Process.run('cmd.exe', ['/c', tempFile.path]);
-
     try {
       await tempFile.delete();
     } catch (_) {}
 
-    if (envRes.exitCode != 0) {
-      print(
-        'Temporary MSVC environment batch file failed with exit code ${envRes.exitCode}',
-      );
-      print('vcvarsall.bat stdout: ${envRes.stdout}');
-      print('vcvarsall.bat stderr: ${envRes.stderr}');
-      return {};
-    }
+    if (envRes.exitCode != 0) return {};
 
     final envMap = <String, String>{};
-    final lines = envRes.stdout.toString().split('\n');
-    for (final line in lines) {
+    for (final line in envRes.stdout.toString().split('\n')) {
       final parts = line.split('=');
       if (parts.length >= 2) {
         final key = parts[0].trim();
@@ -279,8 +531,7 @@ Future<Map<String, String>> getMSVCEnvironment() async {
       }
     }
     return envMap;
-  } catch (e) {
-    print('Error detecting MSVC environment: $e');
+  } catch (_) {
     return {};
   }
 }

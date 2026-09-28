@@ -16,7 +16,7 @@ name: resource_scope
 description: Zone-based automatic scoped resource management for deterministic FFI and native memory disposal in Dart.
 version: 0.1.0
 resolution: workspace
-repository: https://github.com/google/scientific_dart
+repository: https://github.com/google/scientific_dart/tree/main/pkgs/resource_scope
 
 environment:
   sdk: ^3.10.0

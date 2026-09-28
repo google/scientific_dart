@@ -7,6 +7,7 @@ build/
 *.exe
 
 # Compiled Shared Library Asset Binaries (Loaded dynamically via FFI/Native Assets)
+dist/
 *.so
 *.dylib
 *.dll

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:math' as math;
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
-
 import 'dart:typed_data';
 
 void main() {
@@ -234,7 +234,7 @@ void main() {
     test(
       'Verify fft() and ifft() throws StateError on native plan allocation failure',
       () => NDArray.scope(() {
-        final a = NDArray<double>.fromList(Float64List.fromList([1.0, 2.0]), [
+        final a = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
           2,
         ], DType.float64);
 
@@ -646,7 +646,7 @@ void main() {
     test(
       'fft() and ifft() processing complex inputs directly',
       () => NDArray.scope(() {
-        final complexSignal = NDArray<Complex>.fromList(
+        final complexSignal = NDArray.fromList(
           [Complex(1.0, 1.0), Complex(2.0, 2.0)],
           [2],
           DType.complex128,
@@ -671,11 +671,7 @@ void main() {
     test(
       'fft() and ifft() with real inputs and zero padding padding checks',
       () {
-        final realSignal = NDArray<double>.fromList(
-          [1.0, 2.0],
-          [2],
-          DType.float64,
-        );
+        final realSignal = NDArray.fromList([1.0, 2.0], [2], DType.float64);
 
         // 1. fft with zero-padding (n = 4)
         final freqPadded = fft(realSignal, n: 4);
@@ -725,7 +721,7 @@ void main() {
     test(
       'FFT and IFFT zero-padding with ComplexList inputs and outputs',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([4], DType.complex128);
+        final a = NDArray.create([4], DType.complex128);
         a.setCell([0], Complex(1.0, 0.0));
         a.setCell([1], Complex(2.0, 0.0));
         a.setCell([2], Complex(3.0, 0.0));
@@ -747,7 +743,7 @@ void main() {
       'Zero-copy FFT and IFFT contiguous Float64 complex128 correctness',
       () {
         // 1. 1D Complex Vector Zero-Copy FFT and IFFT
-        final a = NDArray<Complex>.fromList(
+        final a = NDArray.fromList(
           [
             Complex(1.0, 0.0),
             Complex(2.0, 0.0),
@@ -789,7 +785,7 @@ void main() {
         expect(resIFFT.getCell([3]).imag, closeTo(0.0, 1e-10));
 
         // 2. High-Dimensional Stacked 2D Complex Matrix Zero-Copy FFT and IFFT
-        final mat = NDArray<Complex>.fromList(
+        final mat = NDArray.fromList(
           [
             Complex(1.0, 0.0),
             Complex(2.0, 0.0),
@@ -821,7 +817,7 @@ void main() {
     );
 
     test('Multi-dimensional axis support inside fft() and ifft()', () {
-      final mat = NDArray<Complex>.fromList(
+      final mat = NDArray.fromList(
         [
           Complex(1.0, 0.0),
           Complex(1.0, 0.0),
@@ -1075,22 +1071,20 @@ void main() {
         'disposed out buffer throws StateError',
         () => NDArray.scope(() {
           final a = NDArray.zeros([8], DType.float64);
-          final complexInput = NDArray<Complex>.zeros([5], DType.complex128);
+          final complexInput = NDArray.zeros([5], DType.complex128);
           final outComplex = NDArray<Complex128>.zeros([8], DType.complex128);
           outComplex.dispose();
 
           expect(() => fft(a, out: outComplex), throwsStateError);
           expect(() => ifft(complexInput, out: outComplex), throwsStateError);
 
-          final outReal = NDArray<double>.zeros([8], DType.float64);
+          final outReal = NDArray.zeros([8], DType.float64);
           outReal.dispose();
           final rfftOut = NDArray<Complex128>.zeros([5], DType.complex128);
           rfftOut.dispose();
           expect(() => rfft(a, out: rfftOut), throwsStateError);
 
-          final complexInputForIrfft = NDArray<Complex>.zeros([
-            5,
-          ], DType.complex128);
+          final complexInputForIrfft = NDArray.zeros([5], DType.complex128);
           expect(
             () => irfft(complexInputForIrfft, n: 8, out: outReal),
             throwsStateError,
@@ -1123,7 +1117,7 @@ void main() {
           final outRfftWrong = NDArray<Complex64>.zeros([5], DType.complex64);
           expect(() => rfft(a64, out: outRfftWrong), throwsArgumentError);
 
-          final outIrfftWrong = NDArray<double>.zeros([8], DType.float32);
+          final outIrfftWrong = NDArray.zeros([8], DType.float32);
           final rfftIn = NDArray<Complex128>.zeros([5], DType.complex128);
           expect(
             () => irfft(rfftIn, n: 8, out: outIrfftWrong),
@@ -1174,6 +1168,192 @@ void main() {
 
           clearFFTPlanCache();
         },
+      );
+    });
+
+    group('PocketFFT Prime Lengths, Parity & Extended Real/Hermitian FFTs', () {
+      test(
+        'Prime-length 1D fft/ifft and rfft/irfft (n = 997 and n = 10007) accuracy and performance',
+        () => NDArray.scope(() {
+          for (final n in [997, 10007]) {
+            final signal = NDArray.fromList(
+              Float64List.fromList(
+                List<double>.generate(
+                  n,
+                  (i) => math.sin(0.11 * i) - 0.5 * math.cos(0.07 * i),
+                ),
+              ),
+              [n],
+              DType.float64,
+            );
+
+            // Warm up plans
+            fft(signal);
+            rfft(signal);
+
+            final sw = Stopwatch()..start();
+            final spec = fft(signal);
+            final rec = ifft(spec);
+            final rspec = rfft(signal);
+            final rrec = irfft(rspec, n: n);
+            sw.stop();
+
+            expect(
+              sw.elapsedMilliseconds,
+              lessThan(50),
+              reason: 'Prime FFT n=$n took ${sw.elapsedMilliseconds}ms',
+            );
+
+            for (var i = 0; i < n; i++) {
+              final orig = signal.getCell([i]);
+              expect((rec.getCell([i]).real - orig).abs(), lessThan(1e-10));
+              expect(rec.getCell([i]).imag.abs(), lessThan(1e-10));
+              expect((rrec.getCell([i]) - orig).abs(), lessThan(1e-10));
+            }
+          }
+        }),
+      );
+
+      test(
+        'irfft for odd n truncates input.shape[axis] > n ~/ 2 + 1 to n ~/ 2 + 1 bins',
+        () => NDArray.scope(() {
+          final fullBins = NDArray.fromList(
+            [
+              Complex(15.0, 0.0),
+              Complex(-2.5, 3.4409548011779334),
+              Complex(-2.5, 0.8122992405822658),
+              Complex(999.0, -888.0),
+              Complex(-777.0, 666.0),
+            ],
+            [5],
+            DType.complex128,
+          );
+          final exactBins = fullBins.slice([const Slice(start: 0, stop: 3)]);
+
+          final resFromOverlong = irfft(fullBins, n: 5);
+          final resFromExact = irfft(exactBins, n: 5);
+
+          expect(resFromOverlong.shape, [5]);
+          for (var i = 0; i < 5; i++) {
+            expect(
+              resFromOverlong.getCell([i]),
+              closeTo(resFromExact.getCell([i]), 1e-12),
+            );
+            expect(resFromOverlong.getCell([i]), closeTo(i + 1.0, 1e-10));
+          }
+        }),
+      );
+
+      test(
+        'rfft, rfft2, rfftn, and ihfft reject complex inputs for both even and odd n',
+        () => NDArray.scope(() {
+          final c128 = NDArray.fromList(
+            [
+              Complex(1.0, 2.0),
+              Complex(3.0, 4.0),
+              Complex(5.0, 6.0),
+              Complex(7.0, 8.0),
+              Complex(9.0, 10.0),
+            ],
+            [5],
+            DType.complex128,
+          );
+          final c64 = c128.astype(DType.complex64);
+
+          expect(() => rfft(c128 as dynamic, n: 4), throwsArgumentError);
+          expect(() => rfft(c128 as dynamic, n: 5), throwsArgumentError);
+          expect(() => rfft(c64 as dynamic, n: 4), throwsArgumentError);
+          expect(() => rfft(c64 as dynamic, n: 5), throwsArgumentError);
+
+          expect(() => ihfft(c128 as dynamic, n: 4), throwsArgumentError);
+          expect(() => ihfft(c128 as dynamic, n: 5), throwsArgumentError);
+          expect(() => ihfft(c64 as dynamic, n: 4), throwsArgumentError);
+          expect(() => ihfft(c64 as dynamic, n: 5), throwsArgumentError);
+
+          final c128Mat = c128.slice([const Slice(start: 0, stop: 4)]).reshape([
+            2,
+            2,
+          ]);
+          expect(() => rfft2(c128Mat as dynamic), throwsArgumentError);
+          expect(() => rfftn(c128Mat as dynamic), throwsArgumentError);
+        }),
+      );
+
+      test(
+        'rfft2, irfft2, rfftn, irfftn roundtrip for even and odd dimensions',
+        () => NDArray.scope(() {
+          // 2D odd shape [3, 5]
+          final mat = NDArray.fromList(
+            Float64List.fromList(
+              List<double>.generate(15, (i) => (i + 1) * 0.75),
+            ),
+            [3, 5],
+            DType.float64,
+          );
+          final f2 = rfft2(mat);
+          expect(f2.shape, [3, 3]); // 5 ~/ 2 + 1 = 3
+          expect(f2.dtype, DType.complex128);
+
+          final rec2 = irfft2(f2, s: [3, 5]);
+          expect(rec2.shape, [3, 5]);
+          expect(rec2.dtype, DType.float64);
+          for (var i = 0; i < 3; i++) {
+            for (var j = 0; j < 5; j++) {
+              expect(rec2.getCell([i, j]), closeTo(mat.getCell([i, j]), 1e-10));
+            }
+          }
+
+          // 3D shape [2, 3, 7]
+          final t3 = NDArray.fromList(
+            Float64List.fromList(
+              List<double>.generate(42, (i) => math.cos(0.2 * i)),
+            ),
+            [2, 3, 7],
+            DType.float64,
+          );
+          final fn = rfftn(t3);
+          expect(fn.shape, [2, 3, 4]); // 7 ~/ 2 + 1 = 4
+          final recn = irfftn(fn, s: [2, 3, 7]);
+          expect(recn.shape, [2, 3, 7]);
+          for (var i = 0; i < 2; i++) {
+            for (var j = 0; j < 3; j++) {
+              for (var k = 0; k < 7; k++) {
+                expect(
+                  recn.getCell([i, j, k]),
+                  closeTo(t3.getCell([i, j, k]), 1e-10),
+                );
+              }
+            }
+          }
+        }),
+      );
+
+      test(
+        'hfft and ihfft roundtrip for even and odd n including out parameter',
+        () => NDArray.scope(() {
+          for (final n in [4, 5, 8, 9]) {
+            final realSpec = NDArray.fromList(
+              Float64List.fromList(
+                List<double>.generate(
+                  n,
+                  (i) => (i + 1.0) * (i.isEven ? 1 : -0.5),
+                ),
+              ),
+              [n],
+              DType.float64,
+            );
+            final herm = ihfft(realSpec, n: n);
+            expect(herm.shape, [n ~/ 2 + 1]);
+            expect(herm.dtype, DType.complex128);
+
+            final out = NDArray<Float64>.zeros([n], DType.float64);
+            final rec = hfft(herm, n: n, out: out);
+            expect(identical(rec, out), isTrue);
+            for (var i = 0; i < n; i++) {
+              expect(rec.getCell([i]), closeTo(realSpec.getCell([i]), 1e-10));
+            }
+          }
+        }),
       );
     });
   });

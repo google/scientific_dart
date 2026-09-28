@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/ndarray_bindings.dart';
 

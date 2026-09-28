@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -87,10 +86,8 @@ void main() {
           Complex(-math.pi / 4, 0.5),
           Complex(1.0, -2.0),
         ];
-        final aC128 = NDArray<Complex>.fromList(c128List, [
-          4,
-        ], DType.complex128);
-        final aC64 = NDArray<Complex>.fromList(c128List, [4], DType.complex64);
+        final aC128 = NDArray.fromList(c128List, [4], DType.complex128);
+        final aC64 = NDArray.fromList(c128List, [4], DType.complex64);
 
         // Sin complex: sin(x + iy) = sin(x)cosh(y) + i cos(x)sinh(y)
         final sC128 = sin(aC128);
@@ -271,8 +268,8 @@ void main() {
     test('asin, acos, atan complex types', () {
       NDArray.scope(() {
         final cList = [Complex(0.0, 0.0), Complex(2.0, 0.0), Complex(0.0, 1.0)];
-        final c128 = NDArray<Complex>.fromList(cList, [3], DType.complex128);
-        final c64 = NDArray<Complex>.fromList(cList, [3], DType.complex64);
+        final c128 = NDArray.fromList(cList, [3], DType.complex128);
+        final c64 = NDArray.fromList(cList, [3], DType.complex64);
 
         final resAsin = asin(c128);
         expect(resAsin.dtype, DType.complex128);
@@ -358,11 +355,7 @@ void main() {
         expect(outAtan2.getCell([2]), closeTo(math.pi, 1e-14));
 
         // Complex throws UnsupportedError
-        final cArray = NDArray<Complex>.fromList(
-          [Complex(1, 0)],
-          [1],
-          DType.complex128,
-        );
+        final cArray = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
         final rArray = NDArray.fromList([1.0], [1], DType.float64);
         expect(() => atan2(cArray, rArray), throwsUnsupportedError);
         expect(() => atan2(rArray, cArray), throwsUnsupportedError);
@@ -375,124 +368,127 @@ void main() {
     });
   });
 
-  group('3. Hyperbolic & Inverse Hyperbolic Functions (sinh, cosh, tanh, asinh, acosh, atanh)', () {
-    test('Hyperbolic on Float64, Float32, strided', () {
-      NDArray.scope(() {
-        final vals = [0.0, 0.5, 1.0, 2.0, -1.0];
-        final a64 = NDArray.fromList(vals, [5], DType.float64);
-        final a32 = NDArray.fromList(vals, [5], DType.float32);
+  group(
+    '3. Hyperbolic & Inverse Hyperbolic Functions (sinh, cosh, tanh, asinh, acosh, atanh)',
+    () {
+      test('Hyperbolic on Float64, Float32, strided', () {
+        NDArray.scope(() {
+          final vals = [0.0, 0.5, 1.0, 2.0, -1.0];
+          final a64 = NDArray.fromList(vals, [5], DType.float64);
+          final a32 = NDArray.fromList(vals, [5], DType.float32);
 
-        final s = sinh(a64);
-        final c = cosh(a64);
-        final t = tanh(a64);
+          final s = sinh(a64);
+          final c = cosh(a64);
+          final t = tanh(a64);
 
-        expect(s.getCell([0]), closeTo(0.0, 1e-14));
-        expect(c.getCell([0]), closeTo(1.0, 1e-14));
-        expect(t.getCell([0]), closeTo(0.0, 1e-14));
+          expect(s.getCell([0]), closeTo(0.0, 1e-14));
+          expect(c.getCell([0]), closeTo(1.0, 1e-14));
+          expect(t.getCell([0]), closeTo(0.0, 1e-14));
 
-        final expectedSinh1 = (math.exp(1.0) - math.exp(-1.0)) / 2.0;
-        final expectedCosh1 = (math.exp(1.0) + math.exp(-1.0)) / 2.0;
-        expect(s.getCell([2]), closeTo(expectedSinh1, 1e-14));
-        expect(c.getCell([2]), closeTo(expectedCosh1, 1e-14));
-        expect(t.getCell([2]), closeTo(expectedSinh1 / expectedCosh1, 1e-14));
+          final expectedSinh1 = (math.exp(1.0) - math.exp(-1.0)) / 2.0;
+          final expectedCosh1 = (math.exp(1.0) + math.exp(-1.0)) / 2.0;
+          expect(s.getCell([2]), closeTo(expectedSinh1, 1e-14));
+          expect(c.getCell([2]), closeTo(expectedCosh1, 1e-14));
+          expect(t.getCell([2]), closeTo(expectedSinh1 / expectedCosh1, 1e-14));
 
-        // Float32
-        expect(sinh(a32).dtype, DType.float32);
-        expect(cosh(a32).dtype, DType.float32);
-        expect(tanh(a32).dtype, DType.float32);
+          // Float32
+          expect(sinh(a32).dtype, DType.float32);
+          expect(cosh(a32).dtype, DType.float32);
+          expect(tanh(a32).dtype, DType.float32);
 
-        // Strided
-        final strided = a64.slice([const Slice(start: 0, stop: 5, step: 2)]);
-        expect(sinh(strided).shape, [3]);
-        expect(cosh(strided).shape, [3]);
-        expect(tanh(strided).shape, [3]);
+          // Strided
+          final strided = a64.slice([const Slice(start: 0, stop: 5, step: 2)]);
+          expect(sinh(strided).shape, [3]);
+          expect(cosh(strided).shape, [3]);
+          expect(tanh(strided).shape, [3]);
+        });
       });
-    });
 
-    test('Hyperbolic on Complex128 and Complex64', () {
-      NDArray.scope(() {
-        final cVals = [
-          Complex(0.0, 0.0),
-          Complex(1.0, math.pi / 4),
-          Complex(-0.5, 0.5),
-        ];
-        final a128 = NDArray<Complex>.fromList(cVals, [3], DType.complex128);
-        final a64 = NDArray<Complex>.fromList(cVals, [3], DType.complex64);
+      test('Hyperbolic on Complex128 and Complex64', () {
+        NDArray.scope(() {
+          final cVals = [
+            Complex(0.0, 0.0),
+            Complex(1.0, math.pi / 4),
+            Complex(-0.5, 0.5),
+          ];
+          final a128 = NDArray.fromList(cVals, [3], DType.complex128);
+          final a64 = NDArray.fromList(cVals, [3], DType.complex64);
 
-        final s = sinh(a128);
-        final c = cosh(a128);
-        final t = tanh(a128);
+          final s = sinh(a128);
+          final c = cosh(a128);
+          final t = tanh(a128);
 
-        expect(s.dtype, DType.complex128);
-        expect(c.dtype, DType.complex128);
-        expect(t.dtype, DType.complex128);
+          expect(s.dtype, DType.complex128);
+          expect(c.dtype, DType.complex128);
+          expect(t.dtype, DType.complex128);
 
-        expect(s.getCell([0]).real, closeTo(0.0, 1e-14));
-        expect(c.getCell([0]).real, closeTo(1.0, 1e-14));
-        expect(t.getCell([0]).real, closeTo(0.0, 1e-14));
+          expect(s.getCell([0]).real, closeTo(0.0, 1e-14));
+          expect(c.getCell([0]).real, closeTo(1.0, 1e-14));
+          expect(t.getCell([0]).real, closeTo(0.0, 1e-14));
 
-        // sinh(x+iy) = sinh(x)cos(y) + i cosh(x)sin(y)
-        final exSinhReal =
-            ((math.exp(1.0) - math.exp(-1.0)) / 2.0) * math.cos(math.pi / 4);
-        final exSinhImag =
-            ((math.exp(1.0) + math.exp(-1.0)) / 2.0) * math.sin(math.pi / 4);
-        expect(s.getCell([1]).real, closeTo(exSinhReal, 1e-14));
-        expect(s.getCell([1]).imag, closeTo(exSinhImag, 1e-14));
+          // sinh(x+iy) = sinh(x)cos(y) + i cosh(x)sin(y)
+          final exSinhReal =
+              ((math.exp(1.0) - math.exp(-1.0)) / 2.0) * math.cos(math.pi / 4);
+          final exSinhImag =
+              ((math.exp(1.0) + math.exp(-1.0)) / 2.0) * math.sin(math.pi / 4);
+          expect(s.getCell([1]).real, closeTo(exSinhReal, 1e-14));
+          expect(s.getCell([1]).imag, closeTo(exSinhImag, 1e-14));
 
-        // Complex64
-        expect(sinh(a64).dtype, DType.complex64);
-        expect(cosh(a64).dtype, DType.complex64);
-        expect(tanh(a64).dtype, DType.complex64);
+          // Complex64
+          expect(sinh(a64).dtype, DType.complex64);
+          expect(cosh(a64).dtype, DType.complex64);
+          expect(tanh(a64).dtype, DType.complex64);
+        });
       });
-    });
 
-    test('Inverse Hyperbolic (asinh, acosh, atanh)', () {
-      NDArray.scope(() {
-        final asinhVals = [0.0, 1.0, 2.0, -1.0];
-        final acoshVals = [1.0, 1.5, 2.0, 5.0];
-        final atanhVals = [0.0, 0.5, -0.5, 0.8];
+      test('Inverse Hyperbolic (asinh, acosh, atanh)', () {
+        NDArray.scope(() {
+          final asinhVals = [0.0, 1.0, 2.0, -1.0];
+          final acoshVals = [1.0, 1.5, 2.0, 5.0];
+          final atanhVals = [0.0, 0.5, -0.5, 0.8];
 
-        final arrAsinh = NDArray.fromList(asinhVals, [4], DType.float64);
-        final arrAcosh = NDArray.fromList(acoshVals, [4], DType.float64);
-        final arrAtanh = NDArray.fromList(atanhVals, [4], DType.float64);
+          final arrAsinh = NDArray.fromList(asinhVals, [4], DType.float64);
+          final arrAcosh = NDArray.fromList(acoshVals, [4], DType.float64);
+          final arrAtanh = NDArray.fromList(atanhVals, [4], DType.float64);
 
-        final resAsinh = asinh(arrAsinh);
-        final resAcosh = acosh(arrAcosh);
-        final resAtanh = atanh(arrAtanh);
+          final resAsinh = asinh(arrAsinh);
+          final resAcosh = acosh(arrAcosh);
+          final resAtanh = atanh(arrAtanh);
 
-        expect(resAsinh.getCell([0]), closeTo(0.0, 1e-14));
-        expect(
-          resAsinh.getCell([1]),
-          closeTo(math.log(1.0 + math.sqrt(2.0)), 1e-14),
-        );
+          expect(resAsinh.getCell([0]), closeTo(0.0, 1e-14));
+          expect(
+            resAsinh.getCell([1]),
+            closeTo(math.log(1.0 + math.sqrt(2.0)), 1e-14),
+          );
 
-        expect(resAcosh.getCell([0]), closeTo(0.0, 1e-14));
-        expect(
-          resAcosh.getCell([2]),
-          closeTo(math.log(2.0 + math.sqrt(3.0)), 1e-14),
-        );
+          expect(resAcosh.getCell([0]), closeTo(0.0, 1e-14));
+          expect(
+            resAcosh.getCell([2]),
+            closeTo(math.log(2.0 + math.sqrt(3.0)), 1e-14),
+          );
 
-        expect(resAtanh.getCell([0]), closeTo(0.0, 1e-14));
-        expect(
-          resAtanh.getCell([1]),
-          closeTo(0.5 * math.log(1.5 / 0.5), 1e-14),
-        );
+          expect(resAtanh.getCell([0]), closeTo(0.0, 1e-14));
+          expect(
+            resAtanh.getCell([1]),
+            closeTo(0.5 * math.log(1.5 / 0.5), 1e-14),
+          );
 
-        // Complex inverse hyperbolic
-        final cVals = [Complex(1.0, 0.5), Complex(0.0, 2.0)];
-        final cArr = NDArray<Complex>.fromList(cVals, [2], DType.complex128);
-        expect(asinh(cArr).dtype, DType.complex128);
-        expect(acosh(cArr).dtype, DType.complex128);
-        expect(atanh(cArr).dtype, DType.complex128);
+          // Complex inverse hyperbolic
+          final cVals = [Complex(1.0, 0.5), Complex(0.0, 2.0)];
+          final cArr = NDArray.fromList(cVals, [2], DType.complex128);
+          expect(asinh(cArr).dtype, DType.complex128);
+          expect(acosh(cArr).dtype, DType.complex128);
+          expect(atanh(cArr).dtype, DType.complex128);
 
-        // Strided views
-        final stridedAsinh = arrAsinh.slice([
-          const Slice(start: 0, stop: 4, step: 2),
-        ]);
-        expect(asinh(stridedAsinh).shape, [2]);
+          // Strided views
+          final stridedAsinh = arrAsinh.slice([
+            const Slice(start: 0, stop: 4, step: 2),
+          ]);
+          expect(asinh(stridedAsinh).shape, [2]);
+        });
       });
-    });
-  });
+    },
+  );
 
   group('4. Sinc, Angle Conversions & Hypot', () {
     test('sinc on Float64, Float32, Complex, and strided', () {
@@ -519,7 +515,7 @@ void main() {
         );
 
         // Complex sinc
-        final cA = NDArray<Complex>.fromList(
+        final cA = NDArray.fromList(
           [Complex(0.0, 0.0), Complex(0.5, 0.0)],
           [2],
           DType.complex128,
@@ -571,11 +567,7 @@ void main() {
         expect(radInt.getCell([0]), closeTo(math.pi, 1e-14));
 
         // Complex throws UnsupportedError
-        final cArr = NDArray<Complex>.fromList(
-          [Complex(180, 0)],
-          [1],
-          DType.complex128,
-        );
+        final cArr = NDArray.fromList([Complex(180, 0)], [1], DType.complex128);
         expect(() => deg2rad(cArr), throwsUnsupportedError);
         expect(() => rad2deg(cArr), throwsUnsupportedError);
       });
@@ -601,12 +593,12 @@ void main() {
         expect(hMat.getCell([1, 1]), closeTo(13.0, 1e-14));
 
         // Complex hypot
-        final aCpx = NDArray<Complex>.fromList(
+        final aCpx = NDArray.fromList(
           [Complex(3.0, 0.0)],
           [1],
           DType.complex128,
         );
-        final bCpx = NDArray<Complex>.fromList(
+        final bCpx = NDArray.fromList(
           [Complex(4.0, 0.0)],
           [1],
           DType.complex128,
@@ -628,168 +620,171 @@ void main() {
     });
   });
 
-  group('5. Exponential & Logarithmic Functions (exp, log, log2, log10, expm1, log1p, logaddexp, logaddexp2)', () {
-    test('exp, log, log2, log10 on Float64, Float32, Integers', () {
-      NDArray.scope(() {
-        final vals = [0.0, 1.0, 2.0, -1.0, 10.0];
-        final a = NDArray.fromList(vals, [5], DType.float64);
-        final a32 = NDArray.fromList(vals, [5], DType.float32);
+  group(
+    '5. Exponential & Logarithmic Functions (exp, log, log2, log10, expm1, log1p, logaddexp, logaddexp2)',
+    () {
+      test('exp, log, log2, log10 on Float64, Float32, Integers', () {
+        NDArray.scope(() {
+          final vals = [0.0, 1.0, 2.0, -1.0, 10.0];
+          final a = NDArray.fromList(vals, [5], DType.float64);
+          final a32 = NDArray.fromList(vals, [5], DType.float32);
 
-        // exp
-        final expRes = exp(a);
-        expect(expRes.getCell([0]), closeTo(1.0, 1e-14));
-        expect(expRes.getCell([1]), closeTo(math.e, 1e-14));
-        expect(expRes.getCell([2]), closeTo(math.e * math.e, 1e-14));
-        expect(expRes.getCell([3]), closeTo(1.0 / math.e, 1e-14));
+          // exp
+          final expRes = exp(a);
+          expect(expRes.getCell([0]), closeTo(1.0, 1e-14));
+          expect(expRes.getCell([1]), closeTo(math.e, 1e-14));
+          expect(expRes.getCell([2]), closeTo(math.e * math.e, 1e-14));
+          expect(expRes.getCell([3]), closeTo(1.0 / math.e, 1e-14));
 
-        // log
-        final logVals = [1.0, math.e, math.e * math.e, 10.0];
-        final aLog = NDArray.fromList(logVals, [4], DType.float64);
-        final logRes = log(aLog);
-        expect(logRes.getCell([0]), closeTo(0.0, 1e-14));
-        expect(logRes.getCell([1]), closeTo(1.0, 1e-14));
-        expect(logRes.getCell([2]), closeTo(2.0, 1e-14));
+          // log
+          final logVals = [1.0, math.e, math.e * math.e, 10.0];
+          final aLog = NDArray.fromList(logVals, [4], DType.float64);
+          final logRes = log(aLog);
+          expect(logRes.getCell([0]), closeTo(0.0, 1e-14));
+          expect(logRes.getCell([1]), closeTo(1.0, 1e-14));
+          expect(logRes.getCell([2]), closeTo(2.0, 1e-14));
 
-        // log2
-        final log2Vals = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
-        final aLog2 = NDArray.fromList(log2Vals, [6], DType.float64);
-        final log2Res = log2(aLog2);
-        for (var i = 0; i < 6; i++) {
-          expect(log2Res.getCell([i]), closeTo(i.toDouble(), 1e-14));
-        }
+          // log2
+          final log2Vals = [1.0, 2.0, 4.0, 8.0, 16.0, 32.0];
+          final aLog2 = NDArray.fromList(log2Vals, [6], DType.float64);
+          final log2Res = log2(aLog2);
+          for (var i = 0; i < 6; i++) {
+            expect(log2Res.getCell([i]), closeTo(i.toDouble(), 1e-14));
+          }
 
-        // log10
-        final log10Vals = [1.0, 10.0, 100.0, 1000.0];
-        final aLog10 = NDArray.fromList(log10Vals, [4], DType.float64);
-        final log10Res = log10(aLog10);
-        for (var i = 0; i < 4; i++) {
-          expect(log10Res.getCell([i]), closeTo(i.toDouble(), 1e-14));
-        }
+          // log10
+          final log10Vals = [1.0, 10.0, 100.0, 1000.0];
+          final aLog10 = NDArray.fromList(log10Vals, [4], DType.float64);
+          final log10Res = log10(aLog10);
+          for (var i = 0; i < 4; i++) {
+            expect(log10Res.getCell([i]), closeTo(i.toDouble(), 1e-14));
+          }
 
-        // Float32
-        expect(exp(a32).dtype, DType.float32);
-        expect(log(a32).dtype, DType.float32);
-        expect(log2(a32).dtype, DType.float32);
-        expect(log10(a32).dtype, DType.float32);
+          // Float32
+          expect(exp(a32).dtype, DType.float32);
+          expect(log(a32).dtype, DType.float32);
+          expect(log2(a32).dtype, DType.float32);
+          expect(log10(a32).dtype, DType.float32);
 
-        // Strided views
-        final strided = a.slice([const Slice(start: 0, stop: 5, step: 2)]);
-        expect(exp(strided).shape, [3]);
-        expect(log(strided).shape, [3]);
-        expect(log2(strided).shape, [3]);
-        expect(log10(strided).shape, [3]);
+          // Strided views
+          final strided = a.slice([const Slice(start: 0, stop: 5, step: 2)]);
+          expect(exp(strided).shape, [3]);
+          expect(log(strided).shape, [3]);
+          expect(log2(strided).shape, [3]);
+          expect(log10(strided).shape, [3]);
+        });
       });
-    });
 
-    test('Complex exponential & logarithmic functions', () {
-      NDArray.scope(() {
-        final cVals = [
-          Complex(0.0, 0.0),
-          Complex(1.0, math.pi),
-          Complex(0.0, math.pi / 2),
-          Complex(2.0, 1.0),
-        ];
-        final aC128 = NDArray<Complex>.fromList(cVals, [4], DType.complex128);
-        final aC64 = NDArray<Complex>.fromList(cVals, [4], DType.complex64);
+      test('Complex exponential & logarithmic functions', () {
+        NDArray.scope(() {
+          final cVals = [
+            Complex(0.0, 0.0),
+            Complex(1.0, math.pi),
+            Complex(0.0, math.pi / 2),
+            Complex(2.0, 1.0),
+          ];
+          final aC128 = NDArray.fromList(cVals, [4], DType.complex128);
+          final aC64 = NDArray.fromList(cVals, [4], DType.complex64);
 
-        // exp(0) = 1, exp(1 + i*pi) = -e, exp(i*pi/2) = i
-        final expC = exp(aC128);
-        expect(expC.dtype, DType.complex128);
-        expect(expC.getCell([0]).real, closeTo(1.0, 1e-14));
-        expect(expC.getCell([0]).imag, closeTo(0.0, 1e-14));
-        expect(expC.getCell([1]).real, closeTo(-math.e, 1e-14));
-        expect(expC.getCell([1]).imag, closeTo(0.0, 1e-14));
-        expect(expC.getCell([2]).real, closeTo(0.0, 1e-14));
-        expect(expC.getCell([2]).imag, closeTo(1.0, 1e-14));
+          // exp(0) = 1, exp(1 + i*pi) = -e, exp(i*pi/2) = i
+          final expC = exp(aC128);
+          expect(expC.dtype, DType.complex128);
+          expect(expC.getCell([0]).real, closeTo(1.0, 1e-14));
+          expect(expC.getCell([0]).imag, closeTo(0.0, 1e-14));
+          expect(expC.getCell([1]).real, closeTo(-math.e, 1e-14));
+          expect(expC.getCell([1]).imag, closeTo(0.0, 1e-14));
+          expect(expC.getCell([2]).real, closeTo(0.0, 1e-14));
+          expect(expC.getCell([2]).imag, closeTo(1.0, 1e-14));
 
-        // log complex
-        final logC = log(aC128);
-        expect(logC.dtype, DType.complex128);
-        expect(
-          logC.getCell([1]).real,
-          closeTo(
-            math.sqrt(1 + math.pi * math.pi) > 0
-                ? math.log(Complex(1.0, math.pi).abs)
-                : 0,
-            1e-14,
-          ),
-        );
+          // log complex
+          final logC = log(aC128);
+          expect(logC.dtype, DType.complex128);
+          expect(
+            logC.getCell([1]).real,
+            closeTo(
+              math.sqrt(1 + math.pi * math.pi) > 0
+                  ? math.log(Complex(1.0, math.pi).abs)
+                  : 0,
+              1e-14,
+            ),
+          );
 
-        // log2 & log10 complex
-        final log2C = log2(aC128);
-        final log10C = log10(aC128);
-        expect(log2C.dtype, DType.complex128);
-        expect(log10C.dtype, DType.complex128);
+          // log2 & log10 complex
+          final log2C = log2(aC128);
+          final log10C = log10(aC128);
+          expect(log2C.dtype, DType.complex128);
+          expect(log10C.dtype, DType.complex128);
 
-        // Complex64 checks
-        expect(exp(aC64).dtype, DType.complex64);
-        expect(log(aC64).dtype, DType.complex64);
-        expect(log2(aC64).dtype, DType.complex64);
-        expect(log10(aC64).dtype, DType.complex64);
+          // Complex64 checks
+          expect(exp(aC64).dtype, DType.complex64);
+          expect(log(aC64).dtype, DType.complex64);
+          expect(log2(aC64).dtype, DType.complex64);
+          expect(log10(aC64).dtype, DType.complex64);
+        });
       });
-    });
 
-    test('expm1 and log1p high precision and complex branch', () {
-      NDArray.scope(() {
-        final smallVals = [0.0, 1e-15, -1e-15, 0.5, 1.0];
-        final a = NDArray.fromList(smallVals, [5], DType.float64);
+      test('expm1 and log1p high precision and complex branch', () {
+        NDArray.scope(() {
+          final smallVals = [0.0, 1e-15, -1e-15, 0.5, 1.0];
+          final a = NDArray.fromList(smallVals, [5], DType.float64);
 
-        final resExpm1 = expm1(a);
-        expect(resExpm1.getCell([0]), closeTo(0.0, 1e-15));
-        expect(resExpm1.getCell([1]), closeTo(1e-15, 1e-20));
-        expect(resExpm1.getCell([4]), closeTo(math.e - 1.0, 1e-14));
+          final resExpm1 = expm1(a);
+          expect(resExpm1.getCell([0]), closeTo(0.0, 1e-15));
+          expect(resExpm1.getCell([1]), closeTo(1e-15, 1e-20));
+          expect(resExpm1.getCell([4]), closeTo(math.e - 1.0, 1e-14));
 
-        final resLog1p = log1p(a);
-        expect(resLog1p.getCell([0]), closeTo(0.0, 1e-15));
-        expect(resLog1p.getCell([1]), closeTo(1e-15, 1e-20));
-        expect(resLog1p.getCell([4]), closeTo(math.log(2.0), 1e-14));
+          final resLog1p = log1p(a);
+          expect(resLog1p.getCell([0]), closeTo(0.0, 1e-15));
+          expect(resLog1p.getCell([1]), closeTo(1e-15, 1e-20));
+          expect(resLog1p.getCell([4]), closeTo(math.log(2.0), 1e-14));
 
-        // Complex expm1 & log1p
-        final cList = [
-          Complex(0.0, 0.0),
-          Complex(1e-10, 1e-10),
-          Complex(1.0, 1.0),
-        ];
-        final aCpx = NDArray<Complex>.fromList(cList, [3], DType.complex128);
-        final expm1C = expm1(aCpx);
-        final log1pC = log1p(aCpx);
-        expect(expm1C.getCell([0]).real, closeTo(0.0, 1e-14));
-        expect(expm1C.getCell([0]).imag, closeTo(0.0, 1e-14));
-        expect(log1pC.getCell([0]).real, closeTo(0.0, 1e-14));
-        expect(log1pC.getCell([0]).imag, closeTo(0.0, 1e-14));
+          // Complex expm1 & log1p
+          final cList = [
+            Complex(0.0, 0.0),
+            Complex(1e-10, 1e-10),
+            Complex(1.0, 1.0),
+          ];
+          final aCpx = NDArray.fromList(cList, [3], DType.complex128);
+          final expm1C = expm1(aCpx);
+          final log1pC = log1p(aCpx);
+          expect(expm1C.getCell([0]).real, closeTo(0.0, 1e-14));
+          expect(expm1C.getCell([0]).imag, closeTo(0.0, 1e-14));
+          expect(log1pC.getCell([0]).real, closeTo(0.0, 1e-14));
+          expect(log1pC.getCell([0]).imag, closeTo(0.0, 1e-14));
+        });
       });
-    });
 
-    test('logaddexp and logaddexp2 with broadcasting and strided views', () {
-      NDArray.scope(() {
-        final x1 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-        final x2 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+      test('logaddexp and logaddexp2 with broadcasting and strided views', () {
+        NDArray.scope(() {
+          final x1 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+          final x2 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
 
-        // logaddexp(x, x) = log(exp(x) + exp(x)) = log(2*exp(x)) = x + log(2)
-        final res = logaddexp(x1, x2);
-        expect(res.getCell([0]), closeTo(1.0 + math.log(2.0), 1e-14));
-        expect(res.getCell([1]), closeTo(2.0 + math.log(2.0), 1e-14));
-        expect(res.getCell([2]), closeTo(3.0 + math.log(2.0), 1e-14));
+          // logaddexp(x, x) = log(exp(x) + exp(x)) = log(2*exp(x)) = x + log(2)
+          final res = logaddexp(x1, x2);
+          expect(res.getCell([0]), closeTo(1.0 + math.log(2.0), 1e-14));
+          expect(res.getCell([1]), closeTo(2.0 + math.log(2.0), 1e-14));
+          expect(res.getCell([2]), closeTo(3.0 + math.log(2.0), 1e-14));
 
-        // logaddexp2(x, x) = log2(2^x + 2^x) = log2(2^(x+1)) = x + 1
-        final res2 = logaddexp2(x1, x2);
-        expect(res2.getCell([0]), closeTo(2.0, 1e-14));
-        expect(res2.getCell([1]), closeTo(3.0, 1e-14));
-        expect(res2.getCell([2]), closeTo(4.0, 1e-14));
+          // logaddexp2(x, x) = log2(2^x + 2^x) = log2(2^(x+1)) = x + 1
+          final res2 = logaddexp2(x1, x2);
+          expect(res2.getCell([0]), closeTo(2.0, 1e-14));
+          expect(res2.getCell([1]), closeTo(3.0, 1e-14));
+          expect(res2.getCell([2]), closeTo(4.0, 1e-14));
 
-        // Broadcasting: [3, 1] and [1, 2]
-        final m1 = NDArray.fromList([0.0, 1.0, 2.0], [3, 1], DType.float64);
-        final m2 = NDArray.fromList([0.0, 1.0], [1, 2], DType.float64);
-        final resBcast = logaddexp(m1, m2);
-        expect(resBcast.shape, [3, 2]);
-        expect(resBcast.getCell([0, 0]), closeTo(math.log(2.0), 1e-14));
+          // Broadcasting: [3, 1] and [1, 2]
+          final m1 = NDArray.fromList([0.0, 1.0, 2.0], [3, 1], DType.float64);
+          final m2 = NDArray.fromList([0.0, 1.0], [1, 2], DType.float64);
+          final resBcast = logaddexp(m1, m2);
+          expect(resBcast.shape, [3, 2]);
+          expect(resBcast.getCell([0, 0]), closeTo(math.log(2.0), 1e-14));
 
-        final resBcast2 = logaddexp2(m1, m2);
-        expect(resBcast2.shape, [3, 2]);
-        expect(resBcast2.getCell([0, 0]), closeTo(1.0, 1e-14));
+          final resBcast2 = logaddexp2(m1, m2);
+          expect(resBcast2.shape, [3, 2]);
+          expect(resBcast2.getCell([0, 0]), closeTo(1.0, 1e-14));
+        });
       });
-    });
-  });
+    },
+  );
 
   group('6. Special Functions (i0, gamma, erf)', () {
     test('i0 modified Bessel function order 0', () {
@@ -817,7 +812,7 @@ void main() {
           Complex(1.0, 1.0),
           Complex(20.0, 0.0),
         ];
-        final cArr = NDArray<Complex>.fromList(cList, [3], DType.complex128);
+        final cArr = NDArray.fromList(cList, [3], DType.complex128);
         final cRes = i0(cArr);
         expect(cRes.dtype, DType.complex128);
         expect(cRes.getCell([0]).real, closeTo(1.0, 1e-14));
@@ -860,11 +855,7 @@ void main() {
         expect(resInt.getCell([3]), closeTo(6.0, 1e-14));
 
         // Complex throws UnsupportedError
-        final cArr = NDArray<Complex>.fromList(
-          [Complex(1, 0)],
-          [1],
-          DType.complex128,
-        );
+        final cArr = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
         expect(() => gamma(cArr), throwsUnsupportedError);
       });
     });
@@ -888,195 +879,203 @@ void main() {
         expect(erf(a32).dtype, DType.float32);
 
         // Complex throws UnsupportedError
-        final cArr = NDArray<Complex>.fromList(
-          [Complex(1, 0)],
-          [1],
-          DType.complex128,
-        );
+        final cArr = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
         expect(() => erf(cArr), throwsUnsupportedError);
       });
     });
   });
 
-  group('7. Floating Point Classification & Properties (isnan, isinf, isfinite, copysign, isClose, allClose)', () {
-    test('isnan on real, complex, integer, boolean', () {
-      NDArray.scope(() {
-        final a64 = NDArray.fromList(
-          [1.0, double.nan, 3.0, double.infinity],
-          [4],
-          DType.float64,
-        );
-        final a32 = NDArray.fromList(
-          [1.0, double.nan, 3.0],
-          [3],
-          DType.float32,
-        );
-        final c128 = NDArray<Complex>.fromList(
-          [
-            Complex(1.0, 0.0),
-            Complex(double.nan, 1.0),
-            Complex(1.0, double.nan),
-          ],
-          [3],
-          DType.complex128,
-        );
-        final i32 = NDArray.fromList([1, 2, 3], [3], DType.int32);
+  group(
+    '7. Floating Point Classification & Properties (isnan, isinf, isfinite, copysign, isClose, allClose)',
+    () {
+      test('isnan on real, complex, integer, boolean', () {
+        NDArray.scope(() {
+          final a64 = NDArray.fromList(
+            [1.0, double.nan, 3.0, double.infinity],
+            [4],
+            DType.float64,
+          );
+          final a32 = NDArray.fromList(
+            [1.0, double.nan, 3.0],
+            [3],
+            DType.float32,
+          );
+          final c128 = NDArray.fromList(
+            [
+              Complex(1.0, 0.0),
+              Complex(double.nan, 1.0),
+              Complex(1.0, double.nan),
+            ],
+            [3],
+            DType.complex128,
+          );
+          final i32 = NDArray.fromList([1, 2, 3], [3], DType.int32);
 
-        final res64 = isnan(a64);
-        expect(res64.dtype, DType.boolean);
-        expect(res64.toList(), [false, true, false, false]);
+          final res64 = isnan(a64);
+          expect(res64.dtype, DType.boolean);
+          expect(res64.toList(), [false, true, false, false]);
 
-        expect(isnan(a32).toList(), [false, true, false]);
-        expect(isnan(c128).toList(), [false, true, true]);
-        expect(isnan(i32).toList(), [false, false, false]);
+          expect(isnan(a32).toList(), [false, true, false]);
+          expect(isnan(c128).toList(), [false, true, true]);
+          expect(isnan(i32).toList(), [false, false, false]);
 
-        // Strided isnan
-        final strided = a64.slice([const Slice(start: 0, stop: 4, step: 2)]);
-        expect(isnan(strided).toList(), [false, false]);
+          // Strided isnan
+          final strided = a64.slice([const Slice(start: 0, stop: 4, step: 2)]);
+          expect(isnan(strided).toList(), [false, false]);
+        });
       });
-    });
 
-    test('isinf on real, complex, integer', () {
-      NDArray.scope(() {
-        final a64 = NDArray.fromList(
-          [1.0, double.infinity, double.negativeInfinity, double.nan],
-          [4],
-          DType.float64,
-        );
-        final c128 = NDArray<Complex>.fromList(
-          [
-            Complex(1.0, 0.0),
-            Complex(double.infinity, 0.0),
-            Complex(0.0, double.negativeInfinity),
-            Complex(double.nan, 1.0),
-          ],
-          [4],
-          DType.complex128,
-        );
-        final i32 = NDArray.fromList([1, 2], [2], DType.int32);
+      test('isinf on real, complex, integer', () {
+        NDArray.scope(() {
+          final a64 = NDArray.fromList(
+            [1.0, double.infinity, double.negativeInfinity, double.nan],
+            [4],
+            DType.float64,
+          );
+          final c128 = NDArray.fromList(
+            [
+              Complex(1.0, 0.0),
+              Complex(double.infinity, 0.0),
+              Complex(0.0, double.negativeInfinity),
+              Complex(double.nan, 1.0),
+            ],
+            [4],
+            DType.complex128,
+          );
+          final i32 = NDArray.fromList([1, 2], [2], DType.int32);
 
-        expect(isinf(a64).toList(), [false, true, true, false]);
-        expect(isinf(c128).toList(), [false, true, true, false]);
-        expect(isinf(i32).toList(), [false, false]);
+          expect(isinf(a64).toList(), [false, true, true, false]);
+          expect(isinf(c128).toList(), [false, true, true, false]);
+          expect(isinf(i32).toList(), [false, false]);
 
-        // Strided isinf
-        final strided = a64.slice([const Slice(start: 0, stop: 4, step: 2)]);
-        expect(isinf(strided).toList(), [false, true]);
+          // Strided isinf
+          final strided = a64.slice([const Slice(start: 0, stop: 4, step: 2)]);
+          expect(isinf(strided).toList(), [false, true]);
+        });
       });
-    });
 
-    test('isfinite on real, complex, integer, boolean, float16, bfloat16', () {
-      NDArray.scope(() {
-        final a64 = NDArray.fromList(
-          [1.0, double.infinity, double.negativeInfinity, double.nan, 0.0],
-          [5],
-          DType.float64,
-        );
-        final c128 = NDArray<Complex>.fromList(
-          [
-            Complex(1.0, 2.0),
-            Complex(double.infinity, 1.0),
-            Complex(1.0, double.nan),
-          ],
-          [3],
-          DType.complex128,
-        );
-        final i32 = NDArray.fromList([1, 2], [2], DType.int32);
-        final b = NDArray.fromList([true, false], [2], DType.boolean);
-        final f16 = NDArray.fromList([1.0, 2.0], [2], DType.float16);
-        final bf16 = NDArray.fromList([1.0, 2.0], [2], DType.bfloat16);
+      test(
+        'isfinite on real, complex, integer, boolean, float16, bfloat16',
+        () {
+          NDArray.scope(() {
+            final a64 = NDArray.fromList(
+              [1.0, double.infinity, double.negativeInfinity, double.nan, 0.0],
+              [5],
+              DType.float64,
+            );
+            final c128 = NDArray.fromList(
+              [
+                Complex(1.0, 2.0),
+                Complex(double.infinity, 1.0),
+                Complex(1.0, double.nan),
+              ],
+              [3],
+              DType.complex128,
+            );
+            final i32 = NDArray.fromList([1, 2], [2], DType.int32);
+            final b = NDArray.fromList([true, false], [2], DType.boolean);
+            final f16 = NDArray.fromList([1.0, 2.0], [2], DType.float16);
+            final bf16 = NDArray.fromList([1.0, 2.0], [2], DType.bfloat16);
 
-        expect(isfinite(a64).toList(), [true, false, false, false, true]);
-        expect(isfinite(c128).toList(), [true, false, false]);
-        expect(isfinite(i32).toList(), [true, true]);
-        expect(isfinite(b).toList(), [true, true]);
-        expect(isfinite(f16).toList(), [true, true]);
-        expect(isfinite(bf16).toList(), [true, true]);
+            expect(isfinite(a64).toList(), [true, false, false, false, true]);
+            expect(isfinite(c128).toList(), [true, false, false]);
+            expect(isfinite(i32).toList(), [true, true]);
+            expect(isfinite(b).toList(), [true, true]);
+            expect(isfinite(f16).toList(), [true, true]);
+            expect(isfinite(bf16).toList(), [true, true]);
 
-        // Strided
-        final strided = a64.slice([const Slice(start: 0, stop: 5, step: 2)]);
-        expect(isfinite(strided).toList(), [true, false, true]);
+            // Strided
+            final strided = a64.slice([
+              const Slice(start: 0, stop: 5, step: 2),
+            ]);
+            expect(isfinite(strided).toList(), [true, false, true]);
+          });
+        },
+      );
+
+      test('copysign values, broadcasting, strided, error handling', () {
+        NDArray.scope(() {
+          final x1 = NDArray.fromList(
+            [1.0, -2.0, 3.0, -4.0],
+            [4],
+            DType.float64,
+          );
+          final x2 = NDArray.fromList(
+            [-1.0, 1.0, -1.0, 1.0],
+            [4],
+            DType.float64,
+          );
+          final res = copysign(x1, x2);
+          expect(res.toList(), [-1.0, 2.0, -3.0, 4.0]);
+
+          // Float32
+          final x1F32 = NDArray.fromList([1.0, -2.0], [2], DType.float32);
+          final x2F32 = NDArray.fromList([-1.0, 1.0], [2], DType.float32);
+          expect(copysign(x1F32, x2F32).toList(), [-1.0, 2.0]);
+
+          // Int32
+          final x1Int = NDArray.fromList([5, -10], [2], DType.int32);
+          final x2Int = NDArray.fromList([-1, 1], [2], DType.int32);
+          expect(copysign(x1Int, x2Int).toList(), [-5, 10]);
+
+          // Broadcasting: [2, 1] and [1, 2] -> [2, 2]
+          final m1 = NDArray.fromList([5.0, -5.0], [2, 1], DType.float64);
+          final m2 = NDArray.fromList([-1.0, 1.0], [1, 2], DType.float64);
+          final resBcast = copysign(m1, m2);
+          expect(resBcast.shape, [2, 2]);
+          expect(resBcast.getCell([0, 0]), -5.0);
+          expect(resBcast.getCell([0, 1]), 5.0);
+          expect(resBcast.getCell([1, 0]), -5.0);
+          expect(resBcast.getCell([1, 1]), 5.0);
+
+          // Complex throws UnsupportedError
+          final cArr = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
+          final rArr = NDArray.fromList([1.0], [1], DType.float64);
+          expect(() => copysign(cArr, rArr), throwsUnsupportedError);
+          expect(() => copysign(rArr, cArr), throwsUnsupportedError);
+        });
       });
-    });
 
-    test('copysign values, broadcasting, strided, error handling', () {
-      NDArray.scope(() {
-        final x1 = NDArray.fromList([1.0, -2.0, 3.0, -4.0], [4], DType.float64);
-        final x2 = NDArray.fromList([-1.0, 1.0, -1.0, 1.0], [4], DType.float64);
-        final res = copysign(x1, x2);
-        expect(res.toList(), [-1.0, 2.0, -3.0, 4.0]);
+      test('isClose and allClose real, complex, tolerances, equalNan', () {
+        NDArray.scope(() {
+          final a = NDArray.fromList(
+            [1.0, 1.00001, double.nan, double.infinity],
+            [4],
+            DType.float64,
+          );
+          final b = NDArray.fromList(
+            [1.0, 1.000010001, double.nan, double.infinity],
+            [4],
+            DType.float64,
+          );
 
-        // Float32
-        final x1F32 = NDArray.fromList([1.0, -2.0], [2], DType.float32);
-        final x2F32 = NDArray.fromList([-1.0, 1.0], [2], DType.float32);
-        expect(copysign(x1F32, x2F32).toList(), [-1.0, 2.0]);
+          // Without equalNan
+          final c1 = isClose(a, b, equalNan: false);
+          expect(c1.toList(), [true, true, false, true]);
+          expect(allClose(a, b, equalNan: false), isFalse);
 
-        // Int32
-        final x1Int = NDArray.fromList([5, -10], [2], DType.int32);
-        final x2Int = NDArray.fromList([-1, 1], [2], DType.int32);
-        expect(copysign(x1Int, x2Int).toList(), [-5, 10]);
+          // With equalNan
+          final c2 = isClose(a, b, equalNan: true);
+          expect(c2.toList(), [true, true, true, true]);
+          expect(allClose(a, b, equalNan: true), isTrue);
 
-        // Broadcasting: [2, 1] and [1, 2] -> [2, 2]
-        final m1 = NDArray.fromList([5.0, -5.0], [2, 1], DType.float64);
-        final m2 = NDArray.fromList([-1.0, 1.0], [1, 2], DType.float64);
-        final resBcast = copysign(m1, m2);
-        expect(resBcast.shape, [2, 2]);
-        expect(resBcast.getCell([0, 0]), -5.0);
-        expect(resBcast.getCell([0, 1]), 5.0);
-        expect(resBcast.getCell([1, 0]), -5.0);
-        expect(resBcast.getCell([1, 1]), 5.0);
-
-        // Complex throws UnsupportedError
-        final cArr = NDArray<Complex>.fromList(
-          [Complex(1, 0)],
-          [1],
-          DType.complex128,
-        );
-        final rArr = NDArray.fromList([1.0], [1], DType.float64);
-        expect(() => copysign(cArr, rArr), throwsUnsupportedError);
-        expect(() => copysign(rArr, cArr), throwsUnsupportedError);
+          // Complex isClose
+          final cA = NDArray.fromList(
+            [Complex(1.0, 2.0), Complex(1.0, double.nan)],
+            [2],
+            DType.complex128,
+          );
+          final cB = NDArray.fromList(
+            [Complex(1.0000001, 2.0000001), Complex(1.0, double.nan)],
+            [2],
+            DType.complex128,
+          );
+          expect(isClose(cA, cB, equalNan: true).toList(), [true, true]);
+          expect(allClose(cA, cB, equalNan: true), isTrue);
+        });
       });
-    });
-
-    test('isClose and allClose real, complex, tolerances, equalNan', () {
-      NDArray.scope(() {
-        final a = NDArray.fromList(
-          [1.0, 1.00001, double.nan, double.infinity],
-          [4],
-          DType.float64,
-        );
-        final b = NDArray.fromList(
-          [1.0, 1.000010001, double.nan, double.infinity],
-          [4],
-          DType.float64,
-        );
-
-        // Without equalNan
-        final c1 = isClose(a, b, equalNan: false);
-        expect(c1.toList(), [true, true, false, true]);
-        expect(allClose(a, b, equalNan: false), isFalse);
-
-        // With equalNan
-        final c2 = isClose(a, b, equalNan: true);
-        expect(c2.toList(), [true, true, true, true]);
-        expect(allClose(a, b, equalNan: true), isTrue);
-
-        // Complex isClose
-        final cA = NDArray<Complex>.fromList(
-          [Complex(1.0, 2.0), Complex(1.0, double.nan)],
-          [2],
-          DType.complex128,
-        );
-        final cB = NDArray<Complex>.fromList(
-          [Complex(1.0000001, 2.0000001), Complex(1.0, double.nan)],
-          [2],
-          DType.complex128,
-        );
-        expect(isClose(cA, cB, equalNan: true).toList(), [true, true]);
-        expect(allClose(cA, cB, equalNan: true), isTrue);
-      });
-    });
-  });
+    },
+  );
 
   group('8. 0D Scalar Arrays & Multidimensional Contractions', () {
     test('0D Scalar operations', () {
@@ -1229,7 +1228,7 @@ void main() {
   group('11. Special Functions Asymptotic and Extreme Regimes', () {
     test('i0 large complex asymptotic regime (|z| > 15)', () {
       NDArray.scope(() {
-        final cLarge = NDArray<Complex>.fromList(
+        final cLarge = NDArray.fromList(
           [Complex(20.0, 5.0), Complex(-25.0, 10.0)],
           [2],
           DType.complex128,

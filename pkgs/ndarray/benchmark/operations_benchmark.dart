@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:criterion/criterion.dart';
 import 'package:ndarray/ndarray.dart';
 
@@ -147,8 +146,8 @@ void main() async {
         c.bench('nelder_mead minimization [Rosenbrock 2D]', () {
           final r = nelder_mead(
             (x) {
-              final px = x.getCell([0]).toDouble();
-              final py = x.getCell([1]).toDouble();
+              final px = x.getCell([0]);
+              final py = x.getCell([1]);
               return 100.0 * math.pow(py - px * px, 2).toDouble() +
                   math.pow(1.0 - px, 2).toDouble();
             },
@@ -166,8 +165,8 @@ void main() async {
         );
         c.bench('lbfgs minimization [Quadratic 2D]', () {
           final r = lbfgs((x) {
-            final px = x.getCell([0]).toDouble();
-            final py = x.getCell([1]).toDouble();
+            final px = x.getCell([0]);
+            final py = x.getCell([1]);
             return (px - 1.0) * (px - 1.0) + (py - 2.0) * (py - 2.0);
           }, x0Bowl);
           blackhole(r);

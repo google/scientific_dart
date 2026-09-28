@@ -23,117 +23,119 @@ import 'package:ndarray/ndarray.dart';
 /// - Normalizing vectors using [sum].
 /// - Checking convergence using [allclose].
 void main() {
-  print('=== PageRank Algorithm Example ===\n');
+  NDArray.scope(() {
+    print('=== PageRank Algorithm Example ===\n');
 
-  // Define the number of nodes in our web graph.
-  const int n = 5;
+    // Define the number of nodes in our web graph.
+    const int n = 5;
 
-  // Damping factor (probability of following a link).
-  const double d = 0.85;
+    // Damping factor (probability of following a link).
+    const double d = 0.85;
 
-  // Convergence tolerance.
-  const double tol = 1e-6;
+    // Convergence tolerance.
+    const double tol = 1e-6;
 
-  // Maximum number of iterations.
-  const int maxIterations = 100;
+    // Maximum number of iterations.
+    const int maxIterations = 100;
 
-  // 1. Create the transition probability matrix M (5x5).
-  // M[i][j] is the probability of transitioning from node j to node i.
-  // Columns must sum to 1 (column-stochastic).
-  final m = NDArray<Float64>.fromList(
-    ([
-      0.0, 0.0, 1.0, 0.0, 0.0, // Row 0 (links to 0 from: 2)
-      0.5, 0.0, 0.0, 0.0, 0.0, // Row 1 (links to 1 from: 0)
-      0.5, 1.0, 0.0, 0.5, 1.0, // Row 2 (links to 2 from: 0, 1, 3, 4)
-      0.0, 0.0, 0.0, 0.0, 0.0, // Row 3 (links to 3 from: none)
-      0.0, 0.0, 0.0, 0.5, 0.0, // Row 4 (links to 4 from: 3)
-    ]).map((e) => Float64(e)).toList(),
-    [n, n],
-    DType.float64,
-  );
+    // 1. Create the transition probability matrix M (5x5).
+    // M[i][j] is the probability of transitioning from node j to node i.
+    // Columns must sum to 1 (column-stochastic).
+    final m = NDArray<Float64>.fromList(
+      ([
+        0.0, 0.0, 1.0, 0.0, 0.0, // Row 0 (links to 0 from: 2)
+        0.5, 0.0, 0.0, 0.0, 0.0, // Row 1 (links to 1 from: 0)
+        0.5, 1.0, 0.0, 0.5, 1.0, // Row 2 (links to 2 from: 0, 1, 3, 4)
+        0.0, 0.0, 0.0, 0.0, 0.0, // Row 3 (links to 3 from: none)
+        0.0, 0.0, 0.0, 0.5, 0.0, // Row 4 (links to 4 from: 3)
+      ]).map((e) => e).toList(),
+      [n, n],
+      DType.float64,
+    );
 
-  print('Transition Matrix M:');
-  _printMatrix(m);
+    print('Transition Matrix M:');
+    _printMatrix(m);
 
-  // Verify columns sum to 1.
-  final colSums = sum<Float64>(m, axis: 0);
-  print('\nVerify columns sum to 1: ${colSums.toList()}');
-  colSums.dispose();
+    // Verify columns sum to 1.
+    final colSums = sum<Float64>(m, axis: 0);
+    print('\nVerify columns sum to 1: ${colSums.toList()}');
+    colSums.dispose();
 
-  // 2. Initialize PageRank vector v (uniform distribution).
-  var v = NDArray<Float64>.fromList(
-    List<Float64>.generate(n, (_) => Float64(1.0 / n)),
-    [n],
-    DType.float64,
-  );
+    // 2. Initialize PageRank vector v (uniform distribution).
+    var v = NDArray<Float64>.fromList(
+      List<double>.generate(n, (_) => 1.0 / n),
+      [n],
+      DType.float64,
+    );
 
-  print('\nInitial PageRank vector v: ${v.toList()}');
+    print('\nInitial PageRank vector v: ${v.toList()}');
 
-  // Teleportation constant: (1 - d) / N
-  const double teleport = (1.0 - d) / n;
+    // Teleportation constant: (1 - d) / N
+    const double teleport = (1.0 - d) / n;
 
-  // 3. Power Iteration
-  var converged = false;
-  var iteration = 0;
+    // 3. Power Iteration
+    var converged = false;
+    var iteration = 0;
 
-  for (iteration = 1; iteration <= maxIterations; iteration++) {
-    final vNext = NDArray.scope(() {
-      // v_next = d * (M * v) + (1 - d)/N
+    for (iteration = 1; iteration <= maxIterations; iteration++) {
+      final vNext = NDArray.scope(() {
+        // v_next = d * (M * v) + (1 - d)/N
 
-      // Matrix-vector multiplication
-      final mv = matmul<Float64, Float64, Float64>(m, v);
+        // Matrix-vector multiplication
+        final mv = matmul<Float64>(m, v);
 
-      // Wrap scalar d as a 0D array for broadcasting
-      final dArr = NDArray<Float64>.scalar(Float64(d), dtype: DType.float64);
-      // Apply damping factor (scalar multiplication via broadcasting)
-      final damped = multiply<Float64, Float64, Float64>(mv, dArr);
+        // Wrap scalar d as a 0D array for broadcasting
+        final dArr = NDArray<Float64>.scalar(d, dtype: DType.float64);
+        // Apply damping factor (scalar multiplication via broadcasting)
+        final damped = multiply<Float64>(mv, dArr);
 
-      // Wrap scalar teleport as a 0D array for broadcasting
-      final teleportArr = NDArray<Float64>.scalar(
-        Float64(teleport),
-        dtype: DType.float64,
-      );
-      // Add teleportation (scalar addition via broadcasting)
-      final rawNext = add<Float64, Float64, Float64>(damped, teleportArr);
+        // Wrap scalar teleport as a 0D array for broadcasting
+        final teleportArr = NDArray<Float64>.scalar(
+          teleport,
+          dtype: DType.float64,
+        );
+        // Add teleportation (scalar addition via broadcasting)
+        final rawNext = add<Float64>(damped, teleportArr);
 
-      // Normalize using L1 norm (sum) to handle potential numerical drift
-      final s = sum<Float64>(rawNext);
-      final normalized = divide<Float64, Float64, Float64>(rawNext, s);
+        // Normalize using L1 norm (sum) to handle potential numerical drift
+        final s = sum<Float64>(rawNext);
+        final normalized = divide<Float64, Float64, Float64>(rawNext, s);
 
-      // We must detach the result from the scope so it survives when the scope exits.
-      return normalized.detachFromScope();
-    });
+        // We must detach the result from the scope so it survives when the scope exits.
+        return normalized.detachFromScope();
+      });
 
-    // Check convergence: allClose(v, vNext, rtol, atol)
-    if (allClose(v, vNext, rtol: tol, atol: tol)) {
-      converged = true;
+      // Check convergence: allClose(v, vNext, rtol, atol)
+      if (allClose(v, vNext, rtol: tol, atol: tol)) {
+        converged = true;
+        v.dispose();
+        v = vNext;
+        break;
+      }
+
+      // Dispose the old vector and update to the new one
       v.dispose();
       v = vNext;
-      break;
     }
 
-    // Dispose the old vector and update to the new one
+    if (converged) {
+      print('\nConverged after $iteration iterations.');
+    } else {
+      print('\nDid not converge after $maxIterations iterations.');
+    }
+
+    print('\nFinal PageRank vector:');
+    for (var i = 0; i < n; i++) {
+      print('Node $i: ${v[[i]].toStringAsFixed(6)}');
+    }
+
+    final finalSum = sum<Float64>(v).scalar;
+    print('\nSum of final PageRank vector: $finalSum');
+
+    // Clean up manually managed arrays
     v.dispose();
-    v = vNext;
-  }
-
-  if (converged) {
-    print('\nConverged after $iteration iterations.');
-  } else {
-    print('\nDid not converge after $maxIterations iterations.');
-  }
-
-  print('\nFinal PageRank vector:');
-  for (var i = 0; i < n; i++) {
-    print('Node $i: ${v[[i]].toStringAsFixed(6)}');
-  }
-
-  final finalSum = sum<Float64>(v).scalar;
-  print('\nSum of final PageRank vector: $finalSum');
-
-  // Clean up manually managed arrays
-  v.dispose();
-  m.dispose();
+    m.dispose();
+  });
 }
 
 /// Helper function to print a 2D matrix in a readable format.

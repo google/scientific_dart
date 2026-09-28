@@ -12,10 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:math' as math;
 import 'dart:ffi' as ffi;
-
 import '../../ndarray.dart';
 import '../../ndarray_bindings.dart';
 import '../../scratch_arena.dart';
@@ -24,7 +22,7 @@ import '../helpers.dart';
 /// Computes the element-wise exponential of the array.
 ///
 /// **Preconditions:**
-/// - Input array [a] elements must be numeric (`T extends num`).
+/// - Input array [a] elements must be numeric (`T extends DTypeTag`).
 /// - If provided, the [out] recycler array must exactly match the shape and compatible dtype of [a].
 ///
 /// It is an error if the provided [out] buffer has an incompatible shape (throws [ArgumentError]).
@@ -37,34 +35,45 @@ import '../helpers.dart';
 /// {@example /example/transcendental_example.dart lang=dart}
 ///
 /// Reference: [Exponential Function](https://en.wikipedia.org/wiki/Exponential_function)
-NDArray<R> exp<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
+NDArray<R> exp<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute exp() on a disposed array.');
   }
   final DType<R> targetDType;
-  if (a.dtype == DType.complex128 || a.dtype == DType.complex64) {
+  if ((a.dtype as DType<DTypeTag>) == DType.complex128 ||
+      (a.dtype as DType<DTypeTag>) == DType.complex64) {
     targetDType = a.dtype as DType<R>;
   } else {
     targetDType =
-        (a.dtype == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
+        ((a.dtype as DType<DTypeTag>) == DType.float32
+                ? DType.float32
+                : DType.float64)
+            as DType<R>;
   }
 
-  final NDArray<R> result;
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for exp.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType);
   }
-  final maskHolder = prepareMask(where, result.shape);
+  final maskHolder = prepareMask(where, a.shape);
 
   try {
+    final NDArray<R> result =
+        out ?? NDArray.create(a.shape, targetDType, zeroInit: where != null);
     if (a.isContiguous && result.isContiguous) {
       switch (a.dtype) {
         case DType.float64:
@@ -99,7 +108,17 @@ NDArray<R> exp<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
             maskHolder.pointer,
           );
           return result;
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
           break;
       }
     } else {
@@ -161,7 +180,17 @@ NDArray<R> exp<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
               maskHolder.pointer,
             );
             return result;
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             break;
         }
       } finally {
@@ -169,7 +198,7 @@ NDArray<R> exp<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
       }
     }
 
-    unaryOp<dynamic, dynamic>(
+    unaryOp<DTypeTag, DTypeTag>(
       result,
       a,
       a.shape,
@@ -197,7 +226,7 @@ NDArray<R> exp<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
 /// Computes the element-wise natural logarithm of the array.
 ///
 /// **Preconditions:**
-/// - Input array [a] elements must be numeric (`T extends num`).
+/// - Input array [a] elements must be numeric (`T extends DTypeTag`).
 /// - If provided, the [out] recycler array must exactly match the shape and the resolved floating-point dtype (Float32 if [a] is Float32, Float64 otherwise).
 ///
 /// It is an error if the provided [out] buffer has an incompatible shape (throws [ArgumentError]).
@@ -210,33 +239,48 @@ NDArray<R> exp<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
 /// {@example /example/transcendental_example.dart lang=dart}
 ///
 /// Reference: [Natural Logarithm](https://en.wikipedia.org/wiki/Natural_logarithm)
-NDArray<R> log<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
+NDArray<R> log<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute log() on a disposed array.');
   }
-  final DType<dynamic> targetDType;
-  if (a.dtype == DType.complex128 || a.dtype == DType.complex64) {
+  final DType<DTypeTag> targetDType;
+  if ((a.dtype as DType<DTypeTag>) == DType.complex128 ||
+      (a.dtype as DType<DTypeTag>) == DType.complex64) {
     targetDType = a.dtype;
   } else {
-    targetDType = a.dtype == DType.float32 ? DType.float32 : DType.float64;
+    targetDType = (a.dtype as DType<DTypeTag>) == DType.float32
+        ? DType.float32
+        : DType.float64;
   }
 
-  final NDArray<R> result;
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for log.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType as DType<R>);
   }
-  final maskHolder = prepareMask(where, result.shape);
+  final maskHolder = prepareMask(where, a.shape);
 
   try {
+    final NDArray<R> result =
+        out ??
+        NDArray.create(
+          a.shape,
+          targetDType as DType<R>,
+          zeroInit: where != null,
+        );
     if (a.isContiguous && result.isContiguous) {
       switch (a.dtype) {
         case DType.float64:
@@ -271,7 +315,17 @@ NDArray<R> log<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
             maskHolder.pointer,
           );
           return result;
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
           break;
       }
     } else {
@@ -332,7 +386,17 @@ NDArray<R> log<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
               maskHolder.pointer,
             );
             return result;
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             break;
         }
       } finally {
@@ -340,7 +404,7 @@ NDArray<R> log<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
       }
     }
 
-    unaryOp<dynamic, dynamic>(
+    unaryOp<DTypeTag, DTypeTag>(
       result,
       a,
       a.shape,
@@ -372,9 +436,12 @@ NDArray<R> log<T, R>(NDArray<T> a, {NDArray<dynamic>? where, NDArray<R>? out}) {
 ///
 /// **Example:**
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
-NDArray<R> log2<T, R>(
-  NDArray<T> a, {
-  NDArray<dynamic>? where,
+NDArray<R> log2<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
   if (a.isDisposed ||
@@ -382,27 +449,35 @@ NDArray<R> log2<T, R>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute log2() on a disposed array.');
   }
-  final DType<dynamic> targetDType;
-  if (a.dtype == DType.complex128 || a.dtype == DType.complex64) {
+  final DType<DTypeTag> targetDType;
+  if ((a.dtype as DType<DTypeTag>) == DType.complex128 ||
+      (a.dtype as DType<DTypeTag>) == DType.complex64) {
     targetDType = a.dtype;
   } else {
-    targetDType = a.dtype == DType.float32 ? DType.float32 : DType.float64;
+    targetDType = (a.dtype as DType<DTypeTag>) == DType.float32
+        ? DType.float32
+        : DType.float64;
   }
 
-  final NDArray<R> result;
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for log2.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType as DType<R>);
   }
-  final maskHolder = prepareMask(where, result.shape);
+  final maskHolder = prepareMask(where, a.shape);
 
   try {
+    final NDArray<R> result =
+        out ??
+        NDArray.create(
+          a.shape,
+          targetDType as DType<R>,
+          zeroInit: where != null,
+        );
     if (a.isContiguous && result.isContiguous) {
       switch (a.dtype) {
         case DType.float64:
@@ -437,7 +512,17 @@ NDArray<R> log2<T, R>(
             maskHolder.pointer,
           );
           return result;
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
           break;
       }
     } else {
@@ -499,7 +584,17 @@ NDArray<R> log2<T, R>(
               maskHolder.pointer,
             );
             return result;
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             break;
         }
       } finally {
@@ -507,7 +602,7 @@ NDArray<R> log2<T, R>(
       }
     }
 
-    unaryOp<dynamic, dynamic>(
+    unaryOp<DTypeTag, DTypeTag>(
       result,
       a,
       a.shape,
@@ -539,9 +634,12 @@ NDArray<R> log2<T, R>(
 ///
 /// **Example:**
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
-NDArray<R> log10<T, R>(
-  NDArray<T> a, {
-  NDArray<dynamic>? where,
+NDArray<R> log10<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
+  NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
   if (a.isDisposed ||
@@ -549,27 +647,35 @@ NDArray<R> log10<T, R>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute log10() on a disposed array.');
   }
-  final DType<dynamic> targetDType;
-  if (a.dtype == DType.complex128 || a.dtype == DType.complex64) {
+  final DType<DTypeTag> targetDType;
+  if ((a.dtype as DType<DTypeTag>) == DType.complex128 ||
+      (a.dtype as DType<DTypeTag>) == DType.complex64) {
     targetDType = a.dtype;
   } else {
-    targetDType = a.dtype == DType.float32 ? DType.float32 : DType.float64;
+    targetDType = (a.dtype as DType<DTypeTag>) == DType.float32
+        ? DType.float32
+        : DType.float64;
   }
 
-  final NDArray<R> result;
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != targetDType) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for log10.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType as DType<R>);
   }
-  final maskHolder = prepareMask(where, result.shape);
+  final maskHolder = prepareMask(where, a.shape);
 
   try {
+    final NDArray<R> result =
+        out ??
+        NDArray.create(
+          a.shape,
+          targetDType as DType<R>,
+          zeroInit: where != null,
+        );
     if (a.isContiguous && result.isContiguous) {
       switch (a.dtype) {
         case DType.float64:
@@ -604,7 +710,17 @@ NDArray<R> log10<T, R>(
             maskHolder.pointer,
           );
           return result;
-        default:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
           break;
       }
     } else {
@@ -666,7 +782,17 @@ NDArray<R> log10<T, R>(
               maskHolder.pointer,
             );
             return result;
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             break;
         }
       } finally {
@@ -674,7 +800,7 @@ NDArray<R> log10<T, R>(
       }
     }
 
-    unaryOp<dynamic, dynamic>(
+    unaryOp<DTypeTag, DTypeTag>(
       result,
       a,
       a.shape,

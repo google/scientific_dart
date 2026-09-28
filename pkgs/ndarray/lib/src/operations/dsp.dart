@@ -14,26 +14,28 @@
 
 import 'dart:math' as math;
 import 'dart:ffi' as ffi;
-
 import '../ndarray.dart';
 import '../ndarray_bindings.dart' as bindings;
 
 import 'padding.dart';
 import '../scratch_arena.dart';
+import 'helpers.dart';
 
-/// Computes the element-wise phase/argument of complex numbers.
+/// Scalar double type alias used by DSP phase unwrap operations.
+typedef Float = double;
+
+/// Computes the element-wise phase/argument of complex or real numbers.
 ///
-/// Returns an array of float or double (matching the precision of the complex
-/// input, i.e., Float64 for Complex128, Float32 for Complex64) with values
-/// in $[-\pi, \pi]$.
+/// Returns an array of float or double with values in $[-\pi, \pi]$.
+/// For real inputs, the angle is $0.0$ for non-negative values and $\pi$ for negative values.
 ///
 /// **Preconditions:**
-/// - Input array [a] must not be disposed and must have a complex dtype (`complex64` or `complex128`).
+/// - Input array [a] must not be disposed.
 /// - If provided, [out] must match the shape of [a] and the corresponding floating-point dtype.
 ///
 /// **Throws:**
 /// - It is an error if [a] or [out] is disposed.
-/// - It is an error if [a] dtype is not complex.
+/// - It is an error if [a] has boolean dtype.
 /// - It is an error if [out] has incompatible shape or dtype.
 ///
 /// **Performance considerations:**
@@ -47,99 +49,168 @@ import '../scratch_arena.dart';
 /// ```
 ///
 /// Reference: [NumPy angle](https://numpy.org/doc/stable/reference/generated/numpy.angle.html)
-NDArray<R> angle<T extends Complex, R extends double>(
-  NDArray<T> a, {
+NDArray<R> angle<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+  >
+  a, {
   NDArray<R>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute angle() on a disposed array.');
   }
 
-  if (a.dtype != DType.complex128 && a.dtype != DType.complex64) {
-    throw ArgumentError('Input array must be complex for angle().');
-  }
+  final DType<R> targetDType = switch (a.dtype) {
+    DType.complex128 => DType.float64 as DType<R>,
+    DType.complex64 => DType.float32 as DType<R>,
+    DType.float32 => DType.float32 as DType<R>,
+    DType.float16 ||
+    DType.bfloat16 ||
+    DType.float64 ||
+    DType.int64 ||
+    DType.int32 ||
+    DType.int16 ||
+    DType.int8 ||
+    DType.uint64 ||
+    DType.uint32 ||
+    DType.uint16 ||
+    DType.uint8 => DType.float64 as DType<R>,
+    DType.boolean => throw ArgumentError(
+      'angle does not support boolean dtype.',
+    ),
+  };
 
-  final DType<R> targetDType;
-  switch (a.dtype) {
-    case DType.complex128:
-      targetDType = DType.float64 as DType<R>;
-      break;
-    case DType.complex64:
-      targetDType = DType.float32 as DType<R>;
-      break;
-  }
-
-  final NDArray<R> result;
   if (out != null) {
     if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for angle.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, targetDType);
+    if (sharesMemory(a, out)) {
+      return NDArray.scope(() {
+        final temp = angle<R>(a);
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
 
-  if (a.isContiguous && result.isContiguous) {
+  final NDArray<R> result = out ?? NDArray.create(a.shape, targetDType);
+
+  try {
     switch (a.dtype) {
       case DType.complex128:
-        bindings.v_angle_complex128(
-          a.pointer.cast(),
-          result.pointer.cast(),
-          a.size,
-          ffi.nullptr,
-        );
+        if (a.isContiguous && result.isContiguous) {
+          bindings.v_angle_complex128(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            ffi.nullptr,
+          );
+        } else {
+          final rank = a.shape.length;
+          final marker = ScratchArena.marker;
+          try {
+            final cBuffer = ScratchArena.getStridedBuffer(rank);
+            final cShape = cBuffer;
+            final cStridesA = cBuffer + rank;
+            final cStridesRes = cBuffer + (rank * 2);
+            for (var i = 0; i < rank; i++) {
+              cShape[i] = a.shape[i];
+              cStridesA[i] = a.strides[i];
+              cStridesRes[i] = result.strides[i];
+            }
+            bindings.s_angle_complex128(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              ffi.nullptr,
+            );
+          } finally {
+            ScratchArena.reset(marker);
+          }
+        }
         return result;
       case DType.complex64:
-        bindings.v_angle_complex64(
-          a.pointer.cast(),
-          result.pointer.cast(),
-          a.size,
-          ffi.nullptr,
-        );
+        if (a.isContiguous && result.isContiguous) {
+          bindings.v_angle_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            ffi.nullptr,
+          );
+        } else {
+          final rank = a.shape.length;
+          final marker = ScratchArena.marker;
+          try {
+            final cBuffer = ScratchArena.getStridedBuffer(rank);
+            final cShape = cBuffer;
+            final cStridesA = cBuffer + rank;
+            final cStridesRes = cBuffer + (rank * 2);
+            for (var i = 0; i < rank; i++) {
+              cShape[i] = a.shape[i];
+              cStridesA[i] = a.strides[i];
+              cStridesRes[i] = result.strides[i];
+            }
+            bindings.s_angle_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              ffi.nullptr,
+            );
+          } finally {
+            ScratchArena.reset(marker);
+          }
+        }
         return result;
-    }
-  } else {
-    final rank = a.shape.length;
-    final marker = ScratchArena.marker;
-    try {
-      final cBuffer = ScratchArena.getStridedBuffer(rank);
-      final cShape = cBuffer;
-      final cStridesA = cBuffer + rank;
-      final cStridesRes = cBuffer + (rank * 2);
-      for (var i = 0; i < rank; i++) {
-        cShape[i] = a.shape[i];
-        cStridesA[i] = a.strides[i];
-        cStridesRes[i] = result.strides[i];
-      }
-      switch (a.dtype) {
-        case DType.complex128:
-          bindings.s_angle_complex128(
-            a.pointer.cast(),
-            cStridesA,
-            result.pointer.cast(),
-            cStridesRes,
-            cShape,
-            rank,
-            ffi.nullptr,
+      case DType.float64:
+      case DType.float32:
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+        NDArray.scope(() {
+          final doubleA = castNDArray<Float64>(a, DType.float64);
+          final doubleRes = NDArray<Float64>.create(a.shape, DType.float64);
+          unaryOp<Float64, Float64>(
+            doubleRes,
+            doubleA,
+            a.shape,
+            doubleA.strides,
+            doubleRes.strides,
+            0,
+            0,
+            0,
+            (val) {
+              // `doubleA` was just cast to float64, so the element is a double.
+              final v = val as double;
+              return (v < 0.0 || identical(v, -0.0)) ? math.pi : 0.0;
+            },
           );
-          return result;
-        case DType.complex64:
-          bindings.s_angle_complex64(
-            a.pointer.cast(),
-            cStridesA,
-            result.pointer.cast(),
-            cStridesRes,
-            cShape,
-            rank,
-            ffi.nullptr,
-          );
-          return result;
-      }
-    } finally {
-      ScratchArena.reset(marker);
+          final casted = castNDArray<R>(doubleRes, result.dtype);
+          casted.copy(out: result);
+        });
+        return result;
+      case DType.boolean:
+        throw ArgumentError('angle does not support boolean dtype.');
     }
+  } catch (_) {
+    if (out == null) {
+      result.dispose();
+    }
+    rethrow;
   }
 }
 
@@ -147,13 +218,13 @@ NDArray<R> angle<T extends Complex, R extends double>(
 /// to their $2\pi$ complement along the given [axis].
 ///
 /// **Preconditions:**
-/// - Input array [a] must not be disposed and must have a floating-point dtype (`float32` or `float64`).
+/// - Input array [a] must not be disposed.
 /// - The specified [axis] must be within valid rank bounds `[-a.rank, a.rank - 1]`.
-/// - If provided, [out] must match the shape and dtype of [a].
+/// - If provided, [out] must match the shape and expected dtype of [a].
 ///
 /// **Throws:**
 /// - It is an error if [a] or [out] is disposed.
-/// - It is an error if [a] dtype is not floating-point (`float32` or `float64`).
+/// - It is an error if [a] has boolean or complex dtype.
 /// - It is an error if [axis] is out of bounds.
 /// - It is an error if [out] has incompatible shape or dtype.
 ///
@@ -167,8 +238,18 @@ NDArray<R> angle<T extends Complex, R extends double>(
 /// ```
 ///
 /// Reference: [NumPy unwrap](https://numpy.org/doc/stable/reference/generated/numpy.unwrap.html)
-NDArray<T> unwrap<T extends double>(
-  NDArray<T> a, {
+NDArray<T> unwrap<
+  T extends DTypeSpec<
+    DTypeTag,
+    num,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >
+>(
+  NDArray<DTypeTag> a, {
   double discont = math.pi,
   int axis = -1,
   NDArray<T>? out,
@@ -177,8 +258,10 @@ NDArray<T> unwrap<T extends double>(
     throw StateError('Cannot execute unwrap() on a disposed array.');
   }
 
-  if (!a.dtype.isFloating) {
-    throw ArgumentError('Input array must be float32 or float64 for unwrap().');
+  if (a.dtype == DType.boolean || a.dtype.isComplex) {
+    throw ArgumentError(
+      'unwrap does not support boolean or complex dtypes (got ${a.dtype}).',
+    );
   }
 
   final rank = a.shape.length;
@@ -187,96 +270,147 @@ NDArray<T> unwrap<T extends double>(
     throw ArgumentError('Invalid axis $axis for shape ${a.shape}');
   }
 
-  final NDArray<T> result;
+  final DType targetDType =
+      out?.dtype ?? (a.dtype.isInteger ? DType.float64 : a.dtype);
+
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+    if (!listEquals(out.shape, a.shape) ||
+        out.dtype == DType.boolean ||
+        out.dtype.isComplex ||
+        ((a.dtype == DType.float64 || a.dtype == DType.float32) &&
+            out.dtype != a.dtype)) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype for unwrap.',
       );
     }
-    result = out;
-  } else {
-    result = NDArray.create(a.shape, a.dtype);
+    if (sharesMemory(a, out)) {
+      return NDArray.scope(() {
+        final temp = NDArray<T>.create(out.shape, out.dtype);
+        unwrap<T>(a, discont: discont, axis: axis, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
   }
 
-  final marker = ScratchArena.marker;
-  try {
-    final rankForBuffer = a.shape.length;
-    final cBuffer = ScratchArena.getStridedBuffer(rankForBuffer);
-    final cShape = cBuffer;
-    final cStridesA = cBuffer + rankForBuffer;
-    final cStridesRes = cBuffer + (rankForBuffer * 2);
-    for (var i = 0; i < rankForBuffer; i++) {
-      cShape[i] = a.shape[i];
-      cStridesA[i] = a.strides[i];
-      cStridesRes[i] = result.strides[i];
-    }
+  final NDArray<T> result =
+      out ??
+      (switch (targetDType) {
+            DType.float64 => NDArray<Float64>.create(a.shape, DType.float64),
+            DType.float32 => NDArray<Float32>.create(a.shape, DType.float32),
+            DType.float16 => NDArray<Float16>.create(a.shape, DType.float16),
+            DType.bfloat16 => NDArray<BFloat16>.create(a.shape, DType.bfloat16),
+            DType.int64 => NDArray<Int64>.create(a.shape, DType.int64),
+            DType.int32 => NDArray<Int32>.create(a.shape, DType.int32),
+            DType.int16 => NDArray<Int16>.create(a.shape, DType.int16),
+            DType.int8 => NDArray<Int8>.create(a.shape, DType.int8),
+            DType.uint64 => NDArray<Uint64>.create(a.shape, DType.uint64),
+            DType.uint32 => NDArray<Uint32>.create(a.shape, DType.uint32),
+            DType.uint16 => NDArray<Uint16>.create(a.shape, DType.uint16),
+            DType.uint8 => NDArray<Uint8>.create(a.shape, DType.uint8),
+            _ => throw ArgumentError(
+              'unwrap does not support boolean or complex dtypes (got $targetDType).',
+            ),
+          }
+          as NDArray<T>);
 
+  try {
     switch (a.dtype) {
       case DType.float64:
-        bindings.s_unwrap_double(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rankForBuffer,
-          resolvedAxis,
-          discont,
-        );
+        final marker = ScratchArena.marker;
+        try {
+          final rankForBuffer = a.shape.length;
+          final cBuffer = ScratchArena.getStridedBuffer(rankForBuffer);
+          final cShape = cBuffer;
+          final cStridesA = cBuffer + rankForBuffer;
+          final cStridesRes = cBuffer + (rankForBuffer * 2);
+          for (var i = 0; i < rankForBuffer; i++) {
+            cShape[i] = a.shape[i];
+            cStridesA[i] = a.strides[i];
+            cStridesRes[i] = result.strides[i];
+          }
+          bindings.s_unwrap_double(
+            a.pointer.cast(),
+            cStridesA,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            rankForBuffer,
+            resolvedAxis,
+            discont,
+          );
+        } finally {
+          ScratchArena.reset(marker);
+        }
         return result;
       case DType.float32:
-        bindings.s_unwrap_float(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rankForBuffer,
-          resolvedAxis,
-          discont,
-        );
+        final marker = ScratchArena.marker;
+        try {
+          final rankForBuffer = a.shape.length;
+          final cBuffer = ScratchArena.getStridedBuffer(rankForBuffer);
+          final cShape = cBuffer;
+          final cStridesA = cBuffer + rankForBuffer;
+          final cStridesRes = cBuffer + (rankForBuffer * 2);
+          for (var i = 0; i < rankForBuffer; i++) {
+            cShape[i] = a.shape[i];
+            cStridesA[i] = a.strides[i];
+            cStridesRes[i] = result.strides[i];
+          }
+          bindings.s_unwrap_float(
+            a.pointer.cast(),
+            cStridesA,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            rankForBuffer,
+            resolvedAxis,
+            discont,
+          );
+        } finally {
+          ScratchArena.reset(marker);
+        }
         return result;
       case DType.float16:
       case DType.bfloat16:
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
       case DType.int8:
       case DType.uint64:
       case DType.uint32:
       case DType.uint16:
-      case DType.int64:
-      case DType.int32:
-      case DType.int16:
       case DType.uint8:
+        NDArray.scope(() {
+          final doubleA = castNDArray<Float64>(a, DType.float64);
+          final doubleRes = unwrap<Float64>(
+            doubleA,
+            discont: discont,
+            axis: axis,
+          );
+          final casted = castNDArray(doubleRes, result.dtype);
+          casted.copy(out: result);
+        });
+        return result;
       case DType.boolean:
       case DType.complex128:
       case DType.complex64:
-        final doubleA = NDArray.fromList(
-          a.toList().cast<num>().map((e) => e.toDouble()).toList(),
-          a.shape,
-          DType.float64,
+        throw ArgumentError(
+          'unwrap does not support boolean or complex dtypes (got ${a.dtype}).',
         );
-        final doubleRes = unwrap(doubleA, discont: discont, axis: axis);
-        final casted = NDArray.fromList(
-          doubleRes.toList(),
-          doubleRes.shape,
-          result.dtype,
-        );
-        casted.copy(out: result);
-        doubleA.dispose();
-        doubleRes.dispose();
-        casted.dispose();
     }
-  } finally {
-    ScratchArena.reset(marker);
+  } catch (_) {
+    if (out == null) {
+      result.dispose();
+    }
+    rethrow;
   }
-  return result;
 }
 
 /// Internal helper executing direct stencil N-D valid cross-correlation.
 NDArray<R> _correlateValid<
-  T extends Object,
-  K extends Object,
-  R extends Object
+  T extends DTypeTag,
+  K extends DTypeTag,
+  R extends DTypeTag
 >(NDArray<T> in1, NDArray<K> in2, {NDArray<R>? out}) {
   final rank = in1.rank;
   final outShape = List<int>.generate(
@@ -288,6 +422,13 @@ NDArray<R> _correlateValid<
     throw ArgumentError(
       'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
     );
+  }
+  if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
+    return NDArray.scope(() {
+      final temp = _correlateValid<T, K, R>(in1, in2);
+      temp.copy(out: out);
+      return out;
+    });
   }
   final DType<R> targetDType = out?.dtype ?? (in1.dtype as DType<R>);
   final result = out ?? NDArray<R>.zeros(outShape, targetDType);
@@ -390,8 +531,41 @@ NDArray<R> _correlateValid<
           rank,
         );
         break;
-      default:
-        throw ArgumentError('Unsupported dtype for correlate');
+      case DType.int16:
+      case DType.int8:
+      case DType.uint8:
+      case DType.uint16:
+      case DType.uint32:
+        NDArray.scope(() {
+          final aPromoted = castNDArray<Int64>(in1, DType.int64);
+          final vPromoted = castNDArray<Int64>(in2, DType.int64);
+          final outInt64 = NDArray<Int64>.zeros(outShape, DType.int64);
+          _correlateValid<Int64, Int64, Int64>(
+            aPromoted,
+            vPromoted,
+            out: outInt64,
+          );
+          castNDArray<R>(outInt64, targetDType).copy(out: result);
+        });
+        break;
+      case DType.uint64:
+      case DType.float16:
+      case DType.bfloat16:
+        NDArray.scope(() {
+          final aPromoted = castNDArray<Float64>(in1, DType.float64);
+          final vPromoted = castNDArray<Float64>(in2, DType.float64);
+          final outFloat64 = NDArray<Float64>.zeros(outShape, DType.float64);
+          _correlateValid<Float64, Float64, Float64>(
+            aPromoted,
+            vPromoted,
+            out: outFloat64,
+          );
+          castNDArray<R>(outFloat64, targetDType).copy(out: result);
+        });
+        break;
+      case DType.boolean:
+        if (out == null) result.dispose();
+        throw ArgumentError('Unsupported dtype for correlate: ${in1.dtype}');
     }
   } finally {
     ScratchArena.reset(marker);
@@ -442,11 +616,11 @@ enum ConvMode {
 /// - [NumPy correlate Documentation](https://numpy.org/doc/stable/reference/generated/numpy.correlate.html)
 /// - [SciPy signal.correlate Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.correlate.html)
 /// - [Wikipedia: Cross-correlation](https://en.wikipedia.org/wiki/Cross-correlation)
-NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
+NDArray<T> correlate<T extends DTypeTag>(
   NDArray<T> in1,
-  NDArray<K> in2, {
+  NDArray<T> in2, {
   ConvMode mode = ConvMode.valid,
-  NDArray<R>? out,
+  NDArray<T>? out,
 }) {
   if (in1.isDisposed || in2.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute correlate() on a disposed array.');
@@ -456,6 +630,11 @@ NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
   }
   if (in1.dtype != in2.dtype) {
     throw ArgumentError('in1 and in2 must have matching DType.');
+  }
+  if (out != null && out.dtype != in1.dtype) {
+    throw ArgumentError(
+      'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
+    );
   }
 
   final rank = in1.rank;
@@ -476,7 +655,14 @@ NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
       if (out != null && !listEquals(out.shape, expectedShape)) {
         throw ArgumentError('Provided out buffer has incompatible shape.');
       }
-      return _correlateValid<T, K, R>(in1, in2, out: out);
+      if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
+        return NDArray.scope(() {
+          final temp = _correlateValid<T, T, T>(in1, in2);
+          temp.copy(out: out);
+          return out;
+        });
+      }
+      return _correlateValid<T, T, T>(in1, in2, out: out);
     case ConvMode.full:
       final expectedShape = List<int>.generate(
         rank,
@@ -484,6 +670,13 @@ NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
       );
       if (out != null && !listEquals(out.shape, expectedShape)) {
         throw ArgumentError('Provided out buffer has incompatible shape.');
+      }
+      if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
+        return NDArray.scope(() {
+          final temp = correlate<T>(in1, in2, mode: ConvMode.full);
+          temp.copy(out: out);
+          return out;
+        });
       }
 
       return NDArray.scope(() {
@@ -496,7 +689,7 @@ NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
           PadWidth.axes(padWidths),
           mode: PaddingMode.constant,
         );
-        final res = _correlateValid<T, K, R>(padded1, in2, out: out);
+        final res = _correlateValid<T, T, T>(padded1, in2, out: out);
         if (out != null) return out;
         return res.detachToParentScope();
       });
@@ -505,7 +698,7 @@ NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
         throw ArgumentError('Provided out buffer has incompatible shape.');
       }
       return NDArray.scope(() {
-        final fullCorr = correlate<T, K, R>(in1, in2, mode: ConvMode.full);
+        final fullCorr = correlate<T>(in1, in2, mode: ConvMode.full);
         final selectors = List<Selector>.generate(rank, (i) {
           final start = (in2.shape[i] - 1) ~/ 2;
           return Slice(start: start, stop: start + in1.shape[i]);
@@ -545,17 +738,29 @@ NDArray<R> correlate<T extends Object, K extends Object, R extends Object>(
 /// - [NumPy convolve Documentation](https://numpy.org/doc/stable/reference/generated/numpy.convolve.html)
 /// - [SciPy signal.convolve Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.convolve.html)
 /// - [Wikipedia: Convolution](https://en.wikipedia.org/wiki/Convolution)
-NDArray<R> convolve<T extends Object, K extends Object, R extends Object>(
+NDArray<T> convolve<T extends DTypeTag>(
   NDArray<T> in1,
-  NDArray<K> in2, {
+  NDArray<T> in2, {
   ConvMode mode = ConvMode.full,
-  NDArray<R>? out,
+  NDArray<T>? out,
 }) {
   if (in1.isDisposed || in2.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute convolve() on a disposed array.');
   }
   if (in1.rank != in2.rank || in1.rank == 0) {
     throw ArgumentError('in1 and in2 must have the same non-zero rank.');
+  }
+  if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
+    return NDArray.scope(() {
+      final temp = convolve<T>(in1, in2, mode: mode);
+      if (out.dtype != temp.dtype || !listEquals(out.shape, temp.shape)) {
+        throw ArgumentError(
+          'Provided out buffer has incompatible shape or dtype.',
+        );
+      }
+      temp.copy(out: out);
+      return out;
+    });
   }
 
   return NDArray.scope(() {
@@ -567,7 +772,7 @@ NDArray<R> convolve<T extends Object, K extends Object, R extends Object>(
     final contiguousKernel = flippedKernel.isContiguous
         ? flippedKernel
         : flippedKernel.copy();
-    final res = correlate<T, K, R>(in1, contiguousKernel, mode: mode, out: out);
+    final res = correlate<T>(in1, contiguousKernel, mode: mode, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });
@@ -590,14 +795,14 @@ NDArray<R> convolve<T extends Object, K extends Object, R extends Object>(
 ///
 /// ### References & Further Reading
 /// - [SciPy signal.convolve2d Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.convolve2d.html)
-NDArray<R> convolve2d<T extends Object, K extends Object, R extends Object>(
+NDArray<T> convolve2d<T extends DTypeTag>(
   NDArray<T> in1,
-  NDArray<K> in2, {
+  NDArray<T> in2, {
   ConvMode mode = ConvMode.full,
-  NDArray<R>? out,
+  NDArray<T>? out,
 }) {
   if (in1.rank != 2 || in2.rank != 2) {
     throw ArgumentError('convolve2d requires 2-dimensional arrays.');
   }
-  return convolve<T, K, R>(in1, in2, mode: mode, out: out);
+  return convolve<T>(in1, in2, mode: mode, out: out);
 }

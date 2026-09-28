@@ -149,10 +149,10 @@ final class KalmanFilter {
   /// This method is entirely allocation-free, updating [x] and [P] in-place
   /// using pre-allocated buffers.
   void predict() {
-    matmul<Float64, Float64, Float64>(F, x, out: _newX);
-    matmul<Float64, Float64, Float64>(F, P, out: _fp);
-    matmul<Float64, Float64, Float64>(_fp, fT, out: _fpfT);
-    add<Float64, Float64, Float64>(_fpfT, Q, out: P);
+    matmul<Float64>(F, x, out: _newX);
+    matmul<Float64>(F, P, out: _fp);
+    matmul<Float64>(_fp, fT, out: _fpfT);
+    add<Float64>(_fpfT, Q, out: P);
     _newX.copy(out: x);
   }
 
@@ -169,13 +169,13 @@ final class KalmanFilter {
   /// pre-allocated buffers.
   void update(NDArray<Float64> z) {
     // y = z - H * x
-    matmul<Float64, Float64, Float64>(H, x, out: _hx);
-    subtract<Float64, Float64, Float64>(z, _hx, out: _y);
+    matmul<Float64>(H, x, out: _hx);
+    subtract<Float64>(z, _hx, out: _y);
 
     // S = H * P * H^T + R
-    matmul<Float64, Float64, Float64>(H, P, out: _hp);
-    matmul<Float64, Float64, Float64>(_hp, hT, out: _hphT);
-    add<Float64, Float64, Float64>(_hphT, R, out: _s);
+    matmul<Float64>(H, P, out: _hp);
+    matmul<Float64>(_hp, hT, out: _hphT);
+    add<Float64>(_hphT, R, out: _s);
 
     // K = P * H^T * S^-1
     // Solve: S * K^T = H * P  => K^T = solve(S, H * P) => K = solve(S, H * P)^T
@@ -183,12 +183,12 @@ final class KalmanFilter {
     final K = _kTransposed.transposed; // Zero-copy view
 
     // x = x + K * y
-    matmul<Float64, Float64, Float64>(K, _y, out: _ky);
-    add<Float64, Float64, Float64>(x, _ky, out: x);
+    matmul<Float64>(K, _y, out: _ky);
+    add<Float64>(x, _ky, out: x);
 
     // P = P - K * H * P = P - K * hp
-    matmul<Float64, Float64, Float64>(K, _hp, out: _khp);
-    subtract<Float64, Float64, Float64>(P, _khp, out: P);
+    matmul<Float64>(K, _hp, out: _khp);
+    subtract<Float64>(P, _khp, out: P);
   }
 }
 
@@ -209,7 +209,7 @@ void main() {
         0.0, 1.0, 0.0, dt, //
         0.0, 0.0, 1.0, 0.0, //
         0.0, 0.0, 0.0, 1.0, //
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ]).map((e) => (e as num).toDouble()).toList(),
       [4, 4],
       DType.float64,
     );
@@ -225,7 +225,7 @@ void main() {
         1.0,
         0.0,
         0.0,
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ]).map((e) => (e as num).toDouble()).toList(),
       [2, 4],
       DType.float64,
     );
@@ -237,19 +237,14 @@ void main() {
         0.0, 0.01, 0.0, 0.0, //
         0.0, 0.0, 0.1, 0.0, //
         0.0, 0.0, 0.0, 0.1, //
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ]).map((e) => (e as num).toDouble()).toList(),
       [4, 4],
       DType.float64,
     );
 
     // Measurement noise covariance R (GPS-like, stddev = 2.0, var = 4.0)
     final R = NDArray<Float64>.fromList(
-      ([
-        4.0,
-        0.0,
-        0.0,
-        4.0,
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ([4.0, 0.0, 0.0, 4.0]).map((e) => (e as num).toDouble()).toList(),
       [2, 2],
       DType.float64,
     );
@@ -258,24 +253,14 @@ void main() {
 
     // True initial state (start at origin, moving at velocity (1, 1))
     var trueState = NDArray<Float64>.fromList(
-      ([
-        0.0,
-        0.0,
-        1.0,
-        1.0,
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ([0.0, 0.0, 1.0, 1.0]).map((e) => (e as num).toDouble()).toList(),
       [4, 1],
       DType.float64,
     );
 
     // Initial estimated state (slightly off, high covariance)
     final estState = NDArray<Float64>.fromList(
-      ([
-        0.5,
-        -0.5,
-        0.0,
-        0.0,
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ([0.5, -0.5, 0.0, 0.0]).map((e) => (e as num).toDouble()).toList(),
       [4, 1],
       DType.float64,
     );
@@ -285,7 +270,7 @@ void main() {
         0.0, 1.0, 0.0, 0.0, //
         0.0, 0.0, 10.0, 0.0, //
         0.0, 0.0, 0.0, 10.0, //
-      ]).map((e) => Float64((e as num).toDouble())).toList(),
+      ]).map((e) => (e as num).toDouble()).toList(),
       [4, 4],
       DType.float64,
     );
@@ -305,28 +290,25 @@ void main() {
     for (var k = 1; k <= steps; k++) {
       NDArray.scope(() {
         // a. Simulate true state update: trueState = F * trueState + process_noise
-        final nextTrue = matmul<Float64, Float64, Float64>(F, trueState);
+        final nextTrue = matmul<Float64>(F, trueState);
         final w = multivariateNormal<Float64>(
           NDArray.zeros([4], DType.float64),
           Q,
           seed: rngSeed + k,
         ).reshape([4, 1]);
-        final updatedTrue = add<Float64, Float64, Float64>(
-          nextTrue,
-          w,
-        ).detachToParentScope();
+        final updatedTrue = add<Float64>(nextTrue, w).detachToParentScope();
 
         trueState.dispose();
         trueState = updatedTrue;
 
         // b. Generate measurement: z = H * trueState + measurement_noise
-        final hTrue = matmul<Float64, Float64, Float64>(H, trueState);
+        final hTrue = matmul<Float64>(H, trueState);
         final v = multivariateNormal<Float64>(
           NDArray.zeros([2], DType.float64),
           R,
           seed: rngSeed + k * 100,
         ).reshape([2, 1]);
-        final z = add<Float64, Float64, Float64>(hTrue, v);
+        final z = add<Float64>(hTrue, v);
 
         // c. Kalman Filter Steps: Predict then Update
         kf.predict();

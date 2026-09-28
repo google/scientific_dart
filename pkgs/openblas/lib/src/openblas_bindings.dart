@@ -1741,24 +1741,16 @@ typedef Dartblasint = int;
 typedef lapack_int = ffi.Int;
 typedef Dartlapack_int = int;
 
-typedef LAPACK_D_SELECT2Function = ffi.Int Function(
-  ffi.Pointer<ffi.Double>,
-  ffi.Pointer<ffi.Double>,
-);
-typedef DartLAPACK_D_SELECT2Function = int Function(
-  ffi.Pointer<ffi.Double>,
-  ffi.Pointer<ffi.Double>,
-);
+typedef LAPACK_D_SELECT2Function =
+    ffi.Int Function(ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>);
+typedef DartLAPACK_D_SELECT2Function =
+    int Function(ffi.Pointer<ffi.Double>, ffi.Pointer<ffi.Double>);
 typedef LAPACK_D_SELECT2 =
     ffi.Pointer<ffi.NativeFunction<LAPACK_D_SELECT2Function>>;
-typedef LAPACK_S_SELECT2Function = ffi.Int Function(
-  ffi.Pointer<ffi.Float>,
-  ffi.Pointer<ffi.Float>,
-);
-typedef DartLAPACK_S_SELECT2Function = int Function(
-  ffi.Pointer<ffi.Float>,
-  ffi.Pointer<ffi.Float>,
-);
+typedef LAPACK_S_SELECT2Function =
+    ffi.Int Function(ffi.Pointer<ffi.Float>, ffi.Pointer<ffi.Float>);
+typedef DartLAPACK_S_SELECT2Function =
+    int Function(ffi.Pointer<ffi.Float>, ffi.Pointer<ffi.Float>);
 typedef LAPACK_S_SELECT2 =
     ffi.Pointer<ffi.NativeFunction<LAPACK_S_SELECT2Function>>;
 typedef LAPACK_C_SELECT1Function = ffi.Int Function(ffi.Pointer<ffi.Float>);

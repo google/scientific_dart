@@ -22,7 +22,7 @@ void main() async {
   await criterion(
     'NDArray Complex Number Vectorized Math Benchmark Suite',
     (c) {
-      final cA = NDArray<Complex>.fromList(
+      final cA = NDArray<AnySpec>.fromList(
         List.generate(
           size,
           (i) => Complex(i.toDouble() * 0.01, (size - i).toDouble() * 0.01),
@@ -31,7 +31,7 @@ void main() async {
         DType.complex128,
       );
 
-      final cB = NDArray<Complex>.fromList(
+      final cB = NDArray<AnySpec>.fromList(
         List.generate(size, (i) => Complex((i % 100).toDouble() + 1.0, -0.5)),
         [size],
         DType.complex128,

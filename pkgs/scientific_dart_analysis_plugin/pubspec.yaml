@@ -1,0 +1,33 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: scientific_dart_analysis_plugin
+description: Analyzer plugin providing memory-safety, view-lifecycle, DType, and performance lints for scientific_dart (ndarray, resource_scope, symbolic_dart, etc.) consumers.
+version: 0.0.1
+resolution: workspace
+repository: https://github.com/google/scientific_dart/tree/main/pkgs/scientific_dart_analysis_plugin
+
+environment:
+  sdk: ^3.10.0
+
+dependencies:
+  analysis_server_plugin: ^0.3.18
+  analyzer: ^13.3.0
+  analyzer_plugin: ^0.14.12
+
+dev_dependencies:
+  lints: ^6.1.0
+  ndarray: ^0.1.0
+  resource_scope: ^0.1.0
+  test: ^1.31.1

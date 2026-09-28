@@ -14,7 +14,6 @@
 
 import 'package:test/test.dart';
 import 'package:ndarray/ndarray.dart';
-
 import 'dart:math' as math;
 
 void main() {
@@ -82,7 +81,7 @@ void main() {
         DType.float64,
       );
       final view = a.slice([Slice.all(), Index(0)]); // [0.0, 1.0, -1.0] strided
-      final out = NDArray<double>.create([3], DType.float64);
+      final out = NDArray.create([3], DType.float64);
       final r = expm1(view, out: out);
       expect(r.data[0], closeTo(0.0, 1e-15));
       expect(r.data[1], closeTo(math.exp(1.0) - 1.0, 1e-15));

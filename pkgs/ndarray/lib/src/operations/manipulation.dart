@@ -15,7 +15,6 @@
 // ignore_for_file: non_constant_identifier_names
 import 'dart:ffi' as ffi;
 import 'dart:math' as math;
-
 import '../ndarray.dart';
 import '../ndarray_bindings.dart';
 import '../ndarray_extensions_bindings.dart';
@@ -23,6 +22,7 @@ import '../scratch_arena.dart';
 
 // Standalone operational relative cross-imports
 import 'helpers.dart';
+export 'helpers.dart' show castNDArray, sharesMemory;
 
 /// Concatenates a list of arrays along a specified axis.
 ///
@@ -50,7 +50,7 @@ import 'helpers.dart';
 ///
 /// Refer to the [NumPy concatenate reference](https://numpy.org/doc/stable/reference/generated/numpy.concatenate.html)
 /// for details.
-NDArray<T> concatenate<T>(
+NDArray<T> concatenate<T extends DTypeTag>(
   List<NDArray<T>> arrays, {
   int axis = 0,
   NDArray<T>? out,
@@ -100,69 +100,81 @@ NDArray<T> concatenate<T>(
     if (out.isDisposed) {
       throw StateError('Cannot concatenate into a disposed out array.');
     }
-    if (!listEquals(out.shape, targetShape) || out.dtype != dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, targetShape) ||
+        out.dtype != dtype) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
   }
 
-  final targetResult = out ?? NDArray<T>.create(targetShape, dtype);
-  if (targetResult.size == 0) {
-    return targetResult;
-  }
+  return NDArray.scope(() {
+    final bool useTempOut =
+        out != null &&
+        (!out.isContiguous || arrays.any((arr) => sharesMemory(arr, out)));
+    final result = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(targetShape, dtype);
+    if (result.size == 0) {
+      if (out != null) {
+        return out;
+      }
+      return result.detachToParentScope();
+    }
 
-  final isDestContiguous = targetResult.isContiguous;
-  final result = isDestContiguous
-      ? targetResult
-      : NDArray<T>.create(targetShape, dtype);
+    final outer = first.shape
+        .sublist(0, normAxis)
+        .fold<int>(1, (a, b) => a * b);
+    final inner = first.shape
+        .sublist(normAxis + 1)
+        .fold<int>(1, (a, b) => a * b);
+    final byteWidth = dtype.byteWidth;
+    final destStrideBytes = totalAxisSize * inner * byteWidth;
+    final destPtr = result.pointer.cast<ffi.Uint8>();
 
-  final outer = first.shape.sublist(0, normAxis).fold<int>(1, (a, b) => a * b);
-  final inner = first.shape.sublist(normAxis + 1).fold<int>(1, (a, b) => a * b);
-  final byteWidth = dtype.byteWidth;
-  final destStrideBytes = totalAxisSize * inner * byteWidth;
-  final destPtr = result.pointer.cast<ffi.Uint8>();
+    var axisOffset = 0;
+    for (var r = 0; r < arrays.length; r++) {
+      final arr = arrays[r];
+      final sizeAlongAxis = arr.shape[normAxis];
+      if (sizeAlongAxis == 0) continue;
 
-  var axisOffset = 0;
-  for (var r = 0; r < arrays.length; r++) {
-    final arr = arrays[r];
-    final sizeAlongAxis = arr.shape[normAxis];
-    if (sizeAlongAxis == 0) continue;
+      final blockBytes = sizeAlongAxis * inner * byteWidth;
+      final srcStrideBytes = sizeAlongAxis * inner * byteWidth;
+      final destInitialOffsetBytes = axisOffset * inner * byteWidth;
 
-    final blockBytes = sizeAlongAxis * inner * byteWidth;
-    final srcStrideBytes = sizeAlongAxis * inner * byteWidth;
-    final destInitialOffsetBytes = axisOffset * inner * byteWidth;
-
-    final srcContiguous = arr.isContiguous ? arr : arr.copy();
-    try {
-      final srcPtr = srcContiguous.pointer.cast<ffi.Uint8>();
-      if (outer == 1) {
-        custom_memcpy(
-          (destPtr + destInitialOffsetBytes).cast(),
-          srcPtr.cast(),
-          blockBytes,
-        );
-      } else {
-        for (var o = 0; o < outer; o++) {
+      final srcContiguous = arr.isContiguous ? arr : arr.copy();
+      try {
+        final srcPtr = srcContiguous.pointer.cast<ffi.Uint8>();
+        if (outer == 1) {
           custom_memcpy(
-            (destPtr + (o * destStrideBytes + destInitialOffsetBytes)).cast(),
-            (srcPtr + (o * srcStrideBytes)).cast(),
+            (destPtr + destInitialOffsetBytes).cast(),
+            srcPtr.cast(),
             blockBytes,
           );
+        } else {
+          for (var o = 0; o < outer; o++) {
+            custom_memcpy(
+              (destPtr + (o * destStrideBytes + destInitialOffsetBytes)).cast(),
+              (srcPtr + (o * srcStrideBytes)).cast(),
+              blockBytes,
+            );
+          }
+        }
+      } finally {
+        if (!identical(srcContiguous, arr)) {
+          srcContiguous.dispose();
         }
       }
-    } finally {
-      if (!identical(srcContiguous, arr)) {
-        srcContiguous.dispose();
-      }
+      axisOffset += sizeAlongAxis;
     }
-    axisOffset += sizeAlongAxis;
-  }
 
-  if (!identical(result, targetResult)) {
-    result.copy(out: targetResult);
-    result.dispose();
-  }
-
-  return targetResult;
+    if (out != null) {
+      if (useTempOut) {
+        result.copy(out: out);
+      }
+      return out;
+    }
+    return result.detachToParentScope();
+  });
 }
 
 /// Join a sequence of arrays along a new axis.
@@ -194,7 +206,7 @@ NDArray<T> concatenate<T>(
 ///
 /// Refer to the [NumPy stack reference](https://numpy.org/doc/stable/reference/generated/numpy.stack.html)
 /// for details.
-NDArray<T> stack<T extends Object>(
+NDArray<T> stack<T extends DTypeTag>(
   List<NDArray<T>> arrays, {
   int axis = 0,
   NDArray<T>? out,
@@ -238,68 +250,76 @@ NDArray<T> stack<T extends Object>(
     if (out.isDisposed) {
       throw StateError('Cannot execute stack() with a disposed out array.');
     }
-    if (!listEquals(out.shape, stackedShape) || out.dtype != dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, stackedShape) ||
+        out.dtype != dtype) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
   }
 
-  final targetResult = out ?? NDArray<T>.create(stackedShape, dtype);
-  if (targetResult.size == 0) {
-    return targetResult;
-  }
+  return NDArray.scope(() {
+    final bool useTempOut =
+        out != null &&
+        (!out.isContiguous || arrays.any((arr) => sharesMemory(arr, out)));
+    final result = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(stackedShape, dtype);
+    if (result.size == 0) {
+      if (out != null) {
+        return out;
+      }
+      return result.detachToParentScope();
+    }
 
-  final isDestContiguous = targetResult.isContiguous;
-  final result = isDestContiguous
-      ? targetResult
-      : NDArray<T>.create(stackedShape, dtype);
+    final numArrays = arrays.length;
+    final outer = first.shape
+        .sublist(0, targetAxis)
+        .fold<int>(1, (a, b) => a * b);
+    final inner = first.shape.sublist(targetAxis).fold<int>(1, (a, b) => a * b);
+    final byteWidth = dtype.byteWidth;
+    final blockBytes = inner * byteWidth;
+    final destStrideBytes = numArrays * inner * byteWidth;
+    final srcStrideBytes = inner * byteWidth;
 
-  final numArrays = arrays.length;
-  final outer = first.shape
-      .sublist(0, targetAxis)
-      .fold<int>(1, (a, b) => a * b);
-  final inner = first.shape.sublist(targetAxis).fold<int>(1, (a, b) => a * b);
-  final byteWidth = dtype.byteWidth;
-  final blockBytes = inner * byteWidth;
-  final destStrideBytes = numArrays * inner * byteWidth;
-  final srcStrideBytes = inner * byteWidth;
+    final destPtr = result.pointer.cast<ffi.Uint8>();
 
-  final destPtr = result.pointer.cast<ffi.Uint8>();
+    for (var r = 0; r < numArrays; r++) {
+      final arr = arrays[r];
+      final srcContiguous = arr.isContiguous ? arr : arr.copy();
+      try {
+        final srcPtr = srcContiguous.pointer.cast<ffi.Uint8>();
+        final destInitialOffsetBytes = r * inner * byteWidth;
 
-  for (var r = 0; r < numArrays; r++) {
-    final arr = arrays[r];
-    final srcContiguous = arr.isContiguous ? arr : arr.copy();
-    try {
-      final srcPtr = srcContiguous.pointer.cast<ffi.Uint8>();
-      final destInitialOffsetBytes = r * inner * byteWidth;
-
-      if (outer == 1) {
-        custom_memcpy(
-          (destPtr + destInitialOffsetBytes).cast(),
-          srcPtr.cast(),
-          blockBytes,
-        );
-      } else {
-        for (var o = 0; o < outer; o++) {
+        if (outer == 1) {
           custom_memcpy(
-            (destPtr + (o * destStrideBytes + destInitialOffsetBytes)).cast(),
-            (srcPtr + (o * srcStrideBytes)).cast(),
+            (destPtr + destInitialOffsetBytes).cast(),
+            srcPtr.cast(),
             blockBytes,
           );
+        } else {
+          for (var o = 0; o < outer; o++) {
+            custom_memcpy(
+              (destPtr + (o * destStrideBytes + destInitialOffsetBytes)).cast(),
+              (srcPtr + (o * srcStrideBytes)).cast(),
+              blockBytes,
+            );
+          }
+        }
+      } finally {
+        if (!identical(srcContiguous, arr)) {
+          srcContiguous.dispose();
         }
       }
-    } finally {
-      if (!identical(srcContiguous, arr)) {
-        srcContiguous.dispose();
-      }
     }
-  }
 
-  if (!identical(result, targetResult)) {
-    result.copy(out: targetResult);
-    result.dispose();
-  }
-
-  return targetResult;
+    if (out != null) {
+      if (useTempOut) {
+        result.copy(out: out);
+      }
+      return out;
+    }
+    return result.detachToParentScope();
+  });
 }
 
 /// Expand the shape of an array by inserting a new axis of size 1.
@@ -323,12 +343,12 @@ NDArray<T> stack<T extends Object>(
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
 /// > This operation returns a **zero-copy metadata view** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned view will **silently mutate the original array**. Disposing of the parent array [a] will invalidate the returned view. Calling [dispose] on the returned view does nothing.
-NDArray<T> expand_dims<T extends Object>(NDArray<T> a, int axis) {
+NDArray<T> expand_dims<T extends DTypeTag>(NDArray<T> a, int axis) {
   if (a.isDisposed) {
     throw StateError('Cannot execute expand_dims() on a disposed array.');
   }
   final rank = a.shape.length;
-  var targetAxis = axis < 0 ? rank + 1 + axis : axis;
+  final targetAxis = axis < 0 ? rank + 1 + axis : axis;
 
   if (targetAxis < 0 || targetAxis > rank) {
     throw ArgumentError(
@@ -373,7 +393,7 @@ NDArray<T> expand_dims<T extends Object>(NDArray<T> a, int axis) {
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
 /// > This operation returns a **zero-copy metadata view** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned view will **silently mutate the original array**. Disposing of the parent array [a] will invalidate the returned view. Calling [dispose] on the returned view does nothing.
-NDArray<T> squeeze<T extends Object>(NDArray<T> a, {List<int>? axis}) {
+NDArray<T> squeeze<T extends DTypeTag>(NDArray<T> a, {List<int>? axis}) {
   if (a.isDisposed) {
     throw StateError('Cannot execute squeeze() on a disposed array.');
   }
@@ -455,7 +475,7 @@ NDArray<T> squeeze<T extends Object>(NDArray<T> a, {List<int>? axis}) {
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
 /// > This operation returns a **zero-copy metadata view** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned view will **silently mutate the original array**. Disposing of the parent array [a] will invalidate the returned view. Calling [dispose] on the returned view does nothing.
-NDArray<T> slidingWindowView<T extends Object>(
+NDArray<T> slidingWindowView<T extends DTypeTag>(
   NDArray<T> a,
   List<int> windowShape, {
   List<int>? axis,
@@ -468,7 +488,7 @@ NDArray<T> slidingWindowView<T extends Object>(
   // 1. Resolve and validate target axes
   final targetAxes = <int>[];
   if (axis != null) {
-    for (var ax in axis) {
+    for (final ax in axis) {
       final resolved = ax < 0 ? rank + ax : ax;
       if (resolved < 0 || resolved >= rank) {
         throw RangeError.range(resolved, 0, rank - 1, 'axis');
@@ -549,7 +569,7 @@ NDArray<T> slidingWindowView<T extends Object>(
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
 /// > This operation returns a **zero-copy metadata view** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned view will **silently mutate the original array**. Disposing of the parent array [a] will invalidate the returned view. Calling [dispose] on the returned view does nothing.
-NDArray<T> flip<T extends Object>(NDArray<T> a, {dynamic axis}) {
+NDArray<T> flip<T extends DTypeTag>(NDArray<T> a, {dynamic axis}) {
   if (a.isDisposed) {
     throw StateError('Cannot flip a disposed array.');
   }
@@ -589,7 +609,9 @@ NDArray<T> flip<T extends Object>(NDArray<T> a, {dynamic axis}) {
 
   for (final ax in axesToFlip) {
     newStrides[ax] = a.strides[ax] * -1;
-    offset += (a.shape[ax] - 1) * a.strides[ax];
+    if (a.shape[ax] > 0) {
+      offset += (a.shape[ax] - 1) * a.strides[ax];
+    }
   }
 
   return NDArray.view(
@@ -622,7 +644,7 @@ NDArray<T> flip<T extends Object>(NDArray<T> a, {dynamic axis}) {
 /// Refer to [NumPy fliplr documentation](https://numpy.org/doc/stable/reference/generated/numpy.fliplr.html).
 ///
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<T> fliplr<T extends Object>(NDArray<T> a) {
+NDArray<T> fliplr<T extends DTypeTag>(NDArray<T> a) {
   if (a.isDisposed) {
     throw StateError('Cannot fliplr a disposed array.');
   }
@@ -654,7 +676,7 @@ NDArray<T> fliplr<T extends Object>(NDArray<T> a) {
 /// Refer to [NumPy flipud documentation](https://numpy.org/doc/stable/reference/generated/numpy.flipud.html).
 ///
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<T> flipud<T extends Object>(NDArray<T> a) {
+NDArray<T> flipud<T extends DTypeTag>(NDArray<T> a) {
   if (a.isDisposed) {
     throw StateError('Cannot flipud a disposed array.');
   }
@@ -674,7 +696,7 @@ NDArray<T> flipud<T extends Object>(NDArray<T> a) {
 /// - [axes] must be a list of 2 distinct axes.
 ///
 /// Refer to [NumPy rot90 documentation](https://numpy.org/doc/stable/reference/generated/numpy.rot90.html).
-NDArray<T> rot90<T extends Object>(
+NDArray<T> rot90<T extends DTypeTag>(
   NDArray<T> a, [
   int k = 1,
   List<int> axes = const [0, 1],
@@ -684,7 +706,7 @@ NDArray<T> rot90<T extends Object>(
   }
   final rank = a.rank;
   if (rank < 2) {
-    throw ArgumentError('Input must be >= 2-D (was rank ).');
+    throw ArgumentError('Input must be >= 2-D (was rank $rank).');
   }
   if (axes.length != 2) {
     throw ArgumentError('len(axes) must be 2.');
@@ -692,7 +714,7 @@ NDArray<T> rot90<T extends Object>(
   final ax0 = axes[0] < 0 ? rank + axes[0] : axes[0];
   final ax1 = axes[1] < 0 ? rank + axes[1] : axes[1];
   if (ax0 < 0 || ax0 >= rank || ax1 < 0 || ax1 >= rank) {
-    throw RangeError('axes out of range for array of rank ');
+    throw RangeError('axes out of range for array of rank $rank.');
   }
   if (ax0 == ax1) {
     throw ArgumentError('Axes must be different.');
@@ -727,7 +749,7 @@ NDArray<T> rot90<T extends Object>(
 /// Stacks arrays in sequence vertically (row wise).
 ///
 /// It is an error if [arrays] is empty, any array is disposed, or array shapes/dtypes mismatch.
-NDArray<T> vstack<T extends Object>(
+NDArray<T> vstack<T extends DTypeTag>(
   List<NDArray<T>> arrays, {
   NDArray<T>? out,
 }) {
@@ -740,7 +762,7 @@ NDArray<T> vstack<T extends Object>(
 /// except for 1-D arrays where it concatenates along the first axis (axis 0).
 ///
 /// It is an error if [arrays] is empty, any array is disposed, or array shapes/dtypes mismatch.
-NDArray<T> hstack<T extends Object>(
+NDArray<T> hstack<T extends DTypeTag>(
   List<NDArray<T>> arrays, {
   NDArray<T>? out,
 }) {
@@ -772,7 +794,7 @@ NDArray<T> hstack<T extends Object>(
 /// b[0] = 99;
 /// print(a[0]); // 1 (decoupled memory!)
 /// ```
-NDArray<T> copy<T extends Object>(NDArray<T> a, {NDArray<T>? out}) {
+NDArray<T> copy<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute copy() on a disposed array.');
   }
@@ -789,7 +811,11 @@ NDArray<T> copy<T extends Object>(NDArray<T> a, {NDArray<T>? out}) {
 /// {@example /example/diag_example.dart lang=dart}
 ///
 /// Reference: [Diagonal Matrix](https://en.wikipedia.org/wiki/Diagonal_matrix)
-NDArray<T> diag<T>(NDArray<T> v, {int k = 0, NDArray<T>? out}) {
+NDArray<T> diag<T extends DTypeTag>(
+  NDArray<T> v, {
+  int k = 0,
+  NDArray<T>? out,
+}) {
   if (v.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute diag() on a disposed array.');
   }
@@ -804,26 +830,23 @@ NDArray<T> diag<T>(NDArray<T> v, {int k = 0, NDArray<T>? out}) {
     if (k >= 0) {
       startRow = 0;
       startCol = k;
-      if (startCol >= n) {
-        return NDArray<T>.create([0], v.dtype);
-      }
-      len = math.min(m, n - k);
+      len = math.max(0, math.min(m, n - k));
     } else {
       startRow = -k;
       startCol = 0;
-      if (startRow >= m) {
-        return NDArray<T>.create([0], v.dtype);
-      }
-      len = math.min(m + k, n);
+      len = math.max(0, math.min(m + k, n));
     }
 
     if (len <= 0) {
       if (out != null) {
-        if (!listEquals(out.shape, [0]) || out.dtype != v.dtype) {
+        if (!out.isWriteable ||
+            !listEquals(out.shape, [0]) ||
+            out.dtype != v.dtype) {
           throw ArgumentError(
             'Provided out buffer has incompatible shape or dtype.',
           );
         }
+        out.fill(castValue(0, v.dtype));
         return out;
       }
       return NDArray<T>.create([0], v.dtype);
@@ -849,37 +872,52 @@ NDArray<T> diag<T>(NDArray<T> v, {int k = 0, NDArray<T>? out}) {
     final size = n + k.abs();
     final targetShape = [size, size];
 
-    final result = out ?? NDArray<T>.zeros(targetShape, v.dtype);
     if (out != null) {
-      if (!listEquals(out.shape, targetShape) || out.dtype != v.dtype) {
+      if (!out.isWriteable ||
+          !listEquals(out.shape, targetShape) ||
+          out.dtype != v.dtype) {
         throw ArgumentError(
           'Provided out buffer has incompatible shape or dtype.',
         );
       }
-      result.fill(castValue(0, v.dtype) as T);
     }
 
-    int startRow;
-    int startCol;
+    return NDArray.scope(() {
+      final bool useTempOut = out != null && sharesMemory(v, out);
+      final result = (out != null && !useTempOut)
+          ? out
+          : NDArray<T>.zeros(targetShape, v.dtype);
+      if (out != null && !useTempOut) {
+        result.fill(castValue(0, v.dtype));
+      }
 
-    if (k >= 0) {
-      startRow = 0;
-      startCol = k;
-    } else {
-      startRow = -k;
-      startCol = 0;
-    }
+      int startRow;
+      int startCol;
 
-    final resStride0 = result.strides[0];
-    final resStride1 = result.strides[1];
-    for (var i = 0; i < n; i++) {
-      result.setCellFlat(
-        (startRow + i) * resStride0 + (startCol + i) * resStride1,
-        v.getCellFlat(i),
-      );
-    }
+      if (k >= 0) {
+        startRow = 0;
+        startCol = k;
+      } else {
+        startRow = -k;
+        startCol = 0;
+      }
 
-    return result;
+      final resStride0 = result.strides[0];
+      final resStride1 = result.strides[1];
+      for (var i = 0; i < n; i++) {
+        final flatOffset =
+            (startRow + i) * resStride0 + (startCol + i) * resStride1;
+        result.setCellRaw(result.offsetElements + flatOffset, v.getCellFlat(i));
+      }
+
+      if (out != null) {
+        if (useTempOut) {
+          result.copy(out: out);
+        }
+        return out;
+      }
+      return result.detachToParentScope();
+    });
   } else {
     throw ArgumentError('Input array must be 1- or 2-dimensional.');
   }
@@ -896,85 +934,119 @@ NDArray<T> diag<T>(NDArray<T> v, {int k = 0, NDArray<T>? out}) {
 ///
 /// **Example:**
 /// {@example /example/triangular_example.dart lang=dart}
-NDArray<T> tril<T>(NDArray<T> a, {int k = 0, NDArray<T>? out}) {
+NDArray<T> tril<T extends DTypeTag>(
+  NDArray<T> a, {
+  int k = 0,
+  NDArray<T>? out,
+}) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute tril() on a disposed array.');
   }
   if (a.shape.length < 2) {
     throw ArgumentError('Input array must have rank >= 2.');
   }
-  final result = out ?? NDArray<T>.create(a.shape, a.dtype);
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != a.dtype) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype.',
       );
     }
   }
 
-  final rank = a.shape.length;
-  final rows = a.shape[rank - 2];
-  final cols = a.shape[rank - 1];
+  return NDArray.scope(() {
+    final bool useTempOut = out != null && sharesMemory(a, out);
+    final result = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(a.shape, a.dtype);
 
-  final batchCount = a.shape.isEmpty
-      ? 1
-      : a.shape.sublist(0, rank - 2).isEmpty
-      ? 1
-      : a.shape.sublist(0, rank - 2).reduce((x, y) => x * y);
+    final rank = a.shape.length;
+    final rows = a.shape[rank - 2];
+    final cols = a.shape[rank - 1];
 
-  if (a.isContiguous && result.isContiguous) {
-    switch (a.dtype) {
-      case DType.float64:
-        v_tril_double(
-          a.pointer.cast(),
-          result.pointer.cast(),
-          batchCount,
-          rows,
-          cols,
-          k,
-        );
-        return result;
-      case DType.float32:
-        v_tril_float(
-          a.pointer.cast(),
-          result.pointer.cast(),
-          batchCount,
-          rows,
-          cols,
-          k,
-        );
-        return result;
-      default:
-        break;
+    final batchCount = a.shape.isEmpty
+        ? 1
+        : a.shape.sublist(0, rank - 2).isEmpty
+        ? 1
+        : a.shape.sublist(0, rank - 2).reduce((x, y) => x * y);
+
+    bool handledByFastKernel = false;
+    if (a.isContiguous && result.isContiguous) {
+      switch (a.dtype) {
+        case DType.float64:
+          v_tril_double(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            batchCount,
+            rows,
+            cols,
+            k,
+          );
+          handledByFastKernel = true;
+        case DType.float32:
+          v_tril_float(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            batchCount,
+            rows,
+            cols,
+            k,
+          );
+          handledByFastKernel = true;
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          break;
+      }
     }
-  }
 
-  final zeroVal = castValue(0, a.dtype) as T;
-  final coords = List<int>.filled(rank, 0);
+    if (!handledByFastKernel) {
+      final zeroVal = castValue(0, a.dtype);
+      final coords = List<int>.filled(rank, 0);
 
-  void walk(int dim) {
-    if (dim == rank - 2) {
-      for (var r = 0; r < rows; r++) {
-        coords[rank - 2] = r;
-        for (var c = 0; c < cols; c++) {
-          coords[rank - 1] = c;
-          if (c <= r + k) {
-            result.setCell(coords, a.getCell(coords));
-          } else {
-            result.setCell(coords, zeroVal);
+      void walk(int dim) {
+        if (dim == rank - 2) {
+          for (var r = 0; r < rows; r++) {
+            coords[rank - 2] = r;
+            for (var c = 0; c < cols; c++) {
+              coords[rank - 1] = c;
+              if (c <= r + k) {
+                result.setCell(coords, a.getCell(coords));
+              } else {
+                result.setCell(coords, zeroVal);
+              }
+            }
           }
+          return;
+        }
+        for (var i = 0; i < a.shape[dim]; i++) {
+          coords[dim] = i;
+          walk(dim + 1);
         }
       }
-      return;
-    }
-    for (var i = 0; i < a.shape[dim]; i++) {
-      coords[dim] = i;
-      walk(dim + 1);
-    }
-  }
 
-  walk(0);
-  return result;
+      walk(0);
+    }
+
+    if (out != null) {
+      if (useTempOut) {
+        result.copy(out: out);
+      }
+      return out;
+    }
+    return result.detachToParentScope();
+  });
 }
 
 /// Extract an upper triangular matrix (on and above the k-th diagonal) element-wise.
@@ -988,85 +1060,119 @@ NDArray<T> tril<T>(NDArray<T> a, {int k = 0, NDArray<T>? out}) {
 ///
 /// **Example:**
 /// {@example /example/triangular_example.dart lang=dart}
-NDArray<T> triu<T>(NDArray<T> a, {int k = 0, NDArray<T>? out}) {
+NDArray<T> triu<T extends DTypeTag>(
+  NDArray<T> a, {
+  int k = 0,
+  NDArray<T>? out,
+}) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute triu() on a disposed array.');
   }
   if (a.shape.length < 2) {
     throw ArgumentError('Input array must have rank >= 2.');
   }
-  final result = out ?? NDArray<T>.create(a.shape, a.dtype);
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != a.dtype) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype.',
       );
     }
   }
 
-  final rank = a.shape.length;
-  final rows = a.shape[rank - 2];
-  final cols = a.shape[rank - 1];
+  return NDArray.scope(() {
+    final bool useTempOut = out != null && sharesMemory(a, out);
+    final result = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(a.shape, a.dtype);
 
-  final batchCount = a.shape.isEmpty
-      ? 1
-      : a.shape.sublist(0, rank - 2).isEmpty
-      ? 1
-      : a.shape.sublist(0, rank - 2).reduce((x, y) => x * y);
+    final rank = a.shape.length;
+    final rows = a.shape[rank - 2];
+    final cols = a.shape[rank - 1];
 
-  if (a.isContiguous && result.isContiguous) {
-    switch (a.dtype) {
-      case DType.float64:
-        v_triu_double(
-          a.pointer.cast(),
-          result.pointer.cast(),
-          batchCount,
-          rows,
-          cols,
-          k,
-        );
-        return result;
-      case DType.float32:
-        v_triu_float(
-          a.pointer.cast(),
-          result.pointer.cast(),
-          batchCount,
-          rows,
-          cols,
-          k,
-        );
-        return result;
-      default:
-        break;
+    final batchCount = a.shape.isEmpty
+        ? 1
+        : a.shape.sublist(0, rank - 2).isEmpty
+        ? 1
+        : a.shape.sublist(0, rank - 2).reduce((x, y) => x * y);
+
+    bool handledByFastKernel = false;
+    if (a.isContiguous && result.isContiguous) {
+      switch (a.dtype) {
+        case DType.float64:
+          v_triu_double(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            batchCount,
+            rows,
+            cols,
+            k,
+          );
+          handledByFastKernel = true;
+        case DType.float32:
+          v_triu_float(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            batchCount,
+            rows,
+            cols,
+            k,
+          );
+          handledByFastKernel = true;
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          break;
+      }
     }
-  }
 
-  final zeroVal = castValue(0, a.dtype) as T;
-  final coords = List<int>.filled(rank, 0);
+    if (!handledByFastKernel) {
+      final zeroVal = castValue(0, a.dtype);
+      final coords = List<int>.filled(rank, 0);
 
-  void walk(int dim) {
-    if (dim == rank - 2) {
-      for (var r = 0; r < rows; r++) {
-        coords[rank - 2] = r;
-        for (var c = 0; c < cols; c++) {
-          coords[rank - 1] = c;
-          if (c >= r + k) {
-            result.setCell(coords, a.getCell(coords));
-          } else {
-            result.setCell(coords, zeroVal);
+      void walk(int dim) {
+        if (dim == rank - 2) {
+          for (var r = 0; r < rows; r++) {
+            coords[rank - 2] = r;
+            for (var c = 0; c < cols; c++) {
+              coords[rank - 1] = c;
+              if (c >= r + k) {
+                result.setCell(coords, a.getCell(coords));
+              } else {
+                result.setCell(coords, zeroVal);
+              }
+            }
           }
+          return;
+        }
+        for (var i = 0; i < a.shape[dim]; i++) {
+          coords[dim] = i;
+          walk(dim + 1);
         }
       }
-      return;
-    }
-    for (var i = 0; i < a.shape[dim]; i++) {
-      coords[dim] = i;
-      walk(dim + 1);
-    }
-  }
 
-  walk(0);
-  return result;
+      walk(0);
+    }
+
+    if (out != null) {
+      if (useTempOut) {
+        result.copy(out: out);
+      }
+      return out;
+    }
+    return result.detachToParentScope();
+  });
 }
 
 /// Calculates the n-th discrete difference along the given axis.
@@ -1084,7 +1190,12 @@ NDArray<T> triu<T>(NDArray<T> a, {int k = 0, NDArray<T>? out}) {
 /// final a = NDArray.fromList([1, 2, 4, 7, 0], [5], DType.int32);
 /// final res = diff(a); // [1, 2, 3, -7]
 /// ```
-NDArray<T> diff<T>(NDArray<T> a, {int n = 1, int axis = -1, NDArray<T>? out}) {
+NDArray<T> diff<T extends DTypeTag>(
+  NDArray<T> a, {
+  int n = 1,
+  int axis = -1,
+  NDArray<T>? out,
+}) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute diff() on a disposed array.');
   }
@@ -1107,7 +1218,9 @@ NDArray<T> diff<T>(NDArray<T> a, {int n = 1, int axis = -1, NDArray<T>? out}) {
     final emptyShape = List<int>.from(a.shape);
     emptyShape[targetAxis] = 0;
     if (out != null) {
-      if (!listEquals(out.shape, emptyShape) || out.dtype != a.dtype) {
+      if (!out.isWriteable ||
+          !listEquals(out.shape, emptyShape) ||
+          out.dtype != a.dtype) {
         throw ArgumentError('Incompatible out buffer shape or dtype for diff.');
       }
       return out;
@@ -1115,128 +1228,140 @@ NDArray<T> diff<T>(NDArray<T> a, {int n = 1, int axis = -1, NDArray<T>? out}) {
     return NDArray<T>.create(emptyShape, a.dtype);
   }
 
-  if (n > 1) {
-    final step = diff(a, n: n - 1, axis: targetAxis);
-    final result = diff(step, n: 1, axis: targetAxis, out: out);
-    step.dispose();
-    return result;
-  }
-
   final targetShape = List<int>.from(a.shape);
-  targetShape[targetAxis] = a.shape[targetAxis] - 1;
+  targetShape[targetAxis] = a.shape[targetAxis] - n;
 
-  final result = out ?? NDArray<T>.create(targetShape, a.dtype);
   if (out != null) {
-    if (!listEquals(out.shape, targetShape) || out.dtype != a.dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, targetShape) ||
+        out.dtype != a.dtype) {
       throw ArgumentError(
         'Provided out buffer has incompatible shape or dtype.',
       );
     }
   }
 
-  final rank = a.shape.length;
-  final marker = ScratchArena.marker;
-  final cShape = ScratchArena.copyInts(a.shape);
-  final cStridesA = ScratchArena.copyInts(a.strides);
-  final cStridesRes = ScratchArena.copyInts(result.strides);
-  try {
-    final dtype = a.dtype;
-    switch (dtype) {
-      case DType.float64:
-        s_diff_double(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
-      case DType.float32:
-        s_diff_float(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
-      case DType.int64:
-        s_diff_int64(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
-      case DType.int32:
-        s_diff_int32(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
-      case DType.complex128:
-        s_diff_complex128(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
-      case DType.complex64:
-        s_diff_complex64(
-          a.pointer.cast(),
-          cStridesA,
-          result.pointer.cast(),
-          cStridesRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
-      case DType.float16:
-      case DType.bfloat16:
-      case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
-      case DType.uint8:
-      case DType.int16:
-      case DType.boolean:
-        final intA = castNDArray(a, DType.float64);
-        final intRes = NDArray<Float64>.create(targetShape, DType.float64);
-        final cStridesIntA = ScratchArena.copyInts(intA.strides);
-        final cStridesIntRes = ScratchArena.copyInts(intRes.strides);
+  return NDArray.scope(() {
+    final bool useTempOut = out != null && sharesMemory(a, out);
+    final result = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(targetShape, a.dtype);
 
-        s_diff_double(
-          intA.pointer.cast(),
-          cStridesIntA,
-          intRes.pointer.cast(),
-          cStridesIntRes,
-          cShape,
-          rank,
-          targetAxis,
-        );
+    if (n > 1) {
+      final step = diff(a, n: n - 1, axis: targetAxis);
+      diff(step, n: 1, axis: targetAxis, out: result);
+    } else {
+      final rank = a.shape.length;
+      final marker = ScratchArena.marker;
+      try {
+        final cShape = ScratchArena.copyInts(a.shape);
+        final cStridesA = ScratchArena.copyInts(a.strides);
+        final cStridesRes = ScratchArena.copyInts(result.strides);
+        final dtype = a.dtype;
+        switch (dtype) {
+          case DType.float64:
+            s_diff_double(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.float32:
+            s_diff_float(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.int64:
+            s_diff_int64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.int32:
+            s_diff_int32(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.complex128:
+            s_diff_complex128(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.complex64:
+            s_diff_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.int16:
+          case DType.boolean:
+            final intA = castNDArray(a, DType.float64);
+            final intRes = NDArray<Float64>.create(targetShape, DType.float64);
+            final cStridesIntA = ScratchArena.copyInts(intA.strides);
+            final cStridesIntRes = ScratchArena.copyInts(intRes.strides);
 
-        final castedRes = castNDArray(intRes, a.dtype);
-        castedRes.copy(out: result);
-        castedRes.dispose();
-        intA.dispose();
-        intRes.dispose();
+            s_diff_double(
+              intA.pointer.cast(),
+              cStridesIntA,
+              intRes.pointer.cast(),
+              cStridesIntRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+
+            final castedRes = castNDArray(intRes, a.dtype);
+            castedRes.copy(out: result);
+            castedRes.dispose();
+            intA.dispose();
+            intRes.dispose();
+        }
+      } finally {
+        ScratchArena.reset(marker);
+      }
     }
-  } finally {
-    ScratchArena.reset(marker);
-  }
 
-  return result;
+    if (out != null) {
+      if (useTempOut) {
+        result.copy(out: out);
+      }
+      return out;
+    }
+    return result.detachToParentScope();
+  });
 }
 
 /// Roll array elements along a given axis.
@@ -1262,7 +1387,7 @@ NDArray<T> diff<T>(NDArray<T> a, {int n = 1, int axis = -1, NDArray<T>? out}) {
 /// Refer to [NumPy roll documentation](https://numpy.org/doc/stable/reference/generated/numpy.roll.html).
 ///
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<T> roll<T extends Object>(
+NDArray<T> roll<T extends DTypeTag>(
   NDArray<T> a,
   dynamic shift, {
   dynamic axis,
@@ -1324,7 +1449,9 @@ NDArray<T> roll<T extends Object>(
   }
 
   if (out != null) {
-    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+    if (!out.isWriteable ||
+        !listEquals(out.shape, a.shape) ||
+        out.dtype != a.dtype) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
   }
@@ -1335,6 +1462,16 @@ NDArray<T> roll<T extends Object>(
       if (normAx < 0 || normAx >= a.rank) {
         throw RangeError.range(normAx, 0, a.rank - 1, 'axis');
       }
+    }
+  }
+
+  if (out != null && sharesMemory(a, out)) {
+    final temp = roll<T>(a, shift, axis: axis);
+    try {
+      temp.copy(out: out);
+      return out;
+    } finally {
+      temp.dispose();
     }
   }
 
@@ -1349,24 +1486,32 @@ NDArray<T> roll<T extends Object>(
     if (a.isContiguous) {
       final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
       if (targetResult.isContiguous) {
-        native_roll_1d(
+        final rc = native_roll_1d(
           a.dtype.index,
           a.pointer.cast(),
           a.size,
           shifts[0],
           targetResult.pointer.cast(),
         );
+        if (rc != 0) {
+          if (out == null) targetResult.dispose();
+          throw StateError('Native roll operation failed with code $rc');
+        }
         return targetResult;
       } else {
         final contigRes = NDArray<T>.create(a.shape, a.dtype);
         try {
-          native_roll_1d(
+          final rc = native_roll_1d(
             a.dtype.index,
             a.pointer.cast(),
             a.size,
             shifts[0],
             contigRes.pointer.cast(),
           );
+          if (rc != 0) {
+            if (out == null) targetResult.dispose();
+            throw StateError('Native roll operation failed with code $rc');
+          }
           contigRes.copy(out: targetResult);
           return targetResult;
         } finally {
@@ -1378,23 +1523,31 @@ NDArray<T> roll<T extends Object>(
       try {
         final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
         if (targetResult.isContiguous) {
-          native_roll_1d(
+          final rc = native_roll_1d(
             contigA.dtype.index,
             contigA.pointer.cast(),
             contigA.size,
             shifts[0],
             targetResult.pointer.cast(),
           );
+          if (rc != 0) {
+            if (out == null) targetResult.dispose();
+            throw StateError('Native roll operation failed with code $rc');
+          }
         } else {
           final contigRes = NDArray<T>.create(a.shape, a.dtype);
           try {
-            native_roll_1d(
+            final rc = native_roll_1d(
               contigA.dtype.index,
               contigA.pointer.cast(),
               contigA.size,
               shifts[0],
               contigRes.pointer.cast(),
             );
+            if (rc != 0) {
+              if (out == null) targetResult.dispose();
+              throw StateError('Native roll operation failed with code $rc');
+            }
             contigRes.copy(out: targetResult);
           } finally {
             contigRes.dispose();
@@ -1408,6 +1561,9 @@ NDArray<T> roll<T extends Object>(
   }
 
   final nonNullAxes = axes;
+  if (nonNullAxes.isEmpty) {
+    return a.copy(out: out);
+  }
   if (nonNullAxes.length == 1) {
     return _rollSingleND(a, shifts[0], nonNullAxes[0], out: out);
   }
@@ -1417,7 +1573,12 @@ NDArray<T> roll<T extends Object>(
     try {
       _rollSingleND(a, shifts[0], nonNullAxes[0], out: temp);
       final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
-      _rollSingleND(temp, shifts[1], nonNullAxes[1], out: targetResult);
+      try {
+        _rollSingleND(temp, shifts[1], nonNullAxes[1], out: targetResult);
+      } catch (_) {
+        if (out == null) targetResult.dispose();
+        rethrow;
+      }
       return targetResult;
     } finally {
       temp.dispose();
@@ -1437,11 +1598,11 @@ NDArray<T> roll<T extends Object>(
       );
       current = next;
     }
-    return current.detachToParentScope();
+    return out != null ? current : current.detachToParentScope();
   });
 }
 
-NDArray<T> _roll1D<T extends Object>(
+NDArray<T> _roll1D<T extends DTypeTag>(
   NDArray<T> a,
   int shift, {
   NDArray<T>? out,
@@ -1461,13 +1622,17 @@ NDArray<T> _roll1D<T extends Object>(
 
   final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
   if (a.isContiguous && targetResult.isContiguous) {
-    native_roll_1d(
+    final rc = native_roll_1d(
       a.dtype.index,
       a.pointer.cast(),
       size,
       realShift,
       targetResult.pointer.cast(),
     );
+    if (rc != 0) {
+      if (out == null) targetResult.dispose();
+      throw StateError('Native roll operation failed with code $rc');
+    }
     return targetResult;
   }
 
@@ -1476,7 +1641,7 @@ NDArray<T> _roll1D<T extends Object>(
     final cShape = ScratchArena.copyInt64s(a.shape);
     final cSrcStrides = ScratchArena.copyInt64s(a.strides);
     final cDestStrides = ScratchArena.copyInt64s(targetResult.strides);
-    native_roll_nd(
+    final rc = native_roll_nd(
       a.dtype.index,
       a.pointer.cast(),
       cShape,
@@ -1487,13 +1652,17 @@ NDArray<T> _roll1D<T extends Object>(
       targetResult.pointer.cast(),
       cDestStrides,
     );
+    if (rc != 0) {
+      if (out == null) targetResult.dispose();
+      throw StateError('Native roll operation failed with code $rc');
+    }
   } finally {
     ScratchArena.reset(marker);
   }
   return targetResult;
 }
 
-NDArray<T> _rollSingleND<T extends Object>(
+NDArray<T> _rollSingleND<T extends DTypeTag>(
   NDArray<T> a,
   int shift,
   int axis, {
@@ -1522,21 +1691,26 @@ NDArray<T> _rollSingleND<T extends Object>(
   final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
 
   if (rank == 1 && a.isContiguous && targetResult.isContiguous) {
-    native_roll_1d(
+    final rc = native_roll_1d(
       a.dtype.index,
       a.pointer.cast(),
       a.size,
       realShift,
       targetResult.pointer.cast(),
     );
+    if (rc != 0) {
+      if (out == null) targetResult.dispose();
+      throw StateError('Native roll operation failed with code $rc');
+    }
     return targetResult;
   }
 
   final marker = ScratchArena.marker;
   try {
     final cShape = ScratchArena.copyInt64s(a.shape);
+    final int rc;
     if (a.isContiguous && targetResult.isContiguous) {
-      native_roll_nd(
+      rc = native_roll_nd(
         a.dtype.index,
         a.pointer.cast(),
         cShape,
@@ -1550,7 +1724,7 @@ NDArray<T> _rollSingleND<T extends Object>(
     } else {
       final cSrcStrides = ScratchArena.copyInt64s(a.strides);
       final cDestStrides = ScratchArena.copyInt64s(targetResult.strides);
-      native_roll_nd(
+      rc = native_roll_nd(
         a.dtype.index,
         a.pointer.cast(),
         cShape,
@@ -1562,9 +1736,43 @@ NDArray<T> _rollSingleND<T extends Object>(
         cDestStrides,
       );
     }
+    if (rc != 0) {
+      if (out == null) targetResult.dispose();
+      throw StateError('Native roll operation failed with code $rc');
+    }
   } finally {
     ScratchArena.reset(marker);
   }
 
   return targetResult;
+}
+
+/// Returns a copy of array [a] cast to the specified [targetDType].
+///
+/// If [copy] is `false` and [targetDType] matches [a.dtype],
+/// returns [a] directly without copying. Otherwise, allocates
+/// and returns a new [NDArray] of type [R].
+///
+/// **Preconditions:**
+/// - [a] must not be disposed.
+///
+/// **Performance considerations:**
+/// - If [copy] is `false` and dtypes match, returns this in $O(1)$ time and $O(1)$ memory.
+/// - Otherwise, complexity is $O(N)$ where $N$ is the total number of elements.
+///
+/// **Throws:**
+/// - It is an error if [a] is already disposed.
+///
+/// **Example:**
+/// ```dart
+/// final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
+/// final b = astype(a, DType.float64);
+/// print(b.dtype); // DType.float64
+/// ```
+NDArray<R> astype<R extends DTypeTag>(
+  NDArray a,
+  DType<R> targetDType, {
+  bool copy = true,
+}) {
+  return a.astype<R>(targetDType, copy: copy);
 }

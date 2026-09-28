@@ -13,11 +13,12 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
-
 import '../ndarray.dart';
 import '../scratch_arena.dart';
 import '../ndarray_bindings.dart' as bindings;
 import '../ndarray_extensions_bindings.dart' as ext_bindings;
+import '../float16_utils.dart';
+import 'helpers.dart';
 
 /// Supported padding modes.
 enum PadMode {
@@ -102,26 +103,36 @@ final class PadWidth {
 }
 
 /// Represents constant padding values for each axis.
-final class PadValues<T> {
-  final (T before, T after)? _uniform;
-  final List<(T before, T after)>? _axes;
+///
+/// The type parameter [T] is the [DTypeTag] of the array these values are
+/// meant for; it ties a `PadValues` to a matching [NDArray] at the [pad] call
+/// site. The values themselves are untyped ([Object?]) because a tag does not
+/// name its element type; they must match the array's dtype (`double` for the
+/// float dtypes, `int` for the integer dtypes, [Complex] for the complex
+/// dtypes and `bool` for [DType.boolean]).
+final class PadValues<T extends DTypeTag> {
+  final (Object? before, Object? after)? _uniform;
+  final List<(Object? before, Object? after)>? _axes;
 
   const PadValues._(this._uniform, this._axes);
 
   /// Creates a uniform [PadValues] for all axes.
   ///
   /// If [after] is not specified, it defaults to [before].
-  factory PadValues.all(T before, [T? after]) {
+  factory PadValues.all(Object? before, [Object? after]) {
     return PadValues._((before, after ?? before), null);
   }
 
   /// Creates a [PadValues] with specific values for each axis.
-  factory PadValues.axes(List<(T before, T after)> values) {
+  factory PadValues.axes(List<(Object? before, Object? after)> values) {
     return PadValues._(null, List.unmodifiable(values));
   }
 
   /// Normalizes the pad values to a list of length [rank].
-  List<(T before, T after)> normalize(int rank, T defaultValue) {
+  List<(Object? before, Object? after)> normalize(
+    int rank,
+    Object? defaultValue,
+  ) {
     final uniform = _uniform;
     if (uniform != null) {
       return List.filled(rank, uniform);
@@ -217,17 +228,26 @@ final class StatLength {
 
 /// Helper to get default constant value for a DType.
 Object _getDefaultValue(DType dtype) {
-  if (dtype == DType.float64 ||
-      dtype == DType.float32 ||
-      dtype == DType.float16 ||
-      dtype == DType.bfloat16) {
-    return 0.0;
-  } else if (dtype == DType.complex128 || dtype == DType.complex64) {
-    return Complex(0.0, 0.0);
-  } else if (dtype == DType.boolean) {
-    return false;
-  } else {
-    return 0;
+  switch (dtype) {
+    case DType.float64:
+    case DType.float32:
+    case DType.float16:
+    case DType.bfloat16:
+      return 0.0;
+    case DType.complex128:
+    case DType.complex64:
+      return Complex(0.0, 0.0);
+    case DType.boolean:
+      return false;
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+      return 0;
   }
 }
 
@@ -260,7 +280,7 @@ Object _getDefaultValue(DType dtype) {
 ///
 /// **Example:**
 /// {@example /example/padding_example.dart}
-NDArray<T> pad<T extends Object>(
+NDArray<T> pad<T extends DTypeTag>(
   NDArray<T> array,
   PadWidth padWidth, {
   PadMode mode = PadMode.constant,
@@ -284,13 +304,12 @@ NDArray<T> pad<T extends Object>(
   // Normalize parameters
   final normPadWidths = padWidth.normalize(rank);
   final defaultValue = _getDefaultValue(array.dtype);
-  final normConstantValues =
-      (constantValues ?? PadValues.all(defaultValue as dynamic)).normalize(
-        rank,
-        defaultValue as dynamic,
-      );
-  final normEndValues = (endValues ?? PadValues.all(defaultValue as dynamic))
-      .normalize(rank, defaultValue as dynamic);
+  final normConstantValues = (constantValues ?? PadValues<T>.all(defaultValue))
+      .normalize(rank, defaultValue);
+  final normEndValues = (endValues ?? PadValues<T>.all(defaultValue)).normalize(
+    rank,
+    defaultValue,
+  );
   final normStatLengths =
       statLength?.normalize(array.shape) ??
       List.generate(rank, (i) => (array.shape[i], array.shape[i]));
@@ -321,6 +340,17 @@ NDArray<T> pad<T extends Object>(
     }
   }
 
+  for (var i = 0; i < rank; i++) {
+    final (before, after) = normPadWidths[i];
+    if ((before > 0 || after > 0) &&
+        array.shape[i] == 0 &&
+        mode != PadMode.constant) {
+      throw ArgumentError(
+        'Cannot pad empty axis $i of shape ${array.shape} with mode $mode.',
+      );
+    }
+  }
+
   var needsPadding = false;
   for (final (before, after) in normPadWidths) {
     if (before > 0 || after > 0) {
@@ -346,7 +376,7 @@ NDArray<T> pad<T extends Object>(
     _ => false,
   };
 
-  if (isFastNativeMode) {
+  if (isFastNativeMode && array.size > 0) {
     return _padNativeFast<T>(
       array,
       normPadWidths,
@@ -372,8 +402,9 @@ ffi.Pointer<ffi.Int16> _copyInt16s(List<int> list) {
   final ptr = ScratchArena.allocate<ffi.Int16>(
     list.length * ffi.sizeOf<ffi.Int16>(),
   );
-  final typedList = ptr.asTypedList(list.length);
-  typedList.setRange(0, list.length, list);
+  for (var i = 0; i < list.length; i++) {
+    ptr[i] = list[i];
+  }
   return ptr;
 }
 
@@ -381,8 +412,9 @@ ffi.Pointer<ffi.Uint8> _copyUint8s(List<int> list) {
   final ptr = ScratchArena.allocate<ffi.Uint8>(
     list.length * ffi.sizeOf<ffi.Uint8>(),
   );
-  final typedList = ptr.asTypedList(list.length);
-  typedList.setRange(0, list.length, list);
+  for (var i = 0; i < list.length; i++) {
+    ptr[i] = list[i];
+  }
   return ptr;
 }
 
@@ -391,9 +423,9 @@ ffi.Pointer<ffi.Uint8> _copyUint8s(List<int> list) {
   ffi.Pointer<ffi.Void> constAfterPtr,
   int isUniformConstant,
 )
-_prepareConstants<T extends Object>(
+_prepareConstants(
   DType dtype,
-  List<(T before, T after)> normConstantValues,
+  List<(Object? before, Object? after)> normConstantValues,
   int rank,
 ) {
   var isUniform = 1;
@@ -406,25 +438,25 @@ _prepareConstants<T extends Object>(
     }
   }
 
-  final beforeVals = normConstantValues.map((v) => v.$1).toList();
-  final afterVals = normConstantValues.map((v) => v.$2).toList();
+  final beforeVals = [for (final v in normConstantValues) v.$1];
+  final afterVals = [for (final v in normConstantValues) v.$2];
 
   final (cbPtr, caPtr) = switch (dtype) {
     DType.float64 => (
-      ScratchArena.copyDoubles(
-        beforeVals.cast<num>().map((e) => e.toDouble()).toList(),
-      ).cast<ffi.Void>(),
-      ScratchArena.copyDoubles(
-        afterVals.cast<num>().map((e) => e.toDouble()).toList(),
-      ).cast<ffi.Void>(),
+      ScratchArena.copyDoubles([
+        for (final e in beforeVals) (e as num).toDouble(),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyDoubles([
+        for (final e in afterVals) (e as num).toDouble(),
+      ]).cast<ffi.Void>(),
     ),
     DType.float32 => (
-      ScratchArena.copyFloats(
-        beforeVals.cast<num>().map((e) => e.toDouble()).toList(),
-      ).cast<ffi.Void>(),
-      ScratchArena.copyFloats(
-        afterVals.cast<num>().map((e) => e.toDouble()).toList(),
-      ).cast<ffi.Void>(),
+      ScratchArena.copyFloats([
+        for (final e in beforeVals) (e as num).toDouble(),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyFloats([
+        for (final e in afterVals) (e as num).toDouble(),
+      ]).cast<ffi.Void>(),
     ),
     DType.int64 => (
       ScratchArena.copyInt64s(beforeVals.cast<int>()).cast<ffi.Void>(),
@@ -451,18 +483,32 @@ _prepareConstants<T extends Object>(
       ScratchArena.copyComplexes(afterVals.cast<Complex>()).cast<ffi.Void>(),
     ),
     DType.complex64 => (
-      ScratchArena.copyFloatComplexes(beforeVals.cast<Complex>())
-          .cast<ffi.Void>(),
-      ScratchArena.copyFloatComplexes(afterVals.cast<Complex>())
-          .cast<ffi.Void>(),
+      ScratchArena.copyFloatComplexes(
+        beforeVals.cast<Complex>(),
+      ).cast<ffi.Void>(),
+      ScratchArena.copyFloatComplexes(
+        afterVals.cast<Complex>(),
+      ).cast<ffi.Void>(),
     ),
-    DType.float16 || DType.bfloat16 => (
-      ScratchArena.copyFloats(
-        beforeVals.cast<num>().map((e) => e.toDouble()).toList(),
-      ).cast<ffi.Void>(),
-      ScratchArena.copyFloats(
-        afterVals.cast<num>().map((e) => e.toDouble()).toList(),
-      ).cast<ffi.Void>(),
+    DType.float16 => (
+      _copyInt16s([
+        for (final e in beforeVals)
+          Float16Utils.encodeFloat16((e as num).toDouble()),
+      ]).cast<ffi.Void>(),
+      _copyInt16s([
+        for (final e in afterVals)
+          Float16Utils.encodeFloat16((e as num).toDouble()),
+      ]).cast<ffi.Void>(),
+    ),
+    DType.bfloat16 => (
+      _copyInt16s([
+        for (final e in beforeVals)
+          Float16Utils.encodeBFloat16((e as num).toDouble()),
+      ]).cast<ffi.Void>(),
+      _copyInt16s([
+        for (final e in afterVals)
+          Float16Utils.encodeBFloat16((e as num).toDouble()),
+      ]).cast<ffi.Void>(),
     ),
     DType.int8 => (
       _copyUint8s(beforeVals.cast<int>()).cast<ffi.Void>(),
@@ -485,11 +531,31 @@ _prepareConstants<T extends Object>(
   return (cbPtr, caPtr, isUniform);
 }
 
-NDArray<T> _padNativeFast<T extends Object>(
+bool _padArgsShareMemoryWithOut<T extends DTypeTag>(
+  NDArray<T> array,
+  NDArray<T> out,
+  List<(Object? before, Object? after)> normConstantValues,
+  List<(Object? before, Object? after)>? normEndValues,
+) {
+  if (sharesMemory(array, out)) return true;
+  for (final (b, a) in normConstantValues) {
+    if (b is NDArray && sharesMemory(b, out)) return true;
+    if (a is NDArray && sharesMemory(a, out)) return true;
+  }
+  if (normEndValues != null) {
+    for (final (b, a) in normEndValues) {
+      if (b is NDArray && sharesMemory(b, out)) return true;
+      if (a is NDArray && sharesMemory(a, out)) return true;
+    }
+  }
+  return false;
+}
+
+NDArray<T> _padNativeFast<T extends DTypeTag>(
   NDArray<T> array,
   List<(int before, int after)> normPadWidths,
   PadMode mode,
-  List<(T before, T after)> normConstantValues,
+  List<(Object? before, Object? after)> normConstantValues,
   List<int> finalShape,
   NDArray<T>? out,
 ) {
@@ -506,28 +572,17 @@ NDArray<T> _padNativeFast<T extends Object>(
   final dtypeInt = array.dtype.index;
 
   return NDArray.scope(() {
-    final NDArray<T> targetDest;
-    final bool copyToOut;
-    if (out != null) {
-      if (out.isContiguous) {
-        targetDest = out;
-        copyToOut = false;
-      } else {
-        targetDest = NDArray<T>.create(
-          finalShape,
-          array.dtype,
-          zeroInit: false,
-        );
-        copyToOut = true;
-      }
-    } else {
-      targetDest = NDArray<T>.create(finalShape, array.dtype, zeroInit: false);
-      copyToOut = false;
-    }
+    final bool copyToOut =
+        out != null &&
+        (!out.isContiguous ||
+            _padArgsShareMemoryWithOut(array, out, normConstantValues, null));
+    final NDArray<T> targetDest = (out != null && !copyToOut)
+        ? out
+        : NDArray<T>.create(finalShape, array.dtype, zeroInit: false);
 
     final marker = ScratchArena.marker;
     try {
-      final (cbPtr, caPtr, isUniform) = _prepareConstants<T>(
+      final (cbPtr, caPtr, isUniform) = _prepareConstants(
         array.dtype,
         normConstantValues,
         rank,
@@ -564,12 +619,12 @@ NDArray<T> _padNativeFast<T extends Object>(
         final srcStridesPtr = ScratchArena.copyInt64s(array.strides);
         final destShapePtr = ScratchArena.copyInt64s(targetDest.shape);
         final destStridesPtr = ScratchArena.copyInt64s(targetDest.strides);
-        final padBeforePtr = ScratchArena.copyInt64s(
-          normPadWidths.map((w) => w.$1).toList(),
-        );
-        final padAfterPtr = ScratchArena.copyInt64s(
-          normPadWidths.map((w) => w.$2).toList(),
-        );
+        final padBeforePtr = ScratchArena.copyInt64s([
+          for (final w in normPadWidths) w.$1,
+        ]);
+        final padAfterPtr = ScratchArena.copyInt64s([
+          for (final w in normPadWidths) w.$2,
+        ]);
 
         final res = ext_bindings.native_pad_nd(
           dtypeInt,
@@ -597,8 +652,7 @@ NDArray<T> _padNativeFast<T extends Object>(
 
     if (copyToOut) {
       targetDest.copy(out: out);
-      targetDest.dispose();
-      return out!;
+      return out;
     }
 
     if (out == null) {
@@ -608,17 +662,26 @@ NDArray<T> _padNativeFast<T extends Object>(
   });
 }
 
-NDArray<T> _padAxisByAxis<T extends Object>(
+NDArray<T> _padAxisByAxis<T extends DTypeTag>(
   NDArray<T> array,
   List<(int before, int after)> normPadWidths,
   PadMode mode,
-  List<(T before, T after)> normConstantValues,
-  List<(T before, T after)> normEndValues,
+  List<(Object? before, Object? after)> normConstantValues,
+  List<(Object? before, Object? after)> normEndValues,
   List<(int before, int after)> normStatLengths,
   NDArray<T>? out,
 ) {
   final rank = array.rank;
   return NDArray.scope(() {
+    final bool useTempOut =
+        out != null &&
+        (!out.isContiguous ||
+            _padArgsShareMemoryWithOut(
+              array,
+              out,
+              normConstantValues,
+              normEndValues,
+            ));
     var currentSrc = array;
 
     for (int axis = 0; axis < rank; axis++) {
@@ -627,7 +690,9 @@ NDArray<T> _padAxisByAxis<T extends Object>(
 
       final isLastAxis = axis == rank - 1;
       final skipThisAxis =
-          padBefore == 0 && padAfter == 0 && (!isLastAxis || out == null);
+          padBefore == 0 &&
+          padAfter == 0 &&
+          (!isLastAxis || out == null || useTempOut);
 
       if (skipThisAxis) {
         continue;
@@ -637,7 +702,7 @@ NDArray<T> _padAxisByAxis<T extends Object>(
       nextShape[axis] += padBefore + padAfter;
 
       final NDArray<T> currentDest;
-      if (isLastAxis && out != null) {
+      if (isLastAxis && out != null && !useTempOut) {
         currentDest = out;
       } else {
         currentDest = NDArray<T>.create(
@@ -647,27 +712,42 @@ NDArray<T> _padAxisByAxis<T extends Object>(
         );
       }
 
-      _padAxis(
-        currentSrc,
-        currentDest,
-        axis,
-        padBefore,
-        padAfter,
-        mode,
-        normConstantValues[axis].$1,
-        normConstantValues[axis].$2,
-        normEndValues[axis].$1,
-        normEndValues[axis].$2,
-        normStatLengths[axis].$1,
-        normStatLengths[axis].$2,
-      );
-
-      if (currentSrc != array) {
-        currentSrc.dispose();
+      try {
+        _padAxis(
+          currentSrc,
+          currentDest,
+          axis,
+          padBefore,
+          padAfter,
+          mode,
+          normConstantValues[axis].$1,
+          normConstantValues[axis].$2,
+          normEndValues[axis].$1,
+          normEndValues[axis].$2,
+          normStatLengths[axis].$1,
+          normStatLengths[axis].$2,
+        );
+      } finally {
+        if (!identical(currentSrc, array)) {
+          currentSrc.dispose();
+        }
       }
       currentSrc = currentDest;
     }
 
+    if (identical(currentSrc, array)) {
+      if (out != null) {
+        array.copy(out: out);
+        return out;
+      }
+      final copy = array.copy();
+      copy.detachToParentScope();
+      return copy;
+    }
+    if (useTempOut) {
+      currentSrc.copy(out: out);
+      return out;
+    }
     if (out == null) {
       currentSrc.detachToParentScope();
     }
@@ -675,17 +755,17 @@ NDArray<T> _padAxisByAxis<T extends Object>(
   });
 }
 
-void _padAxis<T extends Object>(
+void _padAxis<T extends DTypeTag>(
   NDArray<T> src,
   NDArray<T> dest,
   int axis,
   int padBefore,
   int padAfter,
   PadMode mode,
-  T constantBefore,
-  T constantAfter,
-  T endBefore,
-  T endAfter,
+  Object? constantBefore,
+  Object? constantAfter,
+  Object? endBefore,
+  Object? endAfter,
   int statLengthBefore,
   int statLengthAfter,
 ) {
@@ -759,10 +839,33 @@ void _padAxis<T extends Object>(
           padBefore,
           padAfter,
           modeInt,
-          constantBefore as int,
-          constantAfter as int,
-          endBefore as int,
-          endAfter as int,
+          constantBefore is int
+              ? constantBefore
+              : (constantBefore as num).toInt(),
+          constantAfter is int ? constantAfter : (constantAfter as num).toInt(),
+          endBefore is int ? endBefore : (endBefore as num).toInt(),
+          endAfter is int ? endAfter : (endAfter as num).toInt(),
+          statLengthBefore,
+          statLengthAfter,
+        );
+      case DType.uint64:
+        bindings.pad_axis_uint64(
+          src.pointer.cast(),
+          shapeSrcPtr,
+          stridesSrcPtr,
+          dest.pointer.cast(),
+          shapeDestPtr,
+          rank,
+          axis,
+          padBefore,
+          padAfter,
+          modeInt,
+          constantBefore is int
+              ? constantBefore
+              : (constantBefore as num).toInt(),
+          constantAfter is int ? constantAfter : (constantAfter as num).toInt(),
+          endBefore is int ? endBefore : (endBefore as num).toInt(),
+          endAfter is int ? endAfter : (endAfter as num).toInt(),
           statLengthBefore,
           statLengthAfter,
         );
@@ -934,45 +1037,29 @@ void _padAxis<T extends Object>(
       case DType.float16:
       case DType.bfloat16:
       case DType.int8:
-      case DType.uint64:
       case DType.uint32:
       case DType.uint16:
-        final doubleSrc = NDArray.fromList(
-          src.toList().cast<num>().map((e) => e.toDouble()).toList(),
-          src.shape,
-          DType.float64,
-        );
-        final doubleDest = NDArray<Float64>.zeros(dest.shape, DType.float64);
-        final doubleShapeSrcPtr = ScratchArena.copyInts(doubleSrc.shape);
-        final doubleStridesSrcPtr = ScratchArena.copyInts(doubleSrc.strides);
-        final doubleShapeDestPtr = ScratchArena.copyInts(doubleDest.shape);
-        bindings.pad_axis_double(
-          doubleSrc.pointer.cast(),
-          doubleShapeSrcPtr,
-          doubleStridesSrcPtr,
-          doubleDest.pointer.cast(),
-          doubleShapeDestPtr,
-          rank,
-          axis,
-          padBefore,
-          padAfter,
-          modeInt,
-          (constantBefore as num).toDouble(),
-          (constantAfter as num).toDouble(),
-          (endBefore as num).toDouble(),
-          (endAfter as num).toDouble(),
-          statLengthBefore,
-          statLengthAfter,
-        );
-        final castedDest = NDArray.fromList(
-          doubleDest.toList(),
-          doubleDest.shape,
-          dest.dtype,
-        );
-        castedDest.copy(out: dest);
-        doubleSrc.dispose();
-        doubleDest.dispose();
-        castedDest.dispose();
+        NDArray.scope(() {
+          double toDoubleUnsignedAware(Object v) => (v as num).toDouble();
+          final doubleSrc = castNDArray<Float64>(src, DType.float64);
+          final doubleDest = NDArray<Float64>.zeros(dest.shape, DType.float64);
+          _padAxis<Float64>(
+            doubleSrc,
+            doubleDest,
+            axis,
+            padBefore,
+            padAfter,
+            mode,
+            toDoubleUnsignedAware(constantBefore!),
+            toDoubleUnsignedAware(constantAfter!),
+            toDoubleUnsignedAware(endBefore!),
+            toDoubleUnsignedAware(endAfter!),
+            statLengthBefore,
+            statLengthAfter,
+          );
+          final castedDest = castNDArray(doubleDest, dest.dtype);
+          castedDest.copy(out: dest);
+        });
     }
   } finally {
     ScratchArena.reset(marker);

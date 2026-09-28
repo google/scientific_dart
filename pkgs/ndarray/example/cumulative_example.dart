@@ -53,7 +53,7 @@ void main() {
     _printMatrix(cpCol);
 
     // 4. In-place recycler buffer reuse
-    final recycler = NDArray<double>.zeros([2, 3], DType.float64);
+    final recycler = NDArray<DTypeTag>.zeros([2, 3], DType.float64);
     final recycled = cumsum(mat, axis: 0, out: recycler);
     print(
       '\nRecycled buffer (identical check): ${identical(recycled, recycler) ? "PASS" : "FAIL"}',
@@ -68,7 +68,8 @@ void _printMatrix(NDArray a) {
   for (var r = 0; r < rows; r++) {
     final rowStr = [];
     for (var c = 0; c < cols; c++) {
-      rowStr.add(a[r * cols + c].toStringAsFixed(1).padLeft(5));
+      final val = a.getCell([r, c]);
+      rowStr.add((val as num).toStringAsFixed(1).padLeft(5));
     }
     print(' [ ${rowStr.join(", ")} ]');
   }

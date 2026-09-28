@@ -29,7 +29,7 @@ void main() {
           [4],
           DType.float64,
         );
-        final mask = NDArray<bool>.fromList(
+        final mask = NDArray<Boolean>.fromList(
           [true, false, true, false],
           [4],
           DType.boolean,
@@ -70,7 +70,11 @@ void main() {
         );
         final a = aFull.slice([Slice(start: 0, stop: 4, step: 2)]);
         final out = NDArray<Float64>.fromList([99.0, 99.0], [2], DType.float64);
-        final mask = NDArray<bool>.fromList([true, false], [2], DType.boolean);
+        final mask = NDArray<Boolean>.fromList(
+          [true, false],
+          [2],
+          DType.boolean,
+        );
 
         sin(a, out: out, where: mask);
 
@@ -96,7 +100,7 @@ void main() {
           [4],
           DType.float64,
         );
-        final mask = NDArray<bool>.fromList(
+        final mask = NDArray<Boolean>.fromList(
           [true, false, true, false],
           [4],
           DType.boolean,
@@ -113,7 +117,7 @@ void main() {
         final a = NDArray<Int32>.fromList([2, 3, 4, 5], [4], DType.int32);
         final b = NDArray<Int32>.fromList([10, 10, 10, 10], [4], DType.int32);
         final out = NDArray<Int32>.fromList([-1, -1, -1, -1], [4], DType.int32);
-        final mask = NDArray<bool>.fromList(
+        final mask = NDArray<Boolean>.fromList(
           [false, true, false, true],
           [4],
           DType.boolean,
@@ -165,7 +169,7 @@ void main() {
             [2],
             DType.float64,
           );
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false],
             [2],
             DType.boolean,
@@ -195,7 +199,11 @@ void main() {
           [2],
           DType.complex128,
         );
-        final mask = NDArray<bool>.fromList([true, false], [2], DType.boolean);
+        final mask = NDArray<Boolean>.fromList(
+          [true, false],
+          [2],
+          DType.boolean,
+        );
 
         divide(a, b, out: out, where: mask);
 
@@ -228,14 +236,14 @@ void main() {
       });
     });
 
-    test('Bitwise ufunc (bitwise_and) with mask', () {
+    test('Bitwise ufunc (bitwiseAnd) with mask', () {
       NDArray.scope(() {
         final a = NDArray.fromList([0xFF, 0xFF, 0xFF], [3], DType.int32);
         final b = NDArray.fromList([0x0F, 0xF0, 0xAA], [3], DType.int32);
         final mask = NDArray.fromList([1, 0, 1], [3], DType.uint8);
         final out = NDArray.zeros([3], DType.int32);
 
-        final res = bitwise_and(a, b, where: mask, out: out);
+        final res = bitwiseAnd(a, b, where: mask, out: out);
         expect(res.data, [0x0F, 0, 0xAA]);
       });
     });

@@ -16,9 +16,7 @@
 library;
 
 import "dart:ffi" as ffi;
-
 import "package:openblas/openblas.dart";
-
 import "../../ndarray.dart";
 import "../../ndarray_bindings.dart";
 import "../../scratch_arena.dart";
@@ -48,14 +46,17 @@ bool _isZeroScalar(Object a) {
   return (a as num) == 0;
 }
 
-NDArray<R> _ensureDType<T, R>(NDArray<T> a, DType<R> targetDType) {
+NDArray<R> _ensureDType<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<T> a,
+  DType<R> targetDType,
+) {
   if (a.dtype == targetDType) {
     return a as NDArray<R>;
   }
   return castNDArray(a, targetDType);
 }
 
-void _copyInto<R>(NDArray src, NDArray<R> out) {
+void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
   src.copy(out: out);
 }
 
@@ -73,7 +74,11 @@ void _copyInto<R>(NDArray src, NDArray<R> out) {
 /// - It is an error if [out] shape or dtype is incompatible with [x].
 ///
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
-NDArray<R> polyval<Tc, Tx, R>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
+NDArray<R> polyval<
+  Tc extends DTypeTag,
+  Tx extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute polyval() on a disposed array.");
   }
@@ -88,19 +93,23 @@ NDArray<R> polyval<Tc, Tx, R>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
   if (!resolved.isFloating && !resolved.isComplex) {
     resolved = DType.float64;
   }
-  final targetDType = resolved as DType<R>;
   if (out != null) {
-    if (!listEquals(out.shape, x.shape) || out.dtype != targetDType) {
+    if (!listEquals(out.shape, x.shape) || out.dtype != resolved) {
       throw ArgumentError(
         "Incompatible out buffer shape or dtype for polyval.",
       );
     }
   }
+  final targetDType = resolved as DType<R>;
 
   return NDArray.scope(() {
     final cCast = _ensureDType(c, targetDType);
     final xCast = _ensureDType(x, targetDType);
-    final res = out ?? NDArray<R>.zeros(x.shape, targetDType);
+    final bool needsTemp =
+        out != null && (sharesMemory(c, out) || sharesMemory(x, out));
+    final res = needsTemp || out == null
+        ? NDArray<R>.zeros(x.shape, targetDType)
+        : out;
 
     final isContiguous =
         cCast.isContiguous && xCast.isContiguous && res.isContiguous;
@@ -150,7 +159,17 @@ NDArray<R> polyval<Tc, Tx, R>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
               res.pointer.cast(),
               totalElements,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for polyval.",
             );
@@ -216,7 +235,17 @@ NDArray<R> polyval<Tc, Tx, R>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
               cShape,
               ndim,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for polyval.",
             );
@@ -227,6 +256,9 @@ NDArray<R> polyval<Tc, Tx, R>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
     }
 
     if (out != null) {
+      if (needsTemp) {
+        res.copy(out: out);
+      }
       return out;
     }
     return res.detachToParentScope();
@@ -249,7 +281,12 @@ NDArray<R> polyval<Tc, Tx, R>(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
 /// - It is an error if [out] shape or dtype is incompatible.
 ///
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
-NDArray<R> polyfit<Tx, Ty, Tw, R>(
+NDArray<R> polyfit<
+  Tx extends DTypeTag,
+  Ty extends DTypeTag,
+  Tw extends DTypeTag,
+  R extends DTypeTag
+>(
   NDArray<Tx> x,
   NDArray<Ty> y,
   int deg, {
@@ -356,7 +393,17 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
               m,
               deg,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for polyfit.",
             );
@@ -420,7 +467,17 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
               m,
               deg,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for polyfit.",
             );
@@ -484,7 +541,17 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
               rhs.pointer.cast<ffi.Float>(),
               1,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for polyfit.",
             );
@@ -559,7 +626,17 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
                 -1.0,
                 rankPtr,
               );
-            default:
+            case DType.float16:
+            case DType.bfloat16:
+            case DType.int64:
+            case DType.int32:
+            case DType.int16:
+            case DType.int8:
+            case DType.uint64:
+            case DType.uint32:
+            case DType.uint16:
+            case DType.uint8:
+            case DType.boolean:
               throw UnsupportedError(
                 "Unsupported dtype $targetDType for polyfit.",
               );
@@ -602,7 +679,7 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
               rhs.pointer.cast<ffi.Float>(),
               1,
               jpvt,
-              rcond.toDouble(),
+              rcond,
               rankPtr,
             );
           case DType.complex128:
@@ -630,10 +707,20 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
               rhs.pointer.cast<ffi.Float>(),
               1,
               jpvt,
-              rcond.toDouble(),
+              rcond,
               rankPtr,
             );
-          default:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
             throw UnsupportedError(
               "Unsupported dtype $targetDType for polyfit.",
             );
@@ -660,7 +747,7 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
 /// Computes the roots of a polynomial with coefficients [p].
 ///
 /// The coefficient array [p] is ordered from highest degree to constant term.
-/// Returns an `NDArray<Complex>` containing the roots.
+/// Returns an `NDArray<DTypeTag>` containing the roots.
 ///
 /// **Preconditions:**
 /// - [p] and optional [out] must not be disposed.
@@ -669,13 +756,20 @@ NDArray<R> polyfit<Tx, Ty, Tw, R>(
 /// - It is an error if [p] is not 1-dimensional.
 ///
 /// Reference: [NumPy roots](https://numpy.org/doc/stable/reference/generated/numpy.roots.html)
-NDArray<Complex> roots<T>(NDArray<T> p, {NDArray<Complex>? out}) {
+NDArray<DTypeTag> roots<T extends DTypeTag>(
+  NDArray<T> p, {
+  NDArray<DTypeTag>? out,
+}) {
   if (p.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute roots() on a disposed array.");
   }
   if (p.shape.length != 1) {
     throw ArgumentError("Coefficient array p must be 1-dimensional.");
   }
+
+  final DType<DTypeTag> targetComplexDType = p.dtype == DType.complex64
+      ? DType.complex64
+      : DType.complex128;
 
   return NDArray.scope(() {
     final size = p.shape[0];
@@ -687,22 +781,31 @@ NDArray<Complex> roots<T>(NDArray<T> p, {NDArray<Complex>? out}) {
       }
     }
 
-    if (firstNonZero == -1 || (size - firstNonZero) <= 1) {
-      final res = NDArray<Complex>.zeros([0], DType.complex128);
+    final int deg = (firstNonZero == -1 || (size - firstNonZero) <= 1)
+        ? 0
+        : (size - firstNonZero - 1);
+
+    if (out != null) {
+      if (!listEquals(out.shape, [deg]) || out.dtype != targetComplexDType) {
+        throw ArgumentError(
+          "Incompatible out buffer shape or dtype for roots result (expected shape [$deg] and dtype $targetComplexDType, got shape ${out.shape} and dtype ${out.dtype}).",
+        );
+      }
+      if (!out.isContiguous || sharesMemory(p, out)) {
+        final temp = roots<T>(p);
+        _copyInto(temp, out);
+        return out;
+      }
+    }
+
+    if (deg == 0) {
+      final res = NDArray<DTypeTag>.zeros([0], targetComplexDType);
       if (out != null) {
-        if (!listEquals(out.shape, [0]) || out.dtype != DType.complex128) {
-          throw ArgumentError(
-            "Incompatible out buffer for empty roots result.",
-          );
-        }
         _copyInto(res, out);
         return out;
       }
       return res.detachToParentScope();
     }
-
-    final nCoeffs = size - firstNonZero;
-    final deg = nCoeffs - 1;
 
     if (deg == 1) {
       final c0 = p.getCellFlat(firstNonZero) as Object;
@@ -711,15 +814,12 @@ NDArray<Complex> roots<T>(NDArray<T> p, {NDArray<Complex>? out}) {
       final complexRoot = rootVal is Complex
           ? rootVal
           : Complex((rootVal as num).toDouble(), 0.0);
-      final res = NDArray<Complex>.fromList(
+      final res = NDArray<DTypeTag>.fromList(
         [complexRoot],
         [1],
-        DType.complex128,
+        targetComplexDType,
       );
       if (out != null) {
-        if (!listEquals(out.shape, [1]) || out.dtype != DType.complex128) {
-          throw ArgumentError("Incompatible out buffer for roots result.");
-        }
         _copyInto(res, out);
         return out;
       }
@@ -732,9 +832,21 @@ NDArray<Complex> roots<T>(NDArray<T> p, {NDArray<Complex>? out}) {
     switch (p.dtype) {
       case DType.complex64:
       case DType.complex128:
-        aMat = NDArray<Complex>.zeros([deg, deg], p.dtype as DType<Complex>);
+        aMat = NDArray<DTypeTag>.zeros([deg, deg], p.dtype as DType<DTypeTag>);
         break;
-      default:
+      case DType.float64:
+      case DType.float32:
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+      case DType.boolean:
         aMat = NDArray<Float64>.zeros([deg, deg], DType.float64);
         break;
     }
@@ -752,7 +864,7 @@ NDArray<Complex> roots<T>(NDArray<T> p, {NDArray<Complex>? out}) {
       aMat.setCellFlat(i * deg + i - 1, castValue(one, targetMatDType));
     }
 
-    final res = eigvals(aMat, out: out);
+    final res = eigvals(aMat as NDArray<AnySpec>, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });

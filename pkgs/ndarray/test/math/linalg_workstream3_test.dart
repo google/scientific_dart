@@ -14,7 +14,6 @@
 
 import 'dart:math' as math;
 import 'dart:typed_data';
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -150,22 +149,22 @@ void main() {
           expect(q.shape, [2, 2]);
           expect(r.shape, [2, 2]);
 
-          final r10 = r.getCell([1, 0]) as Complex;
+          final r10 = r.getCell([1, 0]);
           expect(r10.real.abs(), lessThan(1e-12));
           expect(r10.imag.abs(), lessThan(1e-12));
 
-          final qConj = NDArray<Complex>.zeros([2, 2], DType.complex128);
+          final qConj = NDArray.zeros([2, 2], DType.complex128);
           for (var i = 0; i < 2; i++) {
             for (var j = 0; j < 2; j++) {
-              final val = q.getCell([j, i]) as Complex;
+              final val = q.getCell([j, i]);
               qConj.setCell([i, j], Complex(val.real, -val.imag));
             }
           }
           final qHq = matmul(qConj, q);
-          final id00 = qHq.getCell([0, 0]) as Complex;
-          final id11 = qHq.getCell([1, 1]) as Complex;
-          final id01 = qHq.getCell([0, 1]) as Complex;
-          final id10 = qHq.getCell([1, 0]) as Complex;
+          final id00 = qHq.getCell([0, 0]);
+          final id11 = qHq.getCell([1, 1]);
+          final id01 = qHq.getCell([0, 1]);
+          final id10 = qHq.getCell([1, 0]);
 
           expect(id00.real, closeTo(1.0, 1e-12));
           expect(id00.imag.abs(), lessThan(1e-12));
@@ -179,8 +178,8 @@ void main() {
           final qrProd = matmul(q, r);
           for (var i = 0; i < 2; i++) {
             for (var j = 0; j < 2; j++) {
-              final prodVal = qrProd.getCell([i, j]) as Complex;
-              final aVal = a.getCell([i, j]) as Complex;
+              final prodVal = qrProd.getCell([i, j]);
+              final aVal = a.getCell([i, j]);
               expect(prodVal.real, closeTo(aVal.real, 1e-12));
               expect(prodVal.imag, closeTo(aVal.imag, 1e-12));
             }
@@ -208,8 +207,8 @@ void main() {
           final qrProd = matmul(res.q, res.r);
           for (var i = 0; i < 2; i++) {
             for (var j = 0; j < 2; j++) {
-              final prodVal = qrProd.getCell([i, j]) as Complex;
-              final aVal = a.getCell([i, j]) as Complex;
+              final prodVal = qrProd.getCell([i, j]);
+              final aVal = a.getCell([i, j]);
               expect(prodVal.real, closeTo(aVal.real, 1e-5));
               expect(prodVal.imag, closeTo(aVal.imag, 1e-5));
             }
@@ -239,8 +238,8 @@ void main() {
           final qrProd = matmul(res.q, res.r);
           for (var i = 0; i < 3; i++) {
             for (var j = 0; j < 2; j++) {
-              final prodVal = qrProd.getCell([i, j]) as Complex;
-              final aVal = a.getCell([i, j]) as Complex;
+              final prodVal = qrProd.getCell([i, j]);
+              final aVal = a.getCell([i, j]);
               expect(prodVal.real, closeTo(aVal.real, 1e-12));
               expect(prodVal.imag, closeTo(aVal.imag, 1e-12));
             }
@@ -273,8 +272,8 @@ void main() {
           for (var b = 0; b < 2; b++) {
             for (var i = 0; i < 2; i++) {
               for (var j = 0; j < 2; j++) {
-                final prodVal = qrProd.getCell([b, i, j]) as Complex;
-                final aVal = a.getCell([b, i, j]) as Complex;
+                final prodVal = qrProd.getCell([b, i, j]);
+                final aVal = a.getCell([b, i, j]);
                 expect(prodVal.real, closeTo(aVal.real, 1e-12));
                 expect(prodVal.imag, closeTo(aVal.imag, 1e-12));
               }
@@ -317,9 +316,7 @@ void main() {
           expect(res.eigenvalues.dtype, DType.float64);
           expect(res.eigenvectors.dtype, DType.float64);
 
-          final vals =
-              res.eigenvalues.toList().map((v) => v.toDouble()).toList()
-                ..sort();
+          final vals = res.eigenvalues.toList().map((v) => v).toList()..sort();
           expect(vals[0], closeTo(1.0, 1e-9));
           expect(vals[1], closeTo(3.0, 1e-9));
         });
@@ -465,8 +462,8 @@ void main() {
           );
 
           final res = sqrt(a, where: mask, out: out);
-          final r0 = res.getCell([0]) as Complex;
-          final r1 = res.getCell([1]) as Complex;
+          final r0 = res.getCell([0]);
+          final r1 = res.getCell([1]);
           expect(r0.real, closeTo(2.0, 1e-9));
           expect(r0.imag, closeTo(0.0, 1e-9));
           expect(r1.real, 99.0);
@@ -522,13 +519,13 @@ void main() {
             [5],
             DType.float64,
           );
-          final outBuffer = NDArray<double>.zeros([5], DType.float64);
+          final outBuffer = NDArray.zeros([5], DType.float64);
 
           final shifted = fftshift(x, out: outBuffer);
           expect(identical(shifted, outBuffer), true);
           expect(shifted.toList(), [3.0, 4.0, 0.0, 1.0, 2.0]);
 
-          final unshiftedBuffer = NDArray<double>.zeros([5], DType.float64);
+          final unshiftedBuffer = NDArray.zeros([5], DType.float64);
           final unshifted = ifftshift(shifted, out: unshiftedBuffer);
           expect(identical(unshifted, unshiftedBuffer), true);
           expect(unshifted.toList(), [0.0, 1.0, 2.0, 3.0, 4.0]);
@@ -557,92 +554,95 @@ void main() {
         res.dispose();
         a.dispose();
       });
-      group('8. Zero-Sized Matrix (n == 0) Fast Paths & Consistent Scope Protection', () {
-        test('solve on n == 0 matrix returns bCopy without LAPACK call', () {
-          final a = NDArray<double>.zeros([0, 0], DType.float64);
-          final b1 = NDArray<double>.zeros([0], DType.float64);
-          final x1 = solve(a, b1);
-          expect(x1.shape, [0]);
-          expect(x1.isDisposed, false);
-          x1.dispose();
+      group(
+        '8. Zero-Sized Matrix (n == 0) Fast Paths & Consistent Scope Protection',
+        () {
+          test('solve on n == 0 matrix returns bCopy without LAPACK call', () {
+            final a = NDArray.zeros([0, 0], DType.float64);
+            final b1 = NDArray.zeros([0], DType.float64);
+            final x1 = solve(a, b1);
+            expect(x1.shape, [0]);
+            expect(x1.isDisposed, false);
+            x1.dispose();
 
-          final b2 = NDArray<double>.zeros([0, 3], DType.float64);
-          final x2 = solve(a, b2);
-          expect(x2.shape, [0, 3]);
-          expect(x2.isDisposed, false);
-          x2.dispose();
-
-          a.dispose();
-          b1.dispose();
-          b2.dispose();
-        });
-
-        test(
-          'eig, eigvals, eigvalsh, eigh on n == 0 matrix return empty arrays',
-          () {
-            final a = NDArray<double>.zeros([0, 0], DType.float64);
-
-            final resEig = eig(a);
-            expect(resEig.eigenvalues.shape, [0]);
-            expect(resEig.eigenvectors.shape, [0, 0]);
-            expect(resEig.eigenvalues.isDisposed, false);
-            expect(resEig.eigenvectors.isDisposed, false);
-            resEig.dispose();
-
-            final resEigvals = eigvals(a);
-            expect(resEigvals.shape, [0]);
-            expect(resEigvals.isDisposed, false);
-            resEigvals.dispose();
-
-            final resEigvalsh = eigvalsh(a);
-            expect(resEigvalsh.shape, [0]);
-            expect(resEigvalsh.isDisposed, false);
-            resEigvalsh.dispose();
-
-            final resEigh = eigh(a);
-            expect(resEigh.eigenvalues.shape, [0]);
-            expect(resEigh.eigenvectors.shape, [0, 0]);
-            expect(resEigh.eigenvalues.isDisposed, false);
-            expect(resEigh.eigenvectors.isDisposed, false);
-            resEigh.dispose();
+            final b2 = NDArray.zeros([0, 3], DType.float64);
+            final x2 = solve(a, b2);
+            expect(x2.shape, [0, 3]);
+            expect(x2.isDisposed, false);
+            x2.dispose();
 
             a.dispose();
-          },
-        );
+            b1.dispose();
+            b2.dispose();
+          });
 
-        test('hessenberg, qr, svd on n == 0 matrix and scope safety', () {
-          final a = NDArray<double>.zeros([0, 0], DType.float64);
+          test(
+            'eig, eigvals, eigvalsh, eigh on n == 0 matrix return empty arrays',
+            () {
+              final a = NDArray.zeros([0, 0], DType.float64);
 
-          final resHess = hessenberg(a);
-          expect(resHess.h.shape, [0, 0]);
-          expect(resHess.q.shape, [0, 0]);
-          expect(resHess.h.isDisposed, false);
-          expect(resHess.q.isDisposed, false);
-          resHess.h.dispose();
-          resHess.q.dispose();
+              final resEig = eig(a);
+              expect(resEig.eigenvalues.shape, [0]);
+              expect(resEig.eigenvectors.shape, [0, 0]);
+              expect(resEig.eigenvalues.isDisposed, false);
+              expect(resEig.eigenvectors.isDisposed, false);
+              resEig.dispose();
 
-          final resQR = qr(a);
-          expect(resQR.q.shape, [0, 0]);
-          expect(resQR.r.shape, [0, 0]);
-          expect(resQR.q.isDisposed, false);
-          expect(resQR.r.isDisposed, false);
-          resQR.q.dispose();
-          resQR.r.dispose();
+              final resEigvals = eigvals(a);
+              expect(resEigvals.shape, [0]);
+              expect(resEigvals.isDisposed, false);
+              resEigvals.dispose();
 
-          final resSVD = svd(a);
-          expect(resSVD.u.shape, [0, 0]);
-          expect(resSVD.s.shape, [0]);
-          expect(resSVD.vh.shape, [0, 0]);
-          expect(resSVD.u.isDisposed, false);
-          expect(resSVD.s.isDisposed, false);
-          expect(resSVD.vh.isDisposed, false);
-          resSVD.u.dispose();
-          resSVD.s.dispose();
-          resSVD.vh.dispose();
+              final resEigvalsh = eigvalsh(a);
+              expect(resEigvalsh.shape, [0]);
+              expect(resEigvalsh.isDisposed, false);
+              resEigvalsh.dispose();
 
-          a.dispose();
-        });
-      });
+              final resEigh = eigh(a);
+              expect(resEigh.eigenvalues.shape, [0]);
+              expect(resEigh.eigenvectors.shape, [0, 0]);
+              expect(resEigh.eigenvalues.isDisposed, false);
+              expect(resEigh.eigenvectors.isDisposed, false);
+              resEigh.dispose();
+
+              a.dispose();
+            },
+          );
+
+          test('hessenberg, qr, svd on n == 0 matrix and scope safety', () {
+            final a = NDArray.zeros([0, 0], DType.float64);
+
+            final resHess = hessenberg(a);
+            expect(resHess.h.shape, [0, 0]);
+            expect(resHess.q.shape, [0, 0]);
+            expect(resHess.h.isDisposed, false);
+            expect(resHess.q.isDisposed, false);
+            resHess.h.dispose();
+            resHess.q.dispose();
+
+            final resQR = qr(a);
+            expect(resQR.q.shape, [0, 0]);
+            expect(resQR.r.shape, [0, 0]);
+            expect(resQR.q.isDisposed, false);
+            expect(resQR.r.isDisposed, false);
+            resQR.q.dispose();
+            resQR.r.dispose();
+
+            final resSVD = svd(a);
+            expect(resSVD.u.shape, [0, 0]);
+            expect(resSVD.s.shape, [0]);
+            expect(resSVD.vh.shape, [0, 0]);
+            expect(resSVD.u.isDisposed, false);
+            expect(resSVD.s.isDisposed, false);
+            expect(resSVD.vh.isDisposed, false);
+            resSVD.u.dispose();
+            resSVD.s.dispose();
+            resSVD.vh.dispose();
+
+            a.dispose();
+          });
+        },
+      );
     });
   });
 }

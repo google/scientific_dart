@@ -17,7 +17,6 @@
 library;
 
 import 'dart:ffi' as ffi;
-
 import 'openblas_bindings.dart'; // For blasint!
 
 @ffi.Native<

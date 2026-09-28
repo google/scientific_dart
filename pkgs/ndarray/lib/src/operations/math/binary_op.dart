@@ -170,3 +170,147 @@ enum BinaryOp {
     }
   }
 }
+
+/// Representation of universal unary operations (ufuncs) supported across arrays.
+enum UnaryOp {
+  /// Element-wise numerical negation (`-x`).
+  negative,
+
+  /// Element-wise numerical positive (`+x`).
+  positive,
+
+  /// Element-wise absolute value (`|x|`).
+  absolute,
+
+  /// Alias for [absolute].
+  abs,
+
+  /// Element-wise floating-point absolute value.
+  fabs,
+
+  /// Element-wise round to nearest integer.
+  rint,
+
+  /// Element-wise sign indication (`-1, 0, +1`).
+  sign,
+
+  /// Element-wise complex conjugate.
+  conj,
+
+  /// Alias for [conj].
+  conjugate,
+
+  /// Element-wise exponential (`e^x`).
+  exp,
+
+  /// Element-wise base-2 exponential (`2^x`).
+  exp2,
+
+  /// Element-wise natural logarithm (`ln(x)`).
+  log,
+
+  /// Element-wise base-2 logarithm (`log2(x)`).
+  log2,
+
+  /// Element-wise base-10 logarithm (`log10(x)`).
+  log10,
+
+  /// Element-wise `exp(x) - 1`.
+  expm1,
+
+  /// Element-wise `log(1 + x)`.
+  log1p,
+
+  /// Element-wise principal square root.
+  sqrt,
+
+  /// Element-wise square (`x^2`).
+  square,
+
+  /// Element-wise cube root.
+  cbrt,
+
+  /// Element-wise reciprocal (`1 / x`).
+  reciprocal,
+
+  /// Element-wise trigonometric sine.
+  sin,
+
+  /// Element-wise trigonometric cosine.
+  cos,
+
+  /// Element-wise trigonometric tangent.
+  tan,
+
+  /// Element-wise inverse sine.
+  arcsin,
+
+  /// Element-wise inverse cosine.
+  arccos,
+
+  /// Element-wise inverse tangent.
+  arctan,
+
+  /// Element-wise hyperbolic sine.
+  sinh,
+
+  /// Element-wise hyperbolic cosine.
+  cosh,
+
+  /// Element-wise hyperbolic tangent.
+  tanh,
+
+  /// Element-wise inverse hyperbolic sine.
+  arcsinh,
+
+  /// Element-wise inverse hyperbolic cosine.
+  arccosh,
+
+  /// Element-wise inverse hyperbolic tangent.
+  arctanh,
+
+  /// Element-wise conversion from radians to degrees.
+  degrees,
+
+  /// Element-wise conversion from degrees to radians.
+  radians,
+
+  /// Alias for [radians].
+  deg2rad,
+
+  /// Alias for [degrees].
+  rad2deg,
+
+  /// Element-wise bitwise inversion (`~x`).
+  invert,
+
+  /// Alias for [invert].
+  bitwiseNot,
+
+  /// Element-wise logical NOT (`!x`).
+  logicalNot,
+
+  /// Element-wise NaN check.
+  isnan,
+
+  /// Element-wise infinity check.
+  isinf,
+
+  /// Element-wise finiteness check.
+  isfinite,
+
+  /// Element-wise signbit check.
+  signbit,
+
+  /// Element-wise floor.
+  floor,
+
+  /// Element-wise ceiling.
+  ceil,
+
+  /// Element-wise truncation toward zero.
+  trunc,
+
+  /// Element-wise ULP spacing.
+  spacing,
+}

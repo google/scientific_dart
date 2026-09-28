@@ -44,7 +44,8 @@ void _printMatrix(NDArray a) {
   for (var r = 0; r < rows; r++) {
     final rowStr = [];
     for (var c = 0; c < cols; c++) {
-      rowStr.add(a[r * cols + c].toStringAsFixed(4).padLeft(9));
+      final val = a.getCell([r, c]);
+      rowStr.add((val as num).toStringAsFixed(4).padLeft(9));
     }
     print(' [ ${rowStr.join(', ')} ]');
   }

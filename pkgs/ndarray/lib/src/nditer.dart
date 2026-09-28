@@ -215,6 +215,11 @@ final class NDIter {
     List<int> strides,
     List<int> targetShape,
   ) {
+    if (shape.length > targetShape.length) {
+      throw ArgumentError(
+        'Cannot broadcast shape $shape to targetShape $targetShape',
+      );
+    }
     final newStrides = List<int>.filled(targetShape.length, 0);
     for (var i = 0; i < shape.length; i++) {
       final targetDimIdx = targetShape.length - 1 - i;
@@ -244,12 +249,12 @@ final class NDIter {
 /// **Example:**
 /// ```dart
 /// final arr = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
-/// final en = NDEnumerate<int>(arr);
+/// final en = NDEnumerate<Int32>(arr);
 /// while (en.moveNext()) {
 ///   print('coords: ${en.coords}, value: ${en.value}');
 /// }
 /// ```
-final class NDEnumerate<T> {
+final class NDEnumerate<T extends DTypeTag> {
   final NDArray<T> _array;
   final NDIter _iter;
 
@@ -269,6 +274,33 @@ final class NDEnumerate<T> {
   /// Do not store or modify it.
   List<int> get coords => _iter.coords;
 
+  /// The current element value, untyped.
+  ///
+  /// The tag [T] does not name the element type, so this getter cannot be
+  /// typed. Use [NDEnumerateElements.value] for the element type implied by
+  /// the tag.
+  Object? get valueRaw => _array.getCellRawUntyped(_iter.index);
+}
+
+/// The element-typed view of an [NDEnumerate].
+///
+/// The element type [E] is recovered from the enumerated array's dtype tag
+/// [T] through its [DTypeTag] bound, so `NDEnumerate<Float64>.value` has
+/// static type `double` and `NDEnumerate<Int32>.value` has static type `int`.
+///
+/// In code that is generic over all dtypes (`T extends DTypeTag`), [E]
+/// resolves to `Object?`.
+extension NDEnumerateElements<
+  T extends DTypeSpec<AnySpec, E, AnySpec, AnySpec, AnySpec, AnySpec, AnySpec>,
+  E
+>
+    on NDEnumerate<T> {
   /// The current element value.
-  T get value => _array.getCellRaw(_iter.index);
+  E get value => valueRaw as E;
+}
+
+/// Element access for an [NDEnumerate] typed as the base [DTypeTag].
+extension NDEnumerateBaseElements on NDEnumerate<DTypeTag> {
+  /// The current element value.
+  dynamic get value => valueRaw;
 }

@@ -14,7 +14,6 @@
 
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
-
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -84,11 +83,11 @@ void main() {
     test(
       'Matrix Multiplication (OpenBLAS)',
       () => NDArray.scope(() {
-        final a = NDArray<double>.fromList(Float64List.fromList([1, 2, 3, 4]), [
+        final a = NDArray.fromList(Float64List.fromList([1, 2, 3, 4]), [
           2,
           2,
         ], DType.float64);
-        final b = NDArray<double>.fromList(Float64List.fromList([5, 6, 7, 8]), [
+        final b = NDArray.fromList(Float64List.fromList([5, 6, 7, 8]), [
           2,
           2,
         ], DType.float64);
@@ -118,7 +117,7 @@ void main() {
         expect(view.data[1], 3.0);
 
         // Modify view
-        view.data[0] = Float64(99.0);
+        view.data[0] = 99.0;
         // Check original
         expect(a.data[1], 99.0);
       }),
@@ -178,7 +177,7 @@ void main() {
     test(
       'Zeros Factory',
       () => NDArray.scope(() {
-        final a = NDArray<double>.zeros([2, 3], DType.float64);
+        final a = NDArray.zeros([2, 3], DType.float64);
         expect(a.shape, [2, 3]);
         expect(a.data, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
       }),
@@ -187,7 +186,7 @@ void main() {
     test(
       'Ones Factory',
       () => NDArray.scope(() {
-        final a = NDArray<double>.ones([2, 3], DType.float64);
+        final a = NDArray.ones([2, 3], DType.float64);
         expect(a.shape, [2, 3]);
         expect(a.data, [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]);
       }),
@@ -196,12 +195,7 @@ void main() {
     test(
       'Arange Factory',
       () => NDArray.scope(() {
-        final a = NDArray<double>.arange(
-          0.0,
-          5.0,
-          step: 1.0,
-          dtype: DType.float64,
-        );
+        final a = NDArray.arange(0.0, 5.0, step: 1.0, dtype: DType.float64);
         expect(a.shape, [5]);
         expect(a.data, [0.0, 1.0, 2.0, 3.0, 4.0]);
       }),
@@ -210,7 +204,7 @@ void main() {
     test(
       'Linspace Factory',
       () => NDArray.scope(() {
-        final a = linspace<double>(0.0, 1.0, 5, dtype: DType.float64);
+        final a = linspace<DTypeTag>(0.0, 1.0, 5, dtype: DType.float64);
         expect(a.shape, [5]);
         expect(a.data, [0.0, 0.25, 0.5, 0.75, 1.0]);
       }),
@@ -231,7 +225,7 @@ void main() {
     test(
       'Manual Dispose',
       () => NDArray.scope(() {
-        final a = NDArray<double>.create([2, 2], DType.float64);
+        final a = NDArray.create([2, 2], DType.float64);
         // Should not throw
         a.dispose();
       }),
@@ -240,7 +234,7 @@ void main() {
     test(
       'Eye Factory',
       () => NDArray.scope(() {
-        final a = NDArray<double>.eye(3, DType.float64);
+        final a = NDArray.eye(3, DType.float64);
         expect(a.shape, [3, 3]);
         expect(a.data, [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]);
       }),
@@ -271,7 +265,7 @@ void main() {
         expect(b.data, [1.0, 2.0, 3.0, 4.0]);
 
         // Modify view
-        b.data[0] = Float64(99.0);
+        b.data[0] = 99.0;
         // Check original
         expect(a.data[0], 99.0);
       }),
@@ -685,13 +679,13 @@ void main() {
     test(
       'Solve Complex128',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([2, 2], DType.complex128);
+        final a = NDArray.create([2, 2], DType.complex128);
         a.data[0] = Complex(3.0, 0.0);
         a.data[1] = Complex(1.0, 0.0);
         a.data[2] = Complex(1.0, 0.0);
         a.data[3] = Complex(2.0, 0.0);
 
-        final b = NDArray<Complex>.create([2], DType.complex128);
+        final b = NDArray.create([2], DType.complex128);
         b.data[0] = Complex(9.0, 0.0);
         b.data[1] = Complex(8.0, 0.0);
 
@@ -734,7 +728,7 @@ void main() {
     test(
       'Eigen Decompositions (Complex Matrix)',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([2, 2], DType.complex128);
+        final a = NDArray.create([2, 2], DType.complex128);
         a.data[0] = Complex(0.0, 1.0);
         a.data[1] = Complex(0.0, 0.0);
         a.data[2] = Complex(0.0, 0.0);
@@ -800,7 +794,7 @@ void main() {
           4,
         ], DType.float64);
         final b = a.slice([Slice(start: 1, stop: 3)]);
-        b.data[0] = Float64(20.0);
+        b.data[0] = 20.0;
         expect(a.data[1], 20.0);
       }),
     );
@@ -853,7 +847,7 @@ void main() {
         final b = a.slice([
           Indices([0, 2]),
         ]);
-        b.data[0] = Float64(10.0);
+        b.data[0] = 10.0;
         expect(a.data[0], 1.0); // Original should not change!
       }),
     );
@@ -896,7 +890,7 @@ void main() {
         ], DType.float64);
         final mask = a > 2.0;
         final b = a.slice([Mask(BooleanMask(mask))]);
-        b.data[0] = Float64(10.0);
+        b.data[0] = 10.0;
         expect(a.data[2], 3.0); // Original should not change!
       }),
     );
@@ -942,7 +936,7 @@ void main() {
         expect(b.shape, [4]);
         expect(b.toList(), [1.0, 2.0, 3.0, 4.0]);
 
-        b.data[0] = Float64(10.0);
+        b.data[0] = 10.0;
         expect(a.data[0], 1.0);
       }),
     );
@@ -952,9 +946,9 @@ void main() {
       () => NDArray.scope(() {
         for (final dtype in DType.values) {
           final NDArray a;
-          final List expected;
+          final List<dynamic> expected;
           if (dtype == DType.complex128 || dtype == DType.complex64) {
-            a = NDArray<Complex>.create([2, 2], dtype as dynamic);
+            a = NDArray.create([2, 2], dtype as dynamic);
             a.data[0] = Complex(1.0, 1.0);
             a.data[1] = Complex(2.0, 2.0);
             a.data[2] = Complex(3.0, 3.0);
@@ -966,7 +960,7 @@ void main() {
               Complex(4.0, 4.0),
             ];
           } else if (dtype == DType.boolean) {
-            a = NDArray<bool>.fromList(
+            a = NDArray<Boolean>.fromList(
               [true, false, true, false],
               [2, 2],
               dtype as dynamic,
@@ -974,10 +968,7 @@ void main() {
             expected = [true, false, true, false];
           } else if (dtype == DType.int32 || dtype == DType.int64) {
             a = NDArray.fromList(
-              (dtype == DType.int32
-                      ? [Int32(1), Int32(2), Int32(3), Int32(4)]
-                      : [Int64(1), Int64(2), Int64(3), Int64(4)])
-                  as dynamic,
+              (dtype == DType.int32 ? [1, 2, 3, 4] : [1, 2, 3, 4]) as dynamic,
               [2, 2],
               dtype as dynamic,
             );
@@ -985,13 +976,8 @@ void main() {
           } else {
             a = NDArray.fromList(
               (dtype == DType.float32
-                      ? [Float32(1.0), Float32(2.0), Float32(3.0), Float32(4.0)]
-                      : [
-                          Float64(1.0),
-                          Float64(2.0),
-                          Float64(3.0),
-                          Float64(4.0),
-                        ])
+                      ? [1.0, 2.0, 3.0, 4.0]
+                      : [1.0, 2.0, 3.0, 4.0])
                   as dynamic,
               [2, 2],
               dtype as dynamic,
@@ -1019,7 +1005,7 @@ void main() {
         expect(b.shape, [4]);
         expect(b.toList(), [1.0, 2.0, 3.0, 4.0]);
 
-        b.data[0] = Float64(10.0);
+        b.data[0] = 10.0;
         expect(a.data[0], 10.0);
       }),
     );
@@ -1039,7 +1025,7 @@ void main() {
         expect(c.shape, [2]);
         expect(c.toList(), [1.0, 3.0]);
 
-        c.data[0] = Float64(10.0);
+        c.data[0] = 10.0;
         expect(b.data[0], 1.0);
       }),
     );
@@ -1055,7 +1041,7 @@ void main() {
         expect(b.shape, [2, 2]);
         expect(b.toList(), [1.0, 3.0, 2.0, 4.0]);
 
-        b.data[0] = Float64(10.0);
+        b.data[0] = 10.0;
         expect(a.data[0], 10.0);
       }),
     );
@@ -1143,7 +1129,7 @@ void main() {
     test(
       'Complex Array Creation',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([2], DType.complex128);
+        final a = NDArray.create([2], DType.complex128);
         expect(a.shape, [2]);
         expect(a.dtype, DType.complex128);
 
@@ -1160,11 +1146,11 @@ void main() {
     test(
       'Complex Array Addition',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([2], DType.complex128);
+        final a = NDArray.create([2], DType.complex128);
         a.data[0] = Complex(1.0, 2.0);
         a.data[1] = Complex(3.0, 4.0);
 
-        final b = NDArray<Complex>.create([2], DType.complex128);
+        final b = NDArray.create([2], DType.complex128);
         b.data[0] = Complex(10.0, 20.0);
         b.data[1] = Complex(30.0, 40.0);
 
@@ -1178,11 +1164,11 @@ void main() {
     test(
       'Complex and Real Array Interaction',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([2], DType.complex128);
+        final a = NDArray.create([2], DType.complex128);
         a.data[0] = Complex(1.0, 2.0);
         a.data[1] = Complex(3.0, 4.0);
 
-        final b = NDArray<double>.fromList([10.0, 20.0], [2], DType.float64);
+        final b = NDArray.fromList([10.0, 20.0], [2], DType.float64);
 
         final c = add(a, b);
         expect(c.shape, [2]);
@@ -1217,13 +1203,13 @@ void main() {
         'setByMask dimensions validation',
         () => NDArray.scope(() {
           final a = NDArray.zeros([2, 3], DType.float64);
-          final mask1D = NDArray<bool>.zeros([2], DType.boolean);
+          final mask1D = NDArray<Boolean>.zeros([2], DType.boolean);
           expect(
             () => a.setByMaskScalar(mask1D, 5.0 as dynamic),
             throwsArgumentError,
           );
 
-          final mask2D = NDArray<bool>.zeros([2, 2], DType.boolean);
+          final mask2D = NDArray<Boolean>.zeros([2, 2], DType.boolean);
           expect(
             () => a.setByMaskScalar(mask2D, 5.0 as dynamic),
             throwsArgumentError,
@@ -1235,21 +1221,14 @@ void main() {
         'setIndices and setIndicesScalar bounds checks',
         () => NDArray.scope(() {
           final a = NDArray.zeros([2, 3], DType.float64);
-          final indices = NDArray<Int32>.fromList([Int32(0)], [1], DType.int32);
+          final indices = NDArray<Int32>.fromList([0], [1], DType.int32);
           expect(
-            () => a.setIndicesScalar(indices, Float64(1.0), axis: 5),
+            () => a.setIndicesScalar(indices, 1.0, axis: 5),
             throwsRangeError,
           );
 
-          final badIndices = NDArray<Int32>.fromList(
-            [Int32(5)],
-            [1],
-            DType.int32,
-          );
-          expect(
-            () => a.setIndicesScalar(badIndices, Float64(1.0)),
-            throwsRangeError,
-          );
+          final badIndices = NDArray<Int32>.fromList([5], [1], DType.int32);
+          expect(() => a.setIndicesScalar(badIndices, 1.0), throwsRangeError);
 
           final val = NDArray.zeros([1], DType.float64);
           expect(() => a.setIndices(badIndices, val), throwsRangeError);
@@ -1281,7 +1260,7 @@ void main() {
           final a = NDArray.zeros([2, 3], DType.float64);
           expect(() => a[[0]], throwsArgumentError);
 
-          final badMask = NDArray<bool>.zeros([2, 2], DType.boolean);
+          final badMask = NDArray<Boolean>.zeros([2, 2], DType.boolean);
           expect(() => a[badMask], throwsArgumentError);
         }),
       );
@@ -1312,33 +1291,44 @@ void main() {
     test(
       'arange() zero and negative step validation',
       () => NDArray.scope(() {
-        expect(() => NDArray.arange(0.0, 5.0, step: 0.0), throwsArgumentError);
-        expect(() => NDArray.arange(0.0, 5.0, step: -1.0), throwsArgumentError);
-        expect(() => NDArray.arange(5.0, 0.0, step: 1.0), throwsArgumentError);
+        expect(
+          () => NDArray.arange(0.0, 5.0, step: 0.0, dtype: DType.float64),
+          throwsArgumentError,
+        );
+        expect(
+          () => NDArray.arange(0.0, 5.0, step: -1.0, dtype: DType.float64),
+          throwsArgumentError,
+        );
+        expect(
+          () => NDArray.arange(5.0, 0.0, step: 1.0, dtype: DType.float64),
+          throwsArgumentError,
+        );
 
         // Valid arange with negative step
-        final a = NDArray<double>.arange(
-          5.0,
-          0.0,
-          step: -1.0,
-          dtype: DType.float64,
-        );
+        final a = NDArray.arange(5.0, 0.0, step: -1.0, dtype: DType.float64);
         expect(a.toList(), [5.0, 4.0, 3.0, 2.0, 1.0]);
       }),
     );
 
     test(
-      'NDArray Structural Value Equality operator == and hashCode',
+      'NDArray Identity Equality (operator == / hashCode) and Structural Equality (equals / contentHashCode / arrayEqual)',
       () => NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final b = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final c = NDArray.fromList([1.0, 2.0, 9.0], [3], DType.float64);
         final d = NDArray.fromList([1.0, 2.0, 3.0], [1, 3], DType.float64);
 
-        expect(a == b, true);
-        expect(a == c, false);
-        expect(a == d, false); // different shape
-        expect(a.hashCode == b.hashCode, true);
+        // Identity equality & hashCode
+        expect(a == a, true);
+        expect(a == b, false);
+        expect(a.hashCode, identityHashCode(a));
+
+        // Structural content equality & contentHashCode
+        expect(a.equals(b), true);
+        expect(arrayEqual(a, b), true);
+        expect(a.equals(c), false);
+        expect(a.equals(d), false); // different shape
+        expect(a.contentHashCode == b.contentHashCode, true);
 
         // Non-contiguous view comparisons tests (triggering recursive walkers)
         final parent1 = NDArray.fromList(
@@ -1356,19 +1346,20 @@ void main() {
             parent1.transposed; // non-contiguous: [[1.0, 3.0], [2.0, 4.0]]
         expect(viewT1.isContiguous, false);
 
-        // 1. Non-contiguous == contiguous
-        expect(viewT1 == parent2, true);
-        expect(viewT1 == parent1, false);
+        // 1. Non-contiguous equals contiguous
+        expect(viewT1.equals(parent2), true);
+        expect(arrayEqual(viewT1, parent2), true);
+        expect(viewT1.equals(parent1), false);
 
-        // 2. Non-contiguous hashCode
-        expect(viewT1.hashCode == parent2.hashCode, true);
+        // 2. Non-contiguous contentHashCode
+        expect(viewT1.contentHashCode == parent2.contentHashCode, true);
       }),
     );
 
     test(
       'DType.complex64 array creation, viewing and operations coverage',
       () => NDArray.scope(() {
-        final a = NDArray<Complex>.create([2, 2], DType.complex64);
+        final a = NDArray.create([2, 2], DType.complex64);
         expect(a.shape, [2, 2]);
         expect(a.dtype, DType.complex64);
 
@@ -1388,7 +1379,7 @@ void main() {
         expect(view.getCell([1]), Complex(3.0, 4.0));
 
         // Operation coverage (add complex64 arrays)
-        final b = NDArray<Complex>.create([2, 2], DType.complex64);
+        final b = NDArray.create([2, 2], DType.complex64);
         for (var i = 0; i < 2; i++) {
           for (var j = 0; j < 2; j++) {
             b.setCell([i, j], Complex(10.0, 10.0));
@@ -1405,7 +1396,7 @@ void main() {
     test(
       'linspace() with num == 1 coverage',
       () => NDArray.scope(() {
-        final a = linspace<double>(5.0, 10.0, 1, dtype: DType.float64);
+        final a = linspace<DTypeTag>(5.0, 10.0, 1, dtype: DType.float64);
         expect(a.shape, [1]);
         expect(a.toList(), [5.0]);
       }),
@@ -1473,13 +1464,13 @@ void main() {
     test(
       'NDArray.eye() complex identity matrix type safety validations',
       () => NDArray.scope(() {
-        final eye128 = NDArray<Complex>.eye(3, DType.complex128);
+        final eye128 = NDArray.eye(3, DType.complex128);
         expect(eye128.dtype, DType.complex128);
         expect(eye128.getCell([0, 0]), Complex(1.0, 0.0));
         expect(eye128.getCell([0, 1]), Complex(0.0, 0.0));
         expect(eye128.getCell([1, 1]), Complex(1.0, 0.0));
 
-        final eye64 = NDArray<Complex>.eye(3, DType.complex64);
+        final eye64 = NDArray.eye(3, DType.complex64);
         expect(eye64.dtype, DType.complex64);
         expect(eye64.getCell([0, 0]), Complex(1.0, 0.0));
         expect(eye64.getCell([1, 1]), Complex(1.0, 0.0));
@@ -1490,7 +1481,7 @@ void main() {
       'arange() and linspace() type safety with complex dtypes',
       () => NDArray.scope(() {
         // 1. arange with complex128
-        final a128 = NDArray<Complex>.arange(0, 3, dtype: DType.complex128);
+        final a128 = NDArray.arange(0, 3, dtype: DType.complex128);
         expect(a128.shape, [3]);
         expect(a128.dtype, DType.complex128);
         expect(a128.toList(), [
@@ -1500,13 +1491,13 @@ void main() {
         ]);
 
         // 2. arange with complex64
-        final a64 = NDArray<Complex>.arange(1, 3, dtype: DType.complex64);
+        final a64 = NDArray.arange(1, 3, dtype: DType.complex64);
         expect(a64.shape, [2]);
         expect(a64.dtype, DType.complex64);
         expect(a64.toList(), [Complex(1.0, 0.0), Complex(2.0, 0.0)]);
 
         // 3. linspace with complex128
-        final l128 = linspace<Complex>(
+        final l128 = linspace<DTypeTag>(
           Complex(1.0, 0.0),
           Complex(2.0, 0.0),
           3,
@@ -1521,7 +1512,7 @@ void main() {
         ]);
 
         // 4. linspace with single-element num == 1 and complex64
-        final l64 = linspace<Complex>(
+        final l64 = linspace<DTypeTag>(
           Complex(5.0, 0.0),
           Complex(10.0, 0.0),
           1,
@@ -1534,7 +1525,7 @@ void main() {
     );
 
     test(
-      'FFI native C flatten() and hashCode() correctness and invariants across all DTypes',
+      'FFI native C flatten() and contentHashCode() correctness and invariants across all DTypes',
       () => NDArray.scope(() {
         // 1. Float64
         final f64 = NDArray.fromList(
@@ -1551,8 +1542,8 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        expect(f64T == f64Contig, true);
-        expect(f64T.hashCode == f64Contig.hashCode, true);
+        expect(f64T.equals(f64Contig), true);
+        expect(f64T.contentHashCode == f64Contig.contentHashCode, true);
 
         // 2. Float32
         final f32 = NDArray.fromList(
@@ -1569,8 +1560,8 @@ void main() {
           [2, 2],
           DType.float32,
         );
-        expect(f32T == f32Contig, true);
-        expect(f32T.hashCode == f32Contig.hashCode, true);
+        expect(f32T.equals(f32Contig), true);
+        expect(f32T.contentHashCode == f32Contig.contentHashCode, true);
 
         // 3. Int64
         final i64 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
@@ -1579,8 +1570,8 @@ void main() {
         expect(i64Flat.isContiguous, true);
         expect(i64Flat.toList(), [1, 3, 2, 4]);
         final i64Contig = NDArray.fromList([1, 3, 2, 4], [2, 2], DType.int64);
-        expect(i64T == i64Contig, true);
-        expect(i64T.hashCode == i64Contig.hashCode, true);
+        expect(i64T.equals(i64Contig), true);
+        expect(i64T.contentHashCode == i64Contig.contentHashCode, true);
 
         // 4. Int32
         final i32 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
@@ -1589,11 +1580,11 @@ void main() {
         expect(i32Flat.isContiguous, true);
         expect(i32Flat.toList(), [1, 3, 2, 4]);
         final i32Contig = NDArray.fromList([1, 3, 2, 4], [2, 2], DType.int32);
-        expect(i32T == i32Contig, true);
-        expect(i32T.hashCode == i32Contig.hashCode, true);
+        expect(i32T.equals(i32Contig), true);
+        expect(i32T.contentHashCode == i32Contig.contentHashCode, true);
 
         // 5. Complex128
-        final c128 = NDArray<Complex>.fromList(
+        final c128 = NDArray.fromList(
           [
             Complex(1.0, 1.0),
             Complex(2.0, 2.0),
@@ -1612,7 +1603,7 @@ void main() {
           Complex(2.0, 2.0),
           Complex(4.0, 4.0),
         ]);
-        final c128Contig = NDArray<Complex>.fromList(
+        final c128Contig = NDArray.fromList(
           [
             Complex(1.0, 1.0),
             Complex(3.0, 3.0),
@@ -1622,11 +1613,11 @@ void main() {
           [2, 2],
           DType.complex128,
         );
-        expect(c128T == c128Contig, true);
-        expect(c128T.hashCode == c128Contig.hashCode, true);
+        expect(c128T.equals(c128Contig), true);
+        expect(c128T.contentHashCode == c128Contig.contentHashCode, true);
 
         // 6. Complex64
-        final c64 = NDArray<Complex>.fromList(
+        final c64 = NDArray.fromList(
           [
             Complex(1.0, 1.0),
             Complex(2.0, 2.0),
@@ -1645,7 +1636,7 @@ void main() {
           Complex(2.0, 2.0),
           Complex(4.0, 4.0),
         ]);
-        final c64Contig = NDArray<Complex>.fromList(
+        final c64Contig = NDArray.fromList(
           [
             Complex(1.0, 1.0),
             Complex(3.0, 3.0),
@@ -1655,8 +1646,8 @@ void main() {
           [2, 2],
           DType.complex64,
         );
-        expect(c64T == c64Contig, true);
-        expect(c64T.hashCode == c64Contig.hashCode, true);
+        expect(c64T.equals(c64Contig), true);
+        expect(c64T.contentHashCode == c64Contig.contentHashCode, true);
 
         // 7. Boolean
         final b = NDArray.fromList(
@@ -1673,20 +1664,61 @@ void main() {
           [2, 2],
           DType.boolean,
         );
-        expect(bT == bContig, true);
-        expect(bT.hashCode == bContig.hashCode, true);
+        expect(bT.equals(bContig), true);
+        expect(bT.contentHashCode == bContig.contentHashCode, true);
       }),
     );
 
-    test("Contiguity checking ignores stride mismatches on unit dimensions (shape[i] <= 1)", () {
-      NDArray.scope(() {
-        // Create an array with a unit dimension and an arbitrary stride on that dimension
-        final arr = NDArray.fromList([1, 2, 3], [1, 3], DType.int64);
-        // By slicing or creating a view where dimension 0 has size 1 with non-standard stride
-        // We can test _checkContiguous via broadcastTo or reshape or creating view
-        final view = NDArray.view(arr, shape: [1, 1, 3], strides: [999, 3, 1]);
-        expect(view.isContiguous, true);
-      });
-    });
+    test(
+      "Contiguity checking ignores stride mismatches on unit dimensions (shape[i] <= 1)",
+      () {
+        NDArray.scope(() {
+          // Create an array with a unit dimension and an arbitrary stride on that dimension
+          final arr = NDArray.fromList([1, 2, 3], [1, 3], DType.int64);
+          // By slicing or creating a view where dimension 0 has size 1 with non-standard stride
+          // We can test _checkContiguous via broadcastTo or reshape or creating view
+          final view = NDArray.view(
+            arr,
+            shape: [1, 1, 3],
+            strides: [999, 3, 1],
+          );
+          expect(view.isContiguous, true);
+        });
+      },
+    );
+
+    test(
+      'reshape supports -1 unknown dimension inference and rejects multiple -1s',
+      () => NDArray.scope(() {
+        final a = NDArray<Float64>.arange(0, 12, dtype: DType.float64);
+        final r1 = a.reshape([3, -1]);
+        expect(r1.shape, [3, 4]);
+        final r2 = a.reshape([-1, 2, 2]);
+        expect(r2.shape, [3, 2, 2]);
+        expect(() => a.reshape([-1, -1]), throwsArgumentError);
+      }),
+    );
+
+    test(
+      'detachFromScope and detachToParentScope throw StateError on views',
+      () => NDArray.scope(() {
+        final parent = NDArray<Float64>.arange(0, 100, dtype: DType.float64);
+        final subView = parent.slice([Slice(start: 10, stop: 15)]);
+        expect(() => subView.detachFromScope(), throwsStateError);
+        expect(() => subView.detachToParentScope(), throwsStateError);
+
+        // Explicit copy().detachToParentScope() succeeds and allows parent disposal
+        late NDArray<Float64> innerParent;
+        final ownedCopy = NDArray.scope(() {
+          innerParent = NDArray<Float64>.arange(0, 100, dtype: DType.float64);
+          final innerView = innerParent.slice([Slice(start: 10, stop: 15)]);
+          return innerView.copy().detachToParentScope();
+        });
+        expect(innerParent.isDisposed, true);
+        expect(ownedCopy.isDisposed, false);
+        expect(ownedCopy.isView, false);
+        expect(ownedCopy.toList(), [10.0, 11.0, 12.0, 13.0, 14.0]);
+      }),
+    );
   });
 }

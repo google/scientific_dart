@@ -1,0 +1,1393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dart NDArray Notebook</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script type="module">
+    import { compileStreaming } from './editor_client.mjs';
+    async function initWasm() {
+      try {
+        const compiledApp = await compileStreaming(fetch('editor_client.wasm?v=' + Date.now()));
+        const instantiatedApp = await compiledApp.instantiate({});
+        instantiatedApp.invokeMain();
+        console.log('Dart CodeEditor WebAssembly module loaded successfully. DartEditor type:', typeof window.DartEditor);
+        const stored = localStorage.getItem('notebook_editor_engine');
+        if (stored) {
+          currentEditorEngine = stored;
+          const select = document.getElementById('editorEngineSelect');
+          if (select) select.value = stored;
+          if (stored === 'dart_editor' && typeof window.switchEditorEngine === 'function') {
+            window.switchEditorEngine('dart_editor');
+          }
+        }
+      } catch (e) {
+        console.warn('Wasm initialization error:', e);
+      }
+    }
+    initWasm();
+  </script>
+  <script src="editor_client.js"></script>
+  <style>
+    :root {
+      --bg-color: #1e1e2e;
+      --panel-bg: #181825;
+      --cell-bg: #313244;
+      --text-color: #cdd6f4;
+      --accent-color: #89b4fa;
+      --accent-hover: #b4befe;
+      --success-color: #a6e3a1;
+      --error-color: #f38ba8;
+      --border-color: #45475a;
+      --code-bg: #11111b;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text-color);
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      overflow: hidden;
+    }
+
+    header {
+      background-color: var(--panel-bg);
+      padding: 12px 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .title-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .title-area h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: var(--accent-color);
+    }
+
+    .status-badge {
+      font-size: 0.8rem;
+      padding: 4px 8px;
+      border-radius: 12px;
+      background-color: var(--border-color);
+      color: var(--text-color);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #f9e2af;
+    }
+
+    .status-badge.connected .status-dot {
+      background-color: var(--success-color);
+    }
+
+    .status-badge.busy .status-dot {
+      background-color: #fab387;
+      animation: pulse 1s infinite alternate;
+    }
+
+    @keyframes pulse {
+      from { opacity: 0.4; }
+      to { opacity: 1; }
+    }
+
+    .toolbar {
+      display: flex;
+      gap: 8px;
+    }
+
+    button {
+      background-color: var(--cell-bg);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    button:hover {
+      background-color: var(--border-color);
+      border-color: var(--accent-color);
+    }
+
+    button.primary {
+      background-color: var(--accent-color);
+      color: var(--panel-bg);
+      border-color: var(--accent-color);
+    }
+
+    button.primary:hover {
+      background-color: var(--accent-hover);
+    }
+
+    main {
+      flex: 1;
+      overflow-y: auto;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .notebook-container {
+      width: 100%;
+      max-width: 900px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .cell {
+      background-color: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+      transition: border-color 0.2s ease;
+      position: relative;
+    }
+
+    .cell.focused {
+      border-color: var(--accent-color);
+    }
+
+    .cell.evaluated {
+      border-left: 3px solid var(--accent-color);
+    }
+
+    .cell.evaluated .cell-number::after {
+      content: " ✓";
+      color: var(--accent-color);
+      font-weight: bold;
+    }
+
+    .cell-header {
+      background-color: rgba(255,255,255,0.03);
+      padding: 6px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .cell-number {
+      font-family: monospace;
+      font-size: 0.8rem;
+      color: #7f849c;
+    }
+
+    .cell-actions {
+      display: flex;
+      gap: 4px;
+    }
+
+    .cell-actions button {
+      padding: 2px 8px;
+      font-size: 0.8rem;
+      border: none;
+      background: transparent;
+    }
+
+    .cell-actions button:hover {
+      background-color: var(--cell-bg);
+    }
+
+    .CodeMirror {
+      font-family: 'Fira Code', 'JetBrains Mono', 'Courier New', Courier, monospace;
+      font-size: 0.95rem;
+      line-height: 1.5;
+      height: auto;
+      min-height: 80px;
+      background-color: var(--code-bg) !important;
+      color: var(--text-color) !important;
+      border: none;
+      padding: 4px 0;
+    }
+
+    .CodeMirror-gutters {
+      background-color: #181825 !important;
+      border-right: 1px solid var(--border-color);
+    }
+
+    .CodeMirror-linenumber {
+      color: #6c7086 !important;
+    }
+
+    .output-container {
+      border-top: 1px solid var(--border-color);
+      background-color: rgba(0,0,0,0.2);
+      padding: 12px;
+      font-family: 'Fira Code', 'Courier New', Courier, monospace;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 400px;
+      overflow-y: auto;
+    }
+
+    .output-container.empty {
+      display: none;
+    }
+
+    .output-container.error {
+      color: var(--error-color);
+      background-color: rgba(243, 139, 168, 0.05);
+    }
+
+    .output-container.success {
+      color: var(--text-color);
+    }
+
+    .add-cell-bar {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      margin-top: 12px;
+      margin-bottom: 48px;
+    }
+
+    .cell.markdown-cell.rendered .code-container {
+      display: none;
+    }
+
+    .markdown-rendered-view {
+      padding: 14px 20px;
+      line-height: 1.6;
+      color: var(--text-color);
+      cursor: pointer;
+    }
+
+    .markdown-rendered-view h1, .markdown-rendered-view h2, .markdown-rendered-view h3 {
+      color: var(--accent-color);
+      margin-top: 8px;
+      margin-bottom: 8px;
+    }
+
+    .markdown-rendered-view p {
+      margin-bottom: 8px;
+    }
+
+    .markdown-rendered-view code {
+      background: var(--code-bg);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.9em;
+    }
+
+    .markdown-rendered-view pre {
+      background: var(--code-bg);
+      padding: 10px;
+      border-radius: 6px;
+      margin-bottom: 8px;
+      overflow-x: auto;
+    }
+
+    .markdown-rendered-view blockquote {
+      border-left: 3px solid var(--accent-color);
+      padding-left: 12px;
+      color: #a6adc8;
+      margin-bottom: 8px;
+    }
+
+    .cell.markdown-cell:not(.rendered) .markdown-rendered-view {
+      display: none;
+    }
+
+    /* Autocomplete Popup Styling */
+    .autocomplete-popup {
+      position: fixed;
+      z-index: 10000;
+      background-color: var(--panel-bg);
+      border: 1px solid var(--accent-color);
+      border-radius: 6px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.6);
+      max-height: 220px;
+      width: 340px;
+      overflow-y: auto;
+      font-family: 'Fira Code', monospace;
+      font-size: 0.85rem;
+    }
+
+    .completion-item {
+      padding: 6px 10px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+
+    .completion-item:hover, .completion-item.selected {
+      background-color: var(--cell-bg);
+      color: var(--accent-color);
+    }
+
+    .completion-label {
+      font-weight: 600;
+    }
+
+    .completion-type {
+      font-size: 0.75rem;
+      color: #7f849c;
+      font-style: italic;
+    }
+
+    /* Hover Documentation Popup Styling */
+    .hover-popup {
+      position: fixed;
+      z-index: 10001;
+      background-color: #181825;
+      border: 1px solid var(--accent-color);
+      border-radius: 8px;
+      padding: 12px 16px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.8);
+      max-width: 580px;
+      max-height: 340px;
+      overflow-y: auto;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      font-size: 0.88rem;
+      line-height: 1.5;
+      color: #cdd6f4;
+    }
+
+    .hover-popup h1, .hover-popup h2, .hover-popup h3, .hover-popup h4 {
+      margin: 6px 0 4px 0;
+      color: var(--accent-color);
+      font-weight: 600;
+    }
+
+    .hover-popup p {
+      margin: 4px 0 6px 0;
+    }
+
+    .hover-popup code {
+      font-family: 'Fira Code', monospace;
+      background-color: #313244;
+      color: #f9e2af;
+      padding: 2px 5px;
+      border-radius: 4px;
+      font-size: 0.82rem;
+    }
+
+    .hover-popup pre {
+      background-color: #11111b;
+      padding: 8px 12px;
+      border-radius: 6px;
+      overflow-x: auto;
+      margin: 6px 0;
+    }
+
+    .hover-popup pre code {
+      background-color: transparent;
+      padding: 0;
+      color: #a6e3a1;
+    }
+
+    .hover-popup ul, .hover-popup ol {
+      margin: 4px 0 6px 18px;
+      padding: 0;
+    }
+
+    .inspector-drawer {
+      position: fixed;
+      top: 56px;
+      right: -360px;
+      width: 340px;
+      bottom: 0;
+      background-color: var(--panel-bg);
+      border-left: 1px solid var(--border-color);
+      box-shadow: -4px 0 20px rgba(0,0,0,0.5);
+      z-index: 1000;
+      transition: right 0.25s ease;
+      display: flex;
+      flex-direction: column;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    .inspector-drawer.open {
+      right: 0;
+    }
+
+    .inspector-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+      border-bottom: 1px solid var(--border-color);
+      padding-bottom: 8px;
+    }
+
+    .inspector-title {
+      font-weight: 600;
+      color: var(--accent-color);
+      font-size: 1rem;
+    }
+
+    .inspector-list {
+      flex: 1;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .inspector-item {
+      background-color: var(--cell-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 10px;
+    }
+
+    .inspector-item-name {
+      font-family: 'Fira Code', monospace;
+      font-weight: bold;
+      color: #89b4fa;
+      font-size: 0.9rem;
+    }
+
+    .inspector-item-type {
+      font-size: 0.75rem;
+      color: #f9e2af;
+      margin-left: 6px;
+    }
+
+    .inspector-item-summary {
+      font-size: 0.82rem;
+      color: #cdd6f4;
+      margin-top: 4px;
+      word-break: break-all;
+    }
+
+    .cell-engine-badge {
+      font-size: 0.72rem;
+      font-weight: 600;
+      padding: 2px 6px;
+      border-radius: 4px;
+      margin-left: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .cell-engine-badge.wasm {
+      background-color: rgba(137, 180, 250, 0.15);
+      color: #89b4fa;
+      border: 1px solid rgba(137, 180, 250, 0.4);
+    }
+    .cell-engine-badge.cm {
+      background-color: rgba(166, 173, 200, 0.1);
+      color: #a6adc8;
+      border: 1px solid rgba(166, 173, 200, 0.25);
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title-area">
+      <h1>⚡ Dart NDArray Notebook</h1>
+      <div id="statusBadge" class="status-badge">
+        <span class="status-dot"></span>
+        <span id="statusText">Connecting...</span>
+      </div>
+    </div>
+    <div class="toolbar">
+      <label for="editorEngineSelect" style="font-size: 13px; color: #a6adc8; margin-right: 4px;">Editor Engine:</label>
+      <select id="editorEngineSelect" onchange="switchEditorEngine(this.value)" style="background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; margin-right: 12px;">
+        <option value="codemirror" selected>CodeMirror 5</option>
+        <option value="dart_editor">Dart CodeEditor (Custom / Wasm)</option>
+      </select>
+      <button onclick="addCell()">+ Code</button>
+      <button onclick="addMarkdownCell()">+ Markdown</button>
+      <button onclick="runAllCells()" class="primary">▶ Run All</button>
+      <button onclick="clearAllOutputs()">Clear Outputs</button>
+      <button onclick="toggleVariableInspector()">📊 Inspector</button>
+      <button onclick="exportIpynb()" title="Export as Jupyter Notebook (.ipynb)">💾 Export .ipynb</button>
+      <button onclick="triggerImportIpynb()" title="Open / Import Jupyter Notebook (.ipynb)">📂 Open .ipynb</button>
+      <input type="file" id="ipynbFileInput" accept=".ipynb,application/json" style="display: none;" onchange="handleImportIpynb(event)">
+    </div>
+  </header>
+
+  <div id="inspectorDrawer" class="inspector-drawer">
+    <div class="inspector-header">
+      <span class="inspector-title">Kernel Variables & NDArrays</span>
+      <button onclick="toggleVariableInspector()" style="padding: 2px 6px;">✕</button>
+    </div>
+    <div id="inspectorList" class="inspector-list">
+      <div style="color: #6c7086; font-size: 0.85rem;">Run a code cell declaring a variable (e.g. var a = NDArray...) to inspect live arrays.</div>
+    </div>
+  </div>
+
+  <main>
+    <div id="notebook" class="notebook-container"></div>
+    <div class="add-cell-bar">
+      <button onclick="addCell()">+ Add Code Cell</button>
+      <button onclick="addMarkdownCell()">+ Add Markdown Cell</button>
+    </div>
+  </main>
+
+  <script>
+    let ws;
+    let cellCount = 0;
+    const pendingEvaluations = new Map();
+    const pendingCompletions = new Map();
+    const pendingHovers = new Map();
+    let activePopup = null;
+    let activeHoverPopup = null;
+    let hoverTimeout = null;
+    let selectedIndex = 0;
+
+    function initWebSocket() {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.host}/ws`;
+      ws = new WebSocket(wsUrl);
+
+      ws.onopen = () => {
+        updateStatus('connected', 'Kernel Ready');
+      };
+
+      ws.onclose = () => {
+        updateStatus('disconnected', 'Disconnected (Reconnecting...)');
+        setTimeout(initWebSocket, 2000);
+      };
+
+      ws.onerror = (err) => {
+        console.error('WebSocket error:', err);
+      };
+
+      ws.onmessage = (event) => {
+        const msg = JSON.parse(event.data);
+        if (msg.type === 'result') {
+          if (msg.variables) {
+            renderVariableInspector(msg.variables);
+          }
+          const callback = pendingEvaluations.get(msg.id);
+          if (callback) {
+            callback(msg.output, msg.isError, msg.outputs, msg.formattedCode);
+            pendingEvaluations.delete(msg.id);
+          }
+          if (pendingEvaluations.size === 0) {
+            updateStatus('connected', 'Kernel Ready');
+          }
+        } else if (msg.type === 'variables_update') {
+          renderVariableInspector(msg.variables);
+        } else if (msg.type === 'format_result') {
+          const cell = document.getElementById(msg.cellId);
+          if (cell && cell._cm && msg.formattedCode && cell._cm.getValue() !== msg.formattedCode) {
+            const cursor = cell._cm.getCursor ? cell._cm.getCursor() : null;
+            cell._cm.setValue(msg.formattedCode);
+            if (cursor && cell._cm.setCursor) cell._cm.setCursor(cursor);
+          }
+        } else if (msg.type === 'completion') {
+          const callback = pendingCompletions.get(msg.id);
+          if (callback) {
+            callback(msg.completions);
+            pendingCompletions.delete(msg.id);
+          }
+        } else if (msg.type === 'init_session') {
+          if (msg.cells && msg.cells.length > 0) {
+            const notebook = document.getElementById('notebook');
+            notebook.innerHTML = '';
+            cellCount = 0;
+            msg.cells.forEach(c => {
+              addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
+            });
+          } else if (document.querySelectorAll('.cell').length === 0) {
+            addCellWithState("# Dart NDArray & Symbolic Notebook\nInteractive scientific computing in Dart with native acceleration.", "", false, false, null, 'markdown');
+            addCell("// Welcome to Dart NDArray Notebook!\n// Type 'Ctrl+Space' or '.' to test autocompletion.\nvar a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)");
+            addCell("// Multiply by scalar or matrix:\na * 2");
+          }
+        } else if (msg.type === 'hover') {
+          const callback = pendingHovers.get(msg.id);
+          if (callback) {
+            callback(msg.hover, msg.hoverHtml);
+            pendingHovers.delete(msg.id);
+          }
+        }
+      };
+    }
+
+    function autoSaveSession() {
+      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      const cellsData = [];
+      document.querySelectorAll('.cell').forEach(cell => {
+        const code = cell._cm ? cell._cm.getValue() : (cell.querySelector('textarea') ? cell.querySelector('textarea').value : '');
+        const output = cell.querySelector('.output-container');
+        const type = cell.getAttribute('data-cell-type') || 'code';
+        cellsData.push({
+          id: cell.id,
+          type: type,
+          code: code,
+          output: output ? output.innerText : '',
+          outputs: cell._outputsList || [],
+          isError: output ? output.classList.contains('error') : false,
+          evaluated: cell.classList.contains('evaluated')
+        });
+      });
+      ws.send(JSON.stringify({
+        type: 'save_session',
+        cells: cellsData
+      }));
+    }
+
+    function updateStatus(state, text) {
+      const badge = document.getElementById('statusBadge');
+      const statusText = document.getElementById('statusText');
+      badge.className = `status-badge ${state}`;
+      statusText.innerText = text;
+    }
+
+    function closeCompletionPopup() {
+      if (activePopup) {
+        activePopup.remove();
+        activePopup = null;
+      }
+    }
+
+    let hoverHideTimeout = null;
+
+    function closeHoverPopup() {
+      clearTimeout(hoverHideTimeout);
+      if (activeHoverPopup) {
+        activeHoverPopup.remove();
+        activeHoverPopup = null;
+      }
+    }
+
+    function scheduleCloseHoverPopup(delayMs = 350) {
+      clearTimeout(hoverHideTimeout);
+      hoverHideTimeout = setTimeout(() => {
+        closeHoverPopup();
+      }, delayMs);
+    }
+
+    function requestCompletionCm(cm, cellId) {
+      const code = cm.getValue();
+      const cursor = cm.getCursor();
+      const offset = cm.indexFromPos(cursor);
+      const reqId = `comp-${Date.now()}`;
+
+      pendingCompletions.set(reqId, (completions) => {
+        showCompletionPopupCm(cm, completions);
+      });
+
+      ws.send(JSON.stringify({
+        type: 'complete',
+        id: reqId,
+        code: code,
+        offset: offset
+      }));
+    }
+
+    function showCompletionPopupCm(cm, items) {
+      closeCompletionPopup();
+      if (!items || items.length === 0) return;
+
+      selectedIndex = 0;
+      const popup = document.createElement('div');
+      popup.className = 'autocomplete-popup';
+
+      const coords = cm.cursorCoords(true, 'page');
+      popup.style.top = `${coords.bottom + 4}px`;
+      popup.style.left = `${coords.left}px`;
+
+      items.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = `completion-item ${index === 0 ? 'selected' : ''}`;
+        div.innerHTML = `
+          <span class="completion-label">${item.label}</span>
+          <span class="completion-type">${item.type}</span>
+        `;
+        div.addEventListener('click', () => {
+          applyCompletionCm(cm, item.label);
+        });
+        popup.appendChild(div);
+      });
+
+      document.body.appendChild(popup);
+      activePopup = popup;
+      activePopup._items = items;
+      activePopup._cm = cm;
+    }
+
+    function applyCompletionCm(cm, label) {
+      const cursor = cm.getCursor();
+      const line = cm.getLine(cursor.line);
+      let start = cursor.ch - 1;
+      while (start >= 0 && /[\w\d_$]/.test(line[start])) {
+        start--;
+      }
+      start++;
+
+      cm.replaceRange(label, { line: cursor.line, ch: start }, { line: cursor.line, ch: cursor.ch });
+      closeCompletionPopup();
+      cm.focus();
+    }
+
+    function requestHoverCm(cm, cellId, offset, x, y) {
+      const code = cm.getValue();
+      const reqId = `hover-${Date.now()}`;
+
+      pendingHovers.set(reqId, (hoverText, hoverHtml) => {
+        if (hoverHtml || hoverText) {
+          showHoverPopup(x + 12, y + 16, hoverText, hoverHtml);
+        } else {
+          scheduleCloseHoverPopup(300);
+        }
+      });
+
+      ws.send(JSON.stringify({
+        type: 'hover',
+        id: reqId,
+        code: code,
+        offset: offset
+      }));
+    }
+
+    function showHoverPopup(x, y, text, html) {
+      clearTimeout(hoverHideTimeout);
+      closeHoverPopup();
+      if ((!text || !text.trim()) && (!html || !html.trim())) return;
+
+      const popup = document.createElement('div');
+      popup.className = 'hover-popup';
+      popup.style.top = `${y}px`;
+      popup.style.left = `${x}px`;
+
+      if (html) {
+        popup.innerHTML = html;
+      } else {
+        popup.innerText = text;
+      }
+
+      tryRenderKaTeX(popup);
+
+      popup.addEventListener('mouseenter', () => {
+        clearTimeout(hoverHideTimeout);
+      });
+
+      popup.addEventListener('mouseleave', () => {
+        scheduleCloseHoverPopup(300);
+      });
+
+      document.body.appendChild(popup);
+      activeHoverPopup = popup;
+    }
+
+    function tryRenderKaTeX(element) {
+      if (window.renderMathInElement) {
+        try {
+          renderMathInElement(element, {
+            delimiters: [
+              { left: '$$', right: '$$', display: true },
+              { left: '\\[', right: '\\]', display: true },
+              { left: '$', right: '$', display: false },
+              { left: '\\(', right: '\\)', display: false }
+            ],
+            throwOnError: false
+          });
+        } catch (e) {
+          console.warn('KaTeX render warning:', e);
+        }
+      }
+    }
+
+    function renderOutputElement(outputElement, text, isError, outputsArray) {
+      outputElement.className = `output-container ${isError ? 'error' : 'success'}`;
+      outputElement.innerHTML = '';
+
+      if (isError) {
+        outputElement.innerText = text || 'Error';
+        return;
+      }
+
+      let items = outputsArray;
+      if (!items || items.length === 0) {
+        if (text && typeof text === 'string' && text.startsWith('[')) {
+          try {
+            items = JSON.parse(text);
+          } catch (_) {}
+        }
+      }
+
+      if (items && Array.isArray(items) && items.length > 0) {
+        for (let i = 0; i < items.length; i++) {
+          const item = items[i];
+          const mime = item.mimeType || 'text/plain';
+          const payload = item.data;
+
+          if (i > 0) {
+            const spacer = document.createElement('div');
+            spacer.style.height = '12px';
+            outputElement.appendChild(spacer);
+          }
+
+          if (mime === 'text/html') {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-html-wrapper';
+            wrapper.innerHTML = payload;
+            tryRenderKaTeX(wrapper);
+            outputElement.appendChild(wrapper);
+            const scripts = Array.from(wrapper.getElementsByTagName('script'));
+            for (const s of scripts) {
+              const code = s.innerText || s.textContent;
+              if (code) {
+                try {
+                  new Function(code)();
+                } catch (e) {
+                  console.warn('Script execution error:', e);
+                }
+              }
+            }
+          } else {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'output-plain-text';
+            wrapper.innerText = payload;
+            outputElement.appendChild(wrapper);
+          }
+        }
+        return;
+      }
+
+      if (!text) {
+        outputElement.innerText = '(No output)';
+        return;
+      }
+
+      let cleaned = text.trim();
+      while ((cleaned.startsWith('"') || cleaned.startsWith("'")) && cleaned.length > 1) {
+        cleaned = cleaned.substring(1).trim();
+      }
+      while ((cleaned.endsWith('"') || cleaned.endsWith("'")) && cleaned.length > 1) {
+        cleaned = cleaned.substring(0, cleaned.length - 1).trim();
+      }
+      cleaned = cleaned.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\'/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+
+      if (cleaned.includes('<') && cleaned.includes('>')) {
+        const wrapper = document.createElement('div');
+        wrapper.className = 'output-html-wrapper';
+        wrapper.innerHTML = cleaned;
+        tryRenderKaTeX(wrapper);
+        outputElement.appendChild(wrapper);
+        const scripts = Array.from(wrapper.getElementsByTagName('script'));
+        for (const s of scripts) {
+          const code = s.innerText || s.textContent;
+          if (code) {
+            try {
+              new Function(code)();
+            } catch (e) {
+              console.warn('Script execution error:', e);
+            }
+          }
+        }
+        return;
+      }
+
+      outputElement.innerText = text;
+    }
+
+    function addCellWithState(initialCode = '', outputText = '', isError = false, evaluated = false, existingId = null, cellType = 'code', outputsArray = null) {
+      const cellId = cellType === 'markdown' ? addMarkdownCell(initialCode, existingId) : addCell(initialCode, existingId);
+      const cell = document.getElementById(cellId);
+      if (cell && outputsArray && outputsArray.length > 0) {
+        cell._outputsList = outputsArray;
+      }
+      if (cellType === 'markdown') {
+        if (initialCode) {
+          renderMarkdownCell(cellId);
+        }
+      } else {
+        if (outputText || (outputsArray && outputsArray.length > 0)) {
+          const output = document.getElementById(`output-${cellId}`);
+          renderOutputElement(output, outputText, isError, outputsArray);
+        }
+        if (evaluated) {
+          if (cell) cell.classList.add('evaluated');
+        }
+      }
+      return cellId;
+    }
+
+    function addMarkdownCell(initialText = '', existingId = null) {
+      cellCount++;
+      const cellId = existingId || `cell-${Date.now()}-${cellCount}`;
+      const notebook = document.getElementById('notebook');
+
+      const cell = document.createElement('div');
+      cell.className = 'cell markdown-cell';
+      cell.id = cellId;
+      cell.setAttribute('data-cell-type', 'markdown');
+
+      cell.innerHTML = `
+        <div class="cell-header">
+          <span class="cell-number">[ M ]</span>
+          <span class="cell-engine-badge md" style="color: #a6e3a1; border-color: rgba(166, 227, 161, 0.3);">Markdown</span>
+          <div class="cell-actions">
+            <button onclick="runCell('${cellId}')" title="Render Markdown (Shift+Enter)">▶ Render</button>
+            <button onclick="editMarkdownCell('${cellId}')" title="Edit Markdown">✏️ Edit</button>
+            <button onclick="deleteCell('${cellId}')" title="Delete Cell">🗑</button>
+          </div>
+        </div>
+        <div class="code-container">
+          <textarea class="code-editor" id="editor-${cellId}" placeholder="Enter Markdown text or LaTeX math (e.g. \$\$E = mc^2\$\$)...">${initialText}</textarea>
+        </div>
+        <div class="markdown-rendered-view" id="rendered-${cellId}" onclick="editMarkdownCell('${cellId}')" title="Click to edit markdown"></div>
+        <div class="output-container empty" id="output-${cellId}"></div>
+      `;
+
+      notebook.appendChild(cell);
+
+      const textarea = document.getElementById(`editor-${cellId}`);
+      setupEditorForCell(cell, textarea, cellId, initialText);
+
+      if (initialText && initialText.trim().length > 0) {
+        renderMarkdownCell(cellId);
+      }
+      return cellId;
+    }
+
+    function renderMarkdownCell(cellId) {
+      const cell = document.getElementById(cellId);
+      if (!cell) return;
+      const text = cell._cm ? cell._cm.getValue() : (document.getElementById(`editor-${cellId}`)?.value || '');
+      const renderedView = document.getElementById(`rendered-${cellId}`);
+      if (renderedView) {
+        if (window.marked && typeof window.marked.parse === 'function') {
+          renderedView.innerHTML = marked.parse(text);
+        } else {
+          renderedView.innerText = text;
+        }
+        tryRenderKaTeX(renderedView);
+      }
+      cell.classList.add('rendered');
+      autoSaveSession();
+    }
+
+    function editMarkdownCell(cellId) {
+      const cell = document.getElementById(cellId);
+      if (!cell) return;
+      cell.classList.remove('rendered');
+      if (cell._cm && cell._cm.focus) {
+        cell._cm.focus();
+      }
+    }
+
+    function addCell(initialCode = '', existingId = null) {
+      cellCount++;
+      const cellId = existingId || `cell-${Date.now()}-${cellCount}`;
+      const notebook = document.getElementById('notebook');
+
+      const cell = document.createElement('div');
+      cell.className = 'cell';
+      cell.id = cellId;
+      cell.setAttribute('data-cell-type', 'code');
+
+      cell.innerHTML = `
+        <div class="cell-header">
+          <span class="cell-number">[ ${cellCount} ]</span>
+          <span class="cell-engine-badge cm" id="engine-badge-${cellId}">CM 5</span>
+          <div class="cell-actions">
+            <button onclick="runCell('${cellId}')" title="Run (Shift+Enter)">▶ Run</button>
+            <button onclick="formatCell('${cellId}')" title="Format Code (Shift+Alt+F)">✨ Format</button>
+            <button onclick="runUntilCell('${cellId}')" title="Run all cells up to and including this one">▶▶ Until Here</button>
+            <button onclick="deleteCell('${cellId}')" title="Delete Cell">🗑</button>
+          </div>
+        </div>
+        <div class="code-container">
+          <textarea class="code-editor" id="editor-${cellId}" placeholder="Enter Dart code or expression... (Ctrl+Space for autocompletion)">${initialCode}</textarea>
+        </div>
+        <div class="output-container empty" id="output-${cellId}"></div>
+      `;
+
+      notebook.appendChild(cell);
+
+      const textarea = document.getElementById(`editor-${cellId}`);
+      setupEditorForCell(cell, textarea, cellId, initialCode);
+      return cellId;
+    }
+
+    function exportIpynb() {
+      window.location.href = '/api/export/ipynb';
+    }
+
+    function triggerImportIpynb() {
+      const fileInput = document.getElementById('ipynbFileInput');
+      if (fileInput) {
+        fileInput.value = '';
+        fileInput.click();
+      }
+    }
+
+    function handleImportIpynb(event) {
+      const file = event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        const content = e.target.result;
+        try {
+          JSON.parse(content); // validate JSON
+          const res = await fetch('/api/import/ipynb', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-ipynb+json' },
+            body: content
+          });
+          if (!res.ok) {
+            const err = await res.text();
+            alert('Failed to import notebook: ' + err);
+          }
+        } catch (err) {
+          alert('Invalid .ipynb notebook file: ' + err);
+        }
+      };
+      reader.readAsText(file);
+    }
+
+    let currentEditorEngine = localStorage.getItem('notebook_editor_engine') || 'codemirror';
+
+    function switchEditorEngine(engine) {
+      currentEditorEngine = engine;
+      localStorage.setItem('notebook_editor_engine', engine);
+
+      document.querySelectorAll('.cell').forEach(cell => {
+        if (cell.getAttribute('data-cell-type') === 'markdown') return;
+        const code = cell._cm ? cell._cm.getValue() : (document.getElementById(`editor-${cell.id}`)?.value || '');
+        const container = cell.querySelector('.code-container');
+        if (container) {
+          container.innerHTML = `<textarea class="code-editor" id="editor-${cell.id}" placeholder="Enter Dart code or expression... (Ctrl+Space for autocompletion)">${code}</textarea>`;
+          const textarea = document.getElementById(`editor-${cell.id}`);
+          setupEditorForCell(cell, textarea, cell.id, code);
+        }
+      });
+    }
+
+    function setupEditorForCell(cell, textarea, cellId, initialCode) {
+      let cm = null;
+      const badge = cell.querySelector('.cell-engine-badge') || document.getElementById(`engine-badge-${cellId}`);
+
+      if (currentEditorEngine === 'dart_editor' && typeof window.DartEditor === 'function') {
+        try {
+          cm = window.DartEditor(textarea);
+          if (badge) {
+            badge.className = 'cell-engine-badge wasm';
+            badge.innerText = '⚡ Custom Wasm';
+            badge.title = 'Using Custom Dart CodeEditor (WebAssembly)';
+          }
+        } catch (e) {
+          console.warn('DartEditor initialization warning:', e);
+        }
+      }
+
+      if (!cm || typeof cm.getValue !== 'function') {
+        if (badge) {
+          badge.className = 'cell-engine-badge cm';
+          badge.innerText = 'CM 5';
+          badge.title = 'Using CodeMirror 5';
+        }
+        cm = CodeMirror.fromTextArea(textarea, {
+          mode: 'clike',
+          mime: 'application/x-dart',
+          theme: 'dracula',
+          lineNumbers: true,
+          matchBrackets: true,
+          autoCloseBrackets: true,
+          viewportMargin: Infinity,
+          extraKeys: {
+            'Shift-Enter': function(cm) {
+              closeCompletionPopup();
+              runCell(cellId);
+            },
+            'Ctrl-Space': function(cm) {
+              requestCompletionCm(cm, cellId);
+            },
+            'Cmd-Space': function(cm) {
+              requestCompletionCm(cm, cellId);
+            }
+          }
+        });
+
+        cm.on('change', (instance, changeObj) => {
+          cell.classList.remove('evaluated');
+          if (changeObj.origin === '+insert' && changeObj.text && changeObj.text.includes('.')) {
+            requestCompletionCm(cm, cellId);
+          }
+          if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'update_cell', id: cellId, code: cm.getValue() }));
+          }
+        });
+
+        cm.on('focus', () => {
+          document.querySelectorAll('.cell').forEach(c => c.classList.remove('focused'));
+          cell.classList.add('focused');
+        });
+
+        let hoverTimeout = null;
+        if (cm.getWrapperElement) {
+          cm.getWrapperElement().addEventListener('mousemove', (e) => {
+            if (activeHoverPopup && (activeHoverPopup === e.target || activeHoverPopup.contains(e.target))) {
+              clearTimeout(hoverHideTimeout);
+              return;
+            }
+            clearTimeout(hoverTimeout);
+            hoverTimeout = setTimeout(() => {
+              const pos = cm.coordsChar({ left: e.clientX, top: e.clientY });
+              const token = cm.getTokenAt(pos);
+              if (token && token.string && token.string.trim().length > 0) {
+                const offset = cm.indexFromPos(pos);
+                requestHoverCm(cm, cellId, offset, e.clientX, e.clientY);
+              } else {
+                scheduleCloseHoverPopup(400);
+              }
+            }, 300);
+          });
+
+          cm.getWrapperElement().addEventListener('mouseleave', (e) => {
+            clearTimeout(hoverTimeout);
+            if (activeHoverPopup && (activeHoverPopup === e.relatedTarget || activeHoverPopup.contains(e.relatedTarget))) {
+              clearTimeout(hoverHideTimeout);
+              return;
+            }
+            scheduleCloseHoverPopup(500);
+          });
+        }
+      } else {
+        if (!cm.getCursor) cm.getCursor = () => ({ line: 0, ch: 0 });
+        if (!cm.setCursor) cm.setCursor = () => {};
+        if (!cm.indexFromPos) cm.indexFromPos = () => 0;
+        if (!cm.getLine) cm.getLine = () => '';
+        if (!cm.replaceRange) cm.replaceRange = () => {};
+        if (!cm.focus) cm.focus = () => textarea.focus();
+        if (typeof cm.on === 'function') {
+          cm.on('change', (instance, changeObj) => {
+            cell.classList.remove('evaluated');
+            if (ws && ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ type: 'update_cell', id: cellId, code: cm.getValue() }));
+            }
+          });
+        }
+      }
+
+      cell._cm = cm;
+      if (!initialCode && cm.focus) cm.focus();
+    }
+
+    function deleteCell(cellId) {
+      const cell = document.getElementById(cellId);
+      if (cell) {
+        cell.remove();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'delete_cell', id: cellId }));
+        }
+      }
+    }
+
+    function runCell(cellId, onComplete) {
+      const cell = document.getElementById(cellId);
+      if (!cell) {
+        if (onComplete) onComplete();
+        return;
+      }
+
+      if (cell.getAttribute('data-cell-type') === 'markdown') {
+        renderMarkdownCell(cellId);
+        if (onComplete) onComplete();
+        return;
+      }
+
+      const output = document.getElementById(`output-${cellId}`);
+      const code = (cell._cm ? cell._cm.getValue() : (document.getElementById(`editor-${cellId}`)?.value || '')).trim();
+
+      if (!code) {
+        if (onComplete) onComplete();
+        return;
+      }
+
+      const allCells = document.querySelectorAll('.cell');
+      const isLastCell = allCells.length > 0 && allCells[allCells.length - 1].id === cellId;
+
+      updateStatus('busy', 'Executing...');
+      output.className = 'output-container';
+      output.innerText = 'Running...';
+      if (cell && cell._cm && typeof cell._cm.clearDiagnostics === 'function') {
+        cell._cm.clearDiagnostics();
+      }
+
+      const reqId = `${cellId}-${Date.now()}`;
+      pendingEvaluations.set(reqId, (resultText, isError, outputsArray, formattedCode) => {
+        renderOutputElement(output, resultText, isError, outputsArray);
+        if (formattedCode && cell && cell._cm && cell._cm.getValue() !== formattedCode) {
+          const cursor = cell._cm.getCursor ? cell._cm.getCursor() : null;
+          cell._cm.setValue(formattedCode);
+          if (cursor && cell._cm.setCursor) cell._cm.setCursor(cursor);
+        }
+        if (cell && !isError) {
+          cell.classList.add('evaluated');
+        }
+        if (outputsArray && outputsArray.length > 0) {
+          cell._outputsList = outputsArray;
+        }
+        if (cell && isError && currentEditorEngine === 'dart_editor' && cell._cm && typeof cell._cm.setDiagnostic === 'function') {
+          let errLine = 0;
+          const lineMatch = /line\s+(\d+)/i.exec(resultText);
+          if (lineMatch) {
+            errLine = Math.max(0, parseInt(lineMatch[1], 10) - 1);
+          }
+          cell._cm.setDiagnostic(errLine, 0, 12, resultText.substring(0, 120));
+        }
+        autoSaveSession();
+        if (onComplete) onComplete();
+      });
+
+      ws.send(JSON.stringify({
+        type: 'execute',
+        id: reqId,
+        cellId: cellId,
+        code: code
+      }));
+
+      if (isLastCell) {
+        addCell();
+      }
+    }
+
+    async function runUntilCell(targetCellId) {
+      const cells = Array.from(document.querySelectorAll('.cell'));
+      const targetIndex = cells.findIndex(c => c.id === targetCellId);
+      if (targetIndex === -1) return;
+
+      for (let i = 0; i <= targetIndex; i++) {
+        const cellId = cells[i].id;
+        await new Promise((resolve) => {
+          runCell(cellId, resolve);
+        });
+      }
+    }
+
+    function runAllCells() {
+      const cells = document.querySelectorAll('.cell');
+      cells.forEach(cell => runCell(cell.id));
+    }
+
+    function clearAllOutputs() {
+      document.querySelectorAll('.output-container').forEach(out => {
+        out.className = 'output-container empty';
+        out.innerText = '';
+      });
+      document.querySelectorAll('.cell').forEach(cell => {
+        cell._outputsList = [];
+      });
+      autoSaveSession();
+    }
+
+    function formatCell(cellId) {
+      const cell = document.getElementById(cellId);
+      if (cell && cell._cm) {
+        if (typeof cell._cm.formatCode === 'function') {
+          cell._cm.formatCode();
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({
+            type: 'format_code',
+            cellId: cellId,
+            code: cell._cm.getValue()
+          }));
+        }
+      }
+    }
+
+    function toggleVariableInspector() {
+      const drawer = document.getElementById('inspectorDrawer');
+      drawer.classList.toggle('open');
+      if (drawer.classList.contains('open') && ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'inspect_variables' }));
+      }
+    }
+
+    function renderVariableInspector(vars) {
+      const list = document.getElementById('inspectorList');
+      if (!list) return;
+      if (!vars || vars.length === 0) {
+        list.innerHTML = '<div style="color: #6c7086; font-size: 0.85rem;">No user variables declared yet. Run a code cell declaring a variable (e.g. var a = NDArray...) to see it here.</div>';
+        return;
+      }
+      list.innerHTML = vars.map(v => `
+        <div class="inspector-item">
+          <div>
+            <span class="inspector-item-name">${v.name}</span>
+            <span class="inspector-item-type">[${v.type}]</span>
+          </div>
+          <div class="inspector-item-summary">${v.summary}</div>
+        </div>
+      `).join('');
+    }
+
+    window.runCell = runCell;
+    window.runUntilCell = runUntilCell;
+    window.deleteCell = deleteCell;
+    window.switchEditorEngine = switchEditorEngine;
+    window.formatCell = formatCell;
+    window.toggleVariableInspector = toggleVariableInspector;
+    window.addCell = addCell;
+    window.addMarkdownCell = addMarkdownCell;
+    window.renderMarkdownCell = renderMarkdownCell;
+    window.editMarkdownCell = editMarkdownCell;
+    window.exportIpynb = exportIpynb;
+    window.triggerImportIpynb = triggerImportIpynb;
+    window.handleImportIpynb = handleImportIpynb;
+
+    // Initialize default starter cells
+    window.addEventListener('DOMContentLoaded', () => {
+      const select = document.getElementById('editorEngineSelect');
+      if (select) select.value = currentEditorEngine;
+      initWebSocket();
+
+      window.addEventListener('scroll', () => {
+        closeCompletionPopup();
+        closeHoverPopup();
+      }, true);
+
+      document.addEventListener('click', (e) => {
+        if (activePopup && !activePopup.contains(e.target) && !e.target.classList.contains('code-editor')) {
+          closeCompletionPopup();
+        }
+        if (activeHoverPopup && !activeHoverPopup.contains(e.target) && !e.target.classList.contains('code-editor')) {
+          closeHoverPopup();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

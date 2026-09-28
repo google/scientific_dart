@@ -141,13 +141,13 @@ void main() {
           // Complex window functions
           final hc128 = hanning(5, dtype: DType.complex128);
           expect(hc128.dtype, DType.complex128);
-          final hc128Val = hc128.getCell([2]) as Complex;
+          final hc128Val = hc128.getCell([2]);
           expect(hc128Val.real, 1.0);
           expect(hc128Val.imag, 0.0);
 
           final hc64 = hamming(5, dtype: DType.complex64);
           expect(hc64.dtype, DType.complex64);
-          final hc64Val = hc64.getCell([2]) as Complex;
+          final hc64Val = hc64.getCell([2]);
           expect(hc64Val.real, 1.0);
           expect(hc64Val.imag, 0.0);
 

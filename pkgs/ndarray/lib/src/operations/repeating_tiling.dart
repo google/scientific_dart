@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:ffi' as ffi;
+
 import '../ndarray.dart';
+import '../ndarray_bindings.dart';
 import '../ndarray_extensions_bindings.dart';
 import '../scratch_arena.dart';
 
-// Standalone operational relative cross-imports
+import 'helpers.dart';
 
 /// Repeats elements of an array.
 ///
@@ -27,9 +30,9 @@ import '../scratch_arena.dart';
 ///
 /// **Preconditions:**
 /// - If [axis] is specified, it must be within the range `[-rank, rank - 1]`.
-/// - [repeats] must be an `NDArray<int>`.
+/// - [repeats] must be an `int` or `List<int>`.
 /// - Its length must match the size of the
-///   dimension along [axis].
+///   dimension along [axis] (or be 1 / a scalar `int`).
 /// - All values in [repeats] must be non-negative ($\ge 0$).
 /// - If [out] is provided, it must have the correct shape and [DType] to store
 ///   the result.
@@ -51,40 +54,47 @@ import '../scratch_arena.dart';
 /// final r = repeat(a, [3]);
 /// print(r.toList()); // [1, 1, 1, 2, 2, 2]
 /// ```
-NDArray<T> repeat<T>(
+NDArray<T> repeat<T extends DTypeTag>(
   NDArray<T> a,
-  List<int> repeats, {
+  Object repeats, {
   int? axis,
   NDArray<T>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
   }
-
-  NDArray<T> src = a;
-  int normAxis;
-  bool ownsSrc;
-
-  if (axis == null) {
-    src = a.flatten();
-    normAxis = 0;
-    ownsSrc = true;
-  } else {
-    final rank = a.rank;
-    if (axis < -rank || axis >= rank) {
-      throw RangeError.range(axis, -rank, rank - 1, 'axis');
-    }
-    normAxis = axis < 0 ? rank + axis : axis;
-    if (!a.isContiguous) {
-      src = a.copy();
-      ownsSrc = true;
-    } else {
-      ownsSrc = false;
-    }
+  if (out != null && out.isDisposed) {
+    throw StateError('Cannot access a disposed out NDArray.');
   }
 
-  try {
-    List<int> repsList = repeats;
+  final List<int> rawRepeats;
+  if (repeats is int) {
+    rawRepeats = [repeats];
+  } else if (repeats is List<int>) {
+    rawRepeats = repeats;
+  } else {
+    throw ArgumentError('repeats must be an int or a List<int>');
+  }
+
+  return NDArray.scope(() {
+    NDArray<T> src = a;
+    int normAxis;
+
+    if (axis == null) {
+      src = a.flatten();
+      normAxis = 0;
+    } else {
+      final rank = a.rank;
+      if (axis < -rank || axis >= rank) {
+        throw RangeError.range(axis, -rank, rank - 1, 'axis');
+      }
+      normAxis = axis < 0 ? rank + axis : axis;
+      if (!a.isContiguous) {
+        src = a.copy();
+      }
+    }
+
+    List<int> repsList = rawRepeats;
     if (repsList.length == 1) {
       repsList = List<int>.filled(src.shape[normAxis], repsList[0]);
     }
@@ -104,11 +114,7 @@ NDArray<T> repeat<T>(
     final newDimSize = repsList.isEmpty ? 0 : repsList.reduce((x, y) => x + y);
     outputShape[normAxis] = newDimSize;
 
-    final NDArray<T> result;
     if (out != null) {
-      if (out.isDisposed) {
-        throw StateError('Cannot access a disposed out NDArray.');
-      }
       if (out.dtype != src.dtype) {
         throw ArgumentError('out buffer must have the same dtype as input');
       }
@@ -120,55 +126,216 @@ NDArray<T> repeat<T>(
           throw ArgumentError('out buffer shape must match output shape');
         }
       }
-      result = out;
-    } else {
-      result = NDArray<T>.create(outputShape, src.dtype);
     }
 
-    if (result.size == 0) {
-      return result;
-    }
+    final bool useTempOut =
+        out != null && (!out.isContiguous || sharesMemory(a, out));
+    final NDArray<T> target = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(outputShape, src.dtype);
 
-    final outer = src.shape.sublist(0, normAxis).fold<int>(1, (a, b) => a * b);
-    final dim = src.shape[normAxis];
-    final inner = src.shape.sublist(normAxis + 1).fold<int>(1, (a, b) => a * b);
-
-    final destDim = result.shape[normAxis];
-
-    var destOffset = 0;
-    for (var i = 0; i < dim; i++) {
-      final rep = repsList[i];
-      if (rep == 0) continue;
-
-      for (var o = 0; o < outer; o++) {
-        final srcStart = (o * dim + i) * inner;
-        final destStart = (o * destDim + destOffset) * inner;
-
-        final srcView = NDArray<T>.view(
-          src,
-          shape: [rep, inner],
-          strides: [0, 1],
-          offsetElements: srcStart,
-        );
-
-        final destView = NDArray<T>.view(
-          result,
-          shape: [rep, inner],
-          strides: [inner, 1],
-          offsetElements: destStart,
-        );
-
-        srcView.copy(out: destView);
+    if (target.size == 0) {
+      if (out != null) {
+        return out;
       }
-      destOffset += rep;
+      return target.detachToParentScope();
     }
 
-    return result;
-  } finally {
-    if (ownsSrc && !identical(src, a)) {
-      src.dispose();
+    final outer = src.shape.sublist(0, normAxis).fold<int>(1, (x, y) => x * y);
+    final dim = src.shape[normAxis];
+    final inner = src.shape.sublist(normAxis + 1).fold<int>(1, (x, y) => x * y);
+
+    final destDim = target.shape[normAxis];
+
+    if (inner == 1) {
+      switch (src.dtype) {
+        case DType.float64:
+          final srcList = src.pointer.cast<ffi.Double>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Double>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.float32:
+          final srcList = src.pointer.cast<ffi.Float>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Float>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.int64:
+        case DType.uint64:
+          final srcList = src.pointer.cast<ffi.Int64>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Int64>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.int32:
+        case DType.uint32:
+          final srcList = src.pointer.cast<ffi.Int32>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Int32>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.int16:
+        case DType.uint16:
+        case DType.float16:
+        case DType.bfloat16:
+          final srcList = src.pointer.cast<ffi.Int16>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Int16>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.int8:
+        case DType.uint8:
+        case DType.boolean:
+          final srcList = src.pointer.cast<ffi.Int8>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Int8>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.complex64:
+          final srcList = src.pointer.cast<ffi.Int64>().asTypedList(src.size);
+          final dstList = target.pointer.cast<ffi.Int64>().asTypedList(
+            target.size,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim;
+            var destPos = o * destDim;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final val = srcList[srcBase + i];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = val;
+              }
+            }
+          }
+        case DType.complex128:
+          final srcList = src.pointer.cast<ffi.Double>().asTypedList(
+            src.size * 2,
+          );
+          final dstList = target.pointer.cast<ffi.Double>().asTypedList(
+            target.size * 2,
+          );
+          for (var o = 0; o < outer; o++) {
+            final srcBase = o * dim * 2;
+            var destPos = o * destDim * 2;
+            for (var i = 0; i < dim; i++) {
+              final rep = repsList[i];
+              if (rep == 0) continue;
+              final rVal = srcList[srcBase + i * 2];
+              final iVal = srcList[srcBase + i * 2 + 1];
+              for (var r = 0; r < rep; r++) {
+                dstList[destPos++] = rVal;
+                dstList[destPos++] = iVal;
+              }
+            }
+          }
+      }
+    } else {
+      final srcBytePtr = src.pointer.cast<ffi.Uint8>();
+      final dstBytePtr = target.pointer.cast<ffi.Uint8>();
+      final itemBytes = src.dtype.byteWidth;
+      final sliceBytes = inner * itemBytes;
+      final destDimBytes = destDim * sliceBytes;
+      final dimBytes = dim * sliceBytes;
+      for (var o = 0; o < outer; o++) {
+        final srcOuterPtr = srcBytePtr + o * dimBytes;
+        final dstOuterPtr = dstBytePtr + o * destDimBytes;
+        var destByteOffset = 0;
+        for (var i = 0; i < dim; i++) {
+          final rep = repsList[i];
+          if (rep == 0) continue;
+          final sPtr = srcOuterPtr + i * sliceBytes;
+          final dPtr = dstOuterPtr + destByteOffset;
+          custom_memcpy(dPtr.cast(), sPtr.cast(), sliceBytes);
+          var copied = sliceBytes;
+          final totalBytes = rep * sliceBytes;
+          while (copied < totalBytes) {
+            final toCopy = (copied <= totalBytes - copied)
+                ? copied
+                : (totalBytes - copied);
+            custom_memcpy((dPtr + copied).cast(), dPtr.cast(), toCopy);
+            copied += toCopy;
+          }
+          destByteOffset += totalBytes;
+        }
+      }
     }
-  }
+
+    if (out != null) {
+      if (useTempOut) {
+        target.copy(out: out);
+      }
+      return out;
+    }
+    return target.detachToParentScope();
+  });
 }
 
 /// Constructs an array by repeating [a] the number of times given by [reps].
@@ -200,7 +367,7 @@ NDArray<T> repeat<T>(
 ///
 /// Refer to the [NumPy tile reference](https://numpy.org/doc/stable/reference/generated/numpy.tile.html)
 /// for details.
-NDArray<T> tile<T extends Object>(
+NDArray<T> tile<T extends DTypeTag>(
   NDArray<T> a,
   List<int> reps, {
   NDArray<T>? out,
@@ -209,16 +376,17 @@ NDArray<T> tile<T extends Object>(
     throw StateError('Cannot access a disposed NDArray.');
   }
 
-  final bool hasNegative = reps.any((x) => x < 0);
+  final List<int> rawReps = reps;
+
+  final bool hasNegative = rawReps.any((x) => x < 0);
   if (hasNegative) {
     throw ArgumentError('reps values must be non-negative');
   }
 
-  NDArray<T> src = a;
-  bool ownsSrc = false;
-  List<int> tileReps = List<int>.from(reps);
+  return NDArray.scope(() {
+    NDArray<T> src = a;
+    List<int> tileReps = List<int>.from(rawReps);
 
-  try {
     // Align dimensions
     if (src.rank < tileReps.length) {
       final newShape = [
@@ -226,7 +394,6 @@ NDArray<T> tile<T extends Object>(
         ...src.shape,
       ];
       src = src.reshape(newShape);
-      ownsSrc = !identical(src, a);
     } else if (src.rank > tileReps.length) {
       tileReps = [
         ...List<int>.filled(src.rank - tileReps.length, 1),
@@ -239,7 +406,6 @@ NDArray<T> tile<T extends Object>(
       outputShape[i] = src.shape[i] * tileReps[i];
     }
 
-    final NDArray<T> result;
     if (out != null) {
       if (out.dtype != src.dtype) {
         throw ArgumentError('out buffer must have the same dtype as input');
@@ -252,13 +418,19 @@ NDArray<T> tile<T extends Object>(
           throw ArgumentError('out buffer shape must match output shape');
         }
       }
-      result = out;
-    } else {
-      result = NDArray<T>.create(outputShape, src.dtype);
     }
 
-    if (result.size == 0) {
-      return result;
+    final bool useTempOut =
+        out != null && (!out.isContiguous || sharesMemory(a, out));
+    final NDArray<T> target = (out != null && !useTempOut)
+        ? out
+        : NDArray<T>.create(outputShape, src.dtype);
+
+    if (target.size == 0) {
+      if (out != null) {
+        return out;
+      }
+      return target.detachToParentScope();
     }
 
     final rank = src.rank;
@@ -268,19 +440,28 @@ NDArray<T> tile<T extends Object>(
         final cSrcShape = ScratchArena.copyInt64s(const <int>[]);
         final cReps = ScratchArena.copyInt64s(const <int>[]);
         final cOutShape = ScratchArena.copyInt64s(const <int>[]);
-        native_tile_contiguous(
+        final rc = native_tile_contiguous(
           src.dtype.index,
           src.pointer.cast(),
           cSrcShape,
           cReps,
-          result.pointer.cast(),
+          target.pointer.cast(),
           cOutShape,
           0,
         );
+        if (rc != 0) {
+          throw StateError('Native tile operation failed with code $rc');
+        }
       } finally {
         ScratchArena.reset(marker);
       }
-      return result;
+      if (out != null) {
+        if (useTempOut) {
+          target.copy(out: out);
+        }
+        return out;
+      }
+      return target.detachToParentScope();
     }
 
     final marker = ScratchArena.marker;
@@ -289,54 +470,56 @@ NDArray<T> tile<T extends Object>(
       final cReps = ScratchArena.copyInt64s(tileReps);
       final cOutShape = ScratchArena.copyInt64s(outputShape);
 
-      if (src.isContiguous && result.isContiguous) {
-        native_tile_contiguous(
+      final int rc;
+      if (src.isContiguous && target.isContiguous) {
+        rc = native_tile_contiguous(
           src.dtype.index,
           src.pointer.cast(),
           cSrcShape,
           cReps,
-          result.pointer.cast(),
+          target.pointer.cast(),
           cOutShape,
           rank,
         );
-      } else if (result.isContiguous) {
+      } else if (target.isContiguous) {
         final contigSrc = src.copy();
-        try {
-          native_tile_contiguous(
-            contigSrc.dtype.index,
-            contigSrc.pointer.cast(),
-            cSrcShape,
-            cReps,
-            result.pointer.cast(),
-            cOutShape,
-            rank,
-          );
-        } finally {
-          contigSrc.dispose();
-        }
+        rc = native_tile_contiguous(
+          contigSrc.dtype.index,
+          contigSrc.pointer.cast(),
+          cSrcShape,
+          cReps,
+          target.pointer.cast(),
+          cOutShape,
+          rank,
+        );
       } else {
         final cSrcStrides = ScratchArena.copyInt64s(src.strides);
-        final cOutStrides = ScratchArena.copyInt64s(result.strides);
-        native_tile_strided(
+        final cOutStrides = ScratchArena.copyInt64s(target.strides);
+        rc = native_tile_strided(
           src.dtype.index,
           src.pointer.cast(),
           cSrcShape,
           cSrcStrides,
           cReps,
-          result.pointer.cast(),
+          target.pointer.cast(),
           cOutShape,
           cOutStrides,
           rank,
         );
       }
+      if (rc != 0) {
+        throw StateError('Native tile operation failed with code $rc');
+      }
     } finally {
       ScratchArena.reset(marker);
     }
 
-    return result;
-  } finally {
-    if (ownsSrc && !identical(src, a)) {
-      src.dispose();
+    if (out != null) {
+      if (useTempOut) {
+        target.copy(out: out);
+      }
+      return out;
     }
-  }
+    return target.detachToParentScope();
+  });
 }

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:typed_data';
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -279,9 +278,9 @@ void main() {
             2,
           ], DType.int16);
 
-          expect(a1 == a2, isTrue);
-          expect(a1.hashCode, equals(a2.hashCode));
-          expect(a1 == a3, isFalse);
+          expect(a1.equals(a2), isTrue);
+          expect(a1.contentHashCode, equals(a2.contentHashCode));
+          expect(a1.equals(a3), isFalse);
 
           final u1 = NDArray.fromList(Uint8List.fromList([10, 20, 30]), [
             3,
@@ -293,9 +292,9 @@ void main() {
             3,
           ], DType.uint8);
 
-          expect(u1 == u2, isTrue);
-          expect(u1.hashCode, equals(u2.hashCode));
-          expect(u1 == u3, isFalse);
+          expect(u1.equals(u2), isTrue);
+          expect(u1.contentHashCode, equals(u2.contentHashCode));
+          expect(u1.equals(u3), isFalse);
         }),
       );
     });
@@ -384,13 +383,13 @@ void main() {
           expect(nonzeroCoords.length, 34);
           expect(nonzeroCoords[0].toList(), [0, 1]);
 
-          // Test hashCode for rank 34
+          // Test contentHashCode for rank 34
           final a2 = NDArray.fromList(
             Float64List.fromList([1.0, 0.0, 3.0, 0.0]),
             shape,
             DType.float64,
           );
-          expect(a.hashCode, equals(a2.hashCode));
+          expect(a.contentHashCode, equals(a2.contentHashCode));
 
           // Test flatten for rank 34
           final flat = a.flatten();

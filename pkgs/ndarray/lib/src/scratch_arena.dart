@@ -14,9 +14,7 @@
 
 import 'dart:ffi' as ffi;
 import 'dart:math' show min;
-
 import 'package:ffi/ffi.dart';
-
 import 'ndarray.dart' show Complex, ComplexList;
 
 /// An Isolate-local scratch memory arena for transient FFI allocations.
@@ -31,9 +29,20 @@ final class ScratchArena {
   static int _currentPageIndex = 0;
   static int _offset = 0;
 
+  static ffi.Pointer<ffi.Uint8> _mallocPage(int bytes) {
+    try {
+      return malloc<ffi.Uint8>(bytes);
+      // package:ffi's malloc throws ArgumentError when OS allocation fails.
+      // ignore: avoid_catching_errors
+    } on ArgumentError {
+      throw OutOfMemoryError();
+    }
+  }
+
   static void _init() {
     if (_pages.isEmpty) {
-      _pages.add(malloc<ffi.Uint8>(_baseCapacity));
+      final page = _mallocPage(_baseCapacity);
+      _pages.add(page);
       _pageCapacities.add(_baseCapacity);
     }
   }
@@ -43,7 +52,8 @@ final class ScratchArena {
   /// **Preconditions:**
   /// - [bytes] must be non-negative.
   ///
-  /// It is an error if [bytes] is negative.
+  /// It is an error if [bytes] is negative, or if the native allocator cannot
+  /// satisfy the allocation request (throws [OutOfMemoryError]).
   ///
   /// **Performance considerations:**
   /// - Amortized $O(1)$ complexity. If the current page has enough space,
@@ -55,7 +65,10 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart}
   static ffi.Pointer<T> allocate<T extends ffi.NativeType>(int bytes) {
     if (bytes < 0) {
-      throw ArgumentError('bytes must be non-negative.');
+      throw ArgumentError.value(bytes, 'bytes', 'Must be non-negative.');
+    }
+    if (bytes > 0x7ffffffffffffff0) {
+      throw OutOfMemoryError();
     }
     _init();
 
@@ -65,34 +78,38 @@ final class ScratchArena {
     final currentCapacity = _pageCapacities[_currentPageIndex];
 
     // If current page doesn't have enough space, switch to next page!
-    if (_offset + alignedBytes > currentCapacity) {
-      _currentPageIndex++;
-      _offset = 0;
+    // Allocate any required new page BEFORE mutating _currentPageIndex,
+    // _offset, _pages, or _pageCapacities so failed allocations leave the
+    // arena in a valid, uncorrupted state.
+    if (alignedBytes > currentCapacity - _offset) {
+      final nextPageIndex = _currentPageIndex + 1;
 
-      if (_currentPageIndex >= _pages.length) {
+      if (nextPageIndex >= _pages.length) {
         // Geometrically scale capacities: Page 0 (256KB), Page 1 (512KB), Page 2 (1MB) etc.
-        final scaledCap = min(
-          1 << 30,
-          _baseCapacity << min(_currentPageIndex, 20),
-        );
+        final scaledCap = min(1 << 30, _baseCapacity << min(nextPageIndex, 20));
         final targetCap = alignedBytes > scaledCap ? alignedBytes : scaledCap;
-        _pages.add(malloc<ffi.Uint8>(targetCap));
+        final newPage = _mallocPage(targetCap);
+        _pages.add(newPage);
         _pageCapacities.add(targetCap);
-      } else {
-        // If reusing a cached page but its capacity is too small for this allocation:
-        if (_pageCapacities[_currentPageIndex] < alignedBytes) {
-          // Instead of freeing the small page, move it to the end of the list
-          // so it can be reused later for standard page requests.
-          final smallPage = _pages.removeAt(_currentPageIndex);
-          final smallCap = _pageCapacities.removeAt(_currentPageIndex);
-          _pages.add(smallPage);
-          _pageCapacities.add(smallCap);
+      } else if (_pageCapacities[nextPageIndex] < alignedBytes) {
+        // If reusing a cached page but its capacity is too small for this allocation,
+        // allocate the custom-sized page first before mutating arena state.
+        final newPage = _mallocPage(alignedBytes);
 
-          // Insert the new custom-sized page at the current index.
-          _pages.insert(_currentPageIndex, malloc<ffi.Uint8>(alignedBytes));
-          _pageCapacities.insert(_currentPageIndex, alignedBytes);
-        }
+        // Instead of freeing the small page, move it to the end of the list
+        // so it can be reused later for standard page requests.
+        final smallPage = _pages.removeAt(nextPageIndex);
+        final smallCap = _pageCapacities.removeAt(nextPageIndex);
+        _pages.add(smallPage);
+        _pageCapacities.add(smallCap);
+
+        // Insert the new custom-sized page at nextPageIndex.
+        _pages.insert(nextPageIndex, newPage);
+        _pageCapacities.insert(nextPageIndex, alignedBytes);
       }
+
+      _currentPageIndex = nextPageIndex;
+      _offset = 0;
     }
 
     final currentArena = _pages[_currentPageIndex];
@@ -126,9 +143,13 @@ final class ScratchArena {
     final pageIndex = marker.pageIndex;
     final offset = marker.offset;
 
-    assert(pageIndex <= _currentPageIndex);
-    if (pageIndex == _currentPageIndex) {
-      assert(offset <= _offset);
+    if (pageIndex < 0 ||
+        pageIndex > _currentPageIndex ||
+        offset < 0 ||
+        (pageIndex == _currentPageIndex && offset > _offset)) {
+      throw StateError(
+        'Invalid or stale ScratchMarker: cannot reset ahead of current stack pointer or to an out-of-order marker.',
+      );
     }
 
     int? pruneFromIndex;
@@ -178,7 +199,11 @@ final class ScratchArena {
   static ffi.Pointer<ffi.Int> copyInts(List<int> list) {
     final ptr = allocate<ffi.Int>(list.length * ffi.sizeOf<ffi.Int>());
     for (var i = 0; i < list.length; i++) {
-      ptr[i] = list[i];
+      final v = list[i];
+      if (v < -0x80000000 || v > 0x7fffffff) {
+        throw UnsupportedError('Value $v exceeds 32-bit native int limit.');
+      }
+      ptr[i] = v;
     }
     return ptr;
   }
@@ -232,6 +257,12 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart}
   static ffi.Pointer<ffi.Int32> copyInt32s(List<int> list) {
     final ptr = allocate<ffi.Int32>(list.length * ffi.sizeOf<ffi.Int32>());
+    for (var i = 0; i < list.length; i++) {
+      final v = list[i];
+      if (v < -0x80000000 || v > 0x7fffffff) {
+        throw UnsupportedError('Value $v exceeds 32-bit native int limit.');
+      }
+    }
     final typedList = ptr.asTypedList(list.length);
     typedList.setRange(0, list.length, list);
     return ptr;
@@ -352,9 +383,13 @@ final class ScratchArena {
   /// **Example:**
   /// {@example /example/scratch_arena_example.dart}
   static ffi.Pointer<ffi.Int> getStridedBuffer(int ndim, [int segments = 4]) {
-    if (ndim < 0 || segments < 0) {
-      throw ArgumentError('ndim and segments must be non-negative.');
+    if (ndim < 0) {
+      throw ArgumentError.value(ndim, 'ndim', 'Must be non-negative.');
     }
+    if (segments < 0) {
+      throw ArgumentError.value(segments, 'segments', 'Must be non-negative.');
+    }
+    if (segments < 4) segments = 4;
     final count = ndim * segments;
     final requiredSize = count > 0 ? count : 1;
     return allocate<ffi.Int>(requiredSize * ffi.sizeOf<ffi.Int>());
@@ -365,7 +400,16 @@ final class ScratchArena {
   /// This frees all pre-allocated pages.
   /// Clients should call this when they are done using the arena to free
   /// native memory.
+  ///
+  /// It is an error to call [cleanup] while arena allocations are active
+  /// (i.e. before all markers have been reset back to the root offset).
   static void cleanup() {
+    if (_currentPageIndex != 0 || _offset != 0) {
+      throw StateError(
+        'Cannot clean up ScratchArena while allocations are active; '
+        'reset all markers before calling cleanup().',
+      );
+    }
     for (final page in _pages) {
       malloc.free(page);
     }
@@ -391,4 +435,16 @@ final class ScratchMarker {
   final int offset;
 
   const ScratchMarker._(this.pageIndex, this.offset);
+
+  @override
+  bool operator ==(Object other) =>
+      other is ScratchMarker &&
+      other.pageIndex == pageIndex &&
+      other.offset == offset;
+
+  @override
+  int get hashCode => Object.hash(pageIndex, offset);
+
+  @override
+  String toString() => 'ScratchMarker(pageIndex: $pageIndex, offset: $offset)';
 }

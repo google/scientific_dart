@@ -51,8 +51,8 @@ void main() {
     final x0 = NDArray<Float64>.fromList([0.0, 0.0], [2], DType.float64);
     final minResult = minimize(
       (x) {
-        final x1 = x.getCell([0]).toDouble();
-        final x2 = x.getCell([1]).toDouble();
+        final x1 = x.getCell([0]);
+        final x2 = x.getCell([1]);
         return (x1 - 3.0) * (x1 - 3.0) + (x2 + 2.0) * (x2 + 2.0);
       },
       x0,

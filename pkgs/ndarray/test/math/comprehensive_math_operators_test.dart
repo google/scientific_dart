@@ -13,92 +13,98 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
 void main() {
   group('Comprehensive Math Operators Tests', () {
     group('Bitwise Operations', () {
-      test('bitwise_and, bitwise_or, bitwise_xor across int64, int32, int16, uint8', () {
-        NDArray.scope(() {
-          // Int64
-          final a64 = NDArray<Int64>.fromList(
-            [0x12, 0x34, 0x56],
-            [3],
-            DType.int64,
-          );
-          final b64 = NDArray<Int64>.fromList(
-            [0x0F, 0xF0, 0xFF],
-            [3],
-            DType.int64,
-          );
-          expect(
-            bitwise_and(a64, b64).toList(),
-            equals([0x12 & 0x0F, 0x34 & 0xF0, 0x56 & 0xFF]),
-          );
-          expect(
-            bitwise_or(a64, b64).toList(),
-            equals([0x12 | 0x0F, 0x34 | 0xF0, 0x56 | 0xFF]),
-          );
-          expect(
-            bitwise_xor(a64, b64).toList(),
-            equals([0x12 ^ 0x0F, 0x34 ^ 0xF0, 0x56 ^ 0xFF]),
-          );
+      test(
+        'bitwiseAnd, bitwiseOr, bitwiseXor across int64, int32, int16, uint8',
+        () {
+          NDArray.scope(() {
+            // Int64
+            final a64 = NDArray<Int64>.fromList(
+              [0x12, 0x34, 0x56],
+              [3],
+              DType.int64,
+            );
+            final b64 = NDArray<Int64>.fromList(
+              [0x0F, 0xF0, 0xFF],
+              [3],
+              DType.int64,
+            );
+            expect(
+              bitwiseAnd(a64, b64).toList(),
+              equals([0x12 & 0x0F, 0x34 & 0xF0, 0x56 & 0xFF]),
+            );
+            expect(
+              bitwiseOr(a64, b64).toList(),
+              equals([0x12 | 0x0F, 0x34 | 0xF0, 0x56 | 0xFF]),
+            );
+            expect(
+              bitwiseXor(a64, b64).toList(),
+              equals([0x12 ^ 0x0F, 0x34 ^ 0xF0, 0x56 ^ 0xFF]),
+            );
 
-          // Int32
-          final a32 = NDArray<Int32>.fromList([10, 20, 30], [3], DType.int32);
-          final b32 = NDArray<Int32>.fromList([3, 7, 15], [3], DType.int32);
-          expect(
-            bitwise_and(a32, b32).toList(),
-            equals([10 & 3, 20 & 7, 30 & 15]),
-          );
-          expect(
-            bitwise_or(a32, b32).toList(),
-            equals([10 | 3, 20 | 7, 30 | 15]),
-          );
-          expect(
-            bitwise_xor(a32, b32).toList(),
-            equals([10 ^ 3, 20 ^ 7, 30 ^ 15]),
-          );
+            // Int32
+            final a32 = NDArray<Int32>.fromList([10, 20, 30], [3], DType.int32);
+            final b32 = NDArray<Int32>.fromList([3, 7, 15], [3], DType.int32);
+            expect(
+              bitwiseAnd(a32, b32).toList(),
+              equals([10 & 3, 20 & 7, 30 & 15]),
+            );
+            expect(
+              bitwiseOr(a32, b32).toList(),
+              equals([10 | 3, 20 | 7, 30 | 15]),
+            );
+            expect(
+              bitwiseXor(a32, b32).toList(),
+              equals([10 ^ 3, 20 ^ 7, 30 ^ 15]),
+            );
 
-          // Int16
-          final a16 = NDArray<Int16>.fromList(
-            [100, 200, 300],
-            [3],
-            DType.int16,
-          );
-          final b16 = NDArray<Int16>.fromList([50, 100, 150], [3], DType.int16);
-          expect(
-            bitwise_and(a16, b16).toList(),
-            equals([100 & 50, 200 & 100, 300 & 150]),
-          );
-          expect(
-            bitwise_or(a16, b16).toList(),
-            equals([100 | 50, 200 | 100, 300 | 150]),
-          );
-          expect(
-            bitwise_xor(a16, b16).toList(),
-            equals([100 ^ 50, 200 ^ 100, 300 ^ 150]),
-          );
+            // Int16
+            final a16 = NDArray<Int16>.fromList(
+              [100, 200, 300],
+              [3],
+              DType.int16,
+            );
+            final b16 = NDArray<Int16>.fromList(
+              [50, 100, 150],
+              [3],
+              DType.int16,
+            );
+            expect(
+              bitwiseAnd(a16, b16).toList(),
+              equals([100 & 50, 200 & 100, 300 & 150]),
+            );
+            expect(
+              bitwiseOr(a16, b16).toList(),
+              equals([100 | 50, 200 | 100, 300 | 150]),
+            );
+            expect(
+              bitwiseXor(a16, b16).toList(),
+              equals([100 ^ 50, 200 ^ 100, 300 ^ 150]),
+            );
 
-          // Uint8
-          final a8 = NDArray<Uint8>.fromList([0xAA, 0x55], [2], DType.uint8);
-          final b8 = NDArray<Uint8>.fromList([0x0F, 0xF0], [2], DType.uint8);
-          expect(
-            bitwise_and(a8, b8).toList(),
-            equals([0xAA & 0x0F, 0x55 & 0xF0]),
-          );
-          expect(
-            bitwise_or(a8, b8).toList(),
-            equals([0xAA | 0x0F, 0x55 | 0xF0]),
-          );
-          expect(
-            bitwise_xor(a8, b8).toList(),
-            equals([0xAA ^ 0x0F, 0x55 ^ 0xF0]),
-          );
-        });
-      });
+            // Uint8
+            final a8 = NDArray<Uint8>.fromList([0xAA, 0x55], [2], DType.uint8);
+            final b8 = NDArray<Uint8>.fromList([0x0F, 0xF0], [2], DType.uint8);
+            expect(
+              bitwiseAnd(a8, b8).toList(),
+              equals([0xAA & 0x0F, 0x55 & 0xF0]),
+            );
+            expect(
+              bitwiseOr(a8, b8).toList(),
+              equals([0xAA | 0x0F, 0x55 | 0xF0]),
+            );
+            expect(
+              bitwiseXor(a8, b8).toList(),
+              equals([0xAA ^ 0x0F, 0x55 ^ 0xF0]),
+            );
+          });
+        },
+      );
 
       test('invert (~x) on integer arrays', () {
         NDArray.scope(() {
@@ -117,18 +123,18 @@ void main() {
         });
       });
 
-      test('left_shift and right_shift', () {
+      test('leftShift and rightShift', () {
         NDArray.scope(() {
           final a = NDArray<Int32>.fromList([1, 2, 4, 8], [4], DType.int32);
           final shift = NDArray<Int32>.fromList([1, 2, 1, 3], [4], DType.int32);
 
-          expect(left_shift(a, shift).toList(), equals([2, 8, 8, 64]));
-          expect(right_shift(a, shift).toList(), equals([0, 0, 2, 1]));
+          expect(leftShift(a, shift).toList(), equals([2, 8, 8, 64]));
+          expect(rightShift(a, shift).toList(), equals([0, 0, 2, 1]));
 
           // Scalar shift broadcasting
           final scalarShift = NDArray<Int32>.fromList([2], [1], DType.int32);
-          expect(left_shift(a, scalarShift).toList(), equals([4, 8, 16, 32]));
-          expect(right_shift(a, scalarShift).toList(), equals([0, 0, 1, 2]));
+          expect(leftShift(a, scalarShift).toList(), equals([4, 8, 16, 32]));
+          expect(rightShift(a, scalarShift).toList(), equals([0, 0, 1, 2]));
         });
       });
 
@@ -140,7 +146,7 @@ void main() {
             DType.int64,
           );
           final vec = NDArray<Int64>.fromList([10, 20, 30], [3], DType.int64);
-          final res = bitwise_or(mat, vec);
+          final res = bitwiseOr(mat, vec);
           expect(res.shape, equals([2, 3]));
           expect(
             res.toList(),
@@ -155,13 +161,13 @@ void main() {
           expect(invTrans.getCell([0, 1]), equals(~4));
 
           // Where mask
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false, true, false],
             [2, 3],
             DType.boolean,
           );
           final out = NDArray<Int64>.zeros([2, 3], DType.int64);
-          bitwise_or(mat, vec, where: mask, out: out);
+          bitwiseOr(mat, vec, where: mask, out: out);
           expect(out.getCell([0, 0]), equals(1 | 10));
           expect(out.getCell([0, 1]), equals(0)); // untouched
           expect(out.getCell([0, 2]), equals(3 | 30));
@@ -177,43 +183,40 @@ void main() {
             DType.float64,
           );
 
-          expect(() => bitwise_and(f64, f64_2), throwsArgumentError);
-          expect(() => bitwise_or(f64, f64_2), throwsArgumentError);
-          expect(() => bitwise_xor(f64, f64_2), throwsArgumentError);
+          expect(() => bitwiseAnd(f64, f64_2), throwsArgumentError);
+          expect(() => bitwiseOr(f64, f64_2), throwsArgumentError);
+          expect(() => bitwiseXor(f64, f64_2), throwsArgumentError);
           expect(() => invert(f64), throwsArgumentError);
-          expect(() => left_shift(f64, f64_2), throwsArgumentError);
-          expect(() => right_shift(f64, f64_2), throwsArgumentError);
+          expect(() => leftShift(f64, f64_2), throwsArgumentError);
+          expect(() => rightShift(f64, f64_2), throwsArgumentError);
         });
       });
     });
 
     group('Logical Operations & Comparisons', () {
       test(
-        'logical_not, logical_and, logical_or, logical_xor on boolean arrays',
+        'logicalNot, logicalAnd, logicalOr, logicalXor on boolean arrays',
         () {
           NDArray.scope(() {
-            final a = NDArray<bool>.fromList(
+            final a = NDArray<Boolean>.fromList(
               [true, true, false, false],
               [4],
               DType.boolean,
             );
-            final b = NDArray<bool>.fromList(
+            final b = NDArray<Boolean>.fromList(
               [true, false, true, false],
               [4],
               DType.boolean,
             );
 
-            expect(logical_not(a).toList(), equals([false, false, true, true]));
+            expect(logicalNot(a).toList(), equals([false, false, true, true]));
             expect(
-              logical_and(a, b).toList(),
+              logicalAnd(a, b).toList(),
               equals([true, false, false, false]),
             );
+            expect(logicalOr(a, b).toList(), equals([true, true, true, false]));
             expect(
-              logical_or(a, b).toList(),
-              equals([true, true, true, false]),
-            );
-            expect(
-              logical_xor(a, b).toList(),
+              logicalXor(a, b).toList(),
               equals([false, true, true, false]),
             );
           });
@@ -227,23 +230,23 @@ void main() {
             [4],
             DType.float64,
           );
-          expect(logical_not(f64).toList(), equals([true, false, false, true]));
+          expect(logicalNot(f64).toList(), equals([true, false, false, true]));
 
           final i32 = NDArray<Int32>.fromList([0, 10, 0, -5], [4], DType.int32);
-          expect(logical_not(i32).toList(), equals([true, false, true, false]));
+          expect(logicalNot(i32).toList(), equals([true, false, true, false]));
 
           final c128 = NDArray<Complex128>.fromList(
-            [Complex128(0.0, 0.0), Complex128(1.0, 0.0), Complex128(0.0, 2.0)],
+            [Complex(0.0, 0.0), Complex(1.0, 0.0), Complex(0.0, 2.0)],
             [3],
             DType.complex128,
           );
-          expect(logical_not(c128).toList(), equals([true, false, false]));
+          expect(logicalNot(c128).toList(), equals([true, false, false]));
 
           final f32 = NDArray<Float32>.fromList([0.0, 2.0], [2], DType.float32);
           final i64 = NDArray<Int64>.fromList([1, 0], [2], DType.int64);
-          expect(logical_and(f32, i64).toList(), equals([false, false]));
-          expect(logical_or(f32, i64).toList(), equals([true, true]));
-          expect(logical_xor(f32, i64).toList(), equals([true, true]));
+          expect(logicalAnd(f32, i64).toList(), equals([false, false]));
+          expect(logicalOr(f32, i64).toList(), equals([true, true]));
+          expect(logicalXor(f32, i64).toList(), equals([true, true]));
         });
       });
 
@@ -281,12 +284,12 @@ void main() {
       test('Comparisons with complex numbers', () {
         NDArray.scope(() {
           final c1 = NDArray<Complex128>.fromList(
-            [Complex128(1.0, 2.0), Complex128(3.0, 4.0)],
+            [Complex(1.0, 2.0), Complex(3.0, 4.0)],
             [2],
             DType.complex128,
           );
           final c2 = NDArray<Complex128>.fromList(
-            [Complex128(1.0, 2.0), Complex128(3.0, 5.0)],
+            [Complex(1.0, 2.0), Complex(3.0, 5.0)],
             [2],
             DType.complex128,
           );
@@ -304,24 +307,28 @@ void main() {
 
       test('Logical operations broadcasting, where mask, and out buffer', () {
         NDArray.scope(() {
-          final mat = NDArray<bool>.fromList(
+          final mat = NDArray<Boolean>.fromList(
             [true, false, true, false],
             [2, 2],
             DType.boolean,
           );
-          final row = NDArray<bool>.fromList([true, true], [2], DType.boolean);
+          final row = NDArray<Boolean>.fromList(
+            [true, true],
+            [2],
+            DType.boolean,
+          );
 
-          final res = logical_and(mat, row);
+          final res = logicalAnd(mat, row);
           expect(res.shape, equals([2, 2]));
           expect(res.toList(), equals([true, false, true, false]));
 
-          final out = NDArray<bool>.zeros([2, 2], DType.boolean);
-          final whereMask = NDArray<bool>.fromList(
+          final out = NDArray<Boolean>.zeros([2, 2], DType.boolean);
+          final whereMask = NDArray<Boolean>.fromList(
             [true, true, false, false],
             [2, 2],
             DType.boolean,
           );
-          logical_or(mat, row, where: whereMask, out: out);
+          logicalOr(mat, row, where: whereMask, out: out);
           expect(out.getCell([0, 0]), isTrue);
           expect(out.getCell([0, 1]), isTrue);
           expect(out.getCell([1, 0]), isFalse); // untouched
@@ -376,25 +383,32 @@ void main() {
         });
       });
 
-      test('Windows custom dtype (Float32, Float64, Int32) and out buffer recycling', () {
-        NDArray.scope(() {
-          final h32 = hanning(8, dtype: DType.float32);
-          expect(h32.dtype, equals(DType.float32));
-          expect(h32.shape, equals([8]));
+      test(
+        'Windows custom dtype (Float32, Float64, Int32) and out buffer recycling',
+        () {
+          NDArray.scope(() {
+            final h32 = hanning(8, dtype: DType.float32);
+            expect(h32.dtype, equals(DType.float32));
+            expect(h32.shape, equals([8]));
 
-          final out = NDArray<Float64>.zeros([8], DType.float64);
-          final res = hanning(8, out: out);
-          expect(identical(res, out), isTrue);
+            final out = NDArray<Float64>.zeros([8], DType.float64);
+            final res = hanning(8, out: out);
+            expect(identical(res, out), isTrue);
 
-          final outHamming = NDArray<Float32>.zeros([8], DType.float32);
-          final resHamming = hamming(8, dtype: DType.float32, out: outHamming);
-          expect(identical(resHamming, outHamming), isTrue);
+            final outHamming = NDArray<Float32>.zeros([8], DType.float32);
+            final resHamming = hamming(
+              8,
+              dtype: DType.float32,
+              out: outHamming,
+            );
+            expect(identical(resHamming, outHamming), isTrue);
 
-          // Incompatible out shape error
-          final wrongShape = NDArray<Float64>.zeros([4], DType.float64);
-          expect(() => hanning(8, out: wrongShape), throwsArgumentError);
-        });
-      });
+            // Incompatible out shape error
+            final wrongShape = NDArray<Float64>.zeros([4], DType.float64);
+            expect(() => hanning(8, out: wrongShape), throwsArgumentError);
+          });
+        },
+      );
     });
 
     group('Special Math Functions (i0, gamma, erf, sinc, log1p, expm1)', () {
@@ -421,7 +435,7 @@ void main() {
 
           // Complex domain
           final cArr = NDArray<Complex128>.fromList(
-            [Complex128(0.0, 0.0), Complex128(1.0, 1.0), Complex128(20.0, 0.0)],
+            [Complex(0.0, 0.0), Complex(1.0, 1.0), Complex(20.0, 0.0)],
             [3],
             DType.complex128,
           );
@@ -451,7 +465,7 @@ void main() {
 
           // Complex inputs throw UnsupportedError
           final cArr = NDArray<Complex128>.fromList(
-            [Complex128(1.0, 1.0)],
+            [Complex(1.0, 1.0)],
             [1],
             DType.complex128,
           );
@@ -474,7 +488,7 @@ void main() {
 
           // Complex inputs throw UnsupportedError
           final cArr = NDArray<Complex128>.fromList(
-            [Complex128(1.0, 0.0)],
+            [Complex(1.0, 0.0)],
             [1],
             DType.complex128,
           );
@@ -535,7 +549,7 @@ void main() {
           ); // val 2.0
 
           final out = NDArray<Float64>.zeros([2, 2], DType.float64);
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, false, true],
             [2, 2],
             DType.boolean,
@@ -589,7 +603,7 @@ void main() {
 
           // Complex type throws UnsupportedError
           final cArr = NDArray<Complex128>.fromList(
-            [Complex128(1.0, 2.0)],
+            [Complex(1.0, 2.0)],
             [1],
             DType.complex128,
           );
@@ -640,7 +654,7 @@ void main() {
           final maxArr = NDArray<Int64>.fromList([35, 35], [2], DType.int64);
 
           final out = NDArray<Int64>.zeros([2, 2], DType.int64);
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, true],
             [2, 2],
             DType.boolean,
@@ -663,13 +677,13 @@ void main() {
       test('clip and clipArray error cases', () {
         NDArray.scope(() {
           final a = NDArray<Float64>.fromList([1.0, 2.0], [2], DType.float64);
-          final boolBounds = NDArray<bool>.fromList(
+          final boolBounds = NDArray<Boolean>.fromList(
             [true, false],
             [2],
             DType.boolean,
           );
           final cBounds = NDArray<Complex128>.fromList(
-            [Complex128(1.0, 0.0), Complex128(2.0, 0.0)],
+            [Complex(1.0, 0.0), Complex(2.0, 0.0)],
             [2],
             DType.complex128,
           );

@@ -14,7 +14,6 @@
 
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
-
 import 'dart:math' as math;
 
 void main() {
@@ -82,7 +81,7 @@ void main() {
 
     test('Contiguous Complex (Complex128)', () {
       NDArray.scope(() {
-        final a = NDArray<Complex>.fromList(
+        final a = NDArray.fromList(
           [Complex(0.0, 0.0), Complex(0.5, 0.0), Complex(0.0, 0.5)],
           [3],
           DType.complex128,
@@ -105,7 +104,7 @@ void main() {
 
     test('Contiguous Complex (Complex64)', () {
       NDArray.scope(() {
-        final a = NDArray<Complex>.fromList(
+        final a = NDArray.fromList(
           [Complex(0.0, 0.0), Complex(0.5, 0.0)],
           [2],
           DType.complex64,
@@ -120,7 +119,7 @@ void main() {
 
     test('Small values Complex', () {
       NDArray.scope(() {
-        final a = NDArray<Complex>.fromList(
+        final a = NDArray.fromList(
           [Complex(1e-5, 1e-5)],
           [1],
           DType.complex128,
@@ -143,7 +142,7 @@ void main() {
 
     test('Strided Complex (Complex128)', () {
       NDArray.scope(() {
-        final a = NDArray<Complex>.fromList(
+        final a = NDArray.fromList(
           [Complex(0.0, 0.0), Complex(99.0, 99.0), Complex(0.5, 0.0)],
           [3],
           DType.complex128,
@@ -172,7 +171,7 @@ void main() {
     test('Out parameter', () {
       NDArray.scope(() {
         final a = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float64);
-        final out = NDArray<double>.zeros([3], DType.float64);
+        final out = NDArray.zeros([3], DType.float64);
         final res = sinc(a, out: out);
         expect(identical(res, out), isTrue);
         expect(res.getCell([0]), closeTo(1.0, 1e-15));

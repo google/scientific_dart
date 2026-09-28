@@ -14,6 +14,7 @@
 
 import 'package:test/test.dart';
 import 'package:ndarray/ndarray.dart';
+import 'package:ndarray/src/operations/helpers.dart' show castValue;
 
 void main() {
   final all15DTypes = [
@@ -55,7 +56,7 @@ void main() {
     DType.bfloat16,
   ];
 
-  NDArray<Object> makeSampleArray(
+  NDArray<AnySpec> makeSampleArray(
     DType dt,
     List<int> shape, {
     int seed = 1,
@@ -63,41 +64,41 @@ void main() {
   }) {
     final size = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
     if (dt == DType.boolean) {
-      final raw = List<bool>.generate(size, (i) => (i + seed) % 2 == 0);
-      return NDArray<bool>.fromList(raw, shape, DType.boolean);
+      final raw = List<bool>.generate(size, (i) => (i + seed).isEven);
+      return NDArray<Boolean>.fromList(raw, shape, DType.boolean);
     }
     if (dt == DType.complex128) {
       final raw = List<Complex>.generate(size, (i) {
         final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
         return Complex(baseVal.toDouble(), 1.0);
       });
-      return NDArray<Complex>.fromList(raw, shape, DType.complex128);
+      return NDArray.fromList(raw, shape, DType.complex128);
     }
     if (dt == DType.complex64) {
       final raw = List<Complex>.generate(size, (i) {
         final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
         return Complex(baseVal.toDouble(), 1.0);
       });
-      return NDArray<Complex>.fromList(raw, shape, DType.complex64);
+      return NDArray.fromList(raw, shape, DType.complex64);
     }
     if (floatDTypes.contains(dt)) {
       final raw = List<double>.generate(size, (i) {
         final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
         return baseVal.toDouble();
       });
-      return NDArray<double>.fromList(raw, shape, dt as DType<double>);
+      return NDArray.fromList(raw, shape, (dt as DType<AnySpec>));
     }
     final raw = List<int>.generate(size, (i) {
       final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
       return baseVal;
     });
-    return NDArray<int>.fromList(raw, shape, dt as DType<int>);
+    return NDArray.fromList(raw, shape, (dt as DType<AnySpec>));
   }
 
-  void testUnaryHelper<T extends Object>(
+  void testUnaryHelper<T extends AnySpec>(
     NDArray<T> a,
     NDArray<T> aTrans,
-    NDArray<bool> mask, {
+    NDArray<Boolean> mask, {
     bool testNegative = true,
     bool testPositive = true,
     bool testRounding = false,
@@ -228,7 +229,7 @@ void main() {
   group('Unary Operations Deep Coverage across all 15 DTypes', () {
     test('negative, positive, abs, square, sqrt, reciprocal across DTypes', () {
       NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
+        final mask = NDArray<Boolean>.fromList(
           [true, false, true, false, true, false],
           [2, 3],
           DType.boolean,
@@ -242,14 +243,14 @@ void main() {
           if (dt == DType.boolean) {
             expect(() => positive(aContig), throwsUnsupportedError);
             expect(() => negative(aContig), throwsUnsupportedError);
-            final conj1 = conj(aContig as NDArray<bool>);
+            final conj1 = conj(aContig as NDArray<Boolean>);
             expect(conj1.shape, [2, 3]);
-            final conj2 = conjugate(aTrans as NDArray<bool>, where: mask);
+            final conj2 = conjugate(aTrans as NDArray<Boolean>, where: mask);
             expect(conj2.shape, [2, 3]);
           } else if (dt.isComplex) {
-            testUnaryHelper<Complex>(
-              aContig as NDArray<Complex>,
-              aTrans as NDArray<Complex>,
+            testUnaryHelper<AnySpec>(
+              aContig,
+              aTrans,
               mask,
               testNegative: true,
               testPositive: true,
@@ -260,9 +261,9 @@ void main() {
             expect(() => trunc(aContig), throwsUnsupportedError);
             expect(() => fix(aContig), throwsUnsupportedError);
           } else if (floatDTypes.contains(dt)) {
-            testUnaryHelper<double>(
-              aContig as NDArray<double>,
-              aTrans as NDArray<double>,
+            testUnaryHelper<AnySpec>(
+              aContig,
+              aTrans,
               mask,
               testNegative: true,
               testPositive: true,
@@ -270,9 +271,9 @@ void main() {
               testExpm1Log1p: true,
             );
           } else {
-            testUnaryHelper<int>(
-              aContig as NDArray<int>,
-              aTrans as NDArray<int>,
+            testUnaryHelper<AnySpec>(
+              aContig,
+              aTrans,
               mask,
               testNegative: true,
               testPositive: true,
@@ -286,9 +287,9 @@ void main() {
 
     test('Unary operations error handling & invalid buffer checks', () {
       NDArray.scope(() {
-        final a = NDArray<double>.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-        final badOutShape = NDArray<double>.zeros([4], DType.float64);
-        final badOutDType = NDArray<double>.zeros([3], DType.float32);
+        final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+        final badOutShape = NDArray.zeros([4], DType.float64);
+        final badOutDType = NDArray.zeros([3], DType.float32);
 
         // Incompatible shape/dtype out errors
         expect(() => sqrt(a, out: badOutShape), throwsArgumentError);
@@ -317,11 +318,7 @@ void main() {
         expect(() => conj(a, out: badOutDType), throwsArgumentError);
 
         // Disposed array errors
-        final dispArr = NDArray<double>.fromList(
-          [1.0, 2.0],
-          [2],
-          DType.float64,
-        );
+        final dispArr = NDArray.fromList([1.0, 2.0], [2], DType.float64);
         dispArr.dispose();
         expect(() => sqrt(dispArr), throwsStateError);
         expect(() => expm1(dispArr), throwsStateError);
@@ -341,85 +338,98 @@ void main() {
   });
 
   group('Binary Operations Deep Coverage across all 15 DTypes', () {
-    test('divmod, remainder, mod, fmod, floor_divide across Integer and Float types', () {
-      NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
-          [true, false, true, false, true, false],
-          [2, 3],
-          DType.boolean,
-        );
+    test(
+      'divmod, remainder, mod, fmod, floorDivide across Integer and Float types',
+      () {
+        NDArray.scope(() {
+          final mask = NDArray<Boolean>.fromList(
+            [true, false, true, false, true, false],
+            [2, 3],
+            DType.boolean,
+          );
 
-        final nonComplexTypes = [
-          DType.float64,
-          DType.float32,
-          DType.float16,
-          DType.bfloat16,
-          DType.int64,
-          DType.int32,
-          DType.int16,
-          DType.int8,
-          DType.uint64,
-          DType.uint32,
-          DType.uint16,
-          DType.uint8,
-        ];
+          final nonComplexTypes = [
+            DType.float64,
+            DType.float32,
+            DType.float16,
+            DType.bfloat16,
+            DType.int64,
+            DType.int32,
+            DType.int16,
+            DType.int8,
+            DType.uint64,
+            DType.uint32,
+            DType.uint16,
+            DType.uint8,
+          ];
 
-        for (final dtA in nonComplexTypes) {
-          for (final dtB in nonComplexTypes) {
-            final aContig = makeSampleArray(
-              dtA,
-              [2, 3],
-              seed: 4,
-              nonZero: true,
-            );
-            final bContig = makeSampleArray(
-              dtB,
-              [2, 3],
-              seed: 2,
-              nonZero: true,
-            );
+          for (final dtA in nonComplexTypes) {
+            for (final dtB in nonComplexTypes) {
+              final aContig = makeSampleArray(
+                dtA,
+                [2, 3],
+                seed: 4,
+                nonZero: true,
+              );
+              final bContig = makeSampleArray(
+                dtB,
+                [2, 3],
+                seed: 2,
+                nonZero: true,
+              );
 
-            final aBase = makeSampleArray(dtA, [3, 2], seed: 4, nonZero: true);
-            final bBase = makeSampleArray(dtB, [3, 2], seed: 2, nonZero: true);
-            final aTrans = aBase.transpose();
-            final bTrans = bBase.transpose();
+              final aBase = makeSampleArray(
+                dtA,
+                [3, 2],
+                seed: 4,
+                nonZero: true,
+              );
+              final bBase = makeSampleArray(
+                dtB,
+                [3, 2],
+                seed: 2,
+                nonZero: true,
+              );
+              final aTrans = aBase.transpose();
+              final bTrans = bBase.transpose();
 
-            // divmod
-            final (divRes1, modRes1) = divmod(aContig, bContig);
-            expect(divRes1.shape, [2, 3]);
-            expect(modRes1.shape, [2, 3]);
+              // divmod
+              final (divRes1, modRes1) = divmod(aContig, bContig);
+              expect(divRes1.shape, [2, 3]);
+              expect(modRes1.shape, [2, 3]);
 
-            final (divRes2, modRes2) = divmod(aTrans, bTrans);
-            expect(divRes2.shape, [2, 3]);
-            expect(modRes2.shape, [2, 3]);
+              final (divRes2, modRes2) = divmod(aTrans, bTrans);
+              expect(divRes2.shape, [2, 3]);
+              expect(modRes2.shape, [2, 3]);
 
-            // remainder & mod
-            final rem1 = remainder(aContig, bContig, where: mask);
-            expect(rem1.shape, [2, 3]);
-            final rem2 = remainder(aTrans, bTrans);
-            expect(rem2.shape, [2, 3]);
-            final mod1 = mod(aContig, bContig);
-            expect(mod1.shape, [2, 3]);
+              // remainder & mod
+              final rem1 = remainder(aContig, bContig, where: mask);
+              expect(rem1.shape, [2, 3]);
+              final rem2 = remainder(aTrans, bTrans);
+              expect(rem2.shape, [2, 3]);
+              final mod1 = mod(aContig, bContig);
+              expect(mod1.shape, [2, 3]);
 
-            // fmod
-            final fmod1 = fmod(aContig, bContig, where: mask);
-            expect(fmod1.shape, [2, 3]);
-            final fmod2 = fmod(aTrans, bTrans);
-            expect(fmod2.shape, [2, 3]);
+              // fmod
+              final fmod1 = fmod(aContig, bContig, where: mask);
+              expect(fmod1.shape, [2, 3]);
+              final fmod2 = fmod(aTrans, bTrans);
+              expect(fmod2.shape, [2, 3]);
 
-            // floor_divide
-            final fd1 = floor_divide(aContig, bContig, where: mask);
-            expect(fd1.shape, [2, 3]);
-            final fd2 = floor_divide(aTrans, bTrans);
-            expect(fd2.shape, [2, 3]);
+              // floorDivide
+              final fd1 = floorDivide(aContig, bContig, where: mask);
+              expect(fd1.shape, [2, 3]);
+              final fd2 = floorDivide(aTrans, bTrans);
+              expect(fd2.shape, [2, 3]);
+            }
           }
-        }
-      });
-    });
+        });
+      },
+    );
 
     test('gcd, lcm, heaviside across applicable DTypes and Strided Views', () {
       NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
+        final mask = NDArray<Boolean>.fromList(
           [true, false, true, false, true, false],
           [2, 3],
           DType.boolean,
@@ -453,6 +463,22 @@ void main() {
               nonZero: true,
             ).transpose();
 
+            int scalarGcd(int x, int y) {
+              var u = x.abs();
+              var v = y.abs();
+              while (v != 0) {
+                final t = v;
+                v = u % v;
+                u = t;
+              }
+              return u;
+            }
+
+            int scalarLcm(int x, int y) {
+              if (x == 0 || y == 0) return 0;
+              return (x.abs() ~/ scalarGcd(x, y)) * y.abs();
+            }
+
             final gcd1 = gcd(aContig, bContig, where: mask);
             expect(gcd1.shape, [2, 3]);
             final gcd2 = gcd(aTrans, bTrans);
@@ -463,12 +489,52 @@ void main() {
             final lcm2 = lcm(aTrans, bTrans);
             expect(lcm2.shape, [2, 3]);
 
+            for (var r = 0; r < 2; r++) {
+              for (var c = 0; c < 3; c++) {
+                final m = mask.getCell([r, c]);
+                final av = (aContig.getCell([r, c]) as num).toInt();
+                final bv = (bContig.getCell([r, c]) as num).toInt();
+                expect(
+                  gcd1.getCell([r, c]),
+                  m ? castValue(scalarGcd(av, bv), gcd1.dtype) : 0,
+                );
+                expect(
+                  lcm1.getCell([r, c]),
+                  m ? castValue(scalarLcm(av, bv), lcm1.dtype) : 0,
+                );
+                final atv = (aTrans.getCell([r, c]) as num).toInt();
+                final btv = (bTrans.getCell([r, c]) as num).toInt();
+                expect(
+                  gcd2.getCell([r, c]),
+                  castValue(scalarGcd(atv, btv), gcd2.dtype),
+                );
+                expect(
+                  lcm2.getCell([r, c]),
+                  castValue(scalarLcm(atv, btv), lcm2.dtype),
+                );
+              }
+            }
+
             // Broadcasting gcd & lcm: [2, 3] with [1, 3]
             final bBcast = makeSampleArray(dtB, [1, 3], seed: 2, nonZero: true);
             final gcdBcast = gcd(aContig, bBcast);
             expect(gcdBcast.shape, [2, 3]);
             final lcmBcast = lcm(aContig, bBcast);
             expect(lcmBcast.shape, [2, 3]);
+            for (var r = 0; r < 2; r++) {
+              for (var c = 0; c < 3; c++) {
+                final av = (aContig.getCell([r, c]) as num).toInt();
+                final bv = (bBcast.getCell([0, c]) as num).toInt();
+                expect(
+                  gcdBcast.getCell([r, c]),
+                  castValue(scalarGcd(av, bv), gcdBcast.dtype),
+                );
+                expect(
+                  lcmBcast.getCell([r, c]),
+                  castValue(scalarLcm(av, bv), lcmBcast.dtype),
+                );
+              }
+            }
           }
         }
 
@@ -504,7 +570,7 @@ void main() {
       'logaddexp, logaddexp2, copysign with Broadcasting & Strided Views',
       () {
         NDArray.scope(() {
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false, true, false],
             [2, 3],
             DType.boolean,
@@ -549,15 +615,15 @@ void main() {
 
     test('Binary operations error cases & unsupported operands', () {
       NDArray.scope(() {
-        final aFloat = NDArray<double>.fromList([1.0, 2.0], [2], DType.float64);
-        final bFloat = NDArray<double>.fromList([3.0, 4.0], [2], DType.float64);
-        final cCplx = NDArray<Complex>.fromList(
+        final aFloat = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+        final bFloat = NDArray.fromList([3.0, 4.0], [2], DType.float64);
+        final cCplx = NDArray.fromList(
           [Complex(1.0, 2.0)],
           [1],
           DType.complex128,
         );
-        final bZeroInt = NDArray<int>.fromList([0, 2], [2], DType.int32);
-        final aInt = NDArray<int>.fromList([4, 6], [2], DType.int32);
+        final bZeroInt = NDArray.fromList([0, 2], [2], DType.int32);
+        final aInt = NDArray.fromList([4, 6], [2], DType.int32);
 
         // Complex unsupported for logaddexp, logaddexp2, heaviside, copysign, fmod
         expect(() => logaddexp(aFloat, cCplx), throwsUnsupportedError);
@@ -567,26 +633,26 @@ void main() {
         expect(() => fmod(cCplx, cCplx), throwsUnsupportedError);
 
         // Integer division by zero
-        expect(() => floor_divide(aInt, bZeroInt), throwsUnsupportedError);
+        expect(() => floorDivide(aInt, bZeroInt), throwsUnsupportedError);
         expect(() => remainder(aInt, bZeroInt), throwsUnsupportedError);
         expect(() => fmod(aInt, bZeroInt), throwsUnsupportedError);
         expect(() => divmod(aInt, bZeroInt), throwsUnsupportedError);
 
         // Incompatible broadcast shapes
-        final badShape = NDArray<double>.zeros([5], DType.float64);
+        final badShape = NDArray.zeros([5], DType.float64);
         expect(() => add(aFloat, badShape), throwsArgumentError);
         expect(() => subtract(aFloat, badShape), throwsArgumentError);
         expect(() => multiply(aFloat, badShape), throwsArgumentError);
         expect(() => divide(aFloat, badShape), throwsArgumentError);
 
         // Disposed array errors
-        final disp = NDArray<double>.zeros([2], DType.float64);
+        final disp = NDArray.zeros([2], DType.float64);
         disp.dispose();
         expect(() => add(disp, bFloat), throwsStateError);
         expect(() => subtract(aFloat, disp), throwsStateError);
         expect(() => multiply(disp, bFloat), throwsStateError);
         expect(() => divide(aFloat, disp), throwsStateError);
-        expect(() => floor_divide(disp, disp), throwsStateError);
+        expect(() => floorDivide(disp, disp), throwsStateError);
         expect(() => remainder(disp, disp), throwsStateError);
         expect(() => fmod(disp, disp), throwsStateError);
         expect(() => heaviside(disp, disp), throwsStateError);
@@ -598,184 +664,190 @@ void main() {
   });
 
   group('Logical & Comparison Operations Deep Coverage', () {
+    test('logicalNot across all 15 DTypes in Contiguous and Strided views', () {
+      NDArray.scope(() {
+        final mask = NDArray<Boolean>.fromList(
+          [true, false, true, false, true, false],
+          [2, 3],
+          DType.boolean,
+        );
+
+        for (final dt in all15DTypes) {
+          // Contiguous view [2, 3] -> hits v_to_bool_* and v_logical_not
+          final aContig = makeSampleArray(dt, [2, 3], seed: 0);
+          final not1 = logicalNot(aContig);
+          expect(not1.shape, [2, 3]);
+          expect(not1.dtype, DType.boolean);
+
+          // Non-contiguous transposed view [2, 3] -> hits s_to_bool_* and s_logical_not
+          final aBase = makeSampleArray(dt, [3, 2], seed: 0);
+          final aTrans = aBase.transpose();
+          final not2 = logicalNot(aTrans, where: mask);
+          expect(not2.shape, [2, 3]);
+          expect(not2.dtype, DType.boolean);
+
+          // Out buffer reuse
+          final outBuf = NDArray<Boolean>.zeros([2, 3], DType.boolean);
+          final not3 = logicalNot(aContig, out: outBuf);
+          expect(identical(not3, outBuf), isTrue);
+        }
+      });
+    });
+
     test(
-      'logical_not across all 15 DTypes in Contiguous and Strided views',
+      'logicalAnd, logicalOr, logicalXor across all 15 DTypes with Broadcasting',
       () {
         NDArray.scope(() {
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false, true, false],
             [2, 3],
             DType.boolean,
           );
 
-          for (final dt in all15DTypes) {
-            // Contiguous view [2, 3] -> hits v_to_bool_* and v_logical_not
-            final aContig = makeSampleArray(dt, [2, 3], seed: 0);
-            final not1 = logical_not(aContig);
-            expect(not1.shape, [2, 3]);
-            expect(not1.dtype, DType.boolean);
+          for (final dtA in all15DTypes) {
+            for (final dtB in [
+              DType.boolean,
+              DType.int32,
+              DType.float64,
+              DType.complex128,
+            ]) {
+              final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
+              final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
+              final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
+              final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
+              final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
 
-            // Non-contiguous transposed view [2, 3] -> hits s_to_bool_* and s_logical_not
-            final aBase = makeSampleArray(dt, [3, 2], seed: 0);
-            final aTrans = aBase.transpose();
-            final not2 = logical_not(aTrans, where: mask);
-            expect(not2.shape, [2, 3]);
-            expect(not2.dtype, DType.boolean);
+              // Contiguous
+              final land1 = logicalAnd(aContig, bContig);
+              expect(land1.shape, [2, 3]);
+              final lor1 = logicalOr(aContig, bContig);
+              expect(lor1.shape, [2, 3]);
+              final lxor1 = logicalXor(aContig, bContig);
+              expect(lxor1.shape, [2, 3]);
 
-            // Out buffer reuse
-            final outBuf = NDArray<bool>.zeros([2, 3], DType.boolean);
-            final not3 = logical_not(aContig, out: outBuf);
-            expect(identical(not3, outBuf), isTrue);
+              // Strided transposed with mask
+              final land2 = logicalAnd(aTrans, bTrans, where: mask);
+              expect(land2.shape, [2, 3]);
+              final lor2 = logicalOr(aTrans, bTrans, where: mask);
+              expect(lor2.shape, [2, 3]);
+              final lxor2 = logicalXor(aTrans, bTrans, where: mask);
+              expect(lxor2.shape, [2, 3]);
+
+              // Broadcasting [2, 3] and [1, 3]
+              final land3 = logicalAnd(aContig, bBcast);
+              expect(land3.shape, [2, 3]);
+              final lor3 = logicalOr(aContig, bBcast);
+              expect(lor3.shape, [2, 3]);
+              final lxor3 = logicalXor(aContig, bBcast);
+              expect(lxor3.shape, [2, 3]);
+            }
           }
         });
       },
     );
 
-    test('logical_and, logical_or, logical_xor across all 15 DTypes with Broadcasting', () {
-      NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
-          [true, false, true, false, true, false],
-          [2, 3],
-          DType.boolean,
-        );
-
-        for (final dtA in all15DTypes) {
-          for (final dtB in [
+    test(
+      'equal, not_equal, greater, greater_equal, less, less_equal across DTypes',
+      () {
+        NDArray.scope(() {
+          final mask = NDArray<Boolean>.fromList(
+            [true, false, true, false, true, false],
+            [2, 3],
             DType.boolean,
-            DType.int32,
-            DType.float64,
-            DType.complex128,
-          ]) {
-            final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
-            final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
-            final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
-            final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
-            final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
+          );
 
-            // Contiguous
-            final land1 = logical_and(aContig, bContig);
-            expect(land1.shape, [2, 3]);
-            final lor1 = logical_or(aContig, bContig);
-            expect(lor1.shape, [2, 3]);
-            final lxor1 = logical_xor(aContig, bContig);
-            expect(lxor1.shape, [2, 3]);
+          for (final dtA in all15DTypes) {
+            for (final dtB in [
+              DType.int32,
+              DType.float64,
+              DType.uint8,
+              DType.boolean,
+              DType.complex128,
+            ]) {
+              final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
+              final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
+              final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
+              final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
+              final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
 
-            // Strided transposed with mask
-            final land2 = logical_and(aTrans, bTrans, where: mask);
-            expect(land2.shape, [2, 3]);
-            final lor2 = logical_or(aTrans, bTrans, where: mask);
-            expect(lor2.shape, [2, 3]);
-            final lxor2 = logical_xor(aTrans, bTrans, where: mask);
-            expect(lxor2.shape, [2, 3]);
+              // Equality (supported across all types including complex)
+              final eq1 = equal(aContig, bContig);
+              expect(eq1.shape, [2, 3]);
+              final eq2 = equal(aTrans, bTrans, where: mask);
+              expect(eq2.shape, [2, 3]);
+              final eq3 = equal(aContig, bBcast);
+              expect(eq3.shape, [2, 3]);
 
-            // Broadcasting [2, 3] and [1, 3]
-            final land3 = logical_and(aContig, bBcast);
-            expect(land3.shape, [2, 3]);
-            final lor3 = logical_or(aContig, bBcast);
-            expect(lor3.shape, [2, 3]);
-            final lxor3 = logical_xor(aContig, bBcast);
-            expect(lxor3.shape, [2, 3]);
-          }
-        }
-      });
-    });
+              final neq1 = notEqual(aContig, bContig);
+              expect(neq1.shape, [2, 3]);
+              final neq2 = notEqual(aTrans, bTrans, where: mask);
+              expect(neq2.shape, [2, 3]);
 
-    test('equal, not_equal, greater, greater_equal, less, less_equal across DTypes', () {
-      NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
-          [true, false, true, false, true, false],
-          [2, 3],
-          DType.boolean,
-        );
+              // Inequalities: supported only for non-complex
+              if (!dtA.isComplex && !dtB.isComplex) {
+                final gt1 = greater(aContig, bContig);
+                expect(gt1.shape, [2, 3]);
+                final gt2 = greater(aTrans, bTrans, where: mask);
+                expect(gt2.shape, [2, 3]);
+                final gt3 = greater(aContig, bBcast);
+                expect(gt3.shape, [2, 3]);
 
-        for (final dtA in all15DTypes) {
-          for (final dtB in [
-            DType.int32,
-            DType.float64,
-            DType.uint8,
-            DType.boolean,
-            DType.complex128,
-          ]) {
-            final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
-            final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
-            final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
-            final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
-            final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
+                final ge1 = greaterEqual(aContig, bContig);
+                expect(ge1.shape, [2, 3]);
+                final ge2 = greaterEqual(aTrans, bTrans, where: mask);
+                expect(ge2.shape, [2, 3]);
 
-            // Equality (supported across all types including complex)
-            final eq1 = equal(aContig, bContig);
-            expect(eq1.shape, [2, 3]);
-            final eq2 = equal(aTrans, bTrans, where: mask);
-            expect(eq2.shape, [2, 3]);
-            final eq3 = equal(aContig, bBcast);
-            expect(eq3.shape, [2, 3]);
+                final lt1 = less(aContig, bContig);
+                expect(lt1.shape, [2, 3]);
+                final lt2 = less(aTrans, bTrans, where: mask);
+                expect(lt2.shape, [2, 3]);
 
-            final neq1 = notEqual(aContig, bContig);
-            expect(neq1.shape, [2, 3]);
-            final neq2 = notEqual(aTrans, bTrans, where: mask);
-            expect(neq2.shape, [2, 3]);
-
-            // Inequalities: supported only for non-complex
-            if (!dtA.isComplex && !dtB.isComplex) {
-              final gt1 = greater(aContig, bContig);
-              expect(gt1.shape, [2, 3]);
-              final gt2 = greater(aTrans, bTrans, where: mask);
-              expect(gt2.shape, [2, 3]);
-              final gt3 = greater(aContig, bBcast);
-              expect(gt3.shape, [2, 3]);
-
-              final ge1 = greaterEqual(aContig, bContig);
-              expect(ge1.shape, [2, 3]);
-              final ge2 = greaterEqual(aTrans, bTrans, where: mask);
-              expect(ge2.shape, [2, 3]);
-
-              final lt1 = less(aContig, bContig);
-              expect(lt1.shape, [2, 3]);
-              final lt2 = less(aTrans, bTrans, where: mask);
-              expect(lt2.shape, [2, 3]);
-
-              final le1 = lessEqual(aContig, bContig);
-              expect(le1.shape, [2, 3]);
-              final le2 = lessEqual(aTrans, bTrans, where: mask);
-              expect(le2.shape, [2, 3]);
-            } else if (dtA.isComplex || dtB.isComplex) {
-              // Inequality on complex throws UnsupportedError
-              expect(() => greater(aContig, bContig), throwsUnsupportedError);
-              expect(
-                () => greaterEqual(aContig, bContig),
-                throwsUnsupportedError,
-              );
-              expect(() => less(aContig, bContig), throwsUnsupportedError);
-              expect(() => lessEqual(aContig, bContig), throwsUnsupportedError);
+                final le1 = lessEqual(aContig, bContig);
+                expect(le1.shape, [2, 3]);
+                final le2 = lessEqual(aTrans, bTrans, where: mask);
+                expect(le2.shape, [2, 3]);
+              } else if (dtA.isComplex || dtB.isComplex) {
+                // Inequality on complex throws UnsupportedError
+                expect(() => greater(aContig, bContig), throwsUnsupportedError);
+                expect(
+                  () => greaterEqual(aContig, bContig),
+                  throwsUnsupportedError,
+                );
+                expect(() => less(aContig, bContig), throwsUnsupportedError);
+                expect(
+                  () => lessEqual(aContig, bContig),
+                  throwsUnsupportedError,
+                );
+              }
             }
           }
-        }
-      });
-    });
+        });
+      },
+    );
 
     test('Logical and Comparison error cases and invalid out buffers', () {
       NDArray.scope(() {
-        final a = NDArray<int>.fromList([1, 2, 3], [3], DType.int32);
-        final b = NDArray<int>.fromList([1, 4, 3], [3], DType.int32);
-        final badShapeOut = NDArray<bool>.zeros([5], DType.boolean);
+        final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
+        final b = NDArray.fromList([1, 4, 3], [3], DType.int32);
+        final badShapeOut = NDArray<Boolean>.zeros([5], DType.boolean);
 
-        expect(() => logical_not(a, out: badShapeOut), throwsArgumentError);
+        expect(() => logicalNot(a, out: badShapeOut), throwsArgumentError);
         expect(() => equal(a, b, out: badShapeOut), throwsArgumentError);
         expect(() => notEqual(a, b, out: badShapeOut), throwsArgumentError);
         expect(() => greater(a, b, out: badShapeOut), throwsArgumentError);
         expect(() => greaterEqual(a, b, out: badShapeOut), throwsArgumentError);
         expect(() => less(a, b, out: badShapeOut), throwsArgumentError);
         expect(() => lessEqual(a, b, out: badShapeOut), throwsArgumentError);
-        expect(() => logical_and(a, b, out: badShapeOut), throwsArgumentError);
-        expect(() => logical_or(a, b, out: badShapeOut), throwsArgumentError);
-        expect(() => logical_xor(a, b, out: badShapeOut), throwsArgumentError);
+        expect(() => logicalAnd(a, b, out: badShapeOut), throwsArgumentError);
+        expect(() => logicalOr(a, b, out: badShapeOut), throwsArgumentError);
+        expect(() => logicalXor(a, b, out: badShapeOut), throwsArgumentError);
 
-        final disp = NDArray<bool>.fromList([true], [1], DType.boolean);
+        final disp = NDArray<Boolean>.fromList([true], [1], DType.boolean);
         disp.dispose();
-        expect(() => logical_not(disp), throwsStateError);
-        expect(() => logical_and(disp, disp), throwsStateError);
-        expect(() => logical_or(disp, disp), throwsStateError);
-        expect(() => logical_xor(disp, disp), throwsStateError);
+        expect(() => logicalNot(disp), throwsStateError);
+        expect(() => logicalAnd(disp, disp), throwsStateError);
+        expect(() => logicalOr(disp, disp), throwsStateError);
+        expect(() => logicalXor(disp, disp), throwsStateError);
         expect(() => equal(disp, disp), throwsStateError);
         expect(() => notEqual(disp, disp), throwsStateError);
         expect(() => greater(disp, disp), throwsStateError);
@@ -787,97 +859,113 @@ void main() {
   });
 
   group('Bitwise Operations on Integer Types & Strided Views', () {
-    test('bitwise_and, bitwise_or, bitwise_xor, invert, left_shift, right_shift on supported integer types', () {
-      NDArray.scope(() {
-        final mask = NDArray<bool>.fromList(
-          [true, false, true, false, true, false],
-          [2, 3],
-          DType.boolean,
-        );
+    test(
+      'bitwiseAnd, bitwiseOr, bitwiseXor, invert, leftShift, rightShift on supported integer types',
+      () {
+        NDArray.scope(() {
+          final mask = NDArray<Boolean>.fromList(
+            [true, false, true, false, true, false],
+            [2, 3],
+            DType.boolean,
+          );
 
-        for (final dtA in implementedBitwiseIntegerDTypes) {
-          // invert
-          final aContig = makeSampleArray(dtA, [2, 3], seed: 5);
-          final aBase = makeSampleArray(dtA, [3, 2], seed: 5);
-          final aTrans = aBase.transpose();
+          for (final dtA in implementedBitwiseIntegerDTypes) {
+            // invert
+            final aContig = makeSampleArray(dtA, [2, 3], seed: 5);
+            final aBase = makeSampleArray(dtA, [3, 2], seed: 5);
+            final aTrans = aBase.transpose();
 
-          final inv1 = invert(aContig);
-          expect(inv1.shape, [2, 3]);
-          expect(inv1.dtype, dtA);
-          final inv2 = invert(aTrans, where: mask);
-          expect(inv2.shape, [2, 3]);
+            final inv1 = invert(aContig);
+            expect(inv1.shape, [2, 3]);
+            expect(inv1.dtype, dtA);
+            final inv2 = invert(aTrans, where: mask);
+            expect(inv2.shape, [2, 3]);
 
-          final outInv = NDArray.create([2, 3], dtA);
-          final inv3 = invert(aContig, out: outInv);
-          expect(identical(inv3, outInv), isTrue);
+            final outInv = NDArray.create([2, 3], dtA);
+            final inv3 = invert(aContig, out: outInv);
+            expect(identical(inv3, outInv), isTrue);
 
-          // Test operations with same dtype
-          final bContig = makeSampleArray(dtA, [2, 3], seed: 3);
-          final bTrans = makeSampleArray(dtA, [3, 2], seed: 3).transpose();
-          final bBcast = makeSampleArray(dtA, [1, 3], seed: 1);
+            // Test operations with same dtype
+            final bContig = makeSampleArray(dtA, [2, 3], seed: 3);
+            final bTrans = makeSampleArray(dtA, [3, 2], seed: 3).transpose();
+            final bBcast = makeSampleArray(dtA, [1, 3], seed: 1);
 
-          // bitwise_and
-          final band1 = bitwise_and(aContig, bContig);
-          expect(band1.shape, [2, 3]);
-          final band2 = bitwise_and(aTrans, bTrans, where: mask);
-          expect(band2.shape, [2, 3]);
-          final band3 = bitwise_and(aContig, bBcast);
-          expect(band3.shape, [2, 3]);
+            // bitwiseAnd
+            final band1 = bitwiseAnd(aContig, bContig);
+            expect(band1.shape, [2, 3]);
+            final band2 = bitwiseAnd(aTrans, bTrans, where: mask);
+            expect(band2.shape, [2, 3]);
+            final band3 = bitwiseAnd(aContig, bBcast);
+            expect(band3.shape, [2, 3]);
 
-          // bitwise_or
-          final bor1 = bitwise_or(aContig, bContig);
-          expect(bor1.shape, [2, 3]);
-          final bor2 = bitwise_or(aTrans, bTrans, where: mask);
-          expect(bor2.shape, [2, 3]);
-          final bor3 = bitwise_or(aContig, bBcast);
-          expect(bor3.shape, [2, 3]);
+            // bitwiseOr
+            final bor1 = bitwiseOr(aContig, bContig);
+            expect(bor1.shape, [2, 3]);
+            final bor2 = bitwiseOr(aTrans, bTrans, where: mask);
+            expect(bor2.shape, [2, 3]);
+            final bor3 = bitwiseOr(aContig, bBcast);
+            expect(bor3.shape, [2, 3]);
 
-          // bitwise_xor
-          final bxor1 = bitwise_xor(aContig, bContig);
-          expect(bxor1.shape, [2, 3]);
-          final bxor2 = bitwise_xor(aTrans, bTrans, where: mask);
-          expect(bxor2.shape, [2, 3]);
-          final bxor3 = bitwise_xor(aContig, bBcast);
-          expect(bxor3.shape, [2, 3]);
+            // bitwiseXor
+            final bxor1 = bitwiseXor(aContig, bContig);
+            expect(bxor1.shape, [2, 3]);
+            final bxor2 = bitwiseXor(aTrans, bTrans, where: mask);
+            expect(bxor2.shape, [2, 3]);
+            final bxor3 = bitwiseXor(aContig, bBcast);
+            expect(bxor3.shape, [2, 3]);
 
-          // left_shift & right_shift
-          final lshift1 = left_shift(aContig, bContig);
-          expect(lshift1.shape, [2, 3]);
-          final lshift2 = left_shift(aTrans, bTrans, where: mask);
-          expect(lshift2.shape, [2, 3]);
-          final lshift3 = left_shift(aContig, bBcast);
-          expect(lshift3.shape, [2, 3]);
+            // leftShift & rightShift
+            final lshift1 = leftShift(aContig, bContig);
+            expect(lshift1.shape, [2, 3]);
+            final lshift2 = leftShift(aTrans, bTrans, where: mask);
+            expect(lshift2.shape, [2, 3]);
+            final lshift3 = leftShift(aContig, bBcast);
+            expect(lshift3.shape, [2, 3]);
 
-          final rshift1 = right_shift(aContig, bContig);
-          expect(rshift1.shape, [2, 3]);
-          final rshift2 = right_shift(aTrans, bTrans, where: mask);
-          expect(rshift2.shape, [2, 3]);
-          final rshift3 = right_shift(aContig, bBcast);
-          expect(rshift3.shape, [2, 3]);
-        }
+            final rshift1 = rightShift(aContig, bContig);
+            expect(rshift1.shape, [2, 3]);
+            final rshift2 = rightShift(aTrans, bTrans, where: mask);
+            expect(rshift2.shape, [2, 3]);
+            final rshift3 = rightShift(aContig, bBcast);
+            expect(rshift3.shape, [2, 3]);
+          }
 
-        // Test unsupported integer types throw UnsupportedError
-        for (final dt in otherIntegerDTypes) {
-          final arr = makeSampleArray(dt, [2, 3]);
-          expect(() => invert(arr), throwsUnsupportedError);
-          expect(() => bitwise_and(arr, arr), throwsUnsupportedError);
-          expect(() => bitwise_or(arr, arr), throwsUnsupportedError);
-          expect(() => bitwise_xor(arr, arr), throwsUnsupportedError);
-          expect(() => left_shift(arr, arr), throwsUnsupportedError);
-          expect(() => right_shift(arr, arr), throwsUnsupportedError);
-        }
-      });
-    });
+          // Test other integer types
+          for (final dt in otherIntegerDTypes) {
+            final arr = makeSampleArray(dt, [2, 3]);
+            final inv = invert(arr);
+            expect(inv.shape, [2, 3]);
+            expect(inv.dtype, dt);
+
+            final band = bitwiseAnd(arr, arr);
+            expect(band.shape, [2, 3]);
+            expect(band.dtype, dt);
+
+            final bor = bitwiseOr(arr, arr);
+            expect(bor.shape, [2, 3]);
+            expect(bor.dtype, dt);
+
+            final bxor = bitwiseXor(arr, arr);
+            expect(bxor.shape, [2, 3]);
+            expect(bxor.dtype, dt);
+
+            final lshift = leftShift(arr, arr);
+            expect(lshift.shape, [2, 3]);
+            expect(lshift.dtype, dt);
+
+            final rshift = rightShift(arr, arr);
+            expect(rshift.shape, [2, 3]);
+            expect(rshift.dtype, dt);
+          }
+        });
+      },
+    );
 
     test('Bitwise operations error cases & type validation', () {
       NDArray.scope(() {
-        final floatArr = NDArray<double>.fromList(
-          [1.0, 2.0],
-          [2],
-          DType.float64,
-        );
-        final intArr = NDArray<int>.fromList([1, 2], [2], DType.int32);
-        final boolArr = NDArray<bool>.fromList(
+        final floatArr = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+        final intArr = NDArray.fromList([1, 2], [2], DType.int32);
+        final boolArr = NDArray<Boolean>.fromList(
           [true, false],
           [2],
           DType.boolean,
@@ -886,21 +974,21 @@ void main() {
         // Non-integer inputs throw ArgumentError
         expect(() => invert(floatArr), throwsArgumentError);
         expect(() => invert(boolArr), throwsArgumentError);
-        expect(() => bitwise_and(floatArr, intArr), throwsArgumentError);
-        expect(() => bitwise_or(intArr, floatArr), throwsArgumentError);
-        expect(() => bitwise_xor(boolArr, intArr), throwsArgumentError);
-        expect(() => left_shift(floatArr, intArr), throwsArgumentError);
-        expect(() => right_shift(intArr, floatArr), throwsArgumentError);
+        expect(() => bitwiseAnd(floatArr, intArr), throwsArgumentError);
+        expect(() => bitwiseOr(intArr, floatArr), throwsArgumentError);
+        expect(() => bitwiseXor(boolArr, intArr), throwsArgumentError);
+        expect(() => leftShift(floatArr, intArr), throwsArgumentError);
+        expect(() => rightShift(intArr, floatArr), throwsArgumentError);
 
         // Disposed array throws StateError
-        final disp = NDArray<int>.fromList([1, 2], [2], DType.int32);
+        final disp = NDArray.fromList([1, 2], [2], DType.int32);
         disp.dispose();
         expect(() => invert(disp), throwsStateError);
-        expect(() => bitwise_and(disp, intArr), throwsStateError);
-        expect(() => bitwise_or(intArr, disp), throwsStateError);
-        expect(() => bitwise_xor(disp, disp), throwsStateError);
-        expect(() => left_shift(disp, disp), throwsStateError);
-        expect(() => right_shift(disp, disp), throwsStateError);
+        expect(() => bitwiseAnd(disp, intArr), throwsStateError);
+        expect(() => bitwiseOr(intArr, disp), throwsStateError);
+        expect(() => bitwiseXor(disp, disp), throwsStateError);
+        expect(() => leftShift(disp, disp), throwsStateError);
+        expect(() => rightShift(disp, disp), throwsStateError);
       });
     });
   });
@@ -910,14 +998,14 @@ void main() {
       'isnan, isinf, isfinite across Float, Complex, Int, and Bool types',
       () {
         NDArray.scope(() {
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false],
             [2, 2],
             DType.boolean,
           );
 
           // Float64 special values
-          final f64Arr = NDArray<double>.fromList(
+          final f64Arr = NDArray.fromList(
             [0.0, double.nan, double.infinity, double.negativeInfinity],
             [2, 2],
             DType.float64,
@@ -940,7 +1028,7 @@ void main() {
           expect(finRes2.shape, [2, 2]);
 
           // Float32 special values
-          final f32Arr = NDArray<double>.fromList(
+          final f32Arr = NDArray.fromList(
             [1.0, double.nan, double.infinity, -2.5],
             [2, 2],
             DType.float32,
@@ -950,7 +1038,7 @@ void main() {
           expect(isfinite(f32Arr).data, [true, false, false, true]);
 
           // Complex128 special values
-          final c128Arr = NDArray<Complex>.fromList(
+          final c128Arr = NDArray.fromList(
             [
               Complex(1.0, 2.0),
               Complex(double.nan, 0.0),
@@ -969,7 +1057,7 @@ void main() {
           expect(isfinite(c128Trans, where: mask).shape, [2, 2]);
 
           // Complex64 special values
-          final c64Arr = NDArray<Complex>.fromList(
+          final c64Arr = NDArray.fromList(
             [
               Complex(3.0, 4.0),
               Complex(double.nan, 1.0),
@@ -1017,18 +1105,18 @@ void main() {
       'copysign with Subnormals, Signed Zeros, Infinities, and Out Buffers',
       () {
         NDArray.scope(() {
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false],
             [2, 2],
             DType.boolean,
           );
 
-          final x1 = NDArray<double>.fromList(
+          final x1 = NDArray.fromList(
             [1.0, -2.0, 3.0, -4.0],
             [2, 2],
             DType.float64,
           );
-          final x2 = NDArray<double>.fromList(
+          final x2 = NDArray.fromList(
             [-1.0, 1.0, -0.0, 0.0],
             [2, 2],
             DType.float64,
@@ -1040,27 +1128,19 @@ void main() {
           final res2 = copysign(x1.transpose(), x2.transpose(), where: mask);
           expect(res2.shape, [2, 2]);
 
-          final outBuf = NDArray<double>.zeros([2, 2], DType.float64);
+          final outBuf = NDArray.zeros([2, 2], DType.float64);
           final res3 = copysign(x1, x2, out: outBuf);
           expect(identical(res3, outBuf), isTrue);
 
           // Float32 copysign
-          final f32_1 = NDArray<double>.fromList(
-            [5.0, -6.0],
-            [2],
-            DType.float32,
-          );
-          final f32_2 = NDArray<double>.fromList(
-            [-1.0, 1.0],
-            [2],
-            DType.float32,
-          );
+          final f32_1 = NDArray.fromList([5.0, -6.0], [2], DType.float32);
+          final f32_2 = NDArray.fromList([-1.0, 1.0], [2], DType.float32);
           final f32Res = copysign(f32_1, f32_2);
           expect(f32Res.data, [-5.0, 6.0]);
 
           // Integer copysign
-          final int1 = NDArray<int>.fromList([10, -20], [2], DType.int32);
-          final int2 = NDArray<int>.fromList([-1, 1], [2], DType.int32);
+          final int1 = NDArray.fromList([10, -20], [2], DType.int32);
+          final int2 = NDArray.fromList([-1, 1], [2], DType.int32);
           final intRes = copysign(int1, int2);
           expect(intRes.data, [-10, 20]);
         });
@@ -1071,12 +1151,12 @@ void main() {
       'isClose & allClose with various tolerances, equalNan, Infs, and Complex',
       () {
         NDArray.scope(() {
-          final a = NDArray<double>.fromList(
+          final a = NDArray.fromList(
             [1.0, 2.0, double.nan, double.infinity],
             [4],
             DType.float64,
           );
-          final b = NDArray<double>.fromList(
+          final b = NDArray.fromList(
             [1.000001, 2.0, double.nan, double.infinity],
             [4],
             DType.float64,
@@ -1096,12 +1176,12 @@ void main() {
           expect(close3.data, [false, true, true, true]);
 
           // Complex isClose
-          final cA = NDArray<Complex>.fromList(
+          final cA = NDArray.fromList(
             [Complex(1.0, 2.0), Complex(double.nan, 1.0)],
             [2],
             DType.complex128,
           );
-          final cB = NDArray<Complex>.fromList(
+          final cB = NDArray.fromList(
             [Complex(1.000001, 2.0), Complex(double.nan, 1.0)],
             [2],
             DType.complex128,
@@ -1109,8 +1189,8 @@ void main() {
           expect(allClose(cA, cB, equalNan: true), isTrue);
 
           // Mixed real and complex isClose
-          final rA = NDArray<double>.fromList([1.0, 2.0], [2], DType.float64);
-          final cB2 = NDArray<Complex>.fromList(
+          final rA = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+          final cB2 = NDArray.fromList(
             [Complex(1.0, 0.0), Complex(2.0, 0.0)],
             [2],
             DType.complex128,
@@ -1119,22 +1199,22 @@ void main() {
           expect(allClose(cB2, rA), isTrue);
 
           // Strided transposed isClose with where mask and out buffer
-          final a2D = NDArray<double>.fromList(
+          final a2D = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
             DType.float64,
           );
-          final b2D = NDArray<double>.fromList(
+          final b2D = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
             DType.float64,
           );
-          final mask = NDArray<bool>.fromList(
+          final mask = NDArray<Boolean>.fromList(
             [true, false, true, false],
             [2, 2],
             DType.boolean,
           );
-          final outClose = NDArray<bool>.zeros([2, 2], DType.boolean);
+          final outClose = NDArray<Boolean>.zeros([2, 2], DType.boolean);
           final resClose = isClose(
             a2D.transpose(),
             b2D.transpose(),

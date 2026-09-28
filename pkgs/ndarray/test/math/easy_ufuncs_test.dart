@@ -14,7 +14,6 @@
 
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
-
 import 'dart:math' as math;
 
 void main() {

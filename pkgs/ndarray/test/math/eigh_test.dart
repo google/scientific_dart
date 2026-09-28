@@ -201,7 +201,7 @@ void main() {
     test('eigh with out parameters', () {
       NDArray.scope(() {
         final a = NDArray.fromList([2.0, 1.0, 1.0, 2.0], [2, 2], DType.float64);
-        final outW = NDArray<num>.zeros([2], DType.float64);
+        final outW = NDArray.zeros([2], DType.float64);
         final outV = NDArray<Float64>.zeros([2, 2], DType.float64);
 
         eigh(a, outEigenvalues: outW, outEigenvectors: outV);
@@ -228,7 +228,7 @@ void main() {
     test('eigvalsh with out parameter', () {
       NDArray.scope(() {
         final a = NDArray.fromList([2.0, 1.0, 1.0, 2.0], [2, 2], DType.float64);
-        final outW = NDArray<num>.zeros([2], DType.float64);
+        final outW = NDArray.zeros([2], DType.float64);
 
         eigvalsh(a, out: outW);
 

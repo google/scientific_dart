@@ -32,11 +32,13 @@ jobs:
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Dart SDK
         uses: dart-lang/setup-dart@v1
         with:
-          sdk: 3.11.5
+          sdk: stable
 
       - name: Cache Build Artifacts
         uses: actions/cache@v4
@@ -75,6 +77,13 @@ jobs:
       - name: Analyze Code
         run: dart analyze .
 
+      - name: Check Prebuilt Artifact Freshness
+        run: dart tool/check_artifact_hashes.dart
+
+      - name: Enforce Strict Artifact Freshness on Release Tags
+        if: startsWith(github.ref, 'refs/tags/')
+        run: dart tool/check_artifact_hashes.dart --strict
+
       - name: Run Tests (pocketfft)
         run: dart test
         working-directory: pkgs/pocketfft
@@ -86,3 +95,114 @@ jobs:
       - name: Run Tests (ndarray)
         run: dart test
         working-directory: pkgs/ndarray
+
+      - name: Standalone Consumer Smoke Test (Default Hook Mode without user_defines)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          REPO_ROOT="$PWD"
+          CONSUMER_DIR="$(mktemp -d)"
+          trap 'rm -rf "$CONSUMER_DIR"' EXIT
+          mkdir -p "$CONSUMER_DIR/test" "$CONSUMER_DIR/.dart_tool/hooks_runner"
+          if [ -d "$REPO_ROOT/.dart_tool/hooks_runner/shared" ]; then
+            cp -r "$REPO_ROOT/.dart_tool/hooks_runner/shared" "$CONSUMER_DIR/.dart_tool/hooks_runner/"
+          fi
+          cat > "$CONSUMER_DIR/pubspec.yaml" <<EOF
+          name: ndarray_consumer_smoke
+          publish_to: none
+          environment:
+            sdk: ^3.10.0
+          dependencies:
+            ndarray:
+              path: $REPO_ROOT/pkgs/ndarray
+          dependency_overrides:
+            openblas:
+              path: $REPO_ROOT/pkgs/openblas
+            pocketfft:
+              path: $REPO_ROOT/pkgs/pocketfft
+            resource_scope:
+              path: $REPO_ROOT/pkgs/resource_scope
+          dev_dependencies:
+            test: any
+          EOF
+          cat > "$CONSUMER_DIR/test/smoke_test.dart" <<'EOF'
+          import 'package:ndarray/ndarray.dart';
+          import 'package:test/test.dart';
+
+          void main() {
+            test('standalone consumer builds/fetches native assets without user_defines', () {
+              NDArray.scope(() {
+                final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
+                final b = matmul(a, a);
+                expect(b.toList(), equals([7.0, 10.0, 15.0, 22.0]));
+                final f = rfft(NDArray.fromList([1.0, 0.0, 1.0, 0.0], [4], DType.float64));
+                expect(f.shape, equals([3]));
+              });
+            });
+          }
+          EOF
+          (cd "$CONSUMER_DIR" && dart pub get && dart test)
+
+  sanitizer-test:
+    name: Sanitizer (ASan + UBSan) on Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: stable
+
+      - name: Cache Build Artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .dart_tool/
+          key: Linux-sanitizer-build-${{ hashFiles('**/pubspec.yaml', '**/build.dart', '**/*.c', '**/*.cpp', '**/*.h') }}
+          restore-keys: |
+            Linux-sanitizer-build-
+            Linux-dart-build-
+
+      - name: Configure hooks.user_defines for Sanitizer Build
+        run: |
+          python3 -c '
+          from pathlib import Path
+          p = Path("pubspec.yaml")
+          text = p.read_text()
+          text = text.replace(
+              "    ndarray:\n      buildMode: source",
+              "    ndarray:\n      buildMode: source\n      sanitize: address,undefined"
+          )
+          p.write_text(text)
+          '
+
+      - name: Install Dependencies
+        run: dart pub get
+
+      - name: Build & Verify Sanitizer Instrumentation Symbols
+        working-directory: pkgs/ndarray
+        env:
+          ASAN_OPTIONS: detect_leaks=0:verify_asan_link_order=0
+        run: |
+          ASAN_LIB=$(gcc -print-file-name=libasan.so)
+          LD_PRELOAD="$ASAN_LIB" dart test test/meta/build_infra_invariants_test.dart
+          SO_PATH=$(find ../../.dart_tool .dart_tool -name "libndarray.so" 2>/dev/null | head -n 1)
+          if [ -z "$SO_PATH" ]; then
+            echo "ERROR: libndarray.so not found after hook build"
+            exit 1
+          fi
+          echo "Checking sanitizer symbols in $SO_PATH"
+          nm -D "$SO_PATH" | grep -E "__asan_init|__ubsan"
+
+      - name: Run ndarray Tests under ASan + UBSan
+        working-directory: pkgs/ndarray
+        continue-on-error: true
+        env:
+          ASAN_OPTIONS: detect_leaks=0:verify_asan_link_order=0
+        run: |
+          ASAN_LIB=$(gcc -print-file-name=libasan.so)
+          LD_PRELOAD="$ASAN_LIB" dart test
+

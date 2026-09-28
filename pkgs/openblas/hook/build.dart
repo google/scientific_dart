@@ -17,7 +17,10 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:code_assets/code_assets.dart';
+import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
+import 'package:openblas/src/hook_helpers/build_options.dart';
+import 'package:openblas/src/hook_helpers/hashes.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -25,16 +28,445 @@ void main(List<String> args) async {
       return;
     }
 
+    final BuildOptions buildOptions;
+    try {
+      buildOptions = BuildOptions.fromDefines(input.userDefines);
+    } catch (e) {
+      throw ArgumentError(BuildOptions.usageError(e));
+    }
+    print('openblas build options: $buildOptions');
+
+    final currentSourceHash = computeNativeSourceHash(input.packageRoot);
+    if (currentSourceHash != nativeSourceHash &&
+        buildOptions.buildMode == BuildModeEnum.source) {
+      print(
+        'WARNING: Native sources in package:${input.packageName}/hook/ '
+        '(${currentSourceHash.substring(0, 12)}) differ from prebuilt release '
+        '$version (${nativeSourceHash.substring(0, 12)}). '
+        'Remember to build & attest new release artifacts and run '
+        '`dart tool/regenerate_hashes.dart <tag>` before publishing.',
+      );
+    }
+
+    BuildMode buildMode = switch (buildOptions.buildMode) {
+      BuildModeEnum.fetch => FetchMode(input),
+      BuildModeEnum.local => LocalMode(
+        input,
+        buildOptions.localPath,
+        buildOptions.localExtensionsPath,
+      ),
+      BuildModeEnum.source => SourceMode(
+        input,
+        buildOptions.checkoutPath,
+        buildOptions,
+      ),
+    };
+
+    ({Uri openblasUri, Uri extensionsUri}) builtLibraries;
+    if (buildOptions.buildMode == BuildModeEnum.fetch &&
+        !buildOptions.isExplicit &&
+        currentSourceHash != nativeSourceHash) {
+      print(
+        'Prebuilt openblas binary for release $version differs from local '
+        'native sources in hook/; falling back to `buildMode: source`.',
+      );
+      buildMode = SourceMode(input, buildOptions.checkoutPath, buildOptions);
+      builtLibraries = await buildMode.build();
+    } else {
+      try {
+        builtLibraries = await buildMode.build();
+      } catch (e) {
+        if (buildOptions.buildMode == BuildModeEnum.fetch &&
+            !buildOptions.isExplicit) {
+          print(
+            'Prebuilt openblas binary unavailable ($e); '
+            'falling back to `buildMode: source`.',
+          );
+          buildMode = SourceMode(
+            input,
+            buildOptions.checkoutPath,
+            buildOptions,
+          );
+          builtLibraries = await buildMode.build();
+        } else {
+          rethrow;
+        }
+      }
+    }
+
+    final (:openblasUri, :extensionsUri) = builtLibraries;
+
+    output.assets.code.add(
+      CodeAsset(
+        package: input.packageName,
+        name: 'openblas',
+        linkMode: DynamicLoadingBundled(),
+        file: openblasUri,
+      ),
+    );
+    output.assets.code.add(
+      CodeAsset(
+        package: input.packageName,
+        name: 'openblas_extensions',
+        linkMode: DynamicLoadingBundled(),
+        file: extensionsUri,
+      ),
+    );
+    output.dependencies.addAll(buildMode.dependencies);
+    output.dependencies.add(input.packageRoot.resolve('pubspec.yaml'));
+  });
+}
+
+String _canonicalOpenblasName(OS os) => os == OS.windows
+    ? 'libopenblas.dll'
+    : ((os == OS.macOS || os == OS.iOS)
+          ? 'libopenblas.dylib'
+          : 'libopenblas.so');
+
+String _canonicalExtensionsName(OS os) => os == OS.windows
+    ? 'libopenblas_extensions.dll'
+    : ((os == OS.macOS || os == OS.iOS)
+          ? 'libopenblas_extensions.dylib'
+          : 'libopenblas_extensions.so');
+
+sealed class BuildMode {
+  final BuildInput input;
+
+  const BuildMode(this.input);
+
+  List<Uri> get dependencies;
+
+  Future<({Uri openblasUri, Uri extensionsUri})> build();
+}
+
+final class FetchMode extends BuildMode {
+  FetchMode(super.input);
+
+  @override
+  Future<({Uri openblasUri, Uri extensionsUri})> build() async {
+    final currentSourceHash = computeNativeSourceHash(input.packageRoot);
+    if (currentSourceHash != nativeSourceHash) {
+      throw StateError(
+        'Prebuilt openblas binary for release $version is out of date with native sources in hook/!\n'
+        'Pinned nativeSourceHash: $nativeSourceHash\n'
+        'Current hook/ hash:      $currentSourceHash\n'
+        'If you are the package author, build and attest new release artifacts (.github/workflows/artifacts.yml) and run:\n'
+        '  dart tool/regenerate_hashes.dart <new-release-tag>\n'
+        '${BuildOptions.usageError('Switch to `buildMode: source` while developing native code.')}',
+      );
+    }
+
+    final os = input.config.code.targetOS;
+    final arch = input.config.code.targetArchitecture;
+
+    final openblasArtifact = openblasArtifactName(os, arch, 'openblas');
+    final extArtifact = openblasArtifactName(os, arch, 'openblas_extensions');
+    final expectedOpenblasHash = fileHashes[(os, arch, 'openblas')];
+    final expectedExtHash = fileHashes[(os, arch, 'openblas_extensions')];
+
+    if (expectedOpenblasHash == null ||
+        expectedOpenblasHash.startsWith('00000000') ||
+        expectedExtHash == null ||
+        expectedExtHash.startsWith('00000000')) {
+      throw StateError(
+        'No prebuilt openblas binary hashes are pinned for ($os, $arch) in release $version.\n'
+        '${BuildOptions.usageError('Switch to `buildMode: source` or `buildMode: local`.')}',
+      );
+    }
+
+    final sharedDir = input.outputDirectoryShared.resolve(
+      'openblas-$version/${os.name}-${arch.name}/',
+    );
+    final cachedOpenblas = File.fromUri(
+      sharedDir.resolve(_canonicalOpenblasName(os)),
+    );
+    final cachedExt = File.fromUri(
+      sharedDir.resolve(_canonicalExtensionsName(os)),
+    );
+
+    final openblasUri = await _fetchOrUseCached(
+      cachedFile: cachedOpenblas,
+      artifactName: openblasArtifact,
+      expectedHash: expectedOpenblasHash,
+      currentSourceHash: currentSourceHash,
+      verifySourceStamp: false,
+    );
+    final extensionsUri = await _fetchOrUseCached(
+      cachedFile: cachedExt,
+      artifactName: extArtifact,
+      expectedHash: expectedExtHash,
+      currentSourceHash: currentSourceHash,
+      verifySourceStamp: true,
+    );
+
+    return (openblasUri: openblasUri, extensionsUri: extensionsUri);
+  }
+
+  Future<Uri> _fetchOrUseCached({
+    required File cachedFile,
+    required String artifactName,
+    required String expectedHash,
+    required String currentSourceHash,
+    required bool verifySourceStamp,
+  }) async {
+    if (await cachedFile.exists()) {
+      final cachedBytes = await cachedFile.readAsBytes();
+      final cachedHash = sha256.convert(cachedBytes).toString();
+      if (cachedHash == expectedHash) {
+        if (verifySourceStamp) {
+          verifyArtifactSourceHash(
+            cachedBytes,
+            currentSourceHash: currentSourceHash,
+          );
+        }
+        print('Using cached openblas artifact from ${cachedFile.path}.');
+        return cachedFile.uri;
+      }
+    }
+
+    final remoteUri = Uri.parse(
+      'https://github.com/$repository/releases/download/$version/$artifactName',
+    );
+    print('Fetching prebuilt openblas artifact from $remoteUri...');
+    final bytes = await _downloadBytesWithRedirects(remoteUri);
+    final actualHash = sha256.convert(bytes).toString();
+    if (actualHash != expectedHash) {
+      throw StateError(
+        'SHA-256 mismatch for prebuilt openblas artifact at $remoteUri:\n'
+        'Expected: $expectedHash\n'
+        'Actual:   $actualHash',
+      );
+    }
+    if (verifySourceStamp) {
+      verifyArtifactSourceHash(bytes, currentSourceHash: currentSourceHash);
+    }
+
+    await cachedFile.parent.create(recursive: true);
+    await cachedFile.writeAsBytes(bytes, flush: true);
+    return cachedFile.uri;
+  }
+
+  @override
+  List<Uri> get dependencies => [
+    for (final file in nativeSourceFiles(input.packageRoot)) file.uri,
+  ];
+}
+
+final class LocalMode extends BuildMode {
+  final Uri? localPath;
+  final Uri? localExtensionsPath;
+
+  LocalMode(super.input, this.localPath, this.localExtensionsPath);
+
+  (File, File) _resolveLocalFiles() {
+    if (localPath == null) {
+      throw ArgumentError(
+        '`localPath` is not set in `hooks.user_defines.openblas` '
+        '(or `LOCAL_OPENBLAS_BINARY` environment variable).',
+      );
+    }
+    final os = input.config.code.targetOS;
+    final arch = input.config.code.targetArchitecture;
+    final entityPath = localPath!.toFilePath(windows: Platform.isWindows);
+
+    if (FileSystemEntity.isDirectorySync(entityPath)) {
+      final dirUri = Directory(entityPath).uri;
+      var openblasFile = File.fromUri(
+        dirUri.resolve(_canonicalOpenblasName(os)),
+      );
+      if (!openblasFile.existsSync()) {
+        openblasFile = File.fromUri(
+          dirUri.resolve(openblasArtifactName(os, arch, 'openblas')),
+        );
+      }
+      var extFile = File.fromUri(dirUri.resolve(_canonicalExtensionsName(os)));
+      if (!extFile.existsSync()) {
+        extFile = File.fromUri(
+          dirUri.resolve(openblasArtifactName(os, arch, 'openblas_extensions')),
+        );
+      }
+      if (!openblasFile.existsSync() || !extFile.existsSync()) {
+        throw FileSystemException(
+          'Could not find both ${_canonicalOpenblasName(os)} and '
+          '${_canonicalExtensionsName(os)} in localPath directory.',
+          entityPath,
+        );
+      }
+      return (openblasFile, extFile);
+    }
+
+    final openblasFile = File(entityPath);
+    if (!openblasFile.existsSync()) {
+      throw FileSystemException(
+        'Could not find local openblas binary.',
+        entityPath,
+      );
+    }
+    final File extFile;
+    if (localExtensionsPath != null) {
+      extFile = File(
+        localExtensionsPath!.toFilePath(windows: Platform.isWindows),
+      );
+    } else {
+      extFile = File.fromUri(
+        openblasFile.parent.uri.resolve(_canonicalExtensionsName(os)),
+      );
+    }
+    if (!extFile.existsSync()) {
+      throw FileSystemException(
+        'Could not find local openblas_extensions binary.',
+        extFile.path,
+      );
+    }
+    return (openblasFile, extFile);
+  }
+
+  @override
+  Future<({Uri openblasUri, Uri extensionsUri})> build() async {
+    final (srcOpenblas, srcExt) = _resolveLocalFiles();
+    final os = input.config.code.targetOS;
+    final dstOpenblas = File.fromUri(
+      input.outputDirectory.resolve(_canonicalOpenblasName(os)),
+    );
+    final dstExt = File.fromUri(
+      input.outputDirectory.resolve(_canonicalExtensionsName(os)),
+    );
+    await dstOpenblas.parent.create(recursive: true);
+    await srcOpenblas.copy(dstOpenblas.path);
+    await srcExt.copy(dstExt.path);
+    return (openblasUri: dstOpenblas.uri, extensionsUri: dstExt.uri);
+  }
+
+  @override
+  List<Uri> get dependencies {
+    final (srcOpenblas, srcExt) = _resolveLocalFiles();
+    return [srcOpenblas.uri, srcExt.uri];
+  }
+}
+
+final class SourceMode extends BuildMode {
+  final Uri? checkoutPath;
+  final BuildOptions? buildOptions;
+
+  SourceMode(super.input, this.checkoutPath, [this.buildOptions]);
+
+  Uri get _root => checkoutPath ?? input.packageRoot;
+
+  @override
+  Future<({Uri openblasUri, Uri extensionsUri})> build() async {
     final openblas = OpenBlasBinary.forBuild(input);
+    final os = input.config.code.targetOS;
+    final arch = input.config.code.targetArchitecture;
+    final cCompiler = input.config.code.cCompiler;
+    final outputDir = Directory.fromUri(input.outputDirectory);
+    if (!outputDir.existsSync()) {
+      outputDir.createSync(recursive: true);
+    }
+    final customExtensionsPath = _root
+        .resolve('hook/custom_extensions.c')
+        .toFilePath();
+
+    final currentSourceHash = computeNativeSourceHash(_root);
+    final stampFile = File.fromUri(
+      outputDir.uri.resolve('source_hash_stamp.c'),
+    );
+    await stampFile.writeAsString('''
+#if defined(_WIN32)
+#define STAMP_EXPORT __declspec(dllexport)
+#define STAMP_USED
+#else
+#define STAMP_EXPORT __attribute__((visibility("default"), used))
+#define STAMP_USED __attribute__((used))
+#endif
+
+STAMP_USED static const char _openblas_source_hash_marker[] =
+    "$sourceHashMarkerPrefix$currentSourceHash";
+
+STAMP_EXPORT const char* openblas_embedded_source_hash(void) {
+  return _openblas_source_hash_marker;
+}
+''');
+
     switch (openblas) {
+      case MacosAccelerateBinary():
+        final compilerPath = cCompiler?.compiler.toFilePath() ?? 'cc';
+        final stubFile = File.fromUri(
+          outputDir.uri.resolve('accelerate_stub.c'),
+        );
+        await stubFile.writeAsString('''
+static int _accelerate_num_threads = 1;
+int openblas_get_num_threads(void) { return _accelerate_num_threads; }
+void openblas_set_num_threads(int num_threads) {
+  if (num_threads > 0) _accelerate_num_threads = num_threads;
+}
+const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
+''');
+
+        final libFile = File.fromUri(
+          outputDir.uri.resolve('libopenblas.dylib'),
+        );
+        final extLibFile = File.fromUri(
+          outputDir.uri.resolve('libopenblas_extensions.dylib'),
+        );
+
+        final stubCompileArgs = [
+          if (os == OS.macOS || os == OS.iOS) ...[
+            '-arch',
+            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            '-Wl,-install_name,@rpath/libopenblas.dylib',
+            '-Wl,-headerpad_max_install_names',
+          ],
+          '-dynamiclib',
+          '-O3',
+          stubFile.path,
+          customExtensionsPath,
+          stampFile.path,
+          '-o',
+          libFile.path,
+          '-framework',
+          'Accelerate',
+          '-Wl,-reexport_framework,Accelerate',
+        ];
+        final stubRes = await Process.run(compilerPath, stubCompileArgs);
+        if (stubRes.exitCode != 0) {
+          throw StateError(
+            'Failed to compile Accelerate stub (exit ${stubRes.exitCode}):\n'
+            'stdout: ${stubRes.stdout}\n'
+            'stderr: ${stubRes.stderr}',
+          );
+        }
+
+        final extCompileArgs = [
+          if (os == OS.macOS || os == OS.iOS) ...[
+            '-arch',
+            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            '-Wl,-install_name,@rpath/libopenblas_extensions.dylib',
+            '-Wl,-headerpad_max_install_names',
+          ],
+          '-dynamiclib',
+          '-O3',
+          customExtensionsPath,
+          stampFile.path,
+          '-o',
+          extLibFile.path,
+          '-framework',
+          'Accelerate',
+        ];
+        final extRes = await Process.run(compilerPath, extCompileArgs);
+        if (extRes.exitCode != 0) {
+          throw StateError(
+            'Failed to compile custom extensions (exit ${extRes.exitCode}):\n'
+            'stdout: ${extRes.stdout}\n'
+            'stderr: ${extRes.stderr}',
+          );
+        }
+
+        return (openblasUri: libFile.uri, extensionsUri: extLibFile.uri);
+
       case PrecompiledBinary():
-        final packageName = input.packageName;
-        final os = input.config.code.targetOS;
-        final cCompiler = input.config.code.cCompiler;
         final compilerPath =
             cCompiler?.compiler.toFilePath() ??
             (os == OS.windows ? 'cl' : 'cc');
-
         final compilerLower = compilerPath.toLowerCase();
         final isGNU =
             compilerLower.contains('gcc') ||
@@ -42,47 +474,38 @@ void main(List<String> args) async {
             compilerLower.contains('g++');
         final isMSVC = os == OS.windows && !isGNU;
 
-        if (os != OS.windows) {
-          throw UnimplementedError(
-            'Precompiled binaries only supported on Windows for now.',
-          );
-        }
-
-        final outputDir = Directory.fromUri(input.outputDirectory);
-        if (!outputDir.existsSync()) {
-          outputDir.createSync(recursive: true);
-        }
-
-        final zipUrl =
-            'https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip';
+        final zipUrl = Uri.parse(
+          'https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip',
+        );
         final extractDir = outputDir.uri.resolve('OpenBLAS-precompiled/');
         final extractDirFile = Directory.fromUri(extractDir);
 
         if (!extractDirFile.existsSync()) {
           print('Downloading precompiled OpenBLAS zip...');
-          final client = HttpClient();
-          List<int> zipBytes;
-          try {
-            final request = await client.getUrl(Uri.parse(zipUrl));
-            final response = await request.close();
-            if (response.statusCode != 200) {
-              throw HttpException(
-                'Failed to download OpenBLAS zip: status ${response.statusCode}',
-              );
-            }
-            final bytesBuilder = BytesBuilder();
-            await for (final chunk in response) {
-              bytesBuilder.add(chunk);
-            }
-            zipBytes = bytesBuilder.toBytes();
-          } finally {
-            client.close();
+          final zipBytes = await _downloadBytesWithRedirects(zipUrl);
+
+          final actualZipHash = sha256.convert(zipBytes).toString();
+          const expectedZipHash =
+              '7ad797ef0c9a5c42e28903bf726eaaaade307dafe187ff0e923d90cd4002780c';
+          if (actualZipHash != expectedZipHash) {
+            throw StateError(
+              'SHA-256 mismatch for OpenBLAS zip: expected $expectedZipHash, got $actualZipHash',
+            );
           }
 
-          print('Extracting precompiled OpenBLAS zip...');
           final archive = ZipDecoder().decodeBytes(zipBytes);
+          final extractDirPath = Directory.fromUri(extractDir).path;
+          final safeExtractPrefix =
+              extractDirPath.endsWith(Platform.pathSeparator)
+              ? extractDirPath
+              : '$extractDirPath${Platform.pathSeparator}';
           for (final file in archive) {
             final outPath = extractDir.resolve(file.name).toFilePath();
+            if (!outPath.startsWith(safeExtractPrefix)) {
+              throw FormatException(
+                'Path traversal attempt in OpenBLAS zip: ${file.name}',
+              );
+            }
             if (file.isFile) {
               final outFile = File(outPath);
               outFile.createSync(recursive: true);
@@ -93,27 +516,15 @@ void main(List<String> args) async {
           }
         }
 
-        // Locate files
         final dllFile = File.fromUri(extractDir.resolve('bin/libopenblas.dll'));
         final headersDir = extractDir.resolve('include/');
         final libDir = extractDir.resolve('lib/');
 
-        // Patch lapack.h to avoid C2373 redefinition errors on MSVC Windows
         if (isMSVC) {
           final lapackHeader = File(
             headersDir.resolve('lapack.h').toFilePath(),
           );
           if (lapackHeader.existsSync()) {
-            final linesBefore = await lapackHeader.readAsLines();
-            print('--- lapack.h BEFORE PATCH (lines 810-845) ---');
-            for (var i = 809; i < linesBefore.length && i < 845; i++) {
-              print('${i + 1}: ${linesBefore[i]}');
-            }
-            print('---------------------------------------------');
-
-            print(
-              'Patching lapack.h to resolve int32_t/uint32_t redefinition conflicts on MSVC...',
-            );
             var content = await lapackHeader.readAsString();
             content = content.replaceAll(
               RegExp(r'typedef\s+[^;]+int32_t\s*;'),
@@ -124,85 +535,49 @@ void main(List<String> args) async {
               '/* patched typedef uint32_t */',
             );
             await lapackHeader.writeAsString(content);
-
-            final linesAfter = await lapackHeader.readAsLines();
-            print('--- lapack.h AFTER PATCH (lines 810-845) ---');
-            for (var i = 809; i < linesAfter.length && i < 845; i++) {
-              print('${i + 1}: ${linesAfter[i]}');
-            }
-            print('--------------------------------------------');
           }
         }
 
-        final String openblasLibName;
-        if (isMSVC) {
-          openblasLibName = 'libopenblas.lib';
-        } else {
-          openblasLibName = 'libopenblas.dll.a';
-        }
+        final openblasLibName = isMSVC
+            ? 'libopenblas.lib'
+            : 'libopenblas.dll.a';
         final openblasLibFile = File.fromUri(libDir.resolve(openblasLibName));
 
-        if (!dllFile.existsSync()) {
-          throw StateError('Expected DLL not found at: ${dllFile.path}');
-        }
-        if (!openblasLibFile.existsSync()) {
-          throw StateError(
-            'Expected import library not found at: ${openblasLibFile.path}',
-          );
-        }
-
-        // Register OpenBLAS binary
-        output.assets.code.add(
-          CodeAsset(
-            package: packageName,
-            name: 'openblas',
-            linkMode: DynamicLoadingBundled(),
-            file: dllFile.uri,
-          ),
+        final extLibFile = File(
+          outputDir.uri.resolve('libopenblas_extensions.dll').toFilePath(),
         );
-        output.dependencies.add(
-          input.packageRoot.resolve('hook/custom_extensions.c'),
-        );
+        final compileArgs = isMSVC
+            ? [
+                '/LD',
+                '/O2',
+                '/EHsc',
+                '/I${headersDir.toFilePath()}',
+                customExtensionsPath,
+                stampFile.path,
+                '/Fe:${extLibFile.path}',
+                openblasLibFile.path,
+                '/link',
+                '/EXPORT:get_dgetrf_ptr',
+                '/EXPORT:get_sgetrf_ptr',
+                '/EXPORT:get_zgetrf_ptr',
+                '/EXPORT:get_cgetrf_ptr',
+                '/EXPORT:openblas_embedded_source_hash',
+              ]
+            : [
+                '-shared',
+                '-fPIC',
+                '-O3',
+                '-I${headersDir.toFilePath()}',
+                customExtensionsPath,
+                stampFile.path,
+                '-o',
+                extLibFile.path,
+                openblasLibFile.path,
+              ];
 
-        // Compile custom extensions
-        final extLibName = 'libopenblas_extensions.dll'; // We are on Windows
-        final extLibFile = File(outputDir.uri.resolve(extLibName).toFilePath());
-
-        final List<String> compileArgs;
-        if (isMSVC) {
-          compileArgs = [
-            '/LD',
-            '/O2',
-            '/EHsc',
-            '/I${headersDir.toFilePath()}',
-            input.packageRoot.resolve('hook/custom_extensions.c').toFilePath(),
-            '/Fe:${extLibFile.path}',
-            openblasLibFile.path,
-            '/link',
-            '/EXPORT:get_dgetrf_ptr',
-            '/EXPORT:get_sgetrf_ptr',
-            '/EXPORT:get_zgetrf_ptr',
-            '/EXPORT:get_cgetrf_ptr',
-          ];
-        } else {
-          compileArgs = [
-            '-shared',
-            '-fPIC',
-            '-O3',
-            '-I${headersDir.toFilePath()}',
-            input.packageRoot.resolve('hook/custom_extensions.c').toFilePath(),
-            '-o',
-            extLibFile.path,
-            openblasLibFile.path,
-          ];
-        }
-
-        print(
-          'Compiling custom extensions with: $compilerPath ${compileArgs.join(' ')}',
-        );
         final runEnv = <String, String>{...Platform.environment};
         if (isMSVC) {
-          final msvcEnv = await getMSVCEnvironment();
+          final msvcEnv = await getMSVCEnvironment(arch);
           for (final key in ['INCLUDE', 'LIB', 'LIBPATH']) {
             final val = msvcEnv[key] ?? msvcEnv[key.toLowerCase()];
             if (val != null) {
@@ -223,26 +598,11 @@ void main(List<String> args) async {
             'stderr: ${extRes.stderr}',
           );
         }
-        print('Compiled custom extensions successfully at: ${extLibFile.path}');
 
-        output.assets.code.add(
-          CodeAsset(
-            package: packageName,
-            name: 'openblas_extensions',
-            linkMode: DynamicLoadingBundled(),
-            file: extLibFile.uri,
-          ),
-        );
-        break;
+        return (openblasUri: dllFile.uri, extensionsUri: extLibFile.uri);
+
       case CompileOpenBlas(:final sourceUrl):
-        final packageName = input.packageName;
-        final os = input.config.code.targetOS;
-        final arch = input.config.code.targetArchitecture;
-        final cCompiler = input.config.code.cCompiler;
-
-        print('Building for OS: $os, Architecture: $arch');
-
-        String openBlasTarget = 'GENERIC'; // Default
+        String openBlasTarget = 'GENERIC';
         if (arch == Architecture.arm64) {
           openBlasTarget = 'ARMV8';
         } else if (arch == Architecture.arm) {
@@ -251,49 +611,60 @@ void main(List<String> args) async {
           openBlasTarget = 'ATOM';
         }
 
-        final outputDir = Directory.fromUri(input.outputDirectory);
-        if (!outputDir.existsSync()) {
-          outputDir.createSync(recursive: true);
+        final legacyExtractDir = Directory.fromUri(
+          outputDir.uri.resolve('OpenBLAS-0.3.33/'),
+        );
+        final sharedOpenblasBase = legacyExtractDir.existsSync()
+            ? outputDir
+            : Directory.fromUri(
+                input.outputDirectoryShared.resolve(
+                  'openblas-src-${os.name}-${arch.name}/',
+                ),
+              );
+        if (!sharedOpenblasBase.existsSync()) {
+          sharedOpenblasBase.createSync(recursive: true);
         }
-
-        final extractDir = outputDir.uri
+        final extractDir = sharedOpenblasBase.uri
             .resolve('OpenBLAS-0.3.33/')
             .toFilePath();
-
-        final libName = os == OS.windows
-            ? 'libopenblas.dll'
-            : (os == OS.macOS ? 'libopenblas.dylib' : 'libopenblas.so');
+        final libName = _canonicalOpenblasName(os);
         final libFile = File(
-          outputDir.uri.resolve('OpenBLAS-0.3.33/$libName').toFilePath(),
+          sharedOpenblasBase.uri
+              .resolve('OpenBLAS-0.3.33/$libName')
+              .toFilePath(),
         );
 
         if (!libFile.existsSync()) {
           print('Downloading OpenBLAS release...');
-          final client = HttpClient();
-          List<int> tarGzBytes;
-          try {
-            final request = await client.getUrl(Uri.parse(sourceUrl));
-            final response = await request.close();
-            if (response.statusCode != 200) {
-              throw HttpException(
-                'Failed to download OpenBLAS: status ${response.statusCode}',
-              );
-            }
-            final bytesBuilder = BytesBuilder();
-            await for (final chunk in response) {
-              bytesBuilder.add(chunk);
-            }
-            tarGzBytes = bytesBuilder.toBytes();
-          } finally {
-            client.close();
+          final tarGzBytes = await _downloadBytesWithRedirects(
+            Uri.parse(sourceUrl),
+          );
+
+          final actualTarHash = sha256.convert(tarGzBytes).toString();
+          const expectedTarHash =
+              '6761af1d9f5d353ab4f0b7497be2643313b36c8f31caec0144bfef198e71e6ab';
+          if (actualTarHash != expectedTarHash) {
+            throw StateError(
+              'SHA-256 mismatch for OpenBLAS archive: expected $expectedTarHash, got $actualTarHash',
+            );
           }
 
-          print('Extracting OpenBLAS...');
           final unzippedBytes = GZipDecoder().decodeBytes(tarGzBytes);
           final archive = TarDecoder().decodeBytes(unzippedBytes);
 
+          final safeOutputPrefix =
+              sharedOpenblasBase.path.endsWith(Platform.pathSeparator)
+              ? sharedOpenblasBase.path
+              : '${sharedOpenblasBase.path}${Platform.pathSeparator}';
           for (final file in archive) {
-            final outPath = outputDir.uri.resolve(file.name).toFilePath();
+            final outPath = sharedOpenblasBase.uri
+                .resolve(file.name)
+                .toFilePath();
+            if (!outPath.startsWith(safeOutputPrefix)) {
+              throw FormatException(
+                'Path traversal attempt in OpenBLAS archive: ${file.name}',
+              );
+            }
             if (file.isFile) {
               final outFile = File(outPath);
               outFile.createSync(recursive: true);
@@ -305,20 +676,24 @@ void main(List<String> args) async {
 
           print('Building OpenBLAS with target $openBlasTarget...');
           final makeArgs = <String>[
+            'shared',
             '-j${Platform.numberOfProcessors}',
             'TARGET=$openBlasTarget',
+            if (arch == Architecture.x64) ...[
+              'DYNAMIC_ARCH=1',
+              'DYNAMIC_LIST=NEHALEM SANDYBRIDGE HASWELL SKYLAKEX ZEN',
+            ],
             'USE_THREAD=1',
+            'FIXED_LIBNAME=1',
+            if (os != OS.current || arch != Architecture.current)
+              OS.current == OS.macOS ? 'HOSTCC=clang' : 'HOSTCC=gcc',
           ];
 
           if (cCompiler != null) {
             makeArgs.add('CC=${cCompiler.compiler.toFilePath()}');
             makeArgs.add('AR=${cCompiler.archiver.toFilePath()}');
-            print('Using cross-compiler: ${cCompiler.compiler.toFilePath()}');
-          } else {
-            print('No cross-compiler provided. Using host compiler.');
           }
 
-          // Restore executable permissions for OpenBLAS build scripts (lost during Dart TarDecoder extraction)
           await Process.run('chmod', [
             '-R',
             '+x',
@@ -331,105 +706,80 @@ void main(List<String> args) async {
             workingDirectory: extractDir,
           );
           if (buildResult.exitCode != 0) {
-            print('Failed to build OpenBLAS: ${buildResult.stderr}');
-            exit(1);
+            throw StateError(
+              'Failed to build OpenBLAS (exit ${buildResult.exitCode}):\n'
+              '${buildResult.stderr}',
+            );
           }
         }
 
-        if (libFile.existsSync()) {
-          output.assets.code.add(
-            CodeAsset(
-              package: packageName,
-              name: 'openblas',
-              linkMode: DynamicLoadingBundled(),
-              file: libFile.uri,
-            ),
-          );
-          output.dependencies.add(
-            input.packageRoot.resolve('hook/custom_extensions.c'),
-          );
-          print('Using built OpenBLAS library at ${libFile.path}');
+        final extLibFile = File(
+          outputDir.uri.resolve(_canonicalExtensionsName(os)).toFilePath(),
+        );
+        final compilerPath =
+            cCompiler?.compiler.toFilePath() ??
+            (os == OS.windows ? 'cl' : 'cc');
+        final compilerLower = compilerPath.toLowerCase();
+        final isMSVC =
+            os == OS.windows &&
+            (compilerLower.endsWith('cl.exe') || compilerLower == 'cl') &&
+            !compilerLower.contains('clang');
 
-          // Compile custom extensions!
-          final extLibName = os == OS.windows
-              ? 'libopenblas_extensions.dll'
-              : (os == OS.macOS
-                    ? 'libopenblas_extensions.dylib'
-                    : 'libopenblas_extensions.so');
-          final extLibFile = File(
-            outputDir.uri.resolve(extLibName).toFilePath(),
-          );
-          final compilerPath =
-              cCompiler?.compiler.toFilePath() ??
-              (os == OS.windows ? 'cl' : 'cc');
-          final isMSVC =
-              os == OS.windows && compilerPath.toLowerCase().contains('cl');
+        final compileArgs = isMSVC
+            ? [
+                '/LD',
+                '/O2',
+                '/EHsc',
+                '/I${extractDir}lapack-netlib/LAPACKE/include',
+                customExtensionsPath,
+                stampFile.path,
+                '/Fe:${extLibFile.path}',
+                '/link',
+                '/LIBPATH:$extractDir',
+                'libopenblas.lib',
+                '/EXPORT:openblas_embedded_source_hash',
+              ]
+            : [
+                '-shared',
+                '-fPIC',
+                '-O3',
+                if (os == OS.android) '-Wl,-z,max-page-size=16384',
+                '-I${extractDir}lapack-netlib/LAPACKE/include',
+                customExtensionsPath,
+                stampFile.path,
+                '-o',
+                extLibFile.path,
+                '-L$extractDir',
+                '-Wl,-rpath,\$ORIGIN',
+                '-lopenblas',
+                '-lm',
+              ];
 
-          final compileArgs = isMSVC
-              ? [
-                  '/LD',
-                  '/O2',
-                  '/EHsc',
-                  '/I${extractDir}lapack-netlib/LAPACKE/include',
-                  input.packageRoot
-                      .resolve('hook/custom_extensions.c')
-                      .toFilePath(),
-                  '/Fe:${extLibFile.path}',
-                  '/link',
-                  '/LIBPATH:$extractDir',
-                  'libopenblas.lib',
-                ]
-              : [
-                  '-shared',
-                  '-fPIC',
-                  '-O3',
-                  '-I${extractDir}lapack-netlib/LAPACKE/include',
-                  input.packageRoot
-                      .resolve('hook/custom_extensions.c')
-                      .toFilePath(),
-                  '-o',
-                  extLibFile.path,
-                  '-L$extractDir',
-                  '-Wl,-rpath,$extractDir',
-                  '-lopenblas',
-                  '-lm',
-                ];
-
-          print(
-            'Compiling custom extensions with: $compilerPath ${compileArgs.join(' ')}',
+        final extRes = await Process.run(compilerPath, compileArgs);
+        if (extRes.exitCode != 0) {
+          throw StateError(
+            'Failed to compile custom extensions: ${extRes.stderr}',
           );
-          final extRes = await Process.run(compilerPath, compileArgs);
-          if (extRes.exitCode != 0) {
-            print('Failed to compile custom extensions: ${extRes.stderr}');
-            exit(1);
-          }
-          print(
-            'Compiled custom extensions successfully at: ${extLibFile.path}',
-          );
-
-          output.assets.code.add(
-            CodeAsset(
-              package: packageName,
-              name: 'openblas_extensions',
-              linkMode: DynamicLoadingBundled(),
-              file: extLibFile.uri,
-            ),
-          );
-        } else {
-          print('Built library not found at ${libFile.path}');
         }
-        break;
-      case ExternalOpenBlas():
-        print('External OpenBLAS not supported yet.');
-        break;
+
+        return (openblasUri: libFile.uri, extensionsUri: extLibFile.uri);
     }
-  });
+  }
+
+  @override
+  List<Uri> get dependencies => [
+    for (final file in nativeSourceFiles(_root)) file.uri,
+  ];
 }
 
 sealed class OpenBlasBinary {
   OpenBlasBinary._();
 
   factory OpenBlasBinary.forBuild(BuildInput input) {
+    if (input.config.code.targetOS == OS.macOS ||
+        input.config.code.targetOS == OS.iOS) {
+      return MacosAccelerateBinary();
+    }
     if (input.config.code.targetOS == OS.windows) {
       return PrecompiledBinary();
     }
@@ -439,27 +789,55 @@ sealed class OpenBlasBinary {
   }
 }
 
-class PrecompiledBinary extends OpenBlasBinary {
+final class MacosAccelerateBinary extends OpenBlasBinary {
+  MacosAccelerateBinary() : super._();
+}
+
+final class PrecompiledBinary extends OpenBlasBinary {
   PrecompiledBinary() : super._();
 }
 
-class CompileOpenBlas extends OpenBlasBinary {
+final class CompileOpenBlas extends OpenBlasBinary {
   final String sourceUrl;
   CompileOpenBlas(this.sourceUrl) : super._();
 }
 
-class ExternalOpenBlas extends OpenBlasBinary {
-  ExternalOpenBlas() : super._();
+Future<Uint8List> _downloadBytesWithRedirects(Uri url) async {
+  final client = HttpClient();
+  try {
+    var currentUrl = url;
+    for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
+      final request = await client.getUrl(currentUrl);
+      final response = await request.close();
+      if (response.statusCode >= 300 &&
+          response.statusCode < 400 &&
+          response.headers.value(HttpHeaders.locationHeader) != null) {
+        currentUrl = currentUrl.resolve(
+          response.headers.value(HttpHeaders.locationHeader)!,
+        );
+        continue;
+      }
+      if (response.statusCode != 200) {
+        throw HttpException(
+          'Failed to download $currentUrl (HTTP ${response.statusCode})',
+        );
+      }
+      final builder = BytesBuilder(copy: false);
+      await for (final chunk in response) {
+        builder.add(chunk);
+      }
+      return builder.takeBytes();
+    }
+    throw HttpException('Too many redirects while downloading $url');
+  } finally {
+    client.close();
+  }
 }
 
-/// Helper function to query Visual Studio to obtain the proper environment variables
-/// (like INCLUDE, LIB, and LIBPATH) for MSVC compilation on Windows.
-Future<Map<String, String>> getMSVCEnvironment() async {
+Future<Map<String, String>> getMSVCEnvironment(Architecture targetArch) async {
   if (!Platform.isWindows) return {};
 
-  // Find vswhere.exe
-  String vswherePath = 'vswhere.exe'; // Try PATH first
-  // Fallback to default installer directory if not in PATH
+  String vswherePath = 'vswhere.exe';
   final programFilesX86 =
       Platform.environment['ProgramFiles(x86)'] ?? 'C:\\Program Files (x86)';
   final defaultVswhere =
@@ -469,62 +847,39 @@ Future<Map<String, String>> getMSVCEnvironment() async {
   }
 
   try {
-    // Run vswhere to find Visual Studio installation path
     final vswhereRes = await Process.run(vswherePath, [
       '-latest',
       '-property',
       'installationPath',
     ]);
-    if (vswhereRes.exitCode != 0) {
-      print('vswhere failed with exit code ${vswhereRes.exitCode}');
-      return {};
-    }
+    if (vswhereRes.exitCode != 0) return {};
 
     final vsPath = vswhereRes.stdout.toString().trim();
-    if (vsPath.isEmpty) {
-      print('vswhere returned empty path');
-      return {};
-    }
+    if (vsPath.isEmpty) return {};
 
     final vcvarsPath = '$vsPath\\VC\\Auxiliary\\Build\\vcvarsall.bat';
-    if (!await File(vcvarsPath).exists()) {
-      print('vcvarsall.bat not found at $vcvarsPath');
-      return {};
-    }
+    if (!await File(vcvarsPath).exists()) return {};
 
-    // To avoid Dart process argument escaping issues on Windows, we write a temporary
-    // batch file that calls vcvarsall.bat and prints the environment, then run it.
+    final vcvarsArch = targetArch == Architecture.arm64
+        ? 'arm64'
+        : (targetArch == Architecture.ia32 ? 'x86' : 'amd64');
+
     final tempDir = Directory.systemTemp;
     final tempFile = File(
       '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}.bat',
     );
-    try {
-      await tempFile.writeAsString(
-        '@echo off\ncall "$vcvarsPath" amd64\nset\n',
-      );
-    } catch (e) {
-      print('Failed to write temporary batch file: $e');
-      return {};
-    }
-
+    await tempFile.writeAsString(
+      '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',
+    );
     final envRes = await Process.run('cmd.exe', ['/c', tempFile.path]);
-
     try {
       await tempFile.delete();
     } catch (_) {}
 
-    if (envRes.exitCode != 0) {
-      print(
-        'Temporary MSVC environment batch file failed with exit code ${envRes.exitCode}',
-      );
-      print('vcvarsall.bat stdout: ${envRes.stdout}');
-      print('vcvarsall.bat stderr: ${envRes.stderr}');
-      return {};
-    }
+    if (envRes.exitCode != 0) return {};
 
     final envMap = <String, String>{};
-    final lines = envRes.stdout.toString().split('\n');
-    for (final line in lines) {
+    for (final line in envRes.stdout.toString().split('\n')) {
       final parts = line.split('=');
       if (parts.length >= 2) {
         final key = parts[0].trim();
@@ -535,8 +890,7 @@ Future<Map<String, String>> getMSVCEnvironment() async {
       }
     }
     return envMap;
-  } catch (e) {
-    print('Error detecting MSVC environment: $e');
+  } catch (_) {
     return {};
   }
 }

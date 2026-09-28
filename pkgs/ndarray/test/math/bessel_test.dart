@@ -86,7 +86,7 @@ void main() {
         );
         final xStrided = x.slice([Slice.all(), Index(0)]);
 
-        final out = NDArray<double>.create([3, 2], DType.float64)..fill(999.0);
+        final out = NDArray.create([3, 2], DType.float64)..fill(999.0);
         final outStrided = out.slice([Slice.all(), Index(0)]);
 
         final y = i0(xStrided, out: outStrided);

@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:math' as math;
-
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
@@ -28,20 +27,17 @@ void main() {
           DType.float64,
         );
         // Int32 indices
-        final idxInt32 = NDArray<int>.fromList([0, 2], [2], DType.int32);
+        final idxInt32 = NDArray.fromList([0, 2], [2], DType.int32);
         final b = NDArray<Float64>.fromList([5.0, 7.0], [2], DType.float64);
 
         atUfunc(a, idxInt32, b, op: BinaryOp.add);
         expect(a.toList(), equals([15.0, 20.0, 37.0, 40.0]));
 
         // Sliced non-contiguous indices
-        final idx2D = NDArray<int>.fromList(
-          [1, 99, 3, 99],
-          [2, 2],
-          DType.int64,
-        );
+        final idx2D = NDArray.fromList([1, 99, 3, 99], [2, 2], DType.int64);
         final idxSlice =
-            idx2D[[const Slice(), 0]] as NDArray<int>; // non-contiguous [1, 3]
+            idx2D[[const Slice(), 0]]
+                as NDArray<AnySpec>; // non-contiguous [1, 3]
         final b2 = NDArray<Float64>.fromList([1.0, 2.0], [2], DType.float64);
 
         atUfunc(a, idxSlice, b2, op: BinaryOp.add);
@@ -82,12 +78,12 @@ void main() {
     });
 
     test('3. bitwise operations with where mask holder disposal', () {
-      final a = NDArray<int>.fromList([1, 2, 3, 4], [4], DType.int32);
-      final b = NDArray<int>.fromList([4, 3, 2, 1], [4], DType.int32);
+      final a = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
+      final b = NDArray.fromList([4, 3, 2, 1], [4], DType.int32);
       final mask = NDArray<Uint8>.fromList([1, 0, 1, 0], [4], DType.uint8);
-      final out = NDArray<int>.zeros([4], DType.int32);
+      final out = NDArray.zeros([4], DType.int32);
 
-      final rAnd = bitwise_and(a, b, where: mask, out: out);
+      final rAnd = bitwiseAnd(a, b, where: mask, out: out);
       expect(rAnd.toList(), equals([0, 0, 2, 0]));
 
       final rInv = invert(a, where: mask);
@@ -144,7 +140,7 @@ void main() {
         expect(backDeg.shape, equals([]));
         expect(backDeg.scalar, closeTo(180.0, 1e-6));
 
-        final intArr = NDArray<int>.fromList([0, 1, 2], [3], DType.int32);
+        final intArr = NDArray.fromList([0, 1, 2], [3], DType.int32);
         final mask = NDArray<Uint8>.fromList([1, 1, 0], [3], DType.uint8);
         final out = NDArray<Float64>.zeros([3], DType.float64);
         final sincRes = sinc(intArr, where: mask, out: out);
@@ -167,7 +163,7 @@ void main() {
 
     test('7. broadcast and broadcastBinaryStrides with generic typing', () {
       final a = NDArray<Float64>.fromList([1.0, 2.0], [2, 1], DType.float64);
-      final b = NDArray<int>.fromList([10, 20, 30], [1, 3], DType.int32);
+      final b = NDArray.fromList([10, 20, 30], [1, 3], DType.int32);
       final res = broadcast(a, b);
       expect(res.shape, equals([2, 3]));
       expect(res.stridesA, equals([1, 0]));
@@ -180,7 +176,7 @@ void main() {
     test(
       '8. conj with strided complex array and scratch arena marker reset',
       () {
-        final cArr = NDArray<Complex>.fromList(
+        final cArr = NDArray.fromList(
           [
             Complex(1.0, 2.0),
             Complex(0.0, 0.0),
@@ -192,38 +188,41 @@ void main() {
         );
         final cSlice =
             cArr[const Slice(start: 0, stop: 4, step: 2)]
-                as NDArray<Complex>; // [1+2i, 3-4i]
+                as NDArray<AnySpec>; // [1+2i, 3-4i]
         final cConj = conj(cSlice);
         expect(cConj.toList(), equals([Complex(1.0, -2.0), Complex(3.0, 4.0)]));
       },
     );
 
-    test('9. nan_to_num generic typing, non-contiguous views, and complex handling', () {
-      final a = NDArray<Float64>.fromList(
-        [double.nan, 0.0, double.infinity, 0.0, double.negativeInfinity, 0.0],
-        [6],
-        DType.float64,
-      );
-      final aSlice =
-          a[const Slice(start: 0, stop: 6, step: 2)]
-              as NDArray<Float64>; // [nan, inf, -inf]
-      final out = NDArray<Float64>.zeros([3], DType.float64);
-      final cleaned = nan_to_num(
-        aSlice,
-        nan: 99.0,
-        posinf: 100.0,
-        neginf: -100.0,
-        out: out,
-      );
-      expect(cleaned.toList(), equals([99.0, 100.0, -100.0]));
+    test(
+      '9. nan_to_num generic typing, non-contiguous views, and complex handling',
+      () {
+        final a = NDArray<Float64>.fromList(
+          [double.nan, 0.0, double.infinity, 0.0, double.negativeInfinity, 0.0],
+          [6],
+          DType.float64,
+        );
+        final aSlice =
+            a[const Slice(start: 0, stop: 6, step: 2)]
+                as NDArray<Float64>; // [nan, inf, -inf]
+        final out = NDArray<Float64>.zeros([3], DType.float64);
+        final cleaned = nan_to_num(
+          aSlice,
+          nan: 99.0,
+          posinf: 100.0,
+          neginf: -100.0,
+          out: out,
+        );
+        expect(cleaned.toList(), equals([99.0, 100.0, -100.0]));
 
-      final c = NDArray<Complex>.fromList(
-        [Complex(double.nan, double.infinity)],
-        [1],
-        DType.complex128,
-      );
-      final cCleaned = nan_to_num(c, nan: 0.0, posinf: 50.0);
-      expect(cCleaned.toList(), equals([Complex(0.0, 50.0)]));
-    });
+        final c = NDArray.fromList(
+          [Complex(double.nan, double.infinity)],
+          [1],
+          DType.complex128,
+        );
+        final cCleaned = nan_to_num(c, nan: 0.0, posinf: 50.0);
+        expect(cCleaned.toList(), equals([Complex(0.0, 50.0)]));
+      },
+    );
   });
 }

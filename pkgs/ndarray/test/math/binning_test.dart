@@ -30,7 +30,7 @@ void main() {
     test('Basic contiguous unweighted (int32)', () {
       NDArray.scope(() {
         final x = NDArray.fromList([0, 1, 1, 3, 2, 1, 7], [7], DType.int32);
-        final out = NDArray<int>.zeros([8], DType.int32);
+        final out = NDArray.zeros([8], DType.int32);
         final counts = bincount(x, out: out);
         expect(counts.dtype, DType.int32);
         expect(counts.toList(), [1, 3, 1, 1, 0, 0, 0, 1]);
@@ -118,7 +118,7 @@ void main() {
 
     test('Empty input', () {
       NDArray.scope(() {
-        final x = NDArray<int>.zeros([0], DType.int64);
+        final x = NDArray.zeros([0], DType.int64);
         final counts = bincount(x);
         expect(counts.shape, [0]);
         expect(counts.toList(), <int>[]);
@@ -151,7 +151,7 @@ void main() {
           DType.int32,
         );
         final x = xFull.slice([Slice(start: 0, stop: 7, step: 2)]);
-        final out = NDArray<int>.zeros([3], DType.int32);
+        final out = NDArray.zeros([3], DType.int32);
         final counts = bincount(x, out: out);
         expect(counts.toList(), [1, 2, 1]);
       });
@@ -263,7 +263,7 @@ void main() {
         expect(() => bincount(x), throwsStateError);
 
         final x2 = NDArray.fromList([1, 2], [2], DType.int64);
-        final out = NDArray<int>.zeros([3], DType.int64);
+        final out = NDArray.zeros([3], DType.int64);
         out.dispose();
         expect(() => bincount(x2, out: out), throwsStateError);
 
@@ -279,17 +279,17 @@ void main() {
         final x = NDArray.fromList([1, 2], [2], DType.int64);
         expect(() => bincount(x, minlength: -1), throwsArgumentError);
 
-        final outBadShape = NDArray<int>.zeros([3, 1], DType.int64);
+        final outBadShape = NDArray.zeros([3, 1], DType.int64);
         expect(() => bincount(x, out: outBadShape), throwsArgumentError);
 
-        final outBadSize = NDArray<int>.zeros([2], DType.int64);
+        final outBadSize = NDArray.zeros([2], DType.int64);
         expect(() => bincount(x, out: outBadSize), throwsArgumentError);
       });
     });
 
     test('Empty input with out parameter', () {
       NDArray.scope(() {
-        final x = NDArray<int>.zeros([0], DType.int64);
+        final x = NDArray.zeros([0], DType.int64);
         final out = NDArray.fromList([1, 2, 3], [3], DType.int64);
         final counts = bincount(x, out: out);
         expect(counts.toList(), [0, 0, 0]);
@@ -304,13 +304,13 @@ void main() {
         expect(counts.toList(), [1, 2, 1]);
 
         final xInt32 = NDArray.fromList([0, 1, 1, 2], [4], DType.int32);
-        final outInt64 = NDArray<int>.zeros([3], DType.int64);
+        final outInt64 = NDArray.zeros([3], DType.int64);
         final counts2 = bincount(xInt32, out: outInt64);
         expect(counts2.dtype, DType.int64);
         expect(counts2.toList(), [1, 2, 1]);
 
         final xInt64 = NDArray.fromList([0, 1, 1, 2], [4], DType.int64);
-        final outInt32 = NDArray<int>.zeros([3], DType.int32);
+        final outInt32 = NDArray.zeros([3], DType.int32);
         final counts3 = bincount(xInt64, out: outInt32);
         expect(counts3.dtype, DType.int32);
         expect(counts3.toList(), [1, 2, 1]);
@@ -334,7 +334,7 @@ void main() {
           [4],
           DType.float32,
         );
-        final outFloat64 = NDArray<double>.zeros([3], DType.float64);
+        final outFloat64 = NDArray.zeros([3], DType.float64);
         final counts6 = bincount(
           xInt64,
           weights: weightsFloat32,
@@ -353,7 +353,7 @@ void main() {
           [4],
           DType.float64,
         );
-        final out = NDArray<double>.zeros([3], DType.float64);
+        final out = NDArray.zeros([3], DType.float64);
         final counts = bincount(x, weights: weights, out: out);
         expect(identical(counts, out), true);
         expect(out.toList(), [0.5, 3.0, 1.5]);
@@ -435,7 +435,7 @@ void main() {
         );
         expect(() => digitize(x, bins2D), throwsArgumentError);
 
-        final binsEmpty = NDArray<double>.zeros([0], DType.float64);
+        final binsEmpty = NDArray.zeros([0], DType.float64);
         expect(() => digitize(x, binsEmpty), throwsArgumentError);
       });
     });
@@ -518,7 +518,7 @@ void main() {
 
     test('Empty input', () {
       NDArray.scope(() {
-        final x = NDArray<double>.zeros([0], DType.float64);
+        final x = NDArray.zeros([0], DType.float64);
         final (:hist, :binEdges) = histogram(x, bins: 3);
         expect(hist.toList(), [0, 0, 0]);
         expect(binEdges.toList(), [

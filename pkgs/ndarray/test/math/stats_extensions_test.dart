@@ -90,7 +90,7 @@ void main() {
     test('ptp with out parameter', () {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 5.0, 2.0, 10.0], [4], DType.float64);
-        final out = NDArray<double>.zeros([], DType.float64);
+        final out = NDArray.zeros([], DType.float64);
         final res = ptp(a, out: out);
         expect(identical(res, out), true);
         expect(out.scalar, 9.0);
@@ -115,7 +115,7 @@ void main() {
 
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-        final out = NDArray<double>.zeros([
+        final out = NDArray.zeros([
           2,
         ], DType.float64); // incompatible shape, should be []
         expect(() => ptp(a, out: out), throwsArgumentError);
@@ -123,10 +123,7 @@ void main() {
 
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-        final out = NDArray<double>.zeros(
-          [],
-          DType.float32,
-        ); // incompatible dtype
+        final out = NDArray.zeros([], DType.float32); // incompatible dtype
         expect(() => ptp(a, out: out), throwsArgumentError);
       });
 
@@ -284,7 +281,7 @@ void main() {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
         final w = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
-        final out = NDArray<double>.zeros([], DType.float64);
+        final out = NDArray.zeros([], DType.float64);
         final res = average(a, weights: w, out: out);
         expect(identical(res.average, out), true);
         expect(out.scalar, 3.0);
@@ -295,7 +292,11 @@ void main() {
       NDArray.scope(() {
         final a = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
         final w = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
-        final res = average<int, int, double>(a, weights: w, returned: true);
+        final res = average<DTypeTag, DTypeTag, DTypeTag>(
+          a,
+          weights: w,
+          returned: true,
+        );
 
         expect(res.average.dtype, DType.float64);
         expect(res.average.scalar, 3.0);

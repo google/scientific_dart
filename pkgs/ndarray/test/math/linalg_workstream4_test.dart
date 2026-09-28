@@ -38,16 +38,22 @@ void main() {
       );
     });
 
-    test('cholesky throws NonPositiveDefiniteException on non-positive definite matrix', () {
-      NDArray.scope(() {
-        final a = NDArray.fromList(
-          [-1.0, 0.0, 0.0, -1.0],
-          [2, 2],
-          DType.float64,
-        );
-        expect(() => cholesky(a), throwsA(isA<NonPositiveDefiniteException>()));
-      });
-    });
+    test(
+      'cholesky throws NonPositiveDefiniteException on non-positive definite matrix',
+      () {
+        NDArray.scope(() {
+          final a = NDArray.fromList(
+            [-1.0, 0.0, 0.0, -1.0],
+            [2, 2],
+            DType.float64,
+          );
+          expect(
+            () => cholesky(a),
+            throwsA(isA<NonPositiveDefiniteException>()),
+          );
+        });
+      },
+    );
   });
 
   group('Workstream 4 - Einsum Ellipsis Validation', () {
@@ -218,7 +224,7 @@ void main() {
 
         final res = vdot(a, b);
         expect(res.shape, equals([]));
-        final cVal = res.scalar as Complex;
+        final cVal = res.scalar;
         expect(cVal.real, closeTo(-10.0, 1e-12));
         expect(cVal.imag, closeTo(-28.0, 1e-12));
       });
