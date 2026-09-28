@@ -12,35 +12,96 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
-import '../dtype.dart';
-import '../gpu_array.dart';
-import '../exceptions.dart';
-import '../slice.dart';
+import '../autograd/autograd.dart';
 import '../backend/compute_engine.dart';
 import '../backend/kernels.dart';
-import '../autograd/autograd.dart';
+import '../dtype.dart';
+import '../exceptions.dart';
+import '../gpu_array.dart';
+import '../slice.dart';
+
+/// Padding modes for [pad].
+enum PadMode {
+  /// Pads with a constant value.
+  constant,
+
+  /// Pads with the edge values of the array.
+  edge,
+
+  /// Pads with the reflection of the vector mirrored on the first and last
+  /// values of the vector along each axis.
+  reflect,
+
+  /// Pads with the reflection of the vector mirrored along the edge of the
+  /// array.
+  symmetric,
+
+  /// Pads with the wrap of the vector along the axis.
+  wrap,
+}
+
+void _checkNotDisposed(GpuArray a, String name) {
+  if (a.isDisposed || a.buffer.isDisposed) {
+    throw GpuDeviceDisposedException(
+      'Cannot operate on disposed GpuArray ($name).',
+    );
+  }
+}
+
+GpuArray<T> _allocateOrValidateOut<T extends DTypeTag>(
+  String opName,
+  List<int> outShape,
+  DType<T> outDType,
+  GpuArray reference,
+  GpuArray<T>? out,
+) {
+  if (out != null) {
+    _checkNotDisposed(out, 'out');
+    if (out.size > 1 && out.strides.contains(0)) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must be writeable and not a broadcasted view.',
+      );
+    }
+    if (!areShapesEqual(out.shape, outShape)) {
+      throw GpuShapeMismatchException('$opName(out)', out.shape, outShape);
+    }
+    if (out.dtype != outDType) {
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must match output dtype $outDType.',
+      );
+    }
+    return out;
+  }
+  return GpuArray<T>.empty(outShape, outDType, device: reference.device);
+}
 
 /// Joins a sequence of [arrays] along an existing [axis].
 GpuArray<T> concatenate<T extends DTypeTag>(
   List<GpuArray> arrays, {
   int axis = 0,
+  GpuArray<T>? out,
 }) {
   if (arrays.isEmpty) {
-    throw ArgumentError('Cannot concatenate an empty list of arrays.');
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
   final first = arrays[0];
+  _checkNotDisposed(first, 'arrays[0]');
   final rank = first.shape.length;
   final normAxis = axis < 0 ? axis + rank : axis;
   if (normAxis < 0 || normAxis >= rank) {
     throw GpuAxisOutOfBoundsException(axis, rank);
   }
 
-  // Determine promoted dtype and verify matching shapes along other axes
   var outDType = first.dtype;
   var totalAxisLen = 0;
 
-  for (final arr in arrays) {
+  for (var i = 0; i < arrays.length; i++) {
+    final arr = arrays[i];
+    _checkNotDisposed(arr, 'arrays[$i]');
     if (arr.shape.length != rank) {
       throw GpuShapeMismatchException('concatenate', arr.shape, first.shape);
     }
@@ -53,12 +114,14 @@ GpuArray<T> concatenate<T extends DTypeTag>(
     outDType = GpuArray.promoteDTypes(outDType, arr.dtype);
   }
 
-  final outShape = List<int>.from(first.shape);
+  final outShape = List<int>.of(first.shape);
   outShape[normAxis] = totalAxisLen;
-  final result = GpuArray<T>.empty(
+  final result = _allocateOrValidateOut<T>(
+    'concatenate',
     outShape,
     outDType as DType<T>,
-    device: first.device,
+    first,
+    out,
   );
 
   GpuKernels.executeConcatenate(
@@ -84,90 +147,168 @@ GpuArray<T> concatenate<T extends DTypeTag>(
 }
 
 /// Joins a sequence of [arrays] along a new [axis].
-GpuArray<T> stack<T extends DTypeTag>(List<GpuArray> arrays, {int axis = 0}) {
+GpuArray<T> stack<T extends DTypeTag>(
+  List<GpuArray> arrays, {
+  int axis = 0,
+  GpuArray<T>? out,
+}) {
   if (arrays.isEmpty) {
-    throw ArgumentError('Cannot stack an empty list of arrays.');
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
-  final expanded = arrays.map((a) => expand_dims(a, axis)).toList();
-  return concatenate<T>(expanded, axis: axis);
+  final expanded = arrays.map((a) => expandDims(a, axis)).toList();
+  try {
+    return concatenate<T>(expanded, axis: axis, out: out);
+  } finally {
+    for (final view in expanded) {
+      view.dispose();
+    }
+  }
 }
 
-/// Stacks arrays in sequence vertically (row wise / along axis 0).
-GpuArray<T> vstack<T extends DTypeTag>(List<GpuArray> arrays) {
+/// Stacks arrays in sequence vertically (row-wise / along axis 0).
+GpuArray<T> vstack<T extends DTypeTag>(
+  List<GpuArray> arrays, {
+  GpuArray<T>? out,
+}) {
   if (arrays.isEmpty) {
-    throw ArgumentError('Cannot vstack an empty list of arrays.');
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
+  final tempViews = <GpuArray>[];
   final prepared = arrays.map((a) {
+    _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
-      return a.reshape([1, a.shape[0]]);
+      final view = a.reshape([1, a.shape[0]]);
+      tempViews.add(view);
+      return view;
     }
     return a;
   }).toList();
-  return concatenate<T>(prepared, axis: 0);
+  try {
+    return concatenate<T>(prepared, axis: 0, out: out);
+  } finally {
+    for (final v in tempViews) {
+      v.dispose();
+    }
+  }
 }
 
-/// Stacks arrays in sequence horizontally (column wise / along axis 1).
-GpuArray<T> hstack<T extends DTypeTag>(List<GpuArray> arrays) {
+/// Stacks arrays in sequence horizontally (column-wise / along axis 1).
+GpuArray<T> hstack<T extends DTypeTag>(
+  List<GpuArray> arrays, {
+  GpuArray<T>? out,
+}) {
   if (arrays.isEmpty) {
-    throw ArgumentError('Cannot hstack an empty list of arrays.');
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
+  final tempViews = <GpuArray>[];
   final prepared = arrays.map((a) {
+    _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
-      return a.reshape([a.shape[0], 1]);
+      final view = a.reshape([a.shape[0], 1]);
+      tempViews.add(view);
+      return view;
     }
     return a;
   }).toList();
   final axis = (arrays[0].shape.length == 1) ? 0 : 1;
-  return concatenate<T>(prepared, axis: axis);
+  try {
+    return concatenate<T>(prepared, axis: axis, out: out);
+  } finally {
+    for (final v in tempViews) {
+      v.dispose();
+    }
+  }
 }
 
-/// Stacks arrays in sequence depth wise (along axis 2).
-GpuArray<T> dstack<T extends DTypeTag>(List<GpuArray> arrays) {
+/// Stacks arrays in sequence depth-wise (along axis 2).
+GpuArray<T> dstack<T extends DTypeTag>(
+  List<GpuArray> arrays, {
+  GpuArray<T>? out,
+}) {
   if (arrays.isEmpty) {
-    throw ArgumentError('Cannot dstack an empty list of arrays.');
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
+  final tempViews = <GpuArray>[];
   final prepared = arrays.map((a) {
+    _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
-      return a.reshape([1, a.shape[0], 1]);
+      final view = a.reshape([1, a.shape[0], 1]);
+      tempViews.add(view);
+      return view;
     } else if (a.shape.length == 2) {
-      return a.reshape([a.shape[0], a.shape[1], 1]);
+      final view = a.reshape([a.shape[0], a.shape[1], 1]);
+      tempViews.add(view);
+      return view;
     }
     return a;
   }).toList();
-  return concatenate<T>(prepared, axis: 2);
+  try {
+    return concatenate<T>(prepared, axis: 2, out: out);
+  } finally {
+    for (final v in tempViews) {
+      v.dispose();
+    }
+  }
 }
 
 /// Stacks 1D or 2D arrays as columns to create a 2D array.
-GpuArray<T> column_stack<T extends DTypeTag>(List<GpuArray> arrays) {
+GpuArray<T> columnStack<T extends DTypeTag>(
+  List<GpuArray> arrays, {
+  GpuArray<T>? out,
+}) {
   if (arrays.isEmpty) {
-    throw ArgumentError('Cannot column_stack an empty list of arrays.');
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
+  final tempViews = <GpuArray>[];
   final prepared = arrays.map((a) {
+    _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
-      return a.reshape([a.shape[0], 1]);
+      final view = a.reshape([a.shape[0], 1]);
+      tempViews.add(view);
+      return view;
     }
     return a;
   }).toList();
-  return concatenate<T>(prepared, axis: 1);
+  try {
+    return concatenate<T>(prepared, axis: 1, out: out);
+  } finally {
+    for (final v in tempViews) {
+      v.dispose();
+    }
+  }
 }
+
+/// Stacks 1D or 2D arrays as columns to create a 2D array.
+@Deprecated('Use columnStack instead.')
+// ignore: non_constant_identifier_names
+GpuArray<T> column_stack<T extends DTypeTag>(
+  List<GpuArray> arrays, {
+  GpuArray<T>? out,
+}) => columnStack<T>(arrays, out: out);
 
 /// Splits an array into multiple sub-arrays along [axis].
 List<GpuArray<T>> split<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic indicesOrSections, {
+  Object indicesOrSections, {
   int axis = 0,
 }) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   final normAxis = axis < 0 ? axis + rank : axis;
+  if (normAxis < 0 || normAxis >= rank) {
+    throw GpuAxisOutOfBoundsException(axis, rank);
+  }
   final dimLen = a.shape[normAxis];
 
   final splitPoints = <int>[0];
 
   if (indicesOrSections is int) {
     final sections = indicesOrSections;
-    if (dimLen % sections != 0) {
-      throw ArgumentError(
-        'Array split does not result in an equal division: $dimLen is not divisible by $sections.',
+    if (sections <= 0 || dimLen % sections != 0) {
+      throw ArgumentError.value(
+        indicesOrSections,
+        'indicesOrSections',
+        'Must evenly divide axis length ($dimLen).',
       );
     }
     final step = dimLen ~/ sections;
@@ -177,8 +318,10 @@ List<GpuArray<T>> split<T extends DTypeTag>(
   } else if (indicesOrSections is List<int>) {
     splitPoints.addAll(indicesOrSections);
   } else {
-    throw ArgumentError(
-      'indicesOrSections must be an integer (section count) or List<int> of split indices.',
+    throw ArgumentError.value(
+      indicesOrSections,
+      'indicesOrSections',
+      'Must be an int or List<int>.',
     );
   }
   splitPoints.add(dimLen);
@@ -188,7 +331,7 @@ List<GpuArray<T>> split<T extends DTypeTag>(
     final start = splitPoints[i];
     final stop = splitPoints[i + 1];
 
-    final sliceSpecs = List<dynamic>.generate(rank, (d) {
+    final sliceSpecs = List<Object>.generate(rank, (d) {
       if (d == normAxis) {
         return Slice(start, stop);
       }
@@ -201,18 +344,29 @@ List<GpuArray<T>> split<T extends DTypeTag>(
 }
 
 /// Splits an array into multiple sub-arrays (allowing unequal division).
-List<GpuArray<T>> array_split<T extends DTypeTag>(
+List<GpuArray<T>> arraySplit<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic indicesOrSections, {
+  Object indicesOrSections, {
   int axis = 0,
 }) {
+  _checkNotDisposed(a, 'a');
   if (indicesOrSections is! int) {
     return split<T>(a, indicesOrSections, axis: axis);
   }
   final rank = a.shape.length;
   final normAxis = axis < 0 ? axis + rank : axis;
+  if (normAxis < 0 || normAxis >= rank) {
+    throw GpuAxisOutOfBoundsException(axis, rank);
+  }
   final dimLen = a.shape[normAxis];
   final n = indicesOrSections;
+  if (n <= 0) {
+    throw ArgumentError.value(
+      indicesOrSections,
+      'indicesOrSections',
+      'Must be positive.',
+    );
+  }
 
   final div = dimLen ~/ n;
   final mod = dimLen % n;
@@ -233,7 +387,7 @@ List<GpuArray<T>> array_split<T extends DTypeTag>(
     final start = splitPoints[i];
     final stop = splitPoints[i + 1];
 
-    final sliceSpecs = List<dynamic>.generate(rank, (d) {
+    final sliceSpecs = List<Object>.generate(rank, (d) {
       if (d == normAxis) {
         return Slice(start, stop);
       }
@@ -245,11 +399,28 @@ List<GpuArray<T>> array_split<T extends DTypeTag>(
   return result;
 }
 
-/// Splits array horizontally (along axis 1).
+/// Splits an array into multiple sub-arrays (allowing unequal division).
+@Deprecated('Use arraySplit instead.')
+// ignore: non_constant_identifier_names
+List<GpuArray<T>> array_split<T extends DTypeTag>(
+  GpuArray<T> a,
+  Object indicesOrSections, {
+  int axis = 0,
+}) => arraySplit<T>(a, indicesOrSections, axis: axis);
+
+/// Splits array horizontally (along axis 1 for >=2D, or axis 0 for 1D).
 List<GpuArray<T>> hsplit<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic indicesOrSections,
+  Object indicesOrSections,
 ) {
+  _checkNotDisposed(a, 'a');
+  if (a.shape.isEmpty) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must have at least 1 dimension for hsplit.',
+    );
+  }
   final axis = a.shape.length == 1 ? 0 : 1;
   return split<T>(a, indicesOrSections, axis: axis);
 }
@@ -257,10 +428,15 @@ List<GpuArray<T>> hsplit<T extends DTypeTag>(
 /// Splits array vertically (along axis 0).
 List<GpuArray<T>> vsplit<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic indicesOrSections,
+  Object indicesOrSections,
 ) {
+  _checkNotDisposed(a, 'a');
   if (a.shape.length < 2) {
-    throw ArgumentError('vsplit only works on arrays of 2 or more dimensions.');
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must have at least 2 dimensions for vsplit.',
+    );
   }
   return split<T>(a, indicesOrSections, axis: 0);
 }
@@ -268,16 +444,35 @@ List<GpuArray<T>> vsplit<T extends DTypeTag>(
 /// Splits array depth-wise (along axis 2).
 List<GpuArray<T>> dsplit<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic indicesOrSections,
+  Object indicesOrSections,
 ) {
+  _checkNotDisposed(a, 'a');
   if (a.shape.length < 3) {
-    throw ArgumentError('dsplit only works on arrays of 3 or more dimensions.');
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must have at least 3 dimensions for dsplit.',
+    );
   }
   return split<T>(a, indicesOrSections, axis: 2);
 }
 
 /// Constructs an array by repeating [a] the number of times given by [reps].
-GpuArray<T> tile<T extends DTypeTag>(GpuArray<T> a, List<int> reps) {
+GpuArray<T> tile<T extends DTypeTag>(
+  GpuArray<T> a,
+  List<int> reps, {
+  GpuArray<T>? out,
+}) {
+  _checkNotDisposed(a, 'a');
+  for (final r in reps) {
+    if (r < 0) {
+      throw ArgumentError.value(
+        reps,
+        'reps',
+        'Must contain non-negative ints.',
+      );
+    }
+  }
   final rank = reps.length > a.shape.length ? reps.length : a.shape.length;
   final padRankA = rank - a.shape.length;
   final padRankR = rank - reps.length;
@@ -290,7 +485,7 @@ GpuArray<T> tile<T extends DTypeTag>(GpuArray<T> a, List<int> reps) {
     rank,
     (d) => shapeA[d] * repsNormalized[d],
   );
-  final result = GpuArray<T>.empty(outShape, a.dtype, device: a.device);
+  final result = _allocateOrValidateOut<T>('tile', outShape, a.dtype, a, out);
 
   GpuKernels.executeTile(
     src: a.buffer,
@@ -313,60 +508,88 @@ GpuArray<T> repeat<T extends DTypeTag>(
   GpuArray<T> a,
   int repeats, {
   int? axis,
+  GpuArray<T>? out,
 }) {
-  if (repeats < 0) {
-    throw ArgumentError('repeats must be non-negative.');
-  }
+  _checkNotDisposed(a, 'a');
+  RangeError.checkNotNegative(repeats, 'repeats');
   if (axis == null) {
     final flat = a.flatten();
-    final total = flat.shape[0];
-    final outShape = [total * repeats];
-    final result = GpuArray<T>.empty(outShape, a.dtype, device: a.device);
-
-    for (var i = 0; i < total; i++) {
-      final val = ComputeEngine.readAny(
-        flat.buffer,
-        flat.dtype,
-        i,
-        offsetElements: flat.offsetElements,
+    try {
+      final total = flat.shape[0];
+      final outShape = [total * repeats];
+      final result = _allocateOrValidateOut<T>(
+        'repeat',
+        outShape,
+        a.dtype,
+        a,
+        out,
       );
-      for (var r = 0; r < repeats; r++) {
-        ComputeEngine.writeAny(result.buffer, a.dtype, i * repeats + r, val);
+
+      for (var i = 0; i < total; i++) {
+        final val = readBufferAny(
+          flat.buffer,
+          flat.dtype,
+          i * flat.strides[0],
+          offsetElements: flat.offsetElements,
+        );
+        for (var r = 0; r < repeats; r++) {
+          final dstIndex = (i * repeats + r) * result.strides[0];
+          writeBufferAny(
+            result.buffer,
+            a.dtype,
+            dstIndex,
+            val,
+            offsetElements: result.offsetElements,
+          );
+        }
+      }
+
+      return result;
+    } finally {
+      if (!identical(flat, a)) {
+        flat.dispose();
       }
     }
-
-    return result;
   }
 
   final rank = a.shape.length;
   final normAxis = axis < 0 ? axis + rank : axis;
-  final outShape = List<int>.from(a.shape);
+  if (normAxis < 0 || normAxis >= rank) {
+    throw GpuAxisOutOfBoundsException(axis, rank);
+  }
+  final outShape = List<int>.of(a.shape);
   outShape[normAxis] *= repeats;
 
-  final result = GpuArray<T>.empty(outShape, a.dtype, device: a.device);
+  final result = _allocateOrValidateOut<T>('repeat', outShape, a.dtype, a, out);
 
-  final total = ShapeUtils.computeSize(a.shape);
+  final total = computeSize(a.shape);
   final coords = List<int>.filled(rank, 0);
 
   for (var i = 0; i < total; i++) {
-    var srcIdx = 0;
+    var srcIndex = 0;
     for (var d = 0; d < rank; d++) {
-      srcIdx += coords[d] * a.strides[d];
+      srcIndex += coords[d] * a.strides[d];
     }
-    final val = ComputeEngine.readAny(
+    final val = readBufferAny(
       a.buffer,
       a.dtype,
-      srcIdx,
+      srcIndex,
       offsetElements: a.offsetElements,
     );
 
     for (var r = 0; r < repeats; r++) {
-      var dstIdx = 0;
+      var dstIndex = 0;
       for (var d = 0; d < rank; d++) {
         final coordDst = (d == normAxis) ? coords[d] * repeats + r : coords[d];
-        dstIdx += coordDst * result.strides[d];
+        dstIndex += coordDst * result.strides[d];
       }
-      ComputeEngine.writeAny(result.buffer, a.dtype, dstIdx, val);
+      writeBufferAny(
+        result.buffer,
+        a.dtype,
+        dstIndex,
+        val,
+        offsetElements: result.offsetElements,
+      );
     }
 
     for (var d = rank - 1; d >= 0; d--) {
@@ -379,70 +602,182 @@ GpuArray<T> repeat<T extends DTypeTag>(
   return result;
 }
 
-/// Pads an array with [padWidth].
+int _resolvePadCoord(int rawCoord, int dim, PadMode mode) {
+  if (rawCoord >= 0 && rawCoord < dim) return rawCoord;
+  if (dim <= 1) return 0;
+  switch (mode) {
+    case PadMode.constant:
+      return -1;
+    case PadMode.edge:
+      return rawCoord < 0 ? 0 : dim - 1;
+    case PadMode.reflect:
+      final period = 2 * (dim - 1);
+      final m = ((rawCoord % period) + period) % period;
+      return m < dim ? m : period - m;
+    case PadMode.symmetric:
+      final period = 2 * dim;
+      final m = ((rawCoord % period) + period) % period;
+      return m < dim ? m : period - 1 - m;
+    case PadMode.wrap:
+      return ((rawCoord % dim) + dim) % dim;
+  }
+}
+
+/// Pads an array with [padWidth] according to [mode].
 GpuArray<T> pad<T extends DTypeTag>(
   GpuArray<T> a,
   List<List<int>> padWidth, {
-  String mode = 'constant',
-  dynamic constantValues = 0,
+  PadMode mode = PadMode.constant,
+  Object constantValues = 0,
+  GpuArray<T>? out,
 }) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   if (padWidth.length != rank) {
-    throw ArgumentError(
-      'padWidth length (${padWidth.length}) must match tensor rank ($rank).',
+    throw ArgumentError.value(
+      padWidth,
+      'padWidth',
+      'Must have length matching tensor rank ($rank).',
     );
+  }
+  for (var d = 0; d < rank; d++) {
+    if (padWidth[d].length != 2 || padWidth[d][0] < 0 || padWidth[d][1] < 0) {
+      throw ArgumentError.value(
+        padWidth[d],
+        'padWidth[$d]',
+        'Must be a [before, after] pair of non-negative integers.',
+      );
+    }
+    if (mode != PadMode.constant && a.shape[d] == 0) {
+      throw ArgumentError.value(
+        a.shape,
+        'a.shape',
+        'Must not contain empty dimensions when padding with $mode.',
+      );
+    }
   }
 
   final outShape = List<int>.generate(
     rank,
     (d) => a.shape[d] + padWidth[d][0] + padWidth[d][1],
   );
-  final result = GpuArray<T>.empty(outShape, a.dtype, device: a.device);
+  final result = _allocateOrValidateOut<T>('pad', outShape, a.dtype, a, out);
 
-  GpuKernels.executePad(
-    src: a.buffer,
-    shapeSrc: a.shape,
-    stridesSrc: a.strides,
-    offsetSrc: a.offsetElements,
-    dtypeSrc: a.dtype,
-    dst: result.buffer,
-    outShape: outShape,
-    outStrides: result.strides,
-    offsetDst: result.offsetElements,
-    dtypeDst: a.dtype,
-    padWidth: padWidth,
-    constantValue: constantValues,
-  );
+  if (mode == PadMode.constant) {
+    GpuKernels.executePad(
+      src: a.buffer,
+      shapeSrc: a.shape,
+      stridesSrc: a.strides,
+      offsetSrc: a.offsetElements,
+      dtypeSrc: a.dtype,
+      dst: result.buffer,
+      outShape: outShape,
+      outStrides: result.strides,
+      offsetDst: result.offsetElements,
+      dtypeDst: a.dtype,
+      padWidth: padWidth,
+      constantValue: constantValues,
+    );
+    return result;
+  }
+
+  final totalElements = computeSize(outShape);
+  final coords = List<int>.filled(rank, 0);
+
+  for (var i = 0; i < totalElements; i++) {
+    var elemOffsetDst = 0;
+    var elemOffsetSrc = 0;
+
+    for (var d = 0; d < rank; d++) {
+      elemOffsetDst += coords[d] * result.strides[d];
+      final rawCoord = coords[d] - padWidth[d][0];
+      final srcCoord = _resolvePadCoord(rawCoord, a.shape[d], mode);
+      elemOffsetSrc += srcCoord * a.strides[d];
+    }
+
+    final val = readBufferAny(
+      a.buffer,
+      a.dtype,
+      elemOffsetSrc,
+      offsetElements: a.offsetElements,
+    );
+    writeBufferAny(
+      result.buffer,
+      a.dtype,
+      elemOffsetDst,
+      val,
+      offsetElements: result.offsetElements,
+    );
+
+    for (var d = rank - 1; d >= 0; d--) {
+      coords[d]++;
+      if (coords[d] < outShape[d]) break;
+      coords[d] = 0;
+    }
+  }
 
   return result;
 }
 
-/// Roll array elements along a given [axis].
+/// Rolls array elements along a given [axis].
 GpuArray<T> roll<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic shift, {
-  dynamic axis,
+  Object shift, {
+  Object? axis,
+  GpuArray<T>? out,
 }) {
+  _checkNotDisposed(a, 'a');
   if (axis == null) {
     final flat = a.flatten();
-    final total = flat.shape[0];
-    final s = (shift is int) ? shift : (shift as List<int>)[0];
-    final sNorm = ((s % total) + total) % total;
+    try {
+      final total = flat.shape[0];
+      if (total == 0) {
+        return _allocateOrValidateOut<T>('roll', a.shape, a.dtype, a, out);
+      }
+      final s = (shift is int) ? shift : (shift as List<int>)[0];
+      final sNorm = ((s % total) + total) % total;
 
-    final rolledFlat = GpuArray<T>.empty([total], a.dtype, device: a.device);
-
-    for (var i = 0; i < total; i++) {
-      final srcIdx = (i - sNorm + total) % total;
-      final val = ComputeEngine.readAny(
-        flat.buffer,
-        flat.dtype,
-        srcIdx,
-        offsetElements: flat.offsetElements,
+      final result = _allocateOrValidateOut<T>(
+        'roll',
+        a.shape,
+        a.dtype,
+        a,
+        out,
       );
-      ComputeEngine.writeAny(rolledFlat.buffer, a.dtype, i, val);
-    }
+      final outStrides = result.strides;
+      final cStrides = computeCStrides(a.shape);
+      final rank = a.shape.length;
 
-    return rolledFlat.reshape(a.shape);
+      for (var i = 0; i < total; i++) {
+        final srcIndex = (i - sNorm + total) % total;
+        final val = readBufferAny(
+          flat.buffer,
+          flat.dtype,
+          srcIndex * flat.strides[0],
+          offsetElements: flat.offsetElements,
+        );
+        var rem = i;
+        var dstIndex = 0;
+        for (var d = 0; d < rank; d++) {
+          final coord = rem ~/ cStrides[d];
+          rem = rem % cStrides[d];
+          dstIndex += coord * outStrides[d];
+        }
+        writeBufferAny(
+          result.buffer,
+          a.dtype,
+          dstIndex,
+          val,
+          offsetElements: result.offsetElements,
+        );
+      }
+
+      return result;
+    } finally {
+      if (!identical(flat, a)) {
+        flat.dispose();
+      }
+    }
   }
 
   final rank = a.shape.length;
@@ -450,38 +785,54 @@ GpuArray<T> roll<T extends DTypeTag>(
   final shifts = (shift is int) ? [shift] : (shift as List<int>);
 
   if (axes.length != shifts.length) {
-    throw ArgumentError('shift and axis must have the same length.');
+    throw ArgumentError.value(
+      shifts,
+      'shift',
+      'Must have the same length as axis (${axes.length}).',
+    );
   }
 
   var current = a;
   for (var i = 0; i < axes.length; i++) {
     final ax = axes[i] < 0 ? axes[i] + rank : axes[i];
+    if (ax < 0 || ax >= rank) {
+      throw GpuAxisOutOfBoundsException(axes[i], rank);
+    }
     final s = shifts[i];
     final dim = current.shape[ax];
-    final sNorm = ((s % dim) + dim) % dim;
+    final sNorm = dim == 0 ? 0 : ((s % dim) + dim) % dim;
 
-    final nextArr = GpuArray<T>.empty(current.shape, a.dtype, device: a.device);
-    final total = ShapeUtils.computeSize(current.shape);
+    final isLast = i == axes.length - 1;
+    final nextArr = (isLast && out != null)
+        ? _allocateOrValidateOut<T>('roll', current.shape, a.dtype, a, out)
+        : GpuArray<T>.empty(current.shape, a.dtype, device: a.device);
+    final total = computeSize(current.shape);
     final coords = List<int>.filled(rank, 0);
 
     for (var j = 0; j < total; j++) {
-      var dstIdx = 0;
-      var srcIdx = 0;
+      var dstIndex = 0;
+      var srcIndex = 0;
       for (var d = 0; d < rank; d++) {
-        dstIdx += coords[d] * nextArr.strides[d];
+        dstIndex += coords[d] * nextArr.strides[d];
         final srcCoord = (d == ax)
             ? (coords[d] - sNorm + dim) % dim
             : coords[d];
-        srcIdx += srcCoord * current.strides[d];
+        srcIndex += srcCoord * current.strides[d];
       }
 
-      final val = ComputeEngine.readAny(
+      final val = readBufferAny(
         current.buffer,
         current.dtype,
-        srcIdx,
+        srcIndex,
         offsetElements: current.offsetElements,
       );
-      ComputeEngine.writeAny(nextArr.buffer, a.dtype, dstIdx, val);
+      writeBufferAny(
+        nextArr.buffer,
+        a.dtype,
+        dstIndex,
+        val,
+        offsetElements: nextArr.offsetElements,
+      );
 
       for (var d = rank - 1; d >= 0; d--) {
         coords[d]++;
@@ -490,6 +841,9 @@ GpuArray<T> roll<T extends DTypeTag>(
       }
     }
 
+    if (!identical(current, a)) {
+      current.dispose();
+    }
     current = nextArr;
   }
 
@@ -497,20 +851,31 @@ GpuArray<T> roll<T extends DTypeTag>(
 }
 
 /// Reverses the order of elements along the given [axis].
-GpuArray<T> flip<T extends DTypeTag>(GpuArray<T> a, {dynamic axis}) {
+GpuArray<T> flip<T extends DTypeTag>(GpuArray<T> a, {Object? axis}) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   final List<int> axes;
   if (axis == null) {
     axes = List.generate(rank, (i) => i);
   } else if (axis is int) {
-    axes = [axis < 0 ? axis + rank : axis];
+    final norm = axis < 0 ? axis + rank : axis;
+    if (norm < 0 || norm >= rank) {
+      throw GpuAxisOutOfBoundsException(axis, rank);
+    }
+    axes = [norm];
   } else if (axis is List<int>) {
-    axes = axis.map((ax) => ax < 0 ? ax + rank : ax).toList();
+    axes = axis.map((ax) {
+      final norm = ax < 0 ? ax + rank : ax;
+      if (norm < 0 || norm >= rank) {
+        throw GpuAxisOutOfBoundsException(ax, rank);
+      }
+      return norm;
+    }).toList();
   } else {
-    throw ArgumentError('axis must be int, List<int>, or null.');
+    throw ArgumentError.value(axis, 'axis', 'Must be int, List<int>, or null.');
   }
 
-  final sliceSpecs = List<dynamic>.generate(rank, (d) {
+  final sliceSpecs = List<Object>.generate(rank, (d) {
     if (axes.contains(d)) {
       return const Slice(null, null, -1);
     }
@@ -520,121 +885,271 @@ GpuArray<T> flip<T extends DTypeTag>(GpuArray<T> a, {dynamic axis}) {
   return a.slice(sliceSpecs);
 }
 
+/// Flips an array in the left/right direction (along axis 1).
+GpuArray<T> fliplr<T extends DTypeTag>(GpuArray<T> a) {
+  _checkNotDisposed(a, 'a');
+  if (a.shape.length < 2) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be at least 2-D for fliplr.',
+    );
+  }
+  return flip(a, axis: 1);
+}
+
+/// Flips an array in the up/down direction (along axis 0).
+GpuArray<T> flipud<T extends DTypeTag>(GpuArray<T> a) {
+  _checkNotDisposed(a, 'a');
+  if (a.shape.isEmpty) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be at least 1-D for flipud.',
+    );
+  }
+  return flip(a, axis: 0);
+}
+
+/// Flattens [a] into a contiguous 1-D array view (or copy if non-contiguous).
+GpuArray<T> ravel<T extends DTypeTag>(GpuArray<T> a) {
+  _checkNotDisposed(a, 'a');
+  return a.flatten();
+}
+
 /// Rotates an array by 90 degrees in the plane specified by [axes].
 GpuArray<T> rot90<T extends DTypeTag>(
   GpuArray<T> a, {
   int k = 1,
   List<int> axes = const [0, 1],
 }) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   if (axes.length != 2) {
-    throw ArgumentError('len(axes) must be 2.');
+    throw ArgumentError.value(axes, 'axes', 'Must have length 2.');
   }
   final ax1 = axes[0] < 0 ? axes[0] + rank : axes[0];
   final ax2 = axes[1] < 0 ? axes[1] + rank : axes[1];
+  if (ax1 < 0 || ax1 >= rank) {
+    throw GpuAxisOutOfBoundsException(axes[0], rank);
+  }
+  if (ax2 < 0 || ax2 >= rank) {
+    throw GpuAxisOutOfBoundsException(axes[1], rank);
+  }
   if (ax1 == ax2) {
-    throw ArgumentError('axes must be different.');
+    throw ArgumentError.value(axes, 'axes', 'Must specify two distinct axes.');
   }
 
   final rot = ((k % 4) + 4) % 4;
   if (rot == 0) return a.copy();
   if (rot == 1) return flip(swapaxes(a, ax1, ax2), axis: ax1);
   if (rot == 2) return flip(flip(a, axis: ax1), axis: ax2);
-  // rot == 3
   return flip(swapaxes(a, ax1, ax2), axis: ax2);
 }
 
 /// Extracts a diagonal or constructs a diagonal array.
-GpuArray<T> diag<T extends DTypeTag>(GpuArray<T> v, {int k = 0}) {
+GpuArray<T> diag<T extends DTypeTag>(
+  GpuArray<T> v, {
+  int k = 0,
+  GpuArray<T>? out,
+}) {
+  _checkNotDisposed(v, 'v');
   if (v.shape.length == 1) {
     final n = v.shape[0];
     final size = n + k.abs();
-    final out = GpuArray<T>.zeros([size, size], v.dtype, device: v.device);
+    final result = _allocateOrValidateOut<T>(
+      'diag',
+      [size, size],
+      v.dtype,
+      v,
+      out,
+    );
+    // Zero-fill result
+    final total = size * size;
+    for (var i = 0; i < total; i++) {
+      writeBufferAny(
+        result.buffer,
+        result.dtype,
+        i,
+        0,
+        offsetElements: result.offsetElements,
+      );
+    }
     final rowOffset = k < 0 ? -k : 0;
     final colOffset = k > 0 ? k : 0;
 
     for (var i = 0; i < n; i++) {
-      final val = ComputeEngine.readAny(
+      final val = readBufferAny(
         v.buffer,
         v.dtype,
-        i,
+        i * v.strides[0],
         offsetElements: v.offsetElements,
       );
       final r = i + rowOffset;
       final c = i + colOffset;
-      final dstIdx = r * size + c;
-      ComputeEngine.writeAny(out.buffer, out.dtype, dstIdx, val);
+      final dstIndex = r * result.strides[0] + c * result.strides[1];
+      writeBufferAny(
+        result.buffer,
+        result.dtype,
+        dstIndex,
+        val,
+        offsetElements: result.offsetElements,
+      );
     }
-    return out;
+    return result;
   } else if (v.shape.length == 2) {
-    return diagonal(v, offset: k);
+    return diagonal(v, offset: k, out: out);
   }
-  throw ArgumentError('diag only works on 1D or 2D arrays.');
+  throw ArgumentError.value(v.shape, 'v.shape', 'Must be 1-D or 2-D for diag.');
 }
 
-/// Returns specified diagonals of an array.
+/// Extracts specified diagonals of an N-D array.
+///
+/// For tensors with rank > 2, the axes [axis1] and [axis2] are removed and the
+/// extracted diagonal dimension is appended at the end of the output shape,
+/// matching `numpy.diagonal`.
 GpuArray<T> diagonal<T extends DTypeTag>(
   GpuArray<T> a, {
   int offset = 0,
   int axis1 = 0,
   int axis2 = 1,
+  GpuArray<T>? out,
 }) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
+  if (rank < 2) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be at least 2-D for diagonal.',
+    );
+  }
   final ax1 = axis1 < 0 ? axis1 + rank : axis1;
   final ax2 = axis2 < 0 ? axis2 + rank : axis2;
+  if (ax1 < 0 || ax1 >= rank) {
+    throw GpuAxisOutOfBoundsException(axis1, rank);
+  }
+  if (ax2 < 0 || ax2 >= rank) {
+    throw GpuAxisOutOfBoundsException(axis2, rank);
+  }
+  if (ax1 == ax2) {
+    throw ArgumentError.value(
+      axis2,
+      'axis2',
+      'Must be distinct from axis1 ($axis1).',
+    );
+  }
 
   final rows = a.shape[ax1];
   final cols = a.shape[ax2];
 
-  int diagLen;
-  if (offset >= 0) {
-    diagLen = (rows < cols - offset) ? rows : (cols - offset);
-  } else {
-    diagLen = (rows + offset < cols) ? (rows + offset) : cols;
-  }
+  var diagLen = offset >= 0
+      ? ((rows < cols - offset) ? rows : (cols - offset))
+      : ((rows + offset < cols) ? (rows + offset) : cols);
   if (diagLen < 0) diagLen = 0;
 
-  final result = GpuArray<T>.empty([diagLen], a.dtype, device: a.device);
+  final nonDiagAxes = <int>[];
+  final outShape = <int>[];
+  for (var d = 0; d < rank; d++) {
+    if (d != ax1 && d != ax2) {
+      nonDiagAxes.add(d);
+      outShape.add(a.shape[d]);
+    }
+  }
+  outShape.add(diagLen);
+
+  final result = _allocateOrValidateOut<T>(
+    'diagonal',
+    outShape,
+    a.dtype,
+    a,
+    out,
+  );
+  final totalOut = computeSize(outShape);
+  if (totalOut == 0) return result;
 
   final startRow = offset < 0 ? -offset : 0;
   final startCol = offset > 0 ? offset : 0;
 
-  for (var i = 0; i < diagLen; i++) {
-    final r = startRow + i;
-    final c = startCol + i;
-    final srcIdx = r * a.strides[ax1] + c * a.strides[ax2];
-    final val = ComputeEngine.readAny(
+  final outRank = outShape.length;
+  final outCoords = List<int>.filled(outRank, 0);
+
+  for (var elementIndex = 0; elementIndex < totalOut; elementIndex++) {
+    var srcIndex = 0;
+    for (var i = 0; i < nonDiagAxes.length; i++) {
+      srcIndex += outCoords[i] * a.strides[nonDiagAxes[i]];
+    }
+    final k = outCoords[outRank - 1];
+    final r = startRow + k;
+    final c = startCol + k;
+    srcIndex += r * a.strides[ax1] + c * a.strides[ax2];
+
+    var dstIndex = 0;
+    for (var d = 0; d < outRank; d++) {
+      dstIndex += outCoords[d] * result.strides[d];
+    }
+
+    final val = readBufferAny(
       a.buffer,
       a.dtype,
-      srcIdx,
+      srcIndex,
       offsetElements: a.offsetElements,
     );
-    ComputeEngine.writeAny(result.buffer, a.dtype, i, val);
+    writeBufferAny(
+      result.buffer,
+      a.dtype,
+      dstIndex,
+      val,
+      offsetElements: result.offsetElements,
+    );
+
+    for (var d = outRank - 1; d >= 0; d--) {
+      outCoords[d]++;
+      if (outCoords[d] < outShape[d]) break;
+      outCoords[d] = 0;
+    }
   }
 
   return result;
 }
 
-/// Returns the sum along diagonals of the array.
-dynamic trace<T extends DTypeTag>(
+/// Computes the sum along diagonals of the array as a [GpuArray].
+///
+/// For a 2D array, returns a 0D scalar [GpuArray] (use `.scalar` to read the
+/// host scalar value). For N-D arrays (`N > 2`), returns an `(N - 2)`-D array
+/// summing the diagonal along [axis1] and [axis2].
+GpuArray<T> trace<T extends DTypeTag>(
   GpuArray<T> a, {
   int offset = 0,
   int axis1 = 0,
   int axis2 = 1,
+  GpuArray<T>? out,
 }) {
-  final d = diagonal(a, offset: offset, axis1: axis1, axis2: axis2);
-  final s = d.sum();
-  return s.shape.isEmpty ? s.item() : s;
+  final d = diagonal<T>(a, offset: offset, axis1: axis1, axis2: axis2);
+  try {
+    return d.sum(axis: -1, out: out);
+  } finally {
+    d.dispose();
+  }
 }
 
-/// Upper triangle of an array.
-GpuArray<T> triu<T extends DTypeTag>(GpuArray<T> m, {int k = 0}) {
+/// Extracts the upper triangle of an array.
+GpuArray<T> triu<T extends DTypeTag>(
+  GpuArray<T> m, {
+  int k = 0,
+  GpuArray<T>? out,
+}) {
+  _checkNotDisposed(m, 'm');
   final rank = m.shape.length;
   if (rank < 2) {
-    throw ArgumentError('triu requires an array of at least 2 dimensions.');
+    throw ArgumentError.value(
+      m.shape,
+      'm.shape',
+      'Must have at least 2 dimensions for triu.',
+    );
   }
 
-  final result = GpuArray<T>.empty(m.shape, m.dtype, device: m.device);
+  final result = _allocateOrValidateOut<T>('triu', m.shape, m.dtype, m, out);
 
   GpuKernels.executeTriangular(
     src: m.buffer,
@@ -653,14 +1168,23 @@ GpuArray<T> triu<T extends DTypeTag>(GpuArray<T> m, {int k = 0}) {
   return result;
 }
 
-/// Lower triangle of an array.
-GpuArray<T> tril<T extends DTypeTag>(GpuArray<T> m, {int k = 0}) {
+/// Extracts the lower triangle of an array.
+GpuArray<T> tril<T extends DTypeTag>(
+  GpuArray<T> m, {
+  int k = 0,
+  GpuArray<T>? out,
+}) {
+  _checkNotDisposed(m, 'm');
   final rank = m.shape.length;
   if (rank < 2) {
-    throw ArgumentError('tril requires an array of at least 2 dimensions.');
+    throw ArgumentError.value(
+      m.shape,
+      'm.shape',
+      'Must have at least 2 dimensions for tril.',
+    );
   }
 
-  final result = GpuArray<T>.empty(m.shape, m.dtype, device: m.device);
+  final result = _allocateOrValidateOut<T>('tril', m.shape, m.dtype, m, out);
 
   GpuKernels.executeTriangular(
     src: m.buffer,
@@ -679,12 +1203,13 @@ GpuArray<T> tril<T extends DTypeTag>(GpuArray<T> m, {int k = 0}) {
   return result;
 }
 
-/// Move axes of an array to new positions.
+/// Moves axes of an array to new positions.
 GpuArray<T> moveaxis<T extends DTypeTag>(
   GpuArray<T> a,
-  dynamic source,
-  dynamic destination,
+  Object source,
+  Object destination,
 ) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   final srcList = (source is int) ? [source] : (source as List<int>);
   final dstList = (destination is int)
@@ -692,28 +1217,55 @@ GpuArray<T> moveaxis<T extends DTypeTag>(
       : (destination as List<int>);
 
   if (srcList.length != dstList.length) {
-    throw ArgumentError('source and destination must have the same length.');
+    throw ArgumentError.value(
+      destination,
+      'destination',
+      'Must have the same length as source (${srcList.length}).',
+    );
   }
 
-  final normSrc = srcList.map((x) => x < 0 ? x + rank : x).toList();
-  final normDst = dstList.map((x) => x < 0 ? x + rank : x).toList();
+  final normSrc = srcList.map((x) {
+    final norm = x < 0 ? x + rank : x;
+    if (norm < 0 || norm >= rank) {
+      throw GpuAxisOutOfBoundsException(x, rank);
+    }
+    return norm;
+  }).toList();
+  final normDst = dstList.map((x) {
+    final norm = x < 0 ? x + rank : x;
+    if (norm < 0 || norm >= rank) {
+      throw GpuAxisOutOfBoundsException(x, rank);
+    }
+    return norm;
+  }).toList();
 
   final order = <int>[];
   for (var i = 0; i < rank; i++) {
     if (!normSrc.contains(i)) order.add(i);
   }
-  for (var i = 0; i < normDst.length; i++) {
-    order.insert(normDst[i], normSrc[i]);
+  final pairs = List.generate(
+    normDst.length,
+    (i) => (dst: normDst[i], src: normSrc[i]),
+  )..sort((x, y) => x.dst.compareTo(y.dst));
+  for (final pair in pairs) {
+    order.insert(pair.dst, pair.src);
   }
 
   return a.transpose(order);
 }
 
-/// Interchange two axes of an array.
+/// Interchanges two axes of an array.
 GpuArray<T> swapaxes<T extends DTypeTag>(GpuArray<T> a, int axis1, int axis2) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   final ax1 = axis1 < 0 ? axis1 + rank : axis1;
   final ax2 = axis2 < 0 ? axis2 + rank : axis2;
+  if (ax1 < 0 || ax1 >= rank) {
+    throw GpuAxisOutOfBoundsException(axis1, rank);
+  }
+  if (ax2 < 0 || ax2 >= rank) {
+    throw GpuAxisOutOfBoundsException(axis2, rank);
+  }
 
   final order = List<int>.generate(rank, (i) => i);
   order[ax1] = ax2;
@@ -722,16 +1274,22 @@ GpuArray<T> swapaxes<T extends DTypeTag>(GpuArray<T> a, int axis1, int axis2) {
   return a.transpose(order);
 }
 
-/// Expand the shape of an array by inserting a new axis at [axis].
-GpuArray<T> expand_dims<T extends DTypeTag>(GpuArray<T> a, dynamic axis) {
+/// Expands the shape of an array by inserting a new axis at [axis].
+GpuArray<T> expandDims<T extends DTypeTag>(GpuArray<T> a, Object axis) {
+  _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
   final axes = (axis is int) ? [axis] : (axis as List<int>);
   final outRank = rank + axes.length;
 
-  final normAxes = axes.map((ax) => ax < 0 ? ax + outRank : ax).toList()
-    ..sort();
+  final normAxes = axes.map((ax) {
+    final norm = ax < 0 ? ax + outRank : ax;
+    if (norm < 0 || norm >= outRank) {
+      throw GpuAxisOutOfBoundsException(ax, outRank);
+    }
+    return norm;
+  }).toList()..sort();
 
-  final newShape = List<int>.from(a.shape);
+  final newShape = List<int>.of(a.shape);
   for (final ax in normAxes) {
     newShape.insert(ax, 1);
   }
@@ -739,10 +1297,17 @@ GpuArray<T> expand_dims<T extends DTypeTag>(GpuArray<T> a, dynamic axis) {
   return a.reshape(newShape);
 }
 
-/// Broadcast an array to a new shape.
-GpuArray<T> broadcast_to<T extends DTypeTag>(GpuArray<T> a, List<int> shape) {
-  final bStrides = ShapeUtils.broadcastStrides(a.shape, a.strides, shape);
-  final isContig = ShapeUtils.isContiguous(shape, bStrides);
+/// Expands the shape of an array by inserting a new axis at [axis].
+@Deprecated('Use expandDims instead.')
+// ignore: non_constant_identifier_names
+GpuArray<T> expand_dims<T extends DTypeTag>(GpuArray<T> a, Object axis) =>
+    expandDims<T>(a, axis);
+
+/// Broadcasts an array to a new [shape].
+GpuArray<T> broadcastTo<T extends DTypeTag>(GpuArray<T> a, List<int> shape) {
+  _checkNotDisposed(a, 'a');
+  final bStrides = broadcastStrides(a.shape, a.strides, shape);
+  final isContig = isContiguousLayout(shape, bStrides);
 
   return GpuArray<T>.fromBuffer(
     buffer: a.buffer,
@@ -755,3 +1320,26 @@ GpuArray<T> broadcast_to<T extends DTypeTag>(GpuArray<T> a, List<int> shape) {
     parent: a,
   );
 }
+
+/// Broadcasts an array to a new [shape].
+@Deprecated('Use broadcastTo instead.')
+// ignore: non_constant_identifier_names
+GpuArray<T> broadcast_to<T extends DTypeTag>(GpuArray<T> a, List<int> shape) =>
+    broadcastTo<T>(a, shape);
+
+/// Broadcasts any number of [arrays] against each other to a common shape.
+List<GpuArray> broadcastArrays(List<GpuArray> arrays) {
+  if (arrays.isEmpty) return const [];
+  var commonShape = arrays[0].shape;
+  for (var i = 0; i < arrays.length; i++) {
+    _checkNotDisposed(arrays[i], 'arrays[$i]');
+    commonShape = broadcastShapes(commonShape, arrays[i].shape);
+  }
+  return arrays.map((a) => a.broadcastTo(commonShape)).toList();
+}
+
+/// Broadcasts any number of [arrays] against each other to a common shape.
+@Deprecated('Use broadcastArrays instead.')
+// ignore: non_constant_identifier_names
+List<GpuArray> broadcast_arrays(List<GpuArray> arrays) =>
+    broadcastArrays(arrays);

@@ -13,922 +13,1133 @@
 // limitations under the License.
 
 // ignore_for_file: non_constant_identifier_names
+
+import 'dart:ffi' as ffi;
 import 'dart:math' as math;
-import '../dtype.dart';
-import '../gpu_array.dart';
+
+import 'package:ndarray/ndarray.dart' as nd;
+import 'package:ndarray/ndarray.dart'
+    show Complex128, DType, DTypeTag, Float64, Int32, NDArray, Slice;
+
+import '../device.dart';
 import '../exceptions.dart';
-import '../backend/compute_engine.dart';
+import '../gpu_array.dart';
 
-/// Result of Singular Value Decomposition (SVD).
-final class SvdResult<T extends DTypeTag> {
-  /// Left singular vectors $U$.
-  final GpuArray<T> u;
+/// Mode for QR matrix decomposition.
+enum QrMode {
+  /// Reduced (thin) QR decomposition where $Q$ has shape `(m, min(m, n))`
+  /// and $R$ has shape `(min(m, n), n)`.
+  reduced(isReduced: true),
 
-  /// Singular values $S$ sorted in descending order.
-  final GpuArray<T> s;
+  /// Complete (full) QR decomposition where $Q$ has shape `(m, m)` and $R$
+  /// has shape `(m, n)`.
+  complete(isReduced: false);
 
-  /// Right singular vectors transposed $V^T$.
-  final GpuArray<T> vt;
+  const QrMode({required this.isReduced});
 
-  const SvdResult({required this.u, required this.s, required this.vt});
+  /// Whether this mode produces the reduced (thin) factorization.
+  final bool isReduced;
 
-  @override
-  String toString() => 'SvdResult(u: $u, s: $s, vt: $vt)';
+  /// Computes the inner factor dimension ($\min(m, n)$ for [reduced], $m$ for
+  /// [complete]) for a matrix with [rows] rows and [cols] columns.
+  int factorDimension(int rows, int cols) =>
+      isReduced ? math.min(rows, cols) : rows;
 }
 
-/// Result of QR Decomposition.
-final class QrResult<T extends DTypeTag> {
-  /// Orthonormal matrix $Q$.
-  final GpuArray<T> q;
+/// Matrix triangle selection for symmetric, Hermitian, and Cholesky
+/// operations.
+enum MatrixTriangle {
+  /// Uses the lower triangular portion of the matrix.
+  lower(isUpper: false),
 
-  /// Upper triangular matrix $R$.
-  final GpuArray<T> r;
+  /// Uses the upper triangular portion of the matrix.
+  upper(isUpper: true);
 
-  const QrResult({required this.q, required this.r});
+  const MatrixTriangle({required this.isUpper});
 
-  @override
-  String toString() => 'QrResult(q: $q, r: $r)';
+  /// Whether the upper triangle is selected.
+  final bool isUpper;
 }
 
-/// Result of Eigendecomposition.
-final class EigResult<T extends DTypeTag> {
-  /// Eigenvalues $\lambda$.
-  final GpuArray<T> eigenvalues;
-
-  /// Normalized eigenvectors $V$.
-  final GpuArray<T> eigenvectors;
-
-  const EigResult({required this.eigenvalues, required this.eigenvectors});
-
-  @override
-  String toString() =>
-      'EigResult(eigenvalues: $eigenvalues, eigenvectors: $eigenvectors)';
+/// Resource disposal extension for the record returned by [svd].
+extension SvdRecordDispose<T extends DTypeTag>
+    on ({GpuArray<T> u, GpuArray<T> s, GpuArray<T> vt}) {
+  /// Disposes [u], [s], and [vt].
+  void dispose() {
+    u.dispose();
+    s.dispose();
+    vt.dispose();
+  }
 }
 
-/// Result of LU Decomposition.
-final class LuResult<T extends DTypeTag> {
-  /// Permutation matrix $P$.
-  final GpuArray<T> p;
-
-  /// Unit lower-triangular matrix $L$.
-  final GpuArray<T> l;
-
-  /// Upper-triangular matrix $U$.
-  final GpuArray<T> u;
-
-  const LuResult({required this.p, required this.l, required this.u});
-
-  @override
-  String toString() => 'LuResult(p: $p, l: $l, u: $u)';
+/// Resource disposal extension for the record returned by [qr].
+extension QrRecordDispose<T extends DTypeTag>
+    on ({GpuArray<T> q, GpuArray<T> r}) {
+  /// Disposes [q] and [r].
+  void dispose() {
+    q.dispose();
+    r.dispose();
+  }
 }
 
-/// Result of LU Factorization with pivot indices.
-final class LuFactorResult<T extends DTypeTag> {
-  /// Combined LU factor matrix where diagonal and upper part is $U$ and strictly lower part is $L$.
-  final GpuArray<T> lu;
-
-  /// Pivot permutation indices.
-  final GpuArray<Int32> piv;
-
-  const LuFactorResult({required this.lu, required this.piv});
-
-  @override
-  String toString() => 'LuFactorResult(lu: $lu, piv: $piv)';
+/// Resource disposal extension for the record returned by [eigh] and [eig].
+extension EigRecordDispose<T extends DTypeTag, V extends DTypeTag>
+    on ({GpuArray<T> eigenvalues, GpuArray<V> eigenvectors}) {
+  /// Disposes [eigenvalues] and [eigenvectors].
+  void dispose() {
+    eigenvalues.dispose();
+    eigenvectors.dispose();
+  }
 }
 
-/// Computes the QR decomposition of matrix [a] using Householder reflections.
-QrResult<T> qr<T extends DTypeTag>(GpuArray<T> a, {String mode = 'reduced'}) {
+/// Resource disposal extension for the record returned by [lu].
+extension LuRecordDispose<T extends DTypeTag>
+    on ({GpuArray<T> p, GpuArray<T> l, GpuArray<T> u}) {
+  /// Disposes [p], [l], and [u].
+  void dispose() {
+    p.dispose();
+    l.dispose();
+    u.dispose();
+  }
+}
+
+/// Resource disposal extension for the record returned by [luFactor].
+extension LuFactorRecordDispose<T extends DTypeTag>
+    on ({GpuArray<T> lu, GpuArray<Int32> pivots}) {
+  /// Disposes [lu] and [pivots].
+  void dispose() {
+    this.lu.dispose();
+    pivots.dispose();
+  }
+}
+
+bool _shapesEqual(List<int> first, List<int> second) {
+  if (first.length != second.length) return false;
+  for (var i = 0; i < first.length; i++) {
+    if (first[i] != second[i]) return false;
+  }
+  return true;
+}
+
+void _validateOutBuffer<R extends DTypeTag>(
+  GpuArray<R> out,
+  List<int> expectedShape,
+  DType<R> expectedDType, {
+  String name = 'out',
+}) {
+  if (out.size > 1 && out.strides.contains(0)) {
+    throw ArgumentError.value(
+      out,
+      name,
+      'Must be writeable and not a broadcasted view.',
+    );
+  }
+  if (!_shapesEqual(out.shape, expectedShape) || out.dtype != expectedDType) {
+    throw ArgumentError.value(
+      out,
+      name,
+      'Must be an array with shape $expectedShape and dtype $expectedDType, '
+      'got shape ${out.shape} and dtype ${out.dtype}.',
+    );
+  }
+}
+
+GpuArray<R> _writeOrWrapResult<R extends DTypeTag>(
+  NDArray<R> hostResult,
+  GpuDevice device,
+  GpuArray<R>? out, {
+  String outName = 'out',
+  bool promote = true,
+}) {
+  if (out != null) {
+    _validateOutBuffer(out, hostResult.shape, hostResult.dtype, name: outName);
+    if (out.isContiguous) {
+      final contiguous = hostResult.isContiguous
+          ? hostResult
+          : hostResult.copy();
+      if (out.byteSize > 0) {
+        out.buffer.copyFromHost(
+          contiguous.pointer.cast<ffi.Void>(),
+          out.byteSize,
+          offset: out.offsetElements * out.dtype.byteWidth,
+        );
+      }
+    } else if (out.byteSize > 0) {
+      out.buffer.copyToHost(
+        out.buffer.address.cast<ffi.Void>(),
+        out.buffer.sizeInBytes,
+      );
+      final totalBufferElements = out.buffer.sizeInBytes ~/ out.dtype.byteWidth;
+      final rootBufferView = NDArray<R>.fromPointer(
+        out.buffer.address.cast<ffi.Void>(),
+        <int>[totalBufferElements],
+        out.dtype,
+      );
+      final outView = NDArray<R>.view(
+        rootBufferView,
+        shape: out.shape,
+        strides: out.strides,
+        offsetElements: out.offsetElements,
+      );
+      hostResult.copy(out: outView);
+      out.buffer.copyFromHost(
+        out.buffer.address.cast<ffi.Void>(),
+        out.buffer.sizeInBytes,
+      );
+    }
+    return out;
+  }
+  final gpuResult = GpuArray<R>.fromNDArray(hostResult, device: device);
+  if (promote) {
+    gpuResult.detachToParentScope();
+  }
+  return gpuResult;
+}
+
+NDArray<Float64> _toContiguousFloat64(NDArray array) {
+  if (array.dtype == DType.float64) {
+    return array.isContiguous
+        ? array as NDArray<Float64>
+        : (array as NDArray<Float64>).copy();
+  }
+  return array.astype<Float64>(DType.float64);
+}
+
+NDArray<T> _matchDType<T extends DTypeTag>(
+  NDArray<Float64> array,
+  DType<T> targetDType,
+) {
+  if (targetDType == DType.float64) {
+    return array as NDArray<T>;
+  }
+  return array.astype<T>(targetDType);
+}
+
+/// Computes the Singular Value Decomposition (SVD) of a 2D matrix or batch of
+/// matrices [a]: $A = U \cdot \text{diag}(S) \cdot V^T$.
+///
+/// If [fullMatrices] is `true` (the default), `u` has shape `(..., m, m)` and
+/// `vt` has shape `(..., n, n)`. If [fullMatrices] is `false`, `u` has shape
+/// `(..., m, k)` and `vt` has shape `(..., k, n)` where $k = \min(m, n)$.
+///
+/// Neither [a] nor any array in [out] may be disposed, and [a] must have at
+/// least 2 dimensions.
+({GpuArray<T> u, GpuArray<T> s, GpuArray<T> vt}) svd<T extends DTypeTag>(
+  GpuArray<T> a, {
+  bool fullMatrices = true,
+  ({GpuArray<T> u, GpuArray<T> s, GpuArray<T> vt})? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute svd on a disposed GpuArray.');
+  }
+  if (out != null &&
+      (out.u.isDisposed || out.s.isDisposed || out.vt.isDisposed)) {
+    throw StateError('Cannot write svd result to a disposed output GpuArray.');
+  }
   if (a.rank < 2) {
-    throw ArgumentError('qr() requires an array with at least 2 dimensions.');
+    throw GpuShapeMismatchException('svd', a.shape, const <int>[]);
   }
 
-  final m = a.shape[a.rank - 2];
-  final n = a.shape[a.rank - 1];
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(a.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
-  }
+  final rank = a.rank;
+  final m = a.shape[rank - 2];
+  final n = a.shape[rank - 1];
   final k = math.min(m, n);
-  final isReduced = (mode == 'reduced');
+  final batchShape = a.shape.sublist(0, rank - 2);
+  final expectedUShape = <int>[...batchShape, m, fullMatrices ? m : k];
+  final expectedSShape = <int>[...batchShape, k];
+  final expectedVtShape = <int>[...batchShape, fullMatrices ? n : k, n];
 
-  final qCols = isReduced ? k : m;
-  final rRows = isReduced ? k : m;
+  if (out != null) {
+    _validateOutBuffer(out.u, expectedUShape, a.dtype, name: 'out.u');
+    _validateOutBuffer(out.s, expectedSShape, a.dtype, name: 'out.s');
+    _validateOutBuffer(out.vt, expectedVtShape, a.dtype, name: 'out.vt');
+  }
 
-  final qShape = List<int>.from(a.shape)
-    ..setRange(a.rank - 2, a.rank, [m, qCols]);
-  final rShape = List<int>.from(a.shape)
-    ..setRange(a.rank - 2, a.rank, [rRows, n]);
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final ({NDArray<Float64> u, NDArray<Float64> s, NDArray<Float64> vh})
+    rawSvd;
+    try {
+      rawSvd = nd.svd<Float64, Float64>(f64Input);
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
+    }
 
-  final q = GpuArray<T>.empty(qShape, a.dtype, device: a.device);
-  final r = GpuArray<T>.empty(rShape, a.dtype, device: a.device);
+    NDArray<Float64> uF64 = rawSvd.u;
+    final NDArray<Float64> sF64 = rawSvd.s;
+    NDArray<Float64> vtF64 = rawSvd.vh;
 
-  final batchSize = ShapeUtils.computeSize(a.shape) ~/ (m * n);
-  final aFlat = a.toNDArray();
-  final aData = aFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
+    if (!fullMatrices) {
+      if (m > k) {
+        final sliceSpecs = <Slice>[
+          for (var i = 0; i < batchShape.length; i++) const Slice.all(),
+          const Slice.all(),
+          Slice(start: 0, stop: k),
+        ];
+        uF64 = uF64.slice(sliceSpecs).copy();
+      }
+      if (n > k) {
+        final sliceSpecs = <Slice>[
+          for (var i = 0; i < batchShape.length; i++) const Slice.all(),
+          Slice(start: 0, stop: k),
+          const Slice.all(),
+        ];
+        vtF64 = vtF64.slice(sliceSpecs).copy();
+      }
+    }
 
-  final qData = List<double>.filled(batchSize * m * qCols, 0.0);
-  final rData = List<double>.filled(batchSize * rRows * n, 0.0);
+    final uHost = _matchDType<T>(uF64, a.dtype);
+    final sHost = _matchDType<T>(sF64, a.dtype);
+    final vtHost = _matchDType<T>(vtF64, a.dtype);
 
-  for (var b = 0; b < batchSize; b++) {
-    final aMat = List.generate(
-      m,
-      (i) => List.generate(n, (j) => aData[b * m * n + i * n + j]),
+    final uGpu = _writeOrWrapResult(
+      uHost,
+      a.device,
+      out?.u,
+      outName: 'out.u',
+      promote: false,
     );
-    final qMat = List.generate(
-      m,
-      (i) => List.generate(m, (j) => (i == j) ? 1.0 : 0.0),
+    final sGpu = _writeOrWrapResult(
+      sHost,
+      a.device,
+      out?.s,
+      outName: 'out.s',
+      promote: false,
     );
-    final rMat = List.generate(m, (i) => List.generate(n, (j) => aMat[i][j]));
+    final vtGpu = _writeOrWrapResult(
+      vtHost,
+      a.device,
+      out?.vt,
+      outName: 'out.vt',
+      promote: false,
+    );
+    if (out == null) {
+      uGpu.detachToParentScope();
+      sGpu.detachToParentScope();
+      vtGpu.detachToParentScope();
+    }
+    return (u: uGpu, s: sGpu, vt: vtGpu);
+  });
+}
 
-    for (var j = 0; j < k; j++) {
+/// Computes only the singular values of a 2D matrix or batch of matrices [a]
+/// in descending order.
+///
+/// Neither [a] nor [out] (if provided) may be disposed, and [a] must have at
+/// least 2 dimensions.
+GpuArray<T> svdvals<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute svdvals on a disposed GpuArray.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write svdvals result to a disposed output GpuArray.',
+    );
+  }
+  if (a.rank < 2) {
+    throw GpuShapeMismatchException('svdvals', a.shape, const <int>[]);
+  }
+  final rank = a.rank;
+  final k = math.min(a.shape[rank - 2], a.shape[rank - 1]);
+  final expectedShape = <int>[...a.shape.sublist(0, rank - 2), k];
+  if (out != null) {
+    _validateOutBuffer(out, expectedShape, a.dtype);
+  }
+
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final ({NDArray<Float64> u, NDArray<Float64> s, NDArray<Float64> vh})
+    rawSvd;
+    try {
+      rawSvd = nd.svd<Float64, Float64>(f64Input);
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
+    }
+    final sHost = _matchDType<T>(rawSvd.s, a.dtype);
+    return _writeOrWrapResult(sHost, a.device, out);
+  });
+}
+
+/// Computes the QR decomposition of a 2D matrix [a]: $A = Q \cdot R$.
+///
+/// Uses Householder reflections. When [mode] is [QrMode.reduced] (default),
+/// `q` has shape `(m, k)` and `r` has shape `(k, n)` where $k = \min(m, n)$.
+/// When [mode] is [QrMode.complete], `q` has shape `(m, m)` and `r` has shape
+/// `(m, n)`.
+///
+/// Neither [a] nor any array in [out] may be disposed, and [a] must be
+/// 2-dimensional.
+({GpuArray<T> q, GpuArray<T> r}) qr<T extends DTypeTag>(
+  GpuArray<T> a, {
+  QrMode mode = QrMode.reduced,
+  ({GpuArray<T> q, GpuArray<T> r})? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute qr on a disposed GpuArray.');
+  }
+  if (out != null && (out.q.isDisposed || out.r.isDisposed)) {
+    throw StateError('Cannot write qr result to a disposed output GpuArray.');
+  }
+  if (a.rank != 2) {
+    throw GpuShapeMismatchException('qr', a.shape, const <int>[]);
+  }
+
+  final m = a.shape[0];
+  final n = a.shape[1];
+  final k = math.min(m, n);
+  final factorDimension = mode.factorDimension(m, n);
+  final expectedQShape = <int>[m, factorDimension];
+  final expectedRShape = <int>[factorDimension, n];
+
+  if (out != null) {
+    _validateOutBuffer(out.q, expectedQShape, a.dtype, name: 'out.q');
+    _validateOutBuffer(out.r, expectedRShape, a.dtype, name: 'out.r');
+  }
+
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final rWork = _toContiguousFloat64(hostInput).copy();
+    final rWorkPointer = rWork.pointer.cast<ffi.Double>();
+
+    final qFull = NDArray<Float64>.zeros(<int>[m, m], DType.float64);
+    final qFullPointer = qFull.pointer.cast<ffi.Double>();
+    for (var i = 0; i < m; i++) {
+      qFullPointer[i * m + i] = 1.0;
+    }
+
+    final householderVector = List<double>.filled(m, 0.0);
+
+    for (var col = 0; col < k; col++) {
       var normX = 0.0;
-      for (var i = j; i < m; i++) {
-        normX += rMat[i][j] * rMat[i][j];
+      for (var row = col; row < m; row++) {
+        final entry = rWorkPointer[row * n + col];
+        normX += entry * entry;
       }
       normX = math.sqrt(normX);
       if (normX < 1e-15) continue;
 
-      final sign = (rMat[j][j] >= 0.0) ? 1.0 : -1.0;
-      final u1 = rMat[j][j] + sign * normX;
-      final v = List<double>.filled(m - j, 0.0);
-      v[0] = 1.0;
-      for (var i = 1; i < m - j; i++) {
-        v[i] = rMat[j + i][j] / u1;
-      }
+      final x0 = rWorkPointer[col * n + col];
+      final sign = x0 >= 0.0 ? 1.0 : -1.0;
+      final u1 = x0 + sign * normX;
 
-      var vDotV = 0.0;
-      for (final vi in v) {
-        vDotV += vi * vi;
+      for (var i = 0; i < col; i++) {
+        householderVector[i] = 0.0;
       }
-      final tau = 2.0 / vDotV;
+      householderVector[col] = 1.0;
+      var vNormSq = 1.0;
+      for (var row = col + 1; row < m; row++) {
+        final scaled = rWorkPointer[row * n + col] / u1;
+        householderVector[row] = scaled;
+        vNormSq += scaled * scaled;
+      }
+      final tau = 2.0 / vNormSq;
 
-      // Apply Householder reflection to R: R[j:m, j:n] -= tau * v * (v^T R[j:m, j:n])
-      for (var col = j; col < n; col++) {
-        var dot = 0.0;
-        for (var i = 0; i < m - j; i++) {
-          dot += v[i] * rMat[j + i][col];
+      for (var j = col; j < n; j++) {
+        var dotProduct = 0.0;
+        for (var row = col; row < m; row++) {
+          dotProduct += householderVector[row] * rWorkPointer[row * n + j];
         }
-        for (var i = 0; i < m - j; i++) {
-          rMat[j + i][col] -= tau * v[i] * dot;
+        final factor = tau * dotProduct;
+        for (var row = col; row < m; row++) {
+          rWorkPointer[row * n + j] -= factor * householderVector[row];
         }
       }
 
-      // Apply Householder reflection to Q: Q[:, j:m] -= tau * (Q[:, j:m] v) * v^T
       for (var row = 0; row < m; row++) {
-        var dot = 0.0;
-        for (var i = 0; i < m - j; i++) {
-          dot += qMat[row][j + i] * v[i];
+        var dotProduct = 0.0;
+        for (var j = col; j < m; j++) {
+          dotProduct += qFullPointer[row * m + j] * householderVector[j];
         }
-        for (var i = 0; i < m - j; i++) {
-          qMat[row][j + i] -= tau * dot * v[i];
+        final factor = tau * dotProduct;
+        for (var j = col; j < m; j++) {
+          qFullPointer[row * m + j] -= factor * householderVector[j];
         }
       }
     }
 
-    // Copy into output buffers
     for (var i = 0; i < m; i++) {
-      for (var j = 0; j < qCols; j++) {
-        qData[b * m * qCols + i * qCols + j] = qMat[i][j];
+      final limit = math.min(i, n);
+      for (var j = 0; j < limit; j++) {
+        rWorkPointer[i * n + j] = 0.0;
       }
     }
-    for (var i = 0; i < rRows; i++) {
-      for (var j = 0; j < n; j++) {
-        rData[b * rRows * n + i * n + j] = (i <= j && i < m) ? rMat[i][j] : 0.0;
-      }
+
+    final qOutF64 = factorDimension == m
+        ? qFull
+        : qFull.slice(<Slice>[
+            const Slice.all(),
+            Slice(start: 0, stop: factorDimension),
+          ]).copy();
+    final rOutF64 = factorDimension == m
+        ? rWork
+        : rWork.slice(<Slice>[
+            Slice(start: 0, stop: factorDimension),
+            const Slice.all(),
+          ]).copy();
+
+    final qHost = _matchDType<T>(qOutF64, a.dtype);
+    final rHost = _matchDType<T>(rOutF64, a.dtype);
+
+    final qGpu = _writeOrWrapResult(
+      qHost,
+      a.device,
+      out?.q,
+      outName: 'out.q',
+      promote: false,
+    );
+    final rGpu = _writeOrWrapResult(
+      rHost,
+      a.device,
+      out?.r,
+      outName: 'out.r',
+      promote: false,
+    );
+    if (out == null) {
+      qGpu.detachToParentScope();
+      rGpu.detachToParentScope();
     }
-  }
-
-  aFlat.dispose();
-
-  for (var i = 0; i < qData.length; i++) {
-    ComputeEngine.writeAny(q.buffer, a.dtype, i, qData[i]);
-  }
-  for (var i = 0; i < rData.length; i++) {
-    ComputeEngine.writeAny(r.buffer, a.dtype, i, rData[i]);
-  }
-
-  return QrResult<T>(q: q, r: r);
+    return (q: qGpu, r: rGpu);
+  });
 }
 
-/// Computes the Cholesky decomposition of a symmetric/Hermitian positive-definite matrix [a].
-GpuArray<T> cholesky<T extends DTypeTag>(GpuArray<T> a, {bool upper = false}) {
-  if (a.rank < 2) {
-    throw ArgumentError(
-      'cholesky() requires an array of at least 2 dimensions.',
+/// Computes the Cholesky decomposition of a symmetric positive-definite matrix
+/// [a].
+///
+/// By default ([uplo] == [MatrixTriangle.lower] and [upper] == `false`),
+/// returns the lower-triangular factor $L$ such that $A = L \cdot L^T$.
+/// When [uplo] is [MatrixTriangle.upper] or [upper] is `true`, returns the
+/// upper-triangular factor $U$ such that $A = U^T \cdot U$.
+///
+/// Neither [a] nor [out] (if provided) may be disposed, and [a] must be a
+/// square 2D matrix that is symmetric positive-definite.
+GpuArray<T> cholesky<T extends DTypeTag>(
+  GpuArray<T> a, {
+  MatrixTriangle uplo = MatrixTriangle.lower,
+  bool upper = false,
+  GpuArray<T>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute cholesky on a disposed GpuArray.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write cholesky result to a disposed output GpuArray.',
     );
   }
-  final n = a.shape[a.rank - 1];
-  final m = a.shape[a.rank - 2];
-  if (n != m) {
-    throw GpuShapeMismatchException('cholesky', a.shape, a.shape);
+  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
+    throw GpuShapeMismatchException('cholesky', a.shape, const <int>[]);
   }
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(a.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
+  if (out != null) {
+    _validateOutBuffer(out, a.shape, a.dtype);
   }
 
-  final result = GpuArray<T>.empty(a.shape, a.dtype, device: a.device);
-  final batchSize = ShapeUtils.computeSize(a.shape) ~/ (n * n);
-  final aFlat = a.toNDArray();
-  final aData = aFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
-  final lData = List<double>.filled(batchSize * n * n, 0.0);
-
-  for (var b = 0; b < batchSize; b++) {
-    final lMat = List.generate(n, (_) => List.filled(n, 0.0));
-
-    for (var i = 0; i < n; i++) {
-      for (var j = 0; j <= i; j++) {
-        var sum = 0.0;
-        for (var k = 0; k < j; k++) {
-          sum += lMat[i][k] * lMat[j][k];
-        }
-
-        final aVal = aData[b * n * n + i * n + j];
-        if (i == j) {
-          final diff = aVal - sum;
-          if (diff <= 0.0) {
-            aFlat.dispose();
-            throw ArgumentError(
-              'Matrix is not positive-definite for Cholesky decomposition (diagonal pivot <= 0 at row $i).',
-            );
-          }
-          lMat[i][j] = math.sqrt(diff);
-        } else {
-          lMat[i][j] = (aVal - sum) / lMat[j][j];
-        }
-      }
+  final useUpper = uplo.isUpper || upper;
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final NDArray<Float64> lowerFactor;
+    try {
+      lowerFactor = nd.cholesky<Float64>(f64Input);
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
     }
 
-    for (var i = 0; i < n; i++) {
-      for (var j = 0; j < n; j++) {
-        final val = upper ? lMat[j][i] : lMat[i][j];
-        lData[b * n * n + i * n + j] = val;
-      }
+    final NDArray<Float64> factorF64;
+    if (useUpper) {
+      final rank = f64Input.rank;
+      final axes = List<int>.generate(rank, (index) => index);
+      axes[rank - 2] = rank - 1;
+      axes[rank - 1] = rank - 2;
+      factorF64 = lowerFactor.transpose(axes).copy();
+    } else {
+      factorF64 = lowerFactor;
     }
-  }
 
-  aFlat.dispose();
-
-  for (var i = 0; i < lData.length; i++) {
-    ComputeEngine.writeAny(result.buffer, a.dtype, i, lData[i]);
-  }
-
-  return result;
+    final hostResult = _matchDType<T>(factorF64, a.dtype);
+    return _writeOrWrapResult(hostResult, a.device, out);
+  });
 }
 
-/// Computes the LU decomposition with partial pivoting: $A = P^T L U$.
-LuResult<T> lu<T extends DTypeTag>(GpuArray<T> a) {
-  if (a.rank < 2) {
-    throw ArgumentError('lu() requires an array of at least 2 dimensions.');
+/// Computes the eigenvalues and eigenvectors of a real symmetric (or Hermitian)
+/// matrix [a]: $A \cdot V = V \cdot \text{diag}(\lambda)$.
+///
+/// Returns a record `(eigenvalues, eigenvectors)` where `eigenvalues` are in
+/// ascending order and the columns of `eigenvectors` are the corresponding
+/// orthonormal eigenvectors.
+///
+/// Neither [a] nor any array in [out] may be disposed, and [a] must be square
+/// in its last two dimensions.
+({GpuArray<T> eigenvalues, GpuArray<T> eigenvectors}) eigh<T extends DTypeTag>(
+  GpuArray<T> a, {
+  MatrixTriangle uplo = MatrixTriangle.lower,
+  ({GpuArray<T> eigenvalues, GpuArray<T> eigenvectors})? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute eigh on a disposed GpuArray.');
+  }
+  if (out != null &&
+      (out.eigenvalues.isDisposed || out.eigenvectors.isDisposed)) {
+    throw StateError('Cannot write eigh result to a disposed output GpuArray.');
+  }
+  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
+    throw GpuShapeMismatchException('eigh', a.shape, const <int>[]);
   }
 
-  final m = a.shape[a.rank - 2];
-  final n = a.shape[a.rank - 1];
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(a.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
+  final rank = a.rank;
+  final n = a.shape[rank - 1];
+  final batchShape = a.shape.sublist(0, rank - 2);
+  final expectedValuesShape = <int>[...batchShape, n];
+  final expectedVectorsShape = <int>[...batchShape, n, n];
+
+  if (out != null) {
+    _validateOutBuffer(
+      out.eigenvalues,
+      expectedValuesShape,
+      a.dtype,
+      name: 'out.eigenvalues',
+    );
+    _validateOutBuffer(
+      out.eigenvectors,
+      expectedVectorsShape,
+      a.dtype,
+      name: 'out.eigenvectors',
+    );
   }
+
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final ({NDArray<Float64> eigenvalues, NDArray<Float64> eigenvectors})
+    rawEigh;
+    try {
+      rawEigh = nd.eigh<Float64, Float64>(
+        f64Input,
+        uplo: uplo.isUpper ? nd.MatrixTriangle.upper : nd.MatrixTriangle.lower,
+      );
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
+    }
+
+    final valuesHost = _matchDType<T>(rawEigh.eigenvalues, a.dtype);
+    final vectorsHost = _matchDType<T>(rawEigh.eigenvectors, a.dtype);
+
+    final valuesGpu = _writeOrWrapResult(
+      valuesHost,
+      a.device,
+      out?.eigenvalues,
+      outName: 'out.eigenvalues',
+      promote: false,
+    );
+    final vectorsGpu = _writeOrWrapResult(
+      vectorsHost,
+      a.device,
+      out?.eigenvectors,
+      outName: 'out.eigenvectors',
+      promote: false,
+    );
+    if (out == null) {
+      valuesGpu.detachToParentScope();
+      vectorsGpu.detachToParentScope();
+    }
+    return (eigenvalues: valuesGpu, eigenvectors: vectorsGpu);
+  });
+}
+
+/// Computes only the eigenvalues of a real symmetric (or Hermitian) matrix [a]
+/// in ascending order.
+///
+/// Neither [a] nor [out] (if provided) may be disposed, and [a] must be square
+/// in its last two dimensions.
+GpuArray<T> eigvalsh<T extends DTypeTag>(
+  GpuArray<T> a, {
+  MatrixTriangle uplo = MatrixTriangle.lower,
+  GpuArray<T>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute eigvalsh on a disposed GpuArray.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write eigvalsh result to a disposed output GpuArray.',
+    );
+  }
+  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
+    throw GpuShapeMismatchException('eigvalsh', a.shape, const <int>[]);
+  }
+
+  final rank = a.rank;
+  final n = a.shape[rank - 1];
+  final expectedShape = <int>[...a.shape.sublist(0, rank - 2), n];
+  if (out != null) {
+    _validateOutBuffer(out, expectedShape, a.dtype);
+  }
+
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final NDArray<Float64> rawValues;
+    try {
+      rawValues = nd.eigvalsh<Float64>(
+        f64Input,
+        uplo: uplo.isUpper ? nd.MatrixTriangle.upper : nd.MatrixTriangle.lower,
+      );
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
+    }
+    final valuesHost = _matchDType<T>(rawValues, a.dtype);
+    return _writeOrWrapResult(valuesHost, a.device, out);
+  });
+}
+
+/// Computes the eigenvalues and right eigenvectors of a general square matrix
+/// [a].
+///
+/// Because a general real matrix may have complex conjugate eigenvalue pairs,
+/// both `eigenvalues` and `eigenvectors` are returned as [Complex128] arrays.
+///
+/// Neither [a] nor any array in [out] may be disposed, and [a] must be square
+/// in its last two dimensions.
+({GpuArray<Complex128> eigenvalues, GpuArray<Complex128> eigenvectors})
+eig<T extends DTypeTag>(
+  GpuArray<T> a, {
+  ({GpuArray<Complex128> eigenvalues, GpuArray<Complex128> eigenvectors})? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute eig on a disposed GpuArray.');
+  }
+  if (out != null &&
+      (out.eigenvalues.isDisposed || out.eigenvectors.isDisposed)) {
+    throw StateError('Cannot write eig result to a disposed output GpuArray.');
+  }
+  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
+    throw GpuShapeMismatchException('eig', a.shape, const <int>[]);
+  }
+
+  final rank = a.rank;
+  final n = a.shape[rank - 1];
+  final batchShape = a.shape.sublist(0, rank - 2);
+  final expectedValuesShape = <int>[...batchShape, n];
+  final expectedVectorsShape = <int>[...batchShape, n, n];
+
+  if (out != null) {
+    _validateOutBuffer(
+      out.eigenvalues,
+      expectedValuesShape,
+      DType.complex128,
+      name: 'out.eigenvalues',
+    );
+    _validateOutBuffer(
+      out.eigenvectors,
+      expectedVectorsShape,
+      DType.complex128,
+      name: 'out.eigenvectors',
+    );
+  }
+
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final ({NDArray<Complex128> eigenvalues, NDArray<Complex128> eigenvectors})
+    rawEig;
+    try {
+      rawEig = nd.eig<Complex128>(f64Input);
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
+    }
+
+    final valuesGpu = _writeOrWrapResult(
+      rawEig.eigenvalues,
+      a.device,
+      out?.eigenvalues,
+      outName: 'out.eigenvalues',
+      promote: false,
+    );
+    final vectorsGpu = _writeOrWrapResult(
+      rawEig.eigenvectors,
+      a.device,
+      out?.eigenvectors,
+      outName: 'out.eigenvectors',
+      promote: false,
+    );
+    if (out == null) {
+      valuesGpu.detachToParentScope();
+      vectorsGpu.detachToParentScope();
+    }
+    return (eigenvalues: valuesGpu, eigenvectors: vectorsGpu);
+  });
+}
+
+/// Computes the eigenvalues of a general square matrix [a] as a [Complex128]
+/// array.
+///
+/// Neither [a] nor [out] (if provided) may be disposed, and [a] must be square
+/// in its last two dimensions.
+GpuArray<Complex128> eigvals<T extends DTypeTag>(
+  GpuArray<T> a, {
+  GpuArray<Complex128>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute eigvals on a disposed GpuArray.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write eigvals result to a disposed output GpuArray.',
+    );
+  }
+  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
+    throw GpuShapeMismatchException('eigvals', a.shape, const <int>[]);
+  }
+
+  final rank = a.rank;
+  final n = a.shape[rank - 1];
+  final expectedShape = <int>[...a.shape.sublist(0, rank - 2), n];
+  if (out != null) {
+    _validateOutBuffer(out, expectedShape, DType.complex128);
+  }
+
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final f64Input = _toContiguousFloat64(hostInput);
+    final NDArray<Complex128> rawValues;
+    try {
+      rawValues = nd.eigvals<Complex128>(f64Input);
+    } on nd.LinAlgException catch (error) {
+      throw StateError(error.message);
+    }
+    return _writeOrWrapResult(rawValues, a.device, out);
+  });
+}
+
+/// Computes the pivoted LU decomposition of a 2D matrix [a] such that
+/// $A = P \cdot L \cdot U$.
+///
+/// Returns a record `(p, l, u)` where `p` is the $(m, m)$ permutation matrix,
+/// `l` is the $(m, k)$ lower-triangular matrix with unit diagonal, and `u` is
+/// the $(k, n)$ upper-triangular matrix, with $k = \min(m, n)$.
+///
+/// Neither [a] nor any array in [out] may be disposed, and [a] must be
+/// 2-dimensional.
+({GpuArray<T> p, GpuArray<T> l, GpuArray<T> u}) lu<T extends DTypeTag>(
+  GpuArray<T> a, {
+  ({GpuArray<T> p, GpuArray<T> l, GpuArray<T> u})? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute lu on a disposed GpuArray.');
+  }
+  if (out != null &&
+      (out.p.isDisposed || out.l.isDisposed || out.u.isDisposed)) {
+    throw StateError('Cannot write lu result to a disposed output GpuArray.');
+  }
+  if (a.rank != 2) {
+    throw GpuShapeMismatchException('lu', a.shape, const <int>[]);
+  }
+
+  final m = a.shape[0];
+  final n = a.shape[1];
   final k = math.min(m, n);
 
-  final pShape = List<int>.from(a.shape)..setRange(a.rank - 2, a.rank, [m, m]);
-  final lShape = List<int>.from(a.shape)..setRange(a.rank - 2, a.rank, [m, k]);
-  final uShape = List<int>.from(a.shape)..setRange(a.rank - 2, a.rank, [k, n]);
+  if (out != null) {
+    _validateOutBuffer(out.p, <int>[m, m], a.dtype, name: 'out.p');
+    _validateOutBuffer(out.l, <int>[m, k], a.dtype, name: 'out.l');
+    _validateOutBuffer(out.u, <int>[k, n], a.dtype, name: 'out.u');
+  }
 
-  final p = GpuArray<T>.empty(pShape, a.dtype, device: a.device);
-  final l = GpuArray<T>.empty(lShape, a.dtype, device: a.device);
-  final u = GpuArray<T>.empty(uShape, a.dtype, device: a.device);
-
-  final batchSize = ShapeUtils.computeSize(a.shape) ~/ (m * n);
-  final aFlat = a.toNDArray();
-  final aData = aFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
-
-  final pData = List<double>.filled(batchSize * m * m, 0.0);
-  final lData = List<double>.filled(batchSize * m * k, 0.0);
-  final uData = List<double>.filled(batchSize * k * n, 0.0);
-
-  for (var b = 0; b < batchSize; b++) {
-    final aMat = List.generate(
-      m,
-      (i) => List.generate(n, (j) => aData[b * m * n + i * n + j]),
-    );
-    final piv = List.generate(m, (i) => i);
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final work = _toContiguousFloat64(hostInput).copy();
+    final workPointer = work.pointer.cast<ffi.Double>();
+    final permutationIndices = List<int>.generate(m, (index) => index);
 
     for (var j = 0; j < k; j++) {
-      // Find pivot in column j
-      var maxVal = aMat[j][j].abs();
       var maxRow = j;
+      var maxAbs = workPointer[j * n + j].abs();
       for (var i = j + 1; i < m; i++) {
-        final v = aMat[i][j].abs();
-        if (v > maxVal) {
-          maxVal = v;
+        final candidate = workPointer[i * n + j].abs();
+        if (candidate > maxAbs) {
+          maxAbs = candidate;
           maxRow = i;
         }
       }
 
       if (maxRow != j) {
-        final temp = aMat[j];
-        aMat[j] = aMat[maxRow];
-        aMat[maxRow] = temp;
-
-        final tempPiv = piv[j];
-        piv[j] = piv[maxRow];
-        piv[maxRow] = tempPiv;
+        final tempIndex = permutationIndices[j];
+        permutationIndices[j] = permutationIndices[maxRow];
+        permutationIndices[maxRow] = tempIndex;
+        for (var col = 0; col < n; col++) {
+          final temp = workPointer[j * n + col];
+          workPointer[j * n + col] = workPointer[maxRow * n + col];
+          workPointer[maxRow * n + col] = temp;
+        }
       }
 
-      final pivotVal = aMat[j][j];
-      if (pivotVal.abs() > 1e-15) {
+      final pivotValue = workPointer[j * n + j];
+      if (pivotValue.abs() > 1e-15) {
         for (var i = j + 1; i < m; i++) {
-          aMat[i][j] /= pivotVal;
+          workPointer[i * n + j] /= pivotValue;
+          final multiplier = workPointer[i * n + j];
           for (var col = j + 1; col < n; col++) {
-            aMat[i][col] -= aMat[i][j] * aMat[j][col];
+            workPointer[i * n + col] -= multiplier * workPointer[j * n + col];
           }
         }
       }
     }
 
-    // Construct P matrix
+    final pF64 = NDArray<Float64>.zeros(<int>[m, m], DType.float64);
+    final lF64 = NDArray<Float64>.zeros(<int>[m, k], DType.float64);
+    final uF64 = NDArray<Float64>.zeros(<int>[k, n], DType.float64);
+
+    final pPointer = pF64.pointer.cast<ffi.Double>();
+    final lPointer = lF64.pointer.cast<ffi.Double>();
+    final uPointer = uF64.pointer.cast<ffi.Double>();
+
     for (var i = 0; i < m; i++) {
-      pData[b * m * m + i * m + piv[i]] = 1.0;
+      pPointer[permutationIndices[i] * m + i] = 1.0;
     }
 
-    // Construct L matrix
     for (var i = 0; i < m; i++) {
       for (var j = 0; j < k; j++) {
         if (i == j) {
-          lData[b * m * k + i * k + j] = 1.0;
+          lPointer[i * k + j] = 1.0;
         } else if (i > j) {
-          lData[b * m * k + i * k + j] = aMat[i][j];
+          lPointer[i * k + j] = workPointer[i * n + j];
         }
       }
     }
 
-    // Construct U matrix
     for (var i = 0; i < k; i++) {
-      for (var j = 0; j < n; j++) {
-        if (i <= j) {
-          uData[b * k * n + i * n + j] = aMat[i][j];
-        }
+      for (var j = i; j < n; j++) {
+        uPointer[i * n + j] = workPointer[i * n + j];
       }
     }
-  }
 
-  aFlat.dispose();
+    final pHost = _matchDType<T>(pF64, a.dtype);
+    final lHost = _matchDType<T>(lF64, a.dtype);
+    final uHost = _matchDType<T>(uF64, a.dtype);
 
-  for (var i = 0; i < pData.length; i++) {
-    ComputeEngine.writeAny(p.buffer, a.dtype, i, pData[i]);
-  }
-  for (var i = 0; i < lData.length; i++) {
-    ComputeEngine.writeAny(l.buffer, a.dtype, i, lData[i]);
-  }
-  for (var i = 0; i < uData.length; i++) {
-    ComputeEngine.writeAny(u.buffer, a.dtype, i, uData[i]);
-  }
-
-  return LuResult<T>(p: p, l: l, u: u);
+    final pGpu = _writeOrWrapResult(
+      pHost,
+      a.device,
+      out?.p,
+      outName: 'out.p',
+      promote: false,
+    );
+    final lGpu = _writeOrWrapResult(
+      lHost,
+      a.device,
+      out?.l,
+      outName: 'out.l',
+      promote: false,
+    );
+    final uGpu = _writeOrWrapResult(
+      uHost,
+      a.device,
+      out?.u,
+      outName: 'out.u',
+      promote: false,
+    );
+    if (out == null) {
+      pGpu.detachToParentScope();
+      lGpu.detachToParentScope();
+      uGpu.detachToParentScope();
+    }
+    return (p: pGpu, l: lGpu, u: uGpu);
+  });
 }
 
-/// Computes pivoted LU factorization of matrix [a].
-LuFactorResult<T> lu_factor<T extends DTypeTag>(GpuArray<T> a) {
-  if (a.rank < 2) {
-    throw ArgumentError(
-      'lu_factor() requires an array of at least 2 dimensions.',
+/// Computes the compact LU factorization of a square 2D matrix [a] for use with
+/// [luSolve].
+///
+/// Returns a record `(lu, pivots)` where `lu` packs $L$ (strictly lower
+/// triangle) and $U$ (upper triangle including diagonal) in a single `(n, n)`
+/// matrix, and `pivots` is a 1D `Int32` array of row swap indices.
+///
+/// Neither [a] nor any array in [out] may be disposed, and [a] must be a
+/// square 2D matrix.
+({GpuArray<T> lu, GpuArray<Int32> pivots}) luFactor<T extends DTypeTag>(
+  GpuArray<T> a, {
+  ({GpuArray<T> lu, GpuArray<Int32> pivots})? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute luFactor on a disposed GpuArray.');
+  }
+  if (out != null && (out.lu.isDisposed || out.pivots.isDisposed)) {
+    throw StateError(
+      'Cannot write luFactor result to a disposed output GpuArray.',
     );
   }
-
-  final m = a.shape[a.rank - 2];
-  final n = a.shape[a.rank - 1];
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(a.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
+  if (a.rank != 2 || a.shape[0] != a.shape[1]) {
+    throw GpuShapeMismatchException('luFactor', a.shape, const <int>[]);
   }
-  final k = math.min(m, n);
 
-  final lu = GpuArray<T>.empty(a.shape, a.dtype, device: a.device);
-  final pivShape = List<int>.from(a.shape)
-    ..removeLast()
-    ..setRange(a.rank - 2, a.rank - 1, [k]);
-  final piv = GpuArray<Int32>.empty(pivShape, DType.int32, device: a.device);
+  final n = a.shape[0];
+  if (out != null) {
+    _validateOutBuffer(out.lu, <int>[n, n], a.dtype, name: 'out.lu');
+    _validateOutBuffer(out.pivots, <int>[n], DType.int32, name: 'out.pivots');
+  }
 
-  final batchSize = ShapeUtils.computeSize(a.shape) ~/ (m * n);
-  final aFlat = a.toNDArray();
-  final aData = aFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
+  return NDArray.scope(() {
+    final hostInput = a.toNDArray();
+    final luF64 = _toContiguousFloat64(hostInput).copy();
+    final luPointer = luF64.pointer.cast<ffi.Double>();
+    final pivotsNd = NDArray<Int32>.zeros(<int>[n], DType.int32);
+    final pivotsPointer = pivotsNd.pointer.cast<ffi.Int32>();
 
-  final luData = List<double>.filled(batchSize * m * n, 0.0);
-  final pivData = List<int>.filled(batchSize * k, 0);
-
-  for (var b = 0; b < batchSize; b++) {
-    final aMat = List.generate(
-      m,
-      (i) => List.generate(n, (j) => aData[b * m * n + i * n + j]),
-    );
-    final pIndices = List.generate(k, (i) => i);
-
-    for (var j = 0; j < k; j++) {
-      var maxVal = aMat[j][j].abs();
+    for (var j = 0; j < n; j++) {
       var maxRow = j;
-      for (var i = j + 1; i < m; i++) {
-        final v = aMat[i][j].abs();
-        if (v > maxVal) {
-          maxVal = v;
+      var maxAbs = luPointer[j * n + j].abs();
+      for (var i = j + 1; i < n; i++) {
+        final candidate = luPointer[i * n + j].abs();
+        if (candidate > maxAbs) {
+          maxAbs = candidate;
           maxRow = i;
         }
       }
-
-      pIndices[j] = maxRow;
-
+      pivotsPointer[j] = maxRow;
       if (maxRow != j) {
-        final temp = aMat[j];
-        aMat[j] = aMat[maxRow];
-        aMat[maxRow] = temp;
+        for (var col = 0; col < n; col++) {
+          final temp = luPointer[j * n + col];
+          luPointer[j * n + col] = luPointer[maxRow * n + col];
+          luPointer[maxRow * n + col] = temp;
+        }
       }
-
-      final pivotVal = aMat[j][j];
-      if (pivotVal.abs() > 1e-15) {
-        for (var i = j + 1; i < m; i++) {
-          aMat[i][j] /= pivotVal;
-          for (var col = j + 1; col < n; col++) {
-            aMat[i][col] -= aMat[i][j] * aMat[j][col];
-          }
+      final pivotValue = luPointer[j * n + j];
+      if (pivotValue.abs() < 1e-15) {
+        throw StateError('Matrix is singular in luFactor at column $j.');
+      }
+      for (var i = j + 1; i < n; i++) {
+        luPointer[i * n + j] /= pivotValue;
+        final multiplier = luPointer[i * n + j];
+        for (var col = j + 1; col < n; col++) {
+          luPointer[i * n + col] -= multiplier * luPointer[j * n + col];
         }
       }
     }
 
-    for (var i = 0; i < m; i++) {
-      for (var j = 0; j < n; j++) {
-        luData[b * m * n + i * n + j] = aMat[i][j];
-      }
+    final luHost = _matchDType<T>(luF64, a.dtype);
+    final luGpu = _writeOrWrapResult(
+      luHost,
+      a.device,
+      out?.lu,
+      outName: 'out.lu',
+      promote: false,
+    );
+    final pivotsGpu = _writeOrWrapResult(
+      pivotsNd,
+      a.device,
+      out?.pivots,
+      outName: 'out.pivots',
+      promote: false,
+    );
+    if (out == null) {
+      luGpu.detachToParentScope();
+      pivotsGpu.detachToParentScope();
     }
-    for (var j = 0; j < k; j++) {
-      pivData[b * k + j] = pIndices[j];
-    }
-  }
-
-  aFlat.dispose();
-
-  for (var i = 0; i < luData.length; i++) {
-    ComputeEngine.writeAny(lu.buffer, a.dtype, i, luData[i]);
-  }
-  for (var i = 0; i < pivData.length; i++) {
-    ComputeEngine.writeAny(piv.buffer, DType.int32, i, pivData[i]);
-  }
-
-  return LuFactorResult<T>(lu: lu, piv: piv);
+    return (lu: luGpu, pivots: pivotsGpu);
+  });
 }
 
-/// Solves a linear system $A x = b$ using precomputed LU factorization [lu] and pivots [piv].
+/// Snake-case alias for [luFactor].
+({GpuArray<T> lu, GpuArray<Int32> pivots}) lu_factor<T extends DTypeTag>(
+  GpuArray<T> a, {
+  ({GpuArray<T> lu, GpuArray<Int32> pivots})? out,
+}) => luFactor(a, out: out);
+
+/// Solves a linear system $A x = b$ given the compact LU factorization
+/// `(lu, pivots)` from [luFactor].
+///
+/// Supports 1D right-hand side vectors `(n,)` and 2D right-hand side matrices
+/// `(n, k)`. None of [lu], [pivots], [b], or [out] may be disposed.
+GpuArray<T> luSolve<T extends DTypeTag>(
+  GpuArray<T> lu,
+  GpuArray<Int32> pivots,
+  GpuArray<T> b, {
+  GpuArray<T>? out,
+}) {
+  if (lu.isDisposed || pivots.isDisposed || b.isDisposed) {
+    throw StateError('Cannot execute luSolve on a disposed GpuArray.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write luSolve result to a disposed output GpuArray.',
+    );
+  }
+  if (lu.rank != 2 || lu.shape[0] != lu.shape[1]) {
+    throw GpuShapeMismatchException('luSolve', lu.shape, b.shape);
+  }
+  final n = lu.shape[0];
+  if (pivots.rank != 1 || pivots.shape[0] != n) {
+    throw GpuShapeMismatchException('luSolve', lu.shape, pivots.shape);
+  }
+  if ((b.rank != 1 && b.rank != 2) || b.shape[0] != n) {
+    throw GpuShapeMismatchException('luSolve', lu.shape, b.shape);
+  }
+  if (out != null) {
+    _validateOutBuffer(out, b.shape, b.dtype);
+  }
+
+  final is1D = b.rank == 1;
+  final rightHandSides = is1D ? 1 : b.shape[1];
+
+  return NDArray.scope(() {
+    final luF64 = _toContiguousFloat64(lu.toNDArray());
+    final luPointer = luF64.pointer.cast<ffi.Double>();
+
+    final pivotsHost = pivots.toNDArray();
+    final contiguousPivots = pivotsHost.isContiguous
+        ? pivotsHost
+        : pivotsHost.copy();
+    final pivotsPointer = contiguousPivots.pointer.cast<ffi.Int32>();
+
+    final xF64 = _toContiguousFloat64(b.toNDArray()).copy().reshape(b.shape);
+    final xPointer = xF64.pointer.cast<ffi.Double>();
+
+    for (var i = 0; i < n; i++) {
+      final pivotRow = pivotsPointer[i];
+      if (pivotRow != i) {
+        for (var col = 0; col < rightHandSides; col++) {
+          final temp = xPointer[i * rightHandSides + col];
+          xPointer[i * rightHandSides + col] =
+              xPointer[pivotRow * rightHandSides + col];
+          xPointer[pivotRow * rightHandSides + col] = temp;
+        }
+      }
+    }
+
+    for (var i = 1; i < n; i++) {
+      for (var k = 0; k < i; k++) {
+        final lowerEntry = luPointer[i * n + k];
+        for (var col = 0; col < rightHandSides; col++) {
+          xPointer[i * rightHandSides + col] -=
+              lowerEntry * xPointer[k * rightHandSides + col];
+        }
+      }
+    }
+
+    for (var i = n - 1; i >= 0; i--) {
+      final diagonalEntry = luPointer[i * n + i];
+      if (diagonalEntry.abs() < 1e-15) {
+        throw StateError('Matrix is singular in luSolve.');
+      }
+      for (var col = 0; col < rightHandSides; col++) {
+        var sum = xPointer[i * rightHandSides + col];
+        for (var k = i + 1; k < n; k++) {
+          sum -= luPointer[i * n + k] * xPointer[k * rightHandSides + col];
+        }
+        xPointer[i * rightHandSides + col] = sum / diagonalEntry;
+      }
+    }
+
+    final xHost = _matchDType<T>(xF64, b.dtype);
+    return _writeOrWrapResult(xHost, b.device, out);
+  });
+}
+
+/// Snake-case alias for [luSolve].
 GpuArray<T> lu_solve<T extends DTypeTag>(
   GpuArray<T> lu,
-  GpuArray<Int32> piv,
-  GpuArray<T> b,
-) {
-  if (lu.rank < 2) {
-    throw ArgumentError('lu_solve() requires lu of at least 2 dimensions.');
-  }
-  final n = lu.shape[lu.rank - 1];
-  final m = lu.shape[lu.rank - 2];
-  if (m != n) {
-    throw GpuShapeMismatchException('lu_solve', lu.shape, lu.shape);
-  }
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(lu.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
-  }
-  final isVector = (b.rank == lu.rank - 1);
-  if (b.rank != lu.rank && !isVector) {
-    throw ArgumentError(
-      'lu_solve: RHS b rank (${b.rank}) must be either equal to lu rank (${lu.rank}) or lu rank - 1 (${lu.rank - 1}).',
-    );
-  }
-
-  if (isVector) {
-    if (b.shape.last != n ||
-        !ShapeUtils.areEqual(
-          b.shape.sublist(0, b.rank - 1),
-          lu.shape.sublist(0, lu.rank - 2),
-        )) {
-      throw GpuShapeMismatchException('lu_solve', lu.shape, b.shape);
-    }
-  } else {
-    if (b.shape[b.rank - 2] != n ||
-        !ShapeUtils.areEqual(
-          b.shape.sublist(0, b.rank - 2),
-          lu.shape.sublist(0, lu.rank - 2),
-        )) {
-      throw GpuShapeMismatchException('lu_solve', lu.shape, b.shape);
-    }
-  }
-
-  final bCols = isVector ? 1 : b.shape[b.rank - 1];
-
-  final outShape = List<int>.from(b.shape);
-  final x = GpuArray<T>.empty(outShape, lu.dtype, device: lu.device);
-
-  final batchSize = ShapeUtils.computeSize(lu.shape) ~/ (n * n);
-  final luFlat = lu.toNDArray();
-  final luData = luFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
-  final pivData = piv.toList().cast<int>();
-  final bFlat = b.toNDArray();
-  final bData = bFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
-  final xData = List<double>.filled(batchSize * n * bCols, 0.0);
-
-  for (var bt = 0; bt < batchSize; bt++) {
-    final bMat = List.generate(
-      n,
-      (i) => List.generate(
-        bCols,
-        (j) => isVector
-            ? bData[bt * n + i]
-            : bData[bt * n * bCols + i * bCols + j],
-      ),
-    );
-
-    // Apply permutations
-    for (var i = 0; i < n; i++) {
-      final p = pivData[bt * n + i];
-      if (p != i) {
-        final temp = bMat[i];
-        bMat[i] = bMat[p];
-        bMat[p] = temp;
-      }
-    }
-
-    // Forward substitution (L y = P b)
-    final yMat = List.generate(n, (i) => List.filled(bCols, 0.0));
-    for (var i = 0; i < n; i++) {
-      for (var col = 0; col < bCols; col++) {
-        var sum = 0.0;
-        for (var j = 0; j < i; j++) {
-          sum += luData[bt * n * n + i * n + j] * yMat[j][col];
-        }
-        yMat[i][col] = bMat[i][col] - sum;
-      }
-    }
-
-    // Back substitution (U x = y)
-    final xMat = List.generate(n, (i) => List.filled(bCols, 0.0));
-    for (var i = n - 1; i >= 0; i--) {
-      final diag = luData[bt * n * n + i * n + i];
-      for (var col = 0; col < bCols; col++) {
-        var sum = 0.0;
-        for (var j = i + 1; j < n; j++) {
-          sum += luData[bt * n * n + i * n + j] * xMat[j][col];
-        }
-        xMat[i][col] = (yMat[i][col] - sum) / diag;
-      }
-    }
-
-    for (var i = 0; i < n; i++) {
-      for (var j = 0; j < bCols; j++) {
-        final idx = isVector ? (bt * n + i) : (bt * n * bCols + i * bCols + j);
-        xData[idx] = xMat[i][j];
-      }
-    }
-  }
-
-  luFlat.dispose();
-  bFlat.dispose();
-
-  for (var i = 0; i < xData.length; i++) {
-    ComputeEngine.writeAny(x.buffer, lu.dtype, i, xData[i]);
-  }
-
-  return x;
-}
-
-/// Computes the Singular Value Decomposition (SVD) of matrix [a].
-SvdResult<T> svd<T extends DTypeTag>(
-  GpuArray<T> a, {
-  bool fullMatrices = true,
-  bool computeUv = true,
-}) {
-  if (a.rank < 2) {
-    throw ArgumentError('svd() requires an array of at least 2 dimensions.');
-  }
-
-  final m = a.shape[a.rank - 2];
-  final n = a.shape[a.rank - 1];
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(a.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
-  }
-
-  // When m < n (fat matrix), compute SVD of A^T and transpose singular vectors
-  if (m < n) {
-    final aT = a.swapaxes(-1, -2);
-    final resT = svd<T>(aT, fullMatrices: fullMatrices, computeUv: computeUv);
-    final u = resT.vt.swapaxes(-1, -2);
-    final s = resT.s;
-    final vt = resT.u.swapaxes(-1, -2);
-    return SvdResult<T>(u: u, s: s, vt: vt);
-  }
-
-  final k = math.min(m, n);
-
-  final uCols = fullMatrices ? m : k;
-  final vtRows = fullMatrices ? n : k;
-
-  final uShape = List<int>.from(a.shape)
-    ..setRange(a.rank - 2, a.rank, [m, uCols]);
-  final sShape = List<int>.from(a.shape)
-    ..removeLast()
-    ..setRange(a.rank - 2, a.rank - 1, [k]);
-  final vtShape = List<int>.from(a.shape)
-    ..setRange(a.rank - 2, a.rank, [vtRows, n]);
-
-  final u = GpuArray<T>.empty(uShape, a.dtype, device: a.device);
-  final s = GpuArray<T>.empty(sShape, a.dtype, device: a.device);
-  final vt = GpuArray<T>.empty(vtShape, a.dtype, device: a.device);
-
-  final batchSize = ShapeUtils.computeSize(a.shape) ~/ (m * n);
-  final aFlat = a.toNDArray();
-  final aData = aFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
-
-  final uData = List<double>.filled(batchSize * m * uCols, 0.0);
-  final sData = List<double>.filled(batchSize * k, 0.0);
-  final vtData = List<double>.filled(batchSize * vtRows * n, 0.0);
-
-  for (var b = 0; b < batchSize; b++) {
-    // One-sided Jacobi SVD algorithm
-    final aMat = List.generate(
-      m,
-      (i) => List.generate(n, (j) => aData[b * m * n + i * n + j]),
-    );
-    final vMat = List.generate(
-      n,
-      (i) => List.generate(n, (j) => (i == j) ? 1.0 : 0.0),
-    );
-
-    final maxIter = 100;
-    final tol = 1e-12;
-
-    for (var iter = 0; iter < maxIter; iter++) {
-      var maxOffDiag = 0.0;
-
-      for (var p = 0; p < n - 1; p++) {
-        for (var q = p + 1; q < n; q++) {
-          var alpha = 0.0;
-          var beta = 0.0;
-          var gamma = 0.0;
-
-          for (var i = 0; i < m; i++) {
-            alpha += aMat[i][p] * aMat[i][p];
-            beta += aMat[i][q] * aMat[i][q];
-            gamma += aMat[i][p] * aMat[i][q];
-          }
-
-          maxOffDiag = math.max(
-            maxOffDiag,
-            gamma.abs() / math.sqrt(math.max(alpha * beta, 1e-30)),
-          );
-
-          if (gamma.abs() < tol) continue;
-
-          final zeta = (beta - alpha) / (2.0 * gamma);
-          final t = (zeta >= 0)
-              ? 1.0 / (zeta + math.sqrt(1.0 + zeta * zeta))
-              : -1.0 / (-zeta + math.sqrt(1.0 + zeta * zeta));
-          final c = 1.0 / math.sqrt(1.0 + t * t);
-          final sAngle = t * c;
-
-          for (var i = 0; i < m; i++) {
-            final api = aMat[i][p];
-            final aqi = aMat[i][q];
-            aMat[i][p] = c * api - sAngle * aqi;
-            aMat[i][q] = sAngle * api + c * aqi;
-          }
-
-          for (var i = 0; i < n; i++) {
-            final vpi = vMat[i][p];
-            final vqi = vMat[i][q];
-            vMat[i][p] = c * vpi - sAngle * vqi;
-            vMat[i][q] = sAngle * vpi + c * vqi;
-          }
-        }
-      }
-
-      if (maxOffDiag < tol) break;
-    }
-
-    // Compute singular values and normalize U
-    final sigma = List<double>.filled(n, 0.0);
-    for (var j = 0; j < n; j++) {
-      var norm = 0.0;
-      for (var i = 0; i < m; i++) {
-        norm += aMat[i][j] * aMat[i][j];
-      }
-      sigma[j] = math.sqrt(norm);
-      if (sigma[j] > 1e-15) {
-        for (var i = 0; i < m; i++) {
-          aMat[i][j] /= sigma[j];
-        }
-      }
-    }
-
-    // Sort singular values descending
-    final order = List.generate(n, (i) => i);
-    order.sort((i, j) => sigma[j].compareTo(sigma[i]));
-
-    final uMat = List.generate(m, (_) => List.filled(uCols, 0.0));
-    var currCols = 0;
-    for (var idx = 0; idx < k; idx++) {
-      final col = order[idx];
-      sData[b * k + idx] = sigma[col];
-      if (sigma[col] > 1e-15) {
-        for (var i = 0; i < m; i++) {
-          uMat[i][currCols] = aMat[i][col];
-        }
-        currCols++;
-      }
-    }
-
-    // Orthogonal completion for remaining columns of U (fullMatrices: true or rank-deficient)
-    for (var j = 0; j < m && currCols < uCols; j++) {
-      final v = List<double>.filled(m, 0.0);
-      v[j] = 1.0;
-      for (var pass = 0; pass < 2; pass++) {
-        for (var i = 0; i < currCols; i++) {
-          var dot = 0.0;
-          for (var r = 0; r < m; r++) {
-            dot += v[r] * uMat[r][i];
-          }
-          for (var r = 0; r < m; r++) {
-            v[r] -= dot * uMat[r][i];
-          }
-        }
-      }
-      var norm = 0.0;
-      for (var r = 0; r < m; r++) {
-        norm += v[r] * v[r];
-      }
-      norm = math.sqrt(norm);
-      if (norm > 1e-8) {
-        for (var r = 0; r < m; r++) {
-          uMat[r][currCols] = v[r] / norm;
-        }
-        currCols++;
-      }
-    }
-
-    for (var i = 0; i < m; i++) {
-      for (var j = 0; j < uCols; j++) {
-        uData[b * m * uCols + i * uCols + j] = uMat[i][j];
-      }
-    }
-
-    for (var idx = 0; idx < vtRows; idx++) {
-      final col = order[idx];
-      for (var j = 0; j < n; j++) {
-        vtData[b * vtRows * n + idx * n + j] = vMat[j][col];
-      }
-    }
-  }
-
-  aFlat.dispose();
-
-  for (var i = 0; i < uData.length; i++) {
-    ComputeEngine.writeAny(u.buffer, a.dtype, i, uData[i]);
-  }
-  for (var i = 0; i < sData.length; i++) {
-    ComputeEngine.writeAny(s.buffer, a.dtype, i, sData[i]);
-  }
-  for (var i = 0; i < vtData.length; i++) {
-    ComputeEngine.writeAny(vt.buffer, a.dtype, i, vtData[i]);
-  }
-
-  return SvdResult<T>(u: u, s: s, vt: vt);
-}
-
-/// Computes eigenvalues and eigenvectors of a symmetric/Hermitian matrix [a].
-EigResult<T> eigh<T extends DTypeTag>(GpuArray<T> a, {String UPLO = 'L'}) {
-  if (a.rank < 2) {
-    throw ArgumentError('eigh() requires an array of at least 2 dimensions.');
-  }
-
-  final n = a.shape[a.rank - 1];
-  final m = a.shape[a.rank - 2];
-  if (n != m) {
-    throw GpuShapeMismatchException('eigh', a.shape, a.shape);
-  }
-  if (m == 0 || n == 0 || ShapeUtils.computeSize(a.shape) == 0) {
-    throw ArgumentError('Matrix dimensions cannot be zero.');
-  }
-
-  final wShape = List<int>.from(a.shape)..removeLast();
-  final vShape = List<int>.from(a.shape);
-
-  final w = GpuArray<T>.empty(wShape, a.dtype, device: a.device);
-  final v = GpuArray<T>.empty(vShape, a.dtype, device: a.device);
-
-  final batchSize = ShapeUtils.computeSize(a.shape) ~/ (n * n);
-  final aFlat = a.toNDArray();
-  final aData = aFlat.toList().cast<num>().map((e) => e.toDouble()).toList();
-
-  final wData = List<double>.filled(batchSize * n, 0.0);
-  final vData = List<double>.filled(batchSize * n * n, 0.0);
-
-  for (var b = 0; b < batchSize; b++) {
-    // Cyclic Jacobi eigenvalue algorithm for symmetric matrix
-    final aMat = List.generate(
-      n,
-      (i) => List.generate(n, (j) => aData[b * n * n + i * n + j]),
-    );
-    final vMat = List.generate(
-      n,
-      (i) => List.generate(n, (j) => (i == j) ? 1.0 : 0.0),
-    );
-
-    final maxIter = 100;
-    final tol = 1e-12;
-
-    for (var iter = 0; iter < maxIter; iter++) {
-      var maxOffDiag = 0.0;
-
-      for (var p = 0; p < n - 1; p++) {
-        for (var q = p + 1; q < n; q++) {
-          final apq = aMat[p][q];
-          maxOffDiag = math.max(maxOffDiag, apq.abs());
-
-          if (apq.abs() < tol) continue;
-
-          final app = aMat[p][p];
-          final aqq = aMat[q][q];
-          final theta = (aqq - app) / (2.0 * apq);
-          final t = (theta >= 0)
-              ? 1.0 / (theta + math.sqrt(1.0 + theta * theta))
-              : -1.0 / (-theta + math.sqrt(1.0 + theta * theta));
-          final c = 1.0 / math.sqrt(1.0 + t * t);
-          final s = t * c;
-          final tau = s / (1.0 + c);
-
-          aMat[p][p] -= t * apq;
-          aMat[q][q] += t * apq;
-          aMat[p][q] = 0.0;
-          aMat[q][p] = 0.0;
-
-          for (var r = 0; r < p; r++) {
-            final arp = aMat[r][p];
-            final arq = aMat[r][q];
-            aMat[r][p] = arp - s * (arq + arp * tau);
-            aMat[p][r] = aMat[r][p];
-            aMat[r][q] = arq + s * (arp - arq * tau);
-            aMat[q][r] = aMat[r][q];
-          }
-
-          for (var r = p + 1; r < q; r++) {
-            final apr = aMat[p][r];
-            final arq = aMat[r][q];
-            aMat[p][r] = apr - s * (arq + apr * tau);
-            aMat[r][p] = aMat[p][r];
-            aMat[r][q] = arq + s * (apr - arq * tau);
-            aMat[q][r] = aMat[r][q];
-          }
-
-          for (var r = q + 1; r < n; r++) {
-            final apr = aMat[p][r];
-            final aqr = aMat[q][r];
-            aMat[p][r] = apr - s * (aqr + apr * tau);
-            aMat[r][p] = aMat[p][r];
-            aMat[q][r] = aqr + s * (apr - aqr * tau);
-            aMat[r][q] = aMat[q][r];
-          }
-
-          for (var r = 0; r < n; r++) {
-            final vrp = vMat[r][p];
-            final vrq = vMat[r][q];
-            vMat[r][p] = vrp - s * (vrq + vrp * tau);
-            vMat[r][q] = vrq + s * (vrp - vrq * tau);
-          }
-        }
-      }
-
-      if (maxOffDiag < tol) break;
-    }
-
-    final eigenvalues = List.generate(n, (i) => aMat[i][i]);
-    final order = List.generate(n, (i) => i);
-    order.sort((i, j) => eigenvalues[i].compareTo(eigenvalues[j]));
-
-    for (var i = 0; i < n; i++) {
-      final col = order[i];
-      wData[b * n + i] = eigenvalues[col];
-      for (var r = 0; r < n; r++) {
-        vData[b * n * n + r * n + i] = vMat[r][col];
-      }
-    }
-  }
-
-  aFlat.dispose();
-
-  for (var i = 0; i < wData.length; i++) {
-    ComputeEngine.writeAny(w.buffer, a.dtype, i, wData[i]);
-  }
-  for (var i = 0; i < vData.length; i++) {
-    ComputeEngine.writeAny(v.buffer, a.dtype, i, vData[i]);
-  }
-
-  return EigResult<T>(eigenvalues: w, eigenvectors: v);
-}
-
-/// Returns eigenvalues of a symmetric/Hermitian matrix [a].
-GpuArray<T> eigvalsh<T extends DTypeTag>(GpuArray<T> a, {String UPLO = 'L'}) =>
-    eigh(a, UPLO: UPLO).eigenvalues;
-
-/// Computes eigenvalues and right eigenvectors of a general square matrix [a].
-EigResult<T> eig<T extends DTypeTag>(GpuArray<T> a) => eigh(a);
-
-/// Computes eigenvalues of a general square matrix [a].
-GpuArray<T> eigvals<T extends DTypeTag>(GpuArray<T> a) => eig(a).eigenvalues;
+  GpuArray<Int32> pivots,
+  GpuArray<T> b, {
+  GpuArray<T>? out,
+}) => luSolve(lu, pivots, b, out: out);

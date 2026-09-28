@@ -15,6 +15,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:crypto/crypto.dart';
+import 'package:gpuarray/src/hook_helpers/build_options.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -98,6 +99,31 @@ void main() {
         }
       },
       timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    test(
+      'BuildOptions and BuildModeEnum configuration and error formatting',
+      () {
+        const defaultOpts = BuildOptions(buildMode: BuildModeEnum.fetch);
+        expect(defaultOpts.buildMode, equals(BuildModeEnum.fetch));
+        expect(defaultOpts.localPath, isNull);
+        expect(defaultOpts.checkoutPath, isNull);
+        expect(defaultOpts.toString(), contains('buildMode: fetch'));
+
+        final localUri = Uri.file('/tmp/libwgpu_native.so');
+        final localOpts = BuildOptions(
+          buildMode: BuildModeEnum.local,
+          localPath: localUri,
+        );
+        expect(localOpts.buildMode, equals(BuildModeEnum.local));
+        expect(localOpts.localPath, equals(localUri));
+
+        final errStr = BuildOptions.usageError(
+          const FormatException('Invalid buildMode'),
+        );
+        expect(errStr, contains('Invalid buildMode'));
+        expect(errStr, contains('buildMode: fetch'));
+      },
     );
   });
 }

@@ -18,6 +18,22 @@ import 'package:test/test.dart';
 
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/src/backend/compute_engine.dart';
+import 'package:gpuarray/src/backend/kernels.dart';
+
+WgslShaderModule _withCpuKernel(
+  WgslShaderModule shader,
+  void Function(List<GpuBuffer> bufs, List<int>? uniforms, int x, int y, int z)
+  kernel,
+) {
+  return WgslShaderModule(
+    name: shader.name,
+    code: shader.code,
+    entryPoint: shader.entryPoint,
+    workgroupSize: shader.workgroupSize,
+    bindings: shader.bindings,
+    metadata: {...shader.metadata, 'cpu_kernel': kernel},
+  );
+}
 
 void main() {
   group('WebGPU Cross-Platform Device Creation & Backend Selection', () {
@@ -139,11 +155,20 @@ void main() {
     });
 
     test('Dispatches Elementwise Add Compute Shader', () {
-      final shader = WgslTemplates.elementwiseBinary(
+      final baseShader = WgslTemplates.elementwiseBinary(
         op: 'add',
         dtype: WgslDType.float32,
         strided: false,
       );
+      final shader = _withCpuKernel(baseShader, (bufs, uniforms, x, y, z) {
+        final aPtr = bufs[0].address.cast<ffi.Float>();
+        final bPtr = bufs[1].address.cast<ffi.Float>();
+        final outPtr = bufs[2].address.cast<ffi.Float>();
+        final n = uniforms != null && uniforms.isNotEmpty ? uniforms[0] : 1024;
+        for (var i = 0; i < n; i++) {
+          outPtr[i] = aPtr[i] + bPtr[i];
+        }
+      });
 
       final bufA = device.createBuffer(
         sizeInBytes: 1024 * 4,
@@ -180,11 +205,6 @@ void main() {
         contains('elementwise_binary_add_contiguous(4, 1, 1)'),
       );
 
-      // In CPU simulation mode, simulate elementwise computation
-      for (var i = 0; i < 1024; i++) {
-        ComputeEngine.writeValue(bufOut, DType.float32, i, hostA[i] + hostB[i]);
-      }
-
       for (var i = 0; i < 10; i++) {
         final val = ComputeEngine.readValue(bufOut, DType.float32, i);
         expect(val, closeTo(i * 5.0 + 1.0, 1e-5));
@@ -200,10 +220,33 @@ void main() {
     test(
       'Dispatches Tiled GEMM Matrix Multiplication Shader (16x16 Shared Memory)',
       () {
-        final gemmShader = WgslTemplates.tiledMatmul(
+        final baseGemmShader = WgslTemplates.tiledMatmul(
           dtype: WgslDType.float32,
           tileSize: 16,
         );
+        final gemmShader = _withCpuKernel(baseGemmShader, (
+          bufs,
+          uniforms,
+          x,
+          y,
+          z,
+        ) {
+          final aPtr = bufs[0].address.cast<ffi.Float>();
+          final bPtr = bufs[1].address.cast<ffi.Float>();
+          final cPtr = bufs[2].address.cast<ffi.Float>();
+          final m = uniforms![0];
+          final k = uniforms[1];
+          final n = uniforms[2];
+          for (var r = 0; r < m; r++) {
+            for (var c = 0; c < n; c++) {
+              var sum = 0.0;
+              for (var ki = 0; ki < k; ki++) {
+                sum += aPtr[r * k + ki] * bPtr[ki * n + c];
+              }
+              cPtr[r * n + c] = sum;
+            }
+          }
+        });
 
         const M = 64;
         const K = 32;
@@ -245,7 +288,7 @@ void main() {
 
         expect(backend.dispatchLog, contains('tiled_matmul_16x16(3, 4, 1)'));
 
-        // Validate CPU reference computation
+        // Validate computed output against CPU reference
         final hostC = calloc<ffi.Float>(M * N);
         for (var r = 0; r < M; r++) {
           for (var c = 0; c < N; c++) {
@@ -254,7 +297,6 @@ void main() {
               sum += hostA[r * K + k] * hostB[k * N + c];
             }
             hostC[r * N + c] = sum;
-            ComputeEngine.writeValue(bufC, DType.float32, r * N + c, sum);
           }
         }
 
@@ -273,12 +315,28 @@ void main() {
     );
 
     test('Dispatches Tree Reduction WGSL Compute Shader', () {
-      final reduceShader = WgslTemplates.treeReduction(
+      final baseReduceShader = WgslTemplates.treeReduction(
         op: 'sum',
         dtype: WgslDType.float32,
       );
-
       const count = 1024;
+      final reduceShader = _withCpuKernel(baseReduceShader, (
+        bufs,
+        uniforms,
+        x,
+        y,
+        z,
+      ) {
+        final inPtr = bufs[0].address.cast<ffi.Float>();
+        final outPtr = bufs[1].address.cast<ffi.Float>();
+        final n = uniforms != null && uniforms.isNotEmpty ? uniforms[0] : count;
+        var sum = 0.0;
+        for (var i = 0; i < n; i++) {
+          sum += inPtr[i];
+        }
+        outPtr[0] = sum;
+      });
+
       final bufIn = device.createBuffer(
         sizeInBytes: count * 4,
         usage: GpuBufferUsage.storage | GpuBufferUsage.copyDst,
@@ -306,8 +364,7 @@ void main() {
 
       expect(backend.dispatchLog, contains('reduction_sum(4, 1, 1)'));
 
-      // Validate reduction result
-      ComputeEngine.writeValue(bufOut, DType.float32, 0, expectedSum);
+      // Validate reduction result computed by backend dispatch
       final resultSum = ComputeEngine.readValue(bufOut, DType.float32, 0);
       expect(resultSum, closeTo(expectedSum, 1e-4));
       expect(resultSum, closeTo((count * (count + 1)) / 2.0, 1e-4));
@@ -427,7 +484,7 @@ void main() {
           throwsA(isA<GpuMemoryException>()),
         );
 
-        // Throws on invalid workgroup dimensions
+        // Throws on invalid workgroup dimensions (<= 0 or > 65535)
         expect(
           () => backend.dispatchComputePipeline(
             shaderModule: shader,
@@ -436,9 +493,218 @@ void main() {
           ),
           throwsA(isA<ArgumentError>()),
         );
+        expect(
+          () => backend.dispatchComputePipeline(
+            shaderModule: shader,
+            buffers: [validBuf],
+            workgroupsX: 65536,
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
+        expect(
+          () => backend.dispatchComputePipeline(
+            shaderModule: shader,
+            buffers: [validBuf],
+            workgroupsX: 1,
+            workgroupsY: 70000,
+          ),
+          throwsA(isA<ArgumentError>()),
+        );
 
         validBuf.dispose();
       },
     );
+
+    test(
+      'Dispatches Axis Reduction, WhereKernel, and TileKernel WGSL Shaders',
+      () {
+        final axisShader = WgslTemplates.axisReduction(
+          op: 'sum',
+          dtype: WgslDType.float32,
+        );
+        final whereShader = WgslTemplates.whereKernel(dtype: WgslDType.float32);
+        final tileShader = WgslTemplates.tileKernel(dtype: WgslDType.float32);
+
+        expect(WgslSyntaxValidator.validate(axisShader.code).isValid, isTrue);
+        expect(WgslSyntaxValidator.validate(whereShader.code).isValid, isTrue);
+        expect(WgslSyntaxValidator.validate(tileShader.code).isValid, isTrue);
+
+        expect(axisShader.code, contains('strides_a: array<vec4<i32>, 2>'));
+        expect(whereShader.code, contains('offset_cond: u32'));
+        expect(tileShader.code, contains('get_shape_dim(meta, u32(d))'));
+      },
+    );
+
+    test(
+      'GpuArray dispatches WGSL shaders for strided/offset binary, unary, reductions, where, and tile when backend is non-simulated',
+      () {
+        final recordingBackend = _RecordingWebGpuBackend();
+        final gpuDevice = GpuDevice.create(
+          name: 'Recording WebGPU',
+          type: GpuDeviceType.webgpu,
+          backend: recordingBackend,
+        );
+
+        final base = GpuArray.fromList(
+          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+          [2, 3],
+          DType.float32,
+          device: gpuDevice,
+        );
+        final rev = base.slice([Slice.all(), Slice(null, null, -1)]);
+
+        // Strided binary with negative stride
+        final sum = base + rev;
+        expect(
+          recordingBackend.shaderNames,
+          contains('elementwise_binary_add_strided'),
+        );
+
+        // Strided unary on negative-stride view
+        final neg = -rev;
+        expect(
+          recordingBackend.shaderNames,
+          contains('elementwise_unary_negate_strided'),
+        );
+
+        // Contiguous full tree reduction
+        final fullSum = base.sum();
+        expect(recordingBackend.shaderNames, contains('reduction_sum'));
+
+        // Axis reduction
+        final axisSum = base.sum(axis: 1);
+        expect(
+          recordingBackend.shaderNames,
+          contains('axis_reduction_sum_f32'),
+        );
+
+        // Where selection
+        final cond = GpuArray.fromList(
+          [true, false, true, false, true, false],
+          [2, 3],
+          DType.boolean,
+          device: gpuDevice,
+        );
+        final selected = where(cond, base, rev);
+        expect(recordingBackend.shaderNames, contains('where_f32'));
+
+        // Tile manipulation
+        final tiled = tile(base, [2, 2]);
+        expect(recordingBackend.shaderNames, contains('tile_f32'));
+
+        sum.dispose();
+        neg.dispose();
+        fullSum.dispose();
+        axisSum.dispose();
+        cond.dispose();
+        selected.dispose();
+        tiled.dispose();
+        rev.dispose();
+        base.dispose();
+        gpuDevice.dispose();
+      },
+    );
+
+    test(
+      'GpuKernels.packStridedMetadata matches WGSL StridedMetadata std140 layout',
+      () {
+        final shape = [2, 3, 4];
+        final stridesA = [12, 4, 1];
+        final stridesB = [-12, -4, -1];
+        final stridesOut = [24, 8, 2];
+
+        final words = GpuKernels.packStridedMetadata(
+          rank: 3,
+          totalElements: 24,
+          offsetA: 10,
+          offsetB: 20,
+          offsetOut: 30,
+          shape: shape,
+          stridesA: stridesA,
+          stridesB: stridesB,
+          stridesOut: stridesOut,
+        );
+
+        expect(words.length, equals(40));
+        // Header: total_elements, rank, pad0, pad1
+        expect(words[0], equals(24));
+        expect(words[1], equals(3));
+        expect(words[2], equals(0));
+        expect(words[3], equals(0));
+
+        // shape: array<vec4<u32>, 2> (words 4..11)
+        expect(words[4], equals(2));
+        expect(words[5], equals(3));
+        expect(words[6], equals(4));
+        expect(words[7], equals(1));
+        for (var d = 4; d < 8; d++) {
+          expect(words[4 + d], equals(1));
+        }
+
+        // strides_a: array<vec4<i32>, 2> (words 12..19)
+        expect(words[12], equals(12));
+        expect(words[13], equals(4));
+        expect(words[14], equals(1));
+        expect(words[15], equals(0));
+        for (var d = 4; d < 8; d++) {
+          expect(words[12 + d], equals(0));
+        }
+
+        // strides_b: array<vec4<i32>, 2> (words 20..27)
+        expect(words[20], equals((-12) & 0xFFFFFFFF));
+        expect(words[21], equals((-4) & 0xFFFFFFFF));
+        expect(words[22], equals((-1) & 0xFFFFFFFF));
+        expect(words[23], equals(0));
+        for (var d = 4; d < 8; d++) {
+          expect(words[20 + d], equals(0));
+        }
+
+        // strides_out: array<vec4<i32>, 2> (words 28..35)
+        expect(words[28], equals(24));
+        expect(words[29], equals(8));
+        expect(words[30], equals(2));
+        expect(words[31], equals(0));
+        for (var d = 4; d < 8; d++) {
+          expect(words[28 + d], equals(0));
+        }
+
+        // Offsets and scalar param
+        expect(words[36], equals(10));
+        expect(words[37], equals(20));
+        expect(words[38], equals(30));
+        expect(words[39], equals(0));
+      },
+    );
   });
+}
+
+final class _RecordingWebGpuBackend extends GpuBackend {
+  static const CpuVectorBackend _cpuAllocator = CpuVectorBackend();
+  final List<String> shaderNames = <String>[];
+
+  @override
+  GpuDeviceType get deviceType => GpuDeviceType.webgpu;
+
+  @override
+  bool get isSimulated => false;
+
+  @override
+  ffi.Pointer<ffi.Uint8> allocateBuffer(int sizeInBytes) =>
+      _cpuAllocator.allocateBuffer(sizeInBytes);
+
+  @override
+  void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes) =>
+      _cpuAllocator.freeBuffer(pointer, sizeInBytes);
+
+  @override
+  void dispatchComputePipeline({
+    required WgslShaderModule shaderModule,
+    required List<GpuBuffer> buffers,
+    List<int>? uniforms,
+    required int workgroupsX,
+    int workgroupsY = 1,
+    int workgroupsZ = 1,
+  }) {
+    shaderNames.add(shaderModule.name);
+  }
 }

@@ -23,7 +23,7 @@ export 'src/exceptions.dart';
 export 'src/dtype.dart';
 export 'src/buffer.dart';
 export 'src/device.dart';
-export 'src/gpu_array.dart';
+export 'src/gpu_array.dart' hide ResourceScope, ScopedResource;
 export 'src/slice.dart';
 export 'src/operations/indexing.dart';
 export 'src/operations/manipulation.dart';

@@ -12,15 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:test/test.dart';
 import 'package:gpuarray/gpuarray.dart';
 import 'package:resource_scope/resource_scope.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('GpuArray Indexing & Slicing', () {
     test('1D and 2D Multi-Axis Strided Slicing and Views', () {
       ResourceScope.scope(() {
-        // 1D Slicing with step
         final a1 = GpuArray.fromList(
           [0.0, 1.0, 2.0, 3.0, 4.0, 5.0],
           [6],
@@ -30,32 +29,32 @@ void main() {
         expect(sub1.shape, equals([2]));
         expect(sub1.toList(), equals([1.0, 3.0]));
 
-        // Negative step slicing (reverse)
         final rev1 = a1.slice([const Slice(null, null, -1)]);
         expect(rev1.shape, equals([6]));
         expect(rev1.toList(), equals([5.0, 4.0, 3.0, 2.0, 1.0, 0.0]));
 
-        // 2D Slicing with Index, Slice, All
         final a2 = GpuArray.fromList(
           [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0],
           [3, 3],
           DType.float64,
         );
 
-        // Row selection reducing rank
         final row1 = a2.slice([const Index(1), const All()]);
         expect(row1.shape, equals([3]));
         expect(row1.toList(), equals([4.0, 5.0, 6.0]));
 
-        // Column selection reducing rank
         final col2 = a2.slice([const All(), const Index(2)]);
         expect(col2.shape, equals([3]));
         expect(col2.toList(), equals([3.0, 6.0, 9.0]));
 
-        // Submatrix
         final sub2 = a2.slice([const Slice(0, 2), const Slice(1, 3)]);
         expect(sub2.shape, equals([2, 2]));
         expect(sub2.toList(), equals([2.0, 3.0, 5.0, 6.0]));
+
+        // Strongly typed operator []
+        final indexed = a2[[const Index(0), const All()]];
+        expect(indexed.shape, equals([3]));
+        expect(indexed.toList(), equals([1.0, 2.0, 3.0]));
       });
     });
 
@@ -67,12 +66,10 @@ void main() {
           DType.float32,
         );
 
-        // Ellipsis in front
         final sub = a3.slice([const Ellipsis(), const Index(1)]);
         expect(sub.shape, equals([2, 2]));
         expect(sub.toList(), equals([2.0, 4.0, 6.0, 8.0]));
 
-        // NewAxis insertion
         final exp = a3.slice([
           const NewAxis(),
           const All(),
@@ -83,7 +80,7 @@ void main() {
       });
     });
 
-    test('where() conditional selection with broadcasting', () {
+    test('where() conditional selection with broadcasting and out:', () {
       ResourceScope.scope(() {
         final cond = GpuArray.fromList(
           [true, false, false, true],
@@ -101,12 +98,16 @@ void main() {
           DType.float64,
         );
 
-        final res = where(cond, x, y) as GpuArray;
+        final res = where<Float64>(cond, x, y);
         expect(res.shape, equals([2, 2]));
         expect(res.toList(), equals([10.0, 2.0, 3.0, 40.0]));
 
-        // where with nonzero coordinate return
-        final coords = where(cond) as List<GpuArray<Int32>>;
+        final outBuf = GpuArray.empty([2, 2], DType.float64);
+        final resOut = where<Float64>(cond, x, y, out: outBuf);
+        expect(identical(resOut, outBuf), isTrue);
+        expect(outBuf.toList(), equals([10.0, 2.0, 3.0, 40.0]));
+
+        final coords = nonzero(cond);
         expect(coords.length, equals(2));
         expect(coords[0].toList(), equals([0, 1]));
         expect(coords[1].toList(), equals([0, 1]));
@@ -134,17 +135,20 @@ void main() {
           DType.float64,
         );
 
-        final selected = select([cond1, cond2], [choice1, choice2]);
+        final selected = select<Float64>([cond1, cond2], [choice1, choice2]);
         expect(selected.toList(), equals([10.0, 10.0, 0.0, 0.0, 50.0]));
 
-        // extract elements satisfying condition
+        final outSelect = GpuArray.empty([5], DType.float64);
+        select<Float64>([cond1, cond2], [choice1, choice2], out: outSelect);
+        expect(outSelect.toList(), equals([10.0, 10.0, 0.0, 0.0, 50.0]));
+
         final extracted = extract(cond1, a);
         expect(extracted.shape, equals([2]));
         expect(extracted.toList(), equals([1.0, 2.0]));
       });
     });
 
-    test('take_along_axis() and put_along_axis()', () {
+    test('take(), put(), takeAlongAxis(), and putAlongAxis()', () {
       ResourceScope.scope(() {
         final a = GpuArray.fromList(
           [10.0, 30.0, 20.0, 60.0, 40.0, 50.0],
@@ -152,25 +156,39 @@ void main() {
           DType.float64,
         );
 
+        final flatIdx = GpuArray.fromList([0, 3, 5], [3], DType.int32);
+        final takenFlat = take(a, flatIdx);
+        expect(takenFlat.shape, equals([3]));
+        expect(takenFlat.toList(), equals([10.0, 60.0, 50.0]));
+
+        final colIdx = GpuArray.fromList([2, 0], [2], DType.int32);
+        final takenAxis = take(a, colIdx, axis: 1);
+        expect(takenAxis.shape, equals([2, 2]));
+        expect(takenAxis.toList(), equals([20.0, 10.0, 50.0, 60.0]));
+
         final indices = GpuArray.fromList(
           [0, 2, 1, 1, 0, 2],
           [2, 3],
           DType.int32,
         );
 
-        final taken = take_along_axis(a, indices, 1);
+        final taken = takeAlongAxis(a, indices, 1);
         expect(taken.shape, equals([2, 3]));
         expect(taken.toList(), equals([10.0, 20.0, 30.0, 40.0, 60.0, 50.0]));
 
-        // put_along_axis in-place
         final values = GpuArray.fromList(
           [99.0, 99.0, 99.0, 88.0, 88.0, 88.0],
           [2, 3],
           DType.float64,
         );
 
-        put_along_axis(a, indices, values, 1);
+        putAlongAxis(a, indices, values, 1);
         expect(a.toList(), equals([99.0, 99.0, 99.0, 88.0, 88.0, 88.0]));
+
+        final putIdx = GpuArray.fromList([0, 5], [2], DType.int32);
+        final putVals = GpuArray.fromList([111.0, 222.0], [2], DType.float64);
+        put(a, putIdx, putVals);
+        expect(a.toList(), equals([111.0, 99.0, 99.0, 88.0, 88.0, 222.0]));
       });
     });
 
@@ -195,12 +213,11 @@ void main() {
       'nonzero(), flatnonzero(), argwhere() with Complex64 and Complex128',
       () {
         ResourceScope.scope(() {
-          // Complex64 with pure imaginary non-zeros
           final c64Data = [
-            Complex(0.0, 2.0), // pure imaginary non-zero -> idx 0 (0, 0)
-            Complex(0.0, 0.0), // zero -> idx 1 (0, 1)
-            Complex(3.0, 0.0), // pure real non-zero -> idx 2 (1, 0)
-            Complex(4.0, -5.0), // mixed non-zero -> idx 3 (1, 1)
+            Complex(0.0, 2.0),
+            Complex(0.0, 0.0),
+            Complex(3.0, 0.0),
+            Complex(4.0, -5.0),
           ];
           final aC64 = GpuArray.fromList(c64Data, [2, 2], DType.complex64);
 
@@ -216,11 +233,10 @@ void main() {
           expect(coordsC64.shape, equals([3, 2]));
           expect(coordsC64.toList(), equals([0, 0, 1, 0, 1, 1]));
 
-          // Complex128 with pure imaginary non-zeros
           final c128Data = [
-            Complex(0.0, 0.0), // idx 0
-            Complex(0.0, 7.5), // pure imag non-zero -> idx 1
-            Complex(-1.0, 0.0), // idx 2
+            Complex(0.0, 0.0),
+            Complex(0.0, 7.5),
+            Complex(-1.0, 0.0),
           ];
           final aC128 = GpuArray.fromList(c128Data, [3], DType.complex128);
 
@@ -237,5 +253,63 @@ void main() {
         });
       },
     );
+
+    test('Rejects broadcasted view as out destination', () {
+      final base = GpuArray<Float32>.fromList([1.0], [1], DType.float32);
+      final broadcasted = base.broadcastTo([4]);
+
+      final cond = GpuArray.fromList(
+        [true, false, true, false],
+        [4],
+        DType.boolean,
+      );
+      final inA = GpuArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float32);
+      final inB = GpuArray.fromList(
+        [10.0, 20.0, 30.0, 40.0],
+        [4],
+        DType.float32,
+      );
+      final idx = GpuArray.fromList([0, 1, 2, 3], [4], DType.int32);
+
+      expect(
+        () => where(cond, inA, inB, out: broadcasted),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('Must be writeable and not a broadcasted view.'),
+          ),
+        ),
+      );
+
+      expect(
+        () => take(inA, idx, out: broadcasted),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('Must be writeable and not a broadcasted view.'),
+          ),
+        ),
+      );
+
+      expect(
+        () => takeAlongAxis(inA, idx, 0, out: broadcasted),
+        throwsA(
+          isA<ArgumentError>().having(
+            (e) => e.message,
+            'message',
+            contains('Must be writeable and not a broadcasted view.'),
+          ),
+        ),
+      );
+
+      base.dispose();
+      broadcasted.dispose();
+      cond.dispose();
+      inA.dispose();
+      inB.dispose();
+      idx.dispose();
+    });
   });
 }

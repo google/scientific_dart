@@ -12,10 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// GPU-accelerated Pseudo-Random Number Generation (RNG) for [package:gpuarray].
+/// Counter-based pseudo-random number generation (Philox 4x32-10) for
+/// [GpuArray] tensors.
 ///
-/// Provides counter-based parallel Philox4x32-10 random engines, uniform/normal distributions,
-/// permutations, choice, and shuffling.
+/// Provides [Philox4x32Engine], [RandomState], and top-level sampling functions
+/// ([seed], [rand], [randn], [randint], [uniform], [normal], [standardNormal],
+/// [standard_normal], [exponential], [choice], [permutation], [shuffle]).
 library;
 
-export 'src/random/random.dart';
+export 'src/random/random.dart'
+    show
+        Philox4x32Engine,
+        RandomState,
+        choice,
+        defaultRng,
+        exponential,
+        normal,
+        permutation,
+        rand,
+        randint,
+        randn,
+        seed,
+        shuffle,
+        standardNormal,
+        standard_normal,
+        uniform;

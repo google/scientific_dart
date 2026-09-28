@@ -65,7 +65,7 @@ void main() {
           renderToCanvas: true,
           canvasWidth: 256,
           canvasHeight: 256,
-          colorMap: 'plasma',
+          colorMap: ColorMap.plasma,
           metadata: {'author': 'scientific_dart'},
         );
 
@@ -82,7 +82,7 @@ void main() {
         expect(roundtrip.sliders[0].label, equals('Multiplier'));
         expect(roundtrip.renderToCanvas, isTrue);
         expect(roundtrip.canvasWidth, equals(256));
-        expect(roundtrip.colorMap, equals('plasma'));
+        expect(roundtrip.colorMap, equals(ColorMap.plasma));
         expect(roundtrip.metadata['author'], equals('scientific_dart'));
       },
     );

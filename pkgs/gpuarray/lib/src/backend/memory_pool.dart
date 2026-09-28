@@ -13,129 +13,143 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
+
+import 'package:meta/meta.dart';
+
 import '../buffer.dart';
 import '../device.dart';
 import '../exceptions.dart';
 
-/// An efficient power-of-2 size-bucketed memory pool allocator for GPU buffers.
-///
-/// Reduces native memory allocation overhead by caching and recycling freed
-/// buffers of compatible sizes in O(1) time.
-class GpuMemoryPool {
-  final GpuDevice device;
-  final int maxCachedBytes;
-  final Map<int, List<GpuBuffer>> _buckets = {};
+/// Power-of-two bucketed VRAM memory pool for O(1) buffer recycling on a [GpuDevice].
+final class GpuMemoryPool {
+  /// Minimum allocation bucket size in bytes (64 bytes).
+  static const int minBucketSize = 64;
 
+  /// The [GpuDevice] owning this memory pool.
+  final GpuDevice device;
+
+  /// Maximum total bytes that may be cached in free buckets before evicting.
+  final int maxCachedBytes;
+
+  final Map<int, List<GpuBuffer>> _freeBuckets = {};
   int _cachedBytes = 0;
   int _hits = 0;
   int _misses = 0;
   bool _isDisposed = false;
 
+  /// Creates a [GpuMemoryPool] for [device] with an optional [maxCachedBytes] limit.
   GpuMemoryPool(this.device, {this.maxCachedBytes = 256 * 1024 * 1024});
 
-  /// Whether the memory pool has been disposed.
-  bool get isDisposed => _isDisposed;
-
-  /// Total number of bytes currently cached in the pool.
-  int get cachedBytes => _cachedBytes;
-
-  /// Number of successful cache hits (recycled buffers).
-  int get hits => _hits;
-
-  /// Number of cache misses (new native allocations).
-  int get misses => _misses;
-
-  /// Calculates the power-of-2 bucket size for a requested [sizeInBytes].
+  /// Rounds [sizeInBytes] up to the smallest power-of-two bucket size (`>= 64`).
   static int computeBucketSize(int sizeInBytes) {
-    if (sizeInBytes <= 64) return 64;
-    var power = 64;
-    while (power < sizeInBytes) {
-      power <<= 1;
+    if (sizeInBytes <= minBucketSize) return minBucketSize;
+    var bucket = minBucketSize;
+    while (bucket < sizeInBytes) {
+      bucket <<= 1;
     }
-    return power;
+    return bucket;
   }
 
-  /// Acquires a buffer of at least [sizeInBytes] from the pool or allocates a new one.
+  void _checkNotDisposed() {
+    if (_isDisposed || device.isDisposed) {
+      throw GpuDeviceDisposedException(device.name);
+    }
+  }
+
+  /// Whether this memory pool has been disposed.
+  bool get isDisposed => _isDisposed;
+
+  /// Total bytes currently held in free pool buckets awaiting reuse.
+  int get cachedBytes => _cachedBytes;
+
+  /// Number of buffer acquisitions satisfied from the free pool.
+  int get hits => _hits;
+
+  /// Number of buffer acquisitions that required a new backend allocation.
+  int get misses => _misses;
+
+  /// Acquires a [GpuBuffer] of at least [sizeInBytes] bytes from the pool,
+  /// allocating a new bucket-aligned block if no free block is available.
+  ///
+  /// It is an error if [sizeInBytes] is negative or if [device] is disposed.
   GpuBuffer acquire(
     int sizeInBytes, {
-    GpuBufferUsage usage = GpuBufferUsage.storage,
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
   }) {
-    if (_isDisposed || device.isDisposed) {
-      throw GpuDeviceDisposedException(
-        'Cannot acquire buffer on disposed device or memory pool.',
-      );
-    }
-    if (sizeInBytes < 0) {
-      throw ArgumentError.value(
-        sizeInBytes,
-        'sizeInBytes',
-        'Buffer size cannot be negative.',
-      );
-    }
+    _checkNotDisposed();
+    RangeError.checkNotNegative(sizeInBytes, 'sizeInBytes');
+
     if (sizeInBytes == 0) {
-      return GpuBuffer.unmanaged(ffi.nullptr, 0, device: device, usage: usage);
+      return GpuBuffer.unmanaged(ffi.nullptr, 0, usage: usage, device: device);
     }
 
     final bucketSize = computeBucketSize(sizeInBytes);
-    final bucket = _buckets[bucketSize];
-
-    if (bucket != null && bucket.isNotEmpty) {
-      final buffer = bucket.removeLast();
+    if (_freeBuckets[bucketSize] case final bucket? when bucket.isNotEmpty) {
+      final recycled = bucket.removeLast();
       _cachedBytes -= bucketSize;
       _hits++;
-      buffer.resetForReuse(usage: usage);
-      return buffer;
+      if (recycled.rawAddress != ffi.nullptr) {
+        recycled.rawAddress.asTypedList(bucketSize).fillRange(0, bucketSize, 0);
+        device.backend.markHostModified(recycled);
+      }
+      recycled.reviveFromPool(requestedSize: bucketSize, newUsage: usage);
+      return recycled;
     }
 
     _misses++;
-    final ptr = device.backend.allocateBuffer(bucketSize);
-    return GpuBuffer.fromPool(
-      ptr,
-      bucketSize,
-      this,
+    final pointer = device.backend.allocateBuffer(bucketSize);
+    return GpuBuffer.pooled(
       device: device,
+      address: pointer,
+      sizeInBytes: bucketSize,
+      allocatedBytes: bucketSize,
       usage: usage,
+      owningPool: this,
     );
   }
 
-  /// Recycles a buffer back into the pool.
-  void recycle(GpuBuffer buffer) {
-    if (buffer.rawPointer == ffi.nullptr) return;
-
-    final bucketSize = buffer.sizeInBytes;
-    if (_isDisposed || (_cachedBytes + bucketSize > maxCachedBytes)) {
-      device.backend.freeBuffer(
-        buffer.rawPointer.cast<ffi.Uint8>(),
-        bucketSize,
-      );
+  /// Releases a disposed pooled [buffer] back to its power-of-two bucket, or
+  /// frees it immediately if the pool is disposed or full.
+  @internal
+  void release(GpuBuffer buffer) {
+    final bucketSize = buffer.allocatedBytes;
+    if (_isDisposed ||
+        device.isDisposed ||
+        bucketSize <= 0 ||
+        _cachedBytes + bucketSize > maxCachedBytes) {
+      if (buffer.rawAddress != ffi.nullptr) {
+        device.backend.freeBuffer(buffer.rawAddress, bucketSize);
+      }
       return;
     }
 
-    final bucket = _buckets.putIfAbsent(bucketSize, () => []);
+    final bucket = _freeBuckets[bucketSize] ??= <GpuBuffer>[];
     bucket.add(buffer);
     _cachedBytes += bucketSize;
   }
 
-  /// Trims all cached buffers and releases native memory back to the OS.
+  /// Alias for [release] for recycling a buffer back into the pool.
+  @internal
+  void recycle(GpuBuffer buffer) => release(buffer);
+
+  /// Frees all currently cached idle buffers in this pool back to the OS/driver.
   void trim() {
-    for (final entry in _buckets.entries) {
-      final bucket = entry.value;
+    for (final bucket in _freeBuckets.values) {
       for (final buffer in bucket) {
-        device.backend.freeBuffer(
-          buffer.rawPointer.cast<ffi.Uint8>(),
-          buffer.sizeInBytes,
-        );
+        if (buffer.rawAddress != ffi.nullptr) {
+          device.backend.freeBuffer(buffer.rawAddress, buffer.allocatedBytes);
+        }
       }
       bucket.clear();
     }
+    _freeBuckets.clear();
     _cachedBytes = 0;
   }
 
-  /// Disposes the pool and frees all cached buffers.
+  /// Purges all cached buffers and marks this pool disposed.
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;
     trim();
-    _buckets.clear();
   }
 }

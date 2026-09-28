@@ -12,22 +12,43 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:ndarray/ndarray.dart' as nd;
-import 'package:gpuarray/gpuarray.dart';
 
-class BenchmarkResult {
+import 'package:gpuarray/gpuarray.dart';
+import 'package:ndarray/ndarray.dart' as nd;
+
+/// Performance metrics recorded for a single CPU vs. GPU benchmark workload.
+final class BenchmarkResult {
+  /// Human-readable name of the benchmark task.
   final String name;
+
+  /// Workload shape or element count description.
   final String size;
+
+  /// Average CPU execution time in milliseconds.
   final double cpuMs;
+
+  /// Average GPU execution time in milliseconds.
   final double gpuMs;
+
+  /// Relative speedup of GPU over CPU (`cpuMs / gpuMs`).
   final double speedup;
+
+  /// Achieved CPU floating-point throughput in GFLOP/s, if applicable.
   final double? cpuGflops;
+
+  /// Achieved GPU floating-point throughput in GFLOP/s, if applicable.
   final double? gpuGflops;
+
+  /// Achieved CPU memory bandwidth in GB/s, if applicable.
   final double? cpuThroughputGb;
+
+  /// Achieved GPU memory bandwidth in GB/s, if applicable.
   final double? gpuThroughputGb;
 
+  /// Creates a [BenchmarkResult] summary entry.
   BenchmarkResult({
     required this.name,
     required this.size,
@@ -41,31 +62,42 @@ class BenchmarkResult {
   });
 }
 
-class BenchmarkRunner {
+/// Orchestrates comparative CPU (`package:ndarray`) and GPU (`package:gpuarray`) benchmarks.
+final class BenchmarkRunner {
+  /// Target GPU hardware device under test.
   final GpuDevice gpuDevice;
+
+  /// Collected benchmark results across all suites.
   final List<BenchmarkResult> results = [];
 
+  /// Creates a [BenchmarkRunner] bound to [gpuDevice].
   BenchmarkRunner(this.gpuDevice);
 
+  /// Initializes a WebGPU hardware device and creates a [BenchmarkRunner].
   static Future<BenchmarkRunner> create() async {
-    final dev = await createWebGpuDevice(
+    final device = await createWebGpuDevice(
       name: 'WebGPU Physical Hardware Device',
     );
-    return BenchmarkRunner(dev);
+    return BenchmarkRunner(device);
   }
 
-  double _measure(void Function() fn, {int warmup = 2, int iterations = 5}) {
+  double _measure(
+    void Function() callback, {
+    int warmup = 2,
+    int iterations = 5,
+  }) {
     for (var i = 0; i < warmup; i++) {
-      fn();
+      callback();
     }
-    final sw = Stopwatch()..start();
+    final stopwatch = Stopwatch()..start();
     for (var i = 0; i < iterations; i++) {
-      fn();
+      callback();
     }
-    sw.stop();
-    return sw.elapsedMicroseconds / (iterations * 1000.0); // ms
+    stopwatch.stop();
+    return stopwatch.elapsedMicroseconds / (iterations * 1000.0);
   }
 
+  /// Runs 2D matrix multiplication (GEMM) benchmarks across matrix sizes.
   void runGemmBenchmarks() {
     print(
       '\n===================================================================================',
@@ -83,10 +115,10 @@ class BenchmarkRunner {
       final totalElements = n * n;
       final rawDataA = Float32List(totalElements);
       final rawDataB = Float32List(totalElements);
-      final rng = math.Random(42);
+      final random = math.Random(42);
       for (var i = 0; i < totalElements; i++) {
-        rawDataA[i] = rng.nextDouble();
-        rawDataB[i] = rng.nextDouble();
+        rawDataA[i] = random.nextDouble();
+        rawDataB[i] = random.nextDouble();
       }
 
       final flops = 2.0 * n * n * n;
@@ -103,13 +135,14 @@ class BenchmarkRunner {
 
       final cpuMs = _measure(
         () {
-          nd.matmul(cpuA, cpuB);
+          final product = nd.matmul(cpuA, cpuB);
+          product.dispose();
         },
         warmup: 2,
         iterations: n >= 2048 ? 2 : 4,
       );
 
-      final cpuGflops = (flops / (cpuMs * 1e6));
+      final cpuGflops = flops / (cpuMs * 1e6);
 
       // 2. GPU (gpuarray - WebGPU Hardware Driver)
       final gpuA = GpuArray.fromList(
@@ -127,14 +160,16 @@ class BenchmarkRunner {
 
       final gpuMs = _measure(
         () {
-          final res = gpuA.matmul(gpuB);
-          res.toNDArray();
+          final result = gpuA.matmul(gpuB);
+          final downloaded = result.toNDArray();
+          downloaded.dispose();
+          result.dispose();
         },
         warmup: 3,
         iterations: n >= 2048 ? 4 : 8,
       );
 
-      final gpuGflops = (flops / (gpuMs * 1e6));
+      final gpuGflops = flops / (gpuMs * 1e6);
       final speedup = cpuMs / gpuMs;
 
       results.add(
@@ -162,6 +197,7 @@ class BenchmarkRunner {
     }
   }
 
+  /// Runs JIT-fused elementwise pipeline benchmarks (`SiLU(2.5 * X + 1.2)`).
   void runElementwiseFusionBenchmarks() {
     print(
       '\n===================================================================================',
@@ -181,9 +217,9 @@ class BenchmarkRunner {
 
     final elementCounts = [1000000, 5000000, 20000000];
 
-    // Compile JIT Fused Shader AST once
-    final xVar = Expr.variable('x', bindingIndex: 0);
-    final fusedAst = (xVar * 2.5 + 1.2).silu();
+    // Compile JIT Fused Shader AST once (uses grid-stride loop for > 65535 workgroups)
+    final xVariable = Expr.variable('x', bindingIndex: 0);
+    final fusedAst = (xVariable * 2.5 + 1.2).silu();
     final fusedShader = WgslJitCompiler.instance.compile(
       fusedAst,
       kernelName: 'silu_fused_pipeline',
@@ -192,9 +228,9 @@ class BenchmarkRunner {
 
     for (final count in elementCounts) {
       final rawX = Float32List(count);
-      final rng = math.Random(123);
+      final random = math.Random(123);
       for (var i = 0; i < count; i++) {
-        rawX[i] = rng.nextDouble() * 4.0 - 2.0;
+        rawX[i] = random.nextDouble() * 4.0 - 2.0;
       }
 
       // Memory moved: Read X (4B) + Write Y (4B) = 8 bytes per element
@@ -206,17 +242,24 @@ class BenchmarkRunner {
       ], nd.DType.float32);
       final cpuMs = _measure(
         () {
-          final scaled = cpuX * 2.5 + 1.2;
-          final neg = -scaled;
-          final expVal = nd.exp(neg);
-          final denom = expVal + 1.0;
-          final _ = scaled / denom;
+          final product = cpuX * 2.5;
+          final scaled = product + 1.2;
+          final negated = -scaled;
+          final exponentiated = nd.exp(negated);
+          final denominator = exponentiated + 1.0;
+          final result = scaled / denominator;
+          result.dispose();
+          denominator.dispose();
+          exponentiated.dispose();
+          negated.dispose();
+          scaled.dispose();
+          product.dispose();
         },
         warmup: 2,
         iterations: 4,
       );
 
-      final cpuThroughput = (memoryBytes / (cpuMs * 1e6)); // GB/s
+      final cpuThroughput = memoryBytes / (cpuMs * 1e6);
 
       // 2. GPU (gpuarray - JIT Fused single-pass WGSL compute shader in high-bandwidth VRAM)
       final gpuX = GpuArray.fromList(
@@ -225,7 +268,7 @@ class BenchmarkRunner {
         DType.float32,
         device: gpuDevice,
       );
-      final gpuDst = GpuArray<Float32>.empty(
+      final gpuDestination = GpuArray<Float32>.empty(
         [count],
         DType.float32,
         device: gpuDevice,
@@ -235,17 +278,18 @@ class BenchmarkRunner {
         () {
           gpuDevice.backend.dispatchComputePipeline(
             shaderModule: fusedShader,
-            buffers: [gpuX.buffer, gpuDst.buffer],
+            buffers: [gpuX.buffer, gpuDestination.buffer],
             uniforms: [count, 0, 0, 0],
             workgroupsX: math.min(65535, (count + 255) ~/ 256),
           );
-          gpuDst.toNDArray();
+          final downloaded = gpuDestination.toNDArray();
+          downloaded.dispose();
         },
         warmup: 3,
         iterations: 8,
       );
 
-      final gpuThroughput = (memoryBytes / (gpuMs * 1e6)); // GB/s
+      final gpuThroughput = memoryBytes / (gpuMs * 1e6);
       final speedup = cpuMs / gpuMs;
 
       results.add(
@@ -268,10 +312,11 @@ class BenchmarkRunner {
 
       cpuX.dispose();
       gpuX.dispose();
-      gpuDst.dispose();
+      gpuDestination.dispose();
     }
   }
 
+  /// Runs large-scale vectorized binary multiplication (`A * B`) benchmarks.
   void runVectorizedBinaryBenchmarks() {
     print(
       '\n===================================================================================',
@@ -290,10 +335,10 @@ class BenchmarkRunner {
     for (final count in elementCounts) {
       final rawA = Float32List(count);
       final rawB = Float32List(count);
-      final rng = math.Random(55);
+      final random = math.Random(55);
       for (var i = 0; i < count; i++) {
-        rawA[i] = rng.nextDouble();
-        rawB[i] = rng.nextDouble();
+        rawA[i] = random.nextDouble();
+        rawB[i] = random.nextDouble();
       }
 
       // Memory moved: Read A (4B) + Read B (4B) + Write C (4B) = 12 bytes per element
@@ -309,13 +354,14 @@ class BenchmarkRunner {
 
       final cpuMs = _measure(
         () {
-          final _ = cpuA * cpuB;
+          final result = cpuA * cpuB;
+          result.dispose();
         },
         warmup: 2,
         iterations: 4,
       );
 
-      final cpuThroughput = (memoryBytes / (cpuMs * 1e6)); // GB/s
+      final cpuThroughput = memoryBytes / (cpuMs * 1e6);
 
       // 2. GPU (gpuarray)
       final gpuA = GpuArray.fromList(
@@ -333,14 +379,16 @@ class BenchmarkRunner {
 
       final gpuMs = _measure(
         () {
-          final res = gpuA * gpuB;
-          res.toNDArray();
+          final result = gpuA * gpuB;
+          final downloaded = result.toNDArray();
+          downloaded.dispose();
+          result.dispose();
         },
         warmup: 3,
         iterations: 8,
       );
 
-      final gpuThroughput = (memoryBytes / (gpuMs * 1e6)); // GB/s
+      final gpuThroughput = memoryBytes / (gpuMs * 1e6);
       final speedup = cpuMs / gpuMs;
 
       results.add(
@@ -368,6 +416,7 @@ class BenchmarkRunner {
     }
   }
 
+  /// Prints a formatted markdown-style summary table of all benchmark results.
   void printSummaryTable() {
     print('\n');
     print(
@@ -386,19 +435,19 @@ class BenchmarkRunner {
       '|-------------------------------------|----------------------|------------|------------|-----------|',
     );
 
-    for (final r in results) {
-      final nameStr = r.name.length > 35
-          ? '${r.name.substring(0, 32)}...'
-          : r.name;
-      final sizeStr = r.size.length > 20
-          ? '${r.size.substring(0, 17)}...'
-          : r.size;
-      final cpuStr = r.cpuMs.toStringAsFixed(2);
-      final gpuStr = r.gpuMs.toStringAsFixed(2);
-      final speedupStr = '${r.speedup.toStringAsFixed(2)}x';
+    for (final entry in results) {
+      final nameText = entry.name.length > 35
+          ? '${entry.name.substring(0, 32)}...'
+          : entry.name;
+      final sizeText = entry.size.length > 20
+          ? '${entry.size.substring(0, 17)}...'
+          : entry.size;
+      final cpuText = entry.cpuMs.toStringAsFixed(2);
+      final gpuText = entry.gpuMs.toStringAsFixed(2);
+      final speedupText = '${entry.speedup.toStringAsFixed(2)}x';
 
       print(
-        '| ${nameStr.padRight(35)} | ${sizeStr.padRight(20)} | ${cpuStr.padLeft(10)} | ${gpuStr.padLeft(10)} | ${speedupStr.padLeft(9)} |',
+        '| ${nameText.padRight(35)} | ${sizeText.padRight(20)} | ${cpuText.padLeft(10)} | ${gpuText.padLeft(10)} | ${speedupText.padLeft(9)} |',
       );
     }
     print(
@@ -407,7 +456,13 @@ class BenchmarkRunner {
   }
 }
 
-void main() async {
+Future<void> main([List<String> args = const []]) async {
+  if (args.isNotEmpty) {
+    stderr.writeln('Usage: dart benchmark/gpu_vs_cpu_benchmark.dart');
+    exitCode = 2;
+    return;
+  }
+
   print(
     '===================================================================================',
   );

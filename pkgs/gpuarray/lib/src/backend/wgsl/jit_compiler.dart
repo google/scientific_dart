@@ -12,20 +12,27 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'wgsl_types.dart';
 import 'kernel_fusion.dart';
+import 'wgsl_types.dart';
 
 /// Validation diagnostic results for WGSL compute shader syntax and binding layouts.
 final class WgslValidationResult {
+  /// Whether the shader passed all structural and binding checks.
   final bool isValid;
+
+  /// Unmodifiable list of syntax or binding error messages.
   final List<String> errors;
+
+  /// Unmodifiable list of non-fatal warning messages.
   final List<String> warnings;
 
-  const WgslValidationResult({
+  /// Creates a [WgslValidationResult] with unmodifiable [errors] and [warnings].
+  WgslValidationResult({
     required this.isValid,
-    this.errors = const [],
-    this.warnings = const [],
-  });
+    List<String> errors = const [],
+    List<String> warnings = const [],
+  }) : errors = List<String>.unmodifiable(errors),
+       warnings = List<String>.unmodifiable(warnings);
 
   @override
   String toString() {
@@ -36,126 +43,132 @@ final class WgslValidationResult {
   }
 }
 
-/// Static validator for checking WGSL compute shader syntax, structure, and bindings.
-final class WgslSyntaxValidator {
-  WgslSyntaxValidator._();
+/// Validates a WGSL compute shader string against standard structure and WebGPU rules.
+WgslValidationResult validateWgslShader(String code) {
+  final errors = <String>[];
+  final warnings = <String>[];
 
-  /// Validates a WGSL compute shader string against standard structure and WebGPU rules.
-  static WgslValidationResult validate(String code) {
-    final errors = <String>[];
-    final warnings = <String>[];
+  // Strip block and line comments to avoid false positives
+  final cleanCode = code
+      .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
+      .replaceAll(RegExp(r'//.*'), '');
 
-    // Strip block and line comments to avoid false positives
-    final cleanCode = code
-        .replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '')
-        .replaceAll(RegExp(r'//.*'), '');
+  // 1. Bracket and parenthesis balance checks
+  var braceCount = 0;
+  var parenCount = 0;
+  var bracketCount = 0;
 
-    // 1. Bracket and parenthesis balance checks
-    var braceCount = 0;
-    var parenCount = 0;
-    var bracketCount = 0;
+  for (var i = 0; i < cleanCode.length; i++) {
+    final char = cleanCode[i];
+    if (char == '{') braceCount++;
+    if (char == '}') braceCount--;
+    if (char == '(') parenCount++;
+    if (char == ')') parenCount--;
+    if (char == '[') bracketCount++;
+    if (char == ']') bracketCount--;
 
-    for (var i = 0; i < cleanCode.length; i++) {
-      final ch = cleanCode[i];
-      if (ch == '{') braceCount++;
-      if (ch == '}') braceCount--;
-      if (ch == '(') parenCount++;
-      if (ch == ')') parenCount--;
-      if (ch == '[') bracketCount++;
-      if (ch == ']') bracketCount--;
-
-      if (braceCount < 0) {
-        errors.add('Unmatched closing brace "}" at character $i');
-        break;
-      }
-      if (parenCount < 0) {
-        errors.add('Unmatched closing parenthesis ")" at character $i');
-        break;
-      }
-      if (bracketCount < 0) {
-        errors.add('Unmatched closing bracket "]" at character $i');
-        break;
-      }
+    if (braceCount < 0) {
+      errors.add('Unmatched closing brace "}" at character $i');
+      break;
     }
-
-    if (braceCount > 0) {
-      errors.add('Unclosed brace "{" (missing $braceCount "}")');
+    if (parenCount < 0) {
+      errors.add('Unmatched closing parenthesis ")" at character $i');
+      break;
     }
-    if (parenCount > 0) {
-      errors.add('Unclosed parenthesis "(" (missing $parenCount ")")');
+    if (bracketCount < 0) {
+      errors.add('Unmatched closing bracket "]" at character $i');
+      break;
     }
-    if (bracketCount > 0) {
-      errors.add('Unclosed bracket "[" (missing $bracketCount "]")');
-    }
-
-    // 2. Entry point and compute stage annotations
-    if (!cleanCode.contains('@compute')) {
-      errors.add('Missing @compute shader stage attribute');
-    }
-    if (!cleanCode.contains('@workgroup_size')) {
-      errors.add('Missing @workgroup_size attribute on compute shader');
-    }
-    if (!cleanCode.contains(RegExp(r'fn\s+\w+\s*\('))) {
-      errors.add('Missing entry point function declaration ("fn <name>(...)")');
-    }
-
-    // 3. Binding uniqueness and validation
-    final bindingRegex = RegExp(r'@group\((\d+)\)\s*@binding\((\d+)\)');
-    final seenBindings = <String>{};
-    for (final match in bindingRegex.allMatches(cleanCode)) {
-      final group = match.group(1)!;
-      final binding = match.group(2)!;
-      final key = 'g$group:b$binding';
-      if (seenBindings.contains(key)) {
-        errors.add(
-          'Duplicate resource binding detected: @group($group) @binding($binding)',
-        );
-      }
-      seenBindings.add(key);
-    }
-
-    // 4. Storage buffer access qualifier validation
-    final storageRegex = RegExp(r'var<storage,\s*(\w+)>');
-    for (final match in storageRegex.allMatches(cleanCode)) {
-      final access = match.group(1)!;
-      if (access != 'read' && access != 'read_write') {
-        errors.add(
-          'Invalid storage buffer access qualifier "$access" (must be "read" or "read_write")',
-        );
-      }
-    }
-
-    // 5. Workgroup memory check
-    if (cleanCode.contains('var<workgroup>')) {
-      if (!cleanCode.contains('workgroupBarrier()') &&
-          !cleanCode.contains('sdata[')) {
-        warnings.add(
-          'Shader declares workgroup memory but does not appear to synchronize or read from it',
-        );
-      }
-    }
-
-    return WgslValidationResult(
-      isValid: errors.isEmpty,
-      errors: errors,
-      warnings: warnings,
-    );
   }
+
+  if (braceCount > 0) {
+    errors.add('Unclosed brace "{" (missing $braceCount "}")');
+  }
+  if (parenCount > 0) {
+    errors.add('Unclosed parenthesis "(" (missing $parenCount ")")');
+  }
+  if (bracketCount > 0) {
+    errors.add('Unclosed bracket "[" (missing $bracketCount "]")');
+  }
+
+  // 2. Entry point and compute stage annotations
+  if (!cleanCode.contains('@compute')) {
+    errors.add('Missing @compute shader stage attribute');
+  }
+  if (!cleanCode.contains('@workgroup_size')) {
+    errors.add('Missing @workgroup_size attribute on compute shader');
+  }
+  if (!cleanCode.contains(RegExp(r'fn\s+\w+\s*\('))) {
+    errors.add('Missing entry point function declaration ("fn <name>(...)")');
+  }
+
+  // 3. Binding uniqueness and validation
+  final bindingRegex = RegExp(r'@group\((\d+)\)\s*@binding\((\d+)\)');
+  final seenBindings = <String>{};
+  for (final match in bindingRegex.allMatches(cleanCode)) {
+    final group = match.group(1)!;
+    final binding = match.group(2)!;
+    final key = 'g$group:b$binding';
+    if (!seenBindings.add(key)) {
+      errors.add(
+        'Duplicate resource binding detected: @group($group) @binding($binding)',
+      );
+    }
+  }
+
+  // 4. Storage buffer access qualifier validation
+  final storageRegex = RegExp(r'var<storage,\s*(\w+)>');
+  for (final match in storageRegex.allMatches(cleanCode)) {
+    final access = match.group(1)!;
+    if (access != 'read' && access != 'read_write') {
+      errors.add(
+        'Invalid storage buffer access qualifier "$access" (must be "read" or "read_write")',
+      );
+    }
+  }
+
+  // 5. Workgroup memory check
+  if (cleanCode.contains('var<workgroup>')) {
+    if (!cleanCode.contains('workgroupBarrier()') &&
+        !cleanCode.contains('sdata[')) {
+      warnings.add(
+        'Shader declares workgroup memory but does not appear to synchronize or read from it',
+      );
+    }
+  }
+
+  return WgslValidationResult(
+    isValid: errors.isEmpty,
+    errors: errors,
+    warnings: warnings,
+  );
 }
 
-/// Dynamic JIT Compiler for generating and fusing WGSL compute shaders.
+/// Static validator for checking WGSL compute shader syntax, structure, and bindings.
+extension type const WgslSyntaxValidator._(Object? _) {
+  /// Validates a WGSL compute shader string against standard structure and WebGPU rules.
+  static WgslValidationResult validate(String code) => validateWgslShader(code);
+}
+
+/// Dynamic JIT compiler for generating, validating, and caching fused WGSL compute shaders.
 final class WgslJitCompiler {
   final Map<String, WgslShaderModule> _cache;
+
+  /// Maximum number of compiled shader modules retained in the LRU cache.
   final int maxCacheSize;
+
   int _cacheHits = 0;
   int _cacheMisses = 0;
 
+  /// Creates a [WgslJitCompiler] with an optional initial [cache] and [maxCacheSize].
   WgslJitCompiler({
     Map<String, WgslShaderModule>? cache,
     this.maxCacheSize = 512,
-  }) : _cache = cache ?? <String, WgslShaderModule>{};
+  }) : _cache = cache != null
+           ? Map<String, WgslShaderModule>.of(cache)
+           : <String, WgslShaderModule>{};
 
-  /// Singleton instance of the JIT compiler.
+  /// Process-wide shared instance of the JIT compiler.
   static final WgslJitCompiler instance = WgslJitCompiler();
 
   /// Total number of cache hits.
@@ -164,20 +177,22 @@ final class WgslJitCompiler {
   /// Total number of cache misses.
   int get cacheMisses => _cacheMisses;
 
-  /// Total number of cached shader modules.
+  /// Total number of currently cached shader modules.
   int get cachedCount => _cache.length;
 
-  /// Clears the compilation cache.
+  /// Clears the compilation cache and resets hit/miss counters.
   void clearCache() {
     _cache.clear();
     _cacheHits = 0;
     _cacheMisses = 0;
   }
 
-  /// Checks whether a shader with [cacheKey] is already cached.
+  /// Whether a shader with [cacheKey] is currently cached.
   bool isCached(String cacheKey) => _cache.containsKey(cacheKey);
 
-  /// Compiles an [Expr] tree into a [WgslShaderModule], utilizing cache when available.
+  /// Compiles an [Expr] tree into a [WgslShaderModule], utilizing the LRU cache when available.
+  ///
+  /// Throws a [FormatException] if [validate] is `true` and the generated WGSL fails validation.
   WgslShaderModule compile(
     Expr expression, {
     String? kernelName,
@@ -204,6 +219,8 @@ final class WgslJitCompiler {
   }
 
   /// Compiles a [FusedKernelDescriptor] into a verified [WgslShaderModule].
+  ///
+  /// Throws a [FormatException] if [validate] is `true` and the generated WGSL fails validation.
   WgslShaderModule compileDescriptor(
     FusedKernelDescriptor descriptor, {
     int workgroupSize = 256,
@@ -211,9 +228,8 @@ final class WgslJitCompiler {
   }) {
     final cacheKey = descriptor.generateCacheKey();
 
-    if (_cache.containsKey(cacheKey)) {
+    if (_cache.remove(cacheKey) case final cached?) {
       _cacheHits++;
-      final cached = _cache.remove(cacheKey)!;
       _cache[cacheKey] = cached;
       return cached;
     }
@@ -222,7 +238,7 @@ final class WgslJitCompiler {
     final code = descriptor.generateWgslSource(workgroupSize: workgroupSize);
 
     if (validate) {
-      final validation = WgslSyntaxValidator.validate(code);
+      final validation = validateWgslShader(code);
       if (!validation.isValid) {
         throw FormatException(
           'WGSL JIT Compilation Failed with syntax errors:\n${validation.errors.join("\n")}\n\nGenerated Code:\n$code',

@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:ndarray/ndarray.dart';
 import 'package:gpuarray/gpuarray.dart';
+import 'package:ndarray/ndarray.dart';
 import 'package:resource_scope/resource_scope.dart';
 
 void main() {
@@ -69,19 +69,23 @@ void main() {
   print('4. Seamless Interop with Host NDArray:');
   ResourceScope.scope(() {
     // Start with a host NDArray
-    final hostArr = NDArray.fromList([1.0, 4.0, 9.0, 16.0], [4], DType.float64);
-    print('Host NDArray: ${hostArr.toList()}');
+    final hostArray = NDArray.fromList(
+      [1.0, 4.0, 9.0, 16.0],
+      [4],
+      DType.float64,
+    );
+    print('Host NDArray: ${hostArray.toList()}');
 
     // Upload to GPU via .toGpu() extension
-    final gpuArr = hostArr.toGpu();
-    print('Uploaded to GPU device: ${gpuArr.device.name}');
+    final gpuArray = hostArray.toGpu();
+    print('Uploaded to GPU device: ${gpuArray.device.name}');
 
     // Execute compute kernel on GPU
-    final gpuSqrt = gpuArr.sqrt();
+    final gpuSqrt = gpuArray.sqrt();
 
     // Download back to host memory as an NDArray
-    final resultND = gpuSqrt.toNDArray();
-    print('Downloaded result NDArray: ${resultND.toList()}');
+    final resultArray = gpuSqrt.toNDArray();
+    print('Downloaded result NDArray: ${resultArray.toList()}');
   });
 
   print('\n=== Example Finished Successfully ===');

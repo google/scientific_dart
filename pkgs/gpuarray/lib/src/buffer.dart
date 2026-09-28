@@ -13,82 +13,270 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
+
 import 'package:ffi/ffi.dart';
+import 'package:meta/meta.dart';
 import 'package:resource_scope/resource_scope.dart';
-import 'exceptions.dart';
-import 'device.dart';
+
 import 'backend/memory_pool.dart';
+import 'device.dart';
+import 'exceptions.dart';
 
-/// Usage flags for a [GpuBuffer], indicating allowed operations and access modes.
-final class GpuBufferUsage {
-  final int value;
-  const GpuBufferUsage(this.value);
+/// Bitmask flags specifying how a [GpuBuffer] may be used in compute and transfer pipelines.
+extension type const GpuBufferUsage(int mask) implements int {
+  /// Buffer can be mapped for reading on the host CPU.
+  static const GpuBufferUsage mapRead = GpuBufferUsage(0x0001);
 
-  static const GpuBufferUsage storage = GpuBufferUsage(1 << 0);
-  static const GpuBufferUsage copySrc = GpuBufferUsage(1 << 1);
-  static const GpuBufferUsage copyDst = GpuBufferUsage(1 << 2);
-  static const GpuBufferUsage uniform = GpuBufferUsage(1 << 3);
+  /// Buffer can be mapped for writing on the host CPU.
+  static const GpuBufferUsage mapWrite = GpuBufferUsage(0x0002);
 
+  /// Buffer can be used as the source of a copy operation.
+  static const GpuBufferUsage copySrc = GpuBufferUsage(0x0004);
+
+  /// Buffer can be used as the destination of a copy or write operation.
+  static const GpuBufferUsage copyDst = GpuBufferUsage(0x0008);
+
+  /// Buffer can be bound as a uniform buffer in a shader.
+  static const GpuBufferUsage uniform = GpuBufferUsage(0x0040);
+
+  /// Buffer can be bound as a storage buffer in a compute shader.
+  static const GpuBufferUsage storage = GpuBufferUsage(0x0080);
+
+  /// Default usage flags for general-purpose GPU compute buffers.
+  static const GpuBufferUsage defaultCompute = GpuBufferUsage(
+    0x0080 | 0x0004 | 0x0008,
+  );
+
+  /// Underlying integer bitmask value.
+  int get value => mask;
+
+  /// Combines this usage mask with [other] using bitwise OR.
   GpuBufferUsage operator |(GpuBufferUsage other) =>
-      GpuBufferUsage(value | other.value);
+      GpuBufferUsage(mask | other.mask);
 
-  bool contains(GpuBufferUsage flag) => (value & flag.value) == flag.value;
+  /// Intersects this usage mask with [other] using bitwise AND.
+  GpuBufferUsage operator &(GpuBufferUsage other) =>
+      GpuBufferUsage(mask & other.mask);
 
-  @override
-  String toString() {
-    final parts = <String>[];
-    if (contains(storage)) parts.add('STORAGE');
-    if (contains(copySrc)) parts.add('COPY_SRC');
-    if (contains(copyDst)) parts.add('COPY_DST');
-    if (contains(uniform)) parts.add('UNIFORM');
-    return 'GpuBufferUsage(${parts.join("|")})';
-  }
+  /// Whether this usage mask includes all flags in [flag].
+  bool contains(GpuBufferUsage flag) => (mask & flag.mask) == flag.mask;
 }
 
-/// A block of memory allocated on a GPU device.
+/// Reference-counted GPU memory buffer associated with a [GpuDevice].
+///
+/// Supports deterministic lifecycle management via [ResourceScope] and [dispose],
+/// as well as view reference counting via [retain] and [release].
 final class GpuBuffer implements ffi.Finalizable, ScopedResource {
-  static final _finalizer = ffi.NativeFinalizer(calloc.nativeFree);
+  static final ffi.NativeFinalizer _finalizer = ffi.NativeFinalizer(
+    calloc.nativeFree,
+  );
 
-  final ffi.Pointer<ffi.Void> _pointer;
-  final int _sizeInBytes;
-  GpuBufferUsage _usage;
   final GpuDevice _device;
-  final GpuMemoryPool? _originPool;
-  final bool _isUnmanaged;
+  final ffi.Pointer<ffi.Uint8> _address;
 
-  int _refCount = 1;
+  /// Size of this buffer in bytes.
+  final int sizeInBytes;
+
+  GpuBufferUsage _usage;
+  final bool _isPooled;
+  final GpuMemoryPool? _owningPool;
+  final int _allocatedBytes;
+
+  /// Whether this buffer wraps an externally owned pointer that must not be freed by `gpuarray`.
+  final bool isUnmanaged;
+
   bool _isDisposed = false;
+  int _refCount = 1;
 
-  GpuBuffer._(
-    this._pointer,
-    this._sizeInBytes,
-    this._usage,
-    this._device, {
-    GpuMemoryPool? originPool,
-    bool isUnmanaged = false,
-  }) : _originPool = originPool,
-       _isUnmanaged = isUnmanaged {
-    if (!_isUnmanaged) {
-      if (_pointer != ffi.nullptr && _originPool == null) {
-        _finalizer.attach(this, _pointer, detach: this);
-      }
-      ResourceScope.track(this);
+  GpuBuffer._({
+    required GpuDevice device,
+    required ffi.Pointer<ffi.Uint8> address,
+    required this.sizeInBytes,
+    required GpuBufferUsage usage,
+    required bool isPooled,
+    required int allocatedBytes,
+    required this.isUnmanaged,
+    GpuMemoryPool? owningPool,
+  }) : _device = device,
+       _address = address,
+       _usage = usage,
+       _isPooled = isPooled,
+       _owningPool = owningPool,
+       _allocatedBytes = allocatedBytes {
+    if (!isUnmanaged &&
+        !isPooled &&
+        _address != ffi.nullptr &&
+        _device.backend.usesNativeFinalizer) {
+      _finalizer.attach(this, _address.cast<ffi.Void>(), detach: this);
     }
     _device.registerBuffer(this);
+    if (!isUnmanaged) {
+      ResourceScope.track(this);
+    }
   }
 
-  /// Whether this buffer wraps an unmanaged native pointer.
-  bool get isUnmanaged => _isUnmanaged;
-
-  /// Retains a reference to this buffer.
-  void retain() {
-    if (_isDisposed) {
-      throw GpuMemoryException('Cannot retain a disposed GpuBuffer.');
+  /// Allocates a new [GpuBuffer] of [sizeInBytes] bytes on [device].
+  ///
+  /// It is an error if [sizeInBytes] is negative or if [device] has been disposed.
+  factory GpuBuffer.allocate({
+    required int sizeInBytes,
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+    GpuDevice? device,
+  }) {
+    RangeError.checkNotNegative(sizeInBytes, 'sizeInBytes');
+    final targetDevice = device ?? GpuDevice.defaultDevice;
+    if (targetDevice.isDisposed) {
+      throw GpuDeviceDisposedException(targetDevice.name);
     }
+    if (targetDevice.enableMemoryPool) {
+      return targetDevice.memoryPool.acquire(sizeInBytes, usage: usage);
+    }
+    final pointer = targetDevice.backend.allocateBuffer(sizeInBytes);
+    return GpuBuffer._(
+      device: targetDevice,
+      address: pointer,
+      sizeInBytes: sizeInBytes,
+      usage: usage,
+      isPooled: false,
+      allocatedBytes: sizeInBytes,
+      isUnmanaged: false,
+    );
+  }
+
+  /// Internal constructor used by `GpuMemoryPool` to create pooled buffer instances.
+  @internal
+  factory GpuBuffer.pooled({
+    required GpuDevice device,
+    required ffi.Pointer<ffi.Uint8> address,
+    required int sizeInBytes,
+    required int allocatedBytes,
+    required GpuBufferUsage usage,
+    GpuMemoryPool? owningPool,
+  }) {
+    return GpuBuffer._(
+      device: device,
+      address: address,
+      sizeInBytes: sizeInBytes,
+      usage: usage,
+      isPooled: true,
+      allocatedBytes: allocatedBytes,
+      isUnmanaged: false,
+      owningPool: owningPool,
+    );
+  }
+
+  /// Wraps an externally managed native memory [pointer] of [sizeInBytes] bytes
+  /// without taking ownership of its allocation.
+  ///
+  /// Disposing the returned buffer will not free [pointer].
+  /// It is an error if [sizeInBytes] is negative or if [device] is disposed.
+  factory GpuBuffer.unmanaged(
+    ffi.Pointer<ffi.Void> pointer,
+    int sizeInBytes, {
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+    GpuDevice? device,
+  }) {
+    RangeError.checkNotNegative(sizeInBytes, 'sizeInBytes');
+    final targetDevice = device ?? GpuDevice.defaultDevice;
+    if (targetDevice.isDisposed) {
+      throw GpuDeviceDisposedException(targetDevice.name);
+    }
+    return GpuBuffer._(
+      device: targetDevice,
+      address: pointer.cast<ffi.Uint8>(),
+      sizeInBytes: sizeInBytes,
+      usage: usage,
+      isPooled: false,
+      allocatedBytes: sizeInBytes,
+      isUnmanaged: true,
+    );
+  }
+
+  void _checkNotDisposed() {
+    if (_isDisposed) {
+      throw StateError('Cannot access a disposed GpuBuffer.');
+    }
+  }
+
+  /// The [GpuDevice] on which this buffer resides.
+  GpuDevice get device => _device;
+
+  /// Usage flags configured for this buffer.
+  GpuBufferUsage get usage => _usage;
+
+  /// Updates the usage flags when this buffer is recycled from a memory pool.
+  @internal
+  set usage(GpuBufferUsage value) {
+    _usage = value;
+  }
+
+  /// Physical size in bytes allocated for this buffer (including pool bucket rounding).
+  @internal
+  int get allocatedBytes => _allocatedBytes;
+
+  /// Raw native pointer without disposal checks, for internal backend cleanup only.
+  @internal
+  ffi.Pointer<ffi.Uint8> get rawAddress => _address;
+
+  /// Host-accessible staging pointer for this buffer.
+  ///
+  /// It is an error if this buffer has been disposed.
+  ffi.Pointer<ffi.Uint8> get address {
+    _checkNotDisposed();
+    return _address;
+  }
+
+  /// Synchronizes any pending GPU writes and returns the host-accessible
+  /// native memory pointer for this buffer.
+  ///
+  /// It is an error if this buffer has been disposed.
+  ffi.Pointer<ffi.Void> get pointer {
+    _checkNotDisposed();
+    _device.backend.ensureHostSynced(this);
+    return _address.cast<ffi.Void>();
+  }
+
+  /// Current reference count of active tensor views sharing this buffer.
+  int get refCount => _refCount;
+
+  @override
+  bool get isDisposed => _isDisposed;
+
+  /// Ensures host staging memory is synchronized with any pending GPU writes.
+  ///
+  /// It is an error if this buffer has been disposed.
+  void ensureHostSynced() {
+    _checkNotDisposed();
+    _device.backend.ensureHostSynced(this);
+  }
+
+  /// Marks this buffer's host staging memory as modified so subsequent GPU
+  /// dispatches upload the updated data.
+  ///
+  /// It is an error if this buffer has been disposed.
+  void markHostModified() {
+    _checkNotDisposed();
+    _device.backend.markHostModified(this);
+  }
+
+  /// Ensures the GPU buffer is synchronized with any pending host writes.
+  ///
+  /// It is an error if this buffer has been disposed.
+  void ensureGpuSynced() {
+    _checkNotDisposed();
+    _device.backend.ensureGpuSynced(this);
+  }
+
+  /// Increments the reference count when a new view is created over this buffer.
+  ///
+  /// It is an error if this buffer has been disposed.
+  void retain() {
+    _checkNotDisposed();
     _refCount++;
   }
 
-  /// Releases a reference to this buffer.
+  /// Decrements the reference count and disposes the underlying memory when
+  /// the count reaches zero.
   void release() {
     if (_isDisposed) return;
     _refCount--;
@@ -97,187 +285,70 @@ final class GpuBuffer implements ffi.Finalizable, ScopedResource {
     }
   }
 
-  int get refCount => _refCount;
-
-  void resetForReuse({GpuBufferUsage? usage}) {
-    _refCount = 1;
+  /// Re-initializes a pooled buffer when re-acquired from `GpuMemoryPool`.
+  @internal
+  void reviveFromPool({
+    required int requestedSize,
+    required GpuBufferUsage newUsage,
+  }) {
     _isDisposed = false;
-    _usage = usage ?? _usage;
-    if (!_isUnmanaged) {
+    _refCount = 1;
+    _usage = newUsage;
+    _device.registerBuffer(this);
+    if (!isUnmanaged) {
       ResourceScope.track(this);
     }
-    _device.registerBuffer(this);
   }
 
-  void _disposeInternal() {
-    if (_isDisposed) return;
-    _isDisposed = true;
-    if (!_isUnmanaged) {
-      ResourceScope.untrack(this);
-    }
-    _device.unregisterBuffer(this);
-
-    if (_isUnmanaged) {
-      return;
-    }
-
-    if (_originPool != null) {
-      _originPool.recycle(this);
-      return;
-    }
-
-    if (_pointer != ffi.nullptr) {
-      _finalizer.detach(this);
-      _device.backend.freeBuffer(_pointer.cast<ffi.Uint8>(), _sizeInBytes);
-    }
-  }
-
-  /// Allocates a new [GpuBuffer] on the given [device].
-  factory GpuBuffer.allocate({
-    required int sizeInBytes,
-    required GpuBufferUsage usage,
-    required GpuDevice device,
-  }) {
-    if (sizeInBytes < 0) {
-      throw ArgumentError.value(
-        sizeInBytes,
-        'sizeInBytes',
-        'Buffer size cannot be negative.',
-      );
-    }
-    if (device.isDisposed) {
-      throw GpuDeviceDisposedException(
-        'Cannot allocate buffer on disposed device.',
-      );
-    }
-
-    final ptr = sizeInBytes == 0
-        ? ffi.nullptr
-        : device.backend.allocateBuffer(sizeInBytes).cast<ffi.Void>();
-
-    return GpuBuffer._(ptr, sizeInBytes, usage, device);
-  }
-
-  /// Wraps an existing allocated native pointer as a [GpuBuffer] allocated from [originPool].
-  factory GpuBuffer.fromPool(
-    ffi.Pointer<ffi.Uint8> pointer,
-    int sizeInBytes,
-    GpuMemoryPool originPool, {
-    required GpuDevice device,
-    GpuBufferUsage usage = GpuBufferUsage.storage,
-  }) {
-    return GpuBuffer._(
-      pointer.cast<ffi.Void>(),
-      sizeInBytes,
-      usage,
-      device,
-      originPool: originPool,
-    );
-  }
-
-  /// Wraps an existing native pointer as an unmanaged [GpuBuffer].
-  factory GpuBuffer.unmanaged(
-    ffi.Pointer<ffi.Void> pointer,
-    int sizeInBytes, {
-    GpuBufferUsage usage = GpuBufferUsage.storage,
-    GpuDevice? device,
-  }) {
-    if (sizeInBytes < 0) {
-      throw ArgumentError.value(
-        sizeInBytes,
-        'sizeInBytes',
-        'Buffer size cannot be negative.',
-      );
-    }
-    return GpuBuffer._(
-      pointer,
-      sizeInBytes,
-      usage,
-      device ?? GpuDevice.defaultDevice,
-      isUnmanaged: true,
-    );
-  }
-
-  ffi.Pointer<ffi.Void> get address {
-    if (_isDisposed) {
-      throw GpuMemoryException('Cannot access address of disposed GpuBuffer.');
-    }
-    return _pointer;
-  }
-
-  /// Raw native pointer without disposed check, for internal driver use.
-  ffi.Pointer<ffi.Void> get rawPointer => _pointer;
-
-  /// Alias for [address] representing the raw native memory pointer.
-  ffi.Pointer<ffi.Void> get pointer => address;
-
-  int get sizeInBytes => _sizeInBytes;
-  GpuBufferUsage get usage => _usage;
-  GpuDevice get device => _device;
-
-  @override
-  bool get isDisposed => _isDisposed;
-
+  /// Copies [bytes] bytes from [hostPtr] into this buffer at byte [offset].
+  ///
+  /// It is an error if this buffer has been disposed.
+  /// Throws a [GpuMemoryException] if the copy range is out of bounds.
   void copyFromHost(
-    ffi.Pointer<ffi.Void> srcPointer,
+    ffi.Pointer<ffi.Void> hostPtr,
     int bytes, {
     int offset = 0,
   }) {
-    if (_isDisposed) {
-      throw GpuMemoryException('Cannot copy to disposed GpuBuffer.');
-    }
-    if (bytes < 0 || offset < 0 || offset + bytes > _sizeInBytes) {
-      throw GpuMemoryException('Copy operation exceeds buffer boundaries.');
-    }
-    if (bytes == 0) return;
+    _checkNotDisposed();
     _device.backend.copyHostToBuffer(
-      srcPointer.cast<ffi.Uint8>(),
+      hostPtr.cast<ffi.Uint8>(),
       this,
       bytes,
       offset: offset,
     );
   }
 
-  void copyToHost(
-    ffi.Pointer<ffi.Void> dstPointer,
-    int bytes, {
-    int offset = 0,
-  }) {
-    if (_isDisposed) {
-      throw GpuMemoryException('Cannot copy from disposed GpuBuffer.');
-    }
-    if (bytes < 0 || offset < 0 || offset + bytes > _sizeInBytes) {
-      throw GpuMemoryException('Copy operation exceeds buffer boundaries.');
-    }
-    if (bytes == 0) return;
+  /// Copies [bytes] bytes from this buffer at byte [offset] into [hostPtr].
+  ///
+  /// It is an error if this buffer has been disposed.
+  /// Throws a [GpuMemoryException] if the copy range is out of bounds.
+  void copyToHost(ffi.Pointer<ffi.Void> hostPtr, int bytes, {int offset = 0}) {
+    _checkNotDisposed();
     _device.backend.copyBufferToHost(
       this,
-      dstPointer.cast<ffi.Uint8>(),
+      hostPtr.cast<ffi.Uint8>(),
       bytes,
       offset: offset,
     );
   }
 
+  /// Copies [bytes] bytes from this buffer (at [srcOffset]) to [dst] (at [dstOffset]).
+  ///
+  /// It is an error if this buffer or [dst] has been disposed.
+  /// Throws a [GpuMemoryException] if the copy range is out of bounds.
   void copyToBuffer(
-    GpuBuffer dstBuffer,
+    GpuBuffer dst,
     int bytes, {
     int srcOffset = 0,
     int dstOffset = 0,
   }) {
-    if (_isDisposed || dstBuffer.isDisposed) {
-      throw GpuMemoryException('Cannot copy with disposed GpuBuffer.');
+    _checkNotDisposed();
+    if (dst.isDisposed) {
+      throw StateError('Cannot copy into a disposed destination GpuBuffer.');
     }
-    if (bytes < 0 ||
-        srcOffset < 0 ||
-        dstOffset < 0 ||
-        srcOffset + bytes > _sizeInBytes ||
-        dstOffset + bytes > dstBuffer._sizeInBytes) {
-      throw GpuMemoryException('Buffer copy exceeds boundaries.');
-    }
-    if (bytes == 0) return;
     _device.backend.copyBufferToBuffer(
       this,
-      dstBuffer,
+      dst,
       bytes,
       srcOffset: srcOffset,
       dstOffset: dstOffset,
@@ -285,21 +356,73 @@ final class GpuBuffer implements ffi.Finalizable, ScopedResource {
   }
 
   @override
-  void dispose() => release();
-
-  @override
-  ScopedResource detachFromScope() {
-    if (!_isUnmanaged) {
+  GpuBuffer detachFromScope() {
+    _checkNotDisposed();
+    if (!isUnmanaged) {
       ResourceScope.untrack(this);
     }
     return this;
   }
 
   @override
-  ScopedResource detachToParentScope() {
-    if (!_isUnmanaged) {
+  GpuBuffer detachToParentScope() {
+    _checkNotDisposed();
+    if (!isUnmanaged) {
       ResourceScope.promoteToParent(this);
     }
     return this;
+  }
+
+  void _disposeInternal() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    _refCount = 0;
+    if (!isUnmanaged) {
+      ResourceScope.untrack(this);
+    }
+    _device.unregisterBuffer(this);
+
+    if (isUnmanaged) {
+      return;
+    }
+
+    if (_isPooled) {
+      final pool = _owningPool ?? _device.memoryPool;
+      if (!_device.isDisposed && !pool.isDisposed) {
+        pool.release(this);
+      } else if (_address != ffi.nullptr) {
+        _device.backend.freeBuffer(_address, _allocatedBytes);
+      }
+      return;
+    }
+
+    if (_address != ffi.nullptr) {
+      if (_device.backend.usesNativeFinalizer) {
+        _finalizer.detach(this);
+      }
+      _device.backend.freeBuffer(_address, _allocatedBytes);
+    }
+  }
+
+  /// Marks this buffer disposed and frees its native memory during device shutdown.
+  @internal
+  void forceDisposeOnDeviceShutdown() {
+    if (_isDisposed) return;
+    _isDisposed = true;
+    _refCount = 0;
+    if (!isUnmanaged) {
+      ResourceScope.untrack(this);
+    }
+    if (!isUnmanaged && _address != ffi.nullptr) {
+      if (!_isPooled && _device.backend.usesNativeFinalizer) {
+        _finalizer.detach(this);
+      }
+      _device.backend.freeBuffer(_address, _allocatedBytes);
+    }
+  }
+
+  @override
+  void dispose() {
+    release();
   }
 }

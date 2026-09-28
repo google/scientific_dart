@@ -13,124 +13,204 @@
 // limitations under the License.
 
 import 'dart:convert';
-import 'dart:typed_data';
 import 'dart:io';
-import 'package:test/test.dart';
+import 'dart:typed_data';
+
 import 'package:gpuarray/gpuarray.dart';
-import 'package:gpuarray/safetensors.dart' as st;
-import 'package:resource_scope/resource_scope.dart';
+import 'package:test/test.dart';
 
 void main() {
-  group('GpuArray SafeTensors Serialization (gpuarray.safetensors)', () {
-    test('Roundtrip in-memory SafeTensors serialization', () {
-      ResourceScope.scope(() {
-        final w = GpuArray.fromList(
-          [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+  group('Safetensors Serialization (F11)', () {
+    late Directory temporaryDirectory;
+
+    setUp(() {
+      temporaryDirectory = Directory.systemTemp.createTempSync(
+        'gpuarray_safetensors_test_',
+      );
+    });
+
+    tearDown(() {
+      if (temporaryDirectory.existsSync()) {
+        temporaryDirectory.deleteSync(recursive: true);
+      }
+    });
+
+    test(
+      'round-trips contiguous Float64 and Float32 tensors via file and bytes',
+      () {
+        final path = '${temporaryDirectory.path}/model.safetensors';
+        final weights = GpuArray.fromList(
+          <double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
           [2, 3],
+          DType.float64,
+        );
+        final bias = GpuArray.fromList(
+          <double>[-1.5, 0.5, 2.5],
+          [3],
           DType.float32,
         );
-        final b = GpuArray.fromList([0.1, 0.2], [2], DType.float64);
-        final mask = GpuArray.fromList(
-          [true, false, true, true],
-          [4],
-          DType.boolean,
-        );
-
-        final tensorDict = {
-          'model.weight': w,
-          'model.bias': b,
-          'model.mask': mask,
-        };
-
-        final bytes = st.saveSafetensors(
-          tensorDict,
-          metadata: {'format': 'pt'},
-        );
-        expect(bytes.isNotEmpty, isTrue);
-
-        final loadedDict = st.loadSafetensors(bytes);
-        expect(
-          loadedDict.keys,
-          containsAll(['model.weight', 'model.bias', 'model.mask']),
-        );
-
-        expect(loadedDict['model.weight']!.shape, equals([2, 3]));
-        expect(loadedDict['model.weight']!.dtype, equals(DType.float32));
-        expect(
-          loadedDict['model.weight']!.toList().cast<double>(),
-          equals([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
-        );
-
-        expect(loadedDict['model.bias']!.shape, equals([2]));
-        expect(loadedDict['model.bias']!.dtype, equals(DType.float64));
-        expect(
-          loadedDict['model.bias']!.toList().cast<double>(),
-          equals([0.1, 0.2]),
-        );
-
-        expect(loadedDict['model.mask']!.shape, equals([4]));
-        expect(loadedDict['model.mask']!.dtype, equals(DType.boolean));
-        expect(
-          loadedDict['model.mask']!.toList().cast<bool>(),
-          equals([true, false, true, true]),
-        );
-      });
-    });
-
-    test('Roundtrip file-based SafeTensors save and load', () {
-      ResourceScope.scope(() {
-        final tempDir = Directory.systemTemp.createTempSync('safetensors_test');
-        final filePath = '${tempDir.path}/test_model.safetensors';
 
         try {
-          final emb = GpuArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
-          st.saveSafetensorsFile(filePath, {'embeddings': emb});
+          saveSafetensorsFile(
+            path,
+            <String, GpuArray>{'weights': weights, 'bias': bias},
+            metadata: <String, String>{'format': 'pt'},
+          );
 
-          final loaded = st.loadSafetensorsFile(filePath);
-          expect(loaded.containsKey('embeddings'), isTrue);
-          expect(loaded['embeddings']!.shape, equals([2, 2]));
-          expect(loaded['embeddings']!.dtype, equals(DType.int32));
+          final loaded = loadSafetensorsFile(path);
+          try {
+            expect(loaded.keys, containsAll(<String>['weights', 'bias']));
+            final loadedWeights = loaded['weights']! as GpuArray<Float64>;
+            final loadedBias = loaded['bias']! as GpuArray<Float32>;
+
+            expect(loadedWeights.shape, equals(<int>[2, 3]));
+            expect(loadedWeights.dtype, equals(DType.float64));
+            expect(
+              loadedWeights.toList(),
+              equals(<double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
+            );
+
+            expect(loadedBias.shape, equals(<int>[3]));
+            expect(loadedBias.dtype, equals(DType.float32));
+            expect(loadedBias.toList(), equals(<double>[-1.5, 0.5, 2.5]));
+          } finally {
+            for (final tensor in loaded.values) {
+              tensor.dispose();
+            }
+          }
+        } finally {
+          weights.dispose();
+          bias.dispose();
+        }
+      },
+    );
+
+    test('correctly serializes non-contiguous transposed views', () {
+      final matrix = GpuArray.fromList(
+        <double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+        [2, 3],
+        DType.float64,
+      );
+      final transposed = matrix.transpose();
+
+      try {
+        expect(transposed.isContiguous, isFalse);
+        final bytes = saveSafetensors(<String, GpuArray>{'t': transposed});
+
+        final loaded = loadSafetensors(bytes);
+        try {
+          final loadedTensor = loaded['t']! as GpuArray<Float64>;
+          expect(loadedTensor.shape, equals(<int>[3, 2]));
           expect(
-            loaded['embeddings']!.toList().cast<int>(),
-            equals([10, 20, 30, 40]),
+            loadedTensor.toList(),
+            equals(<double>[1.0, 4.0, 2.0, 5.0, 3.0, 6.0]),
           );
         } finally {
-          tempDir.deleteSync(recursive: true);
+          for (final tensor in loaded.values) {
+            tensor.dispose();
+          }
         }
-      });
+      } finally {
+        transposed.dispose();
+        matrix.dispose();
+      }
     });
-    test('SafeTensors validation on corrupt or invalid payloads', () {
-      ResourceScope.scope(() {
-        // Buffer smaller than 8 bytes
+
+    test('round-trips integer and boolean dtypes', () {
+      final ints = GpuArray.fromList(
+        <int>[10, 20, 30, 40],
+        [2, 2],
+        DType.int32,
+      );
+      final flags = GpuArray.fromList(
+        <bool>[true, false, true],
+        [3],
+        DType.boolean,
+      );
+
+      try {
+        final bytes = saveSafetensors(<String, GpuArray>{
+          'ints': ints,
+          'flags': flags,
+        });
+
+        final loaded = loadSafetensors(bytes);
+        try {
+          final loadedInts = loaded['ints']! as GpuArray<Int32>;
+          final loadedFlags = loaded['flags']! as GpuArray<Bool>;
+          expect(loadedInts.toList(), equals(<int>[10, 20, 30, 40]));
+          expect(loadedFlags.toList(), equals(<bool>[true, false, true]));
+        } finally {
+          for (final tensor in loaded.values) {
+            tensor.dispose();
+          }
+        }
+      } finally {
+        ints.dispose();
+        flags.dispose();
+      }
+    });
+
+    test('throws FormatException on truncated or malformed payloads', () {
+      expect(
+        () => loadSafetensors(Uint8List.fromList(<int>[1, 2, 3])),
+        throwsA(isA<FormatException>()),
+      );
+
+      final badHeaderBytes = ByteData(16)..setUint64(0, 100, Endian.little);
+      expect(
+        () => loadSafetensors(badHeaderBytes.buffer.asUint8List()),
+        throwsA(isA<FormatException>()),
+      );
+
+      final jsonBytes = utf8.encode('["not_a_json_object"]');
+      final badJsonBuffer = BytesBuilder();
+      final lengthData = ByteData(8)
+        ..setUint64(0, jsonBytes.length, Endian.little);
+      badJsonBuffer.add(lengthData.buffer.asUint8List());
+      badJsonBuffer.add(jsonBytes);
+      expect(
+        () => loadSafetensors(badJsonBuffer.toBytes()),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('throws FormatException on mismatched data_offsets byte length', () {
+      final headerJson = jsonEncode(<String, Object>{
+        'w': <String, Object>{
+          'dtype': 'F64',
+          'shape': <int>[2, 2],
+          'data_offsets': <int>[0, 16], // Expects 32 bytes for 2x2 F64
+        },
+      });
+      final headerBytes = utf8.encode(headerJson);
+      final builder = BytesBuilder();
+      final lengthData = ByteData(8)
+        ..setUint64(0, headerBytes.length, Endian.little);
+      builder.add(lengthData.buffer.asUint8List());
+      builder.add(headerBytes);
+      builder.add(Uint8List(32));
+
+      expect(
+        () => loadSafetensors(builder.toBytes()),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('validates programmer preconditions on saveSafetensors', () {
+      final tensor = GpuArray.fromList(<double>[1.0, 2.0], [2], DType.float64);
+      try {
         expect(
-          () => st.loadSafetensors(Uint8List.fromList([1, 2, 3])),
+          () => saveSafetensors(<String, GpuArray>{'__metadata__': tensor}),
           throwsArgumentError,
         );
-
-        // Header length exceeding buffer length
-        final headerTooLarge = Uint8List(16);
-        ByteData.sublistView(headerTooLarge).setUint64(0, 1000, Endian.little);
-        expect(() => st.loadSafetensors(headerTooLarge), throwsArgumentError);
-
-        // Valid header with invalid offsets (offsets end beyond buffer length)
-        final badOffsetsDict = {
-          'bad_tensor': {
-            'dtype': 'F32',
-            'shape': [2],
-            'data_offsets': [0, 8],
-          },
-        };
-        final headerJson = jsonEncode(badOffsetsDict);
-        final headerBytes = utf8.encode(headerJson);
-        final payload = Uint8List(
-          8 + headerBytes.length + 4,
-        ); // Only 4 bytes of data, needs 8
-        ByteData.sublistView(
-          payload,
-        ).setUint64(0, headerBytes.length, Endian.little);
-        payload.setRange(8, 8 + headerBytes.length, headerBytes);
-        expect(() => st.loadSafetensors(payload), throwsFormatException);
-      });
+      } finally {
+        tensor.dispose();
+      }
+      expect(
+        () => saveSafetensors(<String, GpuArray>{'disposed': tensor}),
+        throwsStateError,
+      );
     });
   });
 }

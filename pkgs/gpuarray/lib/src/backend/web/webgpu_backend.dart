@@ -27,7 +27,7 @@ import '../backend.dart';
 import '../wgsl/wgsl_types.dart';
 
 /// Standard WebGPU buffer usage flag constants.
-abstract final class GPUBufferUsageConstants {
+extension type const GPUBufferUsageConstants._(int value) implements int {
   static const int mapRead = 0x0001;
   static const int mapWrite = 0x0002;
   static const int copySrc = 0x0004;
@@ -41,13 +41,13 @@ abstract final class GPUBufferUsageConstants {
 }
 
 /// Standard WebGPU buffer mapping mode constants.
-abstract final class GPUMapModeConstants {
+extension type const GPUMapModeConstants._(int value) implements int {
   static const int read = 0x0001;
   static const int write = 0x0002;
 }
 
 /// Standard WebGPU shader stage visibility constants.
-abstract final class GPUShaderStageConstants {
+extension type const GPUShaderStageConstants._(int value) implements int {
   static const int vertex = 0x0001;
   static const int fragment = 0x0002;
   static const int compute = 0x0004;
@@ -383,7 +383,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
         if (fallbackToSimulation) {
           return BrowserWebGpuBackend(isSimulated: true);
         }
-        throw GpuException(
+        throw const GpuDeviceException(
           "WebGPU is not supported in this browser environment (navigator.gpu is null).",
         );
       }
@@ -396,7 +396,9 @@ final class BrowserWebGpuBackend extends GpuBackend {
         if (fallbackToSimulation) {
           return BrowserWebGpuBackend(isSimulated: true);
         }
-        throw GpuException("Failed to acquire a WebGPU hardware adapter.");
+        throw const GpuDeviceException(
+          "Failed to acquire a WebGPU hardware adapter.",
+        );
       }
 
       final desc = GPUDeviceDescriptor(label: label);
@@ -407,7 +409,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
         return BrowserWebGpuBackend(isSimulated: true);
       }
       if (e is GpuException) rethrow;
-      throw GpuException("WebGPU initialization failed: $e");
+      throw GpuDeviceException("WebGPU initialization failed: $e");
     }
   }
 
@@ -494,8 +496,8 @@ final class BrowserWebGpuBackend extends GpuBackend {
 
     final encoder = device!.createCommandEncoder();
     encoder.copyBufferToBuffer(srcGpu, offset, stagingBuffer, 0, alignedBytes);
-    final cmdBuf = encoder.finish();
-    device!.queue.submit([cmdBuf].toJS);
+    final commandBuffer = encoder.finish();
+    device!.queue.submit([commandBuffer].toJS);
 
     await stagingBuffer
         .mapAsync(GPUMapModeConstants.read, 0, alignedBytes)
@@ -537,8 +539,8 @@ final class BrowserWebGpuBackend extends GpuBackend {
           dstOffset,
           alignedBytes,
         );
-        final cmdBuf = encoder.finish();
-        device!.queue.submit([cmdBuf].toJS);
+        final commandBuffer = encoder.finish();
+        device!.queue.submit([commandBuffer].toJS);
       }
     }
   }
@@ -562,9 +564,28 @@ final class BrowserWebGpuBackend extends GpuBackend {
         'Cannot dispatch pipeline with disposed buffers.',
       );
     }
-    if (workgroupsX <= 0 || workgroupsY <= 0 || workgroupsZ <= 0) {
-      throw ArgumentError(
-        'Workgroup dimensions must be positive: ($workgroupsX, $workgroupsY, $workgroupsZ)',
+    if (workgroupsX <= 0 ||
+        workgroupsX > WgslDispatch.maxWorkgroupsPerDimension) {
+      throw ArgumentError.value(
+        workgroupsX,
+        'workgroupsX',
+        'Must be between 1 and ${WgslDispatch.maxWorkgroupsPerDimension}.',
+      );
+    }
+    if (workgroupsY <= 0 ||
+        workgroupsY > WgslDispatch.maxWorkgroupsPerDimension) {
+      throw ArgumentError.value(
+        workgroupsY,
+        'workgroupsY',
+        'Must be between 1 and ${WgslDispatch.maxWorkgroupsPerDimension}.',
+      );
+    }
+    if (workgroupsZ <= 0 ||
+        workgroupsZ > WgslDispatch.maxWorkgroupsPerDimension) {
+      throw ArgumentError.value(
+        workgroupsZ,
+        'workgroupsZ',
+        'Must be between 1 and ${WgslDispatch.maxWorkgroupsPerDimension}.',
       );
     }
 
@@ -598,7 +619,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
       device!.queue.writeBuffer(uniformBuffer, 0, u32List.buffer.toJS);
     }
 
-    var bufferIdx = 0;
+    var bufferIndex = 0;
     for (final binding in shaderModule.bindings) {
       if (binding.isUniform) {
         if (uniformBuffer != null) {
@@ -610,17 +631,18 @@ final class BrowserWebGpuBackend extends GpuBackend {
           );
         }
       } else {
-        if (bufferIdx < buffers.length) {
-          final gpuBuf = _deviceBuffers[buffers[bufferIdx].address.address];
-          if (gpuBuf != null) {
+        if (bufferIndex < buffers.length) {
+          final gpuBuffer =
+              _deviceBuffers[buffers[bufferIndex].address.address];
+          if (gpuBuffer != null) {
             entries.add(
               GPUBindGroupEntry(
                 binding: binding.binding,
-                resource: GPUBufferBinding(buffer: gpuBuf),
+                resource: GPUBufferBinding(buffer: gpuBuffer),
               ),
             );
           }
-          bufferIdx++;
+          bufferIndex++;
         }
       }
     }
@@ -647,8 +669,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
   GPUComputePipeline _getOrCreatePipeline(WgslShaderModule shaderModule) {
     final key =
         '${shaderModule.name}_${shaderModule.entryPoint}_${shaderModule.code}';
-    final cached = _pipelineCache[key];
-    if (cached != null) return cached;
+    if (_pipelineCache[key] case final cached?) return cached;
 
     final sm = device!.createShaderModule(
       GPUShaderModuleDescriptor(
@@ -671,6 +692,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
   }
 
   /// Releases all allocated WebGPU device buffers, cached pipelines, and destroys the device context.
+  @override
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;

@@ -22,46 +22,190 @@ import 'wgsl/wgsl_types.dart';
 
 /// Standard binary operation kernel types.
 enum BinaryOp {
+  /// Addition operation (`a + b`).
   add,
+
+  /// Subtraction operation (`a - b`).
   subtract,
+
+  /// Multiplication operation (`a * b`).
   multiply,
+
+  /// Division operation (`a / b`).
   divide,
+
+  /// Power exponentiation operation (`pow(a, b)`).
   power,
+
+  /// Remainder/modulo operation (`a % b`).
   remainder,
+
+  /// Element-wise maximum operation (`max(a, b)`).
   maximum,
+
+  /// Element-wise minimum operation (`min(a, b)`).
   minimum,
+
+  /// Equality comparison (`a == b`).
   equal,
+
+  /// Inequality comparison (`a != b`).
   notEqual,
+
+  /// Greater-than comparison (`a > b`).
   greater,
+
+  /// Less-than comparison (`a < b`).
   less,
+
+  /// Greater-than-or-equal comparison (`a >= b`).
   greaterEqual,
+
+  /// Less-than-or-equal comparison (`a <= b`).
   lessEqual,
 }
 
 /// Standard unary operation kernel types.
 enum UnaryOp {
+  /// Negation operation (`-x`).
   negate,
+
+  /// Absolute value operation (`abs(x)`).
   abs,
+
+  /// Square root operation (`sqrt(x)`).
   sqrt,
+
+  /// Exponential operation (`exp(x)`).
   exp,
+
+  /// Natural logarithm operation (`log(x)`).
   log,
+
+  /// Sine trigonometric operation (`sin(x)`).
   sin,
+
+  /// Cosine trigonometric operation (`cos(x)`).
   cos,
+
+  /// Tangent trigonometric operation (`tan(x)`).
   tan,
+
+  /// Inverse sine operation (`asin(x)`).
   asin,
+
+  /// Inverse cosine operation (`acos(x)`).
   acos,
+
+  /// Inverse tangent operation (`atan(x)`).
   atan,
+
+  /// Hyperbolic sine operation (`sinh(x)`).
   sinh,
+
+  /// Hyperbolic cosine operation (`cosh(x)`).
   cosh,
+
+  /// Hyperbolic tangent operation (`tanh(x)`).
   tanh,
+
+  /// Floor rounding operation (`floor(x)`).
   floor,
+
+  /// Ceiling rounding operation (`ceil(x)`).
   ceil,
+
+  /// Nearest integer rounding operation (`round(x)`).
   round,
 }
 
 /// Execution kernels for GPU compute operations.
-final class GpuKernels {
-  GpuKernels._();
+extension type const GpuKernels._(Object? _) {
+  static bool _isComparisonOp(BinaryOp op) => switch (op) {
+    BinaryOp.equal ||
+    BinaryOp.notEqual ||
+    BinaryOp.greater ||
+    BinaryOp.less ||
+    BinaryOp.greaterEqual ||
+    BinaryOp.lessEqual => true,
+    _ => false,
+  };
+
+  static bool _isWgslUnarySupported(UnaryOp op, DType dtype) {
+    if (dtype == DType.float32) return true;
+    if (dtype == DType.int32) {
+      return op == UnaryOp.negate || op == UnaryOp.abs;
+    }
+    if (dtype == DType.uint32) {
+      return op == UnaryOp.abs;
+    }
+    return false;
+  }
+
+  /// Packs 40 `u32` words matching WGSL `StridedMetadata`.
+  static List<int> packStridedMetadata({
+    required int rank,
+    required int totalElements,
+    required int offsetA,
+    required int offsetB,
+    required int offsetOut,
+    required List<int> shape,
+    required List<int> stridesA,
+    required List<int> stridesB,
+    required List<int> stridesOut,
+  }) {
+    final words = List<int>.filled(40, 0);
+    words[0] = totalElements;
+    words[1] = rank;
+    words[2] = 0;
+    words[3] = 0;
+    for (var d = 0; d < 8; d++) {
+      words[4 + d] = d < shape.length ? shape[d] : 1;
+      words[12 + d] = d < stridesA.length ? (stridesA[d] & 0xFFFFFFFF) : 0;
+      words[20 + d] = d < stridesB.length ? (stridesB[d] & 0xFFFFFFFF) : 0;
+      words[28 + d] = d < stridesOut.length ? (stridesOut[d] & 0xFFFFFFFF) : 0;
+    }
+    words[36] = offsetA;
+    words[37] = offsetB;
+    words[38] = offsetOut;
+    words[39] = 0;
+    return words;
+  }
+
+  static const _packStridedMetadata = packStridedMetadata;
+
+  /// Packs 48 `u32` words matching WGSL `WhereUniforms`.
+  static List<int> _packWhereUniforms({
+    required int totalElements,
+    required int rank,
+    required int offsetCond,
+    required int offsetX,
+    required int offsetY,
+    required int offsetOut,
+    required List<int> shape,
+    required List<int> stridesCond,
+    required List<int> stridesX,
+    required List<int> stridesY,
+    required List<int> stridesOut,
+  }) {
+    final words = List<int>.filled(48, 0);
+    words[0] = totalElements;
+    words[1] = rank;
+    words[2] = offsetCond;
+    words[3] = offsetX;
+    words[4] = offsetY;
+    words[5] = offsetOut;
+    for (var d = 0; d < 8; d++) {
+      words[8 + d] = d < shape.length ? shape[d] : 1;
+      words[16 + d] = d < stridesCond.length
+          ? (stridesCond[d] & 0xFFFFFFFF)
+          : 0;
+      words[24 + d] = d < stridesX.length ? (stridesX[d] & 0xFFFFFFFF) : 0;
+      words[32 + d] = d < stridesY.length ? (stridesY[d] & 0xFFFFFFFF) : 0;
+      words[40 + d] = d < stridesOut.length ? (stridesOut[d] & 0xFFFFFFFF) : 0;
+    }
+    return words;
+  }
 
   /// Executes an elementwise binary kernel with support for multidimensional broadcasting and non-contiguous striding.
   static void executeBinaryOp({
@@ -82,34 +226,74 @@ final class GpuKernels {
     required int offsetDst,
     required DType dtypeDst,
   }) {
-    final bStridesA = ShapeUtils.broadcastStrides(shapeA, stridesA, outShape);
-    final bStridesB = ShapeUtils.broadcastStrides(shapeB, stridesB, outShape);
-    final totalElements = ShapeUtils.computeSize(outShape);
+    final bStridesA = broadcastStrides(shapeA, stridesA, outShape);
+    final bStridesB = broadcastStrides(shapeB, stridesB, outShape);
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
 
     if (!srcA.device.backend.isSimulated &&
-        dtypeA == DType.float32 &&
-        dtypeB == DType.float32 &&
-        dtypeDst == DType.float32 &&
-        ShapeUtils.isContiguous(shapeA, stridesA) &&
-        ShapeUtils.isContiguous(shapeB, stridesB) &&
-        ShapeUtils.isContiguous(outShape, outStrides) &&
-        offsetA == 0 &&
-        offsetB == 0 &&
-        offsetDst == 0 &&
-        shapeA.length == outShape.length &&
-        shapeB.length == outShape.length) {
-      final shaderModule = WgslTemplates.elementwiseBinary(
-        op: op.name,
-        dtype: WgslDType.float32,
-        strided: false,
-      );
-      srcA.device.backend.dispatchComputePipeline(
-        shaderModule: shaderModule,
-        buffers: [srcA, srcB, dst],
-        uniforms: [totalElements, 0, 0, 0],
-        workgroupsX: math.min(65535, (totalElements + 255) ~/ 256),
-      );
-      return;
+        dtypeA == dtypeB &&
+        dtypeB == dtypeDst &&
+        WgslDType.isNativelySupportedStorageDType(dtypeA) &&
+        !_isComparisonOp(op) &&
+        (op != BinaryOp.power || dtypeA == DType.float32) &&
+        dst.address != srcA.address &&
+        dst.address != srcB.address) {
+      final wgslDType = WgslDType.fromDType(dtypeA);
+      final isContiguous =
+          isContiguousLayout(shapeA, stridesA) &&
+          isContiguousLayout(shapeB, stridesB) &&
+          isContiguousLayout(outShape, outStrides) &&
+          offsetA == 0 &&
+          offsetB == 0 &&
+          offsetDst == 0 &&
+          areShapesEqual(shapeA, outShape) &&
+          areShapesEqual(shapeB, outShape);
+
+      if (isContiguous) {
+        final shaderModule = WgslTemplates.elementwiseBinary(
+          op: op.name,
+          dtype: wgslDType,
+          strided: false,
+        );
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        srcA.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [srcA, srcB, dst],
+          uniforms: [totalElements, 0, 0, 0],
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+        return;
+      } else if (outShape.length <= 8) {
+        final shaderModule = WgslTemplates.elementwiseBinary(
+          op: op.name,
+          dtype: wgslDType,
+          strided: true,
+        );
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = _packStridedMetadata(
+          rank: outShape.length,
+          totalElements: totalElements,
+          offsetA: offsetA,
+          offsetB: offsetB,
+          offsetOut: offsetDst,
+          shape: outShape,
+          stridesA: bStridesA,
+          stridesB: bStridesB,
+          stridesOut: outStrides,
+        );
+        srcA.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [srcA, srcB, dst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+        return;
+      }
     }
 
     final rank = outShape.length;
@@ -125,59 +309,59 @@ final class GpuKernels {
 
     for (var i = 0; i < totalElements; i++) {
       // Calculate source element offsets from multidimensional coordinates
-      var elemIdxA = 0;
-      var elemIdxB = 0;
-      var elemIdxDst = 0;
+      var elemIndexA = 0;
+      var elemIndexB = 0;
+      var elemIndexDst = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxA += coords[d] * bStridesA[d];
-        elemIdxB += coords[d] * bStridesB[d];
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexA += coords[d] * bStridesA[d];
+        elemIndexB += coords[d] * bStridesB[d];
+        elemIndexDst += coords[d] * outStrides[d];
       }
 
       if (isComplex) {
-        final valA = ComputeEngine.readAny(
+        final valA = readBufferAny(
           srcA,
           dtypeA,
-          elemIdxA,
+          elemIndexA,
           offsetElements: offsetA,
         );
-        final valB = ComputeEngine.readAny(
+        final valB = readBufferAny(
           srcB,
           dtypeB,
-          elemIdxB,
+          elemIndexB,
           offsetElements: offsetB,
         );
 
         final result = _applyComplexBinary(op, valA, valB);
 
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           result,
           offsetElements: offsetDst,
         );
       } else {
-        final valA = ComputeEngine.readValue(
+        final valA = readBufferValue(
           srcA,
           dtypeA,
-          elemIdxA,
+          elemIndexA,
           offsetElements: offsetA,
         );
-        final valB = ComputeEngine.readValue(
+        final valB = readBufferValue(
           srcB,
           dtypeB,
-          elemIdxB,
+          elemIndexB,
           offsetElements: offsetB,
         );
 
         final result = _applyBinary(op, valA, valB);
 
-        ComputeEngine.writeValue(
+        writeBufferValue(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           result,
           offsetElements: offsetDst,
         );
@@ -207,27 +391,61 @@ final class GpuKernels {
     required int offsetDst,
     required DType dtypeDst,
   }) {
-    final totalElements = ShapeUtils.computeSize(shape);
+    final totalElements = computeSize(shape);
+    if (totalElements == 0) return;
 
     if (!src.device.backend.isSimulated &&
-        dtypeSrc == DType.float32 &&
-        dtypeDst == DType.float32 &&
-        ShapeUtils.isContiguous(shape, strides) &&
-        ShapeUtils.isContiguous(shape, outStrides) &&
-        offsetSrc == 0 &&
-        offsetDst == 0) {
-      final shaderModule = WgslTemplates.elementwiseUnary(
-        op: op.name,
-        dtype: WgslDType.float32,
-        strided: false,
-      );
-      src.device.backend.dispatchComputePipeline(
-        shaderModule: shaderModule,
-        buffers: [src, dst],
-        uniforms: [totalElements, 0, 0, 0],
-        workgroupsX: math.min(65535, (totalElements + 255) ~/ 256),
-      );
-      return;
+        dtypeSrc == dtypeDst &&
+        _isWgslUnarySupported(op, dtypeSrc) &&
+        dst.address != src.address) {
+      final wgslDType = WgslDType.fromDType(dtypeSrc);
+      if (isContiguousLayout(shape, strides) &&
+          isContiguousLayout(shape, outStrides) &&
+          offsetSrc == 0 &&
+          offsetDst == 0) {
+        final shaderModule = WgslTemplates.elementwiseUnary(
+          op: op.name,
+          dtype: wgslDType,
+          strided: false,
+        );
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, dst],
+          uniforms: [totalElements, 0, 0, 0],
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+        return;
+      } else if (shape.length <= 8) {
+        final shaderModule = WgslTemplates.elementwiseUnary(
+          op: op.name,
+          dtype: wgslDType,
+          strided: true,
+        );
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = _packStridedMetadata(
+          rank: shape.length,
+          totalElements: totalElements,
+          offsetA: offsetSrc,
+          offsetB: 0,
+          offsetOut: offsetDst,
+          shape: shape,
+          stridesA: strides,
+          stridesB: const [],
+          stridesOut: outStrides,
+        );
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, dst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+        return;
+      }
     }
 
     final rank = shape.length;
@@ -240,43 +458,43 @@ final class GpuKernels {
         dtypeDst == DType.complex128;
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxSrc = 0;
-      var elemIdxDst = 0;
+      var elemIndexSrc = 0;
+      var elemIndexDst = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxSrc += coords[d] * strides[d];
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexSrc += coords[d] * strides[d];
+        elemIndexDst += coords[d] * outStrides[d];
       }
 
       if (isComplex) {
-        final val = ComputeEngine.readAny(
+        final val = readBufferAny(
           src,
           dtypeSrc,
-          elemIdxSrc,
+          elemIndexSrc,
           offsetElements: offsetSrc,
         );
         final result = _applyComplexUnary(op, val);
 
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           result,
           offsetElements: offsetDst,
         );
       } else {
-        final val = ComputeEngine.readValue(
+        final val = readBufferValue(
           src,
           dtypeSrc,
-          elemIdxSrc,
+          elemIndexSrc,
           offsetElements: offsetSrc,
         );
         final result = _applyUnary(op, val);
 
-        ComputeEngine.writeValue(
+        writeBufferValue(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           result,
           offsetElements: offsetDst,
         );
@@ -312,10 +530,10 @@ final class GpuKernels {
 
     if (axis == null) {
       // Full reduction to scalar
-      final totalElements = ShapeUtils.computeSize(shape);
+      final totalElements = computeSize(shape);
       if (totalElements == 0) {
         if (isComplex) {
-          ComputeEngine.writeAny(
+          writeBufferAny(
             dst,
             dtypeDst,
             0,
@@ -323,15 +541,61 @@ final class GpuKernels {
             offsetElements: offsetDst,
           );
         } else {
-          ComputeEngine.writeValue(
-            dst,
-            dtypeDst,
-            0,
-            0.0,
-            offsetElements: offsetDst,
-          );
+          writeBufferValue(dst, dtypeDst, 0, 0.0, offsetElements: offsetDst);
         }
         return;
+      }
+
+      if (!src.device.backend.isSimulated &&
+          dtypeSrc == dtypeDst &&
+          WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
+          (op != 'mean' || dtypeSrc == DType.float32) &&
+          dst.address != src.address) {
+        final wgslDType = WgslDType.fromDType(dtypeSrc);
+        if (isContiguousLayout(shape, strides) &&
+            offsetSrc == 0 &&
+            offsetDst == 0) {
+          final shaderModule = WgslTemplates.treeReduction(
+            op: op,
+            dtype: wgslDType,
+            strided: false,
+          );
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, dst],
+            uniforms: [totalElements, 0, 0, 0],
+            workgroupsX: 1,
+            workgroupsY: 1,
+            workgroupsZ: 1,
+          );
+          return;
+        } else if (shape.length <= 8) {
+          final shaderModule = WgslTemplates.treeReduction(
+            op: op,
+            dtype: wgslDType,
+            strided: true,
+          );
+          final uniforms = _packStridedMetadata(
+            rank: shape.length,
+            totalElements: totalElements,
+            offsetA: offsetSrc,
+            offsetB: 0,
+            offsetOut: offsetDst,
+            shape: shape,
+            stridesA: strides,
+            stridesB: const [],
+            stridesOut: const [],
+          );
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, dst],
+            uniforms: uniforms,
+            workgroupsX: 1,
+            workgroupsY: 1,
+            workgroupsZ: 1,
+          );
+          return;
+        }
       }
 
       final rank = shape.length;
@@ -341,15 +605,15 @@ final class GpuKernels {
         var accum = _initialComplexReductionValue(op);
 
         for (var i = 0; i < totalElements; i++) {
-          var elemIdx = 0;
+          var elemIndex = 0;
           for (var d = 0; d < rank; d++) {
-            elemIdx += coords[d] * strides[d];
+            elemIndex += coords[d] * strides[d];
           }
 
-          final rawVal = ComputeEngine.readAny(
+          final rawVal = readBufferAny(
             src,
             dtypeSrc,
-            elemIdx,
+            elemIndex,
             offsetElements: offsetSrc,
           );
           accum = _combineComplexReduction(op, accum, _toComplex(rawVal));
@@ -370,26 +634,20 @@ final class GpuKernels {
           );
         }
 
-        ComputeEngine.writeAny(
-          dst,
-          dtypeDst,
-          0,
-          accum,
-          offsetElements: offsetDst,
-        );
+        writeBufferAny(dst, dtypeDst, 0, accum, offsetElements: offsetDst);
       } else {
         var accum = _initialReductionValue(op);
 
         for (var i = 0; i < totalElements; i++) {
-          var elemIdx = 0;
+          var elemIndex = 0;
           for (var d = 0; d < rank; d++) {
-            elemIdx += coords[d] * strides[d];
+            elemIndex += coords[d] * strides[d];
           }
 
-          final val = ComputeEngine.readValue(
+          final val = readBufferValue(
             src,
             dtypeSrc,
-            elemIdx,
+            elemIndex,
             offsetElements: offsetSrc,
           );
           accum = _combineReduction(op, accum, val, i);
@@ -407,48 +665,87 @@ final class GpuKernels {
           accum = accum / totalElements;
         }
 
-        ComputeEngine.writeValue(
-          dst,
-          dtypeDst,
-          0,
-          accum,
-          offsetElements: offsetDst,
-        );
+        writeBufferValue(dst, dtypeDst, 0, accum, offsetElements: offsetDst);
       }
     } else {
       // Reduction along a single axis
       final normAxis = axis < 0 ? axis + shape.length : axis;
       final axisSize = shape[normAxis];
-      final totalOut = ShapeUtils.computeSize(outShape);
+      final totalOut = computeSize(outShape);
+      if (totalOut == 0) return;
+
+      if (!src.device.backend.isSimulated &&
+          dtypeSrc == dtypeDst &&
+          WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
+          (op != 'mean' || dtypeSrc == DType.float32) &&
+          outShape.length <= 8 &&
+          dst.address != src.address) {
+        final nonAxisStrides = <int>[];
+        if (outShape.length == shape.length) {
+          // keepDims == true: outShape has 1 at normAxis
+          for (var d = 0; d < shape.length; d++) {
+            nonAxisStrides.add(d == normAxis ? 0 : strides[d]);
+          }
+        } else {
+          for (var d = 0; d < shape.length; d++) {
+            if (d != normAxis) nonAxisStrides.add(strides[d]);
+          }
+        }
+        final shaderModule = WgslTemplates.axisReduction(
+          op: op,
+          dtype: WgslDType.fromDType(dtypeSrc),
+        );
+        final dispatch = shaderModule.calculateDispatch1D(totalOut);
+        final uniforms = _packStridedMetadata(
+          rank: outShape.length,
+          totalElements: totalOut,
+          offsetA: offsetSrc,
+          offsetB: 0,
+          offsetOut: offsetDst,
+          shape: outShape,
+          stridesA: nonAxisStrides,
+          stridesB: [axisSize, strides[normAxis]],
+          stridesOut: outStrides,
+        );
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, dst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+        return;
+      }
 
       final outRank = outShape.length;
       final outCoords = List<int>.filled(outRank, 0);
 
-      for (var outIdx = 0; outIdx < totalOut; outIdx++) {
-        var dstElemIdx = 0;
+      for (var outIndex = 0; outIndex < totalOut; outIndex++) {
+        var dstElemIndex = 0;
         for (var d = 0; d < outRank; d++) {
-          dstElemIdx += outCoords[d] * outStrides[d];
+          dstElemIndex += outCoords[d] * outStrides[d];
         }
 
         if (isComplex) {
           var accum = _initialComplexReductionValue(op);
 
           for (var a = 0; a < axisSize; a++) {
-            var srcElemIdx = 0;
+            var srcElemIndex = 0;
             var inDim = 0;
             for (var d = 0; d < shape.length; d++) {
               if (d == normAxis) {
-                srcElemIdx += a * strides[d];
+                srcElemIndex += a * strides[d];
               } else {
-                srcElemIdx += outCoords[inDim] * strides[d];
+                srcElemIndex += outCoords[inDim] * strides[d];
                 inDim++;
               }
             }
 
-            final rawVal = ComputeEngine.readAny(
+            final rawVal = readBufferAny(
               src,
               dtypeSrc,
-              srcElemIdx,
+              srcElemIndex,
               offsetElements: offsetSrc,
             );
             accum = _combineComplexReduction(op, accum, _toComplex(rawVal));
@@ -458,10 +755,10 @@ final class GpuKernels {
             accum = Complex(accum.real / axisSize, accum.imag / axisSize);
           }
 
-          ComputeEngine.writeAny(
+          writeBufferAny(
             dst,
             dtypeDst,
-            dstElemIdx,
+            dstElemIndex,
             accum,
             offsetElements: offsetDst,
           );
@@ -470,21 +767,21 @@ final class GpuKernels {
 
           for (var a = 0; a < axisSize; a++) {
             // Reconstruct input coords from output coords + axis index
-            var srcElemIdx = 0;
+            var srcElemIndex = 0;
             var inDim = 0;
             for (var d = 0; d < shape.length; d++) {
               if (d == normAxis) {
-                srcElemIdx += a * strides[d];
+                srcElemIndex += a * strides[d];
               } else {
-                srcElemIdx += outCoords[inDim] * strides[d];
+                srcElemIndex += outCoords[inDim] * strides[d];
                 inDim++;
               }
             }
 
-            final val = ComputeEngine.readValue(
+            final val = readBufferValue(
               src,
               dtypeSrc,
-              srcElemIdx,
+              srcElemIndex,
               offsetElements: offsetSrc,
             );
             accum = _combineReduction(op, accum, val, a);
@@ -494,10 +791,10 @@ final class GpuKernels {
             accum = accum / axisSize;
           }
 
-          ComputeEngine.writeValue(
+          writeBufferValue(
             dst,
             dtypeDst,
-            dstElemIdx,
+            dstElemIndex,
             accum,
             offsetElements: offsetDst,
           );
@@ -546,11 +843,21 @@ final class GpuKernels {
       final M = shapeA[0];
       final K = shapeA[1];
       final N = shapeB[1];
+      if (M == 0 || N == 0) return;
 
       if (!srcA.device.backend.isSimulated &&
+          K > 0 &&
           dtypeA == DType.float32 &&
           dtypeB == DType.float32 &&
-          dtypeDst == DType.float32) {
+          dtypeDst == DType.float32 &&
+          dst.address != srcA.address &&
+          dst.address != srcB.address &&
+          stridesA[0] >= 0 &&
+          stridesA[1] >= 0 &&
+          stridesB[0] >= 0 &&
+          stridesB[1] >= 0 &&
+          outStrides[0] >= 0 &&
+          outStrides[1] >= 0) {
         final shaderModule = WgslTemplates.tiledMatmul(
           tileSize: 16,
           dtype: WgslDType.float32,
@@ -591,62 +898,52 @@ final class GpuKernels {
 
       for (var m = 0; m < M; m++) {
         for (var n = 0; n < N; n++) {
-          final idxDst = m * outStrides[0] + n * outStrides[1];
+          final indexDst = m * outStrides[0] + n * outStrides[1];
           if (isComplex) {
             var sumReal = 0.0;
             var sumImag = 0.0;
             for (var k = 0; k < K; k++) {
-              final idxA = m * stridesA[0] + k * stridesA[1];
-              final idxB = k * stridesB[0] + n * stridesB[1];
+              final indexA = m * stridesA[0] + k * stridesA[1];
+              final indexB = k * stridesB[0] + n * stridesB[1];
               final a = _toComplex(
-                ComputeEngine.readAny(
-                  srcA,
-                  dtypeA,
-                  idxA,
-                  offsetElements: offsetA,
-                ),
+                readBufferAny(srcA, dtypeA, indexA, offsetElements: offsetA),
               );
               final b = _toComplex(
-                ComputeEngine.readAny(
-                  srcB,
-                  dtypeB,
-                  idxB,
-                  offsetElements: offsetB,
-                ),
+                readBufferAny(srcB, dtypeB, indexB, offsetElements: offsetB),
               );
               sumReal += a.real * b.real - a.imag * b.imag;
               sumImag += a.real * b.imag + a.imag * b.real;
             }
-            ComputeEngine.writeAny(
+            writeBufferAny(
               dst,
               dtypeDst,
-              idxDst,
+              indexDst,
               Complex(sumReal, sumImag),
               offsetElements: offsetDst,
             );
           } else {
             var sum = 0.0;
             for (var k = 0; k < K; k++) {
-              final idxA = m * stridesA[0] + k * stridesA[1];
-              final idxB = k * stridesB[0] + n * stridesB[1];
-              final a = ComputeEngine.readValue(
+              final indexA = m * stridesA[0] + k * stridesA[1];
+              final indexB = k * stridesB[0] + n * stridesB[1];
+              final a = readBufferValue(
                 srcA,
                 dtypeA,
-                idxA,
+                indexA,
                 offsetElements: offsetA,
               );
-              final b = ComputeEngine.readValue(
+              final b = readBufferValue(
                 srcB,
                 dtypeB,
-                idxB,
+                indexB,
                 offsetElements: offsetB,
               );
               sum += a * b;
             }
-            ComputeEngine.writeValue(
+            writeBufferValue(
               dst,
               dtypeDst,
-              idxDst,
+              indexDst,
               sum,
               offsetElements: offsetDst,
             );
@@ -661,7 +958,7 @@ final class GpuKernels {
         var sumImag = 0.0;
         for (var k = 0; k < K; k++) {
           final a = _toComplex(
-            ComputeEngine.readAny(
+            readBufferAny(
               srcA,
               dtypeA,
               k * stridesA[0],
@@ -669,7 +966,7 @@ final class GpuKernels {
             ),
           );
           final b = _toComplex(
-            ComputeEngine.readAny(
+            readBufferAny(
               srcB,
               dtypeB,
               k * stridesB[0],
@@ -679,7 +976,7 @@ final class GpuKernels {
           sumReal += a.real * b.real - a.imag * b.imag;
           sumImag += a.real * b.imag + a.imag * b.real;
         }
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
           0,
@@ -689,13 +986,13 @@ final class GpuKernels {
       } else {
         var sum = 0.0;
         for (var k = 0; k < K; k++) {
-          final a = ComputeEngine.readValue(
+          final a = readBufferValue(
             srcA,
             dtypeA,
             k * stridesA[0],
             offsetElements: offsetA,
           );
-          final b = ComputeEngine.readValue(
+          final b = readBufferValue(
             srcB,
             dtypeB,
             k * stridesB[0],
@@ -703,37 +1000,28 @@ final class GpuKernels {
           );
           sum += a * b;
         }
-        ComputeEngine.writeValue(
-          dst,
-          dtypeDst,
-          0,
-          sum,
-          offsetElements: offsetDst,
-        );
+        writeBufferValue(dst, dtypeDst, 0, sum, offsetElements: offsetDst);
       }
     } else {
       // Batched N-D matrix multiplication
       final batchShapeA = shapeA.sublist(0, rankA - 2);
       final batchShapeB = shapeB.sublist(0, rankB - 2);
-      final batchOutShape = ShapeUtils.broadcastShapes(
-        batchShapeA,
-        batchShapeB,
-      );
+      final batchOutShape = broadcastShapes(batchShapeA, batchShapeB);
 
       final M = shapeA[rankA - 2];
       final K = shapeA[rankA - 1];
       final N = shapeB[rankB - 1];
 
-      final batchSize = ShapeUtils.computeSize(batchOutShape);
+      final batchSize = computeSize(batchOutShape);
       final batchRank = batchOutShape.length;
       final batchCoords = List<int>.filled(batchRank, 0);
 
-      final batchStridesA = ShapeUtils.broadcastStrides(
+      final batchStridesA = broadcastStrides(
         batchShapeA,
         stridesA.sublist(0, rankA - 2),
         batchOutShape,
       );
-      final batchStridesB = ShapeUtils.broadcastStrides(
+      final batchStridesB = broadcastStrides(
         batchShapeB,
         stridesB.sublist(0, rankB - 2),
         batchOutShape,
@@ -741,89 +1029,79 @@ final class GpuKernels {
       final batchStridesDst = outStrides.sublist(0, outStrides.length - 2);
 
       for (var b = 0; b < batchSize; b++) {
-        var baseIdxA = 0;
-        var baseIdxB = 0;
-        var baseIdxDst = 0;
+        var baseIndexA = 0;
+        var baseIndexB = 0;
+        var baseIndexDst = 0;
 
         for (var d = 0; d < batchRank; d++) {
-          baseIdxA += batchCoords[d] * batchStridesA[d];
-          baseIdxB += batchCoords[d] * batchStridesB[d];
-          baseIdxDst += batchCoords[d] * batchStridesDst[d];
+          baseIndexA += batchCoords[d] * batchStridesA[d];
+          baseIndexB += batchCoords[d] * batchStridesB[d];
+          baseIndexDst += batchCoords[d] * batchStridesDst[d];
         }
 
         for (var m = 0; m < M; m++) {
           for (var n = 0; n < N; n++) {
-            final idxDst =
-                baseIdxDst +
+            final indexDst =
+                baseIndexDst +
                 m * outStrides[outStrides.length - 2] +
                 n * outStrides[outStrides.length - 1];
             if (isComplex) {
               var sumReal = 0.0;
               var sumImag = 0.0;
               for (var k = 0; k < K; k++) {
-                final idxA =
-                    baseIdxA +
+                final indexA =
+                    baseIndexA +
                     m * stridesA[rankA - 2] +
                     k * stridesA[rankA - 1];
-                final idxB =
-                    baseIdxB +
+                final indexB =
+                    baseIndexB +
                     k * stridesB[rankB - 2] +
                     n * stridesB[rankB - 1];
                 final a = _toComplex(
-                  ComputeEngine.readAny(
-                    srcA,
-                    dtypeA,
-                    idxA,
-                    offsetElements: offsetA,
-                  ),
+                  readBufferAny(srcA, dtypeA, indexA, offsetElements: offsetA),
                 );
                 final b = _toComplex(
-                  ComputeEngine.readAny(
-                    srcB,
-                    dtypeB,
-                    idxB,
-                    offsetElements: offsetB,
-                  ),
+                  readBufferAny(srcB, dtypeB, indexB, offsetElements: offsetB),
                 );
                 sumReal += a.real * b.real - a.imag * b.imag;
                 sumImag += a.real * b.imag + a.imag * b.real;
               }
-              ComputeEngine.writeAny(
+              writeBufferAny(
                 dst,
                 dtypeDst,
-                idxDst,
+                indexDst,
                 Complex(sumReal, sumImag),
                 offsetElements: offsetDst,
               );
             } else {
               var sum = 0.0;
               for (var k = 0; k < K; k++) {
-                final idxA =
-                    baseIdxA +
+                final indexA =
+                    baseIndexA +
                     m * stridesA[rankA - 2] +
                     k * stridesA[rankA - 1];
-                final idxB =
-                    baseIdxB +
+                final indexB =
+                    baseIndexB +
                     k * stridesB[rankB - 2] +
                     n * stridesB[rankB - 1];
-                final a = ComputeEngine.readValue(
+                final a = readBufferValue(
                   srcA,
                   dtypeA,
-                  idxA,
+                  indexA,
                   offsetElements: offsetA,
                 );
-                final b = ComputeEngine.readValue(
+                final b = readBufferValue(
                   srcB,
                   dtypeB,
-                  idxB,
+                  indexB,
                   offsetElements: offsetB,
                 );
                 sum += a * b;
               }
-              ComputeEngine.writeValue(
+              writeBufferValue(
                 dst,
                 dtypeDst,
-                idxDst,
+                indexDst,
                 sum,
                 offsetElements: offsetDst,
               );
@@ -854,29 +1132,62 @@ final class GpuKernels {
     required int offsetDst,
     required DType dtypeDst,
   }) {
-    final totalElements = ShapeUtils.computeSize(shape);
+    final totalElements = computeSize(shape);
+    if (totalElements == 0) return;
+
+    if (!src.device.backend.isSimulated &&
+        dtypeSrc == dtypeDst &&
+        WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
+        shape.length <= 8 &&
+        dst.address != src.address) {
+      final shaderModule = WgslTemplates.tileKernel(
+        dtype: WgslDType.fromDType(dtypeSrc),
+      );
+      final dispatch = shaderModule.calculateDispatch1D(totalElements);
+      final uniforms = _packStridedMetadata(
+        rank: shape.length,
+        totalElements: totalElements,
+        offsetA: offsetSrc,
+        offsetB: 0,
+        offsetOut: offsetDst,
+        shape: shape,
+        stridesA: strides,
+        stridesB: shape,
+        stridesOut: outStrides,
+      );
+      src.device.backend.dispatchComputePipeline(
+        shaderModule: shaderModule,
+        buffers: [src, dst],
+        uniforms: uniforms,
+        workgroupsX: dispatch.workgroupsX,
+        workgroupsY: dispatch.workgroupsY,
+        workgroupsZ: dispatch.workgroupsZ,
+      );
+      return;
+    }
+
     final rank = shape.length;
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxSrc = 0;
-      var elemIdxDst = 0;
+      var elemIndexSrc = 0;
+      var elemIndexDst = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxSrc += coords[d] * strides[d];
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexSrc += coords[d] * strides[d];
+        elemIndexDst += coords[d] * outStrides[d];
       }
 
-      final val = ComputeEngine.readAny(
+      final val = readBufferAny(
         src,
         dtypeSrc,
-        elemIdxSrc,
+        elemIndexSrc,
         offsetElements: offsetSrc,
       );
-      ComputeEngine.writeAny(
+      writeBufferAny(
         dst,
         dtypeDst,
-        elemIdxDst,
+        elemIndexDst,
         val,
         offsetElements: offsetDst,
       );
@@ -891,14 +1202,14 @@ final class GpuKernels {
     }
   }
 
-  static Complex _toComplex(dynamic v) {
+  static Complex _toComplex(Object? v) {
     if (v is Complex) return v;
     if (v is num) return Complex(v.toDouble(), 0.0);
     if (v is bool) return Complex(v ? 1.0 : 0.0, 0.0);
     return Complex(0.0, 0.0);
   }
 
-  static dynamic _applyComplexBinary(BinaryOp op, dynamic rawA, dynamic rawB) {
+  static Object _applyComplexBinary(BinaryOp op, Object? rawA, Object? rawB) {
     final a = _toComplex(rawA);
     final b = _toComplex(rawB);
     switch (op) {
@@ -927,7 +1238,7 @@ final class GpuKernels {
     }
   }
 
-  static dynamic _applyComplexUnary(UnaryOp op, dynamic raw) {
+  static Object _applyComplexUnary(UnaryOp op, Object? raw) {
     final c = _toComplex(raw);
     switch (op) {
       case UnaryOp.negate:
@@ -1126,56 +1437,81 @@ final class GpuKernels {
     required int offsetDst,
     required DType dtypeDst,
   }) {
-    final totalElements = ShapeUtils.computeSize(outShape);
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
     final rank = outShape.length;
-    final bStridesCond = ShapeUtils.broadcastStrides(
-      shapeCond,
-      stridesCond,
-      outShape,
-    );
-    final bStridesX = ShapeUtils.broadcastStrides(shapeX, stridesX, outShape);
-    final bStridesY = ShapeUtils.broadcastStrides(shapeY, stridesY, outShape);
+    final bStridesCond = broadcastStrides(shapeCond, stridesCond, outShape);
+    final bStridesX = broadcastStrides(shapeX, stridesX, outShape);
+    final bStridesY = broadcastStrides(shapeY, stridesY, outShape);
+
+    if (!srcX.device.backend.isSimulated &&
+        dtypeX == dtypeY &&
+        dtypeY == dtypeDst &&
+        WgslDType.isNativelySupportedStorageDType(dtypeDst) &&
+        rank <= 8 &&
+        dst.address != srcX.address &&
+        dst.address != srcY.address &&
+        dst.address != cond.address) {
+      final shaderModule = WgslTemplates.whereKernel(
+        dtype: WgslDType.fromDType(dtypeDst),
+      );
+      final dispatch = shaderModule.calculateDispatch1D(totalElements);
+      final uniforms = _packWhereUniforms(
+        totalElements: totalElements,
+        rank: rank,
+        offsetCond: offsetCond,
+        offsetX: offsetX,
+        offsetY: offsetY,
+        offsetOut: offsetDst,
+        shape: outShape,
+        stridesCond: bStridesCond,
+        stridesX: bStridesX,
+        stridesY: bStridesY,
+        stridesOut: outStrides,
+      );
+      srcX.device.backend.dispatchComputePipeline(
+        shaderModule: shaderModule,
+        buffers: [cond, srcX, srcY, dst],
+        uniforms: uniforms,
+        workgroupsX: dispatch.workgroupsX,
+        workgroupsY: dispatch.workgroupsY,
+        workgroupsZ: dispatch.workgroupsZ,
+      );
+      return;
+    }
+
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxCond = 0;
-      var elemIdxX = 0;
-      var elemIdxY = 0;
-      var elemIdxDst = 0;
+      var elemIndexCond = 0;
+      var elemIndexX = 0;
+      var elemIndexY = 0;
+      var elemIndexDst = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxCond += coords[d] * bStridesCond[d];
-        elemIdxX += coords[d] * bStridesX[d];
-        elemIdxY += coords[d] * bStridesY[d];
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexCond += coords[d] * bStridesCond[d];
+        elemIndexX += coords[d] * bStridesX[d];
+        elemIndexY += coords[d] * bStridesY[d];
+        elemIndexDst += coords[d] * outStrides[d];
       }
 
-      final cVal = ComputeEngine.readValue(
+      final cVal = readBufferValue(
         cond,
         DType.boolean,
-        elemIdxCond,
+        elemIndexCond,
         offsetElements: offsetCond,
       );
       final isTrue = cVal != 0.0;
 
       final val = isTrue
-          ? ComputeEngine.readAny(
-              srcX,
-              dtypeX,
-              elemIdxX,
-              offsetElements: offsetX,
-            )
-          : ComputeEngine.readAny(
-              srcY,
-              dtypeY,
-              elemIdxY,
-              offsetElements: offsetY,
-            );
+          ? readBufferAny(srcX, dtypeX, elemIndexX, offsetElements: offsetX)
+          : readBufferAny(srcY, dtypeY, elemIndexY, offsetElements: offsetY);
 
-      ComputeEngine.writeAny(
+      writeBufferAny(
         dst,
         dtypeDst,
-        elemIdxDst,
+        elemIndexDst,
         val,
         offsetElements: offsetDst,
       );
@@ -1196,10 +1532,10 @@ final class GpuKernels {
     required int offsetSrc,
     required DType dtypeSrc,
     required GpuBuffer indices,
-    required List<int> shapeIdx,
-    required List<int> stridesIdx,
-    required int offsetIdx,
-    required DType dtypeIdx,
+    required List<int> shapeIndices,
+    required List<int> stridesIndices,
+    required int offsetIndices,
+    required DType dtypeIndices,
     required GpuBuffer dst,
     required List<int> outShape,
     required List<int> outStrides,
@@ -1207,28 +1543,28 @@ final class GpuKernels {
     required DType dtypeDst,
     required int axis,
   }) {
-    final totalElements = ShapeUtils.computeSize(outShape);
+    final totalElements = computeSize(outShape);
     final rank = outShape.length;
     final normAxis = axis < 0 ? axis + rank : axis;
     final axisLen = shapeSrc[normAxis];
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxIdx = 0;
-      var elemIdxDst = 0;
+      var elemIndexIndices = 0;
+      var elemIndexDst = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxIdx += coords[d] * stridesIdx[d];
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexIndices += coords[d] * stridesIndices[d];
+        elemIndexDst += coords[d] * outStrides[d];
       }
 
-      final idxValNum = ComputeEngine.readValue(
+      final indexValNum = readBufferValue(
         indices,
-        dtypeIdx,
-        elemIdxIdx,
-        offsetElements: offsetIdx,
+        dtypeIndices,
+        elemIndexIndices,
+        offsetElements: offsetIndices,
       );
-      var k = idxValNum.toInt();
+      var k = indexValNum.toInt();
       if (k < 0) k += axisLen;
       if (k < 0 || k >= axisLen) {
         throw IndexError.withLength(
@@ -1238,22 +1574,22 @@ final class GpuKernels {
         );
       }
 
-      var elemIdxSrc = 0;
+      var elemIndexSrc = 0;
       for (var d = 0; d < rank; d++) {
         final c = (d == normAxis) ? k : coords[d];
-        elemIdxSrc += c * stridesSrc[d];
+        elemIndexSrc += c * stridesSrc[d];
       }
 
-      final val = ComputeEngine.readAny(
+      final val = readBufferAny(
         src,
         dtypeSrc,
-        elemIdxSrc,
+        elemIndexSrc,
         offsetElements: offsetSrc,
       );
-      ComputeEngine.writeAny(
+      writeBufferAny(
         dst,
         dtypeDst,
-        elemIdxDst,
+        elemIndexDst,
         val,
         offsetElements: offsetDst,
       );
@@ -1274,10 +1610,10 @@ final class GpuKernels {
     required int offsetArr,
     required DType dtypeArr,
     required GpuBuffer indices,
-    required List<int> shapeIdx,
-    required List<int> stridesIdx,
-    required int offsetIdx,
-    required DType dtypeIdx,
+    required List<int> shapeIndices,
+    required List<int> stridesIndices,
+    required int offsetIndices,
+    required DType dtypeIndices,
     required GpuBuffer values,
     required List<int> shapeVal,
     required List<int> stridesVal,
@@ -1285,33 +1621,29 @@ final class GpuKernels {
     required DType dtypeVal,
     required int axis,
   }) {
-    final totalElements = ShapeUtils.computeSize(shapeIdx);
+    final totalElements = computeSize(shapeIndices);
     final rank = shapeArr.length;
     final normAxis = axis < 0 ? axis + rank : axis;
     final axisLen = shapeArr[normAxis];
-    final bStridesVal = ShapeUtils.broadcastStrides(
-      shapeVal,
-      stridesVal,
-      shapeIdx,
-    );
+    final bStridesVal = broadcastStrides(shapeVal, stridesVal, shapeIndices);
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxIdx = 0;
-      var elemIdxVal = 0;
+      var elemIndexIndices = 0;
+      var elemIndexVal = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxIdx += coords[d] * stridesIdx[d];
-        elemIdxVal += coords[d] * bStridesVal[d];
+        elemIndexIndices += coords[d] * stridesIndices[d];
+        elemIndexVal += coords[d] * bStridesVal[d];
       }
 
-      final idxValNum = ComputeEngine.readValue(
+      final indexValNum = readBufferValue(
         indices,
-        dtypeIdx,
-        elemIdxIdx,
-        offsetElements: offsetIdx,
+        dtypeIndices,
+        elemIndexIndices,
+        offsetElements: offsetIndices,
       );
-      var k = idxValNum.toInt();
+      var k = indexValNum.toInt();
       if (k < 0) k += axisLen;
       if (k < 0 || k >= axisLen) {
         throw IndexError.withLength(
@@ -1321,29 +1653,29 @@ final class GpuKernels {
         );
       }
 
-      var elemIdxArr = 0;
+      var elemIndexArr = 0;
       for (var d = 0; d < rank; d++) {
         final c = (d == normAxis) ? k : coords[d];
-        elemIdxArr += c * stridesArr[d];
+        elemIndexArr += c * stridesArr[d];
       }
 
-      final val = ComputeEngine.readAny(
+      final val = readBufferAny(
         values,
         dtypeVal,
-        elemIdxVal,
+        elemIndexVal,
         offsetElements: offsetVal,
       );
-      ComputeEngine.writeAny(
+      writeBufferAny(
         arr,
         dtypeArr,
-        elemIdxArr,
+        elemIndexArr,
         val,
         offsetElements: offsetArr,
       );
 
       for (var d = rank - 1; d >= 0; d--) {
         coords[d]++;
-        if (coords[d] < shapeIdx[d]) break;
+        if (coords[d] < shapeIndices[d]) break;
         coords[d] = 0;
       }
     }
@@ -1367,35 +1699,35 @@ final class GpuKernels {
     final normAxis = axis < 0 ? axis + rank : axis;
     var axisOffset = 0;
 
-    for (var aIdx = 0; aIdx < srcBuffers.length; aIdx++) {
-      final src = srcBuffers[aIdx];
-      final shape = srcShapes[aIdx];
-      final strides = srcStrides[aIdx];
-      final offset = srcOffsets[aIdx];
-      final dtype = srcDtypes[aIdx];
-      final total = ShapeUtils.computeSize(shape);
+    for (var arrayIndex = 0; arrayIndex < srcBuffers.length; arrayIndex++) {
+      final src = srcBuffers[arrayIndex];
+      final shape = srcShapes[arrayIndex];
+      final strides = srcStrides[arrayIndex];
+      final offset = srcOffsets[arrayIndex];
+      final dtype = srcDtypes[arrayIndex];
+      final total = computeSize(shape);
       final coords = List<int>.filled(rank, 0);
 
       for (var i = 0; i < total; i++) {
-        var elemIdxSrc = 0;
-        var elemIdxDst = 0;
+        var elemIndexSrc = 0;
+        var elemIndexDst = 0;
 
         for (var d = 0; d < rank; d++) {
-          elemIdxSrc += coords[d] * strides[d];
+          elemIndexSrc += coords[d] * strides[d];
           final outCoord = (d == normAxis) ? coords[d] + axisOffset : coords[d];
-          elemIdxDst += outCoord * outStrides[d];
+          elemIndexDst += outCoord * outStrides[d];
         }
 
-        final val = ComputeEngine.readAny(
+        final val = readBufferAny(
           src,
           dtype,
-          elemIdxSrc,
+          elemIndexSrc,
           offsetElements: offset,
         );
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           val,
           offsetElements: offsetDst,
         );
@@ -1424,46 +1756,46 @@ final class GpuKernels {
     required int offsetDst,
     required DType dtypeDst,
     required List<List<int>> padWidth,
-    required dynamic constantValue,
+    required Object? constantValue,
   }) {
-    final totalElements = ShapeUtils.computeSize(outShape);
+    final totalElements = computeSize(outShape);
     final rank = outShape.length;
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxDst = 0;
+      var elemIndexDst = 0;
       var inBounds = true;
-      var elemIdxSrc = 0;
+      var elemIndexSrc = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexDst += coords[d] * outStrides[d];
         final srcCoord = coords[d] - padWidth[d][0];
         if (srcCoord < 0 || srcCoord >= shapeSrc[d]) {
           inBounds = false;
         } else {
-          elemIdxSrc += srcCoord * stridesSrc[d];
+          elemIndexSrc += srcCoord * stridesSrc[d];
         }
       }
 
       if (inBounds) {
-        final val = ComputeEngine.readAny(
+        final val = readBufferAny(
           src,
           dtypeSrc,
-          elemIdxSrc,
+          elemIndexSrc,
           offsetElements: offsetSrc,
         );
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           val,
           offsetElements: offsetDst,
         );
       } else {
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           constantValue,
           offsetElements: offsetDst,
         );
@@ -1490,35 +1822,69 @@ final class GpuKernels {
     required int offsetDst,
     required DType dtypeDst,
   }) {
-    final totalElements = ShapeUtils.computeSize(outShape);
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
     final rank = outShape.length;
     final padRank = rank - shapeSrc.length;
     final paddedShapeSrc = List<int>.filled(padRank, 1, growable: true)
       ..addAll(shapeSrc);
     final paddedStridesSrc = List<int>.filled(padRank, 0, growable: true)
       ..addAll(stridesSrc);
+
+    if (!src.device.backend.isSimulated &&
+        dtypeSrc == dtypeDst &&
+        WgslDType.isNativelySupportedStorageDType(dtypeDst) &&
+        rank <= 8 &&
+        dst.address != src.address) {
+      final shaderModule = WgslTemplates.tileKernel(
+        dtype: WgslDType.fromDType(dtypeDst),
+      );
+      final dispatch = shaderModule.calculateDispatch1D(totalElements);
+      final uniforms = _packStridedMetadata(
+        rank: rank,
+        totalElements: totalElements,
+        offsetA: offsetSrc,
+        offsetB: 0,
+        offsetOut: offsetDst,
+        shape: outShape,
+        stridesA: paddedStridesSrc,
+        stridesB: paddedShapeSrc,
+        stridesOut: outStrides,
+      );
+      src.device.backend.dispatchComputePipeline(
+        shaderModule: shaderModule,
+        buffers: [src, dst],
+        uniforms: uniforms,
+        workgroupsX: dispatch.workgroupsX,
+        workgroupsY: dispatch.workgroupsY,
+        workgroupsZ: dispatch.workgroupsZ,
+      );
+      return;
+    }
+
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxDst = 0;
-      var elemIdxSrc = 0;
+      var elemIndexDst = 0;
+      var elemIndexSrc = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexDst += coords[d] * outStrides[d];
         final srcCoord = coords[d] % paddedShapeSrc[d];
-        elemIdxSrc += srcCoord * paddedStridesSrc[d];
+        elemIndexSrc += srcCoord * paddedStridesSrc[d];
       }
 
-      final val = ComputeEngine.readAny(
+      final val = readBufferAny(
         src,
         dtypeSrc,
-        elemIdxSrc,
+        elemIndexSrc,
         offsetElements: offsetSrc,
       );
-      ComputeEngine.writeAny(
+      writeBufferAny(
         dst,
         dtypeDst,
-        elemIdxDst,
+        elemIndexDst,
         val,
         offsetElements: offsetDst,
       );
@@ -1545,17 +1911,17 @@ final class GpuKernels {
     required int k,
     required bool upper,
   }) {
-    final totalElements = ShapeUtils.computeSize(shapeSrc);
+    final totalElements = computeSize(shapeSrc);
     final rank = shapeSrc.length;
     final coords = List<int>.filled(rank, 0);
 
     for (var i = 0; i < totalElements; i++) {
-      var elemIdxSrc = 0;
-      var elemIdxDst = 0;
+      var elemIndexSrc = 0;
+      var elemIndexDst = 0;
 
       for (var d = 0; d < rank; d++) {
-        elemIdxSrc += coords[d] * stridesSrc[d];
-        elemIdxDst += coords[d] * outStrides[d];
+        elemIndexSrc += coords[d] * stridesSrc[d];
+        elemIndexDst += coords[d] * outStrides[d];
       }
 
       final row = coords[rank - 2];
@@ -1563,24 +1929,24 @@ final class GpuKernels {
       final keep = upper ? (col - row >= k) : (col - row <= k);
 
       if (keep) {
-        final val = ComputeEngine.readAny(
+        final val = readBufferAny(
           src,
           dtypeSrc,
-          elemIdxSrc,
+          elemIndexSrc,
           offsetElements: offsetSrc,
         );
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           val,
           offsetElements: offsetDst,
         );
       } else {
-        ComputeEngine.writeAny(
+        writeBufferAny(
           dst,
           dtypeDst,
-          elemIdxDst,
+          elemIndexDst,
           0.0,
           offsetElements: offsetDst,
         );

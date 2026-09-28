@@ -146,5 +146,62 @@ void main() {
         expect(le.toList(), equals([true, true, false]));
       });
     });
+
+    test(
+      'In-place out: parameter for binary, unary, and comparison operations',
+      () {
+        ResourceScope.scope(() {
+          final a = GpuArray.fromList([1.0, 4.0, 9.0], [3], DType.float64);
+          final b = GpuArray.fromList([2.0, 3.0, 4.0], [3], DType.float64);
+          final out = GpuArray.zeros([3], DType.float64);
+
+          final resAdd = a.add(b, out: out);
+          expect(identical(resAdd, out), isTrue);
+          expect(out.toList(), equals([3.0, 7.0, 13.0]));
+
+          final resSqrt = a.sqrt(out: out);
+          expect(identical(resSqrt, out), isTrue);
+          expect(out.toList(), equals([1.0, 2.0, 3.0]));
+
+          final boolOut = GpuArray.zeros([3], DType.boolean);
+          final resGt = a.greater(b, out: boolOut);
+          expect(identical(resGt, boolOut), isTrue);
+          expect(boolOut.toList(), equals([false, true, true]));
+
+          // Mismatched shape or dtype on out throws ArgumentError subclass
+          final wrongShape = GpuArray.zeros([2], DType.float64);
+          expect(
+            () => a.add(b, out: wrongShape),
+            throwsA(isA<GpuShapeMismatchException>()),
+          );
+          expect(
+            () => a.add(b, out: wrongShape),
+            throwsA(isA<ArgumentError>()),
+          );
+
+          final wrongDtype = GpuArray.zeros([3], DType.float32);
+          expect(
+            () => a.add(b, out: wrongDtype),
+            throwsA(isA<ArgumentError>()),
+          );
+        });
+      },
+    );
+
+    test('Operations on negative-stride and offset sliced views', () {
+      ResourceScope.scope(() {
+        final base = GpuArray.fromList(
+          [1.0, 2.0, 3.0, 4.0, 5.0],
+          [5],
+          DType.float32,
+        );
+        final rev = base.slice([Slice(null, null, -1)]);
+        final sub = base.slice([Slice(1, 4)]);
+
+        expect(rev.toList(), equals([5.0, 4.0, 3.0, 2.0, 1.0]));
+        expect((rev + base).toList(), equals([6.0, 6.0, 6.0, 6.0, 6.0]));
+        expect(sub.abs().toList(), equals([2.0, 3.0, 4.0]));
+      });
+    });
   });
 }

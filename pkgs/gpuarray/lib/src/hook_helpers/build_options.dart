@@ -49,6 +49,9 @@ final class BuildOptions {
   /// Parses [BuildOptions] from `pubspec.yaml` `hooks.user_defines.gpuarray`
   /// with optional environment variable overrides (`GPUARRAY_BUILD_MODE`,
   /// `SCIENTIFIC_DART_BUILD_MODE`, `LOCAL_GPUARRAY_BINARY`).
+  ///
+  /// Throws a [FormatException] if `buildMode` is not `'fetch'`, `'local'`,
+  /// `'source'`, or `'checkout'`.
   factory BuildOptions.fromDefines(HookInputUserDefines defines) {
     final envMode =
         Platform.environment['GPUARRAY_BUILD_MODE'] ??
@@ -58,8 +61,8 @@ final class BuildOptions {
       null || 'fetch' => BuildModeEnum.fetch,
       'local' => BuildModeEnum.local,
       'source' || 'checkout' => BuildModeEnum.source,
-      final other => throw ArgumentError(
-        'Unknown buildMode "$other" for package:gpuarray.',
+      final other => throw FormatException(
+        'Unknown buildMode "$other" for package:gpuarray. Must be "fetch", "local", or "source".',
       ),
     };
 
@@ -80,7 +83,7 @@ final class BuildOptions {
     );
   }
 
-  /// Returns a formatted usage message for `pubspec.yaml` configuration.
+  /// Formats a user-facing configuration error message for `pubspec.yaml`.
   static String usageError(Object error) =>
       '''
 Error: $error

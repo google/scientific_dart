@@ -12,10 +12,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Linear algebra module for [package:gpuarray].
+/// Linear algebra decompositions, solvers, norms, and tensor contractions for
+/// [GpuArray] tensors.
 ///
-/// Provides matrix decompositions (QR, SVD, Cholesky, LU, Eig), linear solvers,
-/// matrix inverses, determinants, norms, and Einstein summation (`einsum`).
+/// Includes matrix products ([matmul], [dot], [vdot], [multiDot]),
+/// decompositions ([svd], [svdvals], [qr], [cholesky], [eigh], [eigvalsh],
+/// [eig], [eigvals], [lu], [luFactor], [luSolve]), solvers and invariants
+/// ([solve], [inv], [pinv], [det], [slogdet], [matrixPower], [matrixRank],
+/// [norm], [cond], [trace], [diagonal]), and tensor contractions ([einsum],
+/// [tensordot], [kron], [inner], [outer], [cross]).
 library;
 
 export 'src/linalg/linalg.dart';

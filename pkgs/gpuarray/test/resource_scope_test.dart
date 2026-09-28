@@ -154,5 +154,49 @@ void main() {
         expect(buf2.isDisposed, isTrue);
       },
     );
+
+    test('Accessing disposed GpuArray or GpuBuffer throws StateError', () {
+      final arr = GpuArray.fromList([1.0, 2.0], [2], DType.float64);
+      final buf = arr.buffer;
+      arr.dispose();
+
+      expect(arr.isDisposed, isTrue);
+      expect(buf.isDisposed, isTrue);
+      expect(() => arr.toList(), throwsA(isA<StateError>()));
+      expect(() => buf.address, throwsA(isA<StateError>()));
+    });
+
+    test(
+      'ResourceScope.returning with reshape and transpose views releases buffer on view dispose',
+      () {
+        GpuBuffer? underlyingBuffer;
+        final transposed = ResourceScope.returning(() {
+          final base = GpuArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [6],
+            DType.float64,
+          );
+          underlyingBuffer = base.buffer;
+          final reshaped = base.reshape([2, 3]);
+          return reshaped.transpose();
+        });
+
+        expect(transposed.isDisposed, isFalse);
+        expect(underlyingBuffer!.isDisposed, isFalse);
+        expect(transposed.shape, equals([3, 2]));
+        expect(
+          transposed.toNestedList(),
+          equals([
+            [1.0, 4.0],
+            [2.0, 5.0],
+            [3.0, 6.0],
+          ]),
+        );
+
+        transposed.dispose();
+        expect(transposed.isDisposed, isTrue);
+        expect(underlyingBuffer!.isDisposed, isTrue);
+      },
+    );
   });
 }

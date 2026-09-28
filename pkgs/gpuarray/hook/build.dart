@@ -22,7 +22,7 @@ import 'package:gpuarray/src/hook_helpers/build_options.dart';
 import 'package:gpuarray/src/hook_helpers/hashes.dart';
 import 'package:hooks/hooks.dart';
 
-void main(List<String> args) async {
+Future<void> main(List<String> args) async {
   await build(args, (input, output) async {
     if (!input.config.buildCodeAssets) {
       return;
@@ -31,10 +31,11 @@ void main(List<String> args) async {
     final BuildOptions buildOptions;
     try {
       buildOptions = BuildOptions.fromDefines(input.userDefines);
-    } catch (e) {
-      throw ArgumentError(BuildOptions.usageError(e));
+    } on Object catch (error) {
+      stderr.writeln(BuildOptions.usageError(error));
+      exitCode = 2;
+      return;
     }
-    print('gpuarray build options: $buildOptions');
 
     final buildMode = switch (buildOptions.buildMode) {
       BuildModeEnum.fetch => FetchMode(input),
@@ -42,7 +43,14 @@ void main(List<String> args) async {
       BuildModeEnum.source => SourceMode(input, buildOptions.checkoutPath),
     };
 
-    final builtLibrary = await buildMode.build();
+    final Uri? builtLibrary;
+    try {
+      builtLibrary = await buildMode.build();
+    } on FormatException catch (error) {
+      stderr.writeln(BuildOptions.usageError(error));
+      exitCode = 2;
+      return;
+    }
     if (builtLibrary == null) {
       return;
     }
@@ -60,18 +68,25 @@ void main(List<String> args) async {
   });
 }
 
+/// Base build mode strategy for resolving `wgpu-native` native code assets.
 sealed class BuildMode {
+  /// The hook build input configuration.
   final BuildInput input;
 
+  /// Creates a [BuildMode] for [input].
   const BuildMode(this.input);
 
+  /// Additional file dependencies to register with the build hook output.
   List<Uri> get dependencies;
 
+  /// Resolves or builds the `wgpu-native` shared library and returns its URI.
   Future<Uri?> build();
 }
 
+/// Downloads and verifies the prebuilt `wgpu-native` release archive.
 final class FetchMode extends BuildMode {
-  FetchMode(super.input);
+  /// Creates a [FetchMode] for [input].
+  const FetchMode(super.input);
 
   @override
   Future<Uri?> build() async {
@@ -80,26 +95,27 @@ final class FetchMode extends BuildMode {
     final asset = fileHashes[(os, arch)];
 
     if (asset == null) {
-      print(
+      stderr.writeln(
         'Warning: No prebuilt wgpu-native release configuration for $os $arch. '
         'Hardware acceleration will fall back to CPU simulation mode.',
       );
       return null;
     }
 
-    final extractDir = Directory.fromUri(
+    final extractDirectory = Directory.fromUri(
       input.outputDirectoryShared.resolve(
         'wgpu-native-$wgpuVersion/${os.name}-${arch.name}/',
       ),
     );
-    if (!extractDir.existsSync()) {
-      extractDir.createSync(recursive: true);
+    if (!extractDirectory.existsSync()) {
+      extractDirectory.createSync(recursive: true);
     }
 
-    final libFile = File(extractDir.uri.resolve(asset.libName).toFilePath());
-    if (!libFile.existsSync()) {
+    final libraryFile = File(
+      extractDirectory.uri.resolve(asset.libName).toFilePath(),
+    );
+    if (!libraryFile.existsSync()) {
       final downloadUrl = Uri.parse('$wgpuBaseUrl/${asset.zipName}');
-      print('Downloading wgpu-native release from $downloadUrl...');
       final zipBytes = await _downloadWithRedirects(downloadUrl);
 
       final actualSha256 = sha256.convert(zipBytes).toString().toLowerCase();
@@ -116,32 +132,38 @@ final class FetchMode extends BuildMode {
       for (final file in archive) {
         if (file.isFile) {
           final baseName = file.name.split('/').last;
-          final outFile = File(extractDir.uri.resolve(baseName).toFilePath());
-          outFile.writeAsBytesSync(file.content as List<int>, flush: true);
+          final outputFile = File(
+            extractDirectory.uri.resolve(baseName).toFilePath(),
+          );
+          outputFile.writeAsBytesSync(file.content as List<int>, flush: true);
         }
       }
     }
 
-    return libFile.existsSync() ? libFile.uri : null;
+    return libraryFile.existsSync() ? libraryFile.uri : null;
   }
 
   @override
   List<Uri> get dependencies => const [];
 }
 
+/// Copies a locally provided `wgpu-native` shared library binary.
 final class LocalMode extends BuildMode {
+  /// User-provided path to the local `wgpu-native` binary.
   final Uri? localPath;
 
-  LocalMode(super.input, this.localPath);
+  /// Creates a [LocalMode] for [input] and [localPath].
+  const LocalMode(super.input, this.localPath);
 
   File _resolveLocalFile() {
-    if (localPath == null) {
-      throw ArgumentError(
+    final path = localPath;
+    if (path == null) {
+      throw const FormatException(
         '`localPath` is not set in `hooks.user_defines.gpuarray` '
         '(or `LOCAL_GPUARRAY_BINARY` environment variable).',
       );
     }
-    final file = File(localPath!.toFilePath(windows: Platform.isWindows));
+    final file = File(path.toFilePath(windows: Platform.isWindows));
     if (!file.existsSync()) {
       throw FileSystemException(
         'Could not find local wgpu-native binary.',
@@ -153,48 +175,54 @@ final class LocalMode extends BuildMode {
 
   @override
   Future<Uri?> build() async {
-    final src = _resolveLocalFile();
-    final dst = File.fromUri(
+    final sourceFile = _resolveLocalFile();
+    final destinationFile = File.fromUri(
       input.outputDirectory.resolve(
         input.config.code.targetOS.dylibFileName('wgpu_native'),
       ),
     );
-    await dst.parent.create(recursive: true);
-    await src.copy(dst.path);
-    return dst.uri;
+    await destinationFile.parent.create(recursive: true);
+    await sourceFile.copy(destinationFile.path);
+    return destinationFile.uri;
   }
 
   @override
   List<Uri> get dependencies => [_resolveLocalFile().uri];
 }
 
+/// Builds `wgpu-native` from a local Rust checkout using `cargo`.
 final class SourceMode extends BuildMode {
+  /// User-provided path to the `wgpu-native` git checkout.
   final Uri? checkoutPath;
 
-  SourceMode(super.input, this.checkoutPath);
+  /// Creates a [SourceMode] for [input] and [checkoutPath].
+  const SourceMode(super.input, this.checkoutPath);
 
   @override
   Future<Uri?> build() async {
-    if (checkoutPath == null) {
-      throw ArgumentError(
+    final path = checkoutPath;
+    if (path == null) {
+      throw const FormatException(
         'Specify `checkoutPath` in `hooks.user_defines.gpuarray` '
         '(or `LOCAL_GPUARRAY_CHECKOUT`) to build wgpu-native from source.',
       );
     }
-    final dir = Directory.fromUri(checkoutPath!);
-    final res = await Process.run('cargo', [
+    final directory = Directory.fromUri(path);
+    final result = await Process.run('cargo', [
       'build',
       '--release',
-    ], workingDirectory: dir.path);
-    if (res.exitCode != 0) {
-      throw StateError('cargo build failed for wgpu-native:\n${res.stderr}');
+    ], workingDirectory: directory.path);
+    if (result.exitCode != 0) {
+      throw StateError('cargo build failed for wgpu-native:\n${result.stderr}');
     }
-    final libName = input.config.code.targetOS.dylibFileName('wgpu_native');
-    final built = File.fromUri(dir.uri.resolve('target/release/$libName'));
-    if (!built.existsSync()) {
-      throw FileSystemException('Built wgpu-native not found', built.path);
+    final libraryName = input.config.code.targetOS.dylibFileName('wgpu_native');
+    final builtFile = File.fromUri(
+      directory.uri.resolve('target/release/$libraryName'),
+    );
+    if (!builtFile.existsSync()) {
+      throw FileSystemException('Built wgpu-native not found', builtFile.path);
     }
-    return built.uri;
+    return builtFile.uri;
   }
 
   @override
@@ -209,12 +237,11 @@ Future<Uint8List> _downloadWithRedirects(Uri url) async {
     for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
       final request = await client.getUrl(currentUrl);
       final response = await request.close();
+      final location = response.headers.value(HttpHeaders.locationHeader);
       if (response.statusCode >= 300 &&
           response.statusCode < 400 &&
-          response.headers.value(HttpHeaders.locationHeader) != null) {
-        currentUrl = currentUrl.resolve(
-          response.headers.value(HttpHeaders.locationHeader)!,
-        );
+          location != null) {
+        currentUrl = currentUrl.resolve(location);
         continue;
       }
       if (response.statusCode != 200) {

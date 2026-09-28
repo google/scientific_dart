@@ -22,7 +22,7 @@ void main() {
     test('Linear layer forward and parameter registration', () {
       ResourceScope.scope(() {
         final fc = nn.Linear(4, 2);
-        expect(fc.parameters().length, equals(2)); // weight and bias
+        expect(fc.parameters.length, equals(2)); // weight and bias
         expect(fc.namedParameters().keys, containsAll(['weight', 'bias']));
 
         final x = GpuArray.fromList(
@@ -55,7 +55,7 @@ void main() {
           nn.Linear(4, 1),
         ]);
 
-        final optimizer = nn.Adam(model.parameters(), lr: 0.05);
+        final optimizer = nn.Adam(model.parameters, lr: 0.05);
 
         final xTrain = GpuArray.fromList(
           [1.0, 1.0, 2.0, 0.0, 0.0, 1.0, -1.0, 2.0],
@@ -76,9 +76,9 @@ void main() {
         for (var epoch = 0; epoch < 20; epoch++) {
           optimizer.zeroGrad();
           final pred = model(xTrain);
-          final loss = nn.mse_loss(pred, yTrain);
+          final loss = nn.mseLoss(pred, yTrain);
 
-          final lossVal = loss.toList().cast<double>().first;
+          final lossVal = (loss.scalar as num).toDouble();
           if (epoch == 0) initialLoss = lossVal;
           if (epoch == 19) finalLoss = lossVal;
 
@@ -89,6 +89,7 @@ void main() {
         expect(initialLoss, isNotNull);
         expect(finalLoss, isNotNull);
         expect(finalLoss, lessThan(initialLoss!)); // Loss decreased
+        optimizer.dispose();
       });
     });
 
@@ -121,7 +122,7 @@ void main() {
       });
     });
 
-    test('cross_entropy loss forward and backward', () {
+    test('crossEntropy and mseLoss with LossReduction.none, mean, and sum', () {
       ResourceScope.scope(() {
         // 2 samples, 3 classes
         final logits = GpuArray.fromList(
@@ -132,19 +133,64 @@ void main() {
         );
 
         final targets = GpuArray.fromList([0, 1], [2], DType.int32);
-        final loss = nn.cross_entropy(logits, targets);
-        expect(loss.requiresGrad, isTrue);
+        final lossMean = nn.crossEntropy(
+          logits,
+          targets,
+          reduction: nn.LossReduction.mean,
+        );
+        expect(lossMean.requiresGrad, isTrue);
 
-        loss.backward();
+        lossMean.backward();
         expect(logits.grad, isNotNull);
         expect(logits.grad!.shape, equals([2, 3]));
 
         final gList = logits.grad!.toList().cast<double>();
-        // Sum of gradient per row should be ~0 (within numerical tolerance)
         final sumRow0 = gList[0] + gList[1] + gList[2];
         final sumRow1 = gList[3] + gList[4] + gList[5];
         expect(sumRow0, closeTo(0.0, 1e-4));
         expect(sumRow1, closeTo(0.0, 1e-4));
+
+        logits.zeroGrad();
+        final lossSum = nn.crossEntropy(
+          logits,
+          targets,
+          reduction: nn.LossReduction.sum,
+        );
+        expect(
+          lossSum.scalar,
+          closeTo((lossMean.scalar as num).toDouble() * 2.0, 1e-5),
+        );
+        lossSum.backward();
+        final gSumList = logits.grad!.toList().cast<double>();
+        expect(gSumList[0], closeTo(gList[0] * 2.0, 1e-5));
+
+        final lossNone = nn.crossEntropy(
+          logits,
+          targets,
+          reduction: nn.LossReduction.none,
+        );
+        expect(lossNone.shape, equals([2]));
+
+        // MSE Loss reductions
+        final pred = GpuArray.fromList(
+          [1.0, 3.0],
+          [2],
+          DType.float64,
+          requiresGrad: true,
+        );
+        final target = GpuArray.fromList([2.0, 1.0], [2], DType.float64);
+        final mseNone = nn.mseLoss(
+          pred,
+          target,
+          reduction: nn.LossReduction.none,
+        );
+        expect(mseNone.toList().cast<double>(), equals([1.0, 4.0]));
+        final mseSum = nn.mseLoss(
+          pred,
+          target,
+          reduction: nn.LossReduction.sum,
+        );
+        expect(mseSum.scalar, closeTo(5.0, 1e-6));
       });
     });
 
@@ -173,7 +219,7 @@ void main() {
       });
     });
 
-    test('LayerNorm and Dropout', () {
+    test('LayerNorm, Dropout, and Module.train(mode:) propagation', () {
       ResourceScope.scope(() {
         final ln = nn.LayerNorm([4]);
         final x = GpuArray.fromList(
@@ -199,48 +245,124 @@ void main() {
         expect(ln.bias.grad, isNotNull);
         expect(x.grad, isNotNull);
 
-        final drop = nn.Dropout(p: 0.0);
-        final dropOut = drop(x);
-        expect(dropOut.toList(), equals(x.toList()));
+        final drop = nn.Dropout(p: 0.5);
+        final seq = nn.Sequential([ln, drop]);
+        expect(seq.training, isTrue);
+        expect(drop.training, isTrue);
+
+        seq.train(mode: false);
+        expect(seq.training, isFalse);
+        expect(drop.training, isFalse);
+        final dropEvalOut = drop(x);
+        expect(dropEvalOut.toList(), equals(x.toList()));
+
+        seq.train();
+        expect(seq.training, isTrue);
+        expect(drop.training, isTrue);
       });
     });
 
-    test('Activations & Softmax', () {
+    test('Activations & Softmax with optional out: destination tensor', () {
       ResourceScope.scope(() {
-        final x = GpuArray.fromList([-2.0, 0.0, 2.0], [3], DType.float64);
+        final x = GpuArray.fromList(
+          [-2.0, 0.0, 2.0],
+          [3],
+          DType.float64,
+          requiresGrad: true,
+        );
+        final outBuffer = GpuArray<Float64>.empty([3], DType.float64);
 
-        final reluOut = nn.relu(x);
+        final reluOut = nn.relu(x, out: outBuffer);
+        expect(identical(reluOut, outBuffer), isTrue);
         expect(reluOut.toList(), equals([0.0, 0.0, 2.0]));
+        expect(reluOut.requiresGrad, isTrue);
+        reluOut.sum().backward();
+        expect(x.grad!.toList().cast<double>(), equals([0.0, 0.0, 1.0]));
 
-        final sm = nn.softmax(x);
+        final smOut = GpuArray<Float64>.empty([3], DType.float64);
+        final sm = nn.softmax(x, out: smOut);
+        expect(identical(sm, smOut), isTrue);
         final smList = sm.toList().cast<double>();
         var sum = 0.0;
         for (final v in smList) {
           sum += v;
         }
-        expect(sum, closeTo(1.0, 1e-4)); // Probabilities sum to 1
+        expect(sum, closeTo(1.0, 1e-4));
+
+        final lsmOut = GpuArray<Float64>.empty([3], DType.float64);
+        final lsm = nn.logSoftmax(x, out: lsmOut);
+        expect(identical(lsm, lsmOut), isTrue);
+
+        final wrongShapeOut = GpuArray<Float64>.empty([2], DType.float64);
+        expect(() => nn.relu(x, out: wrongShapeOut), throwsArgumentError);
       });
     });
 
-    test('Optimizer state retention and disposal across training steps', () {
+    test(
+      'Optimizer state retention, Nesterov SGD, and disposal StateError',
+      () {
+        ResourceScope.scope(() {
+          final param = GpuArray.fromList(
+            [1.0, 2.0],
+            [2],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final opt = nn.AdamW([param], lr: 0.1);
+          expect(opt.isDisposed, isFalse);
+
+          for (var step = 0; step < 5; step++) {
+            opt.zeroGrad();
+            final loss = (param * 2.0).sum();
+            loss.backward();
+            opt.step();
+          }
+
+          expect(param.toList().cast<double>().first, lessThan(1.0));
+          opt.dispose();
+          expect(opt.isDisposed, isTrue);
+          expect(() => opt.step(), throwsStateError);
+          expect(() => opt.zeroGrad(), throwsStateError);
+
+          // Test SGD with momentum and Nesterov
+          final sgdParam = GpuArray.fromList(
+            [2.0, -2.0],
+            [2],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final sgd = nn.SGD(
+            [sgdParam],
+            lr: 0.1,
+            momentum: 0.9,
+            weightDecay: 0.01,
+            nesterov: true,
+          );
+          for (var i = 0; i < 3; i++) {
+            sgd.zeroGrad();
+            (sgdParam * sgdParam).sum().backward();
+            sgd.step();
+          }
+          expect(sgdParam.toList().cast<double>().first, lessThan(2.0));
+          sgd.dispose();
+        });
+      },
+    );
+
+    test('Precondition validation on layers and optimizers', () {
       ResourceScope.scope(() {
-        final param = GpuArray.fromList(
-          [1.0, 2.0],
-          [2],
-          DType.float64,
-          requiresGrad: true,
+        expect(() => nn.Linear(0, 2), throwsRangeError);
+        expect(() => nn.Conv2d(1, 2, 0), throwsArgumentError);
+        expect(() => nn.Dropout(p: 1.5), throwsArgumentError);
+        expect(() => nn.Adam([], lr: -0.01), throwsArgumentError);
+        expect(
+          () => nn.SGD([], lr: 0.1, momentum: 0.0, nesterov: true),
+          throwsArgumentError,
         );
-        final opt = nn.AdamW([param], lr: 0.1);
 
-        for (var step = 0; step < 5; step++) {
-          opt.zeroGrad();
-          final loss = (param * 2.0).sum();
-          loss.backward();
-          opt.step();
-        }
-
-        expect(param.toList().cast<double>().first, lessThan(1.0));
-        opt.dispose();
+        final emb = nn.Embedding(3, 2);
+        final badIndices = GpuArray.fromList([0, 5], [2], DType.int32);
+        expect(() => emb(badIndices), throwsRangeError);
       });
     });
   });

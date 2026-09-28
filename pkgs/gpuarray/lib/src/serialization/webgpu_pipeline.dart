@@ -13,8 +13,41 @@
 // limitations under the License.
 
 import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:math' as math;
+import 'dart:typed_data';
+
+import '../backend/compute_engine.dart';
+import '../backend/wgsl/kernel_fusion.dart';
 import '../dtype.dart';
+import '../gpu_array.dart';
+
+/// Color map palette for rendering 2D GPU compute outputs to an HTML5 canvas.
+enum ColorMap {
+  /// Linear grayscale intensity (`[0, 1] -> [0, 255]`).
+  grayscale,
+
+  /// Perceptually uniform blue-green-yellow palette.
+  viridis,
+
+  /// Perceptually uniform black-purple-orange-yellow palette.
+  magma,
+
+  /// Perceptually uniform black-red-yellow palette.
+  inferno,
+
+  /// Perceptually uniform purple-orange-yellow palette.
+  plasma,
+
+  /// High-contrast rainbow palette.
+  turbo,
+
+  /// Classic HSL rainbow palette.
+  rainbow,
+
+  /// Diverging blue-white-red palette.
+  coolwarm,
+}
 
 /// Configuration for an interactive UI slider in a browser WebGPU widget.
 final class WebGpuSlider {
@@ -36,12 +69,13 @@ final class WebGpuSlider {
   /// Initial default value.
   final double initialValue;
 
-  /// Whether this parameter represents an integer (u32/i32) rather than a float (f32).
+  /// Whether this parameter represents an integer (`u32`/`i32`) rather than a float (`f32`).
   final bool isInteger;
 
   /// The 0-based word index in the uniform buffer where this value is stored.
   final int uniformWordIndex;
 
+  /// Creates a [WebGpuSlider].
   const WebGpuSlider({
     required this.name,
     required this.label,
@@ -53,7 +87,8 @@ final class WebGpuSlider {
     this.uniformWordIndex = 0,
   });
 
-  Map<String, dynamic> toJson() => {
+  /// Serializes this slider configuration to a JSON map.
+  Map<String, Object?> toJson() => {
     'name': name,
     'label': label,
     'min': min,
@@ -64,21 +99,30 @@ final class WebGpuSlider {
     'uniformWordIndex': uniformWordIndex,
   };
 
-  factory WebGpuSlider.fromJson(Map<String, dynamic> json) => WebGpuSlider(
-    name: json['name'] as String,
-    label: json['label'] as String,
-    min: (json['min'] as num).toDouble(),
-    max: (json['max'] as num).toDouble(),
-    step: (json['step'] as num?)?.toDouble() ?? 0.01,
-    initialValue: (json['initialValue'] as num).toDouble(),
-    isInteger: json['isInteger'] as bool? ?? false,
-    uniformWordIndex: (json['uniformWordIndex'] as num).toInt(),
-  );
+  /// Deserializes a [WebGpuSlider] from a JSON map.
+  ///
+  /// Throws a [FormatException] if [json] is missing required fields or has invalid types.
+  factory WebGpuSlider.fromJson(Map<String, Object?> json) {
+    try {
+      return WebGpuSlider(
+        name: json['name'] as String,
+        label: json['label'] as String,
+        min: (json['min'] as num).toDouble(),
+        max: (json['max'] as num).toDouble(),
+        step: (json['step'] as num?)?.toDouble() ?? 0.01,
+        initialValue: (json['initialValue'] as num).toDouble(),
+        isInteger: json['isInteger'] as bool? ?? false,
+        uniformWordIndex: (json['uniformWordIndex'] as num).toInt(),
+      );
+    } on Object catch (error) {
+      throw FormatException('Invalid WebGpuSlider JSON: $error', json);
+    }
+  }
 }
 
 /// Serialized payload for an input or output tensor buffer in a WebGPU compute pipeline.
 final class GpuBufferPayload {
-  /// Bind group binding index (e.g. 0 for @binding(0)).
+  /// Bind group binding index (e.g. `0` for `@binding(0)`).
   final int bindingIndex;
 
   /// Variable name in the shader.
@@ -87,29 +131,31 @@ final class GpuBufferPayload {
   /// Tensor data type.
   final DType dtype;
 
-  /// Multidimensional tensor shape.
+  /// Unmodifiable multidimensional tensor shape.
   final List<int> shape;
 
   /// Whether this buffer is an output destination.
   final bool isOutput;
 
-  /// Base64 encoded binary payload for input tensors.
+  /// Base64-encoded binary payload for input tensors.
   final String? base64Data;
 
   /// Total buffer size in bytes.
   final int sizeInBytes;
 
-  const GpuBufferPayload({
+  /// Creates a [GpuBufferPayload] with an unmodifiable copy of [shape].
+  GpuBufferPayload({
     required this.bindingIndex,
     required this.name,
     required this.dtype,
-    required this.shape,
+    required List<int> shape,
     this.isOutput = false,
     this.base64Data,
     required this.sizeInBytes,
-  });
+  }) : shape = List<int>.unmodifiable(shape);
 
-  Map<String, dynamic> toJson() => {
+  /// Serializes this buffer payload to a JSON map.
+  Map<String, Object?> toJson() => {
     'bindingIndex': bindingIndex,
     'name': name,
     'dtype': dtype.name,
@@ -119,8 +165,12 @@ final class GpuBufferPayload {
     'sizeInBytes': sizeInBytes,
   };
 
-  factory GpuBufferPayload.fromJson(Map<String, dynamic> json) =>
-      GpuBufferPayload(
+  /// Deserializes a [GpuBufferPayload] from a JSON map.
+  ///
+  /// Throws a [FormatException] if [json] is missing required fields or has invalid types.
+  factory GpuBufferPayload.fromJson(Map<String, Object?> json) {
+    try {
+      return GpuBufferPayload(
         bindingIndex: (json['bindingIndex'] as num).toInt(),
         name: json['name'] as String,
         dtype: DType.values.byName(json['dtype'] as String),
@@ -129,9 +179,13 @@ final class GpuBufferPayload {
         base64Data: json['base64Data'] as String?,
         sizeInBytes: (json['sizeInBytes'] as num).toInt(),
       );
+    } on Object catch (error) {
+      throw FormatException('Invalid GpuBufferPayload JSON: $error', json);
+    }
+  }
 }
 
-/// Standalone, fully serializable package representing a WebGPU compute pipeline.
+/// Standalone, serializable package representing a WebGPU compute pipeline.
 final class GpuComputePipelinePackage {
   /// Name of the compute kernel.
   final String name;
@@ -139,57 +193,63 @@ final class GpuComputePipelinePackage {
   /// Raw WGSL compute shader source code.
   final String wgslCode;
 
-  /// Compute shader entry point function name (e.g. 'main').
+  /// Compute shader entry point function name (e.g. `'main'`).
   final String entryPoint;
 
-  /// Workgroup invocation layout `[workgroupSizeX, workgroupSizeY, workgroupSizeZ]`.
+  /// Unmodifiable workgroup invocation layout `[workgroupSizeX, workgroupSizeY, workgroupSizeZ]`.
   final List<int> workgroupSize;
 
-  /// Descriptors for all input buffers.
+  /// Unmodifiable descriptors for all input buffers.
   final List<GpuBufferPayload> inputs;
 
   /// Descriptor for the primary output destination buffer.
   final GpuBufferPayload output;
 
-  /// Uniform struct scalar values encoded as 32-bit words (u32/f32).
+  /// Unmodifiable uniform struct scalar values encoded as 32-bit words (`u32`/`f32`).
   final List<int> uniforms;
 
-  /// Optional interactive UI sliders for real-time browser parameter exploration.
+  /// Unmodifiable interactive UI sliders for real-time browser parameter exploration.
   final List<WebGpuSlider> sliders;
 
   /// Whether the output buffer represents visual data to render directly to an HTML5 canvas.
   final bool renderToCanvas;
 
-  /// Canvas width in pixels when [renderToCanvas] is true.
+  /// Canvas width in pixels when [renderToCanvas] is `true`.
   final int canvasWidth;
 
-  /// Canvas height in pixels when [renderToCanvas] is true.
+  /// Canvas height in pixels when [renderToCanvas] is `true`.
   final int canvasHeight;
 
-  /// Visual color map for canvas rendering ('grayscale', 'viridis', 'plasma', 'heatmap').
-  final String colorMap;
+  /// Visual color map palette for canvas rendering.
+  final ColorMap colorMap;
 
-  /// Arbitrary user or compiler metadata.
-  final Map<String, dynamic> metadata;
+  /// Unmodifiable user or compiler metadata.
+  final Map<String, Object?> metadata;
 
-  const GpuComputePipelinePackage({
+  /// Creates a [GpuComputePipelinePackage] with defensive unmodifiable copies
+  /// of all collection fields.
+  GpuComputePipelinePackage({
     required this.name,
     required this.wgslCode,
     this.entryPoint = 'main',
-    this.workgroupSize = const [256, 1, 1],
-    required this.inputs,
+    List<int> workgroupSize = const [256, 1, 1],
+    required List<GpuBufferPayload> inputs,
     required this.output,
-    this.uniforms = const [],
-    this.sliders = const [],
+    List<int> uniforms = const [],
+    List<WebGpuSlider> sliders = const [],
     this.renderToCanvas = false,
     this.canvasWidth = 512,
     this.canvasHeight = 512,
-    this.colorMap = 'viridis',
-    this.metadata = const {},
-  });
+    this.colorMap = ColorMap.viridis,
+    Map<String, Object?> metadata = const {},
+  }) : workgroupSize = List<int>.unmodifiable(workgroupSize),
+       inputs = List<GpuBufferPayload>.unmodifiable(inputs),
+       uniforms = List<int>.unmodifiable(uniforms),
+       sliders = List<WebGpuSlider>.unmodifiable(sliders),
+       metadata = Map<String, Object?>.unmodifiable(metadata);
 
   /// Serializes this pipeline package to a JSON map.
-  Map<String, dynamic> toJson() => {
+  Map<String, Object?> toJson() => {
     'name': name,
     'wgslCode': wgslCode,
     'entryPoint': entryPoint,
@@ -201,37 +261,64 @@ final class GpuComputePipelinePackage {
     'renderToCanvas': renderToCanvas,
     'canvasWidth': canvasWidth,
     'canvasHeight': canvasHeight,
-    'colorMap': colorMap,
+    'colorMap': colorMap.name,
     'metadata': metadata,
   };
 
   /// Constructs a [GpuComputePipelinePackage] from a JSON map.
-  factory GpuComputePipelinePackage.fromJson(Map<String, dynamic> json) =>
-      GpuComputePipelinePackage(
+  ///
+  /// Throws a [FormatException] if [json] is missing required fields or has invalid types.
+  factory GpuComputePipelinePackage.fromJson(Map<String, Object?> json) {
+    try {
+      final colorMapName = json['colorMap'] as String?;
+      final parsedColorMap = colorMapName != null
+          ? ColorMap.values.firstWhere(
+              (c) => c.name == colorMapName,
+              orElse: () => ColorMap.viridis,
+            )
+          : ColorMap.viridis;
+      return GpuComputePipelinePackage(
         name: json['name'] as String,
         wgslCode: json['wgslCode'] as String,
         entryPoint: json['entryPoint'] as String? ?? 'main',
         workgroupSize: List<int>.from(
-          json['workgroupSize'] as List? ?? [256, 1, 1],
+          json['workgroupSize'] as List? ?? const [256, 1, 1],
         ),
         inputs: (json['inputs'] as List)
-            .map((e) => GpuBufferPayload.fromJson(e as Map<String, dynamic>))
+            .map(
+              (e) => GpuBufferPayload.fromJson(
+                Map<String, Object?>.from(e as Map),
+              ),
+            )
             .toList(),
         output: GpuBufferPayload.fromJson(
-          json['output'] as Map<String, dynamic>,
+          Map<String, Object?>.from(json['output'] as Map),
         ),
-        uniforms: List<int>.from(json['uniforms'] as List? ?? []),
-        sliders: (json['sliders'] as List? ?? [])
-            .map((e) => WebGpuSlider.fromJson(e as Map<String, dynamic>))
+        uniforms: List<int>.from(json['uniforms'] as List? ?? const []),
+        sliders: (json['sliders'] as List? ?? const [])
+            .map(
+              (e) => WebGpuSlider.fromJson(Map<String, Object?>.from(e as Map)),
+            )
             .toList(),
         renderToCanvas: json['renderToCanvas'] as bool? ?? false,
         canvasWidth: (json['canvasWidth'] as num?)?.toInt() ?? 512,
         canvasHeight: (json['canvasHeight'] as num?)?.toInt() ?? 512,
-        colorMap: json['colorMap'] as String? ?? 'viridis',
-        metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? {}),
+        colorMap: parsedColorMap,
+        metadata: Map<String, Object?>.from(
+          json['metadata'] as Map? ?? const {},
+        ),
       );
+    } on FormatException {
+      rethrow;
+    } on Object catch (error) {
+      throw FormatException(
+        'Invalid GpuComputePipelinePackage JSON: $error',
+        json,
+      );
+    }
+  }
 
-  /// Generates self-contained, interactive HTML & WebGPU JavaScript code that executes
+  /// Generates self-contained, interactive HTML and WebGPU JavaScript code that executes
   /// this compute shader directly on the client's GPU in any WebGPU-capable browser.
   String toHtml({String? containerId, String? title}) {
     final uid =
@@ -404,7 +491,6 @@ final class GpuComputePipelinePackage {
           const totalElements = pkg.output.shape.reduce((a, b) => a * b, 1);
           const wgSizeX = pkg.workgroupSize[0] || 256;
           const wgSizeY = pkg.workgroupSize[1] || 1;
-          const wgSizeZ = pkg.workgroupSize[2] || 1;
 
           let wgCountX, wgCountY, wgCountZ;
           if (pkg.renderToCanvas && pkg.canvasWidth && pkg.canvasHeight && wgSizeY > 1) {
@@ -412,8 +498,14 @@ final class GpuComputePipelinePackage {
             wgCountY = Math.ceil(pkg.canvasHeight / wgSizeY);
             wgCountZ = 1;
           } else {
-            wgCountX = Math.min(65535, Math.ceil(totalElements / wgSizeX));
-            wgCountY = 1;
+            const totalGroups = Math.max(1, Math.ceil(totalElements / wgSizeX));
+            if (totalGroups <= 65535) {
+              wgCountX = totalGroups;
+              wgCountY = 1;
+            } else {
+              wgCountX = 65535;
+              wgCountY = Math.min(65535, Math.ceil(totalGroups / 65535));
+            }
             wgCountZ = 1;
           }
           pass.dispatchWorkgroups(wgCountX, wgCountY, wgCountZ);
@@ -548,6 +640,7 @@ final class WebGpuWidget {
   /// Custom title displayed at the top of the widget.
   final String title;
 
+  /// Creates a [WebGpuWidget].
   const WebGpuWidget(this.pipeline, {this.title = 'WebGPU Compute Widget'});
 
   /// Standard MIME type for notebook display engines.
@@ -558,4 +651,192 @@ final class WebGpuWidget {
 
   @override
   String toString() => toHtml();
+}
+
+String _encodeArrayAsFloat32Base64(GpuArray array) {
+  final f32Array = array.dtype == DType.float32
+      ? (array.isContiguous ? array : array.copy())
+      : array.astype(DType.float32);
+  try {
+    f32Array.buffer.ensureHostSynced();
+    final byteLength = f32Array.size * DType.float32.byteWidth;
+    final byteOffset = f32Array.offsetElements * DType.float32.byteWidth;
+    final bytes = (f32Array.buffer.address + byteOffset).asTypedList(
+      byteLength,
+    );
+    return base64Encode(bytes);
+  } finally {
+    if (!identical(f32Array, array)) {
+      f32Array.dispose();
+    }
+  }
+}
+
+/// Extension on [FusedKernelDescriptor] for packaging fused compute kernels into
+/// interactive [WebGpuWidget] instances.
+extension FusedKernelBrowserWidgetExtension on FusedKernelDescriptor {
+  /// Packages this fused kernel and its [inputArrays] into an interactive [WebGpuWidget].
+  WebGpuWidget createBrowserWidget({
+    List<GpuArray> inputArrays = const [],
+    required List<int> outputShape,
+    String? title,
+    List<WebGpuSlider> sliders = const [],
+    bool renderToCanvas = false,
+    int canvasWidth = 512,
+    int canvasHeight = 512,
+    ColorMap colorMap = ColorMap.viridis,
+  }) {
+    final wgslSource = generateWgslSource();
+    final inputPayloads = <GpuBufferPayload>[];
+
+    for (var i = 0; i < inputArrays.length; i++) {
+      final array = inputArrays[i];
+      final base64Payload = _encodeArrayAsFloat32Base64(array);
+      inputPayloads.add(
+        GpuBufferPayload(
+          bindingIndex: i,
+          name: inputs.length > i ? inputs[i].name : 'input_$i',
+          dtype: array.dtype,
+          shape: array.shape,
+          base64Data: base64Payload,
+          sizeInBytes: array.size * DType.float32.byteWidth,
+        ),
+      );
+    }
+
+    final totalOut = computeSize(outputShape);
+    final outBytes = totalOut * outputDType.byteSize;
+
+    final outputPayload = GpuBufferPayload(
+      bindingIndex: inputArrays.length,
+      name: 'dst',
+      dtype: outputDType.wgslType == 'f32' ? DType.float32 : DType.float16,
+      shape: outputShape,
+      isOutput: true,
+      sizeInBytes: outBytes,
+    );
+
+    final scalarList = scalarParams.toList();
+    final uniformWords = <int>[totalOut];
+    final byteData = ByteData(4);
+    for (final scalarParam in scalarList) {
+      WebGpuSlider? matchingSlider;
+      for (final s in sliders) {
+        if (s.name == scalarParam.name) {
+          matchingSlider = s;
+          break;
+        }
+      }
+      final initialValue =
+          matchingSlider?.initialValue ?? scalarParam.defaultValue;
+      byteData.setFloat32(0, initialValue, Endian.little);
+      uniformWords.add(byteData.getUint32(0, Endian.little));
+    }
+    while (uniformWords.length % 4 != 0) {
+      uniformWords.add(0);
+    }
+
+    final resolvedSliders = sliders.map((slider) {
+      final paramIndex = scalarList.indexWhere((sp) => sp.name == slider.name);
+      return WebGpuSlider(
+        name: slider.name,
+        label: slider.label,
+        min: slider.min,
+        max: slider.max,
+        initialValue: slider.initialValue,
+        step: slider.step,
+        isInteger: false,
+        uniformWordIndex: paramIndex != -1
+            ? paramIndex + 1
+            : slider.uniformWordIndex,
+      );
+    }).toList();
+
+    final package = GpuComputePipelinePackage(
+      name: name,
+      wgslCode: wgslSource,
+      inputs: inputPayloads,
+      output: outputPayload,
+      uniforms: uniformWords,
+      sliders: resolvedSliders,
+      renderToCanvas: renderToCanvas,
+      canvasWidth: canvasWidth,
+      canvasHeight: canvasHeight,
+      colorMap: colorMap,
+    );
+
+    return WebGpuWidget(package, title: title ?? name);
+  }
+}
+
+/// Extension on [GpuArray] for inspecting GPU tensors in an interactive browser [WebGpuWidget].
+extension GpuArrayBrowserWidgetExtension<T extends DTypeTag> on GpuArray<T> {
+  /// Packages this [GpuArray] into an interactive client-side [WebGpuWidget].
+  WebGpuWidget toWebGpuWidget({
+    String? title,
+    bool renderToCanvas = false,
+    List<WebGpuSlider> sliders = const [],
+    ColorMap colorMap = ColorMap.viridis,
+  }) {
+    final base64Payload = _encodeArrayAsFloat32Base64(this);
+    final payloadBytes = size * DType.float32.byteWidth;
+
+    const wgsl = '''
+struct Uniforms {
+  total_elements: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
+}
+
+@group(0) @binding(0) var<storage, read> src: array<f32>;
+@group(0) @binding(1) var<storage, read_write> dst: array<f32>;
+@group(0) @binding(2) var<uniform> uniforms: Uniforms;
+
+@compute @workgroup_size(256, 1, 1)
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  var idx = global_id.x + global_id.y * (num_workgroups.x * 256u);
+  let stride = num_workgroups.x * num_workgroups.y * 256u;
+  while (idx < uniforms.total_elements) {
+    dst[idx] = src[idx];
+    idx += stride;
+  }
+}
+''';
+
+    final package = GpuComputePipelinePackage(
+      name: title ?? 'GpuArray_${dtype.name}',
+      wgslCode: wgsl,
+      inputs: [
+        GpuBufferPayload(
+          bindingIndex: 0,
+          name: 'src',
+          dtype: dtype,
+          shape: shape,
+          base64Data: base64Payload,
+          sizeInBytes: payloadBytes,
+        ),
+      ],
+      output: GpuBufferPayload(
+        bindingIndex: 1,
+        name: 'dst',
+        dtype: dtype,
+        shape: shape,
+        isOutput: true,
+        sizeInBytes: payloadBytes,
+      ),
+      uniforms: [computeSize(shape), 0, 0, 0],
+      sliders: sliders,
+      renderToCanvas: renderToCanvas,
+      colorMap: colorMap,
+    );
+
+    return WebGpuWidget(
+      package,
+      title: title ?? 'GpuArray Interactive Inspector',
+    );
+  }
 }

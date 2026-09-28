@@ -20,3 +20,4 @@ library;
 
 export 'src/backend/wgsl/kernel_fusion.dart';
 export 'src/backend/wgsl/jit_compiler.dart';
+export 'src/serialization/webgpu_pipeline.dart';

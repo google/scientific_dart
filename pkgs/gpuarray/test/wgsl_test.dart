@@ -81,34 +81,43 @@ void main() {
       );
     });
 
-    test(
-      'WgslShaderModule calculates 1D, 2D, and 3D dispatches accurately',
-      () {
-        final module1D = WgslShaderModule(
-          name: 'test_1d',
-          code: '@compute @workgroup_size(256) fn main() {}',
-          workgroupSize: WgslWorkgroupSize.linear1D,
-        );
-        final d1 = module1D.calculateDispatch1D(1000);
-        expect(d1.workgroupsX, equals(4)); // ceil(1000 / 256) = 4
-        expect(d1.workgroupsY, equals(1));
-        expect(d1.workgroupsZ, equals(1));
+    test('WgslShaderModule calculates 1D, 2D, and 3D dispatches accurately', () {
+      final module1D = WgslShaderModule(
+        name: 'test_1d',
+        code: '@compute @workgroup_size(256) fn main() {}',
+        workgroupSize: WgslWorkgroupSize.linear1D,
+      );
+      final d1 = module1D.calculateDispatch1D(1000);
+      expect(d1.workgroupsX, equals(4)); // ceil(1000 / 256) = 4
+      expect(d1.workgroupsY, equals(1));
+      expect(d1.workgroupsZ, equals(1));
 
-        final module2D = WgslShaderModule(
-          name: 'test_2d',
-          code: '@compute @workgroup_size(16, 16) fn main() {}',
-          workgroupSize: WgslWorkgroupSize.tiled2D,
-        );
-        final d2 = module2D.calculateDispatch2D(100, 50);
-        expect(d2.workgroupsX, equals(7)); // ceil(100 / 16) = 7
-        expect(d2.workgroupsY, equals(4)); // ceil(50 / 16) = 4
+      final module2D = WgslShaderModule(
+        name: 'test_2d',
+        code: '@compute @workgroup_size(16, 16) fn main() {}',
+        workgroupSize: WgslWorkgroupSize.tiled2D,
+      );
+      final d2 = module2D.calculateDispatch2D(100, 50);
+      expect(d2.workgroupsX, equals(7)); // ceil(100 / 16) = 7
+      expect(d2.workgroupsY, equals(4)); // ceil(50 / 16) = 4
 
-        final d3 = module2D.calculateDispatch3D(32, 32, 8);
-        expect(d3.workgroupsX, equals(2));
-        expect(d3.workgroupsY, equals(2));
-        expect(d3.workgroupsZ, equals(8));
-      },
-    );
+      final d3 = module2D.calculateDispatch3D(32, 32, 8);
+      expect(d3.workgroupsX, equals(2));
+      expect(d3.workgroupsY, equals(2));
+      expect(d3.workgroupsZ, equals(8));
+
+      // > 65,535 workgroups folds into 2D grid (workgroupsX <= 65535, workgroupsY > 1)
+      final largeDispatch = module1D.calculateDispatch1D(20000000);
+      expect(largeDispatch.workgroupsX, lessThanOrEqualTo(65535));
+      expect(largeDispatch.workgroupsY, greaterThan(1));
+      expect(largeDispatch.workgroupsZ, equals(1));
+      expect(
+        largeDispatch.workgroupsX * largeDispatch.workgroupsY * 256,
+        greaterThanOrEqualTo(20000000),
+      );
+
+      expect(module1D.calculateDispatch1D(0).workgroupsX, equals(1));
+    });
   });
 
   group('WGSL Elementwise Shader Templates', () {

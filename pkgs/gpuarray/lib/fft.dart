@@ -12,10 +12,24 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// GPU-accelerated Fast Fourier Transforms (FFT) for [package:gpuarray].
+/// Fast Fourier Transform (FFT) operations for [GpuArray] tensors.
 ///
-/// Provides 1D, 2D, and N-D complex and real FFTs, inverse FFTs, frequency utilities,
-/// and spectrum shifting functions.
+/// Provides 1D and 2D complex and real discrete Fourier transforms ([fft],
+/// [ifft], [rfft], [irfft], [fft2], [ifft2]), frequency bin generators
+/// ([fftfreq], [rfftfreq]), spectrum shifting utilities ([fftshift],
+/// [ifftshift]), and normalization modes ([FftNorm]).
 library;
 
-export 'src/fft/fft.dart';
+export 'src/fft/fft.dart'
+    show
+        FftNorm,
+        fft,
+        fft2,
+        fftfreq,
+        fftshift,
+        ifft,
+        ifft2,
+        ifftshift,
+        irfft,
+        rfft,
+        rfftfreq;

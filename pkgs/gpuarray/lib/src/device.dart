@@ -13,133 +13,183 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
+
+import 'package:meta/meta.dart';
 import 'package:resource_scope/resource_scope.dart';
-import 'exceptions.dart';
-import 'buffer.dart';
+
 import 'backend/backend.dart';
 import 'backend/memory_pool.dart';
+import 'backend/wgsl/jit_compiler.dart';
+import 'buffer.dart';
+import 'exceptions.dart';
 
-export 'backend/backend.dart' show GpuDeviceType;
+/// Hardware backend architecture for a [GpuDevice].
+enum GpuDeviceType {
+  /// Host CPU vector execution backend.
+  cpu('CPU'),
 
-/// Represents a GPU compute device capable of allocating memory and executing compute kernels.
+  /// Cross-platform WebGPU hardware compute backend (Metal, Vulkan, DX12, Dawn, wgpu-native).
+  webgpu('WebGPU'),
+
+  /// Apple Metal compute backend.
+  metal('Metal'),
+
+  /// Khronos Vulkan compute backend.
+  vulkan('Vulkan'),
+
+  /// NVIDIA CUDA compute backend.
+  cuda('CUDA');
+
+  /// Human-readable display label for this device type.
+  final String label;
+
+  const GpuDeviceType(this.label);
+}
+
+/// Represents a physical or virtual GPU compute device, its memory pool, and
+/// its WGSL JIT kernel cache.
 final class GpuDevice implements ScopedResource {
   static GpuDevice? _defaultDevice;
 
-  /// The default compute device for the environment.
-  static GpuDevice get defaultDevice {
-    if (_defaultDevice != null && !_defaultDevice!._isDisposed) {
-      return _defaultDevice!;
-    }
-    final dev = ResourceScope.unmanaged(
-      () => GpuDevice._(
-        name: 'Default GPU Device',
-        type: GpuDeviceType.cpu,
-        backend: const CpuVectorBackend(),
-        trackInScope: false,
-      ),
-    );
-    _defaultDevice = dev;
-    return dev;
-  }
-
-  /// Name identifier of the GPU device.
+  /// Human-readable name of this device.
   final String name;
 
-  /// Hardware category of this device.
+  /// Hardware backend type of this device.
   final GpuDeviceType type;
 
-  /// Low-level backend driver managing allocations and kernel execution.
+  /// Underlying execution and memory driver backend.
   final GpuBackend backend;
 
-  /// Sub-allocating memory pool for fast O(1) buffer recycling.
-  late final GpuMemoryPool memoryPool;
-
-  /// Whether buffer allocations on this device use the memory pool.
+  /// Whether power-of-two bucket memory pooling is enabled on this device.
   bool enableMemoryPool;
 
-  final Set<WeakReference<GpuBuffer>> _activeBuffers = {};
+  late final GpuMemoryPool _memoryPool;
+  final WgslJitCompiler _jitCompiler = WgslJitCompiler();
+
+  final List<WeakReference<GpuBuffer>> _activeBuffers = [];
   bool _isDisposed = false;
 
   GpuDevice._({
     required this.name,
     required this.type,
     required this.backend,
-    this.enableMemoryPool = false,
+    required this.enableMemoryPool,
     bool trackInScope = true,
   }) {
-    memoryPool = GpuMemoryPool(this);
+    _memoryPool = GpuMemoryPool(this);
     if (trackInScope) {
       ResourceScope.track(this);
     }
   }
 
-  /// Creates a CPU Vector compute device.
-  factory GpuDevice.cpu({
-    String name = 'CPU Vector Device',
-    bool enableMemoryPool = false,
-  }) => GpuDevice.create(
-    name: name,
-    type: GpuDeviceType.cpu,
-    backend: const CpuVectorBackend(),
-    enableMemoryPool: enableMemoryPool,
-  );
-
-  /// Creates a new custom [GpuDevice] instance.
+  /// Creates a new [GpuDevice] with the given [name], [type], [backend], and
+  /// [enableMemoryPool] configuration.
   factory GpuDevice.create({
-    String name = 'Custom GPU Device',
-    GpuDeviceType type = GpuDeviceType.cpu,
+    String name = 'Default CPU Vector Device',
+    GpuDeviceType? type,
     GpuBackend? backend,
     bool enableMemoryPool = false,
   }) {
+    final resolvedBackend = backend ?? const CpuVectorBackend();
+    final resolvedType = type ?? resolvedBackend.deviceType;
     return GpuDevice._(
       name: name,
-      type: type,
-      backend: backend ?? const CpuVectorBackend(),
+      type: resolvedType,
+      backend: resolvedBackend,
       enableMemoryPool: enableMemoryPool,
       trackInScope: true,
     );
   }
 
+  /// Creates a CPU-backed [GpuDevice].
+  factory GpuDevice.cpu({
+    String name = 'CPU Vector Device',
+    bool enableMemoryPool = false,
+  }) {
+    return GpuDevice._(
+      name: name,
+      type: GpuDeviceType.cpu,
+      backend: const CpuVectorBackend(),
+      enableMemoryPool: enableMemoryPool,
+      trackInScope: true,
+    );
+  }
+
+  /// The process-wide default [GpuDevice], lazily initialized if not yet set.
+  static GpuDevice get defaultDevice {
+    final current = _defaultDevice;
+    if (current == null || current.isDisposed) {
+      final created = ResourceScope.unmanaged(
+        () => GpuDevice._(
+          name: 'Default GPU Device',
+          type: GpuDeviceType.cpu,
+          backend: const CpuVectorBackend(),
+          enableMemoryPool: false,
+          trackInScope: false,
+        ),
+      );
+      _defaultDevice = created;
+      return created;
+    }
+    return current;
+  }
+
+  /// Sets the process-wide default [GpuDevice].
+  ///
+  /// It is an error if [device] has been disposed.
+  static set defaultDevice(GpuDevice device) {
+    if (device.isDisposed) {
+      throw GpuDeviceDisposedException(device.name);
+    }
+    _defaultDevice = device;
+  }
+
+  void _checkNotDisposed() {
+    if (_isDisposed) {
+      throw GpuDeviceDisposedException(name);
+    }
+  }
+
+  /// Whether this device has been disposed.
   @override
   bool get isDisposed => _isDisposed;
 
-  void _pruneDeadBuffers() {
-    _activeBuffers.removeWhere((ref) => ref.target == null);
+  /// The VRAM block memory pool associated with this device.
+  GpuMemoryPool get memoryPool => _memoryPool;
+
+  /// The WGSL JIT shader compiler and LRU pipeline cache for this device.
+  WgslJitCompiler get jitCompiler {
+    _checkNotDisposed();
+    return _jitCompiler;
   }
 
-  /// Total number of active buffers currently allocated on this device.
-  int get activeBufferCount {
-    _pruneDeadBuffers();
-    return _activeBuffers.length;
-  }
-
-  /// Total bytes of memory currently allocated on this device.
+  /// Total bytes currently allocated in active (non-disposed) buffers on this device.
   int get allocatedMemoryBytes {
-    _pruneDeadBuffers();
+    _pruneDeadReferences();
     var sum = 0;
     for (final ref in _activeBuffers) {
-      final buf = ref.target;
-      if (buf != null && !buf.isDisposed) {
-        sum += buf.sizeInBytes;
+      final buffer = ref.target;
+      if (buffer != null && !buffer.isDisposed) {
+        sum += buffer.sizeInBytes;
       }
     }
     return sum;
   }
 
-  /// Allocates a new [GpuBuffer] on this device.
+  /// Number of currently active (non-disposed) buffers registered on this device.
+  int get activeBufferCount {
+    _pruneDeadReferences();
+    return _activeBuffers.length;
+  }
+
+  /// Allocates a new [GpuBuffer] of [sizeInBytes] bytes on this device.
+  ///
+  /// It is an error if this device is disposed or if [sizeInBytes] is negative.
   GpuBuffer createBuffer({
     required int sizeInBytes,
-    required GpuBufferUsage usage,
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
   }) {
-    if (_isDisposed) {
-      throw GpuDeviceDisposedException(
-        'Cannot allocate on a disposed GpuDevice.',
-      );
-    }
-    _pruneDeadBuffers();
-    if (enableMemoryPool) {
-      return memoryPool.acquire(sizeInBytes, usage: usage);
-    }
+    _checkNotDisposed();
     return GpuBuffer.allocate(
       sizeInBytes: sizeInBytes,
       usage: usage,
@@ -147,84 +197,114 @@ final class GpuDevice implements ScopedResource {
     );
   }
 
-  /// Allocates a [GpuBuffer] on this device and initializes it with data from [pointer].
+  /// Allocates a new [GpuBuffer] of [sizeInBytes] bytes on this device and
+  /// initializes it with [sizeInBytes] bytes copied from [hostPointer].
+  ///
+  /// It is an error if this device is disposed or if [sizeInBytes] is negative.
   GpuBuffer createBufferWithData(
-    ffi.Pointer<ffi.Void> pointer,
-    int sizeInBytes,
-    GpuBufferUsage usage,
-  ) {
-    final buffer = createBuffer(
+    ffi.Pointer<ffi.Void> hostPointer,
+    int sizeInBytes, [
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+  ]) {
+    _checkNotDisposed();
+    final buffer = GpuBuffer.allocate(
       sizeInBytes: sizeInBytes,
       usage: usage | GpuBufferUsage.copyDst,
+      device: this,
     );
-    buffer.copyFromHost(pointer, sizeInBytes);
+    if (sizeInBytes > 0) {
+      buffer.copyFromHost(hostPointer, sizeInBytes);
+    }
     return buffer;
   }
 
-  /// Reads [sizeInBytes] from [buffer] into the host [pointer].
+  /// Reads [sizeInBytes] bytes from [buffer] into [hostPointer].
+  ///
+  /// It is an error if this device is disposed.
   void readBufferIntoPointer(
     GpuBuffer buffer,
-    ffi.Pointer<ffi.Void> pointer,
+    ffi.Pointer<ffi.Void> hostPointer,
     int sizeInBytes,
   ) {
-    if (_isDisposed) {
-      throw GpuDeviceDisposedException(
-        'Cannot read from a disposed GpuDevice.',
-      );
-    }
-    buffer.copyToHost(pointer, sizeInBytes);
+    _checkNotDisposed();
+    buffer.copyToHost(hostPointer, sizeInBytes);
   }
 
-  /// Waits for all pending compute tasks on this device to complete.
-  void synchronize() {
-    if (_isDisposed) {
-      throw GpuDeviceDisposedException(
-        'Cannot synchronize a disposed GpuDevice.',
-      );
-    }
-  }
-
-  /// Registers an active buffer with this device.
+  /// Registers an active [buffer] with this device for memory tracking.
+  @internal
   void registerBuffer(GpuBuffer buffer) {
-    _pruneDeadBuffers();
+    _pruneDeadReferences();
+    for (final ref in _activeBuffers) {
+      if (identical(ref.target, buffer)) {
+        return;
+      }
+    }
     _activeBuffers.add(WeakReference(buffer));
   }
 
-  /// Unregisters a buffer from this device when it is disposed.
+  /// Unregisters a disposed [buffer] from this device's active tracking list.
+  @internal
   void unregisterBuffer(GpuBuffer buffer) {
-    _activeBuffers.removeWhere((ref) {
-      final target = ref.target;
-      return target == null || identical(target, buffer);
-    });
+    for (var i = _activeBuffers.length - 1; i >= 0; i--) {
+      final target = _activeBuffers[i].target;
+      if (target == null || identical(target, buffer)) {
+        _activeBuffers.removeAt(i);
+      }
+    }
   }
 
+  void _pruneDeadReferences() {
+    _activeBuffers.removeWhere(
+      (ref) => ref.target == null || ref.target!.isDisposed,
+    );
+  }
+
+  /// Synchronizes all queued operations on this device.
+  ///
+  /// It is an error if this device has been disposed.
+  Future<void> synchronize() async {
+    _checkNotDisposed();
+  }
+
+  /// Disposes all active buffers, purges the memory pool, and shuts down the backend.
   @override
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;
     ResourceScope.untrack(this);
-    final buffers = _activeBuffers
-        .map((ref) => ref.target)
-        .whereType<GpuBuffer>()
-        .toList();
-    for (final buf in buffers) {
-      if (!buf.isDisposed) {
-        buf.dispose();
+
+    final liveBuffers = <GpuBuffer>[];
+    for (final ref in _activeBuffers) {
+      final buffer = ref.target;
+      if (buffer != null && !buffer.isDisposed) {
+        liveBuffers.add(buffer);
       }
     }
     _activeBuffers.clear();
-    memoryPool.dispose();
+
+    for (final buffer in liveBuffers) {
+      buffer.forceDisposeOnDeviceShutdown();
+    }
+
+    _memoryPool.dispose();
+    _jitCompiler.clearCache();
+    backend.dispose();
   }
 
   @override
-  ScopedResource detachFromScope() {
+  GpuDevice detachFromScope() {
+    _checkNotDisposed();
     ResourceScope.untrack(this);
     return this;
   }
 
   @override
-  ScopedResource detachToParentScope() {
+  GpuDevice detachToParentScope() {
+    _checkNotDisposed();
     ResourceScope.promoteToParent(this);
     return this;
   }
+
+  @override
+  String toString() => 'GpuDevice(name: "$name", type: ${type.label})';
 }

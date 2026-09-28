@@ -467,5 +467,30 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
       device.dispose();
     });
+
+    test('Host and GPU dirty tracking synchronization lifecycle', () {
+      final backend = WgpuNativeBackend.mock();
+      final device = GpuDevice.create(
+        backend: backend,
+        type: GpuDeviceType.webgpu,
+      );
+
+      final buf = GpuBuffer.allocate(
+        sizeInBytes: 16,
+        usage: GpuBufferUsage.storage,
+        device: device,
+      );
+
+      buf.markHostModified();
+      buf.ensureGpuSynced();
+      buf.ensureHostSynced();
+      expect(buf.pointer, isNot(equals(ffi.nullptr)));
+
+      buf.dispose();
+      expect(() => buf.markHostModified(), throwsA(isA<StateError>()));
+      expect(() => buf.ensureGpuSynced(), throwsA(isA<StateError>()));
+      expect(() => buf.ensureHostSynced(), throwsA(isA<StateError>()));
+      device.dispose();
+    });
   });
 }

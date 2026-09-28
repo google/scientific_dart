@@ -12,62 +12,71 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import '../gpu_array.dart';
 import '../device.dart';
+import '../gpu_array.dart';
 
 /// Base class for all neural network modules.
 abstract class Module {
   bool _isTraining = true;
 
-  /// Whether the module is currently in training mode (affects Dropout, BatchNorm, etc.).
+  /// Whether the module is currently in training mode.
   bool get isTraining => _isTraining;
 
-  /// Sets the module in training mode.
-  void train([bool mode = true]) {
+  /// Whether the module is currently in training mode.
+  ///
+  /// Alias for [isTraining] for PyTorch parity.
+  bool get training => _isTraining;
+
+  /// Sets the module and all registered child submodules into training mode when [mode] is `true`,
+  /// or evaluation mode when [mode] is `false`.
+  void train({bool mode = true}) {
     _isTraining = mode;
     for (final child in _submodules) {
-      child.train(mode);
+      child.train(mode: mode);
     }
   }
 
-  /// Sets the module in evaluation mode.
-  void eval() => train(false);
+  /// Sets the module and all registered child submodules into evaluation mode.
+  void eval() => train(mode: false);
 
   /// Submodules registered under this module.
   final List<Module> _submodules = [];
 
-  /// Explicitly registered parameters.
-  final List<GpuArray> _parameters = [];
+  /// Explicitly registered trainable parameters.
+  final List<GpuArray<DTypeTag>> _parameters = [];
 
-  /// Explicitly registered named parameters.
-  final Map<String, GpuArray> _namedParams = {};
+  /// Explicitly registered named trainable parameters.
+  final Map<String, GpuArray<DTypeTag>> _namedParameters = {};
 
-  /// Registers a trainable parameter.
-  T registerParameter<T extends GpuArray>(String name, T param) {
-    _parameters.add(param);
-    _namedParams[name] = param;
-    return param;
+  /// Registers a trainable [parameter] under [name] and returns it.
+  T registerParameter<T extends GpuArray<DTypeTag>>(String name, T parameter) {
+    if (name.isEmpty) {
+      throw ArgumentError.value(name, 'name', 'Must not be empty.');
+    }
+    _parameters.add(parameter);
+    _namedParameters[name] = parameter;
+    return parameter;
   }
 
-  /// Registers a child submodule.
+  /// Registers a child [module] and returns it.
   T registerModule<T extends Module>(T module) {
     _submodules.add(module);
     return module;
   }
 
-  /// Returns all trainable parameters of this module and its submodules.
-  List<GpuArray> parameters() {
-    final list = <GpuArray>[..._parameters];
+  /// All trainable parameters of this module and its recursive submodules.
+  List<GpuArray<DTypeTag>> get parameters {
+    final collected = <GpuArray<DTypeTag>>[..._parameters];
     for (final child in _submodules) {
-      list.addAll(child.parameters());
+      collected.addAll(child.parameters);
     }
-    return list;
+    return List<GpuArray<DTypeTag>>.unmodifiable(collected);
   }
 
-  /// Returns all named parameters of this module and its submodules.
-  Map<String, GpuArray> namedParameters({String prefix = ''}) {
-    final map = <String, GpuArray>{};
-    for (final entry in _namedParams.entries) {
+  /// Collects a map of all named parameters of this module and its submodules.
+  Map<String, GpuArray<DTypeTag>> namedParameters({String prefix = ''}) {
+    final map = <String, GpuArray<DTypeTag>>{};
+    for (final entry in _namedParameters.entries) {
       final key = prefix.isEmpty ? entry.key : '$prefix.${entry.key}';
       map[key] = entry.value;
     }
@@ -79,37 +88,39 @@ abstract class Module {
     return map;
   }
 
-  /// Zeroes out the gradients of all parameters.
+  /// Clears accumulated gradients on all parameters of this module and its submodules.
   void zeroGrad() {
-    for (final p in parameters()) {
-      p.zeroGrad();
+    for (final parameter in parameters) {
+      parameter.zeroGrad();
     }
   }
 
-  /// Moves all parameters to [device].
+  /// Moves module parameters to [device].
   void to(GpuDevice device) {
-    // Parameters on GPU stay on device
+    // Parameters allocated on GPU remain resident on the target device.
   }
 
-  /// Defines the computation performed at every call.
-  GpuArray forward(GpuArray input);
+  /// Computes the forward pass of this module for [input].
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input);
 
-  /// Callable invocation executing [forward].
-  GpuArray call(GpuArray input) => forward(input);
+  /// Invokes [forward] on [input].
+  GpuArray<DTypeTag> call(GpuArray<DTypeTag> input) => forward(input);
 }
 
-/// A sequential container passing the output of each submodule as input to the next.
-class Sequential extends Module {
+/// Sequential container passing the output of each submodule as input to the next.
+final class Sequential extends Module {
+  /// Ordered list of child modules executed sequentially in [forward].
   final List<Module> layers;
 
-  Sequential(this.layers) {
-    for (final layer in layers) {
+  /// Creates a [Sequential] container from [layers].
+  Sequential(List<Module> layers) : layers = List<Module>.unmodifiable(layers) {
+    for (final layer in this.layers) {
       registerModule(layer);
     }
   }
 
   @override
-  GpuArray forward(GpuArray input) {
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
     var current = input;
     for (final layer in layers) {
       current = layer.forward(current);

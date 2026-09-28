@@ -123,7 +123,7 @@ void main() {
           const batchSize = 2;
 
           final mha = nn.MultiheadAttention(embedDim, numHeads);
-          expect(mha.parameters().length, equals(8)); // 4 weights + 4 biases
+          expect(mha.parameters.length, equals(8)); // 4 weights + 4 biases
 
           final input = GpuArray.ones(
             [batchSize, seqLen, embedDim],
@@ -248,10 +248,10 @@ void main() {
     test("SwiGLU & GeGLU gated linear units forward and backward", () {
       ResourceScope.scope(() {
         final swiglu = nn.SwiGLU(4, 8, outFeatures: 4);
-        expect(swiglu.parameters().length, equals(3)); // w1, w2, w3
+        expect(swiglu.parameters.length, equals(3)); // w1, w2, w3
 
         final geglu = nn.GeGLU(4, 8, outFeatures: 4);
-        expect(geglu.parameters().length, equals(3));
+        expect(geglu.parameters.length, equals(3));
 
         final x = GpuArray.ones([2, 4], DType.float64, requiresGrad: true);
 

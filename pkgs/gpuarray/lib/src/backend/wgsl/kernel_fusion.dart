@@ -12,28 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'dart:convert';
-import 'dart:typed_data';
 import 'wgsl_types.dart';
 import 'wgsl_templates.dart';
-import '../../dtype.dart';
-import '../../gpu_array.dart';
-import '../../serialization/webgpu_pipeline.dart';
 
-/// Base class for all expression nodes in a fused kernel computation graph.
+/// Type alias for [Expr].
 typedef GpuExpr = Expr;
+
+/// Type alias for [VarExpr].
 typedef GpuVarExpr = VarExpr;
+
+/// Type alias for [ConstExpr].
 typedef GpuConstExpr = ConstExpr;
+
+/// Type alias for [ScalarParamExpr].
 typedef GpuScalarParamExpr = ScalarParamExpr;
+
+/// Type alias for [LoopExpr].
 typedef GpuLoopExpr = LoopExpr;
+
+/// Type alias for [CoordExpr].
 typedef GpuCoordExpr = CoordExpr;
+
+/// Type alias for [IndexExpr].
 typedef GpuIndexExpr = IndexExpr;
+
+/// Type alias for [LetExpr].
 typedef GpuLetExpr = LetExpr;
+
+/// Type alias for [LocalVarExpr].
 typedef GpuLocalVarExpr = LocalVarExpr;
+
+/// Type alias for [OffsetVarExpr].
 typedef GpuOffsetVarExpr = OffsetVarExpr;
+
+/// Type alias for [BoundaryMode].
 typedef GpuBoundaryMode = BoundaryMode;
 
+/// Base class for all expression nodes in a fused kernel computation graph.
 abstract class Expr {
+  /// Creates a constant [Expr] node.
   const Expr();
 
   /// Creates a variable reference representing an input tensor buffer.
@@ -98,8 +115,10 @@ abstract class Expr {
   static Expr from(Object value) {
     if (value is Expr) return value;
     if (value is num) return ConstExpr(value.toDouble());
-    throw ArgumentError(
-      'Cannot convert $value of type ${value.runtimeType} to Expr',
+    throw ArgumentError.value(
+      value,
+      'value',
+      'Must be an Expr or num instance.',
     );
   }
 
@@ -124,7 +143,7 @@ abstract class Expr {
   /// Computes the exact symbolic analytical derivative with respect to [wrt].
   Expr grad(VarExpr wrt);
 
-  // Operator overloads for building expression trees fluently with algebraic simplifications
+  /// Elementwise addition of this expression and [other].
   Expr operator +(Object other) {
     final o = Expr.from(other);
     if (this is ConstExpr && (this as ConstExpr).value == 0.0) return o;
@@ -132,12 +151,14 @@ abstract class Expr {
     return BinaryOpExpr('add', this, o);
   }
 
+  /// Elementwise subtraction of [other] from this expression.
   Expr operator -(Object other) {
     final o = Expr.from(other);
     if (o is ConstExpr && o.value == 0.0) return this;
     return BinaryOpExpr('sub', this, o);
   }
 
+  /// Elementwise multiplication of this expression and [other].
   Expr operator *(Object other) {
     final o = Expr.from(other);
     if (this is ConstExpr && (this as ConstExpr).value == 0.0) {
@@ -149,6 +170,7 @@ abstract class Expr {
     return BinaryOpExpr('mul', this, o);
   }
 
+  /// Elementwise division of this expression by [other].
   Expr operator /(Object other) {
     final o = Expr.from(other);
     if (this is ConstExpr && (this as ConstExpr).value == 0.0) {
@@ -158,83 +180,148 @@ abstract class Expr {
     return BinaryOpExpr('div', this, o);
   }
 
+  /// Elementwise negation of this expression.
   Expr operator -() => UnaryOpExpr('negate', this);
 
+  /// Raises this expression to the power of [exponent].
   Expr pow(Object exponent) => BinaryOpExpr('pow', this, Expr.from(exponent));
 
+  /// Elementwise maximum of this expression and [other].
   Expr max(Object other) => BinaryOpExpr('max', this, Expr.from(other));
 
+  /// Elementwise minimum of this expression and [other].
   Expr min(Object other) => BinaryOpExpr('min', this, Expr.from(other));
 
+  /// Elementwise equality comparison (`==`) with [other].
   Expr equal(Object other) => BinaryOpExpr('eq', this, Expr.from(other));
 
+  /// Elementwise inequality comparison (`!=`) with [other].
   Expr notEqual(Object other) => BinaryOpExpr('neq', this, Expr.from(other));
 
+  /// Elementwise greater-than comparison (`>`) with [other].
   Expr greaterThan(Object other) => BinaryOpExpr('gt', this, Expr.from(other));
 
+  /// Elementwise less-than comparison (`<`) with [other].
   Expr lessThan(Object other) => BinaryOpExpr('lt', this, Expr.from(other));
 
+  /// Elementwise greater-than-or-equal comparison (`>=`) with [other].
   Expr greaterEqual(Object other) =>
       BinaryOpExpr('gte', this, Expr.from(other));
 
+  /// Elementwise less-than-or-equal comparison (`<=`) with [other].
   Expr lessEqual(Object other) => BinaryOpExpr('lte', this, Expr.from(other));
 
-  // Logical operators
+  /// Logical conjunction (`&&`) of this expression and [other].
   Expr operator &(Object other) => BinaryOpExpr('and', this, Expr.from(other));
 
+  /// Logical disjunction (`||`) of this expression and [other].
   Expr operator |(Object other) => BinaryOpExpr('or', this, Expr.from(other));
 
+  /// Logical negation (`!`) of this expression.
   Expr operator ~() => UnaryOpExpr('not', this);
 
+  /// Logical conjunction (`&&`) of this expression and [other].
   Expr and(Object other) => this & other;
 
+  /// Logical disjunction (`||`) of this expression and [other].
   Expr or(Object other) => this | other;
 
+  /// Logical negation (`!`) of this expression.
   Expr not() => ~this;
 
-  // Shader math intrinsics
+  /// Linearly interpolates between this expression and [other] by weight [t].
   Expr mix(Object other, Object t) =>
       TernaryOpExpr('mix', this, Expr.from(other), Expr.from(t));
 
+  /// Hermite interpolation between `0` and `1` when this expression is between [edge0] and [edge1].
   Expr smoothstep(Object edge0, Object edge1) =>
       TernaryOpExpr('smoothstep', Expr.from(edge0), Expr.from(edge1), this);
 
+  /// Heaviside step function returning `0.0` if this expression is less than [edge], else `1.0`.
   Expr step(Object edge) => BinaryOpExpr('step', Expr.from(edge), this);
 
+  /// Floating-point modulo of this expression by [other].
   Expr mod(Object other) => BinaryOpExpr('mod', this, Expr.from(other));
 
+  /// Floating-point modulo operator (`%`) with [other].
   Expr operator %(Object other) => mod(other);
 
+  /// Fractional part of this expression (`x - floor(x)`).
   Expr fract() => UnaryOpExpr('fract', this);
 
+  /// Four-quadrant arctangent of this expression (`y`) and [x].
   Expr atan2(Object x) => BinaryOpExpr('atan2', this, Expr.from(x));
 
+  /// Euclidean hypotenuse $\sqrt{\text{this}^2 + \text{other}^2}$.
   Expr hypot(Object other) => BinaryOpExpr('hypot', this, Expr.from(other));
 
+  /// Sign of this expression (`-1.0`, `0.0`, or `1.0`).
   Expr sign() => UnaryOpExpr('sign', this);
 
-  // Common Unary activations and math functions
+  /// Rectified Linear Unit activation ($\max(0, x)$).
   Expr relu() => UnaryOpExpr('relu', this);
+
+  /// Sigmoid Linear Unit (SiLU / Swish) activation ($x \cdot \sigma(x)$).
   Expr silu() => UnaryOpExpr('silu', this);
+
+  /// Gaussian Error Linear Unit (GELU) activation.
   Expr gelu() => UnaryOpExpr('gelu', this);
+
+  /// Logistic sigmoid activation ($1 / (1 + e^{-x})$).
   Expr sigmoid() => UnaryOpExpr('sigmoid', this);
+
+  /// Hyperbolic tangent activation ($\tanh(x)$).
   Expr tanh() => UnaryOpExpr('tanh', this);
+
+  /// Natural exponential ($e^x$).
   Expr exp() => UnaryOpExpr('exp', this);
+
+  /// Natural logarithm ($\ln(x)$).
   Expr log() => UnaryOpExpr('log', this);
+
+  /// Square root ($\sqrt{x}$).
   Expr sqrt() => UnaryOpExpr('sqrt', this);
+
+  /// Reciprocal square root ($1 / \sqrt{x}$).
   Expr rsqrt() => UnaryOpExpr('rsqrt', this);
+
+  /// Absolute value ($|x|$).
   Expr abs() => UnaryOpExpr('abs', this);
+
+  /// Sine ($\sin(x)$).
   Expr sin() => UnaryOpExpr('sin', this);
+
+  /// Cosine ($\cos(x)$).
   Expr cos() => UnaryOpExpr('cos', this);
+
+  /// Tangent ($\tan(x)$).
   Expr tan() => UnaryOpExpr('tan', this);
+
+  /// Hyperbolic sine ($\sinh(x)$).
   Expr sinh() => UnaryOpExpr('sinh', this);
+
+  /// Hyperbolic cosine ($\cosh(x)$).
   Expr cosh() => UnaryOpExpr('cosh', this);
+
+  /// Largest integer value not greater than this expression ($\lfloor x \rfloor$).
   Expr floor() => UnaryOpExpr('floor', this);
+
+  /// Smallest integer value not less than this expression ($\lceil x \rceil$).
   Expr ceil() => UnaryOpExpr('ceil', this);
+
+  /// Nearest integer value to this expression.
   Expr round() => UnaryOpExpr('round', this);
+
+  /// Multiplicative inverse ($1 / x$).
   Expr reciprocal() => UnaryOpExpr('reciprocal', this);
+
+  /// Hard-Swish activation ($x \cdot \text{clamp}(x + 3, 0, 6) / 6$).
   Expr hardswish() => UnaryOpExpr('hardswish', this);
+
+  /// Softplus activation ($\ln(1 + e^x)$).
   Expr softplus() => UnaryOpExpr('softplus', this);
+
+  /// Mish activation ($x \cdot \tanh(\text{softplus}(x))$).
   Expr mish() => UnaryOpExpr('mish', this);
 
   /// Clamps expression between [minVal] and [maxVal].
@@ -301,10 +388,10 @@ abstract class Expr {
     cseList.sort((a, b) => a.depth.compareTo(b.depth));
 
     var current = this;
-    var cseIdx = 0;
+    var cseIndex = 0;
     for (final cseNode in cseList) {
       final targetFp = cseNode.toFingerprint();
-      final varName = '_cse_${cseIdx++}';
+      final varName = '_cse_${cseIndex++}';
 
       Expr substitute(Expr e) {
         if (e.toFingerprint() == targetFp) {
@@ -340,10 +427,16 @@ abstract class Expr {
 
 /// Represents an input tensor variable buffer.
 final class VarExpr extends Expr {
+  /// Identifier of the input buffer in generated WGSL code.
   final String name;
+
+  /// Storage buffer binding slot index.
   final int bindingIndex;
+
+  /// Element data type of the input buffer.
   final WgslDType dtype;
 
+  /// Creates a [VarExpr] referencing input buffer [name].
   const VarExpr(
     this.name, {
     this.bindingIndex = 0,
@@ -397,8 +490,10 @@ final class VarExpr extends Expr {
 
 /// Represents a constant floating-point literal.
 final class ConstExpr extends Expr {
+  /// Numeric value of the constant literal.
   final double value;
 
+  /// Creates a [ConstExpr] with literal [value].
   const ConstExpr(this.value);
 
   @override
@@ -443,9 +538,13 @@ final class ConstExpr extends Expr {
 
 /// Represents a dynamic runtime scalar uniform parameter.
 final class ScalarParamExpr extends Expr {
+  /// Uniform field name in the generated `FusedUniforms` struct.
   final String name;
+
+  /// Default numerical value when not overridden at dispatch time.
   final double defaultValue;
 
+  /// Creates a [ScalarParamExpr] named [name].
   const ScalarParamExpr(this.name, {this.defaultValue = 0.0});
 
   @override
@@ -485,10 +584,16 @@ final class ScalarParamExpr extends Expr {
 
 /// Represents an intrinsic dimensional coordinate (e.g. 0=row/y, 1=col/x).
 final class CoordExpr extends Expr {
+  /// Dimension axis index (`0` for row/y, `1` for column/x, etc.).
   final int axis;
+
+  /// Optional static tensor shape used to de-linearize flat indices.
   final List<int>? shape;
+
+  /// Whether the coordinate is normalized to the interval $[0, 1]$.
   final bool normalized;
 
+  /// Creates a [CoordExpr] for [axis].
   const CoordExpr(this.axis, {this.shape, this.normalized = false});
 
   @override
@@ -551,6 +656,7 @@ final class CoordExpr extends Expr {
 
 /// Represents the global flat element index (`idx`).
 final class IndexExpr extends Expr {
+  /// Creates an [IndexExpr].
   const IndexExpr();
 
   @override
@@ -580,8 +686,10 @@ final class IndexExpr extends Expr {
 
 /// Represents a reference to a local variable bound in a [LetExpr].
 final class LocalVarExpr extends Expr {
+  /// Local variable identifier in WGSL scope.
   final String name;
 
+  /// Creates a [LocalVarExpr] referencing [name].
   const LocalVarExpr(this.name);
 
   @override
@@ -611,10 +719,16 @@ final class LocalVarExpr extends Expr {
 
 /// Represents a local variable binding (`let <name> = <value>; in <body>`).
 final class LetExpr extends Expr {
+  /// Bound local variable identifier.
   final String name;
+
+  /// Bound expression evaluated once and assigned to [name].
   final Expr value;
+
+  /// Downstream expression body referencing [name].
   final Expr body;
 
+  /// Creates a [LetExpr] binding [name] to [value] within [body].
   const LetExpr(this.name, this.value, this.body);
 
   @override
@@ -660,11 +774,19 @@ enum BoundaryMode {
 
 /// Represents a neighbor / stencil sampling access into an input tensor.
 final class OffsetVarExpr extends Expr {
+  /// Underlying input tensor variable being sampled.
   final VarExpr tensor;
+
+  /// Relative coordinate offsets along each dimension.
   final List<int> offsets;
+
+  /// Optional static tensor shape for 2D/N-D coordinate resolution.
   final List<int> shape;
+
+  /// Boundary handling mode for out-of-bounds stencil coordinates.
   final BoundaryMode boundary;
 
+  /// Creates an [OffsetVarExpr] sampling [tensor] at [offsets].
   const OffsetVarExpr(
     this.tensor,
     this.offsets, {
@@ -672,6 +794,7 @@ final class OffsetVarExpr extends Expr {
     this.boundary = BoundaryMode.clamp,
   });
 
+  /// Generated WGSL helper function name for this stencil access.
   String get functionName {
     final offStr = offsets.map((o) => o < 0 ? 'm${-o}' : 'p$o').join('_');
     return 'stencil_${tensor.name}_${offStr}_${boundary.name}';
@@ -810,9 +933,13 @@ $sampleLogic}
 
 /// Represents a unary operation applied to an expression.
 final class UnaryOpExpr extends Expr {
+  /// Unary operation identifier (e.g. `'negate'`, `'exp'`, `'sin'`).
   final String op;
+
+  /// Operand subexpression.
   final Expr child;
 
+  /// Creates a [UnaryOpExpr] applying [op] to [child].
   const UnaryOpExpr(this.op, this.child);
 
   @override
@@ -901,10 +1028,16 @@ final class UnaryOpExpr extends Expr {
 
 /// Represents a binary operation between two expressions.
 final class BinaryOpExpr extends Expr {
+  /// Binary operation identifier (e.g. `'add'`, `'mul'`, `'pow'`).
   final String op;
+
+  /// Left-hand operand subexpression.
   final Expr left;
+
+  /// Right-hand operand subexpression.
   final Expr right;
 
+  /// Creates a [BinaryOpExpr] applying [op] to [left] and [right].
   const BinaryOpExpr(this.op, this.left, this.right);
 
   @override
@@ -1003,11 +1136,19 @@ final class BinaryOpExpr extends Expr {
 
 /// Represents a ternary operation (e.g. clamp or select/where).
 final class TernaryOpExpr extends Expr {
+  /// Ternary operation identifier (`'clamp'`, `'where'`, `'mix'`, or `'smoothstep'`).
   final String op;
+
+  /// First operand subexpression.
   final Expr first;
+
+  /// Second operand subexpression.
   final Expr second;
+
+  /// Third operand subexpression.
   final Expr third;
 
+  /// Creates a [TernaryOpExpr] applying [op] to [first], [second], and [third].
   const TernaryOpExpr(this.op, this.first, this.second, this.third);
 
   @override
@@ -1022,7 +1163,7 @@ final class TernaryOpExpr extends Expr {
       case 'smoothstep':
         return 'smoothstep(${first.toWgsl()}, ${second.toWgsl()}, ${third.toWgsl()})';
       default:
-        throw ArgumentError('Unsupported ternary op: $op');
+        throw ArgumentError.value(op, 'op', 'Must be a supported ternary op.');
     }
   }
 
@@ -1086,28 +1227,46 @@ final class TernaryOpExpr extends Expr {
 
 /// Represents a functional bounded loop node in the expression graph.
 final class LoopExpr extends Expr {
+  /// Initial state expressions at the start of the loop.
   final List<Expr> initialValues;
+
+  /// Upper bound on loop iterations.
   final Expr maxIterations;
+
+  /// Continuation condition expression evaluated before each iteration.
   final Expr conditionExpr;
+
+  /// State transition expressions evaluated at each iteration step.
   final List<Expr> stepExprs;
+
+  /// Final output expression computed from the terminal loop state.
   final Expr resultExpr;
+
+  /// Synthetic state variables representing loop-carried values.
   final List<VarExpr> stateVars;
+
+  /// Synthetic iteration counter variable.
   final VarExpr iterVar;
+
+  /// Generated WGSL helper function name for this loop.
   final String functionName;
 
   LoopExpr._({
-    required this.initialValues,
+    required List<Expr> initialValues,
     required this.maxIterations,
     required this.conditionExpr,
-    required this.stepExprs,
+    required List<Expr> stepExprs,
     required this.resultExpr,
-    required this.stateVars,
+    required List<VarExpr> stateVars,
     required this.iterVar,
     required this.functionName,
-  });
+  }) : initialValues = List.unmodifiable(initialValues),
+       stepExprs = List.unmodifiable(stepExprs),
+       stateVars = List.unmodifiable(stateVars);
 
   static int _loopCounter = 0;
 
+  /// Creates a bounded [LoopExpr] node from functional state transition callbacks.
   factory LoopExpr({
     required List<Object> initialValues,
     required Object maxIterations,
@@ -1128,8 +1287,10 @@ final class LoopExpr extends Expr {
     final cond = condition(stateVars, iterVar);
     final nextSteps = step(stateVars, iterVar);
     if (nextSteps.length != parsedInit.length) {
-      throw ArgumentError(
-        'step() returned ${nextSteps.length} values, expected ${parsedInit.length} to match initialValues.',
+      throw ArgumentError.value(
+        nextSteps.length,
+        'step',
+        'Must return ${parsedInit.length} values to match initialValues.',
       );
     }
     final res = result != null ? result(stateVars) : stateVars.first;
@@ -1249,13 +1410,25 @@ $stepStatements    ${iterVar.name}_val += 1.0;
 
 /// Descriptor that holds the full configuration for compiling a fused kernel.
 final class FusedKernelDescriptor {
+  /// Descriptive kernel identifier.
   final String name;
+
+  /// Root expression tree evaluated by the fused kernel.
   final Expr expression;
+
+  /// Ordered input tensor variable bindings referenced by [expression].
   final List<VarExpr> inputs;
+
+  /// Ordered runtime scalar uniform parameters referenced by [expression].
   final List<ScalarParamExpr> scalarParams;
+
+  /// Element data type of the output destination buffer.
   final WgslDType outputDType;
+
+  /// Whether the generated shader uses multi-dimensional strided indexing.
   final bool isStrided;
 
+  /// Creates a [FusedKernelDescriptor].
   FusedKernelDescriptor({
     required this.name,
     Expr? expression,
@@ -1267,12 +1440,17 @@ final class FusedKernelDescriptor {
   }) : expression =
            expression ??
            outputExpr ??
-           (throw ArgumentError(
-             'Either expression or outputExpr must be provided.',
+           (throw ArgumentError.value(
+             null,
+             'expression',
+             'Must provide either expression or outputExpr.',
            )),
-       inputs = inputs ?? _sortVariables((expression ?? outputExpr!).variables),
-       scalarParams =
-           scalarParams ?? (expression ?? outputExpr!).scalarParams.toList();
+       inputs = List.unmodifiable(
+         inputs ?? _sortVariables((expression ?? outputExpr!).variables),
+       ),
+       scalarParams = List.unmodifiable(
+         scalarParams ?? (expression ?? outputExpr!).scalarParams.toList(),
+       );
 
   static List<VarExpr> _sortVariables(Set<VarExpr> vars) {
     final list = vars.toList();
@@ -1387,13 +1565,13 @@ final class FusedKernelDescriptor {
   /// Generates the resource binding descriptors.
   List<WgslBinding> createBindings() {
     final bindings = <WgslBinding>[];
-    var bindIdx = 0;
+    var bindingIndex = 0;
 
     for (final v in inputs) {
       bindings.add(
         WgslBinding(
           group: 0,
-          binding: bindIdx++,
+          binding: bindingIndex++,
           name: v.name,
           dtype: v.dtype,
           access: WgslBufferAccess.read,
@@ -1405,7 +1583,7 @@ final class FusedKernelDescriptor {
     bindings.add(
       WgslBinding(
         group: 0,
-        binding: bindIdx++,
+        binding: bindingIndex++,
         name: 'dst',
         dtype: outputDType,
         access: WgslBufferAccess.readWrite,
@@ -1416,7 +1594,7 @@ final class FusedKernelDescriptor {
     bindings.add(
       WgslBinding(
         group: 0,
-        binding: bindIdx++,
+        binding: bindingIndex++,
         name: isStrided ? 'meta' : 'uniforms',
         isUniform: true,
         customTypeName: isStrided ? 'StridedMetadata' : 'FusedUniforms',
@@ -1481,8 +1659,8 @@ fn main(
   @builtin(global_invocation_id) global_id: vec3<u32>,
   @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
-  var idx = global_id.x;
-  let stride = num_workgroups.x * ${workgroupSize}u;
+  var idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  let stride = num_workgroups.x * num_workgroups.y * ${workgroupSize}u;
   while (idx < uniforms.total_elements) {
 $loadStatements
 $letStatements
@@ -1519,8 +1697,11 @@ $stencilFunctions
 $loopFunctions
 
 @compute ${wgSize.toAttribute()}
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let idx = global_id.x;
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
   if (idx >= meta.total_elements) {
     return;
   }
@@ -1537,108 +1718,5 @@ $letStatements
 }
 ''';
     }
-  }
-
-  /// Packages this fused kernel and its input tensors into an interactive [WebGpuWidget].
-  WebGpuWidget createBrowserWidget({
-    List<dynamic> inputArrays = const [],
-    required List<dynamic> outputShape,
-    String? title,
-    List<dynamic> sliders = const [],
-    bool renderToCanvas = false,
-    int canvasWidth = 512,
-    int canvasHeight = 512,
-    String colorMap = 'viridis',
-  }) {
-    final parsedInputs = inputArrays.map((e) => e as GpuArray).toList();
-    final parsedShape = outputShape.map((e) => (e as num).toInt()).toList();
-    final parsedSliders = sliders.map((e) => e as WebGpuSlider).toList();
-
-    final wgslSource = generateWgslSource();
-    final inputPayloads = <GpuBufferPayload>[];
-
-    for (var i = 0; i < parsedInputs.length; i++) {
-      final arr = parsedInputs[i];
-      final rawND = arr.toNDArray();
-      final rawList = rawND.toList();
-      final f32List = Float32List.fromList(
-        rawList.map((e) => (e as num).toDouble()).toList(),
-      );
-      final base64Payload = base64Encode(f32List.buffer.asUint8List());
-      rawND.dispose();
-
-      inputPayloads.add(
-        GpuBufferPayload(
-          bindingIndex: i,
-          name: inputs.length > i ? inputs[i].name : 'input_$i',
-          dtype: arr.dtype,
-          shape: arr.shape,
-          base64Data: base64Payload,
-          sizeInBytes: arr.buffer.sizeInBytes,
-        ),
-      );
-    }
-
-    final totalOut = parsedShape.reduce((a, b) => a * b);
-    final outBytes = totalOut * outputDType.byteSize;
-
-    final outputPayload = GpuBufferPayload(
-      bindingIndex: parsedInputs.length,
-      name: 'dst',
-      dtype: DType.values.byName(
-        outputDType.wgslType == 'f32' ? 'float32' : 'float16',
-      ),
-      shape: parsedShape,
-      isOutput: true,
-      sizeInBytes: outBytes,
-    );
-
-    final scalarList = scalarParams.toList();
-    final uniformWords = <int>[totalOut];
-    final byteData = ByteData(4);
-    for (final sp in scalarList) {
-      final matchingSlider = parsedSliders.cast<WebGpuSlider?>().firstWhere(
-        (s) => s?.name == sp.name,
-        orElse: () => null,
-      );
-      final initialVal = matchingSlider?.initialValue ?? sp.defaultValue;
-      byteData.setFloat32(0, initialVal, Endian.little);
-      uniformWords.add(byteData.getUint32(0, Endian.little));
-    }
-    while (uniformWords.length % 4 != 0) {
-      uniformWords.add(0);
-    }
-
-    final resolvedSliders = parsedSliders.map((slider) {
-      final paramIdx = scalarList.indexWhere((sp) => sp.name == slider.name);
-      return WebGpuSlider(
-        name: slider.name,
-        label: slider.label,
-        min: slider.min,
-        max: slider.max,
-        initialValue: slider.initialValue,
-        step: slider.step,
-        // In FusedKernelDescriptor, all scalar parameters in FusedUniforms are f32 in WGSL.
-        isInteger: false,
-        uniformWordIndex: paramIdx != -1
-            ? paramIdx + 1
-            : slider.uniformWordIndex,
-      );
-    }).toList();
-
-    final pkg = GpuComputePipelinePackage(
-      name: name,
-      wgslCode: wgslSource,
-      inputs: inputPayloads,
-      output: outputPayload,
-      uniforms: uniformWords,
-      sliders: resolvedSliders,
-      renderToCanvas: renderToCanvas,
-      canvasWidth: canvasWidth,
-      canvasHeight: canvasHeight,
-      colorMap: colorMap,
-    );
-
-    return WebGpuWidget(pkg, title: title ?? name);
   }
 }

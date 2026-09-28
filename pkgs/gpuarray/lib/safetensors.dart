@@ -12,10 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// SafeTensors Zero-Copy Tensor Serialization for [package:gpuarray].
+/// SafeTensors binary serialization and deserialization for [GpuArray] tensors.
 ///
-/// Implements HuggingFace's SafeTensors standard specification for efficient,
-/// zero-copy model weight saving and loading directly from GPU memory.
+/// Implements the HuggingFace SafeTensors specification with automatic
+/// host-device synchronization and strict [FormatException] validation on
+/// external payloads.
 library;
 
-export 'src/serialization/safetensors.dart';
+export 'src/serialization/safetensors.dart'
+    show
+        loadSafetensors,
+        loadSafetensorsFile,
+        saveSafetensors,
+        saveSafetensorsFile;

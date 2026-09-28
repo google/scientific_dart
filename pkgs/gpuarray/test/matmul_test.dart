@@ -182,5 +182,42 @@ void main() {
         }
       });
     });
+
+    test('matmul and dot support out: destination array', () {
+      ResourceScope.scope(() {
+        final a = GpuArray.fromList(
+          [
+            [1.0, 2.0],
+            [3.0, 4.0],
+          ],
+          [2, 2],
+          DType.float64,
+        );
+        final b = GpuArray.fromList(
+          [
+            [2.0, 0.0],
+            [1.0, 2.0],
+          ],
+          [2, 2],
+          DType.float64,
+        );
+        final out = GpuArray.zeros([2, 2], DType.float64);
+        final res = a.matmul(b, out: out);
+        expect(identical(res, out), isTrue);
+        expect(
+          out.toNestedList(),
+          equals([
+            [4.0, 4.0],
+            [10.0, 8.0],
+          ]),
+        );
+
+        final badOut = GpuArray.zeros([3, 3], DType.float64);
+        expect(
+          () => a.matmul(b, out: badOut),
+          throwsA(isA<GpuShapeMismatchException>()),
+        );
+      });
+    });
   });
 }

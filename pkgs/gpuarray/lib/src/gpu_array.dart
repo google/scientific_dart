@@ -12,29 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'dart:convert';
 import 'dart:ffi' as ffi;
 import 'dart:math' as math;
-import 'dart:typed_data';
-import 'package:resource_scope/resource_scope.dart';
-import 'package:ndarray/ndarray.dart' as nd;
 
-import 'dtype.dart';
-export 'dtype.dart'
-    show DTypeTag, DTypeSpec, AnySpec, Boolean, NDArrayBaseElements;
-import 'buffer.dart';
-import 'device.dart';
-import 'exceptions.dart';
-import 'slice.dart';
-import 'operations/manipulation.dart' as manip;
+import 'package:ndarray/ndarray.dart' as nd;
+import 'package:resource_scope/resource_scope.dart';
+
+import 'autograd/autograd.dart';
 import 'backend/compute_engine.dart';
 import 'backend/kernels.dart';
-import 'autograd/autograd.dart';
-import 'serialization/webgpu_pipeline.dart';
+import 'buffer.dart';
+import 'device.dart';
+import 'dtype.dart';
+import 'exceptions.dart';
+import 'operations/manipulation.dart' as manip;
+import 'slice.dart';
+
+export 'package:resource_scope/resource_scope.dart'
+    show ResourceScope, ScopedResource;
+
+export 'dtype.dart'
+    show AnySpec, Bool, Boolean, DTypeSpec, DTypeTag, NDArrayBaseElements;
 
 /// An N-dimensional array living on a GPU device.
 ///
-/// Implements [ScopedResource] for automatic memory management within [ResourceScope.scope].
+/// Implements [ScopedResource] for automatic memory management within
+/// [ResourceScope.scope].
 final class GpuArray<T extends DTypeTag>
     implements ffi.Finalizable, ScopedResource {
   /// The underlying GPU buffer holding tensor data.
@@ -58,7 +61,8 @@ final class GpuArray<T extends DTypeTag>
   /// Whether elements are contiguous in C-order in memory.
   final bool isContiguous;
 
-  /// The parent array if this tensor is a view, preventing early garbage collection.
+  /// The parent array if this tensor is a view, preventing early garbage
+  /// collection.
   final GpuArray? _parent;
 
   /// Whether this tensor tracks gradients for automatic differentiation.
@@ -84,7 +88,7 @@ final class GpuArray<T extends DTypeTag>
     this.requiresGrad = false,
     this.grad,
     this.gradFn,
-  }) : isContiguous = isContiguous ?? ShapeUtils.isContiguous(shape, strides),
+  }) : isContiguous = isContiguous ?? isContiguousLayout(shape, strides),
        _parent = parent {
     ResourceScope.track(this);
     if (parent != null) {
@@ -92,7 +96,221 @@ final class GpuArray<T extends DTypeTag>
     }
   }
 
-  /// Creates a [GpuArray] initialized from a flat or nested Dart list of values.
+  static GpuArray<T> _create<T extends DTypeTag>(
+    GpuBuffer buffer, {
+    required List<int> shape,
+    required List<int> strides,
+    required DType<T> dtype,
+    required GpuDevice device,
+    int offsetElements = 0,
+    bool? isContiguous,
+    GpuArray? parent,
+    bool requiresGrad = false,
+    GpuArray? grad,
+    GradFn? gradFn,
+  }) {
+    final GpuArray<DTypeTag> instance = switch (dtype) {
+      DType.float64 => GpuArray<Float64>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.float64,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.float32 => GpuArray<Float32>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.float32,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.float16 => GpuArray<Float16>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.float16,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.bfloat16 => GpuArray<BFloat16>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.bfloat16,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.int64 => GpuArray<Int64>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.int64,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.int32 => GpuArray<Int32>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.int32,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.int16 => GpuArray<Int16>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.int16,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.int8 => GpuArray<Int8>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.int8,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.uint64 => GpuArray<Uint64>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.uint64,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.uint32 => GpuArray<Uint32>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.uint32,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.uint16 => GpuArray<Uint16>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.uint16,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.uint8 => GpuArray<Uint8>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.uint8,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.boolean => GpuArray<Boolean>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.boolean,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.complex64 => GpuArray<Complex64>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.complex64,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+      DType.complex128 => GpuArray<Complex128>._(
+        buffer,
+        shape: shape,
+        strides: strides,
+        dtype: DType.complex128,
+        device: device,
+        offsetElements: offsetElements,
+        isContiguous: isContiguous,
+        parent: parent,
+        requiresGrad: requiresGrad,
+        grad: grad,
+        gradFn: gradFn,
+      ),
+    };
+    return instance as GpuArray<T>;
+  }
+
+  /// Creates a [GpuArray] initialized from a flat or nested Dart list of
+  /// [values].
   factory GpuArray.fromList(
     List<dynamic> values,
     List<int> shape,
@@ -101,12 +319,14 @@ final class GpuArray<T extends DTypeTag>
     bool requiresGrad = false,
   }) {
     final dev = device ?? GpuDevice.defaultDevice;
-    final totalSize = ShapeUtils.computeSize(shape);
+    final totalSize = computeSize(shape);
     final flatList = _flattenList(values);
 
     if (flatList.length != totalSize) {
-      throw ArgumentError(
-        'List length (${flatList.length}) does not match shape total size ($totalSize)',
+      throw ArgumentError.value(
+        values.length,
+        'values',
+        'Must have flattened length ($totalSize) matching shape $shape.',
       );
     }
 
@@ -120,8 +340,8 @@ final class GpuArray<T extends DTypeTag>
     );
     gpuBuffer.detachFromScope();
 
-    final strides = ShapeUtils.computeCStrides(shape);
-    final array = GpuArray<T>._(
+    final strides = computeCStrides(shape);
+    final array = GpuArray._create<T>(
       gpuBuffer,
       shape: List.unmodifiable(shape),
       strides: List.unmodifiable(strides),
@@ -131,7 +351,7 @@ final class GpuArray<T extends DTypeTag>
     );
 
     for (var i = 0; i < totalSize; i++) {
-      ComputeEngine.writeAny(gpuBuffer, dtype, i, flatList[i]);
+      writeBufferAny(gpuBuffer, dtype, i, flatList[i]);
     }
 
     return array;
@@ -144,8 +364,17 @@ final class GpuArray<T extends DTypeTag>
     GpuDevice? device,
     bool requiresGrad = false,
   }) {
+    for (final dim in shape) {
+      if (dim < 0) {
+        throw ArgumentError.value(
+          shape,
+          'shape',
+          'Must not contain negative dimensions.',
+        );
+      }
+    }
     final dev = device ?? GpuDevice.defaultDevice;
-    final totalSize = ShapeUtils.computeSize(shape);
+    final totalSize = computeSize(shape);
     final byteSize = totalSize * dtype.byteWidth;
     final gpuBuffer = dev.createBuffer(
       sizeInBytes: byteSize,
@@ -155,9 +384,9 @@ final class GpuArray<T extends DTypeTag>
           GpuBufferUsage.copySrc,
     );
     gpuBuffer.detachFromScope();
-    final strides = ShapeUtils.computeCStrides(shape);
+    final strides = computeCStrides(shape);
 
-    return GpuArray<T>._(
+    return GpuArray._create<T>(
       gpuBuffer,
       shape: List.unmodifiable(shape),
       strides: List.unmodifiable(strides),
@@ -167,7 +396,8 @@ final class GpuArray<T extends DTypeTag>
     );
   }
 
-  /// Creates a [GpuArray] wrapping an existing [buffer] with explicit [shape] and [strides].
+  /// Creates a [GpuArray] wrapping an existing [buffer] with explicit [shape]
+  /// and [strides].
   factory GpuArray.fromBuffer({
     required GpuBuffer buffer,
     required List<int> shape,
@@ -179,10 +409,15 @@ final class GpuArray<T extends DTypeTag>
     GpuArray? parent,
     bool requiresGrad = false,
   }) {
+    if (buffer.isDisposed) {
+      throw GpuDeviceDisposedException(
+        'Cannot create GpuArray from a disposed GpuBuffer.',
+      );
+    }
     if (parent == null) {
       buffer.retain();
     }
-    return GpuArray<T>._(
+    return GpuArray._create<T>(
       buffer,
       shape: List.unmodifiable(shape),
       strides: List.unmodifiable(strides),
@@ -210,7 +445,7 @@ final class GpuArray<T extends DTypeTag>
     );
     final totalSize = array.size;
     for (var i = 0; i < totalSize; i++) {
-      ComputeEngine.writeValue(array.buffer, dtype, i, 0.0);
+      writeBufferValue(array.buffer, dtype, i, 0.0);
     }
     return array;
   }
@@ -250,7 +485,7 @@ final class GpuArray<T extends DTypeTag>
     );
     final totalSize = array.size;
     for (var i = 0; i < totalSize; i++) {
-      ComputeEngine.writeAny(array.buffer, dtype, i, value);
+      writeBufferAny(array.buffer, dtype, i, value);
     }
     return array;
   }
@@ -276,21 +511,60 @@ final class GpuArray<T extends DTypeTag>
       contiguousND.dispose();
     }
 
-    return GpuArray<T>._(
+    return GpuArray._create<T>(
       gpuBuffer,
       shape: List.unmodifiable(ndarray.shape),
-      strides: List.unmodifiable(ShapeUtils.computeCStrides(ndarray.shape)),
+      strides: List.unmodifiable(computeCStrides(ndarray.shape)),
       dtype: ndarray.dtype,
       device: dev,
       requiresGrad: requiresGrad,
     );
   }
 
+  void _checkNotDisposed() {
+    if (_isDisposed || buffer.isDisposed) {
+      throw GpuDeviceDisposedException(
+        'Cannot operate on a disposed GpuArray.',
+      );
+    }
+  }
+
+  /// Executes [callback] with a zero-copy, unmanaged [nd.NDArray] view backed
+  /// directly by this array's synchronized host mirror pointer.
+  ///
+  /// The [shape] must not contain zero-length dimensions (`!shape.contains(0)`).
+  R withTemporaryNDArrayView<R>(R Function(nd.NDArray<T> view) callback) {
+    _checkNotDisposed();
+    if (shape.contains(0)) {
+      throw StateError(
+        'Cannot create an NDArray.fromPointer view for an empty shape $shape.',
+      );
+    }
+    buffer.ensureHostSynced();
+
+    var minRelativeOffset = 0;
+    for (var d = 0; d < shape.length; d++) {
+      if (strides[d] < 0 && shape[d] > 0) {
+        minRelativeOffset += (shape[d] - 1) * strides[d];
+      }
+    }
+    final byteOffset = (offsetElements + minRelativeOffset) * dtype.byteWidth;
+    final dataPtr = (buffer.address + byteOffset).cast<ffi.Void>();
+
+    final view = nd.NDArray.unmanaged(
+      () => nd.NDArray<T>.fromPointer(dataPtr, shape, dtype, strides: strides),
+    );
+    return callback(view);
+  }
+
   /// Total number of elements in this tensor.
-  int get size => ShapeUtils.computeSize(shape);
+  int get size => computeSize(shape);
 
   /// Number of dimensions (rank) of this tensor.
   int get rank => shape.length;
+
+  /// Number of dimensions (rank) of this tensor (alias for [rank]).
+  int get ndim => shape.length;
 
   /// Total size in bytes of the allocated tensor elements.
   int get byteSize => size * dtype.byteWidth;
@@ -302,38 +576,42 @@ final class GpuArray<T extends DTypeTag>
   bool get isLeaf => requiresGrad && gradFn == null;
 
   /// Runs backward automatic differentiation starting from this tensor.
-  void backward([GpuArray? gradient, bool retainGraph = false]) =>
-      runBackward(this, gradient, retainGraph);
+  void backward({GpuArray? gradient, bool retainGraph = false}) {
+    _checkNotDisposed();
+    runBackward(this, gradient: gradient, retainGraph: retainGraph);
+  }
 
   /// Resets the accumulated gradient on this tensor.
   void zeroGrad() {
     grad = null;
   }
 
-  /// Returns a new tensor sharing the same buffer, detached from the current autograd graph.
-  GpuArray<T> detach() => GpuArray<T>._(
-    buffer,
-    shape: shape,
-    strides: strides,
-    dtype: dtype,
-    device: device,
-    offsetElements: offsetElements,
-    isContiguous: isContiguous,
-    parent: _parent ?? this,
-    requiresGrad: false,
-  );
-
-  /// Returns the scalar value if this array has exactly one element.
-  dynamic get scalar {
-    if (size != 1) {
-      throw StateError('Cannot retrieve scalar from tensor with size $size');
-    }
-    final raw = ComputeEngine.readAny(
+  /// Creates a new tensor view sharing the same buffer, detached from the
+  /// current autograd graph.
+  GpuArray<T> detach() {
+    _checkNotDisposed();
+    return GpuArray._create<T>(
       buffer,
-      dtype,
-      0,
+      shape: shape,
+      strides: strides,
+      dtype: dtype,
+      device: device,
       offsetElements: offsetElements,
+      isContiguous: isContiguous,
+      parent: _parent ?? this,
+      requiresGrad: false,
     );
+  }
+
+  /// The scalar value of this array when it has exactly one element.
+  ///
+  /// This array must not be disposed and must have [size] equal to `1`.
+  dynamic get scalar {
+    _checkNotDisposed();
+    if (size != 1) {
+      throw StateError('Cannot retrieve scalar from tensor with size $size.');
+    }
+    final raw = readBufferAny(buffer, dtype, 0, offsetElements: offsetElements);
     if (dtype == DType.boolean) {
       return raw == true || (raw is num && raw != 0);
     }
@@ -349,170 +627,203 @@ final class GpuArray<T extends DTypeTag>
   // --- Elementwise Arithmetic & Operations ---
 
   /// Elementwise addition (`this + other`). Supports broadcasting and scalars.
-  GpuArray operator +(dynamic other) => add(other);
+  GpuArray operator +(Object? other) => add(other);
 
   /// Elementwise subtraction (`this - other`). Supports broadcasting and scalars.
-  GpuArray operator -(dynamic other) => subtract(other);
+  GpuArray operator -(Object? other) => subtract(other);
 
   /// Elementwise multiplication (`this * other`). Supports broadcasting and scalars.
-  GpuArray operator *(dynamic other) => multiply(other);
+  GpuArray operator *(Object? other) => multiply(other);
 
   /// Elementwise division (`this / other`). Supports broadcasting and scalars.
-  GpuArray operator /(dynamic other) => divide(other);
+  GpuArray operator /(Object? other) => divide(other);
 
   /// Elementwise negation (`-this`).
   GpuArray<T> operator -() => negate();
 
   /// Elementwise addition with another [GpuArray] or scalar.
-  GpuArray add(dynamic other) => _dispatchBinary(BinaryOp.add, other);
+  GpuArray add(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.add, other, out: out);
 
   /// Elementwise subtraction with another [GpuArray] or scalar.
-  GpuArray subtract(dynamic other) => _dispatchBinary(BinaryOp.subtract, other);
+  GpuArray subtract(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.subtract, other, out: out);
 
   /// Elementwise multiplication with another [GpuArray] or scalar.
-  GpuArray multiply(dynamic other) => _dispatchBinary(BinaryOp.multiply, other);
+  GpuArray multiply(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.multiply, other, out: out);
 
   /// Elementwise division with another [GpuArray] or scalar.
-  GpuArray divide(dynamic other) => _dispatchBinary(BinaryOp.divide, other);
+  GpuArray divide(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.divide, other, out: out);
 
   /// Elementwise power with another [GpuArray] or scalar.
-  GpuArray pow(dynamic other) => _dispatchBinary(BinaryOp.power, other);
+  GpuArray pow(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.power, other, out: out);
 
   /// Elementwise remainder with another [GpuArray] or scalar.
-  GpuArray remainder(dynamic other) =>
-      _dispatchBinary(BinaryOp.remainder, other);
+  GpuArray remainder(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.remainder, other, out: out);
 
   /// Elementwise maximum with another [GpuArray] or scalar.
-  GpuArray maximum(dynamic other) => _dispatchBinary(BinaryOp.maximum, other);
+  GpuArray maximum(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.maximum, other, out: out);
 
   /// Elementwise minimum with another [GpuArray] or scalar.
-  GpuArray minimum(dynamic other) => _dispatchBinary(BinaryOp.minimum, other);
+  GpuArray minimum(Object? other, {GpuArray? out}) =>
+      _dispatchBinary(BinaryOp.minimum, other, out: out);
 
   /// Elementwise equality comparison (`==`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> equal(dynamic other) =>
-      _dispatchComparison(BinaryOp.equal, other);
+  GpuArray<Boolean> equal(Object? other, {GpuArray<Boolean>? out}) =>
+      _dispatchComparison(BinaryOp.equal, other, out: out);
 
   /// Elementwise inequality comparison (`!=`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> notEqual(dynamic other) =>
-      _dispatchComparison(BinaryOp.notEqual, other);
+  GpuArray<Boolean> notEqual(Object? other, {GpuArray<Boolean>? out}) =>
+      _dispatchComparison(BinaryOp.notEqual, other, out: out);
 
   /// Elementwise greater than comparison (`>`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> greater(dynamic other) =>
-      _dispatchComparison(BinaryOp.greater, other);
+  GpuArray<Boolean> greater(Object? other, {GpuArray<Boolean>? out}) =>
+      _dispatchComparison(BinaryOp.greater, other, out: out);
 
-  /// Elementwise greater than or equal comparison (`>=`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> greaterEqual(dynamic other) =>
-      _dispatchComparison(BinaryOp.greaterEqual, other);
+  /// Elementwise greater than or equal comparison (`>=`).
+  GpuArray<Boolean> greaterEqual(Object? other, {GpuArray<Boolean>? out}) =>
+      _dispatchComparison(BinaryOp.greaterEqual, other, out: out);
 
   /// Elementwise less than comparison (`<`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> less(dynamic other) =>
-      _dispatchComparison(BinaryOp.less, other);
+  GpuArray<Boolean> less(Object? other, {GpuArray<Boolean>? out}) =>
+      _dispatchComparison(BinaryOp.less, other, out: out);
 
   /// Elementwise less than alias (`<`).
-  GpuArray<Boolean> lessThan(dynamic other) => less(other);
+  GpuArray<Boolean> lessThan(Object? other, {GpuArray<Boolean>? out}) =>
+      less(other, out: out);
 
-  /// Elementwise less than or equal comparison (`<=`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> lessEqual(dynamic other) =>
-      _dispatchComparison(BinaryOp.lessEqual, other);
+  /// Elementwise less than or equal comparison (`<=`).
+  GpuArray<Boolean> lessEqual(Object? other, {GpuArray<Boolean>? out}) =>
+      _dispatchComparison(BinaryOp.lessEqual, other, out: out);
 
   /// Elementwise less than or equal alias (`<=`).
-  GpuArray<Boolean> lessThanOrEqual(dynamic other) => lessEqual(other);
+  GpuArray<Boolean> lessThanOrEqual(Object? other, {GpuArray<Boolean>? out}) =>
+      lessEqual(other, out: out);
 
   /// Elementwise greater than alias (`>`).
-  GpuArray<Boolean> greaterThan(dynamic other) => greater(other);
+  GpuArray<Boolean> greaterThan(Object? other, {GpuArray<Boolean>? out}) =>
+      greater(other, out: out);
 
   /// Elementwise greater than or equal alias (`>=`).
-  GpuArray<Boolean> greaterThanOrEqual(dynamic other) => greaterEqual(other);
+  GpuArray<Boolean> greaterThanOrEqual(
+    Object? other, {
+    GpuArray<Boolean>? out,
+  }) => greaterEqual(other, out: out);
 
   // --- Unary Math Operations ---
 
   /// Computes elementwise negation.
-  GpuArray<T> negate() => _dispatchUnary(UnaryOp.negate);
+  GpuArray<T> negate({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.negate, out: out);
 
   /// Computes elementwise absolute value.
-  GpuArray<T> abs() => _dispatchUnary(UnaryOp.abs);
+  GpuArray<T> abs({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.abs, out: out);
 
   /// Computes elementwise square root.
-  GpuArray<T> sqrt() => _dispatchUnary(UnaryOp.sqrt);
+  GpuArray<T> sqrt({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.sqrt, out: out);
 
   /// Computes elementwise exponential ($e^x$).
-  GpuArray<T> exp() => _dispatchUnary(UnaryOp.exp);
+  GpuArray<T> exp({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.exp, out: out);
 
   /// Computes elementwise natural logarithm ($\ln x$).
-  GpuArray<T> log() => _dispatchUnary(UnaryOp.log);
+  GpuArray<T> log({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.log, out: out);
 
   /// Computes elementwise sine ($\sin x$).
-  GpuArray<T> sin() => _dispatchUnary(UnaryOp.sin);
+  GpuArray<T> sin({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.sin, out: out);
 
   /// Computes elementwise cosine ($\cos x$).
-  GpuArray<T> cos() => _dispatchUnary(UnaryOp.cos);
+  GpuArray<T> cos({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.cos, out: out);
 
   /// Computes elementwise tangent ($\tan x$).
-  GpuArray<T> tan() => _dispatchUnary(UnaryOp.tan);
+  GpuArray<T> tan({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.tan, out: out);
 
   /// Computes elementwise arcsine ($\arcsin x$).
-  GpuArray<T> asin() => _dispatchUnary(UnaryOp.asin);
+  GpuArray<T> asin({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.asin, out: out);
 
   /// Computes elementwise arccosine ($\arccos x$).
-  GpuArray<T> acos() => _dispatchUnary(UnaryOp.acos);
+  GpuArray<T> acos({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.acos, out: out);
 
   /// Computes elementwise arctangent ($\arctan x$).
-  GpuArray<T> atan() => _dispatchUnary(UnaryOp.atan);
+  GpuArray<T> atan({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.atan, out: out);
 
   /// Computes elementwise hyperbolic sine ($\sinh x$).
-  GpuArray<T> sinh() => _dispatchUnary(UnaryOp.sinh);
+  GpuArray<T> sinh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.sinh, out: out);
 
   /// Computes elementwise hyperbolic cosine ($\cosh x$).
-  GpuArray<T> cosh() => _dispatchUnary(UnaryOp.cosh);
+  GpuArray<T> cosh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.cosh, out: out);
 
   /// Computes elementwise hyperbolic tangent ($\tanh x$).
-  GpuArray<T> tanh() => _dispatchUnary(UnaryOp.tanh);
+  GpuArray<T> tanh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.tanh, out: out);
 
   /// Computes elementwise floor.
-  GpuArray<T> floor() => _dispatchUnary(UnaryOp.floor);
+  GpuArray<T> floor({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.floor, out: out);
 
   /// Computes elementwise ceiling.
-  GpuArray<T> ceil() => _dispatchUnary(UnaryOp.ceil);
+  GpuArray<T> ceil({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.ceil, out: out);
 
   /// Computes elementwise round.
-  GpuArray<T> round() => _dispatchUnary(UnaryOp.round);
+  GpuArray<T> round({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.round, out: out);
 
   // --- Reductions ---
 
   /// Computes the sum of elements over the entire tensor or along [axis].
-  GpuArray sum({int? axis, bool keepDims = false}) =>
-      _dispatchReduction('sum', axis: axis, keepDims: keepDims);
+  GpuArray<T> sum({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('sum', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
 
-  /// Computes the arithmetic mean of elements over the entire tensor or along [axis].
-  GpuArray mean({int? axis, bool keepDims = false}) =>
-      _dispatchReduction('mean', axis: axis, keepDims: keepDims);
+  /// Computes the arithmetic mean of elements over the entire tensor or along
+  /// [axis].
+  GpuArray mean({int? axis, bool keepDims = false, GpuArray? out}) =>
+      _dispatchReduction('mean', axis: axis, keepDims: keepDims, out: out);
 
   /// Computes the product of elements over the entire tensor or along [axis].
-  GpuArray prod({int? axis, bool keepDims = false}) =>
-      _dispatchReduction('prod', axis: axis, keepDims: keepDims);
+  GpuArray<T> prod({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('prod', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
 
   /// Computes the minimum value over the entire tensor or along [axis].
-  GpuArray min({int? axis, bool keepDims = false}) =>
-      _dispatchReduction('min', axis: axis, keepDims: keepDims);
+  GpuArray<T> min({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('min', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
 
   /// Computes the maximum value over the entire tensor or along [axis].
-  GpuArray max({int? axis, bool keepDims = false}) =>
-      _dispatchReduction('max', axis: axis, keepDims: keepDims);
+  GpuArray<T> max({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('max', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
 
   // --- Linear Algebra ---
 
-  /// Matrix multiplication of two 2D or batched N-D tensors.
-  GpuArray<R> matmul<R extends DTypeTag>(GpuArray other) {
+  /// Matrix multiplication of two 1D, 2D, or batched N-D tensors.
+  GpuArray<R> matmul<R extends DTypeTag>(GpuArray other, {GpuArray<R>? out}) {
+    _checkNotDisposed();
+    other._checkNotDisposed();
+
     if (rank < 1 || other.rank < 1) {
       throw GpuShapeMismatchException('matmul', shape, other.shape);
     }
+
+    final outDtype = _promotedDType(dtype, other.dtype) as DType<R>;
 
     if (rank == 1 && other.rank == 1) {
       if (shape[0] != other.shape[0]) {
         throw GpuShapeMismatchException('matmul', shape, other.shape);
       }
-      final outDtype = _promotedDType(dtype, other.dtype);
-      final dst = GpuArray<R>.empty([], outDtype as DType<R>, device: device);
+      final dst = _prepareOut<R>('matmul', const [], outDtype, out);
       GpuKernels.executeMatmul(
         srcA: buffer,
         shapeA: shape,
@@ -525,8 +836,8 @@ final class GpuArray<T extends DTypeTag>
         offsetB: other.offsetElements,
         dtypeB: other.dtype,
         dst: dst.buffer,
-        outShape: [],
-        outStrides: [],
+        outShape: const [],
+        outStrides: const [],
         offsetDst: dst.offsetElements,
         dtypeDst: outDtype,
       );
@@ -542,29 +853,47 @@ final class GpuArray<T extends DTypeTag>
         throw GpuShapeMismatchException('matmul', shape, other.shape);
       }
       final outShape = [shape[0], other.shape[1]];
-      final outDtype = _promotedDType(dtype, other.dtype);
-      final dst = GpuArray<R>.empty(
-        outShape,
-        outDtype as DType<R>,
-        device: device,
-      );
-      GpuKernels.executeMatmul(
-        srcA: buffer,
-        shapeA: shape,
-        stridesA: strides,
-        offsetA: offsetElements,
-        dtypeA: dtype,
-        srcB: other.buffer,
-        shapeB: other.shape,
-        stridesB: other.strides,
-        offsetB: other.offsetElements,
-        dtypeB: other.dtype,
-        dst: dst.buffer,
-        outShape: outShape,
-        outStrides: dst.strides,
-        offsetDst: dst.offsetElements,
-        dtypeDst: outDtype,
-      );
+      final dst = _prepareOut<R>('matmul', outShape, outDtype, out);
+
+      var executedViaNDArray = false;
+      if (device.backend.isSimulated &&
+          dtype == other.dtype &&
+          dtype == outDtype &&
+          (dtype == DType.float32 || dtype == DType.float64) &&
+          !shape.contains(0) &&
+          !other.shape.contains(0) &&
+          dst.buffer.address != buffer.address &&
+          dst.buffer.address != other.buffer.address) {
+        withTemporaryNDArrayView((viewA) {
+          other.withTemporaryNDArrayView((viewB) {
+            dst.withTemporaryNDArrayView((viewDst) {
+              nd.matmul(viewA, viewB, out: viewDst);
+            });
+          });
+        });
+        dst.buffer.markHostModified();
+        executedViaNDArray = true;
+      }
+
+      if (!executedViaNDArray) {
+        GpuKernels.executeMatmul(
+          srcA: buffer,
+          shapeA: shape,
+          stridesA: strides,
+          offsetA: offsetElements,
+          dtypeA: dtype,
+          srcB: other.buffer,
+          shapeB: other.shape,
+          stridesB: other.strides,
+          offsetB: other.offsetElements,
+          dtypeB: other.dtype,
+          dst: dst.buffer,
+          outShape: outShape,
+          outStrides: dst.strides,
+          offsetDst: dst.offsetElements,
+          dtypeDst: outDtype,
+        );
+      }
       if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
         dst.requiresGrad = true;
         dst.gradFn = MatmulBackward(this, other);
@@ -573,6 +902,9 @@ final class GpuArray<T extends DTypeTag>
     }
 
     // Batched N-D matmul
+    if (rank < 2 || other.rank < 2) {
+      throw GpuShapeMismatchException('matmul', shape, other.shape);
+    }
     final m = shape[rank - 2];
     final k1 = shape[rank - 1];
     final k2 = other.shape[other.rank - 2];
@@ -584,15 +916,10 @@ final class GpuArray<T extends DTypeTag>
 
     final batchA = shape.sublist(0, rank - 2);
     final batchB = other.shape.sublist(0, other.rank - 2);
-    final batchOut = ShapeUtils.broadcastShapes(batchA, batchB);
+    final batchOut = broadcastShapes(batchA, batchB);
     final outShape = [...batchOut, m, n];
 
-    final outDtype = _promotedDType(dtype, other.dtype);
-    final dst = GpuArray<R>.empty(
-      outShape,
-      outDtype as DType<R>,
-      device: device,
-    );
+    final dst = _prepareOut<R>('matmul', outShape, outDtype, out);
     GpuKernels.executeMatmul(
       srcA: buffer,
       shapeA: shape,
@@ -618,33 +945,83 @@ final class GpuArray<T extends DTypeTag>
   }
 
   /// Dot product or matrix multiplication.
-  GpuArray<R> dot<R extends DTypeTag>(GpuArray other) => matmul<R>(other);
+  GpuArray<R> dot<R extends DTypeTag>(GpuArray other, {GpuArray<R>? out}) =>
+      matmul<R>(other, out: out);
 
   // --- Tensor Views & Transformations ---
 
-  /// Returns a new view of this tensor with [newShape].
+  /// Reshapes this tensor to [newShape], returning a view when contiguous or a
+  /// contiguous copy otherwise.
   GpuArray<T> reshape(List<int> newShape) {
-    final totalSize = ShapeUtils.computeSize(newShape);
+    _checkNotDisposed();
+    final resolvedShape = List<int>.of(newShape);
+    var inferIndex = -1;
+    var knownProduct = 1;
+    for (var i = 0; i < resolvedShape.length; i++) {
+      final dim = resolvedShape[i];
+      if (dim == -1) {
+        if (inferIndex != -1) {
+          throw ArgumentError.value(
+            newShape,
+            'newShape',
+            'Must contain at most one -1 dimension.',
+          );
+        }
+        inferIndex = i;
+      } else if (dim < 0) {
+        throw ArgumentError.value(
+          newShape,
+          'newShape',
+          'Dimensions must be non-negative or -1.',
+        );
+      } else {
+        knownProduct *= dim;
+      }
+    }
+    if (inferIndex != -1) {
+      if (knownProduct == 0 || size % knownProduct != 0) {
+        throw ArgumentError.value(
+          newShape,
+          'newShape',
+          'Cannot infer dimension for tensor of size $size.',
+        );
+      }
+      resolvedShape[inferIndex] = size ~/ knownProduct;
+    }
+
+    final totalSize = computeSize(resolvedShape);
     if (totalSize != size) {
-      throw ArgumentError(
-        'Cannot reshape tensor of size $size to shape $newShape (size $totalSize)',
+      throw ArgumentError.value(
+        newShape,
+        'newShape',
+        'Must have total size matching $size (got $totalSize).',
       );
     }
 
-    GpuArray<T> res;
+    final GpuArray<T> res;
     if (isContiguous) {
-      res = GpuArray<T>._(
+      res = GpuArray._create<T>(
         buffer,
-        shape: List.unmodifiable(newShape),
-        strides: List.unmodifiable(ShapeUtils.computeCStrides(newShape)),
+        shape: List.unmodifiable(resolvedShape),
+        strides: List.unmodifiable(computeCStrides(resolvedShape)),
         dtype: dtype,
         device: device,
         offsetElements: offsetElements,
         parent: this,
       );
     } else {
-      final contiguousCopy = copy();
-      res = contiguousCopy.reshape(newShape);
+      res = GpuArray<T>.empty(resolvedShape, dtype, device: device);
+      GpuKernels.copyStrided(
+        src: buffer,
+        shape: shape,
+        strides: strides,
+        offsetSrc: offsetElements,
+        dtypeSrc: dtype,
+        dst: res.buffer,
+        outStrides: computeCStrides(shape),
+        offsetDst: 0,
+        dtypeDst: dtype,
+      );
     }
 
     if (isGradEnabled && requiresGrad) {
@@ -657,17 +1034,37 @@ final class GpuArray<T extends DTypeTag>
 
   /// Permutes the axes of this tensor.
   GpuArray<T> transpose([List<int>? axes]) {
+    _checkNotDisposed();
     final perm = axes ?? List.generate(rank, (i) => rank - 1 - i);
     if (perm.length != rank) {
-      throw ArgumentError(
-        'Permutation axes length must match tensor rank ($rank)',
+      throw ArgumentError.value(
+        axes,
+        'axes',
+        'Must have length matching tensor rank ($rank).',
       );
     }
 
-    final newShape = List<int>.generate(rank, (i) => shape[perm[i]]);
-    final newStrides = List<int>.generate(rank, (i) => strides[perm[i]]);
+    final seen = <int>{};
+    final normPerm = <int>[];
+    for (final ax in perm) {
+      final norm = ax < 0 ? ax + rank : ax;
+      if (norm < 0 || norm >= rank) {
+        throw GpuAxisOutOfBoundsException(ax, rank);
+      }
+      if (!seen.add(norm)) {
+        throw ArgumentError.value(
+          axes,
+          'axes',
+          'Must not contain duplicate axes.',
+        );
+      }
+      normPerm.add(norm);
+    }
 
-    final res = GpuArray<T>._(
+    final newShape = List<int>.generate(rank, (i) => shape[normPerm[i]]);
+    final newStrides = List<int>.generate(rank, (i) => strides[normPerm[i]]);
+
+    final res = GpuArray._create<T>(
       buffer,
       shape: List.unmodifiable(newShape),
       strides: List.unmodifiable(newStrides),
@@ -679,25 +1076,32 @@ final class GpuArray<T extends DTypeTag>
 
     if (isGradEnabled && requiresGrad) {
       res.requiresGrad = true;
-      res.gradFn = TransposeBackward(this, perm);
+      res.gradFn = TransposeBackward(this, normPerm);
     }
 
     return res;
   }
 
-  /// Returns a 1D flattened view or contiguous copy of this tensor.
+  /// Flattens this tensor into a 1D view or contiguous copy.
   GpuArray<T> flatten() => reshape([size]);
 
-  /// Removes dimensions of size 1 at [axis], or all size-1 dimensions if [axis] is omitted.
+  /// Removes dimensions of size 1 at [axis], or all size-1 dimensions if
+  /// [axis] is omitted.
   GpuArray<T> squeeze({int? axis}) {
+    _checkNotDisposed();
     final newShape = <int>[];
     if (axis != null) {
       final normAxis = axis < 0 ? axis + rank : axis;
+      if (normAxis < 0 || normAxis >= rank) {
+        throw GpuAxisOutOfBoundsException(axis, rank);
+      }
       for (var i = 0; i < rank; i++) {
         if (i == normAxis) {
           if (shape[i] != 1) {
-            throw ArgumentError(
-              'Cannot squeeze axis $axis with size ${shape[i]}',
+            throw ArgumentError.value(
+              axis,
+              'axis',
+              'Must select an axis of size 1 (got size ${shape[i]}).',
             );
           }
         } else {
@@ -722,11 +1126,12 @@ final class GpuArray<T extends DTypeTag>
 
   /// Inserts a new dimension of size 1 at position [axis].
   GpuArray<T> unsqueeze(int axis) {
+    _checkNotDisposed();
     final normAxis = axis < 0 ? axis + rank + 1 : axis;
     if (normAxis < 0 || normAxis > rank) {
       throw RangeError.range(normAxis, 0, rank, 'axis');
     }
-    final newShape = List<int>.from(shape)..insert(normAxis, 1);
+    final newShape = List<int>.of(shape)..insert(normAxis, 1);
     final res = reshape(newShape);
     if (isGradEnabled && requiresGrad) {
       res.requiresGrad = true;
@@ -735,9 +1140,11 @@ final class GpuArray<T extends DTypeTag>
     return res;
   }
 
-  /// Creates a new contiguous copy of this tensor in device memory.
-  GpuArray<T> copy() {
-    final dst = GpuArray<T>.empty(shape, dtype, device: device);
+  /// Creates a contiguous copy of this tensor in device memory (or writes into
+  /// [out] if provided).
+  GpuArray<T> copy({GpuArray<T>? out}) {
+    _checkNotDisposed();
+    final dst = _prepareOut<T>('copy', shape, dtype, out);
     GpuKernels.copyStrided(
       src: buffer,
       shape: shape,
@@ -753,9 +1160,13 @@ final class GpuArray<T extends DTypeTag>
   }
 
   /// Casts this tensor to a different [targetDType].
-  GpuArray<R> astype<R extends DTypeTag>(DType<R> targetDType) {
-    if (dtype == targetDType) return this as GpuArray<R>;
-    final dst = GpuArray<R>.empty(shape, targetDType, device: device);
+  GpuArray<R> astype<R extends DTypeTag>(
+    DType<R> targetDType, {
+    GpuArray<R>? out,
+  }) {
+    _checkNotDisposed();
+    if (dtype == targetDType && out == null) return this as GpuArray<R>;
+    final dst = _prepareOut<R>('astype', shape, targetDType, out);
     GpuKernels.copyStrided(
       src: buffer,
       shape: shape,
@@ -770,8 +1181,9 @@ final class GpuArray<T extends DTypeTag>
     return dst;
   }
 
-  /// Returns a strided subview of this array according to [specs].
-  GpuArray<T> slice(List<dynamic> specs) {
+  /// Creates a strided subview of this array according to [specs].
+  GpuArray<T> slice(List<Object?> specs) {
+    _checkNotDisposed();
     final view = computeSliceView(
       shape: shape,
       strides: strides,
@@ -779,7 +1191,7 @@ final class GpuArray<T extends DTypeTag>
       specs: specs,
     );
 
-    final res = GpuArray<T>._(
+    final res = GpuArray._create<T>(
       buffer,
       shape: view.shape,
       strides: view.strides,
@@ -797,68 +1209,97 @@ final class GpuArray<T extends DTypeTag>
     return res;
   }
 
-  /// Slices this array using [index] (can be a [Slice], [Index], [All], [NewAxis], [Ellipsis], or a [List] of them).
-  dynamic operator [](dynamic index) {
+  /// Slices this array using [index] (a [SliceSpec], `int`, or `List` of specs).
+  GpuArray<T> operator [](Object index) {
     if (index is List) {
       return slice(index);
     }
     return slice([index]);
   }
 
-  /// Interchange two axes of this array.
+  /// Interchanges two axes of this array.
   GpuArray<T> swapaxes(int axis1, int axis2) =>
       manip.swapaxes(this, axis1, axis2);
 
-  /// Move axes of this array to new positions.
-  GpuArray<T> moveaxis(dynamic source, dynamic destination) =>
+  /// Moves axes of this array to new positions.
+  GpuArray<T> moveaxis(Object source, Object destination) =>
       manip.moveaxis(this, source, destination);
 
   /// Repeats elements of this array [repeats] times along [axis].
-  GpuArray<T> repeat(int repeats, {int? axis}) =>
-      manip.repeat(this, repeats, axis: axis);
+  GpuArray<T> repeat(int repeats, {int? axis, GpuArray<T>? out}) =>
+      manip.repeat(this, repeats, axis: axis, out: out);
 
-  /// Extracts diagonal or constructs diagonal array.
-  GpuArray<T> diag({int k = 0}) => manip.diag(this, k: k);
+  /// Extracts a diagonal or constructs a diagonal array.
+  GpuArray<T> diag({int k = 0, GpuArray<T>? out}) =>
+      manip.diag(this, k: k, out: out);
 
-  /// Returns specified diagonals of this array.
-  GpuArray<T> diagonal({int offset = 0, int axis1 = 0, int axis2 = 1}) =>
-      manip.diagonal(this, offset: offset, axis1: axis1, axis2: axis2);
+  /// Extracts specified diagonals of this array.
+  GpuArray<T> diagonal({
+    int offset = 0,
+    int axis1 = 0,
+    int axis2 = 1,
+    GpuArray<T>? out,
+  }) => manip.diagonal(
+    this,
+    offset: offset,
+    axis1: axis1,
+    axis2: axis2,
+    out: out,
+  );
 
-  /// Returns the sum along diagonals of this array.
-  dynamic trace({int offset = 0, int axis1 = 0, int axis2 = 1}) =>
-      manip.trace(this, offset: offset, axis1: axis1, axis2: axis2);
+  /// Computes the sum along diagonals of this array as a [GpuArray].
+  GpuArray<T> trace({
+    int offset = 0,
+    int axis1 = 0,
+    int axis2 = 1,
+    GpuArray<T>? out,
+  }) => manip.trace(this, offset: offset, axis1: axis1, axis2: axis2, out: out);
 
-  /// Returns upper triangular portion of this array.
-  GpuArray<T> triu({int k = 0}) => manip.triu(this, k: k);
+  /// Extracts the upper triangular portion of this array.
+  GpuArray<T> triu({int k = 0, GpuArray<T>? out}) =>
+      manip.triu(this, k: k, out: out);
 
-  /// Returns lower triangular portion of this array.
-  GpuArray<T> tril({int k = 0}) => manip.tril(this, k: k);
+  /// Extracts the lower triangular portion of this array.
+  GpuArray<T> tril({int k = 0, GpuArray<T>? out}) =>
+      manip.tril(this, k: k, out: out);
 
   /// Reverses the order of elements along the given [axis].
-  GpuArray<T> flip({dynamic axis}) => manip.flip(this, axis: axis);
+  GpuArray<T> flip({Object? axis}) => manip.flip(this, axis: axis);
 
-  /// Roll array elements along a given [axis].
-  GpuArray<T> roll(dynamic shift, {dynamic axis}) =>
-      manip.roll(this, shift, axis: axis);
+  /// Rolls array elements along a given [axis].
+  GpuArray<T> roll(Object shift, {Object? axis, GpuArray<T>? out}) =>
+      manip.roll(this, shift, axis: axis, out: out);
 
   /// Rotates an array by 90 degrees in the plane specified by [axes].
   GpuArray<T> rot90({int k = 1, List<int> axes = const [0, 1]}) =>
       manip.rot90(this, k: k, axes: axes);
 
-  /// Pads this array with [padWidth].
+  /// Pads this array with [padWidth] using [mode].
   GpuArray<T> pad(
     List<List<int>> padWidth, {
-    String mode = 'constant',
-    dynamic constantValues = 0,
-  }) => manip.pad(this, padWidth, mode: mode, constantValues: constantValues);
+    manip.PadMode mode = manip.PadMode.constant,
+    Object constantValues = 0,
+    GpuArray<T>? out,
+  }) => manip.pad(
+    this,
+    padWidth,
+    mode: mode,
+    constantValues: constantValues,
+    out: out,
+  );
+
+  /// Broadcasts this array to [targetShape].
+  GpuArray<T> broadcastTo(List<int> targetShape) =>
+      manip.broadcastTo(this, targetShape);
 
   /// Promotes two [DType]s following NumPy's type promotion hierarchy.
   static DType promoteDTypes(DType a, DType b) => _promotedDType(a, b);
 
   // --- Conversions & Host Interop ---
 
-  /// Downloads this GPU tensor into host memory as a standard [NDArray].
+  /// Downloads this GPU tensor into host memory as a standard [nd.NDArray].
   nd.NDArray<T> toNDArray() {
+    _checkNotDisposed();
     final contiguousArray = isContiguous ? this : copy();
     final ndarray = nd.NDArray<T>.create(shape, dtype);
 
@@ -875,31 +1316,42 @@ final class GpuArray<T extends DTypeTag>
     return ndarray;
   }
 
-  /// Returns a flat Dart list containing a copy of the elements in this tensor.
+  /// Copies the elements of this tensor into a flat Dart list.
   List<dynamic> toList() {
-    final hostND = toNDArray();
-    final list = hostND.toList();
-    hostND.dispose();
-    return list;
-  }
-
-  /// Returns the scalar value of a 0D or 1-element tensor.
-  dynamic item() {
-    if (size != 1) {
-      throw ArgumentError(
-        'item() only works on tensors with exactly 1 element (has $size).',
+    _checkNotDisposed();
+    final total = size;
+    final result = <dynamic>[];
+    if (total == 0) return result;
+    final coords = List<int>.filled(rank, 0);
+    for (var i = 0; i < total; i++) {
+      var elemOffset = 0;
+      for (var d = 0; d < rank; d++) {
+        elemOffset += coords[d] * strides[d];
+      }
+      final raw = readBufferAny(
+        buffer,
+        dtype,
+        elemOffset,
+        offsetElements: offsetElements,
       );
+      if (dtype == DType.boolean) {
+        result.add(raw == true || (raw is num && raw != 0));
+      } else {
+        result.add(raw);
+      }
+      for (var d = rank - 1; d >= 0; d--) {
+        coords[d]++;
+        if (coords[d] < shape[d]) break;
+        coords[d] = 0;
+      }
     }
-    return ComputeEngine.readAny(
-      buffer,
-      dtype,
-      0,
-      offsetElements: offsetElements,
-    );
+    return result;
   }
 
-  /// Returns a nested Dart list representation matching the tensor's multidimensional shape.
+  /// Copies the elements of this tensor into a nested Dart list matching
+  /// [shape].
   List<dynamic> toNestedList() {
+    _checkNotDisposed();
     final flat = toList();
     if (rank <= 1) return flat;
 
@@ -931,82 +1383,231 @@ final class GpuArray<T extends DTypeTag>
 
   // --- Internal Helpers ---
 
-  GpuArray _dispatchBinary(BinaryOp op, dynamic other) {
-    if (other is GpuArray) {
-      final outShape = ShapeUtils.broadcastShapes(shape, other.shape);
-      final outDtype = _promotedDType(dtype, other.dtype);
-      final dst = GpuArray.empty(outShape, outDtype, device: device);
+  GpuArray<R> _prepareOut<R extends DTypeTag>(
+    String opName,
+    List<int> outShape,
+    DType<R> outDType,
+    GpuArray? out,
+  ) {
+    if (out != null) {
+      out._checkNotDisposed();
+      if (out.size > 1 && out.strides.contains(0)) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must be writeable and not a broadcasted view.',
+        );
+      }
+      if (!areShapesEqual(out.shape, outShape)) {
+        throw GpuShapeMismatchException('$opName(out)', out.shape, outShape);
+      }
+      if (out.dtype != outDType) {
+        throw ArgumentError.value(
+          out.dtype,
+          'out.dtype',
+          'Must match output dtype $outDType.',
+        );
+      }
+      return out as GpuArray<R>;
+    }
+    return GpuArray<R>.empty(outShape, outDType, device: device);
+  }
 
-      GpuKernels.executeBinaryOp(
-        op: op,
-        srcA: buffer,
-        shapeA: shape,
-        stridesA: strides,
-        offsetA: offsetElements,
-        dtypeA: dtype,
-        srcB: other.buffer,
-        shapeB: other.shape,
-        stridesB: other.strides,
-        offsetB: other.offsetElements,
-        dtypeB: other.dtype,
-        dst: dst.buffer,
-        outShape: outShape,
-        outStrides: dst.strides,
-        offsetDst: dst.offsetElements,
-        dtypeDst: outDtype,
-      );
+  bool _tryNDArrayBinary(BinaryOp op, GpuArray other, GpuArray dst) {
+    if (!device.backend.isSimulated ||
+        dtype != other.dtype ||
+        dtype != dst.dtype ||
+        shape.contains(0) ||
+        other.shape.contains(0) ||
+        dst.shape.contains(0) ||
+        dst.buffer.address == buffer.address ||
+        dst.buffer.address == other.buffer.address) {
+      return false;
+    }
+
+    final isFloat = dtype == DType.float32 || dtype == DType.float64;
+    final isComplex = dtype == DType.complex64 || dtype == DType.complex128;
+    final isStdInt =
+        dtype == DType.int8 ||
+        dtype == DType.int16 ||
+        dtype == DType.int32 ||
+        dtype == DType.int64 ||
+        dtype == DType.uint8 ||
+        dtype == DType.uint16 ||
+        dtype == DType.uint32 ||
+        dtype == DType.uint64;
+
+    switch (op) {
+      case BinaryOp.add:
+      case BinaryOp.subtract:
+      case BinaryOp.multiply:
+        if (!isFloat && !isComplex && !isStdInt) return false;
+      case BinaryOp.divide:
+        if (!isFloat && !isComplex) return false;
+      case BinaryOp.power:
+      case BinaryOp.remainder:
+      case BinaryOp.maximum:
+      case BinaryOp.minimum:
+        if (!isFloat) return false;
+      default:
+        return false;
+    }
+
+    withTemporaryNDArrayView((viewA) {
+      other.withTemporaryNDArrayView((viewB) {
+        dst.withTemporaryNDArrayView((viewDst) {
+          switch (op) {
+            case BinaryOp.add:
+              nd.add(viewA, viewB, out: viewDst);
+            case BinaryOp.subtract:
+              nd.subtract(viewA, viewB, out: viewDst);
+            case BinaryOp.multiply:
+              nd.multiply(viewA, viewB, out: viewDst);
+            case BinaryOp.divide:
+              nd.divide(viewA, viewB, out: viewDst);
+            case BinaryOp.power:
+              nd.power(viewA, viewB, out: viewDst);
+            case BinaryOp.remainder:
+              nd.remainder(viewA, viewB, out: viewDst);
+            case BinaryOp.maximum:
+              nd.binaryUfunc(
+                viewA,
+                viewB,
+                op: nd.BinaryOp.maximum,
+                out: viewDst,
+              );
+            case BinaryOp.minimum:
+              nd.binaryUfunc(
+                viewA,
+                viewB,
+                op: nd.BinaryOp.minimum,
+                out: viewDst,
+              );
+            default:
+              break;
+          }
+        });
+      });
+    });
+    dst.buffer.markHostModified();
+    return true;
+  }
+
+  bool _tryNDArrayUnary(UnaryOp op, GpuArray<T> dst) {
+    if (!device.backend.isSimulated ||
+        (dtype != DType.float32 && dtype != DType.float64) ||
+        shape.contains(0) ||
+        dst.buffer.address == buffer.address) {
+      return false;
+    }
+
+    withTemporaryNDArrayView((viewSrc) {
+      dst.withTemporaryNDArrayView((viewDst) {
+        final ndOp = switch (op) {
+          UnaryOp.negate => nd.UnaryOp.negative,
+          UnaryOp.abs => nd.UnaryOp.abs,
+          UnaryOp.sqrt => nd.UnaryOp.sqrt,
+          UnaryOp.exp => nd.UnaryOp.exp,
+          UnaryOp.log => nd.UnaryOp.log,
+          UnaryOp.sin => nd.UnaryOp.sin,
+          UnaryOp.cos => nd.UnaryOp.cos,
+          UnaryOp.tan => nd.UnaryOp.tan,
+          UnaryOp.asin => nd.UnaryOp.arcsin,
+          UnaryOp.acos => nd.UnaryOp.arccos,
+          UnaryOp.atan => nd.UnaryOp.arctan,
+          UnaryOp.sinh => nd.UnaryOp.sinh,
+          UnaryOp.cosh => nd.UnaryOp.cosh,
+          UnaryOp.tanh => nd.UnaryOp.tanh,
+          UnaryOp.floor => nd.UnaryOp.floor,
+          UnaryOp.ceil => nd.UnaryOp.ceil,
+          UnaryOp.round => nd.UnaryOp.rint,
+        };
+        nd.unaryUfunc(viewSrc, op: ndOp, out: viewDst);
+      });
+    });
+    dst.buffer.markHostModified();
+    return true;
+  }
+
+  GpuArray _dispatchBinary(BinaryOp op, Object? other, {GpuArray? out}) {
+    _checkNotDisposed();
+    if (other is GpuArray) {
+      other._checkNotDisposed();
+      final outShape = broadcastShapes(shape, other.shape);
+      final outDtype = _promotedDType(dtype, other.dtype);
+      final dst = _prepareOut(op.name, outShape, outDtype, out);
+
+      if (!_tryNDArrayBinary(op, other, dst)) {
+        GpuKernels.executeBinaryOp(
+          op: op,
+          srcA: buffer,
+          shapeA: shape,
+          stridesA: strides,
+          offsetA: offsetElements,
+          dtypeA: dtype,
+          srcB: other.buffer,
+          shapeB: other.shape,
+          stridesB: other.strides,
+          offsetB: other.offsetElements,
+          dtypeB: other.dtype,
+          dst: dst.buffer,
+          outShape: outShape,
+          outStrides: dst.strides,
+          offsetDst: dst.offsetElements,
+          dtypeDst: outDtype,
+        );
+      }
 
       if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
         dst.requiresGrad = true;
         switch (op) {
           case BinaryOp.add:
             dst.gradFn = AddBackward(this, other);
-            break;
           case BinaryOp.subtract:
             dst.gradFn = SubBackward(this, other);
-            break;
           case BinaryOp.multiply:
             dst.gradFn = MulBackward(this, other);
-            break;
           case BinaryOp.divide:
             dst.gradFn = DivBackward(this, other);
-            break;
           case BinaryOp.power:
             dst.gradFn = PowBackward(this, other);
-            break;
           default:
             break;
         }
       }
 
       return dst;
-    } else if (other is num || other is bool) {
+    } else if (other is num || other is bool || other is Complex) {
       final scalarArray = GpuArray.filled(
-        [],
-        other as Object,
+        const [],
+        other!,
         dtype,
         device: device,
       );
-      final res = _dispatchBinary(op, scalarArray);
+      final res = _dispatchBinary(op, scalarArray, out: out);
       if (!res.requiresGrad) {
         scalarArray.dispose();
       }
       return res;
     } else {
-      throw ArgumentError(
-        'Unsupported operand type for binary operation: ${other.runtimeType}',
+      throw ArgumentError.value(
+        other,
+        'other',
+        'Must be a GpuArray, num, bool, or Complex.',
       );
     }
   }
 
-  GpuArray<Boolean> _dispatchComparison(BinaryOp op, dynamic other) {
+  GpuArray<Boolean> _dispatchComparison(
+    BinaryOp op,
+    Object? other, {
+    GpuArray<Boolean>? out,
+  }) {
+    _checkNotDisposed();
     if (other is GpuArray) {
-      final outShape = ShapeUtils.broadcastShapes(shape, other.shape);
-      final dst = GpuArray<Boolean>.empty(
-        outShape,
-        DType.boolean,
-        device: device,
-      );
+      other._checkNotDisposed();
+      final outShape = broadcastShapes(shape, other.shape);
+      final dst = _prepareOut<Boolean>(op.name, outShape, DType.boolean, out);
 
       GpuKernels.executeBinaryOp(
         op: op,
@@ -1028,56 +1629,58 @@ final class GpuArray<T extends DTypeTag>
       );
 
       return dst;
-    } else if (other is num || other is bool) {
+    } else if (other is num || other is bool || other is Complex) {
       final scalarArray = GpuArray.filled(
-        [],
-        other as Object,
+        const [],
+        other!,
         dtype,
         device: device,
       );
-      final res = _dispatchComparison(op, scalarArray);
-      scalarArray.dispose();
-      return res;
+      try {
+        return _dispatchComparison(op, scalarArray, out: out);
+      } finally {
+        scalarArray.dispose();
+      }
     } else {
-      throw ArgumentError(
-        'Unsupported operand type for comparison: ${other.runtimeType}',
+      throw ArgumentError.value(
+        other,
+        'other',
+        'Must be a GpuArray, num, bool, or Complex.',
       );
     }
   }
 
-  GpuArray<T> _dispatchUnary(UnaryOp op) {
-    final dst = GpuArray<T>.empty(shape, dtype, device: device);
-    GpuKernels.executeUnaryOp(
-      op: op,
-      src: buffer,
-      shape: shape,
-      strides: strides,
-      offsetSrc: offsetElements,
-      dtypeSrc: dtype,
-      dst: dst.buffer,
-      outStrides: dst.strides,
-      offsetDst: dst.offsetElements,
-      dtypeDst: dtype,
-    );
+  GpuArray<T> _dispatchUnary(UnaryOp op, {GpuArray<T>? out}) {
+    _checkNotDisposed();
+    final dst = _prepareOut<T>(op.name, shape, dtype, out);
+    if (!_tryNDArrayUnary(op, dst)) {
+      GpuKernels.executeUnaryOp(
+        op: op,
+        src: buffer,
+        shape: shape,
+        strides: strides,
+        offsetSrc: offsetElements,
+        dtypeSrc: dtype,
+        dst: dst.buffer,
+        outStrides: dst.strides,
+        offsetDst: dst.offsetElements,
+        dtypeDst: dtype,
+      );
+    }
 
     if (isGradEnabled && requiresGrad) {
       dst.requiresGrad = true;
       switch (op) {
         case UnaryOp.negate:
           dst.gradFn = NegBackward(this);
-          break;
         case UnaryOp.sqrt:
           dst.gradFn = SqrtBackward(this, dst);
-          break;
         case UnaryOp.exp:
           dst.gradFn = ExpBackward(this, dst);
-          break;
         case UnaryOp.log:
           dst.gradFn = LogBackward(this);
-          break;
         case UnaryOp.tanh:
           dst.gradFn = TanhBackward(this, dst);
-          break;
         default:
           break;
       }
@@ -1086,16 +1689,22 @@ final class GpuArray<T extends DTypeTag>
     return dst;
   }
 
-  GpuArray _dispatchReduction(String op, {int? axis, bool keepDims = false}) {
+  GpuArray _dispatchReduction(
+    String op, {
+    int? axis,
+    bool keepDims = false,
+    GpuArray? out,
+  }) {
+    _checkNotDisposed();
     List<int> outShape;
     if (axis == null) {
-      outShape = keepDims ? List.filled(rank, 1) : [];
+      outShape = keepDims ? List.filled(rank, 1) : const [];
     } else {
       final normAxis = axis < 0 ? axis + rank : axis;
       if (normAxis < 0 || normAxis >= rank) {
-        throw RangeError.range(normAxis, 0, rank - 1, 'axis');
+        throw GpuAxisOutOfBoundsException(axis, rank);
       }
-      outShape = [];
+      outShape = <int>[];
       for (var i = 0; i < rank; i++) {
         if (i == normAxis) {
           if (keepDims) outShape.add(1);
@@ -1106,10 +1715,14 @@ final class GpuArray<T extends DTypeTag>
     }
 
     final isComplex = dtype == DType.complex64 || dtype == DType.complex128;
-    final GpuArray dst = (op == 'mean' && !isComplex)
-        ? GpuArray<Float64>.empty(outShape, DType.float64, device: device)
-        : GpuArray<T>.empty(outShape, dtype, device: device);
-    final outDtype = (op == 'mean' && !isComplex) ? DType.float64 : dtype;
+    final GpuArray dst;
+    if (out != null) {
+      dst = _prepareOut(op, outShape, out.dtype, out);
+    } else if (op == 'mean' && !isComplex) {
+      dst = GpuArray<Float64>.empty(outShape, DType.float64, device: device);
+    } else {
+      dst = GpuArray<T>.empty(outShape, dtype, device: device);
+    }
 
     GpuKernels.executeReduction(
       op: op,
@@ -1122,7 +1735,7 @@ final class GpuArray<T extends DTypeTag>
       outShape: outShape,
       outStrides: dst.strides,
       offsetDst: dst.offsetElements,
-      dtypeDst: outDtype,
+      dtypeDst: dst.dtype,
       axis: axis,
     );
 
@@ -1262,77 +1875,6 @@ final class GpuArray<T extends DTypeTag>
   @override
   ScopedResource detachToParentScope() {
     ResourceScope.promoteToParent(this);
-    buffer.detachToParentScope();
     return this;
-  }
-
-  /// Packages this [GpuArray]'s underlying compute pipeline and data into an interactive client-side [WebGpuWidget].
-  WebGpuWidget toWebGpuWidget({
-    String? title,
-    bool renderToCanvas = false,
-    List<dynamic> sliders = const [],
-  }) {
-    final parsedSliders = sliders.map((e) => e as WebGpuSlider).toList();
-    final rawND = toNDArray();
-    final rawList = rawND.toList();
-    final f32List = Float32List.fromList(
-      rawList.map((e) => (e as num).toDouble()).toList(),
-    );
-    final base64Payload = base64Encode(f32List.buffer.asUint8List());
-    rawND.dispose();
-
-    const wgsl = '''
-struct Uniforms {
-  total_elements: u32,
-  pad0: u32,
-  pad1: u32,
-  pad2: u32,
-}
-
-@group(0) @binding(0) var<storage, read> src: array<f32>;
-@group(0) @binding(1) var<storage, read_write> dst: array<f32>;
-@group(0) @binding(2) var<uniform> uniforms: Uniforms;
-
-@compute @workgroup_size(256, 1, 1)
-fn main(
-  @builtin(global_invocation_id) global_id: vec3<u32>,
-  @builtin(num_workgroups) num_workgroups: vec3<u32>
-) {
-  var idx = global_id.x;
-  let stride = num_workgroups.x * 256u;
-  while (idx < uniforms.total_elements) {
-    dst[idx] = src[idx];
-    idx += stride;
-  }
-}
-''';
-
-    final pkg = GpuComputePipelinePackage(
-      name: title ?? 'GpuArray_${dtype.name}',
-      wgslCode: wgsl,
-      inputs: [
-        GpuBufferPayload(
-          bindingIndex: 0,
-          name: 'src',
-          dtype: dtype,
-          shape: shape,
-          base64Data: base64Payload,
-          sizeInBytes: buffer.sizeInBytes,
-        ),
-      ],
-      output: GpuBufferPayload(
-        bindingIndex: 1,
-        name: 'dst',
-        dtype: dtype,
-        shape: shape,
-        isOutput: true,
-        sizeInBytes: buffer.sizeInBytes,
-      ),
-      uniforms: [ShapeUtils.computeSize(shape), 0, 0, 0],
-      sliders: parsedSliders,
-      renderToCanvas: renderToCanvas,
-    );
-
-    return WebGpuWidget(pkg, title: title ?? 'GpuArray Interactive Inspector');
   }
 }

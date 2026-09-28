@@ -12,78 +12,77 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import '../operations/manipulation.dart' as manip;
-import '../slice.dart';
+import 'dart:ffi' as ffi;
 import 'dart:math' as math;
+
+import '../autograd/autograd.dart';
+import '../backend/compute_engine.dart';
+import '../device.dart';
 import '../dtype.dart';
 import '../gpu_array.dart';
-import '../device.dart';
-import '../random/random.dart' as rng;
-import '../autograd/autograd.dart';
+import '../operations/manipulation.dart' as manipulation;
+import '../random/random.dart' as random_ops;
+import '../slice.dart';
+import 'functional.dart' as functional;
 import 'module.dart';
-import 'functional.dart' as f;
 
-/// Applies an affine linear transformation to the incoming data: $y = x A^T + b$.
-class Linear extends Module {
+/// Applies an affine linear transformation to incoming data: $y = x A^T + b$.
+final class Linear extends Module {
+  /// Size of each input sample.
   final int inFeatures;
+
+  /// Size of each output sample.
   final int outFeatures;
+
+  /// Whether this layer learns an additive bias vector.
   final bool hasBias;
 
-  late final GpuArray weight;
-  late final GpuArray? bias;
+  /// Learnable weight matrix of shape `[outFeatures, inFeatures]`.
+  late final GpuArray<Float64> weight;
 
+  /// Optional learnable bias vector of shape `[outFeatures]`.
+  late final GpuArray<Float64>? bias;
+
+  /// Creates a [Linear] layer mapping [inFeatures] to [outFeatures].
+  ///
+  /// Both [inFeatures] and [outFeatures] must be positive integers.
   Linear(
     this.inFeatures,
     this.outFeatures, {
     this.hasBias = true,
     GpuDevice? device,
   }) {
-    final dev = device ?? GpuDevice.defaultDevice;
-    final k = 1.0 / math.sqrt(inFeatures);
+    RangeError.checkValueInInterval(inFeatures, 1, 0x7fffffff, 'inFeatures');
+    RangeError.checkValueInInterval(outFeatures, 1, 0x7fffffff, 'outFeatures');
 
-    final rawW = rng.uniform(
-      low: -k,
-      high: k,
+    final targetDevice = device ?? GpuDevice.defaultDevice;
+    final bound = 1.0 / math.sqrt(inFeatures);
+
+    final sampledWeight = random_ops.uniform(
+      low: -bound,
+      high: bound,
       shape: [outFeatures, inFeatures],
-      device: dev,
-    );
-    weight = registerParameter(
-      'weight',
-      GpuArray.fromList(
-        rawW.toList(),
-        [outFeatures, inFeatures],
-        DType.float64,
-        device: dev,
-        requiresGrad: true,
-      ),
-    );
+      device: targetDevice,
+    )..requiresGrad = true;
+    weight = registerParameter('weight', sampledWeight);
 
     if (hasBias) {
-      final rawB = rng.uniform(
-        low: -k,
-        high: k,
+      final sampledBias = random_ops.uniform(
+        low: -bound,
+        high: bound,
         shape: [outFeatures],
-        device: dev,
-      );
-      bias = registerParameter(
-        'bias',
-        GpuArray.fromList(
-          rawB.toList(),
-          [outFeatures],
-          DType.float64,
-          device: dev,
-          requiresGrad: true,
-        ),
-      );
+        device: targetDevice,
+      )..requiresGrad = true;
+      bias = registerParameter('bias', sampledBias);
     } else {
       bias = null;
     }
   }
 
   @override
-  GpuArray forward(GpuArray input) {
-    final wT = weight.swapaxes(-1, -2);
-    final output = input.matmul(wT);
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+    final weightTransposed = weight.swapaxes(-1, -2);
+    final output = input.matmul(weightTransposed);
     if (bias != null) {
       return output + bias;
     }
@@ -91,18 +90,36 @@ class Linear extends Module {
   }
 }
 
-/// Applies a 2D convolution over an input signal composed of several input planes.
-class Conv2d extends Module {
+/// Applies a 2D spatial convolution over a 4D input signal (`[N, C_in, H_in, W_in]`).
+final class Conv2d extends Module {
+  /// Number of channels in the input image.
   final int inChannels;
+
+  /// Number of channels produced by the convolution.
   final int outChannels;
+
+  /// Spatial height and width of the square convolution kernel.
   final int kernelSize;
+
+  /// Stride of the convolution along height and width.
   final int stride;
+
+  /// Zero-padding added to all four spatial borders of the input.
   final int padding;
+
+  /// Whether this layer learns an additive per-channel bias vector.
   final bool hasBias;
 
-  late final GpuArray weight;
-  late final GpuArray? bias;
+  /// Learnable filter weights of shape `[outChannels, inChannels, kernelSize, kernelSize]`.
+  late final GpuArray<Float64> weight;
 
+  /// Optional learnable bias vector of shape `[outChannels]`.
+  late final GpuArray<Float64>? bias;
+
+  /// Creates a [Conv2d] layer.
+  ///
+  /// The [inChannels], [outChannels], [kernelSize], and [stride] must be positive,
+  /// and [padding] must be non-negative.
   Conv2d(
     this.inChannels,
     this.outChannels,
@@ -112,130 +129,107 @@ class Conv2d extends Module {
     this.hasBias = true,
     GpuDevice? device,
   }) {
-    final dev = device ?? GpuDevice.defaultDevice;
-    final k = 1.0 / math.sqrt(inChannels * kernelSize * kernelSize);
+    if (inChannels <= 0) {
+      throw ArgumentError.value(inChannels, 'inChannels', 'Must be positive.');
+    }
+    if (outChannels <= 0) {
+      throw ArgumentError.value(
+        outChannels,
+        'outChannels',
+        'Must be positive.',
+      );
+    }
+    if (kernelSize <= 0) {
+      throw ArgumentError.value(kernelSize, 'kernelSize', 'Must be positive.');
+    }
+    if (stride <= 0) {
+      throw ArgumentError.value(stride, 'stride', 'Must be positive.');
+    }
+    RangeError.checkNotNegative(padding, 'padding');
 
-    final rawW = rng.uniform(
-      low: -k,
-      high: k,
+    final targetDevice = device ?? GpuDevice.defaultDevice;
+    final bound = 1.0 / math.sqrt(inChannels * kernelSize * kernelSize);
+
+    final sampledWeight = random_ops.uniform(
+      low: -bound,
+      high: bound,
       shape: [outChannels, inChannels, kernelSize, kernelSize],
-      device: dev,
-    );
-    weight = registerParameter(
-      'weight',
-      GpuArray.fromList(
-        rawW.toList(),
-        [outChannels, inChannels, kernelSize, kernelSize],
-        DType.float64,
-        device: dev,
-        requiresGrad: true,
-      ),
-    );
+      device: targetDevice,
+    )..requiresGrad = true;
+    weight = registerParameter('weight', sampledWeight);
 
     if (hasBias) {
-      final rawB = rng.uniform(
-        low: -k,
-        high: k,
+      final sampledBias = random_ops.uniform(
+        low: -bound,
+        high: bound,
         shape: [outChannels],
-        device: dev,
-      );
-      bias = registerParameter(
-        'bias',
-        GpuArray.fromList(
-          rawB.toList(),
-          [outChannels],
-          DType.float64,
-          device: dev,
-          requiresGrad: true,
-        ),
-      );
+        device: targetDevice,
+      )..requiresGrad = true;
+      bias = registerParameter('bias', sampledBias);
     } else {
       bias = null;
     }
   }
 
   @override
-  GpuArray forward(GpuArray input) {
-    // Input: [N, C_in, H, W]
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+    if (input.rank != 4) {
+      throw ArgumentError.value(
+        input.shape,
+        'input',
+        'Must be a 4D tensor of shape [batchSize, inChannels, height, width].',
+      );
+    }
     final batchSize = input.shape[0];
-    final inC = input.shape[1];
-    final inH = input.shape[2];
-    final inW = input.shape[3];
+    final inHeight = input.shape[2];
+    final inWidth = input.shape[3];
 
-    final outH = ((inH + 2 * padding - kernelSize) ~/ stride) + 1;
-    final outW = ((inW + 2 * padding - kernelSize) ~/ stride) + 1;
+    final outHeight = ((inHeight + 2 * padding - kernelSize) ~/ stride) + 1;
+    final outWidth = ((inWidth + 2 * padding - kernelSize) ~/ stride) + 1;
+    final patchSize = inChannels * kernelSize * kernelSize;
 
-    final inputND = input.toNDArray();
-    final inputList = inputND
-        .toList()
-        .cast<num>()
-        .map((e) => e.toDouble())
-        .toList();
-    inputND.dispose();
+    final output = noGrad(() {
+      final columns = extractIm2ColPatches(
+        input,
+        kernelSize: kernelSize,
+        stride: stride,
+        padding: padding,
+        outHeight: outHeight,
+        outWidth: outWidth,
+      );
+      final weightMatrix = weight.reshape([outChannels, patchSize]);
+      final weightTransposed = weightMatrix.swapaxes(-1, -2);
+      var outMatrix = columns.matmul(weightTransposed);
+      columns.dispose();
+      weightTransposed.dispose();
+      weightMatrix.dispose();
 
-    final weightND = weight.toNDArray();
-    final weightList = weightND
-        .toList()
-        .cast<num>()
-        .map((e) => e.toDouble())
-        .toList();
-    weightND.dispose();
-
-    List<double>? biasList;
-    if (bias != null) {
-      final biasND = bias!.toNDArray();
-      biasList = biasND.toList().cast<num>().map((e) => e.toDouble()).toList();
-      biasND.dispose();
-    }
-
-    final outSize = batchSize * outChannels * outH * outW;
-    final outList = List<double>.filled(outSize, 0.0);
-
-    for (var b = 0; b < batchSize; b++) {
-      for (var oc = 0; oc < outChannels; oc++) {
-        final bVal = biasList != null ? biasList[oc] : 0.0;
-        for (var oh = 0; oh < outH; oh++) {
-          for (var ow = 0; ow < outW; ow++) {
-            var sum = bVal;
-            final ihStart = oh * stride - padding;
-            final iwStart = ow * stride - padding;
-
-            for (var ic = 0; ic < inC; ic++) {
-              for (var kh = 0; kh < kernelSize; kh++) {
-                final ih = ihStart + kh;
-                if (ih < 0 || ih >= inH) continue;
-                for (var kw = 0; kw < kernelSize; kw++) {
-                  final iw = iwStart + kw;
-                  if (iw < 0 || iw >= inW) continue;
-
-                  final inIdx = ((b * inC + ic) * inH + ih) * inW + iw;
-                  final wIdx =
-                      ((oc * inC + ic) * kernelSize + kh) * kernelSize + kw;
-                  sum += inputList[inIdx] * weightList[wIdx];
-                }
-              }
-            }
-
-            final outIdx = ((b * outChannels + oc) * outH + oh) * outW + ow;
-            outList[outIdx] = sum;
-          }
-        }
+      if (bias != null) {
+        final withBias = outMatrix + bias;
+        outMatrix.dispose();
+        outMatrix = withBias;
       }
-    }
 
-    final out = GpuArray.fromList(
-      outList,
-      [batchSize, outChannels, outH, outW],
-      input.dtype,
-      device: input.device,
-    );
+      final reshaped = outMatrix.reshape([
+        batchSize,
+        outHeight,
+        outWidth,
+        outChannels,
+      ]);
+      outMatrix.dispose();
+      final permuted = reshaped.transpose([0, 3, 1, 2]);
+      reshaped.dispose();
+      final contiguousOut = permuted.copy();
+      permuted.dispose();
+      return contiguousOut;
+    });
 
     if (isGradEnabled &&
         (input.requiresGrad ||
             weight.requiresGrad ||
             (bias != null && bias!.requiresGrad))) {
-      out.requiresGrad = true;
-      out.gradFn = Conv2dBackward(
+      output.requiresGrad = true;
+      output.gradFn = Conv2dBackward(
         input: input,
         weight: weight,
         bias: bias,
@@ -245,164 +239,299 @@ class Conv2d extends Module {
       );
     }
 
-    return out;
+    return output;
   }
 }
 
 /// Applies Layer Normalization over a mini-batch of inputs.
-class LayerNorm extends Module {
+final class LayerNorm extends Module {
+  /// Normalized trailing dimensions shape.
   final List<int> normalizedShape;
+
+  /// Small constant added to the denominator for numerical stability.
   final double eps;
 
-  late final GpuArray weight;
-  late final GpuArray bias;
+  /// Learnable elementwise affine scale parameter ($\gamma$).
+  late final GpuArray<Float64> weight;
 
-  LayerNorm(this.normalizedShape, {this.eps = 1e-5, GpuDevice? device}) {
-    final dev = device ?? GpuDevice.defaultDevice;
+  /// Learnable elementwise affine shift parameter ($\beta$).
+  late final GpuArray<Float64> bias;
+
+  /// Creates a [LayerNorm] module for [normalizedShape].
+  LayerNorm(List<int> normalizedShape, {this.eps = 1e-5, GpuDevice? device})
+    : normalizedShape = List<int>.unmodifiable(normalizedShape) {
+    if (this.normalizedShape.isEmpty) {
+      throw ArgumentError.value(
+        normalizedShape,
+        'normalizedShape',
+        'Must not be empty.',
+      );
+    }
+    if (eps <= 0.0) {
+      throw ArgumentError.value(eps, 'eps', 'Must be positive.');
+    }
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     weight = registerParameter(
       'weight',
       GpuArray.ones(
-        normalizedShape,
+        this.normalizedShape,
         DType.float64,
-        device: dev,
+        device: targetDevice,
         requiresGrad: true,
       ),
     );
     bias = registerParameter(
       'bias',
       GpuArray.zeros(
-        normalizedShape,
+        this.normalizedShape,
         DType.float64,
-        device: dev,
+        device: targetDevice,
         requiresGrad: true,
       ),
     );
   }
 
   @override
-  GpuArray forward(GpuArray input) {
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
     final mean = input.mean(axis: -1, keepDims: true);
-    final variance = ((input - mean) * (input - mean)).mean(
-      axis: -1,
-      keepDims: true,
-    );
-    final normalized = (input - mean) / ((variance + eps).sqrt());
+    final centered = input - mean;
+    final variance = (centered * centered).mean(axis: -1, keepDims: true);
+    final normalized = centered / (variance + eps).sqrt();
     return normalized * weight + bias;
   }
 }
 
-/// During training, randomly zeroes some of the elements of the input tensor with probability [p].
-class Dropout extends Module {
+/// During training, randomly zeroes elements of the input tensor with probability [p].
+final class Dropout extends Module {
+  /// Probability of an element to be zeroed during training.
   final double p;
 
-  Dropout({this.p = 0.5});
+  /// Creates a [Dropout] layer with drop probability [p] in `[0.0, 1.0)`.
+  Dropout({this.p = 0.5}) {
+    if (p < 0.0 || p >= 1.0) {
+      throw ArgumentError.value(
+        p,
+        'p',
+        'Must be in the half-open interval [0.0, 1.0).',
+      );
+    }
+  }
 
   @override
-  GpuArray forward(GpuArray input) {
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
     if (!isTraining || p == 0.0) return input;
-    final mask = rng
-        .rand(input.shape, input.device)
-        .greater(p)
-        .astype(input.dtype);
+    final randomValues = random_ops.rand(input.shape, input.device);
+    final keepBoolean = randomValues.greater(p);
+    final keepMask = keepBoolean.astype(input.dtype);
+    randomValues.dispose();
+    keepBoolean.dispose();
     final scale = 1.0 / (1.0 - p);
-    return input * mask * scale;
+    return input * keepMask * scale;
   }
 }
 
-/// A simple lookup table that stores embeddings of a fixed dictionary and size.
-class Embedding extends Module {
+/// Lookup table that stores embeddings of a fixed dictionary of size [numEmbeddings].
+final class Embedding extends Module {
+  /// Size of the dictionary of embeddings.
   final int numEmbeddings;
+
+  /// Size of each embedding vector.
   final int embeddingDim;
 
-  late final GpuArray weight;
+  /// Learnable embedding table of shape `[numEmbeddings, embeddingDim]`.
+  late final GpuArray<Float64> weight;
 
+  /// Creates an [Embedding] table with [numEmbeddings] rows of dimension [embeddingDim].
   Embedding(this.numEmbeddings, this.embeddingDim, {GpuDevice? device}) {
-    final dev = device ?? GpuDevice.defaultDevice;
-    final rawW = rng.randn([numEmbeddings, embeddingDim], dev);
-    weight = registerParameter(
-      'weight',
-      GpuArray.fromList(
-        rawW.toList(),
-        [numEmbeddings, embeddingDim],
-        DType.float64,
-        device: dev,
-        requiresGrad: true,
-      ),
-    );
+    if (numEmbeddings <= 0) {
+      throw ArgumentError.value(
+        numEmbeddings,
+        'numEmbeddings',
+        'Must be positive.',
+      );
+    }
+    if (embeddingDim <= 0) {
+      throw ArgumentError.value(
+        embeddingDim,
+        'embeddingDim',
+        'Must be positive.',
+      );
+    }
+    final targetDevice = device ?? GpuDevice.defaultDevice;
+    final sampledWeight = random_ops.randn([
+      numEmbeddings,
+      embeddingDim,
+    ], targetDevice)..requiresGrad = true;
+    weight = registerParameter('weight', sampledWeight);
   }
 
   @override
-  GpuArray forward(GpuArray indices) {
-    final idxList = indices.toList().cast<int>();
-    final outRows = <dynamic>[];
-    for (final idx in idxList) {
-      final row = weight[idx];
-      outRows.addAll(row.toList() as Iterable<dynamic>);
-    }
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> indices) {
+    final indexCount = indices.size;
     final outShape = [...indices.shape, embeddingDim];
-    final out = GpuArray.fromList(
-      outRows,
+    final output = GpuArray.empty(
       outShape,
       weight.dtype,
       device: indices.device,
     );
+    final contiguousWeight = weight.isContiguous ? weight : weight.copy();
+
+    try {
+      if (weight.dtype == DType.float64) {
+        final weightPtr = contiguousWeight.buffer.pointer.cast<ffi.Double>();
+        final outPtr = output.buffer.pointer.cast<ffi.Double>();
+        final weightBase = contiguousWeight.offsetElements;
+
+        for (var i = 0; i < indexCount; i++) {
+          final tokenIndex = ComputeEngine.readValue(
+            indices.buffer,
+            indices.dtype,
+            i,
+            offsetElements: indices.offsetElements,
+          ).toInt();
+          RangeError.checkValueInInterval(
+            tokenIndex,
+            0,
+            numEmbeddings - 1,
+            'indices',
+          );
+          final srcRowOffset = weightBase + tokenIndex * embeddingDim;
+          final dstRowOffset = i * embeddingDim;
+          for (var d = 0; d < embeddingDim; d++) {
+            outPtr[dstRowOffset + d] = weightPtr[srcRowOffset + d];
+          }
+        }
+      } else {
+        for (var i = 0; i < indexCount; i++) {
+          final tokenIndex = ComputeEngine.readValue(
+            indices.buffer,
+            indices.dtype,
+            i,
+            offsetElements: indices.offsetElements,
+          ).toInt();
+          RangeError.checkValueInInterval(
+            tokenIndex,
+            0,
+            numEmbeddings - 1,
+            'indices',
+          );
+          final srcRowOffset = tokenIndex * embeddingDim;
+          final dstRowOffset = i * embeddingDim;
+          for (var d = 0; d < embeddingDim; d++) {
+            final val = ComputeEngine.readValue(
+              contiguousWeight.buffer,
+              contiguousWeight.dtype,
+              srcRowOffset + d,
+              offsetElements: contiguousWeight.offsetElements,
+            );
+            ComputeEngine.writeValue(
+              output.buffer,
+              output.dtype,
+              dstRowOffset + d,
+              val,
+            );
+          }
+        }
+      }
+    } finally {
+      if (!identical(contiguousWeight, weight)) {
+        contiguousWeight.dispose();
+      }
+    }
+
     if (isGradEnabled && weight.requiresGrad) {
-      out.requiresGrad = true;
-      out.gradFn = EmbeddingBackward(
+      output.requiresGrad = true;
+      output.gradFn = EmbeddingBackward(
         weight,
         indices,
         numEmbeddings,
         embeddingDim,
       );
     }
-    return out;
+    return output;
   }
 }
 
-/// Applies ReLU activation as a module.
-class ReLU extends Module {
+/// Applies the Rectified Linear Unit (ReLU) activation as a [Module].
+final class ReLU extends Module {
+  /// Creates a [ReLU] activation module.
+  ReLU();
+
   @override
-  GpuArray forward(GpuArray input) => f.relu(input);
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
+      functional.relu(input);
 }
 
-/// Applies GELU activation as a module.
-class GELU extends Module {
+/// Applies the Gaussian Error Linear Unit (GELU) activation as a [Module].
+final class GELU extends Module {
+  /// Creates a [GELU] activation module.
+  GELU();
+
   @override
-  GpuArray forward(GpuArray input) => f.gelu(input);
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
+      functional.gelu(input);
 }
 
-/// Applies Sigmoid activation as a module.
-class Sigmoid extends Module {
+/// Applies the logistic Sigmoid activation as a [Module].
+final class Sigmoid extends Module {
+  /// Creates a [Sigmoid] activation module.
+  Sigmoid();
+
   @override
-  GpuArray forward(GpuArray input) => f.sigmoid(input);
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
+      functional.sigmoid(input);
 }
 
-/// Applies Tanh activation as a module.
-class Tanh extends Module {
+/// Applies the Hyperbolic Tangent (Tanh) activation as a [Module].
+final class Tanh extends Module {
+  /// Creates a [Tanh] activation module.
+  Tanh();
+
   @override
-  GpuArray forward(GpuArray input) => f.tanh(input);
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
+      functional.tanh(input);
 }
 
-/// Applies Multi-Head Attention over input sequences.
-///
-/// Multi-head attention allows the model to jointly attend to information
-/// from different representation subspaces at different positions:
-/// 2314300\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W^O2314300
-/// where 2314300\text{head}_i = \text{Attention}(Q W_i^Q, K W_i^K, V W_i^V)2314300.
-class MultiheadAttention extends Module {
+/// Applies Multi-Head Attention over input sequences:
+/// $$\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W^O$$
+/// where $\text{head}_i = \text{Attention}(Q W_i^Q, K W_i^K, V W_i^V)$.
+final class MultiheadAttention extends Module {
+  /// Total dimension of the model.
   final int embedDim;
+
+  /// Number of parallel attention heads.
   final int numHeads;
+
+  /// Dropout probability on attention weights.
   final double dropout;
+
+  /// Whether projection layers learn an additive bias.
   final bool hasBias;
+
+  /// Feature dimension of key inputs.
   final int kdim;
+
+  /// Feature dimension of value inputs.
   final int vdim;
+
+  /// Per-head dimension (`embedDim ~/ numHeads`).
   final int headDim;
 
+  /// Query linear projection.
   late final Linear qProj;
+
+  /// Key linear projection.
   late final Linear kProj;
+
+  /// Value linear projection.
   late final Linear vProj;
+
+  /// Output linear projection.
   late final Linear outProj;
 
+  /// Creates a [MultiheadAttention] module.
+  ///
+  /// The [embedDim] must be positive and evenly divisible by [numHeads].
   MultiheadAttention(
     this.embedDim,
     this.numHeads, {
@@ -414,92 +543,96 @@ class MultiheadAttention extends Module {
   }) : kdim = kdim ?? embedDim,
        vdim = vdim ?? embedDim,
        headDim = embedDim ~/ numHeads {
+    if (embedDim <= 0) {
+      throw ArgumentError.value(embedDim, 'embedDim', 'Must be positive.');
+    }
+    if (numHeads <= 0) {
+      throw ArgumentError.value(numHeads, 'numHeads', 'Must be positive.');
+    }
     if (embedDim % numHeads != 0) {
-      throw ArgumentError(
-        'embedDim ($embedDim) must be divisible by numHeads ($numHeads)',
+      throw ArgumentError.value(
+        embedDim,
+        'embedDim',
+        'Must be divisible by numHeads ($numHeads).',
       );
     }
-    final dev = device ?? GpuDevice.defaultDevice;
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     qProj = registerModule(
-      Linear(embedDim, embedDim, hasBias: hasBias, device: dev),
+      Linear(embedDim, embedDim, hasBias: hasBias, device: targetDevice),
     );
     kProj = registerModule(
-      Linear(this.kdim, embedDim, hasBias: hasBias, device: dev),
+      Linear(this.kdim, embedDim, hasBias: hasBias, device: targetDevice),
     );
     vProj = registerModule(
-      Linear(this.vdim, embedDim, hasBias: hasBias, device: dev),
+      Linear(this.vdim, embedDim, hasBias: hasBias, device: targetDevice),
     );
     outProj = registerModule(
-      Linear(embedDim, embedDim, hasBias: hasBias, device: dev),
+      Linear(embedDim, embedDim, hasBias: hasBias, device: targetDevice),
     );
   }
 
   @override
-  GpuArray forward(
-    GpuArray input, {
-    GpuArray? key,
-    GpuArray? value,
-    GpuArray? attnMask,
+  GpuArray<DTypeTag> forward(
+    GpuArray<DTypeTag> input, {
+    GpuArray<DTypeTag>? key,
+    GpuArray<DTypeTag>? value,
+    GpuArray<DTypeTag>? attnMask,
     bool isCausal = false,
   }) {
     final query = input;
-    final k = key ?? query;
-    final v = value ?? query;
+    final keyTensor = key ?? query;
+    final valueTensor = value ?? query;
 
     final is2D = query.rank == 2;
     final qInput = is2D ? query.unsqueeze(0) : query;
-    final kInput = (k.rank == 2) ? k.unsqueeze(0) : k;
-    final vInput = (v.rank == 2) ? v.unsqueeze(0) : v;
+    final kInput = (keyTensor.rank == 2) ? keyTensor.unsqueeze(0) : keyTensor;
+    final vInput = (valueTensor.rank == 2)
+        ? valueTensor.unsqueeze(0)
+        : valueTensor;
 
     final batchSize = qInput.shape[0];
-    final tgtLen = qInput.shape[1];
-    final srcLen = kInput.shape[1];
+    final targetLength = qInput.shape[1];
+    final sourceLength = kInput.shape[1];
 
-    // 1. Linear projections
-    final qProjOut = qProj(qInput); // [B, tgtLen, embedDim]
-    final kProjOut = kProj(kInput); // [B, srcLen, embedDim]
-    final vProjOut = vProj(vInput); // [B, srcLen, embedDim]
+    final qProjOut = qProj(qInput);
+    final kProjOut = kProj(kInput);
+    final vProjOut = vProj(vInput);
 
-    // 2. Split into multiple heads: [B, numHeads, seqLen, headDim]
     final qHeads = qProjOut
-        .reshape([batchSize, tgtLen, numHeads, headDim])
+        .reshape([batchSize, targetLength, numHeads, headDim])
         .swapaxes(1, 2);
     final kHeads = kProjOut
-        .reshape([batchSize, srcLen, numHeads, headDim])
+        .reshape([batchSize, sourceLength, numHeads, headDim])
         .swapaxes(1, 2);
     final vHeads = vProjOut
-        .reshape([batchSize, srcLen, numHeads, headDim])
+        .reshape([batchSize, sourceLength, numHeads, headDim])
         .swapaxes(1, 2);
 
-    // 3. Scaled Dot-Product Attention
-    final attnOut = f.scaled_dot_product_attention(
+    final attentionOut = functional.scaledDotProductAttention(
       qHeads,
       kHeads,
       vHeads,
       attnMask: attnMask,
       dropoutP: isTraining ? dropout : 0.0,
       isCausal: isCausal,
-    ); // [B, numHeads, tgtLen, headDim]
+    );
 
-    // 4. Merge heads: [B, tgtLen, embedDim]
-    final merged = attnOut.swapaxes(1, 2).reshape([
+    final merged = attentionOut.swapaxes(1, 2).reshape([
       batchSize,
-      tgtLen,
+      targetLength,
       embedDim,
     ]);
 
-    // 5. Output projection
     final output = outProj(merged);
-
     return is2D ? output.squeeze(axis: 0) : output;
   }
 
   @override
-  GpuArray call(
-    GpuArray input, {
-    GpuArray? key,
-    GpuArray? value,
-    GpuArray? attnMask,
+  GpuArray<DTypeTag> call(
+    GpuArray<DTypeTag> input, {
+    GpuArray<DTypeTag>? key,
+    GpuArray<DTypeTag>? value,
+    GpuArray<DTypeTag>? attnMask,
     bool isCausal = false,
   }) => forward(
     input,
@@ -510,152 +643,181 @@ class MultiheadAttention extends Module {
   );
 }
 
-/// Applies Root Mean Square Layer Normalization (RMSNorm) over a mini-batch of inputs.
-///
-/// 2314300	ext{RMSNorm}(x) = rac{x}{\sqrt{rac{1}{d} \sum_{i=1}^d x_i^2 + \epsilon}} \odot \gamma2314300
-class RMSNorm extends Module {
+/// Applies Root Mean Square Layer Normalization (RMSNorm) over a mini-batch of inputs:
+/// $$\text{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{d} \sum_{i=1}^d x_i^2 + \epsilon}} \odot \gamma$$
+final class RMSNorm extends Module {
+  /// Normalized trailing dimensions shape.
   final List<int> normalizedShape;
+
+  /// Small constant added to the mean square for numerical stability.
   final double eps;
 
-  late final GpuArray weight; // gamma
+  /// Learnable elementwise scale parameter ($\gamma$).
+  late final GpuArray<Float64> weight;
 
-  RMSNorm(this.normalizedShape, {this.eps = 1e-6, GpuDevice? device}) {
-    final dev = device ?? GpuDevice.defaultDevice;
+  /// Creates an [RMSNorm] module for [normalizedShape].
+  RMSNorm(List<int> normalizedShape, {this.eps = 1e-6, GpuDevice? device})
+    : normalizedShape = List<int>.unmodifiable(normalizedShape) {
+    if (this.normalizedShape.isEmpty) {
+      throw ArgumentError.value(
+        normalizedShape,
+        'normalizedShape',
+        'Must not be empty.',
+      );
+    }
+    if (eps <= 0.0) {
+      throw ArgumentError.value(eps, 'eps', 'Must be positive.');
+    }
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     weight = registerParameter(
       'weight',
       GpuArray.ones(
-        normalizedShape,
+        this.normalizedShape,
         DType.float64,
-        device: dev,
+        device: targetDevice,
         requiresGrad: true,
       ),
     );
   }
 
   @override
-  GpuArray forward(GpuArray input) {
-    final xSq = input * input;
-    final meanSq = xSq.mean(axis: -1, keepDims: true);
-    final rms = (meanSq + eps).sqrt();
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+    final xSquared = input * input;
+    final meanSquared = xSquared.mean(axis: -1, keepDims: true);
+    final rms = (meanSquared + eps).sqrt();
     final normalized = input / rms;
     return normalized * weight;
   }
 }
 
-/// Rotary Position Embedding (RoPE).
-///
-/// Applies rotary position embeddings to query and key representations.
-class RotaryEmbedding extends Module {
+/// Rotary Position Embedding (RoPE) for transformer query and key representations.
+final class RotaryEmbedding extends Module {
+  /// Feature dimension to rotate (must be even).
   final int dim;
+
+  /// Maximum precomputed sequence length.
   final int maxSeqLen;
+
+  /// Geometric frequency base ($\theta$).
   final double base;
 
-  late final GpuArray cosCached;
-  late final GpuArray sinCached;
+  /// Precomputed cosine table of shape `[maxSeqLen, dim]`.
+  late final GpuArray<Float64> cosCached;
 
+  /// Precomputed sine table of shape `[maxSeqLen, dim]`.
+  late final GpuArray<Float64> sinCached;
+
+  /// Creates a [RotaryEmbedding] module with even [dim].
   RotaryEmbedding(
     this.dim, {
     this.maxSeqLen = 2048,
     this.base = 10000.0,
     GpuDevice? device,
   }) {
-    if (dim % 2 != 0) {
-      throw ArgumentError('RotaryEmbedding dim ($dim) must be even.');
+    if (dim <= 0 || dim % 2 != 0) {
+      throw ArgumentError.value(dim, 'dim', 'Must be a positive even integer.');
     }
-    final dev = device ?? GpuDevice.defaultDevice;
+    if (maxSeqLen <= 0) {
+      throw ArgumentError.value(maxSeqLen, 'maxSeqLen', 'Must be positive.');
+    }
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     final halfDim = dim ~/ 2;
 
-    // invFreq = 1.0 / (base ^ (2 * i / dim)) for i in 0..halfDim-1
-    final invFreq = List<double>.generate(halfDim, (i) {
-      return 1.0 / math.pow(base, (2.0 * i) / dim);
-    });
+    cosCached = GpuArray.empty(
+      [maxSeqLen, dim],
+      DType.float64,
+      device: targetDevice,
+    );
+    sinCached = GpuArray.empty(
+      [maxSeqLen, dim],
+      DType.float64,
+      device: targetDevice,
+    );
+    final cosPtr = cosCached.buffer.pointer.cast<ffi.Double>();
+    final sinPtr = sinCached.buffer.pointer.cast<ffi.Double>();
 
-    final cosList = List<double>.filled(maxSeqLen * dim, 0.0);
-    final sinList = List<double>.filled(maxSeqLen * dim, 0.0);
+    for (var i = 0; i < halfDim; i++) {
+      final inverseFrequency = 1.0 / math.pow(base, (2.0 * i) / dim);
+      for (var position = 0; position < maxSeqLen; position++) {
+        final theta = position * inverseFrequency;
+        final cosValue = math.cos(theta);
+        final sinValue = math.sin(theta);
+        final rowBase = position * dim;
 
-    for (var pos = 0; pos < maxSeqLen; pos++) {
-      for (var i = 0; i < halfDim; i++) {
-        final theta = pos * invFreq[i];
-        final cosVal = math.cos(theta);
-        final sinVal = math.sin(theta);
-
-        // First half and second half
-        cosList[pos * dim + i] = cosVal;
-        cosList[pos * dim + halfDim + i] = cosVal;
-
-        sinList[pos * dim + i] = sinVal;
-        sinList[pos * dim + halfDim + i] = sinVal;
+        cosPtr[rowBase + i] = cosValue;
+        cosPtr[rowBase + halfDim + i] = cosValue;
+        sinPtr[rowBase + i] = sinValue;
+        sinPtr[rowBase + halfDim + i] = sinValue;
       }
     }
-
-    cosCached = GpuArray.fromList(
-      cosList,
-      [maxSeqLen, dim],
-      DType.float64,
-      device: dev,
-    );
-    sinCached = GpuArray.fromList(
-      sinList,
-      [maxSeqLen, dim],
-      DType.float64,
-      device: dev,
-    );
   }
 
-  /// Rotates the half dimensions of [x].
-  static GpuArray rotateHalf(GpuArray x) {
-    final dim = x.shape[x.rank - 1];
-    final halfDim = dim ~/ 2;
+  /// Rotates the trailing half dimensions of [x] (`[-x2, x1]`).
+  static GpuArray<DTypeTag> rotateHalf(GpuArray<DTypeTag> x) {
+    final dimension = x.shape[x.rank - 1];
+    final halfDim = dimension ~/ 2;
     final rank = x.rank;
 
-    final x1Specs = List<dynamic>.generate(rank, (d) {
+    final firstHalfSpecs = List<Object>.generate(rank, (d) {
       if (d == rank - 1) return Slice(0, halfDim);
       return const All();
     });
-    final x2Specs = List<dynamic>.generate(rank, (d) {
-      if (d == rank - 1) return Slice(halfDim, dim);
+    final secondHalfSpecs = List<Object>.generate(rank, (d) {
+      if (d == rank - 1) return Slice(halfDim, dimension);
       return const All();
     });
 
-    final x1 = x.slice(x1Specs);
-    final x2 = x.slice(x2Specs);
+    final x1 = x.slice(firstHalfSpecs);
+    final x2 = x.slice(secondHalfSpecs);
     final negX2 = x2.negate();
 
-    return manip.concatenate([negX2, x1], axis: -1);
+    return manipulation.concatenate([negX2, x1], axis: -1);
   }
 
   @override
-  GpuArray forward(GpuArray input, {int offset = 0}) {
-    final x = input;
-    final seqLen = x.shape[x.rank - 2];
-    final cosSliceSpecs = [Slice(offset, offset + seqLen), const All()];
-    final cos = cosCached.slice(cosSliceSpecs);
-    final sin = sinCached.slice(cosSliceSpecs);
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input, {int offset = 0}) {
+    RangeError.checkNotNegative(offset, 'offset');
+    final sequenceLength = input.shape[input.rank - 2];
+    final sliceSpecs = [Slice(offset, offset + sequenceLength), const All()];
+    final cosSlice = cosCached.slice(sliceSpecs);
+    final sinSlice = sinCached.slice(sliceSpecs);
 
-    final xCos = x * cos;
-    final rotX = rotateHalf(x);
-    final rotSin = rotX * sin;
-    return xCos + rotSin;
+    final xCos = input * cosSlice;
+    final rotatedX = rotateHalf(input);
+    final rotatedSin = rotatedX * sinSlice;
+    return xCos + rotatedSin;
   }
 
   @override
-  GpuArray call(GpuArray input, {int offset = 0}) =>
+  GpuArray<DTypeTag> call(GpuArray<DTypeTag> input, {int offset = 0}) =>
       forward(input, offset: offset);
 }
 
-/// Gated Linear Unit with SiLU activation (SwiGLU).
-///
-/// 2314300	ext{SwiGLU}(x) = (x W_1) \odot 	ext{silu}(x W_2) W_32314300
-class SwiGLU extends Module {
+/// Gated Linear Unit with SiLU activation (SwiGLU):
+/// $$\text{SwiGLU}(x) = \left((x W_1) \odot \text{SiLU}(x W_2)\right) W_3$$
+final class SwiGLU extends Module {
+  /// Input feature dimension.
   final int inFeatures;
+
+  /// Hidden gate/up-projection dimension.
   final int hiddenFeatures;
+
+  /// Output feature dimension.
   final int outFeatures;
+
+  /// Whether the linear projections learn additive biases.
   final bool hasBias;
 
+  /// Gate projection layer ($W_1$).
   late final Linear w1;
+
+  /// Up-projection layer ($W_2$).
   late final Linear w2;
+
+  /// Down-projection layer ($W_3$).
   late final Linear w3;
 
+  /// Creates a [SwiGLU] module.
   SwiGLU(
     this.inFeatures,
     this.hiddenFeatures, {
@@ -663,40 +825,67 @@ class SwiGLU extends Module {
     this.hasBias = false,
     GpuDevice? device,
   }) : outFeatures = outFeatures ?? inFeatures {
-    final dev = device ?? GpuDevice.defaultDevice;
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     w1 = registerModule(
-      Linear(inFeatures, hiddenFeatures, hasBias: hasBias, device: dev),
+      Linear(
+        inFeatures,
+        hiddenFeatures,
+        hasBias: hasBias,
+        device: targetDevice,
+      ),
     );
     w2 = registerModule(
-      Linear(inFeatures, hiddenFeatures, hasBias: hasBias, device: dev),
+      Linear(
+        inFeatures,
+        hiddenFeatures,
+        hasBias: hasBias,
+        device: targetDevice,
+      ),
     );
     w3 = registerModule(
-      Linear(hiddenFeatures, this.outFeatures, hasBias: hasBias, device: dev),
+      Linear(
+        hiddenFeatures,
+        this.outFeatures,
+        hasBias: hasBias,
+        device: targetDevice,
+      ),
     );
   }
 
   @override
-  GpuArray forward(GpuArray input) {
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
     final gate = w1(input);
-    final up = f.silu(w2(input));
+    final up = functional.silu(w2(input));
     final fused = gate * up;
     return w3(fused);
   }
 }
 
-/// Gated Linear Unit with GELU activation (GeGLU).
-///
-/// 2314300	ext{GeGLU}(x) = (x W_1) \odot 	ext{gelu}(x W_2) W_32314300
-class GeGLU extends Module {
+/// Gated Linear Unit with GELU activation (GeGLU):
+/// $$\text{GeGLU}(x) = \left((x W_1) \odot \text{GELU}(x W_2)\right) W_3$$
+final class GeGLU extends Module {
+  /// Input feature dimension.
   final int inFeatures;
+
+  /// Hidden gate/up-projection dimension.
   final int hiddenFeatures;
+
+  /// Output feature dimension.
   final int outFeatures;
+
+  /// Whether the linear projections learn additive biases.
   final bool hasBias;
 
+  /// Gate projection layer ($W_1$).
   late final Linear w1;
+
+  /// Up-projection layer ($W_2$).
   late final Linear w2;
+
+  /// Down-projection layer ($W_3$).
   late final Linear w3;
 
+  /// Creates a [GeGLU] module.
   GeGLU(
     this.inFeatures,
     this.hiddenFeatures, {
@@ -704,47 +893,85 @@ class GeGLU extends Module {
     this.hasBias = false,
     GpuDevice? device,
   }) : outFeatures = outFeatures ?? inFeatures {
-    final dev = device ?? GpuDevice.defaultDevice;
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     w1 = registerModule(
-      Linear(inFeatures, hiddenFeatures, hasBias: hasBias, device: dev),
+      Linear(
+        inFeatures,
+        hiddenFeatures,
+        hasBias: hasBias,
+        device: targetDevice,
+      ),
     );
     w2 = registerModule(
-      Linear(inFeatures, hiddenFeatures, hasBias: hasBias, device: dev),
+      Linear(
+        inFeatures,
+        hiddenFeatures,
+        hasBias: hasBias,
+        device: targetDevice,
+      ),
     );
     w3 = registerModule(
-      Linear(hiddenFeatures, this.outFeatures, hasBias: hasBias, device: dev),
+      Linear(
+        hiddenFeatures,
+        this.outFeatures,
+        hasBias: hasBias,
+        device: targetDevice,
+      ),
     );
   }
 
   @override
-  GpuArray forward(GpuArray input) {
+  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
     final gate = w1(input);
-    final up = f.gelu(w2(input));
+    final up = functional.gelu(w2(input));
     final fused = gate * up;
     return w3(fused);
   }
 }
 
-/// Transformer Encoder Layer.
-///
-/// Composed of multi-head self-attention and position-wise feed-forward networks,
-/// with residual connections and layer normalization.
-class TransformerEncoderLayer extends Module {
+/// Transformer Encoder Layer composed of multi-head self-attention and a
+/// position-wise feed-forward network with residual connections and layer normalization.
+final class TransformerEncoderLayer extends Module {
+  /// Number of expected features in the input (`d_model`).
   final int dModel;
+
+  /// Number of parallel attention heads (`nhead`).
   final int nhead;
+
+  /// Dimension of the feed-forward network model.
   final int dimFeedforward;
+
+  /// Dropout probability.
   final double dropout;
+
+  /// Whether layer normalization is applied before (`true`, Pre-LN) or after (`false`, Post-LN) sublayers.
   final bool normFirst;
 
+  /// Multi-head self-attention sublayer.
   late final MultiheadAttention selfAttn;
+
+  /// First feed-forward linear projection.
   late final Linear linear1;
+
+  /// Dropout applied to self-attention output.
   late final Dropout dropout1;
+
+  /// Second feed-forward linear projection.
   late final Linear linear2;
+
+  /// Dropout applied inside the feed-forward network.
   late final Dropout dropout2;
+
+  /// First layer normalization sublayer.
   late final LayerNorm norm1;
+
+  /// Second layer normalization sublayer.
   late final LayerNorm norm2;
+
+  /// Activation module between [linear1] and [linear2].
   final Module activation;
 
+  /// Creates a [TransformerEncoderLayer].
   TransformerEncoderLayer(
     this.dModel,
     this.nhead, {
@@ -755,67 +982,114 @@ class TransformerEncoderLayer extends Module {
     GpuDevice? device,
   }) : dimFeedforward = dimFeedforward ?? (4 * dModel),
        activation = activation ?? ReLU() {
-    final dev = device ?? GpuDevice.defaultDevice;
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     selfAttn = registerModule(
-      MultiheadAttention(dModel, nhead, dropout: dropout, device: dev),
+      MultiheadAttention(dModel, nhead, dropout: dropout, device: targetDevice),
     );
-    linear1 = registerModule(Linear(dModel, this.dimFeedforward, device: dev));
+    linear1 = registerModule(
+      Linear(dModel, this.dimFeedforward, device: targetDevice),
+    );
     dropout1 = registerModule(Dropout(p: dropout));
-    linear2 = registerModule(Linear(this.dimFeedforward, dModel, device: dev));
+    linear2 = registerModule(
+      Linear(this.dimFeedforward, dModel, device: targetDevice),
+    );
     dropout2 = registerModule(Dropout(p: dropout));
-    norm1 = registerModule(LayerNorm([dModel], device: dev));
-    norm2 = registerModule(LayerNorm([dModel], device: dev));
+    norm1 = registerModule(LayerNorm([dModel], device: targetDevice));
+    norm2 = registerModule(LayerNorm([dModel], device: targetDevice));
     registerModule(this.activation);
   }
 
   @override
-  GpuArray forward(GpuArray input, {GpuArray? srcMask, bool isCausal = false}) {
-    final src = input;
+  GpuArray<DTypeTag> forward(
+    GpuArray<DTypeTag> input, {
+    GpuArray<DTypeTag>? srcMask,
+    bool isCausal = false,
+  }) {
     if (normFirst) {
-      var x = src;
-      final sa = selfAttn(norm1(x), attnMask: srcMask, isCausal: isCausal);
-      x = x + dropout1(sa);
-      final ffn = linear2(dropout2(activation(linear1(norm2(x)))));
-      x = x + ffn;
-      return x;
+      var hidden = input;
+      final selfAttnOut = selfAttn(
+        norm1(hidden),
+        attnMask: srcMask,
+        isCausal: isCausal,
+      );
+      hidden = hidden + dropout1(selfAttnOut);
+      final feedForwardOut = linear2(
+        dropout2(activation(linear1(norm2(hidden)))),
+      );
+      return hidden + feedForwardOut;
     } else {
-      var x = src;
-      final sa = selfAttn(x, attnMask: srcMask, isCausal: isCausal);
-      x = norm1(x + dropout1(sa));
-      final ffn = linear2(dropout2(activation(linear1(x))));
-      x = norm2(x + ffn);
-      return x;
+      var hidden = input;
+      final selfAttnOut = selfAttn(
+        hidden,
+        attnMask: srcMask,
+        isCausal: isCausal,
+      );
+      hidden = norm1(hidden + dropout1(selfAttnOut));
+      final feedForwardOut = linear2(dropout2(activation(linear1(hidden))));
+      return norm2(hidden + feedForwardOut);
     }
   }
 
   @override
-  GpuArray call(GpuArray input, {GpuArray? srcMask, bool isCausal = false}) =>
-      forward(input, srcMask: srcMask, isCausal: isCausal);
+  GpuArray<DTypeTag> call(
+    GpuArray<DTypeTag> input, {
+    GpuArray<DTypeTag>? srcMask,
+    bool isCausal = false,
+  }) => forward(input, srcMask: srcMask, isCausal: isCausal);
 }
 
-/// Transformer Decoder Layer.
-///
-/// Composed of multi-head self-attention, cross-attention (to encoder memory),
-/// and position-wise feed-forward networks, with residual connections and layer normalization.
-class TransformerDecoderLayer extends Module {
+/// Transformer Decoder Layer composed of multi-head self-attention, encoder-decoder
+/// cross-attention, and a position-wise feed-forward network.
+final class TransformerDecoderLayer extends Module {
+  /// Number of expected features in the target input (`d_model`).
   final int dModel;
+
+  /// Number of parallel attention heads (`nhead`).
   final int nhead;
+
+  /// Dimension of the feed-forward network model.
   final int dimFeedforward;
+
+  /// Dropout probability.
   final double dropout;
+
+  /// Whether layer normalization is applied before (`true`, Pre-LN) or after (`false`, Post-LN) sublayers.
   final bool normFirst;
 
+  /// Masked multi-head self-attention sublayer.
   late final MultiheadAttention selfAttn;
+
+  /// Encoder-decoder multi-head cross-attention sublayer.
   late final MultiheadAttention multiheadAttn;
+
+  /// First feed-forward linear projection.
   late final Linear linear1;
+
+  /// Dropout applied to self-attention output.
   late final Dropout dropout1;
+
+  /// Second feed-forward linear projection.
   late final Linear linear2;
+
+  /// Dropout applied to cross-attention output.
   late final Dropout dropout2;
+
+  /// Dropout applied inside the feed-forward network.
   late final Dropout dropout3;
+
+  /// First layer normalization sublayer.
   late final LayerNorm norm1;
+
+  /// Second layer normalization sublayer.
   late final LayerNorm norm2;
+
+  /// Third layer normalization sublayer.
   late final LayerNorm norm3;
+
+  /// Activation module between [linear1] and [linear2].
   final Module activation;
 
+  /// Creates a [TransformerDecoderLayer].
   TransformerDecoderLayer(
     this.dModel,
     this.nhead, {
@@ -826,74 +1100,85 @@ class TransformerDecoderLayer extends Module {
     GpuDevice? device,
   }) : dimFeedforward = dimFeedforward ?? (4 * dModel),
        activation = activation ?? ReLU() {
-    final dev = device ?? GpuDevice.defaultDevice;
+    final targetDevice = device ?? GpuDevice.defaultDevice;
     selfAttn = registerModule(
-      MultiheadAttention(dModel, nhead, dropout: dropout, device: dev),
+      MultiheadAttention(dModel, nhead, dropout: dropout, device: targetDevice),
     );
     multiheadAttn = registerModule(
-      MultiheadAttention(dModel, nhead, dropout: dropout, device: dev),
+      MultiheadAttention(dModel, nhead, dropout: dropout, device: targetDevice),
     );
-    linear1 = registerModule(Linear(dModel, this.dimFeedforward, device: dev));
+    linear1 = registerModule(
+      Linear(dModel, this.dimFeedforward, device: targetDevice),
+    );
     dropout1 = registerModule(Dropout(p: dropout));
-    linear2 = registerModule(Linear(this.dimFeedforward, dModel, device: dev));
+    linear2 = registerModule(
+      Linear(this.dimFeedforward, dModel, device: targetDevice),
+    );
     dropout2 = registerModule(Dropout(p: dropout));
     dropout3 = registerModule(Dropout(p: dropout));
-    norm1 = registerModule(LayerNorm([dModel], device: dev));
-    norm2 = registerModule(LayerNorm([dModel], device: dev));
-    norm3 = registerModule(LayerNorm([dModel], device: dev));
+    norm1 = registerModule(LayerNorm([dModel], device: targetDevice));
+    norm2 = registerModule(LayerNorm([dModel], device: targetDevice));
+    norm3 = registerModule(LayerNorm([dModel], device: targetDevice));
     registerModule(this.activation);
   }
 
   @override
-  GpuArray forward(
-    GpuArray input, {
-    GpuArray? memory,
-    GpuArray? tgtMask,
-    GpuArray? memoryMask,
+  GpuArray<DTypeTag> forward(
+    GpuArray<DTypeTag> input, {
+    GpuArray<DTypeTag>? memory,
+    GpuArray<DTypeTag>? tgtMask,
+    GpuArray<DTypeTag>? memoryMask,
     bool tgtIsCausal = true,
   }) {
-    final tgt = input;
     if (normFirst) {
-      var x = tgt;
-      final sa = selfAttn(norm1(x), attnMask: tgtMask, isCausal: tgtIsCausal);
-      x = x + dropout1(sa);
+      var hidden = input;
+      final selfAttnOut = selfAttn(
+        norm1(hidden),
+        attnMask: tgtMask,
+        isCausal: tgtIsCausal,
+      );
+      hidden = hidden + dropout1(selfAttnOut);
       if (memory != null) {
-        final ca = multiheadAttn(
-          norm2(x),
+        final crossAttnOut = multiheadAttn(
+          norm2(hidden),
           key: memory,
           value: memory,
           attnMask: memoryMask,
         );
-        x = x + dropout2(ca);
+        hidden = hidden + dropout2(crossAttnOut);
       }
-      final ffn = linear2(dropout3(activation(linear1(norm3(x)))));
-      x = x + ffn;
-      return x;
+      final feedForwardOut = linear2(
+        dropout3(activation(linear1(norm3(hidden)))),
+      );
+      return hidden + feedForwardOut;
     } else {
-      var x = tgt;
-      final sa = selfAttn(x, attnMask: tgtMask, isCausal: tgtIsCausal);
-      x = norm1(x + dropout1(sa));
+      var hidden = input;
+      final selfAttnOut = selfAttn(
+        hidden,
+        attnMask: tgtMask,
+        isCausal: tgtIsCausal,
+      );
+      hidden = norm1(hidden + dropout1(selfAttnOut));
       if (memory != null) {
-        final ca = multiheadAttn(
-          x,
+        final crossAttnOut = multiheadAttn(
+          hidden,
           key: memory,
           value: memory,
           attnMask: memoryMask,
         );
-        x = norm2(x + dropout2(ca));
+        hidden = norm2(hidden + dropout2(crossAttnOut));
       }
-      final ffn = linear2(dropout3(activation(linear1(x))));
-      x = norm3(x + ffn);
-      return x;
+      final feedForwardOut = linear2(dropout3(activation(linear1(hidden))));
+      return norm3(hidden + feedForwardOut);
     }
   }
 
   @override
-  GpuArray call(
-    GpuArray input, {
-    GpuArray? memory,
-    GpuArray? tgtMask,
-    GpuArray? memoryMask,
+  GpuArray<DTypeTag> call(
+    GpuArray<DTypeTag> input, {
+    GpuArray<DTypeTag>? memory,
+    GpuArray<DTypeTag>? tgtMask,
+    GpuArray<DTypeTag>? memoryMask,
     bool tgtIsCausal = true,
   }) => forward(
     input,

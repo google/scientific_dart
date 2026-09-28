@@ -152,5 +152,38 @@ void main() {
         expect(sum1List[1].imag, closeTo(14.0, 1e-5));
       });
     });
+
+    test('Reductions with out: parameter and error validation', () {
+      ResourceScope.scope(() {
+        final mat = GpuArray.fromList(
+          [
+            [1.0, 2.0, 3.0],
+            [4.0, 5.0, 6.0],
+          ],
+          [2, 3],
+          DType.float64,
+        );
+        final outScalar = GpuArray.zeros(const [], DType.float64);
+        final s = mat.sum(out: outScalar);
+        expect(identical(s, outScalar), isTrue);
+        expect(outScalar.scalar, equals(21.0));
+
+        final outAxis = GpuArray.zeros([2], DType.float64);
+        final sAxis = mat.sum(axis: 1, out: outAxis);
+        expect(identical(sAxis, outAxis), isTrue);
+        expect(outAxis.toList(), equals([6.0, 15.0]));
+
+        final outMax = GpuArray.zeros([2], DType.float64);
+        final mAxis = mat.max(axis: 1, out: outMax);
+        expect(identical(mAxis, outMax), isTrue);
+        expect(outMax.toList(), equals([3.0, 6.0]));
+
+        expect(
+          () => mat.sum(axis: 5),
+          throwsA(isA<GpuAxisOutOfBoundsException>()),
+        );
+        expect(() => mat.sum(axis: 5), throwsA(isA<RangeError>()));
+      });
+    });
   });
 }

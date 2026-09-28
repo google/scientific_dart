@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:ndarray/ndarray.dart' show Boolean;
+
 export 'package:ndarray/ndarray.dart'
     show
         DType,
@@ -34,4 +36,8 @@ export 'package:ndarray/ndarray.dart'
         Uint8,
         Complex,
         Complex64,
-        Complex128;
+        Complex128,
+        uint64Compare;
+
+/// Alias for [Boolean] data type tag.
+typedef Bool = Boolean;

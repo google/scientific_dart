@@ -36,6 +36,7 @@ dependencies:
   crypto: ^3.0.6
 
 dev_dependencies:
+  analyzer: any
   test: ^1.31.1
   lints: ^6.1.0
   criterion:
@@ -45,4 +46,3 @@ hooks:
   user_defines:
     gpuarray:
       buildMode: fetch
-

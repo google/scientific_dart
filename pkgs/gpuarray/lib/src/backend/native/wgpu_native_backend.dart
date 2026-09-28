@@ -54,6 +54,7 @@ final class _WgpuBufferAllocation {
   final int sizeInBytes;
   final int usage;
   bool isGpuDirty;
+  bool isHostDirty;
 
   _WgpuBufferAllocation({
     required this.hostPointer,
@@ -61,6 +62,7 @@ final class _WgpuBufferAllocation {
     required this.sizeInBytes,
     required this.usage,
     this.isGpuDirty = false,
+    this.isHostDirty = false,
   });
 }
 
@@ -191,11 +193,11 @@ final class WgpuNativeBackend extends GpuBackend {
     if (sizeInBytes <= 0) return ffi.nullptr;
 
     final hostPtr = calloc<ffi.Uint8>(sizeInBytes);
-    ffi.Pointer<ffi.Void> gpuBuf = ffi.nullptr;
+    ffi.Pointer<ffi.Void> gpuBuffer = ffi.nullptr;
 
     if (!isMock && device != ffi.nullptr && lib != null) {
       final alignedSize = math.max(16, (sizeInBytes + 3) & ~3);
-      gpuBuf = lib!.createBuffer(
+      gpuBuffer = lib!.createBuffer(
         device,
         size: alignedSize,
         usage:
@@ -209,7 +211,7 @@ final class WgpuNativeBackend extends GpuBackend {
 
     _allocations[hostPtr.address] = _WgpuBufferAllocation(
       hostPointer: hostPtr,
-      gpuBuffer: gpuBuf,
+      gpuBuffer: gpuBuffer,
       sizeInBytes: sizeInBytes,
       usage:
           WGPUBufferUsage.storage |
@@ -217,6 +219,7 @@ final class WgpuNativeBackend extends GpuBackend {
           WGPUBufferUsage.copyDst |
           WGPUBufferUsage.uniform,
       isGpuDirty: false,
+      isHostDirty: false,
     );
 
     return hostPtr;
@@ -226,13 +229,68 @@ final class WgpuNativeBackend extends GpuBackend {
   void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes) {
     if (pointer == ffi.nullptr) return;
 
-    final alloc = _allocations.remove(pointer.address);
-    if (alloc != null) {
+    if (_allocations.remove(pointer.address) case final alloc?) {
       if (!isMock && alloc.gpuBuffer != ffi.nullptr && lib != null) {
         lib!.bufferDestroy(alloc.gpuBuffer);
         lib!.bufferRelease(alloc.gpuBuffer);
       }
       calloc.free(pointer);
+    }
+  }
+
+  @override
+  void ensureHostSynced(GpuBuffer buffer) {
+    if (isMock ||
+        device == ffi.nullptr ||
+        queue == ffi.nullptr ||
+        lib == null) {
+      return;
+    }
+    if (_allocations[buffer.address.address] case final alloc?) {
+      if (alloc.gpuBuffer != ffi.nullptr && alloc.isGpuDirty) {
+        _syncGpuBufferToHost(alloc, offset: 0, bytes: alloc.sizeInBytes);
+      }
+    }
+  }
+
+  @override
+  void markHostModified(GpuBuffer buffer) {
+    if (_allocations[buffer.address.address] case final alloc?) {
+      alloc.isHostDirty = true;
+    }
+  }
+
+  @override
+  void ensureGpuSynced(GpuBuffer buffer) {
+    if (isMock || queue == ffi.nullptr || lib == null) return;
+    if (_allocations[buffer.address.address] case final alloc?) {
+      if (alloc.gpuBuffer != ffi.nullptr && alloc.isHostDirty) {
+        final alignedBytes = math.max(16, (alloc.sizeInBytes + 3) & ~3);
+        if (alignedBytes == alloc.sizeInBytes) {
+          lib!.queueWriteBuffer(
+            queue,
+            alloc.gpuBuffer,
+            bufferOffset: 0,
+            data: alloc.hostPointer.cast<ffi.Void>(),
+            size: alloc.sizeInBytes,
+          );
+        } else {
+          using((arena) {
+            final staging = arena<ffi.Uint8>(alignedBytes);
+            staging
+                .asTypedList(alloc.sizeInBytes)
+                .setAll(0, alloc.hostPointer.asTypedList(alloc.sizeInBytes));
+            lib!.queueWriteBuffer(
+              queue,
+              alloc.gpuBuffer,
+              bufferOffset: 0,
+              data: staging.cast<ffi.Void>(),
+              size: alignedBytes,
+            );
+          });
+        }
+        alloc.isHostDirty = false;
+      }
     }
   }
 
@@ -246,16 +304,23 @@ final class WgpuNativeBackend extends GpuBackend {
     super.copyHostToBuffer(src, dst, bytes, offset: offset);
 
     if (!isMock && queue != ffi.nullptr && lib != null) {
-      final alloc = _allocations[dst.address.address];
-      if (alloc != null && alloc.gpuBuffer != ffi.nullptr) {
-        lib!.queueWriteBuffer(
-          queue,
-          alloc.gpuBuffer,
-          bufferOffset: offset,
-          data: src.cast<ffi.Void>(),
-          size: bytes,
-        );
-        alloc.isGpuDirty = false;
+      if (_allocations[dst.address.address] case final alloc?) {
+        if (alloc.gpuBuffer != ffi.nullptr) {
+          if (bytes % 4 == 0 && offset % 4 == 0) {
+            lib!.queueWriteBuffer(
+              queue,
+              alloc.gpuBuffer,
+              bufferOffset: offset,
+              data: src.cast<ffi.Void>(),
+              size: bytes,
+            );
+            alloc.isHostDirty = false;
+          } else {
+            alloc.isHostDirty = true;
+            ensureGpuSynced(dst);
+          }
+          alloc.isGpuDirty = false;
+        }
       }
     }
   }
@@ -267,16 +332,7 @@ final class WgpuNativeBackend extends GpuBackend {
     int bytes, {
     int offset = 0,
   }) {
-    if (!isMock &&
-        device != ffi.nullptr &&
-        queue != ffi.nullptr &&
-        lib != null) {
-      final alloc = _allocations[src.address.address];
-      if (alloc != null && alloc.gpuBuffer != ffi.nullptr && alloc.isGpuDirty) {
-        _syncGpuBufferToHost(alloc, offset: offset, bytes: bytes);
-      }
-    }
-
+    ensureHostSynced(src);
     super.copyBufferToHost(src, dst, bytes, offset: offset);
   }
 
@@ -288,6 +344,7 @@ final class WgpuNativeBackend extends GpuBackend {
     int srcOffset = 0,
     int dstOffset = 0,
   }) {
+    ensureHostSynced(src);
     super.copyBufferToBuffer(
       src,
       dst,
@@ -302,6 +359,7 @@ final class WgpuNativeBackend extends GpuBackend {
         device != ffi.nullptr &&
         queue != ffi.nullptr &&
         lib != null) {
+      ensureGpuSynced(src);
       final srcAlloc = _allocations[src.address.address];
       final dstAlloc = _allocations[dst.address.address];
       if (srcAlloc != null &&
@@ -309,23 +367,34 @@ final class WgpuNativeBackend extends GpuBackend {
           srcAlloc.gpuBuffer != ffi.nullptr &&
           dstAlloc.gpuBuffer != ffi.nullptr) {
         final alignedBytes = math.max(16, (bytes + 3) & ~3);
-        final encoder = lib!.createCommandEncoder(
-          device,
-          label: 'copyBufferToBuffer_encoder',
-        );
-        lib!.commandEncoderCopyBufferToBuffer(
-          encoder,
-          srcAlloc.gpuBuffer,
-          srcOffset,
-          dstAlloc.gpuBuffer,
-          dstOffset,
-          alignedBytes,
-        );
-        final cmdBuf = lib!.commandEncoderFinish(encoder);
-        lib!.queueSubmit(queue, [cmdBuf]);
-        lib!.commandBufferRelease(cmdBuf);
-        lib!.commandEncoderRelease(encoder);
-        dstAlloc.isGpuDirty = true;
+        if (srcOffset % 4 == 0 &&
+            dstOffset % 4 == 0 &&
+            srcOffset + alignedBytes <=
+                math.max(16, (srcAlloc.sizeInBytes + 3) & ~3) &&
+            dstOffset + alignedBytes <=
+                math.max(16, (dstAlloc.sizeInBytes + 3) & ~3)) {
+          final encoder = lib!.createCommandEncoder(
+            device,
+            label: 'copyBufferToBuffer_encoder',
+          );
+          lib!.commandEncoderCopyBufferToBuffer(
+            encoder,
+            srcAlloc.gpuBuffer,
+            srcOffset,
+            dstAlloc.gpuBuffer,
+            dstOffset,
+            alignedBytes,
+          );
+          final commandBuffer = lib!.commandEncoderFinish(encoder);
+          lib!.queueSubmit(queue, [commandBuffer]);
+          lib!.commandBufferRelease(commandBuffer);
+          lib!.commandEncoderRelease(encoder);
+          dstAlloc.isGpuDirty = true;
+          dstAlloc.isHostDirty = false;
+        } else {
+          dstAlloc.isHostDirty = true;
+          ensureGpuSynced(dst);
+        }
       }
     }
   }
@@ -345,7 +414,7 @@ final class WgpuNativeBackend extends GpuBackend {
     if (fullBytes <= 0) return;
     final syncBytes = math.max(16, (fullBytes + 3) & ~3);
 
-    final stagingBuf = lib!.createBuffer(
+    final stagingBuffer = lib!.createBuffer(
       device,
       size: syncBytes,
       usage: WGPUBufferUsage.mapRead | WGPUBufferUsage.copyDst,
@@ -361,18 +430,19 @@ final class WgpuNativeBackend extends GpuBackend {
         encoder,
         alloc.gpuBuffer,
         0,
-        stagingBuf,
+        stagingBuffer,
         0,
         syncBytes,
       );
-      final cmdBuf = lib!.commandEncoderFinish(encoder);
-      lib!.queueSubmit(queue, [cmdBuf]);
-      lib!.commandBufferRelease(cmdBuf);
+      final commandBuffer = lib!.commandEncoderFinish(encoder);
+      lib!.queueSubmit(queue, [commandBuffer]);
+      lib!.commandBufferRelease(commandBuffer);
       lib!.commandEncoderRelease(encoder);
 
       lib!.bufferMapSync(
         instance,
-        stagingBuf,
+        stagingBuffer,
+        device: device,
         mode: WGPUMapMode.read,
         offset: 0,
         size: syncBytes,
@@ -380,7 +450,7 @@ final class WgpuNativeBackend extends GpuBackend {
       lib!.devicePoll(device, wait: true);
 
       final mappedPtr = lib!.bufferGetMappedRange(
-        stagingBuf,
+        stagingBuffer,
         offset: 0,
         size: syncBytes,
       );
@@ -388,12 +458,12 @@ final class WgpuNativeBackend extends GpuBackend {
         final srcBytes = mappedPtr.cast<ffi.Uint8>().asTypedList(fullBytes);
         final dstBytes = alloc.hostPointer.asTypedList(fullBytes);
         dstBytes.setAll(0, srcBytes);
-        lib!.bufferUnmap(stagingBuf);
+        lib!.bufferUnmap(stagingBuffer);
       }
       alloc.isGpuDirty = false;
     } finally {
-      lib!.bufferDestroy(stagingBuf);
-      lib!.bufferRelease(stagingBuf);
+      lib!.bufferDestroy(stagingBuffer);
+      lib!.bufferRelease(stagingBuffer);
     }
   }
 
@@ -416,9 +486,28 @@ final class WgpuNativeBackend extends GpuBackend {
         'Cannot dispatch pipeline with disposed buffers.',
       );
     }
-    if (workgroupsX <= 0 || workgroupsY <= 0 || workgroupsZ <= 0) {
-      throw ArgumentError(
-        'Workgroups must be positive: ($workgroupsX, $workgroupsY, $workgroupsZ)',
+    if (workgroupsX <= 0 ||
+        workgroupsX > WgslDispatch.maxWorkgroupsPerDimension) {
+      throw ArgumentError.value(
+        workgroupsX,
+        'workgroupsX',
+        'Must be between 1 and ${WgslDispatch.maxWorkgroupsPerDimension}.',
+      );
+    }
+    if (workgroupsY <= 0 ||
+        workgroupsY > WgslDispatch.maxWorkgroupsPerDimension) {
+      throw ArgumentError.value(
+        workgroupsY,
+        'workgroupsY',
+        'Must be between 1 and ${WgslDispatch.maxWorkgroupsPerDimension}.',
+      );
+    }
+    if (workgroupsZ <= 0 ||
+        workgroupsZ > WgslDispatch.maxWorkgroupsPerDimension) {
+      throw ArgumentError.value(
+        workgroupsZ,
+        'workgroupsZ',
+        'Must be between 1 and ${WgslDispatch.maxWorkgroupsPerDimension}.',
       );
     }
 
@@ -445,30 +534,27 @@ final class WgpuNativeBackend extends GpuBackend {
       return;
     }
 
-    // 1. Retrieve or compile WGPUShaderModule
-    var module = _shaderModules[shaderModule.code];
-    if (module == null) {
-      module = lib!.createShaderModule(
-        device,
-        shaderModule.code,
-        label: shaderModule.name,
-      );
-      _shaderModules[shaderModule.code] = module;
+    for (final buffer in buffers) {
+      ensureGpuSynced(buffer);
     }
+
+    // 1. Retrieve or compile WGPUShaderModule
+    final module = _shaderModules[shaderModule.code] ??= lib!
+        .createShaderModule(
+          device,
+          shaderModule.code,
+          label: shaderModule.name,
+        );
 
     // 2. Retrieve or create WGPUComputePipeline
     final pipelineKey =
         '${shaderModule.name}_${shaderModule.entryPoint}_${shaderModule.code.hashCode}';
-    var pipeline = _pipelines[pipelineKey];
-    if (pipeline == null) {
-      pipeline = lib!.createComputePipeline(
-        device,
-        shaderModule: module,
-        entryPoint: shaderModule.entryPoint,
-        label: '${shaderModule.name}_pipeline',
-      );
-      _pipelines[pipelineKey] = pipeline;
-    }
+    final pipeline = _pipelines[pipelineKey] ??= lib!.createComputePipeline(
+      device,
+      shaderModule: module,
+      entryPoint: shaderModule.entryPoint,
+      label: '${shaderModule.name}_pipeline',
+    );
 
     // 3. Get bind group layout
     final bgLayout = lib!.pipelineGetBindGroupLayout(pipeline, 0);
@@ -476,16 +562,18 @@ final class WgpuNativeBackend extends GpuBackend {
     // 4. Create bind group entries
     final entries = <WgpuBindGroupEntryData>[];
     for (var i = 0; i < buffers.length; i++) {
-      final buf = buffers[i];
-      final alloc = _allocations[buf.address.address];
-      if (alloc != null && alloc.gpuBuffer != ffi.nullptr) {
-        entries.add(
-          WgpuBindGroupEntryData(
-            binding: i,
-            buffer: alloc.gpuBuffer,
-            size: buf.sizeInBytes,
-          ),
-        );
+      final buffer = buffers[i];
+      if (_allocations[buffer.address.address] case final alloc?) {
+        if (alloc.gpuBuffer != ffi.nullptr) {
+          final alignedSize = math.max(16, (buffer.sizeInBytes + 3) & ~3);
+          entries.add(
+            WgpuBindGroupEntryData(
+              binding: i,
+              buffer: alloc.gpuBuffer,
+              size: alignedSize,
+            ),
+          );
+        }
       }
     }
 
@@ -546,23 +634,23 @@ final class WgpuNativeBackend extends GpuBackend {
       workgroupsZ,
     );
     lib!.computePassEnd(pass);
-    final cmdBuf = lib!.commandEncoderFinish(
+    final commandBuffer = lib!.commandEncoderFinish(
       encoder,
       label: '${shaderModule.name}_cmdbuf',
     );
 
-    lib!.queueSubmit(queue, [cmdBuf]);
+    lib!.queueSubmit(queue, [commandBuffer]);
 
     // Mark buffers as dirty on GPU
-    for (final buf in buffers) {
-      final alloc = _allocations[buf.address.address];
+    for (final buffer in buffers) {
+      final alloc = _allocations[buffer.address.address];
       if (alloc != null) {
         alloc.isGpuDirty = true;
       }
     }
 
     // 7. Clean up temporary objects
-    lib!.commandBufferRelease(cmdBuf);
+    lib!.commandBufferRelease(commandBuffer);
     lib!.commandEncoderRelease(encoder);
     lib!.computePassEncoderRelease(pass);
     lib!.bindGroupRelease(bindGroup);
@@ -577,6 +665,7 @@ final class WgpuNativeBackend extends GpuBackend {
   }
 
   /// Disposes of all allocated GPU resources, cached pipelines, and device contexts.
+  @override
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;

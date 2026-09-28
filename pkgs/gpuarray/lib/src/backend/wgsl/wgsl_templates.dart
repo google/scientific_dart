@@ -15,10 +15,8 @@
 import 'wgsl_types.dart';
 
 /// Pre-defined WGSL compute shader templates and code generators.
-final class WgslTemplates {
-  WgslTemplates._();
-
-  /// Standard WGSL header for strided multi-index translation.
+extension type const WgslTemplates._(Object? _) {
+  /// Standard WGSL header for strided multi-index translation supporting signed strides.
   static const String stridedHeader = '''
 struct StridedMetadata {
   total_elements: u32,
@@ -26,9 +24,9 @@ struct StridedMetadata {
   pad0: u32,
   pad1: u32,
   shape: array<vec4<u32>, 2>,      // Up to 8 dimensions (2 vec4s)
-  strides_a: array<vec4<u32>, 2>,  // Up to 8 dimensions
-  strides_b: array<vec4<u32>, 2>,  // Up to 8 dimensions
-  strides_out: array<vec4<u32>, 2>,// Up to 8 dimensions
+  strides_a: array<vec4<i32>, 2>,  // Up to 8 signed dimensions
+  strides_b: array<vec4<i32>, 2>,  // Up to 8 signed dimensions
+  strides_out: array<vec4<i32>, 2>,// Up to 8 signed dimensions
   offset_a: u32,
   offset_b: u32,
   offset_out: u32,
@@ -43,7 +41,7 @@ fn get_shape_dim(meta: StridedMetadata, dim: u32) -> u32 {
   }
 }
 
-fn get_stride_a(meta: StridedMetadata, dim: u32) -> u32 {
+fn get_stride_a(meta: StridedMetadata, dim: u32) -> i32 {
   if (dim < 4u) {
     return meta.strides_a[0][dim];
   } else {
@@ -51,7 +49,7 @@ fn get_stride_a(meta: StridedMetadata, dim: u32) -> u32 {
   }
 }
 
-fn get_stride_b(meta: StridedMetadata, dim: u32) -> u32 {
+fn get_stride_b(meta: StridedMetadata, dim: u32) -> i32 {
   if (dim < 4u) {
     return meta.strides_b[0][dim];
   } else {
@@ -59,7 +57,7 @@ fn get_stride_b(meta: StridedMetadata, dim: u32) -> u32 {
   }
 }
 
-fn get_stride_out(meta: StridedMetadata, dim: u32) -> u32 {
+fn get_stride_out(meta: StridedMetadata, dim: u32) -> i32 {
   if (dim < 4u) {
     return meta.strides_out[0][dim];
   } else {
@@ -75,14 +73,14 @@ fn flat_to_strided_offsets(
   out_offset_dst: ptr<function, u32>
 ) {
   var rem = idx;
-  var off_a = meta.offset_a;
-  var off_b = meta.offset_b;
-  var off_dst = meta.offset_out;
+  var off_a: i32 = i32(meta.offset_a);
+  var off_b: i32 = i32(meta.offset_b);
+  var off_dst: i32 = i32(meta.offset_out);
 
   for (var d = i32(meta.rank) - 1; d >= 0; d--) {
     let dim_size = get_shape_dim(meta, u32(d));
     if (dim_size > 0u) {
-      let coord = rem % dim_size;
+      let coord = i32(rem % dim_size);
       rem = rem / dim_size;
       off_a += coord * get_stride_a(meta, u32(d));
       off_b += coord * get_stride_b(meta, u32(d));
@@ -90,9 +88,9 @@ fn flat_to_strided_offsets(
     }
   }
 
-  *out_offset_a = off_a;
-  *out_offset_b = off_b;
-  *out_offset_dst = off_dst;
+  *out_offset_a = u32(off_a);
+  *out_offset_b = u32(off_b);
+  *out_offset_dst = u32(off_dst);
 }
 ''';
 
@@ -128,7 +126,26 @@ fn mish(x: f32) -> f32 {
 ''';
 
   /// Maps a standard binary operator name to its corresponding WGSL expression snippet.
-  static String getWgslOpExpression(String op, String a, String b) {
+  static String getWgslOpExpression(
+    String op,
+    String a,
+    String b, {
+    WgslDType dtype = WgslDType.float32,
+    WgslDType? outDtype,
+  }) {
+    final targetDtype = outDtype ?? dtype;
+    final zeroLit = switch (targetDtype) {
+      WgslDType.int32 => '0',
+      WgslDType.uint32 => '0u',
+      WgslDType.float16 => '0.0h',
+      _ => '0.0',
+    };
+    final oneLit = switch (targetDtype) {
+      WgslDType.int32 => '1',
+      WgslDType.uint32 => '1u',
+      WgslDType.float16 => '1.0h',
+      _ => '1.0',
+    };
     switch (op.toLowerCase()) {
       case 'add':
       case '+':
@@ -147,6 +164,11 @@ fn mish(x: f32) -> f32 {
         return '$a / $b';
       case 'pow':
       case 'power':
+        if (dtype == WgslDType.int32) {
+          return 'i32(pow(f32($a), f32($b)))';
+        } else if (dtype == WgslDType.uint32) {
+          return 'u32(pow(f32($a), f32($b)))';
+        }
         return 'pow($a, $b)';
       case 'rem':
       case 'remainder':
@@ -162,33 +184,33 @@ fn mish(x: f32) -> f32 {
       case 'eq':
       case 'equal':
       case '==':
-        return 'select(0.0, 1.0, $a == $b)';
+        return 'select($zeroLit, $oneLit, $a == $b)';
       case 'neq':
       case 'notequal':
       case '!=':
-        return 'select(0.0, 1.0, $a != $b)';
+        return 'select($zeroLit, $oneLit, $a != $b)';
       case 'gt':
       case 'greater':
       case '>':
-        return 'select(0.0, 1.0, $a > $b)';
+        return 'select($zeroLit, $oneLit, $a > $b)';
       case 'lt':
       case 'less':
       case '<':
-        return 'select(0.0, 1.0, $a < $b)';
+        return 'select($zeroLit, $oneLit, $a < $b)';
       case 'gte':
       case 'greaterequal':
       case '>=':
-        return 'select(0.0, 1.0, $a >= $b)';
+        return 'select($zeroLit, $oneLit, $a >= $b)';
       case 'lte':
       case 'lessequal':
       case '<=':
-        return 'select(0.0, 1.0, $a <= $b)';
+        return 'select($zeroLit, $oneLit, $a <= $b)';
       case 'and':
       case '&':
-        return 'select(0.0, 1.0, ($a > 0.0) && ($b > 0.0))';
+        return 'select($zeroLit, $oneLit, ($a > $zeroLit) && ($b > $zeroLit))';
       case 'or':
       case '|':
-        return 'select(0.0, 1.0, ($a > 0.0) || ($b > 0.0))';
+        return 'select($zeroLit, $oneLit, ($a > $zeroLit) || ($b > $zeroLit))';
       case 'atan2':
         return 'atan2($a, $b)';
       case 'hypot':
@@ -196,15 +218,32 @@ fn mish(x: f32) -> f32 {
       case 'step':
         return 'step($a, $b)';
       default:
-        throw ArgumentError('Unsupported binary operation: $op');
+        throw ArgumentError.value(
+          op,
+          'op',
+          'Must be a supported binary operation.',
+        );
     }
   }
 
   /// Maps a standard unary operator name to its corresponding WGSL expression snippet.
-  static String getWgslUnaryExpression(String op, String x) {
+  static String getWgslUnaryExpression(
+    String op,
+    String x, {
+    WgslDType dtype = WgslDType.float32,
+  }) {
+    final zeroLit = switch (dtype) {
+      WgslDType.int32 => '0',
+      WgslDType.uint32 => '0u',
+      WgslDType.float16 => '0.0h',
+      _ => '0.0',
+    };
     switch (op.toLowerCase()) {
+      case 'copy':
+      case 'identity':
+        return x;
       case 'relu':
-        return 'max($x, 0.0)';
+        return 'max($x, $zeroLit)';
       case 'silu':
         return 'silu($x)';
       case 'gelu':
@@ -267,7 +306,11 @@ fn mish(x: f32) -> f32 {
       case 'sign':
         return 'sign($x)';
       default:
-        throw ArgumentError('Unsupported unary operation: $op');
+        throw ArgumentError.value(
+          op,
+          'op',
+          'Must be a supported unary operation.',
+        );
     }
   }
 
@@ -286,7 +329,11 @@ fn mish(x: f32) -> f32 {
       case 'max':
         return 'max($a, $b)';
       default:
-        throw ArgumentError('Unsupported reduction operation: $op');
+        throw ArgumentError.value(
+          op,
+          'op',
+          'Must be a supported reduction operation.',
+        );
     }
   }
 
@@ -365,10 +412,18 @@ fn mish(x: f32) -> f32 {
   static WgslShaderModule elementwiseBinary({
     required String op,
     WgslDType dtype = WgslDType.float32,
+    WgslDType? outDtype,
     bool strided = false,
     int workgroupSize = 256,
   }) {
-    final opExpr = getWgslOpExpression(op, 'a_val', 'b_val');
+    final targetOutDtype = outDtype ?? dtype;
+    final opExpr = getWgslOpExpression(
+      op,
+      'a_val',
+      'b_val',
+      dtype: dtype,
+      outDtype: targetOutDtype,
+    );
     final wgSize = WgslWorkgroupSize(workgroupSize, 1, 1);
 
     final String code;
@@ -395,7 +450,7 @@ fn mish(x: f32) -> f32 {
           group: 0,
           binding: 2,
           name: 'dst',
-          dtype: dtype,
+          dtype: targetOutDtype,
           access: WgslBufferAccess.readWrite,
         ),
         WgslBinding(
@@ -429,8 +484,8 @@ fn main(
   @builtin(global_invocation_id) global_id: vec3<u32>,
   @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
-  var idx = global_id.x;
-  let stride = num_workgroups.x * ${workgroupSize}u;
+  var idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  let stride = num_workgroups.x * num_workgroups.y * ${workgroupSize}u;
   while (idx < uniforms.total_elements) {
     let a_val = src_a[idx];
     let b_val = src_b[idx];
@@ -460,7 +515,7 @@ fn main(
           group: 0,
           binding: 2,
           name: 'dst',
-          dtype: dtype,
+          dtype: targetOutDtype,
           access: WgslBufferAccess.readWrite,
         ),
         WgslBinding(
@@ -485,8 +540,11 @@ ${bindings[3].toWgslDeclaration()}
 $mathHelpers
 
 @compute ${wgSize.toAttribute()}
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let idx = global_id.x;
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
   if (idx >= meta.total_elements) {
     return;
   }
@@ -503,12 +561,22 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 ''';
     }
 
+    final dtypeSuffix =
+        (dtype == WgslDType.float32 && targetOutDtype == WgslDType.float32)
+        ? ''
+        : '_${dtype.wgslType}_${targetOutDtype.wgslType}';
     return WgslShaderModule(
-      name: 'elementwise_binary_${op}_${strided ? "strided" : "contiguous"}',
+      name:
+          'elementwise_binary_$op${dtypeSuffix}_${strided ? "strided" : "contiguous"}',
       code: code,
       workgroupSize: wgSize,
       bindings: bindings,
-      metadata: {'op': op, 'dtype': dtype.wgslType, 'strided': strided},
+      metadata: {
+        'op': op,
+        'dtype': dtype.wgslType,
+        'outDtype': targetOutDtype.wgslType,
+        'strided': strided,
+      },
     );
   }
 
@@ -519,7 +587,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     bool strided = false,
     int workgroupSize = 256,
   }) {
-    final unaryExpr = getWgslUnaryExpression(op, 'x_val');
+    final unaryExpr = getWgslUnaryExpression(op, 'x_val', dtype: dtype);
     final wgSize = WgslWorkgroupSize(workgroupSize, 1, 1);
 
     final String code;
@@ -571,8 +639,8 @@ fn main(
   @builtin(global_invocation_id) global_id: vec3<u32>,
   @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
-  var idx = global_id.x;
-  let stride = num_workgroups.x * ${workgroupSize}u;
+  var idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  let stride = num_workgroups.x * num_workgroups.y * ${workgroupSize}u;
   while (idx < uniforms.total_elements) {
     let x_val = src[idx];
     dst[idx] = $unaryExpr;
@@ -617,8 +685,11 @@ ${bindings[2].toWgslDeclaration()}
 $mathHelpers
 
 @compute ${wgSize.toAttribute()}
-fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
-  let idx = global_id.x;
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
   if (idx >= meta.total_elements) {
     return;
   }
@@ -634,8 +705,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
 ''';
     }
 
+    final dtypeSuffix = dtype == WgslDType.float32 ? '' : '_${dtype.wgslType}';
     return WgslShaderModule(
-      name: 'elementwise_unary_${op}_${strided ? "strided" : "contiguous"}',
+      name:
+          'elementwise_unary_$op${dtypeSuffix}_${strided ? "strided" : "contiguous"}',
       code: code,
       workgroupSize: wgSize,
       bindings: bindings,
@@ -648,6 +721,7 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
     required String op,
     int workgroupSize = 256,
     WgslDType dtype = WgslDType.float32,
+    bool strided = false,
   }) {
     final typeName = dtype.wgslType;
     final initVal = getWgslReductionInit(op, dtype);
@@ -673,9 +747,9 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
       WgslBinding(
         group: 0,
         binding: 2,
-        name: 'uniforms',
+        name: strided ? 'meta' : 'uniforms',
         isUniform: true,
-        customTypeName: 'ReductionUniforms',
+        customTypeName: strided ? 'StridedMetadata' : 'ReductionUniforms',
       ),
     ];
 
@@ -683,8 +757,10 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>) {
         ? 'my_val = my_val + elem * elem;'
         : 'my_val = ${getWgslReductionOp(op, "my_val", "elem")};';
 
-    final code =
-        '''
+    final String code;
+    if (!strided) {
+      code =
+          '''
 // WGSL Parallel Tree Reduction: $op
 struct ReductionUniforms {
   total_elements: u32,
@@ -710,8 +786,8 @@ fn main(
   var my_val: $typeName = $initVal;
 
   // Grid-stride loop: accumulate multiple input elements per thread into register
-  var i = global_id.x;
-  let stride = num_workgroups.x * ${workgroupSize}u;
+  var i = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  let stride = num_workgroups.x * num_workgroups.y * ${workgroupSize}u;
   while (i < uniforms.total_elements) {
     let elem = src[i];
     $accumStmt
@@ -731,13 +807,66 @@ fn main(
 
   // Workgroup leader writes result to workgroup output slot
   if (tid == 0u) {
-    dst[workgroup_id.x] = sdata[0];
+    ${op.toLowerCase() == 'mean' ? 'dst[workgroup_id.x] = select(sdata[0], sdata[0] / $typeName(uniforms.total_elements), num_workgroups.x == 1u && num_workgroups.y == 1u && uniforms.total_elements > 0u);' : 'dst[workgroup_id.x] = sdata[0];'}
   }
 }
 ''';
+    } else {
+      code =
+          '''
+// WGSL Parallel Tree Reduction: $op (Strided)
+$stridedHeader
 
+${bindings[0].toWgslDeclaration()}
+${bindings[1].toWgslDeclaration()}
+${bindings[2].toWgslDeclaration()}
+
+var<workgroup> sdata: array<$typeName, $workgroupSize>;
+
+@compute ${wgSize.toAttribute()}
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(local_invocation_id) local_id: vec3<u32>,
+  @builtin(workgroup_id) workgroup_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let tid = local_id.x;
+  var my_val: $typeName = $initVal;
+
+  var i = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  let stride = num_workgroups.x * num_workgroups.y * ${workgroupSize}u;
+  while (i < meta.total_elements) {
+    var off_a: u32 = 0u;
+    var off_b: u32 = 0u;
+    var off_dst: u32 = 0u;
+    flat_to_strided_offsets(i, meta, &off_a, &off_b, &off_dst);
+    let elem = src[off_a];
+    $accumStmt
+    i += stride;
+  }
+
+  sdata[tid] = my_val;
+  workgroupBarrier();
+
+  for (var s = ${workgroupSize ~/ 2}u; s > 0u; s >>= 1u) {
+    if (tid < s) {
+      sdata[tid] = $reduceOp;
+    }
+    workgroupBarrier();
+  }
+
+  if (tid == 0u) {
+    let wg_idx = workgroup_id.x + workgroup_id.y * num_workgroups.x;
+    ${op.toLowerCase() == 'mean' ? 'dst[meta.offset_out + wg_idx] = select(sdata[0], sdata[0] / $typeName(meta.total_elements), num_workgroups.x == 1u && num_workgroups.y == 1u && meta.total_elements > 0u);' : 'dst[meta.offset_out + wg_idx] = sdata[0];'}
+  }
+}
+''';
+    }
+
+    final dtypeSuffix = dtype == WgslDType.float32 ? '' : '_${dtype.wgslType}';
+    final stridedSuffix = strided ? '_strided' : '';
     return WgslShaderModule(
-      name: 'reduction_$op',
+      name: 'reduction_$op$dtypeSuffix$stridedSuffix',
       code: code,
       workgroupSize: wgSize,
       bindings: bindings,
@@ -745,7 +874,295 @@ fn main(
         'op': op,
         'workgroupSize': workgroupSize,
         'dtype': dtype.wgslType,
+        'strided': strided,
       },
+    );
+  }
+
+  /// Generates a strided axis-reduction compute shader.
+  static WgslShaderModule axisReduction({
+    required String op,
+    int workgroupSize = 256,
+    WgslDType dtype = WgslDType.float32,
+  }) {
+    final typeName = dtype.wgslType;
+    final initVal = getWgslReductionInit(op, dtype);
+    final combineExpr = getWgslReductionOp(op, 'acc', 'elem');
+    final wgSize = WgslWorkgroupSize(workgroupSize, 1, 1);
+
+    final bindings = [
+      WgslBinding(
+        group: 0,
+        binding: 0,
+        name: 'src',
+        dtype: dtype,
+        access: WgslBufferAccess.read,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 1,
+        name: 'dst',
+        dtype: dtype,
+        access: WgslBufferAccess.readWrite,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 2,
+        name: 'meta',
+        isUniform: true,
+        customTypeName: 'StridedMetadata',
+      ),
+    ];
+
+    final meanStmt = op.toLowerCase() == 'mean' && dtype == WgslDType.float32
+        ? 'if (axis_len > 0) { acc = acc / f32(axis_len); }'
+        : '';
+
+    final code =
+        '''
+// WGSL Strided Axis Reduction: $op
+$stridedHeader
+
+${bindings[0].toWgslDeclaration()}
+${bindings[1].toWgslDeclaration()}
+${bindings[2].toWgslDeclaration()}
+
+@compute ${wgSize.toAttribute()}
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  if (idx >= meta.total_elements) {
+    return;
+  }
+
+  var off_a: u32 = 0u;
+  var off_b: u32 = 0u;
+  var off_dst: u32 = 0u;
+  flat_to_strided_offsets(idx, meta, &off_a, &off_b, &off_dst);
+
+  let axis_len = meta.strides_b[0][0];
+  let axis_stride = meta.strides_b[0][1];
+  var acc: $typeName = $initVal;
+
+  for (var a: i32 = 0; a < axis_len; a++) {
+    let src_idx = u32(i32(off_a) + a * axis_stride);
+    let elem = src[src_idx];
+    acc = $combineExpr;
+  }
+  $meanStmt
+  dst[off_dst] = acc;
+}
+''';
+
+    return WgslShaderModule(
+      name: 'axis_reduction_${op}_${dtype.wgslType}',
+      code: code,
+      workgroupSize: wgSize,
+      bindings: bindings,
+      metadata: {'op': op, 'dtype': dtype.wgslType},
+    );
+  }
+
+  /// Generates a conditional ternary `where(cond, x, y)` WGSL compute shader.
+  static WgslShaderModule whereKernel({
+    WgslDType dtype = WgslDType.float32,
+    int workgroupSize = 256,
+  }) {
+    final wgSize = WgslWorkgroupSize(workgroupSize, 1, 1);
+    final bindings = [
+      WgslBinding(
+        group: 0,
+        binding: 0,
+        name: 'cond',
+        dtype: WgslDType.uint32,
+        access: WgslBufferAccess.read,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 1,
+        name: 'src_x',
+        dtype: dtype,
+        access: WgslBufferAccess.read,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 2,
+        name: 'src_y',
+        dtype: dtype,
+        access: WgslBufferAccess.read,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 3,
+        name: 'dst',
+        dtype: dtype,
+        access: WgslBufferAccess.readWrite,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 4,
+        name: 'uniforms',
+        isUniform: true,
+        customTypeName: 'WhereUniforms',
+      ),
+    ];
+
+    final code =
+        '''
+// WGSL Conditional Where Kernel
+struct WhereUniforms {
+  total_elements: u32,
+  rank: u32,
+  offset_cond: u32,
+  offset_x: u32,
+  offset_y: u32,
+  offset_out: u32,
+  pad0: u32,
+  pad1: u32,
+  shape: array<vec4<u32>, 2>,
+  strides_cond: array<vec4<i32>, 2>,
+  strides_x: array<vec4<i32>, 2>,
+  strides_y: array<vec4<i32>, 2>,
+  strides_out: array<vec4<i32>, 2>,
+}
+
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+
+fn get_vec_u32(arr: array<vec4<u32>, 2>, dim: u32) -> u32 {
+  if (dim < 4u) {
+    return arr[0][dim];
+  } else {
+    return arr[1][dim - 4u];
+  }
+}
+
+fn get_vec_i32(arr: array<vec4<i32>, 2>, dim: u32) -> i32 {
+  if (dim < 4u) {
+    return arr[0][dim];
+  } else {
+    return arr[1][dim - 4u];
+  }
+}
+
+@compute ${wgSize.toAttribute()}
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  if (idx >= uniforms.total_elements) {
+    return;
+  }
+
+  var rem = idx;
+  var off_c: i32 = i32(uniforms.offset_cond);
+  var off_x: i32 = i32(uniforms.offset_x);
+  var off_y: i32 = i32(uniforms.offset_y);
+  var off_dst: i32 = i32(uniforms.offset_out);
+
+  for (var d = i32(uniforms.rank) - 1; d >= 0; d--) {
+    let dim_size = get_vec_u32(uniforms.shape, u32(d));
+    if (dim_size > 0u) {
+      let coord = i32(rem % dim_size);
+      rem = rem / dim_size;
+      off_c += coord * get_vec_i32(uniforms.strides_cond, u32(d));
+      off_x += coord * get_vec_i32(uniforms.strides_x, u32(d));
+      off_y += coord * get_vec_i32(uniforms.strides_y, u32(d));
+      off_dst += coord * get_vec_i32(uniforms.strides_out, u32(d));
+    }
+  }
+
+  let byte_idx = u32(off_c);
+  let word = cond[byte_idx >> 2u];
+  let cond_byte = (word >> ((byte_idx & 3u) * 8u)) & 0xFFu;
+  dst[u32(off_dst)] = select(src_y[u32(off_y)], src_x[u32(off_x)], cond_byte != 0u);
+}
+''';
+
+    return WgslShaderModule(
+      name: 'where_${dtype.wgslType}',
+      code: code,
+      workgroupSize: wgSize,
+      bindings: bindings,
+      metadata: {'dtype': dtype.wgslType},
+    );
+  }
+
+  /// Generates a multidimensional tile WGSL compute shader.
+  static WgslShaderModule tileKernel({
+    WgslDType dtype = WgslDType.float32,
+    int workgroupSize = 256,
+  }) {
+    final wgSize = WgslWorkgroupSize(workgroupSize, 1, 1);
+    final bindings = [
+      WgslBinding(
+        group: 0,
+        binding: 0,
+        name: 'src',
+        dtype: dtype,
+        access: WgslBufferAccess.read,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 1,
+        name: 'dst',
+        dtype: dtype,
+        access: WgslBufferAccess.readWrite,
+      ),
+      WgslBinding(
+        group: 0,
+        binding: 2,
+        name: 'meta',
+        isUniform: true,
+        customTypeName: 'StridedMetadata',
+      ),
+    ];
+
+    final code =
+        '''
+// WGSL Multidimensional Tile Kernel
+$stridedHeader
+
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+
+@compute ${wgSize.toAttribute()}
+fn main(
+  @builtin(global_invocation_id) global_id: vec3<u32>,
+  @builtin(num_workgroups) num_workgroups: vec3<u32>
+) {
+  let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
+  if (idx >= meta.total_elements) {
+    return;
+  }
+
+  var rem = idx;
+  var off_src: i32 = i32(meta.offset_a);
+  var off_dst: i32 = i32(meta.offset_out);
+
+  for (var d = i32(meta.rank) - 1; d >= 0; d--) {
+    let out_dim = get_shape_dim(meta, u32(d));
+    let src_dim = u32(get_stride_b(meta, u32(d)));
+    if (out_dim > 0u && src_dim > 0u) {
+      let coord = rem % out_dim;
+      rem = rem / out_dim;
+      let src_coord = i32(coord % src_dim);
+      off_src += src_coord * get_stride_a(meta, u32(d));
+      off_dst += i32(coord) * get_stride_out(meta, u32(d));
+    }
+  }
+
+  dst[u32(off_dst)] = src[u32(off_src)];
+}
+''';
+
+    return WgslShaderModule(
+      name: 'tile_${dtype.wgslType}',
+      code: code,
+      workgroupSize: wgSize,
+      bindings: bindings,
+      metadata: {'dtype': dtype.wgslType},
     );
   }
 

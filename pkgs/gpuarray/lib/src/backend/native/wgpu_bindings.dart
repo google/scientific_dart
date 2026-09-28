@@ -22,7 +22,7 @@ import '../../exceptions.dart';
 // WebGPU Standard Usage and Enumeration Constants
 // =============================================================================
 
-abstract final class WGPUBufferUsage {
+extension type const WGPUBufferUsage._(int value) implements int {
   static const int none = 0x00000000;
   static const int mapRead = 0x00000001;
   static const int mapWrite = 0x00000002;
@@ -48,7 +48,7 @@ const int WGPUBufferUsage_Storage = WGPUBufferUsage.storage;
 const int WGPUBufferUsage_Indirect = WGPUBufferUsage.indirect;
 const int WGPUBufferUsage_QueryResolve = WGPUBufferUsage.queryResolve;
 
-abstract final class WGPUMapMode {
+extension type const WGPUMapMode._(int value) implements int {
   static const int none = 0x00000000;
   static const int read = 0x00000001;
   static const int write = 0x00000002;
@@ -58,7 +58,7 @@ const int WGPUMapMode_None = WGPUMapMode.none;
 const int WGPUMapMode_Read = WGPUMapMode.read;
 const int WGPUMapMode_Write = WGPUMapMode.write;
 
-abstract final class WGPUSType {
+extension type const WGPUSType._(int value) implements int {
   static const int invalid = 0x00000000;
   static const int surfaceDescriptorFromMetalLayer = 0x00000001;
   static const int surfaceDescriptorFromWindowsHWND = 0x00000002;
@@ -73,13 +73,13 @@ const int WGPUSType_ShaderSourceWGSL = WGPUSType.shaderSourceWGSL;
 const int WGPUSType_ShaderModuleWGSLDescriptor =
     WGPUSType.shaderModuleWGSLDescriptor;
 
-abstract final class WGPUCallbackMode {
+extension type const WGPUCallbackMode._(int value) implements int {
   static const int waitAnyOnly = 0x00000001;
   static const int allowProcessEvents = 0x00000002;
   static const int allowSpontaneous = 0x00000004;
 }
 
-abstract final class WGPUPowerPreference {
+extension type const WGPUPowerPreference._(int value) implements int {
   static const int undefined = 0x00000000;
   static const int lowPower = 0x00000001;
   static const int highPerformance = 0x00000002;
@@ -90,7 +90,7 @@ const int WGPUPowerPreference_LowPower = WGPUPowerPreference.lowPower;
 const int WGPUPowerPreference_HighPerformance =
     WGPUPowerPreference.highPerformance;
 
-abstract final class WGPUBackendType {
+extension type const WGPUBackendType._(int value) implements int {
   static const int undefined = 0x00000000;
   static const int nullBackend = 0x00000001;
   static const int webGpu = 0x00000002;
@@ -272,7 +272,7 @@ final class WgpuBindGroupEntryData {
 // WebGPU Dynamic Native Library Loader & Driver Interface
 // =============================================================================
 
-abstract final class _WgpuStaticState {
+extension type const _WgpuStaticState._(Object? _) {
   static ffi.Pointer<ffi.Void> lastAcquiredDevice = ffi.nullptr;
   static bool mapDone = false;
 }
@@ -915,7 +915,7 @@ final class WgpuNativeLib {
       final buf = _wgpuDeviceCreateBuffer(device, desc);
       if (buf == ffi.nullptr) {
         throw GpuMemoryException(
-          "Failed to allocate GPU buffer of size  bytes.",
+          "Failed to allocate GPU buffer of size $size bytes.",
         );
       }
       return buf;
@@ -936,6 +936,7 @@ final class WgpuNativeLib {
   void bufferMapSync(
     ffi.Pointer<ffi.Void> instance,
     ffi.Pointer<ffi.Void> buffer, {
+    ffi.Pointer<ffi.Void>? device,
     int mode = WGPUMapMode.read,
     int offset = 0,
     required int size,
@@ -961,7 +962,10 @@ final class WgpuNativeLib {
 
       mapAsyncFn(buffer, mode, offset, size, cbInfo.ref);
 
-      for (var i = 0; i < 100; i++) {
+      for (var i = 0; i < 1000; i++) {
+        if (device != null && device != ffi.nullptr) {
+          devicePoll(device, wait: true);
+        }
         _wgpuInstanceProcessEvents(instance);
         if (_WgpuStaticState.mapDone) break;
       }
@@ -971,6 +975,7 @@ final class WgpuNativeLib {
   Future<int> bufferMapAsync(
     ffi.Pointer<ffi.Void> instance,
     ffi.Pointer<ffi.Void> buffer, {
+    ffi.Pointer<ffi.Void>? device,
     int mode = WGPUMapMode.read,
     int offset = 0,
     required int size,
@@ -996,7 +1001,10 @@ final class WgpuNativeLib {
 
       mapAsyncFn(buffer, mode, offset, size, cbInfo.ref);
 
-      for (var i = 0; i < 100; i++) {
+      for (var i = 0; i < 1000; i++) {
+        if (device != null && device != ffi.nullptr) {
+          devicePoll(device, wait: true);
+        }
         _wgpuInstanceProcessEvents(instance);
         if (_WgpuStaticState.mapDone) break;
       }
