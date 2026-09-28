@@ -1562,9 +1562,11 @@ void main() {
           );
           expect(logicalNot(c64Arr).toList(), [true, false]);
 
-          // Logical AND, OR, XOR with broadcasting between numeric and boolean
+          // Logical AND, OR, XOR with broadcasting
           final numA = NDArray.fromList([0.0, 1.0], [2, 1], DType.float64);
-          final numB = NDArray.fromList([0, 5], [1, 2], DType.int32);
+          final numBInt = NDArray.fromList([0, 5], [1, 2], DType.int32);
+          expect(() => logicalAnd(numA, numBInt), throwsArgumentError);
+          final numB = numBInt.astype(DType.float64);
 
           final lAnd = logicalAnd(numA, numB);
           expect(lAnd.shape, [2, 2]);

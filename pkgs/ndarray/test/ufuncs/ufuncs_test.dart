@@ -111,13 +111,13 @@ void main() {
       });
     });
 
-    test('mixed integer type upcasting/promotion', () {
+    test('mixed integer type rejection and explicit astype', () {
       NDArray.scope(() {
         final a32 = NDArray.fromList([5, 12], [2], DType.int32);
         final b64 = NDArray.fromList([3, 4], [2], DType.int64);
 
-        // bitwiseAnd should resolve to DType.int64
-        final res = bitwiseAnd(a32, b64);
+        expect(() => bitwiseAnd<DTypeTag>(a32, b64), throwsArgumentError);
+        final res = bitwiseAnd(a32.astype(DType.int64), b64);
         expect(res.dtype, DType.int64);
         expect(res.toList(), [1, 4]);
       });
@@ -500,8 +500,8 @@ void main() {
             2,
           ], DType.float64);
 
-          // Should not crash with type-cast error, should upcast b to Complex
-          final c = add(a, b);
+          expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+          final c = add(a, b.astype(DType.complex128));
           expect(c.dtype, DType.complex128);
           expect(c.shape, [2]);
           expect(c.toList(), [Complex(11.0, 2.0), Complex(23.0, 4.0)]);
@@ -519,7 +519,8 @@ void main() {
           b[[0]] = Complex(1.0, 2.0);
           b[[1]] = Complex(3.0, 4.0);
 
-          final c = subtract(a, b);
+          expect(() => subtract<DTypeTag>(a, b), throwsArgumentError);
+          final c = subtract(a.astype(DType.complex128), b);
           expect(c.dtype, DType.complex128);
           expect(c.toList(), [Complex(9.0, -2.0), Complex(17.0, -4.0)]);
         }),
@@ -536,7 +537,8 @@ void main() {
           b[[0]] = Complex(4.0, 5.0);
           b[[1]] = Complex(1.0, -2.0);
 
-          final c = multiply(a, b);
+          expect(() => multiply<DTypeTag>(a, b), throwsArgumentError);
+          final c = multiply(a.astype(DType.complex128), b);
           expect(c.dtype, DType.complex128);
           expect(c.toList(), [Complex(8.0, 10.0), Complex(3.0, -6.0)]);
         }),
@@ -1043,16 +1045,18 @@ void main() {
     );
 
     test(
-      'logicalAnd cross-type promotions on float/boolean, complex/boolean, and int/boolean',
+      'logicalAnd cross-type rejection and explicit astype on float/boolean, complex/boolean, and int/boolean',
       () => NDArray.scope(() {
         final mask = NDArray.fromList([true, true, false], [3], DType.boolean);
 
         // Float64 / boolean
         final f64 = NDArray.fromList([0.0, 2.5, 0.0], [3], DType.float64);
-        final resF1 = logicalAnd(f64, mask);
+        expect(() => logicalAnd(f64, mask), throwsArgumentError);
+        expect(() => logicalAnd(mask, f64), throwsArgumentError);
+        final resF1 = logicalAnd(f64.astype(DType.boolean), mask);
         expect(resF1.dtype, DType.boolean);
         expect(resF1.toList(), [false, true, false]);
-        final resF2 = logicalAnd(mask, f64);
+        final resF2 = logicalAnd(mask, f64.astype(DType.boolean));
         expect(resF2.dtype, DType.boolean);
         expect(resF2.toList(), [false, true, false]);
 
@@ -1061,19 +1065,23 @@ void main() {
         c128[[0]] = Complex(0.0, 0.0); // false
         c128[[1]] = Complex(1.0, -1.0); // true
         c128[[2]] = Complex(0.0, 0.0);
-        final resC1 = logicalAnd(c128, mask);
+        expect(() => logicalAnd(c128, mask), throwsArgumentError);
+        expect(() => logicalAnd(mask, c128), throwsArgumentError);
+        final resC1 = logicalAnd(c128.astype(DType.boolean), mask);
         expect(resC1.dtype, DType.boolean);
         expect(resC1.toList(), [false, true, false]);
-        final resC2 = logicalAnd(mask, c128);
+        final resC2 = logicalAnd(mask, c128.astype(DType.boolean));
         expect(resC2.dtype, DType.boolean);
         expect(resC2.toList(), [false, true, false]);
 
         // Int32 / boolean
         final i32 = NDArray.fromList([0, 5, 0], [3], DType.int32);
-        final resI1 = logicalAnd(i32, mask);
+        expect(() => logicalAnd(i32, mask), throwsArgumentError);
+        expect(() => logicalAnd(mask, i32), throwsArgumentError);
+        final resI1 = logicalAnd(i32.astype(DType.boolean), mask);
         expect(resI1.dtype, DType.boolean);
         expect(resI1.toList(), [false, true, false]);
-        final resI2 = logicalAnd(mask, i32);
+        final resI2 = logicalAnd(mask, i32.astype(DType.boolean));
         expect(resI2.dtype, DType.boolean);
         expect(resI2.toList(), [false, true, false]);
       }),
@@ -1104,7 +1112,9 @@ void main() {
         final a = NDArray.fromList([Complex(1.0, 1.0)], [1], DType.complex64);
         final b = NDArray.fromList([2.0], [1], DType.float64);
 
-        final c = add(a, b);
+        expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+        expect(() => addAs(a, b, DType.complex128), throwsArgumentError);
+        final c = add(a.astype(DType.complex128), b.astype(DType.complex128));
         expect(c.dtype, DType.complex128);
         expect(c.getCell([0]).real, 3.0);
         expect(c.getCell([0]).imag, 1.0);
@@ -1146,24 +1156,26 @@ void main() {
         final i64 = NDArray.fromList([3], [1], DType.int64);
         final i32 = NDArray.fromList([4], [1], DType.int32);
 
-        // 1. float64 + float32 -> float64
-        final r1 = add(f64, f32);
+        // Mixed dtypes are rejected on add() and addAs(); explicit astype works
+        expect(() => add<DTypeTag>(f64, f32), throwsArgumentError);
+        expect(() => addAs(f64, f32, DType.float64), throwsArgumentError);
+        final r1 = add(f64, f32.astype(DType.float64));
         expect(r1.dtype, DType.float64);
 
-        // 2. float32 + int64 -> float64
-        final r2 = add(f32, i64);
+        expect(() => add<DTypeTag>(f32, i64), throwsArgumentError);
+        final r2 = add(f32.astype(DType.float64), i64.astype(DType.float64));
         expect(r2.dtype, DType.float64);
 
-        // 2b. float32 + int32 -> float64
-        final r2b = add(f32, i32);
+        expect(() => add<DTypeTag>(f32, i32), throwsArgumentError);
+        final r2b = add(f32.astype(DType.float64), i32.astype(DType.float64));
         expect(r2b.dtype, DType.float64);
 
-        // 3. int64 + int32 -> int64
-        final r3 = add(i64, i32);
+        expect(() => add<DTypeTag>(i64, i32), throwsArgumentError);
+        final r3 = add(i64, i32.astype(DType.int64));
         expect(r3.dtype, DType.int64);
 
-        // 4. int32 + float64 -> float64
-        final r4 = add(i32, f64);
+        expect(() => add<DTypeTag>(i32, f64), throwsArgumentError);
+        final r4 = add(i32.astype(DType.float64), f64);
         expect(r4.dtype, DType.float64);
         expect(r4.toList(), [5.0]);
       }),
@@ -1631,28 +1643,29 @@ void main() {
         final dbl = NDArray.fromList([2.0, 2.0], [2], DType.float64);
         final integer = NDArray.fromList([2, 2], [2], DType.int32);
 
-        // 1. Complex with double
-        final cDbl = comp.eq(dbl);
+        // Mixed-dtype array comparisons throw ArgumentError; explicit astype works
+        expect(() => comp.eq(dbl), throwsArgumentError);
+        final cDbl = comp.eq(dbl.astype(DType.complex128));
         expect(cDbl.toList(), [false, false]); // 1 != 2, 3 != 2
 
-        // 2. Complex with int
-        final cInt = comp.eq(integer);
+        expect(() => comp.eq(integer), throwsArgumentError);
+        final cInt = comp.eq(integer.astype(DType.complex128));
         expect(cInt.toList(), [false, false]);
 
-        // 3. double with Complex
-        final dblC = dbl.eq(comp);
+        expect(() => dbl.eq(comp), throwsArgumentError);
+        final dblC = dbl.astype(DType.complex128).eq(comp);
         expect(dblC.toList(), [false, false]);
 
-        // 4. double with int
-        final dblInt = dbl.eq(integer);
+        expect(() => dbl.eq(integer), throwsArgumentError);
+        final dblInt = dbl.eq(integer.astype(DType.float64));
         expect(dblInt.toList(), [true, true]);
 
-        // 5. int with Complex
-        final intC = integer.eq(comp);
+        expect(() => integer.eq(comp), throwsArgumentError);
+        final intC = integer.astype(DType.complex128).eq(comp);
         expect(intC.toList(), [false, false]);
 
-        // 6. int with double
-        final intDbl = integer.eq(dbl);
+        expect(() => integer.eq(dbl), throwsArgumentError);
+        final intDbl = integer.astype(DType.float64).eq(dbl);
         expect(intDbl.toList(), [true, true]);
       }),
     );

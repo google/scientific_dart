@@ -1049,30 +1049,30 @@ void main() {
               expect(x.getCell([0]), closeTo(2.0, 1e-9));
               expect(x.getCell([1]), closeTo(3.0, 1e-9));
 
-              // 3D batch solve: A: [2, 2, 2], b: [2, 2]
+              // 3D batch solve: A: [2, 2, 2], b: [2, 2, 1]
               final a3D = NDArray<Float64>.zeros([2, 2, 2], DType.float64);
-              final b3D = NDArray<Float64>.zeros([2, 2], DType.float64);
+              final b3D = NDArray<Float64>.zeros([2, 2, 1], DType.float64);
 
               a3D.setCell([0, 0, 0], 3.0);
               a3D.setCell([0, 0, 1], 1.0);
               a3D.setCell([0, 1, 0], 1.0);
               a3D.setCell([0, 1, 1], 2.0);
-              b3D.setCell([0, 0], 9.0);
-              b3D.setCell([0, 1], 8.0);
+              b3D.setCell([0, 0, 0], 9.0);
+              b3D.setCell([0, 1, 0], 8.0);
 
               a3D.setCell([1, 0, 0], 2.0);
               a3D.setCell([1, 0, 1], 0.0);
               a3D.setCell([1, 1, 0], 0.0);
               a3D.setCell([1, 1, 1], 4.0);
-              b3D.setCell([1, 0], 6.0);
-              b3D.setCell([1, 1], 8.0);
+              b3D.setCell([1, 0, 0], 6.0);
+              b3D.setCell([1, 1, 0], 8.0);
 
               final x3D = solve(a3D, b3D);
-              expect(x3D.shape, [2, 2]);
-              expect(x3D.getCell([0, 0]), closeTo(2.0, 1e-9));
-              expect(x3D.getCell([0, 1]), closeTo(3.0, 1e-9));
-              expect(x3D.getCell([1, 0]), closeTo(3.0, 1e-9));
-              expect(x3D.getCell([1, 1]), closeTo(2.0, 1e-9));
+              expect(x3D.shape, [2, 2, 1]);
+              expect(x3D.getCell([0, 0, 0]), closeTo(2.0, 1e-9));
+              expect(x3D.getCell([0, 1, 0]), closeTo(3.0, 1e-9));
+              expect(x3D.getCell([1, 0, 0]), closeTo(3.0, 1e-9));
+              expect(x3D.getCell([1, 1, 0]), closeTo(2.0, 1e-9));
             });
           });
         });

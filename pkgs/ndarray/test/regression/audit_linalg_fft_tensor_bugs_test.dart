@@ -201,14 +201,14 @@ void main() {
           final res = matmul(bcast, vec);
           expect(res.getCell([]), closeTo(30.0, 1e-12));
 
-          // Mixed dtype (int32 + float64) with zero stride broadcasted vector
-          // Verifies that both the cast buffer and the contiguous copy buffer are properly managed
+          // Mixed dtype (int32 + float64) throws ArgumentError; explicit astype works
           final scalarInt = NDArray.fromList(Int32List.fromList([3]), [
             1,
           ], DType.int32);
           final bcastInt = broadcastTo(scalarInt, [4]);
           expect(bcastInt.strides[0], 0);
-          final resMixed = matmul(bcastInt, vec);
+          expect(() => matmul<DTypeTag>(bcastInt, vec), throwsArgumentError);
+          final resMixed = matmul(bcastInt.astype(DType.float64), vec);
           expect(resMixed.getCell([]), closeTo(30.0, 1e-12));
           expect(scalarInt.getCell([0]), 3);
         });
@@ -337,7 +337,8 @@ void main() {
           DType.float64,
         );
 
-        final res = matmul(aInt, bFloat);
+        expect(() => matmul<DTypeTag>(aInt, bFloat), throwsArgumentError);
+        final res = matmul(aInt.astype(DType.float64), bFloat);
         expect(res.getCell([0, 0]), closeTo(1.0, 1e-12));
         expect(aInt.getCell([1, 1]), 4);
       });
@@ -513,8 +514,13 @@ void main() {
             const Slice(step: -1),
           ]);
 
-          final res = kron(aRev, bRev);
-          final expected = kron(aRev.copy(), bRev.copy());
+          expect(() => kron<DTypeTag>(aRev, bRev), throwsArgumentError);
+          final aRevFloat = aInt.astype(DType.float64).slice([
+            const Slice(step: -1),
+            const Slice(step: -1),
+          ]);
+          final res = kron(aRevFloat, bRev);
+          final expected = kron(aRevFloat.copy(), bRev.copy());
 
           expect(res.shape, expected.shape);
           for (var i = 0; i < res.shape[0]; i++) {

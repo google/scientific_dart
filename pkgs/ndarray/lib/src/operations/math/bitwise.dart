@@ -778,7 +778,8 @@ NDArray<T> leftShift<T extends DTypeTag>(
 int _rightShiftScalar(int a, int b, DType dtype) {
   switch (dtype) {
     case DType.int8:
-      if (b < 0 || b >= 8) return 0;
+      if (b < 0) return 0;
+      if (b >= 8) return a < 0 ? -1 : 0;
       return a >> b;
     case DType.uint16:
       if (b < 0 || b >= 16) return 0;
@@ -1025,16 +1026,17 @@ NDArray<T> rightShift<T extends DTypeTag>(
 
 /// Computes bitwise inversion, or bitwise NOT, element-wise.
 ///
-/// Calculates the bitwise NOT of an integer array, element-wise.
+/// Calculates the bitwise NOT of an integer or boolean array, element-wise.
+/// For boolean arrays, computes the logical NOT.
 ///
 /// **Preconditions:**
-/// - [a] must be an integer-typed array (`int32`, `int64`, `uint8`, `int16`).
+/// - [a] must be an integer-typed or boolean array.
 /// - [a] must not be disposed.
 /// - If provided, [out] must match the shape and dtype of [a].
 ///
 /// It is an error if:
 /// - [a] is disposed (throws [StateError]).
-/// - [a] is not integer-typed (throws [ArgumentError]).
+/// - [a] is not integer-typed or boolean (throws [ArgumentError]).
 /// - [out] shape or dtype is incompatible (throws [ArgumentError]).
 ///
 /// **Performance considerations:**
@@ -1056,9 +1058,9 @@ NDArray<T> invert<T extends DTypeTag>(
     throw StateError('Cannot execute invert() on a disposed array.');
   }
 
-  if (!a.dtype.isInteger) {
+  if (!a.dtype.isInteger && a.dtype != DType.boolean) {
     throw ArgumentError(
-      'Bitwise operations are only supported for integer data types.',
+      'Bitwise operations are only supported for integer and boolean data types.',
     );
   }
 
@@ -1111,11 +1113,17 @@ NDArray<T> invert<T extends DTypeTag>(
             size,
             maskHolder.pointer,
           );
+        case DType.boolean:
+          v_logical_not(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
-        case DType.boolean:
         case DType.complex128:
         case DType.complex64:
           throw UnsupportedError('Unsupported integer DType: ${a.dtype}');
@@ -1180,11 +1188,20 @@ NDArray<T> invert<T extends DTypeTag>(
               rank,
               maskHolder.pointer,
             );
+          case DType.boolean:
+            s_logical_not(
+              a.pointer.cast(),
+              cStridesSrc,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
-          case DType.boolean:
           case DType.complex128:
           case DType.complex64:
             throw UnsupportedError('Unsupported integer DType: ${a.dtype}');
@@ -1219,6 +1236,13 @@ _prepareBinaryBitwise<T extends DTypeTag>(
 ) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot perform $opName on disposed arrays.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
 
   if (!a.dtype.isInteger || !b.dtype.isInteger) {

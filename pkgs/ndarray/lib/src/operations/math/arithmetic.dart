@@ -22,6 +22,7 @@ import '../broadcasting.dart';
 import '../helpers.dart';
 import '../native_pointer.dart';
 import '../stats.dart';
+import 'logical.dart';
 
 /// Computes the element-wise square root of the array.
 ///
@@ -464,6 +465,7 @@ NDArray<R> expm1<R extends DTypeTag>(
         maskHolder.pointer,
       );
     } else if (a.dtype.isInteger) {
+      final isUint64 = (a.dtype as DType<DTypeTag>) == DType.uint64;
       unaryOp<DTypeTag, DTypeTag>(
         result,
         a,
@@ -474,7 +476,9 @@ NDArray<R> expm1<R extends DTypeTag>(
         a.offsetElements,
         result.offsetElements,
         (x) {
-          final dx = (x as num).toDouble();
+          final dx = isUint64
+              ? BigInt.from(x as int).toUnsigned(64).toDouble()
+              : (x as num).toDouble();
           if (dx.abs() < 1e-5) {
             return dx + 0.5 * dx * dx + (1.0 / 6.0) * dx * dx * dx;
           }
@@ -688,6 +692,7 @@ NDArray<R> log1p<R extends DTypeTag>(
         maskHolder.pointer,
       );
     } else if (a.dtype.isInteger) {
+      final isUint64 = (a.dtype as DType<DTypeTag>) == DType.uint64;
       unaryOp<DTypeTag, DTypeTag>(
         result,
         a,
@@ -698,7 +703,9 @@ NDArray<R> log1p<R extends DTypeTag>(
         a.offsetElements,
         result.offsetElements,
         (x) {
-          final dx = (x as num).toDouble();
+          final dx = isUint64
+              ? BigInt.from(x as int).toUnsigned(64).toDouble()
+              : (x as num).toDouble();
           if (dx.abs() < 1e-5) {
             return dx - 0.5 * dx * dx + (1.0 / 3.0) * dx * dx * dx;
           }
@@ -750,6 +757,13 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
       x2.dtype == DType.complex128 ||
       x2.dtype == DType.complex64) {
     throw UnsupportedError('Complex numbers are not supported for logaddexp');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   final broadcastResult = broadcast(x1, x2);
   final shape = broadcastResult.shape;
@@ -878,6 +892,7 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
       }
     }
 
+    final isUint64 = x1.dtype == DType.uint64;
     elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
       result,
       x1,
@@ -891,8 +906,12 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
       x2.offsetElements,
       result.offsetElements,
       (a, b) => _logaddexp(
-        (a is bool ? (a ? 1.0 : 0.0) : (a as num).toDouble()),
-        (b is bool ? (b ? 1.0 : 0.0) : (b as num).toDouble()),
+        isUint64
+            ? BigInt.from(a as int).toUnsigned(64).toDouble()
+            : (a is bool ? (a ? 1.0 : 0.0) : (a as num).toDouble()),
+        isUint64
+            ? BigInt.from(b as int).toUnsigned(64).toDouble()
+            : (b is bool ? (b ? 1.0 : 0.0) : (b as num).toDouble()),
       ),
       maskHolder.pointer,
     );
@@ -920,6 +939,13 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
       x2.dtype == DType.complex128 ||
       x2.dtype == DType.complex64) {
     throw UnsupportedError('Complex numbers are not supported for logaddexp2');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   final broadcastResult = broadcast(x1, x2);
   final shape = broadcastResult.shape;
@@ -1048,6 +1074,7 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
       }
     }
 
+    final isUint64 = x1.dtype == DType.uint64;
     elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
       result,
       x1,
@@ -1061,8 +1088,12 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
       x2.offsetElements,
       result.offsetElements,
       (a, b) => _logaddexp2(
-        (a is bool ? (a ? 1.0 : 0.0) : (a as num).toDouble()),
-        (b is bool ? (b ? 1.0 : 0.0) : (b as num).toDouble()),
+        isUint64
+            ? BigInt.from(a as int).toUnsigned(64).toDouble()
+            : (a is bool ? (a ? 1.0 : 0.0) : (a as num).toDouble()),
+        isUint64
+            ? BigInt.from(b as int).toUnsigned(64).toDouble()
+            : (b is bool ? (b ? 1.0 : 0.0) : (b as num).toDouble()),
       ),
       maskHolder.pointer,
     );
@@ -1202,6 +1233,7 @@ NDArray<R> rint<R extends DTypeTag>(
     }
 
     if (a.dtype.isInteger) {
+      final isUint64 = (a.dtype as DType<DTypeTag>) == DType.uint64;
       unaryOp<DTypeTag, DTypeTag>(
         result,
         a,
@@ -1211,7 +1243,9 @@ NDArray<R> rint<R extends DTypeTag>(
         0,
         a.offsetElements,
         result.offsetElements,
-        (x) => (x as num).toDouble().roundToDouble(),
+        (x) => isUint64
+            ? BigInt.from(x as int).toUnsigned(64).toDouble()
+            : (x as num).toDouble(),
         maskHolder.pointer,
       );
     } else {
@@ -1374,6 +1408,7 @@ NDArray<R> trunc<R extends DTypeTag>(
     }
 
     if (a.dtype.isInteger) {
+      final isUint64 = (a.dtype as DType<DTypeTag>) == DType.uint64;
       unaryOp<DTypeTag, DTypeTag>(
         result,
         a,
@@ -1383,7 +1418,9 @@ NDArray<R> trunc<R extends DTypeTag>(
         0,
         a.offsetElements,
         result.offsetElements,
-        (x) => (x as num).toDouble().truncateToDouble(),
+        (x) => isUint64
+            ? BigInt.from(x as int).toUnsigned(64).toDouble()
+            : (x as num).toDouble(),
         maskHolder.pointer,
       );
     } else {
@@ -1998,6 +2035,11 @@ NDArray<T> reciprocal<T extends DTypeTag>(
       return result;
     }
 
+    final isUnsignedInt =
+        a.dtype == DType.uint64 ||
+        a.dtype == DType.uint32 ||
+        a.dtype == DType.uint16 ||
+        a.dtype == DType.uint8;
     unaryOp<T, T>(
       result,
       a,
@@ -2011,10 +2053,13 @@ NDArray<T> reciprocal<T extends DTypeTag>(
         if (x is Complex) {
           return (Complex(1.0, 0.0) / x);
         } else if (x is double) {
-          return (1.0 / x);
+          return castValue(1.0 / x, a.dtype);
         } else if (x is int) {
           if (x == 0) throw UnsupportedError('Integer division by zero');
-          return (1 ~/ x);
+          if (isUnsignedInt) {
+            return x == 1 ? 1 : 0;
+          }
+          return castValue(1 ~/ x, a.dtype);
         }
         throw UnsupportedError('Unsupported type for reciprocal');
       },
@@ -2094,43 +2139,43 @@ NDArray<T> positive<T extends DTypeTag>(
           );
           return result;
         case DType.int64:
+        case DType.uint64:
           v_positive_int64(
-            a.typedPointer(),
-            result.typedPointer(),
+            a.pointer.cast(),
+            result.pointer.cast(),
             a.size,
             maskHolder.pointer,
           );
           return result;
         case DType.int32:
+        case DType.uint32:
           v_positive_int32(
-            a.typedPointer(),
-            result.typedPointer(),
+            a.pointer.cast(),
+            result.pointer.cast(),
             a.size,
             maskHolder.pointer,
           );
           return result;
         case DType.int16:
+        case DType.uint16:
+        case DType.float16:
+        case DType.bfloat16:
           v_positive_int16(
-            a.typedPointer(),
-            result.typedPointer(),
+            a.pointer.cast(),
+            result.pointer.cast(),
             a.size,
             maskHolder.pointer,
           );
           return result;
         case DType.uint8:
+        case DType.int8:
           v_positive_uint8(
-            a.typedPointer(),
-            result.typedPointer(),
+            a.pointer.cast(),
+            result.pointer.cast(),
             a.size,
             maskHolder.pointer,
           );
           return result;
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
         case DType.boolean:
           break;
       }
@@ -2194,10 +2239,11 @@ NDArray<T> positive<T extends DTypeTag>(
             );
             return result;
           case DType.int64:
+          case DType.uint64:
             s_positive_int64(
-              a.typedPointer(),
+              a.pointer.cast(),
               cStridesA,
-              result.typedPointer(),
+              result.pointer.cast(),
               cStridesRes,
               cShape,
               rank,
@@ -2205,10 +2251,11 @@ NDArray<T> positive<T extends DTypeTag>(
             );
             return result;
           case DType.int32:
+          case DType.uint32:
             s_positive_int32(
-              a.typedPointer(),
+              a.pointer.cast(),
               cStridesA,
-              result.typedPointer(),
+              result.pointer.cast(),
               cStridesRes,
               cShape,
               rank,
@@ -2216,10 +2263,13 @@ NDArray<T> positive<T extends DTypeTag>(
             );
             return result;
           case DType.int16:
+          case DType.uint16:
+          case DType.float16:
+          case DType.bfloat16:
             s_positive_int16(
-              a.typedPointer(),
+              a.pointer.cast(),
               cStridesA,
-              result.typedPointer(),
+              result.pointer.cast(),
               cStridesRes,
               cShape,
               rank,
@@ -2227,22 +2277,17 @@ NDArray<T> positive<T extends DTypeTag>(
             );
             return result;
           case DType.uint8:
+          case DType.int8:
             s_positive_uint8(
-              a.typedPointer(),
+              a.pointer.cast(),
               cStridesA,
-              result.typedPointer(),
+              result.pointer.cast(),
               cStridesRes,
               cShape,
               rank,
               maskHolder.pointer,
             );
             return result;
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
           case DType.boolean:
             break;
         }
@@ -2306,8 +2351,10 @@ NDArray<T> power<T extends DTypeTag>(
     throw StateError('Cannot execute power() on a disposed array.');
   }
   if (x1.dtype != x2.dtype) {
-    throw ArgumentError(
-      'Operands x1 and x2 must have the same dtype for power (was ${x1.dtype} and ${x2.dtype}). Perform an explicit cast first.',
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
     );
   }
   final broadcastResult = broadcast(x1, x2);
@@ -2814,21 +2861,22 @@ NDArray<T> negative<T extends DTypeTag>(
   }
 }
 
-/// Element-wise floor division with broadcasting and dtype upcasting support.
+/// Element-wise floor division with broadcasting support.
 ///
-/// Corresponds to Dart's `~/` operator.
+/// Both [x1] and [x2] must have the same [DType].
 ///
 /// **Division by Zero:**
 /// - **Integer arrays**: Division by zero is an error.
-/// - **Floating-point arrays**: Returns `double.nan` silently without throwing exceptions.
+/// - **Floating-point arrays**: Follows IEEE 754 rules (`±Infinity` for non-zero divided by zero, `NaN` for `0.0 / 0.0`).
 ///
 /// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed.
+/// - The input arrays [x1] and [x2] must not be disposed and must have the same [DType].
 /// - If [out] is provided, it must not be disposed and must have compatible shape and dtype.
 /// - For integer arrays, the divisor [x2] must not contain any `0` elements.
 ///
 /// It is an error if:
 /// - [x1], [x2], or [out] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 ///
@@ -2847,6 +2895,13 @@ NDArray<T> floorDivide<T extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute floorDivide() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   final broadcastResult = broadcast(x1, x2);
   final commonShape = broadcastResult.shape;
@@ -3045,14 +3100,48 @@ NDArray<T> floorDivide<T extends DTypeTag>(
       }
     }
 
-    double doubleFloorDiv(double x, double y) {
-      if (y == 0.0) return double.nan;
-      return (x / y).floorToDouble();
+    double doubleFloorDiv(double a, double b) {
+      if (b == 0.0) {
+        if (a == 0.0 || a.isNaN) return double.nan;
+        final signA = a.isNegative ? -1.0 : 1.0;
+        final signB = b.isNegative ? -1.0 : 1.0;
+        return signA * signB * double.infinity;
+      }
+      if (a.isNaN || b.isNaN || a.isInfinite) return double.nan;
+      if (b.isInfinite) {
+        if (a == 0.0) return (a.isNegative != b.isNegative) ? -0.0 : 0.0;
+        return (a.isNegative == b.isNegative) ? 0.0 : -1.0;
+      }
+      if (a == 0.0) {
+        return (a.isNegative != b.isNegative) ? -0.0 : 0.0;
+      }
+      var mod = a.remainder(b);
+      var div = (a - mod) / b;
+      if (mod != 0.0) {
+        if ((b < 0.0) != (mod < 0.0)) {
+          mod += b;
+          div -= 1.0;
+        }
+      }
+      if (div != 0.0) {
+        var floordiv = div.floorToDouble();
+        if (div - floordiv > 0.5) {
+          floordiv += 1.0;
+        }
+        return floordiv;
+      } else {
+        return (a.isNegative != b.isNegative) ? -0.0 : 0.0;
+      }
     }
 
     int intFloorDiv(int x, int y) {
       if (y == 0) {
         throw UnsupportedError('Integer division by zero');
+      }
+      if (targetDType == DType.uint64) {
+        final ux = BigInt.from(x).toUnsigned(64);
+        final uy = BigInt.from(y).toUnsigned(64);
+        return (ux ~/ uy).toSigned(64).toInt();
       }
       final res = x ~/ y;
       final rem = x % y;
@@ -3129,6 +3218,7 @@ NDArray<T> floorDivide<T extends DTypeTag>(
 ///
 /// It is an error if:
 /// - [x1], [x2], or [out] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 NDArray<T> remainder<T extends DTypeTag>(
@@ -3142,6 +3232,13 @@ NDArray<T> remainder<T extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute remainder() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   final broadcastResult = broadcast(x1, x2);
   final commonShape = broadcastResult.shape;
@@ -3341,10 +3438,14 @@ NDArray<T> remainder<T extends DTypeTag>(
     }
 
     double doubleMod(double x, double y) {
-      if (y == 0.0) return double.nan;
-      final rem = x % y;
-      if (rem != 0.0 && ((rem < 0.0) != (y < 0.0))) {
-        return rem + y;
+      if (y == 0.0 || x.isNaN || y.isNaN || x.isInfinite) return double.nan;
+      var rem = x.remainder(y);
+      if (rem != 0.0) {
+        if ((rem < 0.0) != (y < 0.0)) {
+          rem += y;
+        }
+      } else {
+        rem = y.isNegative ? -0.0 : 0.0;
       }
       return rem;
     }
@@ -3352,6 +3453,11 @@ NDArray<T> remainder<T extends DTypeTag>(
     int intMod(int x, int y) {
       if (y == 0) {
         throw UnsupportedError('Integer division by zero');
+      }
+      if (targetDType == DType.uint64) {
+        final ux = BigInt.from(x).toUnsigned(64);
+        final uy = BigInt.from(y).toUnsigned(64);
+        return (ux % uy).toSigned(64).toInt();
       }
       final rem = x % y;
       if (rem != 0 && ((rem < 0) != (y < 0))) {
@@ -3418,12 +3524,13 @@ NDArray<T> remainder<T extends DTypeTag>(
 /// - **Floating-point arrays**: Returns `double.nan` silently.
 ///
 /// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed.
+/// - The input arrays [x1] and [x2] must not be disposed and must have the same [DType].
 /// - If [out] is provided, it must not be disposed and must have compatible shape and dtype.
 /// - For integer arrays, the divisor [x2] must not contain any `0` elements.
 ///
 /// It is an error if:
 /// - [x1], [x2], or [out] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 NDArray<T> mod<T extends DTypeTag>(
@@ -3437,14 +3544,15 @@ NDArray<T> mod<T extends DTypeTag>(
 ///
 /// **Division by Zero:**
 /// - **Integer arrays**: Division by zero is an error.
-/// - **Floating-point arrays**: Returns `double.nan` silently.
+/// - **Floating-point arrays**: Follows IEEE 754 rules for floor division and returns `double.nan` for remainder.
 ///
 /// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed.
+/// - The input arrays [x1] and [x2] must not be disposed and must have the same [DType].
 /// - For integer arrays, the divisor [x2] must not contain any `0` elements.
 ///
 /// It is an error if:
 /// - [x1] or [x2] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 (NDArray<T> div, NDArray<T> mod) divmod<T extends DTypeTag>(
   NDArray<T> x1,
@@ -3462,12 +3570,13 @@ NDArray<T> mod<T extends DTypeTag>(
 /// - **Floating-point arrays**: Returns `double.nan` silently.
 ///
 /// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed.
+/// - The input arrays [x1] and [x2] must not be disposed and must have the same [DType].
 /// - If [out] is provided, it must not be disposed and must have compatible shape and dtype.
 /// - For integer arrays, the divisor [x2] must not contain any `0` elements.
 ///
 /// It is an error if:
 /// - [x1], [x2], or [out] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 NDArray<T> fmod<T extends DTypeTag>(
@@ -3481,6 +3590,13 @@ NDArray<T> fmod<T extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute fmod() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   final broadcastResult = broadcast(x1, x2);
   final commonShape = broadcastResult.shape;
@@ -3716,6 +3832,11 @@ NDArray<T> fmod<T extends DTypeTag>(
           final iy = (y is bool ? (y ? 1 : 0) : (y as num).toInt());
           final ix = (x is bool ? (x ? 1 : 0) : (x as num).toInt());
           if (iy == 0) throw UnsupportedError('Integer division by zero');
+          if (targetDType == DType.uint64) {
+            final ux = BigInt.from(ix).toUnsigned(64);
+            final uy = BigInt.from(iy).toUnsigned(64);
+            return (ux % uy).toSigned(64).toInt();
+          }
           return castValue(ix.remainder(iy), targetDType);
         },
         maskHolder.pointer,
@@ -3732,11 +3853,12 @@ NDArray<T> fmod<T extends DTypeTag>(
 /// Operates on integer arrays. Always returns a non-negative greatest common divisor.
 ///
 /// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed and must have integer dtypes.
+/// - The input arrays [x1] and [x2] must not be disposed, must have the same [DType], and must have integer dtypes.
 /// - If [out] is provided, it must not be disposed and must have compatible shape and integer dtype.
 ///
 /// It is an error if:
 /// - [x1], [x2], or [out] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [x1] or [x2] has a non-integer dtype (throws [UnsupportedError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 NDArray<T> gcd<T extends DTypeTag>(
@@ -3750,6 +3872,13 @@ NDArray<T> gcd<T extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute gcd() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   if (!x1.dtype.isInteger || !x2.dtype.isInteger) {
     throw UnsupportedError('gcd only supports integer arrays.');
@@ -3882,10 +4011,10 @@ NDArray<T> gcd<T extends DTypeTag>(
       }
     }
 
-    int calcGcd(int a, int b) {
+    BigInt calcGcd(BigInt a, BigInt b) {
       var u = a.abs();
       var v = b.abs();
-      while (v != 0) {
+      while (v != BigInt.zero) {
         final t = v;
         v = u % v;
         u = t;
@@ -3905,10 +4034,18 @@ NDArray<T> gcd<T extends DTypeTag>(
       x1.offsetElements,
       x2.offsetElements,
       result.offsetElements,
-      (x, y) => castValue(
-        calcGcd((x as num).toInt(), (y as num).toInt()),
-        targetDType,
-      ),
+      (x, y) {
+        final ix = (x as num).toInt();
+        final iy = (y as num).toInt();
+        final ua = targetDType == DType.uint64
+            ? BigInt.from(ix).toUnsigned(64)
+            : BigInt.from(ix);
+        final ub = targetDType == DType.uint64
+            ? BigInt.from(iy).toUnsigned(64)
+            : BigInt.from(iy);
+        final g = calcGcd(ua, ub).toSigned(64).toInt();
+        return targetDType == DType.uint64 ? g : castValue(g, targetDType);
+      },
       maskHolder.pointer,
     );
     return result;
@@ -3934,8 +4071,18 @@ NDArray<T> lcm<T extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
-  if (x1.isDisposed || x2.isDisposed || (out != null && out.isDisposed)) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute lcm() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   if (!x1.dtype.isInteger || !x2.dtype.isInteger) {
     throw UnsupportedError('lcm only supports integer arrays.');
@@ -4075,10 +4222,10 @@ NDArray<T> lcm<T extends DTypeTag>(
       }
     }
 
-    int calcGcd(int a, int b) {
+    BigInt calcGcd(BigInt a, BigInt b) {
       var u = a.abs();
       var v = b.abs();
-      while (v != 0) {
+      while (v != BigInt.zero) {
         final t = v;
         v = u % v;
         u = t;
@@ -4099,10 +4246,22 @@ NDArray<T> lcm<T extends DTypeTag>(
       x2.offsetElements,
       result.offsetElements,
       (x, y) {
-        final a = (x as num).toInt();
-        final b = (y as num).toInt();
-        if (a == 0 || b == 0) return castValue(0, targetDType);
-        return castValue((a.abs() ~/ calcGcd(a, b)) * b.abs(), targetDType);
+        final ix = (x as num).toInt();
+        final iy = (y as num).toInt();
+        final ua = targetDType == DType.uint64
+            ? BigInt.from(ix).toUnsigned(64)
+            : BigInt.from(ix);
+        final ub = targetDType == DType.uint64
+            ? BigInt.from(iy).toUnsigned(64)
+            : BigInt.from(iy);
+        if (ua == BigInt.zero || ub == BigInt.zero) {
+          return castValue(0, targetDType);
+        }
+        final l = (ua.abs() ~/ calcGcd(ua, ub)) * ub.abs();
+        final resVal = l.toSigned(64).toInt();
+        return targetDType == DType.uint64
+            ? resVal
+            : castValue(resVal, targetDType);
       },
       maskHolder.pointer,
     );
@@ -4120,11 +4279,12 @@ NDArray<T> lcm<T extends DTypeTag>(
 /// - `1` if `x1 > 0`
 ///
 /// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed.
+/// - The input arrays [x1] and [x2] must not be disposed and must have the same [DType].
 /// - If [out] is provided, it must not be disposed and must have compatible shape and dtype.
 ///
 /// It is an error if:
 /// - [x1], [x2], or [out] is disposed (throws [StateError]).
+/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [x1] or [x2] has a complex dtype (throws [UnsupportedError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 NDArray<T> heaviside<T extends DTypeTag>(
@@ -4138,6 +4298,13 @@ NDArray<T> heaviside<T extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute heaviside() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
   }
   final broadcastResult = broadcast(x1, x2);
   final commonShape = broadcastResult.shape;
@@ -4343,6 +4510,10 @@ NDArray<T> heaviside<T extends DTypeTag>(
           );
         } else {
           final ix = (x is bool ? (x ? 1 : 0) : (x as num).toInt());
+          if (targetDType == DType.uint64) {
+            if (ix != 0) return 1;
+            return (y is bool ? (y ? 1 : 0) : (y as num).toInt());
+          }
           if (ix < 0) return castValue(0, targetDType);
           if (ix > 0) return castValue(1, targetDType);
           return castValue(
@@ -4445,6 +4616,14 @@ NDArray<R> abs<R extends DTypeTag>(
             maskHolder.pointer,
           );
           return result;
+        case DType.uint64:
+          v_positive_int64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
         case DType.int32:
           v_abs_int32(
             a.typedPointer(),
@@ -4453,10 +4632,26 @@ NDArray<R> abs<R extends DTypeTag>(
             maskHolder.pointer,
           );
           return result;
+        case DType.uint32:
+          v_positive_int32(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
         case DType.int16:
           v_abs_int16(
             a.typedPointer(),
             result.typedPointer(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
+        case DType.uint16:
+          v_positive_int16(
+            a.pointer.cast(),
+            result.pointer.cast(),
             a.size,
             maskHolder.pointer,
           );
@@ -4472,9 +4667,6 @@ NDArray<R> abs<R extends DTypeTag>(
         case DType.float16:
         case DType.bfloat16:
         case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
         case DType.boolean:
           break;
       }
@@ -4483,8 +4675,11 @@ NDArray<R> abs<R extends DTypeTag>(
       case DType.complex128:
       case DType.complex64:
       case DType.int64:
+      case DType.uint64:
       case DType.int32:
+      case DType.uint32:
       case DType.int16:
+      case DType.uint16:
       case DType.uint8:
         final rank = a.shape.length;
         if (rank <= 8) {
@@ -4533,6 +4728,17 @@ NDArray<R> abs<R extends DTypeTag>(
                   maskHolder.pointer,
                 );
                 return result;
+              case DType.uint64:
+                s_positive_int64(
+                  a.pointer.cast(),
+                  cStridesA,
+                  result.pointer.cast(),
+                  cStridesRes,
+                  cShape,
+                  rank,
+                  maskHolder.pointer,
+                );
+                return result;
               case DType.int32:
                 s_abs_int32(
                   a.typedPointer(),
@@ -4544,11 +4750,33 @@ NDArray<R> abs<R extends DTypeTag>(
                   maskHolder.pointer,
                 );
                 return result;
+              case DType.uint32:
+                s_positive_int32(
+                  a.pointer.cast(),
+                  cStridesA,
+                  result.pointer.cast(),
+                  cStridesRes,
+                  cShape,
+                  rank,
+                  maskHolder.pointer,
+                );
+                return result;
               case DType.int16:
                 s_abs_int16(
                   a.typedPointer(),
                   cStridesA,
                   result.typedPointer(),
+                  cStridesRes,
+                  cShape,
+                  rank,
+                  maskHolder.pointer,
+                );
+                return result;
+              case DType.uint16:
+                s_positive_int16(
+                  a.pointer.cast(),
+                  cStridesA,
+                  result.pointer.cast(),
                   cStridesRes,
                   cShape,
                   rank,
@@ -4571,9 +4799,6 @@ NDArray<R> abs<R extends DTypeTag>(
               case DType.float16:
               case DType.bfloat16:
               case DType.int8:
-              case DType.uint64:
-              case DType.uint32:
-              case DType.uint16:
               case DType.boolean:
                 break;
             }
@@ -4586,9 +4811,6 @@ NDArray<R> abs<R extends DTypeTag>(
       case DType.float16:
       case DType.bfloat16:
       case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
       case DType.boolean:
         break;
     }
@@ -4607,14 +4829,20 @@ NDArray<R> abs<R extends DTypeTag>(
           result.offsetElements,
           (c) {
             final z = c as Complex;
-            return math.sqrt(z.real * z.real + z.imag * z.imag);
+            var x = z.real.abs();
+            var y = z.imag.abs();
+            if (x.isInfinite || y.isInfinite) return double.infinity;
+            if (x < y) {
+              final t = x;
+              x = y;
+              y = t;
+            }
+            if (x == 0.0) return 0.0;
+            final r = y / x;
+            return castValue(x * math.sqrt(1.0 + r * r), result.dtype);
           },
           maskHolder.pointer,
         );
-      case DType.int64:
-      case DType.int32:
-      case DType.int16:
-      case DType.int8:
       case DType.uint64:
       case DType.uint32:
       case DType.uint16:
@@ -4628,7 +4856,23 @@ NDArray<R> abs<R extends DTypeTag>(
           0,
           a.offsetElements,
           result.offsetElements,
-          (x) => (x as num).abs().toInt(),
+          (x) => x,
+          maskHolder.pointer,
+        );
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+        unaryOp<DTypeTag, DTypeTag>(
+          result,
+          a,
+          a.shape,
+          a.strides,
+          result.strides,
+          0,
+          a.offsetElements,
+          result.offsetElements,
+          (x) => castValue((x as num).abs().toInt(), a.dtype),
           maskHolder.pointer,
         );
       case DType.float64:
@@ -4644,7 +4888,7 @@ NDArray<R> abs<R extends DTypeTag>(
           0,
           a.offsetElements,
           result.offsetElements,
-          (x) => (x as num).abs().toDouble(),
+          (x) => castValue((x as num).abs().toDouble(), a.dtype),
           maskHolder.pointer,
         );
       case DType.boolean:
@@ -4707,8 +4951,22 @@ NDArray<T> sign<T extends DTypeTag>(
           result.offsetElements,
           (c) {
             final z = c as Complex;
-            if (z.real == 0 && z.imag == 0) return Complex(0, 0);
-            final mag = math.sqrt(z.real * z.real + z.imag * z.imag);
+            if (z.real.isNaN || z.imag.isNaN) {
+              return Complex(double.nan, double.nan);
+            }
+            if (z.real == 0.0 && z.imag == 0.0) return Complex(0.0, 0.0);
+            var x = z.real.abs();
+            var y = z.imag.abs();
+            if (x.isInfinite || y.isInfinite) {
+              return Complex(double.nan, double.nan);
+            }
+            if (x < y) {
+              final t = x;
+              x = y;
+              y = t;
+            }
+            final r = y / x;
+            final mag = x * math.sqrt(1.0 + r * r);
             return Complex(z.real / mag, z.imag / mag);
           },
           maskHolder.pointer,
@@ -4993,13 +5251,17 @@ NDArray<T> floor<T extends DTypeTag>(
   }
 }
 
-/// Computes element-wise round of the array.
+/// Computes element-wise round of the array to the given number of [decimals].
+///
+/// Rounds values to the nearest even value for halfway cases (round half to even,
+/// matching `numpy.round` / `numpy.around`).
 ///
 /// It is an error if [a], [where], or [out] is disposed (throws [StateError]),
 /// if [a] has a complex dtype (throws [UnsupportedError]),
 /// or if [out] has an incompatible shape or dtype (throws [ArgumentError]).
 NDArray<T> round<T extends DTypeTag>(
   NDArray<T> a, {
+  int decimals = 0,
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
@@ -5024,47 +5286,117 @@ NDArray<T> round<T extends DTypeTag>(
   try {
     final NDArray<T> result =
         out ?? NDArray<T>.create(a.shape, a.dtype, zeroInit: where != null);
-    switch (a.dtype) {
-      case DType.float64:
-        if (a.isContiguous && result.isContiguous) {
-          v_round_double(
-            a.typedPointer(),
-            result.typedPointer(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
+    if (decimals == 0) {
+      if (a.isContiguous && result.isContiguous) {
+        switch (a.dtype) {
+          case DType.float64:
+            v_round_double(
+              a.typedPointer(),
+              result.typedPointer(),
+              a.size,
+              maskHolder.pointer,
+            );
+            return result;
+          case DType.float32:
+            v_round_float(
+              a.typedPointer(),
+              result.typedPointer(),
+              a.size,
+              maskHolder.pointer,
+            );
+            return result;
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.int64:
+          case DType.int32:
+          case DType.int16:
+          case DType.int8:
+          case DType.uint64:
+          case DType.uint32:
+          case DType.uint16:
+          case DType.uint8:
+          case DType.boolean:
+          case DType.complex128:
+          case DType.complex64:
+            break;
         }
-      case DType.float32:
-        if (a.isContiguous && result.isContiguous) {
-          v_round_float(
-            a.typedPointer(),
-            result.typedPointer(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
+      } else {
+        final rank = a.shape.length;
+        if (rank <= 8 &&
+            (a.dtype == DType.float64 || a.dtype == DType.float32)) {
+          final marker = ScratchArena.marker;
+          try {
+            final cBuffer = ScratchArena.getStridedBuffer(rank);
+            final cShape = cBuffer;
+            final cStridesA = cBuffer + rank;
+            final cStridesRes = cBuffer + (rank * 2);
+            for (var i = 0; i < rank; i++) {
+              cShape[i] = a.shape[i];
+              cStridesA[i] = a.strides[i];
+              cStridesRes[i] = result.strides[i];
+            }
+            if (a.dtype == DType.float64) {
+              s_rint_double(
+                a.typedPointer(),
+                cStridesA,
+                result.typedPointer(),
+                cStridesRes,
+                cShape,
+                rank,
+                maskHolder.pointer,
+              );
+              return result;
+            } else {
+              s_rint_float(
+                a.typedPointer(),
+                cStridesA,
+                result.typedPointer(),
+                cStridesRes,
+                cShape,
+                rank,
+                maskHolder.pointer,
+              );
+              return result;
+            }
+          } finally {
+            ScratchArena.reset(marker);
+          }
         }
-      case DType.float16:
-      case DType.bfloat16:
-      case DType.int64:
-      case DType.int32:
-      case DType.int16:
-      case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
-      case DType.uint8:
-      case DType.boolean:
-      case DType.complex128:
-      case DType.complex64:
-        break;
+      }
+    }
+
+    double roundHalfToEven(double dx) {
+      if (dx.isInfinite || dx.isNaN || dx == 0.0) return dx;
+      final floorVal = dx.floorToDouble();
+      final ceilVal = dx.ceilToDouble();
+      final distFloor = dx - floorVal;
+      final distCeil = ceilVal - dx;
+      if (distFloor < distCeil) return floorVal;
+      if (distCeil < distFloor) return ceilVal;
+      final evenVal = (floorVal % 2.0 == 0.0) ? floorVal : ceilVal;
+      return evenVal == 0.0 ? (dx.isNegative ? -0.0 : 0.0) : evenVal;
     }
 
     if (a.dtype.isInteger || a.dtype == DType.boolean) {
-      if (where == null) {
-        a.copy(out: result);
+      if (decimals >= 0) {
+        if (where == null) {
+          a.copy(out: result);
+        } else {
+          unaryOp<DTypeTag, DTypeTag>(
+            result,
+            a,
+            a.shape,
+            a.strides,
+            result.strides,
+            0,
+            a.offsetElements,
+            result.offsetElements,
+            (x) => x,
+            maskHolder.pointer,
+          );
+        }
       } else {
+        final invFactor = math.pow(10.0, -decimals).toDouble();
         unaryOp<DTypeTag, DTypeTag>(
           result,
           a,
@@ -5074,11 +5406,23 @@ NDArray<T> round<T extends DTypeTag>(
           0,
           a.offsetElements,
           result.offsetElements,
-          (x) => x,
+          (x) {
+            if (a.dtype == DType.boolean) return false;
+            final dx = a.dtype == DType.uint64
+                ? BigInt.from(x as int).toUnsigned(64).toDouble()
+                : (x as num).toDouble();
+            if (invFactor.isInfinite) return castValue(0, a.dtype);
+            final rounded = (roundHalfToEven(dx / invFactor) * invFactor)
+                .round();
+            return castValue(rounded, a.dtype);
+          },
           maskHolder.pointer,
         );
       }
     } else if (a.dtype.isFloating) {
+      final factor = decimals >= 0
+          ? math.pow(10.0, decimals).toDouble()
+          : math.pow(10.0, -decimals).toDouble();
       unaryOp<DTypeTag, DTypeTag>(
         result,
         a,
@@ -5088,7 +5432,25 @@ NDArray<T> round<T extends DTypeTag>(
         0,
         a.offsetElements,
         result.offsetElements,
-        (x) => castValue((x as num).roundToDouble(), a.dtype),
+        (x) {
+          final dx = (x as num).toDouble();
+          if (decimals == 0) {
+            return castValue(roundHalfToEven(dx), a.dtype);
+          }
+          if (dx.isInfinite || dx.isNaN || dx == 0.0) {
+            return castValue(dx, a.dtype);
+          }
+          if (decimals > 0) {
+            final scaled = dx * factor;
+            if (scaled.isInfinite) return castValue(dx, a.dtype);
+            return castValue(roundHalfToEven(scaled) / factor, a.dtype);
+          } else {
+            if (factor.isInfinite) {
+              return castValue(dx.isNegative ? -0.0 : 0.0, a.dtype);
+            }
+            return castValue(roundHalfToEven(dx / factor) * factor, a.dtype);
+          }
+        },
         maskHolder.pointer,
       );
     } else {
@@ -5115,17 +5477,28 @@ typedef StridedBinaryOp =
 
 /// Element-wise addition of two arrays.
 ///
-/// Returns a new array with the promoted data type.
+/// Both [a] and [b] must have the same [DType]. For [DType.boolean], computes
+/// logical OR (`a | b`), matching `numpy.add`.
 NDArray<T> add<T extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute add() on a disposed array.');
   }
-  final targetDType = resolveDType(a.dtype, b.dtype);
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  final targetDType = a.dtype;
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
   final stridesA = broadcastResult.stridesA;
@@ -5140,6 +5513,18 @@ NDArray<T> add<T extends DTypeTag>(
       );
     }
   }
+  if (a.dtype == DType.boolean) {
+    if (out != null) {
+      final outView = NDArray<Boolean>.view(
+        out,
+        shape: out.shape,
+        strides: out.strides,
+      );
+      logicalOr(a, b, where: where, out: outView);
+      return out;
+    }
+    return logicalOr(a, b, where: where) as NDArray<T>;
+  }
   final maskHolder = prepareMask(where, commonShape);
   late final NDArray<T> result;
 
@@ -5148,11 +5533,7 @@ NDArray<T> add<T extends DTypeTag>(
   try {
     result =
         out ??
-        NDArray<T>.create(
-          commonShape,
-          targetDType as DType<T>,
-          zeroInit: where != null,
-        );
+        NDArray<T>.create(commonShape, targetDType, zeroInit: where != null);
     // Specialized paths for Float64 (as in original extensions.dart)
     final isContig =
         a.isContiguous &&
@@ -6627,6 +7008,94 @@ NDArray<T> add<T extends DTypeTag>(
           maskHolder.pointer,
         );
         return result;
+      case (DType.uint64, DType.uint64) when isContig:
+        v_add_int64_int64_int64(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint64, DType.uint64):
+        s_add_int64_int64_int64(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint32, DType.uint32) when isContig:
+        v_add_int32_int32_int32(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint32, DType.uint32):
+        s_add_int32_int32_int32(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint16, DType.uint16) when isContig:
+        v_add_int16_int16_int16(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint16, DType.uint16):
+        s_add_int16_int16_int16(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.int8, DType.int8) when isContig:
+        v_add_uint8_uint8_uint8(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.int8, DType.int8):
+        s_add_uint8_uint8_uint8(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
       default:
         if (result.dtype.isComplex || a.dtype.isComplex || b.dtype.isComplex) {
           final cpxA = castNDArray(a, DType.complex128);
@@ -6676,8 +7145,18 @@ NDArray<T> subtract<T extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute subtract() on a disposed array.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   final targetDType = resolveDType(a.dtype, b.dtype);
   final broadcastResult = broadcast(a, b);
@@ -8180,6 +8659,94 @@ NDArray<T> subtract<T extends DTypeTag>(
           maskHolder.pointer,
         );
         return result;
+      case (DType.uint64, DType.uint64) when isContig:
+        v_sub_int64_int64_int64(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint64, DType.uint64):
+        s_sub_int64_int64_int64(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint32, DType.uint32) when isContig:
+        v_sub_int32_int32_int32(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint32, DType.uint32):
+        s_sub_int32_int32_int32(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint16, DType.uint16) when isContig:
+        v_sub_int16_int16_int16(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint16, DType.uint16):
+        s_sub_int16_int16_int16(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.int8, DType.int8) when isContig:
+        v_sub_uint8_uint8_uint8(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.int8, DType.int8):
+        s_sub_uint8_uint8_uint8(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
       default:
         if (result.dtype.isComplex || a.dtype.isComplex || b.dtype.isComplex) {
           final cpxA = castNDArray(a, DType.complex128);
@@ -8224,6 +8791,9 @@ NDArray<T> subtract<T extends DTypeTag>(
 
 /// Element-wise multiplication of two arrays with full broadcasting support.
 ///
+/// Both [a] and [b] must have the same [DType]. For [DType.boolean], computes
+/// logical AND (`a & b`), matching `numpy.multiply`.
+///
 /// **Overflow behavior:**
 /// - **Integer arrays** (`int32`, `int64`, etc.) overflow silently wrapping around via standard two's complement.
 /// - **Floating-point arrays** (`float32`, `float64`) overflow silently to `double.infinity` or `double.negativeInfinity` per IEEE 754.
@@ -8233,10 +8803,20 @@ NDArray<T> multiply<T extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute multiply() on a disposed array.');
   }
-  final targetDType = resolveDType(a.dtype, b.dtype);
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  final targetDType = a.dtype;
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
   final stridesA = broadcastResult.stridesA;
@@ -8251,6 +8831,18 @@ NDArray<T> multiply<T extends DTypeTag>(
       );
     }
   }
+  if (a.dtype == DType.boolean) {
+    if (out != null) {
+      final outView = NDArray<Boolean>.view(
+        out,
+        shape: out.shape,
+        strides: out.strides,
+      );
+      logicalAnd(a, b, where: where, out: outView);
+      return out;
+    }
+    return logicalAnd(a, b, where: where) as NDArray<T>;
+  }
   final maskHolder = prepareMask(where, commonShape);
   late final NDArray<T> result;
 
@@ -8259,11 +8851,7 @@ NDArray<T> multiply<T extends DTypeTag>(
   try {
     result =
         out ??
-        NDArray<T>.create(
-          commonShape,
-          targetDType as DType<T>,
-          zeroInit: where != null,
-        );
+        NDArray<T>.create(commonShape, targetDType, zeroInit: where != null);
     final isContig =
         a.isContiguous &&
         b.isContiguous &&
@@ -9738,6 +10326,94 @@ NDArray<T> multiply<T extends DTypeTag>(
           maskHolder.pointer,
         );
         return result;
+      case (DType.uint64, DType.uint64) when isContig:
+        v_mul_int64_int64_int64(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint64, DType.uint64):
+        s_mul_int64_int64_int64(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint32, DType.uint32) when isContig:
+        v_mul_int32_int32_int32(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint32, DType.uint32):
+        s_mul_int32_int32_int32(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint16, DType.uint16) when isContig:
+        v_mul_int16_int16_int16(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.uint16, DType.uint16):
+        s_mul_int16_int16_int16(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.int8, DType.int8) when isContig:
+        v_mul_uint8_uint8_uint8(
+          a.pointer.cast(),
+          b.pointer.cast(),
+          result.pointer.cast(),
+          a.size,
+          maskHolder.pointer,
+        );
+        return result;
+      case (DType.int8, DType.int8):
+        s_mul_uint8_uint8_uint8(
+          a.pointer.cast(),
+          cStridesA,
+          b.pointer.cast(),
+          cStridesB,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          commonShape.length,
+          maskHolder.pointer,
+        );
+        return result;
       default:
         if (result.dtype.isComplex || a.dtype.isComplex || b.dtype.isComplex) {
           final cpxA = castNDArray(a, DType.complex128);
@@ -9782,7 +10458,8 @@ NDArray<T> multiply<T extends DTypeTag>(
 
 /// Element-wise division of two arrays with full broadcasting support.
 ///
-/// Always upcasts integer operands to [DType.float64] and performs floating-point division.
+/// Both [a] and [b] must have the same [DType]. Always upcasts integer and
+/// boolean operands to [DType.float64] and performs floating-point division.
 ///
 /// **Division by Zero:**
 /// Division by zero is handled silently under IEEE 754 floating-point rules:
@@ -9790,11 +10467,12 @@ NDArray<T> multiply<T extends DTypeTag>(
 /// - Dividing zero by zero results in `double.nan`.
 ///
 /// **Preconditions:**
-/// - The input arrays [a] and [b] must not be disposed.
+/// - The input arrays [a] and [b] must not be disposed and must have the same [DType].
 /// - If [out] is provided, it must not be disposed and must have compatible shape and dtype.
 ///
 /// It is an error if:
 /// - [a], [b], or [out] is disposed (throws [StateError]).
+/// - [a] and [b] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   NDArray<Ta> a,
@@ -9802,8 +10480,18 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute divide() on a disposed array.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   var targetDType = resolveDType(a.dtype, b.dtype);
   if (targetDType.isInteger) {
@@ -11375,12 +12063,12 @@ void _copyMaskedResult(NDArray src, NDArray dest, NDArray<DTypeTag>? where) {
 
 /// Element-wise addition of [a] and [b] computed into the specified target [dtype].
 ///
-/// Accepts two arrays of potentially different data types ([Ta] and [Tb]) and
+/// Both [a] and [b] must have the same [DType]. Casts operands to [dtype] and
 /// returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have broadcast-compatible shapes.
+/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -11395,43 +12083,38 @@ NDArray<R> addAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute addAs() on a disposed array.');
   }
-  if (resolveDType(a.dtype, b.dtype) == dtype) {
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  if (a.dtype == dtype) {
     return add<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
   }
   return NDArray.scope(() {
-    final aCanPromoteToTarget =
-        a.dtype == dtype || resolveDType(a.dtype, dtype) == dtype;
-    final bCanPromoteToTarget =
-        b.dtype == dtype || resolveDType(dtype, b.dtype) == dtype;
-    final NDArray aIn = aCanPromoteToTarget && !bCanPromoteToTarget
-        ? a
-        : (a.dtype == dtype ? a : castNDArray<R>(a, dtype));
-    final NDArray bIn = bCanPromoteToTarget && !aCanPromoteToTarget
-        ? b
-        : (b.dtype == dtype ? b : castNDArray<R>(b, dtype));
-    final NDArray aFinal = resolveDType(aIn.dtype, bIn.dtype) == dtype
-        ? aIn
-        : (aIn.dtype == dtype ? aIn : castNDArray<R>(aIn, dtype));
-    final NDArray bFinal = resolveDType(aFinal.dtype, bIn.dtype) == dtype
-        ? bIn
-        : (bIn.dtype == dtype ? bIn : castNDArray<R>(bIn, dtype));
-    final res =
-        add<DTypeTag>(aFinal, bFinal, where: where, out: out) as NDArray<R>;
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = add<R>(aCast, bCast, where: where, out: out);
     return out ?? res.detachToParentScope();
   });
 }
 
 /// Element-wise subtraction of [a] and [b] computed into the specified target [dtype].
 ///
-/// Accepts two arrays of potentially different data types ([Ta] and [Tb]) and
+/// Both [a] and [b] must have the same [DType]. Casts operands to [dtype] and
 /// returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have broadcast-compatible shapes.
+/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -11447,44 +12130,54 @@ subtractAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute subtractAs() on a disposed array.');
   }
-  if (resolveDType(a.dtype, b.dtype) == dtype) {
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  if (a.dtype == dtype && dtype != DType.boolean) {
     return subtract<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
   }
   return NDArray.scope(() {
-    final aCanPromoteToTarget =
-        a.dtype == dtype || resolveDType(a.dtype, dtype) == dtype;
-    final bCanPromoteToTarget =
-        b.dtype == dtype || resolveDType(dtype, b.dtype) == dtype;
-    final NDArray aIn = aCanPromoteToTarget && !bCanPromoteToTarget
-        ? a
-        : (a.dtype == dtype ? a : castNDArray<R>(a, dtype));
-    final NDArray bIn = bCanPromoteToTarget && !aCanPromoteToTarget
-        ? b
-        : (b.dtype == dtype ? b : castNDArray<R>(b, dtype));
-    final NDArray aFinal = resolveDType(aIn.dtype, bIn.dtype) == dtype
-        ? aIn
-        : (aIn.dtype == dtype ? aIn : castNDArray<R>(aIn, dtype));
-    final NDArray bFinal = resolveDType(aFinal.dtype, bIn.dtype) == dtype
-        ? bIn
-        : (bIn.dtype == dtype ? bIn : castNDArray<R>(bIn, dtype));
-    final res =
-        subtract<DTypeTag>(aFinal, bFinal, where: where, out: out)
-            as NDArray<R>;
+    if (dtype == DType.boolean) {
+      final subRes = subtract<DTypeTag>(a, b, where: where);
+      final casted = castNDArray<R>(subRes, dtype);
+      if (out != null) {
+        if (!out.isWriteable ||
+            !listEquals(out.shape, casted.shape) ||
+            out.dtype != dtype) {
+          throw ArgumentError(
+            'Provided out buffer has incompatible shape or dtype.',
+          );
+        }
+        _copyMaskedResult(casted, out, where);
+        return out;
+      }
+      return casted.detachToParentScope();
+    }
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = subtract<R>(aCast, bCast, where: where, out: out);
     return out ?? res.detachToParentScope();
   });
 }
 
 /// Element-wise multiplication of [a] and [b] computed into the specified target [dtype].
 ///
-/// Accepts two arrays of potentially different data types ([Ta] and [Tb]) and
+/// Both [a] and [b] must have the same [DType]. Casts operands to [dtype] and
 /// returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have broadcast-compatible shapes.
+/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -11500,44 +12193,38 @@ multiplyAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute multiplyAs() on a disposed array.');
   }
-  if (resolveDType(a.dtype, b.dtype) == dtype) {
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  if (a.dtype == dtype) {
     return multiply<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
   }
   return NDArray.scope(() {
-    final aCanPromoteToTarget =
-        a.dtype == dtype || resolveDType(a.dtype, dtype) == dtype;
-    final bCanPromoteToTarget =
-        b.dtype == dtype || resolveDType(dtype, b.dtype) == dtype;
-    final NDArray aIn = aCanPromoteToTarget && !bCanPromoteToTarget
-        ? a
-        : (a.dtype == dtype ? a : castNDArray<R>(a, dtype));
-    final NDArray bIn = bCanPromoteToTarget && !aCanPromoteToTarget
-        ? b
-        : (b.dtype == dtype ? b : castNDArray<R>(b, dtype));
-    final NDArray aFinal = resolveDType(aIn.dtype, bIn.dtype) == dtype
-        ? aIn
-        : (aIn.dtype == dtype ? aIn : castNDArray<R>(aIn, dtype));
-    final NDArray bFinal = resolveDType(aFinal.dtype, bIn.dtype) == dtype
-        ? bIn
-        : (bIn.dtype == dtype ? bIn : castNDArray<R>(bIn, dtype));
-    final res =
-        multiply<DTypeTag>(aFinal, bFinal, where: where, out: out)
-            as NDArray<R>;
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = multiply<R>(aCast, bCast, where: where, out: out);
     return out ?? res.detachToParentScope();
   });
 }
 
 /// Element-wise true division of [a] by [b] computed into the specified target [dtype].
 ///
-/// Accepts two arrays of potentially different data types ([Ta] and [Tb])
+/// Both [a] and [b] must have the same [DType]. Casts operands or result to [dtype]
 /// and returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have broadcast-compatible shapes.
+/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -11553,8 +12240,18 @@ divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
-  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute divideAs() on a disposed array.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   var resolved = resolveDType(a.dtype, b.dtype);
   if (resolved.isInteger) {
@@ -11565,34 +12262,22 @@ divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   return NDArray.scope(() {
     if (!dtype.isInteger && dtype != DType.boolean) {
-      final aCanPromote =
-          a.dtype == dtype ||
-          (!a.dtype.isInteger && resolveDType(a.dtype, dtype) == dtype);
-      final bCanPromote =
-          b.dtype == dtype ||
-          (!b.dtype.isInteger && resolveDType(dtype, b.dtype) == dtype);
-      final NDArray aIn = aCanPromote ? a : castNDArray<R>(a, dtype);
-      final NDArray bIn = bCanPromote ? b : castNDArray<R>(b, dtype);
-      var inResolved = resolveDType(aIn.dtype, bIn.dtype);
-      if (inResolved.isInteger) inResolved = DType.float64;
-      final NDArray aFinal = inResolved == dtype
-          ? aIn
-          : (aIn.dtype == dtype ? aIn : castNDArray<R>(aIn, dtype));
-      final NDArray bFinal = inResolved == dtype
-          ? bIn
-          : (bIn.dtype == dtype ? bIn : castNDArray<R>(bIn, dtype));
-      final res = divide<DTypeTag, DTypeTag, R>(
-        aFinal,
-        bFinal,
-        where: where,
-        out: out,
-      );
+      final aCast = castNDArray<R>(a, dtype);
+      final bCast = castNDArray<R>(b, dtype);
+      final res = divide<R, R, R>(aCast, bCast, where: where, out: out);
       return out ?? res.detachToParentScope();
     }
-    final divF64 = divide<Ta, Tb, Float64>(a, b, where: where);
-    final casted = castNDArray<R>(divF64, dtype);
+    final divRes = divide<Ta, Tb, DTypeTag>(a, b, where: where);
+    final casted = castNDArray<R>(divRes, dtype);
     if (out != null) {
-      casted.copy(out: out);
+      if (!out.isWriteable ||
+          !listEquals(out.shape, casted.shape) ||
+          out.dtype != dtype) {
+        throw ArgumentError(
+          'Provided out buffer has incompatible shape or dtype.',
+        );
+      }
+      _copyMaskedResult(casted, out, where);
       return out;
     }
     return casted.detachToParentScope();

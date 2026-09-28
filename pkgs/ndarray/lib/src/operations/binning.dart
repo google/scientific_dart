@@ -548,7 +548,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// Refer to the [NumPy histogram reference](https://numpy.org/doc/stable/reference/generated/numpy.histogram.html)
 /// for details.
-({NDArray<DTypeTag> hist, NDArray<Float64> binEdges}) histogram(
+({NDArray<AnySpec> hist, NDArray<Float64> binEdges}) histogram(
   NDArray<DTypeTag> x, {
   dynamic bins = 10,
   (double, double)? range,
@@ -671,21 +671,21 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       throw ArgumentError('bins must be an int or an NDArray.');
     }
 
-    final DType<DTypeTag> targetHistDType = switch (rawFlatWeights?.dtype) {
+    final DType<AnySpec> targetHistDType = switch (rawFlatWeights?.dtype) {
       null => DType.int64,
-      DType.float64 ||
-      DType.float32 ||
-      DType.float16 ||
-      DType.bfloat16 => rawFlatWeights!.dtype,
+      DType.float64 => DType.float64,
+      DType.float32 => DType.float32,
+      DType.float16 => DType.float16,
+      DType.bfloat16 => DType.bfloat16,
       _ => DType.float64,
     };
-    final DType<DTypeTag> computeHistDType = switch (rawFlatWeights?.dtype) {
+    final DType<AnySpec> computeHistDType = switch (rawFlatWeights?.dtype) {
       null => DType.int64,
       DType.float32 => DType.float32,
       _ => DType.float64,
     };
 
-    final NDArray<DTypeTag> hist = NDArray<DTypeTag>.zeros([
+    final NDArray<AnySpec> hist = NDArray<AnySpec>.zeros([
       nbins,
     ], computeHistDType);
 
@@ -771,9 +771,9 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       }
     }
 
-    NDArray<DTypeTag> finalHist = hist;
+    NDArray<AnySpec> finalHist = hist;
     if (density) {
-      final totalSum = sum<DTypeTag>(hist).scalar;
+      final totalSum = sumAs<DTypeTag, DTypeTag>(hist, hist.dtype).scalar;
       final widths = subtract<Float64>(
         resolvedBinEdges.slice([Slice(start: 1)]),
         resolvedBinEdges.slice([Slice(stop: resolvedBinEdges.size - 1)]),
@@ -783,9 +783,12 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         dtype: DType.float64,
       );
       final divisor = multiply<Float64>(widths, totalSumArr);
-      finalHist = divide<DTypeTag, Float64, Float64>(hist, divisor);
+      final histF64 = hist.dtype == DType.float64
+          ? hist as NDArray<Float64>
+          : castNDArray<Float64>(hist, DType.float64);
+      finalHist = divide<Float64, Float64, Float64>(histF64, divisor);
     } else if (targetHistDType != computeHistDType) {
-      finalHist = castNDArray<DTypeTag>(hist, targetHistDType);
+      finalHist = castNDArray<AnySpec>(hist, targetHistDType);
     }
 
     return (

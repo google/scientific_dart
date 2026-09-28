@@ -65,6 +65,14 @@ void main() {
               final aContig = makeArr(dtA, [2, 3], seed: 1);
               final bContig = makeArr(dtB, [2, 3], seed: 2);
 
+              if (dtA != dtB) {
+                expect(() => add(aContig, bContig), throwsArgumentError);
+                expect(() => subtract(aContig, bContig), throwsArgumentError);
+                expect(() => multiply(aContig, bContig), throwsArgumentError);
+                expect(() => divide(aContig, bContig), throwsArgumentError);
+                continue;
+              }
+
               final rAdd1 = add(aContig, bContig);
               expect(rAdd1.shape, [2, 3]);
 
@@ -129,6 +137,14 @@ void main() {
 
             final aContig = makeArr(dtA, [2, 3], seed: 1);
             final bContig = makeArr(dtB, [2, 3], seed: 2);
+
+            if (dtA != dtB) {
+              expect(() => floorDivide(aContig, bContig), throwsArgumentError);
+              expect(() => remainder(aContig, bContig), throwsArgumentError);
+              expect(() => fmod(aContig, bContig), throwsArgumentError);
+              expect(() => power(aContig, bContig), throwsArgumentError);
+              continue;
+            }
 
             final aBase = makeArr(dtA, [3, 2], seed: 1);
             final bBase = makeArr(dtB, [3, 2], seed: 2);

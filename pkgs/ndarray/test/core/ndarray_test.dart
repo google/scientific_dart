@@ -1170,7 +1170,8 @@ void main() {
 
         final b = NDArray.fromList([10.0, 20.0], [2], DType.float64);
 
-        final c = add(a, b);
+        expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+        final c = add(a, b.astype(DType.complex128));
         expect(c.shape, [2]);
         expect(c.data[0], Complex(11.0, 2.0));
         expect(c.data[1], Complex(23.0, 4.0));

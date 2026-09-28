@@ -82,8 +82,9 @@ void main() {
         );
         final b = NDArray.fromList([10.0, 20.0], [2], DType.float64);
 
-        // Explicit generic call to allow promotion
-        final res = add<DTypeTag>(a, b);
+        expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+        final bCast = castNDArray(b, DType.complex128);
+        final res = add(a, bCast);
         expect(res.dtype, DType.complex128);
         final resList = res.toList();
         expect(resList[0].real, 11.0);
@@ -242,9 +243,10 @@ void main() {
         final a = NDArray.fromList([1, 2], [2], DType.int32);
         final b = NDArray.fromList([0.5, 1.5], [2], DType.float64);
 
-        final c = addAs(a, b, DType.float64);
+        expect(() => addAs(a, b, DType.float64), throwsArgumentError);
+        final c = addAs(a, a, DType.float64);
         expect(c.dtype, DType.float64);
-        expect(c.toList(), [1.5, 3.5]);
+        expect(c.toList(), [2.0, 4.0]);
 
         final NDArray erased = a;
         expect(() => erased + b, throwsArgumentError);
@@ -288,9 +290,12 @@ void main() {
           -2147483648,
         ); // or wraps/throws? Let's see!
 
-        // Floor Division on floats with zero divisor returns NaN
+        // Floor Division on floats with zero divisor follows IEEE-754 (±Inf for non-zero, NaN for 0/0)
         final divFloorDouble = doubleArr ~/ zeroDoubleArr;
-        expect(divFloorDouble.toList().every((x) => x.isNaN), true);
+        final divFloorDoubleList = divFloorDouble.toList();
+        expect(divFloorDoubleList[0], double.infinity);
+        expect(divFloorDoubleList[1], double.negativeInfinity);
+        expect(divFloorDoubleList[2].isNaN, true);
 
         // 3. Integer Multiplication Overflow wraps around (two's complement)
         // Max 32-bit signed int is 2147483647
@@ -420,7 +425,7 @@ void main() {
         expect(svdRes.s.dtype, DType.float64);
         expect(svdRes.vh.dtype, DType.complex128);
 
-        final sDiag = diag(svdRes.s);
+        final sDiag = castNDArray(diag(svdRes.s), DType.complex128);
         final NDArray<AnySpec> uS = matmul(svdRes.u, sDiag);
         final reconstructed = matmul(uS, svdRes.vh);
 
@@ -438,7 +443,7 @@ void main() {
         expect(svdRes64.s.dtype, DType.float32);
         expect(svdRes64.vh.dtype, DType.complex64);
 
-        final sDiag64 = diag(svdRes64.s);
+        final sDiag64 = castNDArray(diag(svdRes64.s), DType.complex64);
         final NDArray<AnySpec> uS64 = matmul(svdRes64.u, sDiag64);
         final reconstructed64 = matmul(uS64, svdRes64.vh);
         expect(
@@ -722,23 +727,39 @@ void main() {
           final resMatmul = matmul(a, b);
           expect(resMatmul.toList(), [70.0, 100.0, 150.0, 220.0]);
 
-          // Mixed Float32
+          // Mixed Float32 throws ArgumentError; explicit astype works
           final f32 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
             DType.float32,
           );
-          expect(add(a, f32).toList(), [2.0, 4.0, 6.0, 8.0]);
-          expect(subtract(a, f32).toList(), [0.0, 0.0, 0.0, 0.0]);
-          expect(multiply(a, f32).toList(), [1.0, 4.0, 9.0, 16.0]);
-          expect(divide(a, f32).toList(), [1.0, 1.0, 1.0, 1.0]);
+          expect(() => add<DTypeTag>(a, f32), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, f32), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, f32), throwsArgumentError);
+          expect(
+            () => divide<DTypeTag, DTypeTag, DTypeTag>(a, f32),
+            throwsArgumentError,
+          );
+          final f32As64 = f32.astype(DType.float64);
+          expect(add(a, f32As64).toList(), [2.0, 4.0, 6.0, 8.0]);
+          expect(subtract(a, f32As64).toList(), [0.0, 0.0, 0.0, 0.0]);
+          expect(multiply(a, f32As64).toList(), [1.0, 4.0, 9.0, 16.0]);
+          expect(divide(a, f32As64).toList(), [1.0, 1.0, 1.0, 1.0]);
 
-          // Mixed Int64
+          // Mixed Int64 throws ArgumentError; explicit astype works
           final i64 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
-          expect(add(a, i64).toList(), [2.0, 4.0, 6.0, 8.0]);
-          expect(subtract(a, i64).toList(), [0.0, 0.0, 0.0, 0.0]);
-          expect(multiply(a, i64).toList(), [1.0, 4.0, 9.0, 16.0]);
-          expect(divide(a, i64).toList(), [1.0, 1.0, 1.0, 1.0]);
+          expect(() => add<DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, i64), throwsArgumentError);
+          expect(
+            () => divide<DTypeTag, DTypeTag, DTypeTag>(a, i64),
+            throwsArgumentError,
+          );
+          final i64As64 = i64.astype(DType.float64);
+          expect(add(a, i64As64).toList(), [2.0, 4.0, 6.0, 8.0]);
+          expect(subtract(a, i64As64).toList(), [0.0, 0.0, 0.0, 0.0]);
+          expect(multiply(a, i64As64).toList(), [1.0, 4.0, 9.0, 16.0]);
+          expect(divide(a, i64As64).toList(), [1.0, 1.0, 1.0, 1.0]);
 
           // Mixed Scalar
           expect(
@@ -807,16 +828,24 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Float64
+          // Mixed Float64 throws ArgumentError; explicit astype works
           final f64 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
             DType.float64,
           );
-          expect(add(a, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
-          expect(subtract(a, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
-          expect(multiply(a, f64).toList(), [1.0, 4.0, 9.0, 16.0]);
-          expect(divide(a, f64).toList(), [1.0, 1.0, 1.0, 1.0]);
+          expect(() => add<DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, f64), throwsArgumentError);
+          expect(
+            () => divide<DTypeTag, DTypeTag, DTypeTag>(a, f64),
+            throwsArgumentError,
+          );
+          final aAs64 = a.astype(DType.float64);
+          expect(add(aAs64, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
+          expect(subtract(aAs64, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
+          expect(multiply(aAs64, f64).toList(), [1.0, 4.0, 9.0, 16.0]);
+          expect(divide(aAs64, f64).toList(), [1.0, 1.0, 1.0, 1.0]);
 
           // Mixed Scalar
           expect(
@@ -891,15 +920,19 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Double
+          // Mixed Double throws ArgumentError; explicit astype works
           final f64 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
             DType.float64,
           );
-          expect(add(a, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
-          expect(subtract(a, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
-          expect(multiply(a, f64).toList(), [1.0, 4.0, 9.0, 16.0]);
+          expect(() => add<DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, f64), throwsArgumentError);
+          final aAs64 = a.astype(DType.float64);
+          expect(add(aAs64, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
+          expect(subtract(aAs64, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
+          expect(multiply(aAs64, f64).toList(), [1.0, 4.0, 9.0, 16.0]);
 
           // Mixed Scalar
           expect(add(a, NDArray.fromList([10], [1], DType.int64)).toList(), [
@@ -972,11 +1005,15 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Int64
+          // Mixed Int64 throws ArgumentError; explicit astype works
           final i64 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
-          expect(add(a, i64).toList(), [2, 4, 6, 8]);
-          expect(subtract(a, i64).toList(), [0, 0, 0, 0]);
-          expect(multiply(a, i64).toList(), [1, 4, 9, 16]);
+          expect(() => add<DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, i64), throwsArgumentError);
+          final aAsI64 = a.astype(DType.int64);
+          expect(add(aAsI64, i64).toList(), [2, 4, 6, 8]);
+          expect(subtract(aAsI64, i64).toList(), [0, 0, 0, 0]);
+          expect(multiply(aAsI64, i64).toList(), [1, 4, 9, 16]);
 
           // Mixed Scalar
           expect(add(a, NDArray.fromList([10], [1], DType.int32)).toList(), [
@@ -1045,37 +1082,53 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Float64
+          // Mixed Float64 throws ArgumentError; explicit astype works
           final f64 = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-          final resAddF64 = add(a, f64);
+          expect(() => add<DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, f64), throwsArgumentError);
+          expect(
+            () => divide<DTypeTag, DTypeTag, DTypeTag>(a, f64),
+            throwsArgumentError,
+          );
+          final f64AsC128 = f64.astype(DType.complex128);
+          final resAddF64 = add(a, f64AsC128);
           expect(resAddF64.toList()[0].real, 2.0);
           expect(resAddF64.toList()[0].imag, 2.0);
 
-          final resSubF64 = subtract(a, f64);
+          final resSubF64 = subtract(a, f64AsC128);
           expect(resSubF64.toList()[0].real, 0.0);
           expect(resSubF64.toList()[0].imag, 2.0);
 
-          final resMulF64 = multiply(a, f64);
+          final resMulF64 = multiply(a, f64AsC128);
           expect(resMulF64.toList()[0].real, 1.0);
           expect(resMulF64.toList()[0].imag, 2.0);
 
-          final resDivF64 = divide(a, f64);
+          final resDivF64 = divide(a, f64AsC128);
           expect(resDivF64.toList()[0].real, 1.0);
           expect(resDivF64.toList()[0].imag, 2.0);
 
-          // Mixed Int64
+          // Mixed Int64 throws ArgumentError; explicit astype works
           final i64 = NDArray.fromList([1, 2], [2], DType.int64);
-          final resAddI64 = add(a, i64);
+          expect(() => add<DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => subtract<DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => multiply<DTypeTag>(a, i64), throwsArgumentError);
+          expect(
+            () => divide<DTypeTag, DTypeTag, DTypeTag>(a, i64),
+            throwsArgumentError,
+          );
+          final i64AsC128 = i64.astype(DType.complex128);
+          final resAddI64 = add(a, i64AsC128);
           expect(resAddI64.toList()[0].real, 2.0);
           expect(resAddI64.toList()[0].imag, 2.0);
 
-          final resSubI64 = subtract(a, i64);
+          final resSubI64 = subtract(a, i64AsC128);
           expect(resSubI64.toList()[0].real, 0.0);
 
-          final resMulI64 = multiply(a, i64);
+          final resMulI64 = multiply(a, i64AsC128);
           expect(resMulI64.toList()[0].real, 1.0);
 
-          final resDivI64 = divide(a, i64);
+          final resDivI64 = divide(a, i64AsC128);
           expect(resDivI64.toList()[0].real, 1.0);
 
           // Mixed Scalar
@@ -1691,20 +1744,21 @@ void main() {
         final i = NDArray.fromList([2], [1], DType.int64);
         final d = NDArray.fromList([3.0], [1], DType.float64);
 
-        // 1. Complex + int
-        final res1 = add(c, i);
+        // Mixed dtypes are rejected on add(); explicit astype works
+        expect(() => add<DTypeTag>(c, i), throwsArgumentError);
+        final res1 = add(c, i.astype(DType.complex128));
         expect(res1.dtype, DType.complex128);
         expect(res1.getCell([0]).real, 3.0);
         expect(res1.getCell([0]).imag, 1.0);
 
-        // 2. double + Complex
-        final res2 = add(d, c);
+        expect(() => add<DTypeTag>(d, c), throwsArgumentError);
+        final res2 = add(d.astype(DType.complex128), c);
         expect(res2.dtype, DType.complex128);
         expect(res2.getCell([0]).real, 4.0);
         expect(res2.getCell([0]).imag, 1.0);
 
-        // 3. int + Complex
-        final res3 = add(i, c);
+        expect(() => add<DTypeTag>(i, c), throwsArgumentError);
+        final res3 = add(i.astype(DType.complex128), c);
         expect(res3.dtype, DType.complex128);
         expect(res3.getCell([0]).real, 3.0);
       }),
@@ -1720,25 +1774,32 @@ void main() {
         );
         final i = NDArray.fromList([2], [1], DType.int64);
         final d = NDArray.fromList([4.0], [1], DType.float64);
+        final iC = i.astype(DType.complex128);
+        final dC = d.astype(DType.complex128);
+        final iD = i.astype(DType.float64);
 
         // --- subtract() Gaps ---
         // 1. Complex - int
-        final s1 = subtract(c, i);
+        expect(() => subtract<DTypeTag>(c, i), throwsArgumentError);
+        final s1 = subtract(c, iC);
         expect(s1.dtype, DType.complex128);
         expect(s1.getCell([0]), Complex(8.0, 10.0));
 
         // 2. int - Complex
-        final s2 = subtract(i, c);
+        expect(() => subtract<DTypeTag>(i, c), throwsArgumentError);
+        final s2 = subtract(iC, c);
         expect(s2.dtype, DType.complex128);
         expect(s2.getCell([0]), Complex(-8.0, -10.0));
 
         // 3. double - int
-        final s3 = subtract(d, i);
+        expect(() => subtract<DTypeTag>(d, i), throwsArgumentError);
+        final s3 = subtract(d, iD);
         expect(s3.dtype, DType.float64);
         expect(s3.getCell([0]), 2.0);
 
         // 4. int - double
-        final s4 = subtract(i, d);
+        expect(() => subtract<DTypeTag>(i, d), throwsArgumentError);
+        final s4 = subtract(iD, d);
         expect(s4.dtype, DType.float64);
         expect(s4.getCell([0]), -2.0);
 
@@ -1754,32 +1815,38 @@ void main() {
         expect(m1.getCell([0]), Complex(0.0, 200.0)); // (10+10i)^2 = 0 + 200i
 
         // 2. Complex * double
-        final m2 = multiply(c, d);
+        expect(() => multiply<DTypeTag>(c, d), throwsArgumentError);
+        final m2 = multiply(c, dC);
         expect(m2.dtype, DType.complex128);
         expect(m2.getCell([0]), Complex(40.0, 40.0));
 
         // 3. Complex * int
-        final m3 = multiply(c, i);
+        expect(() => multiply<DTypeTag>(c, i), throwsArgumentError);
+        final m3 = multiply(c, iC);
         expect(m3.dtype, DType.complex128);
         expect(m3.getCell([0]), Complex(20.0, 20.0));
 
         // 4. double * Complex
-        final m4 = multiply(d, c);
+        expect(() => multiply<DTypeTag>(d, c), throwsArgumentError);
+        final m4 = multiply(dC, c);
         expect(m4.dtype, DType.complex128);
         expect(m4.getCell([0]), Complex(40.0, 40.0));
 
         // 5. int * Complex
-        final m5 = multiply(i, c);
+        expect(() => multiply<DTypeTag>(i, c), throwsArgumentError);
+        final m5 = multiply(iC, c);
         expect(m5.dtype, DType.complex128);
         expect(m5.getCell([0]), Complex(20.0, 20.0));
 
         // 6. double * int
-        final m6 = multiply(d, i);
+        expect(() => multiply<DTypeTag>(d, i), throwsArgumentError);
+        final m6 = multiply(d, iD);
         expect(m6.dtype, DType.float64);
         expect(m6.getCell([0]), 8.0);
 
         // 7. int * double
-        final m7 = multiply(i, d);
+        expect(() => multiply<DTypeTag>(i, d), throwsArgumentError);
+        final m7 = multiply(iD, d);
         expect(m7.dtype, DType.float64);
         expect(m7.getCell([0]), 8.0);
 
@@ -1795,17 +1862,29 @@ void main() {
         expect(div1.getCell([0]), Complex(1.0, 0.0));
 
         // 2. Complex / double
-        final div2 = divide(c, d);
+        expect(
+          () => divide<DTypeTag, DTypeTag, DTypeTag>(c, d),
+          throwsArgumentError,
+        );
+        final div2 = divide(c, dC);
         expect(div2.dtype, DType.complex128);
         expect(div2.getCell([0]), Complex(2.5, 2.5));
 
         // 3. Complex / int
-        final div3 = divide(c, i);
+        expect(
+          () => divide<DTypeTag, DTypeTag, DTypeTag>(c, i),
+          throwsArgumentError,
+        );
+        final div3 = divide(c, iC);
         expect(div3.dtype, DType.complex128);
         expect(div3.getCell([0]), Complex(5.0, 5.0));
 
         // 4. double / Complex
-        final div4 = divide(d, c);
+        expect(
+          () => divide<DTypeTag, DTypeTag, DTypeTag>(d, c),
+          throwsArgumentError,
+        );
+        final div4 = divide(dC, c);
         expect(div4.dtype, DType.complex128);
         expect(
           div4.getCell([0]),
@@ -1813,11 +1892,18 @@ void main() {
         ); // 4 / (10+10i) = 0.2 - 0.2i
 
         // 5. int / Complex
-        final div5 = divide(i, c);
+        expect(
+          () => divide<DTypeTag, DTypeTag, DTypeTag>(i, c),
+          throwsArgumentError,
+        );
+        final div5 = divide(iC, c);
         expect(
           div5.getCell([0]),
           Complex(0.1, -0.1),
         ); // 2 / (10+10i) = 0.1 - 0.1i
+        iC.dispose();
+        dC.dispose();
+        iD.dispose();
       },
     );
 
@@ -1890,30 +1976,35 @@ void main() {
 
     test('Phase 2: Combinatorial DType Promotions', () {
       NDArray.scope(() {
-        // int32 + float64 -> float64
         final i32 = NDArray.fromList([1, 2], [2], DType.int32);
         final f64 = NDArray.fromList([0.5, 1.5], [2], DType.float64);
-        final res1 = addAs(i32, f64, DType.float64);
+        expect(() => addAs(i32, f64, DType.float64), throwsArgumentError);
+        final res1 = add(i32.astype(DType.float64), f64);
         expect(res1.dtype, DType.float64);
         expect(res1.toList(), [1.5, 3.5]);
 
-        // int64 * int32 -> int64
         final i64 = NDArray.fromList([3, 4], [2], DType.int64);
-        final res2 = multiplyAs(i64, i32, DType.int64);
+        expect(() => multiplyAs(i64, i32, DType.int64), throwsArgumentError);
+        final res2 = multiply(i64, i32.astype(DType.int64));
         expect(res2.dtype, DType.int64);
         expect(res2.toList(), [3, 8]);
 
-        // uint8 + int16 -> int16 (int16 can represent all uint8 values)
         final u8 = NDArray.fromList([10, 20], [2], DType.uint8);
         final i16 = NDArray.fromList([100, 200], [2], DType.int16);
-        final res3 = addAs(u8, i16, DType.int16);
+        expect(() => addAs(u8, i16, DType.int16), throwsArgumentError);
+        final res3 = add(u8.astype(DType.int16), i16);
         expect(res3.dtype, DType.int16);
         expect(res3.toList(), [110, 220]);
 
+        // Same-dtype addAs/multiplyAs into wider output dtype works
+        final u8b = NDArray.fromList([250, 20], [2], DType.uint8);
+        final resWide = addAs(u8, u8b, DType.int16);
+        expect(resWide.dtype, DType.int16);
+        expect(resWide.toList(), [260, 40]);
+
         // Operators keep the receiver's dtype, so mixed dtypes are rejected.
-        final NDArray erasedI32 = i32;
-        expect(() => erasedI32 + f64, throwsArgumentError);
-        expect(() => erasedI32 * i64, throwsArgumentError);
+        expect(() => (i32 as dynamic) + f64, throwsArgumentError);
+        expect(() => (i32 as dynamic) * i64, throwsArgumentError);
       });
     });
 

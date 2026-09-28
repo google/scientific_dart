@@ -876,7 +876,8 @@ void main() {
         NDArray.scope(() {
           final a = NDArray.fromList([1, 2], [2], DType.int32);
           final b = NDArray.fromList([0.5, 1.5], [2], DType.float64);
-          result = kron(a, b); // a will be cast to float64 internally
+          expect(() => kron<DTypeTag>(a, b), throwsArgumentError);
+          result = kron(a.astype(DType.float64), b);
           expect(result.isDisposed, isFalse);
           expect(result.dtype, DType.float64);
           expect(result.toList(), [0.5, 1.5, 1.0, 3.0]);

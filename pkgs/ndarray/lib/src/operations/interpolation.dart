@@ -53,25 +53,27 @@ void _validateSorted(NDArray<Float64> xp) {
 ///
 /// **Preconditions:**
 /// - [x], [xp], [fp] must not be disposed.
+/// - [x] and [xp] must be real-valued (not complex).
 /// - [xp] and [fp] must be 1D arrays.
 /// - [xp] and [fp] must have the same length.
 /// - [xp] must be strictly increasing.
 ///
 /// - It is an error if any input array is disposed.
+/// - It is an error if [x] or [xp] is complex.
 /// - It is an error if [xp] or [fp] is not 1-dimensional, or if their lengths mismatch.
 /// - It is an error if [xp] is empty.
 /// - It is an error if [xp] is not strictly increasing.
 ///
 /// **Example:**
 /// {@example /example/interpolation_example.dart}
-NDArray<Float64> interp(
+NDArray<R> interp<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
   NDArray<DTypeTag> fp, {
-  double? left,
-  double? right,
+  Object? left,
+  Object? right,
   InterpolationMethod method = InterpolationMethod.linear,
-  NDArray<Float64>? out,
+  NDArray<R>? out,
 }) {
   if (x.isDisposed ||
       xp.isDisposed ||
@@ -80,8 +82,18 @@ NDArray<Float64> interp(
     throw StateError('Cannot execute interp() with disposed arrays.');
   }
 
+  if (x.dtype.isComplex) {
+    throw ArgumentError.value(x.dtype, 'x', 'Must not be complex.');
+  }
+  if (xp.dtype.isComplex) {
+    throw ArgumentError.value(xp.dtype, 'xp', 'Must not be complex.');
+  }
+
+  final isComplexFp = fp.dtype.isComplex;
+  final expectedDType = isComplexFp ? DType.complex128 : DType.float64;
+
   if (out != null) {
-    if (!listEquals(out.shape, x.shape) || out.dtype != DType.float64) {
+    if (!listEquals(out.shape, x.shape) || out.dtype != expectedDType) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
   }
@@ -96,6 +108,120 @@ NDArray<Float64> interp(
 
   if (xp.shape[0] == 0) {
     throw ArgumentError('xp must not be empty.');
+  }
+
+  if (isComplexFp) {
+    Complex? leftC;
+    if (left != null) {
+      if (left is Complex) {
+        leftC = left;
+      } else if (left is num) {
+        leftC = Complex(left.toDouble(), 0.0);
+      } else {
+        throw ArgumentError.value(left, 'left', 'Must be a num or Complex.');
+      }
+    }
+    Complex? rightC;
+    if (right != null) {
+      if (right is Complex) {
+        rightC = right;
+      } else if (right is num) {
+        rightC = Complex(right.toDouble(), 0.0);
+      } else {
+        throw ArgumentError.value(right, 'right', 'Must be a num or Complex.');
+      }
+    }
+
+    return NDArray.scope(() {
+      final fpLen = fp.shape[0];
+      final fpReal = NDArray<Float64>.create([fpLen], DType.float64);
+      final fpImag = NDArray<Float64>.create([fpLen], DType.float64);
+      final fpRealPtr = fpReal.pointer.cast<ffi.Double>();
+      final fpImagPtr = fpImag.pointer.cast<ffi.Double>();
+      for (var i = 0; i < fpLen; i++) {
+        final c = fp.getCell([i]) as Complex;
+        fpRealPtr[i] = c.real;
+        fpImagPtr[i] = c.imag;
+      }
+
+      final resReal = interp<Float64>(
+        x,
+        xp,
+        fpReal,
+        left: leftC?.real,
+        right: rightC?.real,
+        method: method,
+      );
+      final resImag = interp<Float64>(
+        x,
+        xp,
+        fpImag,
+        left: leftC?.imag,
+        right: rightC?.imag,
+        method: method,
+      );
+
+      final target =
+          out ??
+          (NDArray<Complex128>.create(x.shape, DType.complex128) as NDArray<R>);
+      final tempTarget =
+          (out != null &&
+              (!out.isContiguous ||
+                  sharesMemory(x, out) ||
+                  sharesMemory(xp, out) ||
+                  sharesMemory(fp, out)))
+          ? (NDArray<Complex128>.create(x.shape, DType.complex128)
+                as NDArray<R>)
+          : target;
+
+      final size = resReal.size;
+      final rPtr = resReal.pointer.cast<ffi.Double>();
+      final iPtr = resImag.pointer.cast<ffi.Double>();
+      if (tempTarget.isContiguous) {
+        final outPtr = tempTarget.pointer.cast<ffi.Double>();
+        for (var i = 0; i < size; i++) {
+          outPtr[2 * i] = rPtr[i];
+          outPtr[2 * i + 1] = iPtr[i];
+        }
+      } else {
+        for (var i = 0; i < size; i++) {
+          tempTarget.setCellFlat(i, Complex(rPtr[i], iPtr[i]));
+        }
+      }
+
+      if (!identical(tempTarget, target)) {
+        tempTarget.copy(out: target);
+      }
+      if (out == null) {
+        target.detachToParentScope();
+      }
+      return target;
+    });
+  }
+
+  double? leftD;
+  if (left != null) {
+    if (left is num) {
+      leftD = left.toDouble();
+    } else {
+      throw ArgumentError.value(
+        left,
+        'left',
+        'Must be a real number when fp is real.',
+      );
+    }
+  }
+  double? rightD;
+  if (right != null) {
+    if (right is num) {
+      rightD = right.toDouble();
+    } else {
+      throw ArgumentError.value(
+        right,
+        'right',
+        'Must be a real number when fp is real.',
+      );
+    }
   }
 
   final xDouble = x.dtype == DType.float64
@@ -120,21 +246,23 @@ NDArray<Float64> interp(
             sharesMemory(fp, out))) {
       return NDArray.scope(() {
         final temp = NDArray<Float64>.create(x.shape, DType.float64);
-        interp(
+        interp<Float64>(
           xDouble,
           xpDouble!,
           fpDouble!,
-          left: left,
-          right: right,
+          left: leftD,
+          right: rightD,
           method: method,
           out: temp,
         );
-        temp.copy(out: out);
+        temp.copy(out: out as NDArray<Float64>);
         return out;
       });
     }
 
-    final res = out ?? NDArray<Float64>.create(x.shape, DType.float64);
+    final res =
+        (out as NDArray<Float64>?) ??
+        NDArray<Float64>.create(x.shape, DType.float64);
 
     if (method == InterpolationMethod.nearest) {
       final size = xDouble.size;
@@ -151,8 +279,8 @@ NDArray<Float64> interp(
 
             final xpMin = xpPtr[0];
             final xpMax = xpPtr[xpSize - 1];
-            final defaultLeft = left ?? fpPtr[0];
-            final defaultRight = right ?? fpPtr[xpSize - 1];
+            final defaultLeft = leftD ?? fpPtr[0];
+            final defaultRight = rightD ?? fpPtr[xpSize - 1];
 
             final tempRes = res.isContiguous
                 ? res
@@ -213,14 +341,14 @@ NDArray<Float64> interp(
       try {
         // Prepare left/right pointers.
         ffi.Pointer<ffi.Double> pLeft = ffi.nullptr;
-        if (left != null) {
+        if (leftD != null) {
           pLeft = ScratchArena.allocate<ffi.Double>(ffi.sizeOf<ffi.Double>());
-          pLeft.value = left;
+          pLeft.value = leftD;
         }
         ffi.Pointer<ffi.Double> pRight = ffi.nullptr;
-        if (right != null) {
+        if (rightD != null) {
           pRight = ScratchArena.allocate<ffi.Double>(ffi.sizeOf<ffi.Double>());
-          pRight.value = right;
+          pRight.value = rightD;
         }
 
         final isContiguous =
@@ -282,7 +410,7 @@ NDArray<Float64> interp(
       }
     }
 
-    return res;
+    return res as NDArray<R>;
   } finally {
     // Dispose promoted arrays if they were created.
     if (!identical(xDouble, x)) xDouble.dispose();
@@ -294,12 +422,12 @@ NDArray<Float64> interp(
 /// Computes one-dimensional interpolation.
 ///
 /// Alias for [interp].
-NDArray<Float64> interpolate(
+NDArray<R> interpolate<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
   NDArray<DTypeTag> fp, {
-  double? left,
-  double? right,
+  Object? left,
+  Object? right,
   InterpolationMethod method = InterpolationMethod.linear,
-  NDArray<Float64>? out,
-}) => interp(x, xp, fp, left: left, right: right, method: method, out: out);
+  NDArray<R>? out,
+}) => interp<R>(x, xp, fp, left: left, right: right, method: method, out: out);

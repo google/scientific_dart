@@ -1068,12 +1068,17 @@ void main() {
         final a32 = NDArray.fromList([1.0, 2.0], [2], DType.float32);
         final b64 = NDArray.fromList([3.0, 4.0], [2], DType.float64);
 
-        final res = tensordot(a32, b64, axes: 1);
+        expect(
+          () => tensordot<DTypeTag>(a32, b64, axes: 1),
+          throwsArgumentError,
+        );
+        final a64 = a32.astype(DType.float64);
+        final res = tensordot(a64, b64, axes: 1);
         expect(res.dtype, equals(DType.float64));
         expect(res.scalar, equals(11.0));
 
         final out = NDArray.zeros([], DType.float64);
-        tensordot(a32, b64, axes: 1, out: out);
+        tensordot(a64, b64, axes: 1, out: out);
         expect(out.scalar, equals(11.0));
       });
     });
@@ -1618,7 +1623,11 @@ void main() {
       // 2. tensordot all axes with type casting non-float (lines 305-306)
       final aInt32 = NDArray<Int32>.fromList([1, 2, 3, 4], [2, 2], DType.int32);
       final bInt64 = NDArray<Int64>.fromList([1, 1, 1, 1], [2, 2], DType.int64);
-      final resTdCast = tensordot(aInt32, bInt64, axes: 2);
+      expect(
+        () => tensordot<DTypeTag>(aInt32, bInt64, axes: 2),
+        throwsArgumentError,
+      );
+      final resTdCast = tensordot(aInt32.astype(DType.int64), bInt64, axes: 2);
       expect(resTdCast.scalar, equals(10));
 
       // 3. tensordot non-sequential axes isSeq return false (line 254)

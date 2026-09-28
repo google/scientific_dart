@@ -334,6 +334,13 @@ NDArray<T> tensordot<T extends DTypeTag>(
       "Cannot write tensordot result to a disposed output array.",
     );
   }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
 
   final resolvedAxes = TensordotAxes.from(axes);
   final (axesA, axesB) = resolvedAxes.resolve(a.shape.length, b.shape.length);
@@ -868,7 +875,7 @@ NDArray<T> einsum<T extends DTypeTag>(
       NDArray<T> res = op;
       axesToSum.sort((a, b) => b.compareTo(a));
       for (final ax in axesToSum) {
-        res = sum<T>(res, axis: ax);
+        res = sumAs<T, T>(res, res.dtype, axis: ax);
       }
 
       if (keptIds.length > 1) {
@@ -1243,7 +1250,7 @@ NDArray<T> einsum<T extends DTypeTag>(
     for (var j = allIds.length - 1; j >= 0; j--) {
       final id = allIds[j];
       if (!finalOutSub.contains(id)) {
-        combined = sum<DTypeTag>(combined, axis: j);
+        combined = sumAs<DTypeTag, DTypeTag>(combined, combined.dtype, axis: j);
       }
     }
 
@@ -1296,6 +1303,13 @@ NDArray<T> inner<T extends DTypeTag>(
   }
   if (out != null && out.isDisposed) {
     throw StateError("Cannot write inner result to a disposed output array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
 
   if (a.rank == 0 || b.rank == 0) {
@@ -1360,6 +1374,13 @@ NDArray<T> vdot<T extends DTypeTag>(
   if (out != null && out.isDisposed) {
     throw StateError("Cannot write vdot result to a disposed output array.");
   }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
   if (a.size != b.size) {
     throw ArgumentError(
       "Cannot compute vdot: operands must have the same total number of elements (${a.size} != ${b.size}).",
@@ -1404,6 +1425,13 @@ NDArray<T> kron<T extends DTypeTag>(
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute kron() on a disposed array.');
   }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
 
   final rankA = a.rank;
   final rankB = b.rank;
@@ -1424,12 +1452,7 @@ NDArray<T> kron<T extends DTypeTag>(
     expectedShape[i] = paddedShapeA[i] * paddedShapeB[i];
   }
 
-  final targetDType =
-      (a.dtype == DType.boolean &&
-          b.dtype == DType.boolean &&
-          out?.dtype == DType.boolean)
-      ? DType.boolean
-      : resolveDType(a.dtype, b.dtype);
+  final targetDType = a.dtype;
   if (out != null &&
       (!listEquals(out.shape, expectedShape) || out.dtype != targetDType)) {
     throw ArgumentError(

@@ -653,8 +653,8 @@ void main() {
               expect(c.real, closeTo(9.0, 1e-5));
               expect(c.imag, closeTo(12.0, 1e-5));
             } else if (dt == DType.boolean) {
-              expect(res.scalar, isTrue);
-              expect(sumAs(arr, DType.int64).scalar, 3);
+              expect(res.scalar, 3);
+              expect(sumAs(arr, DType.boolean).scalar, isTrue);
             } else {
               expect((res.scalar as num).toDouble(), closeTo(10.0, 1e-5));
             }
@@ -684,8 +684,8 @@ void main() {
             if (dt.isComplex) {
               expect(resEmpty.scalar, equals(Complex(1.0, 0.0)));
             } else if (dt == DType.boolean) {
-              expect(resEmpty.scalar, isTrue);
-              expect(prodAs(empty, DType.int64).scalar, 1);
+              expect(resEmpty.scalar, 1);
+              expect(prodAs(empty, DType.boolean).scalar, isTrue);
             } else {
               expect((resEmpty.scalar as num).toDouble(), closeTo(1.0, 1e-5));
             }
@@ -705,8 +705,8 @@ void main() {
               expect(c.real, closeTo(2.0, 1e-5));
               expect(c.imag, closeTo(2.0, 1e-5));
             } else if (dt == DType.boolean) {
-              expect(res.scalar, isTrue);
-              expect(prodAs(arr, DType.int64).scalar, 1);
+              expect(res.scalar, 1);
+              expect(prodAs(arr, DType.boolean).scalar, isTrue);
             } else {
               expect((res.scalar as num).toDouble(), closeTo(24.0, 1e-5));
             }
@@ -809,7 +809,15 @@ void main() {
             [2],
             DType.float64,
           );
-          final vNaN = variance(small, ddof: 2);
+          final vInf = variance(small, ddof: 2);
+          expect(vInf.scalar, double.infinity);
+
+          final constSmall = NDArray<Float64>.fromList(
+            [5.0, 5.0],
+            [2],
+            DType.float64,
+          );
+          final vNaN = variance(constSmall, ddof: 2);
           expect(vNaN.scalar.isNaN, isTrue);
 
           final a2D = NDArray<Float64>.fromList(
@@ -1824,13 +1832,14 @@ void main() {
           expect(() => cummin(a, axis: 5), throwsArgumentError);
           expect(() => cummax(a, axis: 5), throwsArgumentError);
 
+          final out2D64 = NDArray.zeros([2, 2], DType.int64);
+          final resCs = cumsum(a, axis: 0, out: out2D64);
+          expect(identical(resCs, out2D64), isTrue);
+
+          final resCp = cumprod(a, axis: 0, out: out2D64);
+          expect(identical(resCp, out2D64), isTrue);
+
           final out2D = NDArray.zeros([2, 2], DType.int32);
-          final resCs = cumsum(a, axis: 0, out: out2D);
-          expect(identical(resCs, out2D), isTrue);
-
-          final resCp = cumprod(a, axis: 0, out: out2D);
-          expect(identical(resCp, out2D), isTrue);
-
           final resCmin = cummin(a, axis: 0, out: out2D);
           expect(identical(resCmin, out2D), isTrue);
 
@@ -2157,8 +2166,8 @@ void main() {
           // Boolean sum on empty
           final emptyBool = NDArray<Boolean>.fromList([], [0], DType.boolean);
           final sBool = sum(emptyBool);
-          expect(sBool.scalar, isFalse);
-          expect(sumAs(emptyBool, DType.int64).scalar, equals(0));
+          expect(sBool.scalar, equals(0));
+          expect(sumAs(emptyBool, DType.boolean).scalar, isFalse);
 
           // Float sum on empty
           final emptyFloat = NDArray<Float64>.fromList([], [0], DType.float64);

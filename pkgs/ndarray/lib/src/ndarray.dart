@@ -143,15 +143,15 @@ abstract final class Int64
 
 /// Tag for the `int32` dtype. Elements are `int`.
 abstract final class Int32
-    extends DTypeSpec<Int32, int, Float64, Complex128, Float64, Int32, Int32> {}
+    extends DTypeSpec<Int32, int, Float64, Complex128, Float64, Int64, Int64> {}
 
 /// Tag for the `int16` dtype. Elements are `int`.
 abstract final class Int16
-    extends DTypeSpec<Int16, int, Float64, Complex128, Float64, Int16, Int16> {}
+    extends DTypeSpec<Int16, int, Float64, Complex128, Float64, Int64, Int64> {}
 
 /// Tag for the `int8` dtype. Elements are `int`.
 abstract final class Int8
-    extends DTypeSpec<Int8, int, Float64, Complex128, Float64, Int8, Int8> {}
+    extends DTypeSpec<Int8, int, Float64, Complex128, Float64, Int64, Int64> {}
 
 /// Tag for the `uint64` dtype. Elements are `int`.
 ///
@@ -164,16 +164,17 @@ abstract final class Uint64
 /// Tag for the `uint32` dtype. Elements are `int`.
 abstract final class Uint32
     extends
-        DTypeSpec<Uint32, int, Float64, Complex128, Float64, Uint32, Uint32> {}
+        DTypeSpec<Uint32, int, Float64, Complex128, Float64, Uint64, Uint64> {}
 
 /// Tag for the `uint16` dtype. Elements are `int`.
 abstract final class Uint16
     extends
-        DTypeSpec<Uint16, int, Float64, Complex128, Float64, Uint16, Uint16> {}
+        DTypeSpec<Uint16, int, Float64, Complex128, Float64, Uint64, Uint64> {}
 
 /// Tag for the `uint8` dtype. Elements are `int`.
 abstract final class Uint8
-    extends DTypeSpec<Uint8, int, Float64, Complex128, Float64, Uint8, Uint8> {}
+    extends
+        DTypeSpec<Uint8, int, Float64, Complex128, Float64, Uint64, Uint64> {}
 
 /// Tag for the `complex64` dtype. Elements are [Complex].
 abstract final class Complex64
@@ -204,7 +205,7 @@ abstract final class Complex128
 /// Tag for the `boolean` dtype. Elements are `bool`.
 abstract final class Boolean
     extends
-        DTypeSpec<Boolean, bool, Float64, Complex128, Float64, Int64, Int32> {}
+        DTypeSpec<Boolean, bool, Float64, Complex128, Float64, Int64, Int64> {}
 
 /// Supported data types for the elements of an [NDArray].
 
@@ -1135,28 +1136,120 @@ sealed class NDArray<T extends DTypeTag>
         list.map((e) => (e as num).toInt()).toList(),
       ),
       DType.int32 => Int32List.fromList(
-        list.map((e) => (e as num).toInt()).toList(),
+        list.map((e) {
+          final v = (e as num).toInt();
+          if (v < -2147483648 || v > 2147483647) {
+            arr.dispose();
+            throw RangeError.range(
+              v,
+              -2147483648,
+              2147483647,
+              'list',
+              'Value out of range for int32',
+            );
+          }
+          return v;
+        }).toList(),
       ),
       DType.int16 => Int16List.fromList(
-        list.map((e) => (e as num).toInt()).toList(),
+        list.map((e) {
+          final v = (e as num).toInt();
+          if (v < -32768 || v > 32767) {
+            arr.dispose();
+            throw RangeError.range(
+              v,
+              -32768,
+              32767,
+              'list',
+              'Value out of range for int16',
+            );
+          }
+          return v;
+        }).toList(),
       ),
       DType.int8 => Int8List.fromList(
-        list.map((e) => (e as num).toInt()).toList(),
+        list.map((e) {
+          final v = (e as num).toInt();
+          if (v < -128 || v > 127) {
+            arr.dispose();
+            throw RangeError.range(
+              v,
+              -128,
+              127,
+              'list',
+              'Value out of range for int8',
+            );
+          }
+          return v;
+        }).toList(),
       ),
       DType.uint64 => Uint64List.fromList(
         list.map((e) => (e as num).toInt()).toList(),
       ),
       DType.uint32 => Uint32List.fromList(
-        list.map((e) => (e as num).toInt()).toList(),
+        list.map((e) {
+          final v = (e as num).toInt();
+          if (v < 0 || v > 4294967295) {
+            arr.dispose();
+            throw RangeError.range(
+              v,
+              0,
+              4294967295,
+              'list',
+              'Value out of range for uint32',
+            );
+          }
+          return v;
+        }).toList(),
       ),
       DType.uint16 => Uint16List.fromList(
-        list.map((e) => (e as num).toInt()).toList(),
+        list.map((e) {
+          final v = (e as num).toInt();
+          if (v < 0 || v > 65535) {
+            arr.dispose();
+            throw RangeError.range(
+              v,
+              0,
+              65535,
+              'list',
+              'Value out of range for uint16',
+            );
+          }
+          return v;
+        }).toList(),
       ),
       DType.uint8 => Uint8List.fromList(
-        list.map((e) => (e as num).toInt()).toList(),
+        list.map((e) {
+          final v = (e as num).toInt();
+          if (v < 0 || v > 255) {
+            arr.dispose();
+            throw RangeError.range(
+              v,
+              0,
+              255,
+              'list',
+              'Value out of range for uint8',
+            );
+          }
+          return v;
+        }).toList(),
       ),
-      DType.boolean => List<bool>.from(list),
-      DType.complex128 || DType.complex64 => List<Complex>.from(list),
+      DType.boolean => () {
+        try {
+          return List<bool>.from(list);
+        } catch (_) {
+          arr.dispose();
+          rethrow;
+        }
+      }(),
+      DType.complex128 || DType.complex64 => () {
+        try {
+          return List<Complex>.from(list);
+        } catch (_) {
+          arr.dispose();
+          rethrow;
+        }
+      }(),
     };
     for (var i = 0; i < eagerList.length; i++) {
       arr.setCellRaw(i, eagerList[i]);
@@ -3619,8 +3712,8 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// The result of these operators has the dtype of `this`, so an array
   /// operand of a different dtype or an out-of-range/incompatible scalar is
-  /// rejected with [ArgumentError]: use the `*As` functions (e.g.
-  /// `addAs(a, b, DType.float64)`) for mixed-dtype arithmetic.
+  /// rejected with [ArgumentError]: cast operands explicitly with `.astype(...)`
+  /// for mixed-dtype arithmetic.
   NDArray<T> _withSameDTypeOperand(
     Object? other,
     String operator,
@@ -3631,9 +3724,8 @@ sealed class NDArray<T extends DTypeTag>
         other,
         'other',
         'Must have the same dtype as the receiver ($dtype) for operator '
-            '$operator, but has dtype ${other.dtype}. Use the *As functions '
-            '(for example addAs(a, b, DType.float64)) for mixed-dtype '
-            'arithmetic',
+            '$operator, but has dtype ${other.dtype}. Cast explicitly with '
+            '.astype(...) before combining arrays of different dtypes.',
       );
     }
     return _withWrappedScalar(other, (otherArr) {
@@ -3650,17 +3742,42 @@ sealed class NDArray<T extends DTypeTag>
         as NDArray<T>;
   }
 
+  NDArray<Boolean>? _tryOutOfRangeIntScalarComparison(
+    Object? other, {
+    required bool resultWhenScalarBelowMin,
+    required bool resultWhenScalarAboveMax,
+    required bool allowComplex,
+  }) {
+    if (other is! int ||
+        !dtype.isInteger ||
+        _scalarIntFitsDType(other, dtype)) {
+      return null;
+    }
+    if (isDisposed) {
+      throw StateError('Cannot execute comparison on a disposed array.');
+    }
+    if (!allowComplex && dtype.isComplex) {
+      throw UnsupportedError(
+        'Complex numbers do not support ordering comparisons.',
+      );
+    }
+    final fillVal = other < 0
+        ? resultWhenScalarBelowMin
+        : resultWhenScalarAboveMax;
+    return NDArray.full(shape, fillVal, dtype: DType.boolean);
+  }
+
   /// Element-wise addition with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `addAs` to combine dtypes.
+  /// must have the same dtype as this array; use `.astype(...)` to convert dtypes.
   NDArray<T> operator +(Object? other) =>
       _withSameDTypeOperand(other, '+', (otherArr) => ops.add(this, otherArr));
 
   /// Element-wise subtraction with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `subtractAs` to combine
+  /// must have the same dtype as this array; use `.astype(...)` to convert
   /// dtypes.
   NDArray<T> operator -(Object? other) => _withSameDTypeOperand(
     other,
@@ -3671,7 +3788,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise multiplication with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `multiplyAs` to combine
+  /// must have the same dtype as this array; use `.astype(...)` to convert
   /// dtypes.
   NDArray<T> operator *(Object? other) => _withSameDTypeOperand(
     other,
@@ -3765,6 +3882,15 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// Reference: See NumPy's [greater](https://numpy.org/doc/stable/reference/generated/numpy.greater.html).
   NDArray<Boolean> operator >(Object? other) {
+    if (_tryOutOfRangeIntScalarComparison(
+          other,
+          resultWhenScalarBelowMin: true,
+          resultWhenScalarAboveMax: false,
+          allowComplex: false,
+        )
+        case final fast?) {
+      return fast;
+    }
     return _withWrappedScalar(other, (otherArr) => ops.greater(this, otherArr));
   }
 
@@ -3788,6 +3914,15 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// Reference: See NumPy's [less](https://numpy.org/doc/stable/reference/generated/numpy.less.html).
   NDArray<Boolean> operator <(Object? other) {
+    if (_tryOutOfRangeIntScalarComparison(
+          other,
+          resultWhenScalarBelowMin: false,
+          resultWhenScalarAboveMax: true,
+          allowComplex: false,
+        )
+        case final fast?) {
+      return fast;
+    }
     return _withWrappedScalar(other, (otherArr) => ops.less(this, otherArr));
   }
 
@@ -3811,6 +3946,15 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// Reference: See NumPy's [greater_equal](https://numpy.org/doc/stable/reference/generated/numpy.greater_equal.html).
   NDArray<Boolean> operator >=(Object? other) {
+    if (_tryOutOfRangeIntScalarComparison(
+          other,
+          resultWhenScalarBelowMin: true,
+          resultWhenScalarAboveMax: false,
+          allowComplex: false,
+        )
+        case final fast?) {
+      return fast;
+    }
     return _withWrappedScalar(
       other,
       (otherArr) => ops.greaterEqual(this, otherArr),
@@ -3837,6 +3981,15 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// Reference: See NumPy's [less_equal](https://numpy.org/doc/stable/reference/generated/numpy.less_equal.html).
   NDArray<Boolean> operator <=(Object? other) {
+    if (_tryOutOfRangeIntScalarComparison(
+          other,
+          resultWhenScalarBelowMin: false,
+          resultWhenScalarAboveMax: true,
+          allowComplex: false,
+        )
+        case final fast?) {
+      return fast;
+    }
     return _withWrappedScalar(
       other,
       (otherArr) => ops.lessEqual(this, otherArr),
@@ -3868,11 +4021,29 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// Reference: See NumPy's [equal](https://numpy.org/doc/stable/reference/generated/numpy.equal.html).
   NDArray<Boolean> eq(Object? other) {
+    if (_tryOutOfRangeIntScalarComparison(
+          other,
+          resultWhenScalarBelowMin: false,
+          resultWhenScalarAboveMax: false,
+          allowComplex: true,
+        )
+        case final fast?) {
+      return fast;
+    }
     return _withWrappedScalar(other, (otherArr) => ops.equal(this, otherArr));
   }
 
   /// Element-wise inequality comparison (`ne(other)`) with full broadcasting support.
   NDArray<Boolean> ne(Object? other) {
+    if (_tryOutOfRangeIntScalarComparison(
+          other,
+          resultWhenScalarBelowMin: true,
+          resultWhenScalarAboveMax: true,
+          allowComplex: true,
+        )
+        case final fast?) {
+      return fast;
+    }
     return _withWrappedScalar(
       other,
       (otherArr) => ops.notEqual(this, otherArr),

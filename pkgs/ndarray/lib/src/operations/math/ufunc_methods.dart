@@ -209,6 +209,13 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
   switch (op) {
     case BinaryOp.add:
       final res = add(a, b, where: where, out: _asViewNullable<T>(out));
@@ -430,8 +437,15 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? whereMask,
   NDArray<R>? out,
 }) {
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
   final targetShape = broadcastShapes(a.shape, b.shape);
-  final targetDType = out?.dtype ?? resolveDType(a.dtype, b.dtype);
+  final targetDType = out?.dtype ?? a.dtype;
   if (out != null && !listEquals(out.shape, targetShape)) {
     throw ArgumentError(
       'Output array shape ${out.shape} does not match broadcast shape $targetShape',
@@ -2622,9 +2636,18 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           );
           return result;
         case DType.uint8:
-        case DType.boolean:
         case DType.int8 when isBitwiseOrWrapCompatible:
           v_reduceat_uint8(
+            a.pointer.cast(),
+            axisLen,
+            indicesPtr,
+            numIndices,
+            result.pointer.cast(),
+            opCode,
+          );
+          return result;
+        case DType.boolean:
+          v_reduceat_boolean(
             a.pointer.cast(),
             axisLen,
             indicesPtr,
@@ -2655,10 +2678,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           return result;
         case DType.float16:
         case DType.bfloat16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
           NDArray.scope(() {
             final doubleA = castNDArray<Float64>(a, DType.float64);
             final doubleRes = NDArray<Float64>.create(
@@ -2677,6 +2696,11 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
             casted.copy(out: result);
           });
           return result;
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+          break;
       }
     }
 
@@ -2769,9 +2793,22 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
         );
         return result;
       case DType.uint8:
-      case DType.boolean:
       case DType.int8 when isBitwiseOrWrapCompatible:
         s_reduceat_uint8(
+          a.pointer.cast(),
+          cStridesA,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          rank,
+          normAxis,
+          indicesPtr,
+          numIndices,
+          opCode,
+        );
+        return result;
+      case DType.boolean:
+        s_reduceat_boolean(
           a.pointer.cast(),
           cStridesA,
           result.pointer.cast(),
@@ -2814,10 +2851,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
         return result;
       case DType.float16:
       case DType.bfloat16:
-      case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
         NDArray.scope(() {
           final doubleA = castNDArray<Float64>(a, DType.float64);
           final doubleRes = NDArray<Float64>.create(
@@ -2842,6 +2875,46 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           casted.copy(out: result);
         });
         return result;
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+        NDArray.scope(() {
+          final sliceShape = List<int>.of(a.shape)..[normAxis] = 1;
+          for (var i = 0; i < numIndices; i++) {
+            var start = indicesPtr[i];
+            if (start < 0) start += axisLen;
+            var end = (i < numIndices - 1) ? indicesPtr[i + 1] : axisLen;
+            if (end < 0) end += axisLen;
+            if (start < 0) start = 0;
+            if (start >= axisLen) start = axisLen - 1;
+            if (end > axisLen) end = axisLen;
+
+            final outSlice = NDArray<T>.view(
+              result,
+              shape: sliceShape,
+              strides: result.strides,
+              offsetElements: i * result.strides[normAxis],
+            );
+            final firstSlice = NDArray<T>.view(
+              a,
+              shape: sliceShape,
+              strides: a.strides,
+              offsetElements: start * a.strides[normAxis],
+            );
+            firstSlice.copy(out: outSlice);
+            for (var j = start + 1; j < end; j++) {
+              final nextSlice = NDArray<T>.view(
+                a,
+                shape: sliceShape,
+                strides: a.strides,
+                offsetElements: j * a.strides[normAxis],
+              );
+              binaryUfunc<T, T>(outSlice, nextSlice, op: op, out: outSlice);
+            }
+          }
+        });
+        return result;
     }
   } finally {
     ScratchArena.reset(marker);
@@ -2861,6 +2934,13 @@ NDArray<T> outerUfunc<T extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute outer on a disposed array.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
 
   if (out != null &&
@@ -3277,10 +3357,6 @@ void atUfunc<T extends DTypeTag>(
           );
         case DType.float16:
         case DType.bfloat16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
           NDArray.scope(() {
             final doubleA = castNDArray<Float64>(a, DType.float64);
             final doubleB = castNDArray<Float64>(bReady, DType.float64);
@@ -3303,6 +3379,29 @@ void atUfunc<T extends DTypeTag>(
             final castedBack = castNDArray(doubleA, a.dtype);
             castedBack.copy(out: a);
           });
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+          final sliceShape = a.shape.sublist(1);
+          final sliceStridesA = a.strides.sublist(1);
+          final sliceStridesB = bReady.strides.sublist(1);
+          for (var i = 0; i < numIndices; i++) {
+            final idx = idxPtr[i];
+            final aSlice = NDArray<T>.view(
+              a,
+              shape: sliceShape,
+              strides: sliceStridesA,
+              offsetElements: idx * a.strides[0],
+            );
+            final bSlice = NDArray<T>.view(
+              bReady,
+              shape: sliceShape,
+              strides: sliceStridesB,
+              offsetElements: i * bReady.strides[0],
+            );
+            binaryUfunc<T, T>(aSlice, bSlice, op: op, out: aSlice);
+          }
       }
     } finally {
       ScratchArena.reset(marker);
@@ -3361,13 +3460,23 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       final res = exp(xSpec, where: where, out: outSpec);
       return out ?? _asView<R>(res);
     case UnaryOp.exp2:
-      final res = power(
-        NDArray.scalar(2.0, dtype: DType.float64) as NDArray<T>,
-        x,
-        where: where,
-        out: _asViewNullable<T>(out),
-      );
-      return out ?? _asView<R>(res);
+      return NDArray.scope(() {
+        final targetDType =
+            (x.dtype == DType.complex128 ||
+                x.dtype == DType.complex64 ||
+                x.dtype == DType.float32)
+            ? x.dtype
+            : DType.float64;
+        final xCast = x.dtype == targetDType
+            ? _asView(x)
+            : castNDArray(x, targetDType);
+        final base = NDArray.scalar(
+          targetDType.isComplex ? Complex(2.0, 0.0) : 2.0,
+          dtype: targetDType,
+        );
+        final res = power(base, xCast, where: where, out: _asViewNullable(out));
+        return out ?? _asView<R>(res).detachToParentScope();
+      });
     case UnaryOp.log:
       final res = log(xSpec, where: where, out: outSpec);
       return out ?? _asView<R>(res);
@@ -3390,13 +3499,25 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       final res = square(x, where: where, out: _asViewNullable<T>(out));
       return out ?? _asView<R>(res);
     case UnaryOp.cbrt:
-      final res = power(
-        x,
-        NDArray.scalar(1.0 / 3.0, dtype: DType.float64) as NDArray<T>,
-        where: where,
-        out: _asViewNullable<T>(out),
-      );
-      return out ?? _asView<R>(res);
+      if (x.dtype.isComplex) {
+        throw UnsupportedError('cbrt is not supported for complex numbers.');
+      }
+      return NDArray.scope(() {
+        final targetDType = x.dtype == DType.float32
+            ? DType.float32
+            : DType.float64;
+        final xCast = x.dtype == targetDType
+            ? _asView(x)
+            : castNDArray(x, targetDType);
+        final expScalar = NDArray.scalar(1.0 / 3.0, dtype: targetDType);
+        final res = power(
+          xCast,
+          expScalar,
+          where: where,
+          out: _asViewNullable(out),
+        );
+        return out ?? _asView<R>(res).detachToParentScope();
+      });
     case UnaryOp.reciprocal:
       final res = reciprocal(xSpec, where: where, out: outSpec);
       return out ?? _asView<R>(res);
@@ -3486,7 +3607,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
             parts.exponent,
             NDArray.scalar(
               x.dtype == DType.float32 ? 24 : 53,
-              dtype: DType.int64,
+              dtype: parts.exponent.dtype,
             ),
           ).astype(DType.float64),
           where: where,

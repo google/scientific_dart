@@ -378,6 +378,24 @@ void main() {
                 nonZero: true,
               );
 
+              if (dtA != dtB) {
+                expect(() => divmod(aContig, bContig), throwsArgumentError);
+                expect(
+                  () => remainder(aContig, bContig, where: mask),
+                  throwsArgumentError,
+                );
+                expect(() => mod(aContig, bContig), throwsArgumentError);
+                expect(
+                  () => fmod(aContig, bContig, where: mask),
+                  throwsArgumentError,
+                );
+                expect(
+                  () => floorDivide(aContig, bContig, where: mask),
+                  throwsArgumentError,
+                );
+                continue;
+              }
+
               final aBase = makeSampleArray(
                 dtA,
                 [3, 2],
@@ -450,6 +468,17 @@ void main() {
               seed: 4,
               nonZero: true,
             );
+            if (dtA != dtB) {
+              expect(
+                () => gcd(aContig, bContig, where: mask),
+                throwsArgumentError,
+              );
+              expect(
+                () => lcm(aContig, bContig, where: mask),
+                throwsArgumentError,
+              );
+              continue;
+            }
             final aTrans = makeSampleArray(
               dtA,
               [3, 2],
@@ -549,6 +578,13 @@ void main() {
           for (final dtB in heavisideTypes) {
             final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
             final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
+            if (dtA != dtB) {
+              expect(
+                () => heaviside(aContig, bContig, where: mask),
+                throwsArgumentError,
+              );
+              continue;
+            }
             final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
             final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
 
@@ -580,6 +616,21 @@ void main() {
             for (final dtB in floatDTypes) {
               final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
               final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
+              if (dtA != dtB) {
+                expect(
+                  () => logaddexp(aContig, bContig, where: mask),
+                  throwsArgumentError,
+                );
+                expect(
+                  () => logaddexp2(aContig, bContig, where: mask),
+                  throwsArgumentError,
+                );
+                expect(
+                  () => copysign(aContig, bContig, where: mask),
+                  throwsArgumentError,
+                );
+                continue;
+              }
               final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
               final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
               final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
@@ -626,10 +677,10 @@ void main() {
         final aInt = NDArray.fromList([4, 6], [2], DType.int32);
 
         // Complex unsupported for logaddexp, logaddexp2, heaviside, copysign, fmod
-        expect(() => logaddexp(aFloat, cCplx), throwsUnsupportedError);
-        expect(() => logaddexp2(cCplx, aFloat), throwsUnsupportedError);
-        expect(() => heaviside(aFloat, cCplx), throwsUnsupportedError);
-        expect(() => copysign(cCplx, aFloat), throwsUnsupportedError);
+        expect(() => logaddexp(cCplx, cCplx), throwsUnsupportedError);
+        expect(() => logaddexp2(cCplx, cCplx), throwsUnsupportedError);
+        expect(() => heaviside(cCplx, cCplx), throwsUnsupportedError);
+        expect(() => copysign(cCplx, cCplx), throwsUnsupportedError);
         expect(() => fmod(cCplx, cCplx), throwsUnsupportedError);
 
         // Integer division by zero
@@ -713,6 +764,12 @@ void main() {
             ]) {
               final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
               final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
+              if (dtA != dtB) {
+                expect(() => logicalAnd(aContig, bContig), throwsArgumentError);
+                expect(() => logicalOr(aContig, bContig), throwsArgumentError);
+                expect(() => logicalXor(aContig, bContig), throwsArgumentError);
+                continue;
+              }
               final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
               final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
               final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
@@ -766,6 +823,18 @@ void main() {
             ]) {
               final aContig = makeSampleArray(dtA, [2, 3], seed: 1);
               final bContig = makeSampleArray(dtB, [2, 3], seed: 2);
+              if (dtA != dtB) {
+                expect(() => equal(aContig, bContig), throwsArgumentError);
+                expect(() => notEqual(aContig, bContig), throwsArgumentError);
+                expect(() => greater(aContig, bContig), throwsArgumentError);
+                expect(
+                  () => greaterEqual(aContig, bContig),
+                  throwsArgumentError,
+                );
+                expect(() => less(aContig, bContig), throwsArgumentError);
+                expect(() => lessEqual(aContig, bContig), throwsArgumentError);
+                continue;
+              }
               final aTrans = makeSampleArray(dtA, [3, 2], seed: 1).transpose();
               final bTrans = makeSampleArray(dtB, [3, 2], seed: 2).transpose();
               final bBcast = makeSampleArray(dtB, [1, 3], seed: 3);
@@ -971,14 +1040,29 @@ void main() {
           DType.boolean,
         );
 
-        // Non-integer inputs throw ArgumentError
+        // Non-integer inputs throw ArgumentError (boolean invert is logical NOT per NumPy)
         expect(() => invert(floatArr), throwsArgumentError);
-        expect(() => invert(boolArr), throwsArgumentError);
-        expect(() => bitwiseAnd(floatArr, intArr), throwsArgumentError);
-        expect(() => bitwiseOr(intArr, floatArr), throwsArgumentError);
-        expect(() => bitwiseXor(boolArr, intArr), throwsArgumentError);
-        expect(() => leftShift(floatArr, intArr), throwsArgumentError);
-        expect(() => rightShift(intArr, floatArr), throwsArgumentError);
+        expect(invert(boolArr).toList(), [false, true]);
+        expect(
+          () => bitwiseAnd<DTypeTag>(floatArr, intArr),
+          throwsArgumentError,
+        );
+        expect(
+          () => bitwiseOr<DTypeTag>(intArr, floatArr),
+          throwsArgumentError,
+        );
+        expect(
+          () => bitwiseXor<DTypeTag>(boolArr, intArr),
+          throwsArgumentError,
+        );
+        expect(
+          () => leftShift<DTypeTag>(floatArr, intArr),
+          throwsArgumentError,
+        );
+        expect(
+          () => rightShift<DTypeTag>(intArr, floatArr),
+          throwsArgumentError,
+        );
 
         // Disposed array throws StateError
         final disp = NDArray.fromList([1, 2], [2], DType.int32);

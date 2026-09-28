@@ -245,8 +245,11 @@ Uint8List _readExactSync(RandomAccessFile raf, int count) {
   final shapeTokens = shapeMatch.group(1)!.split(',');
   final shape = <int>[];
   for (final tok in shapeTokens) {
-    final cleanTok = tok.trim();
+    var cleanTok = tok.trim();
     if (cleanTok.isNotEmpty) {
+      if (cleanTok.endsWith('L') || cleanTok.endsWith('l')) {
+        cleanTok = cleanTok.substring(0, cleanTok.length - 1).trim();
+      }
       final dim = int.parse(cleanTok);
       if (dim < 0) {
         throw FormatException('Shape dimensions cannot be negative: $dim');
@@ -308,6 +311,12 @@ NDArray<DTypeTag> load(String filepath) {
     // 2. Read version
     final version = _readExactSync(raf, 2);
     final majorVersion = version[0];
+    final minorVersion = version[1];
+    if (majorVersion != 1 && majorVersion != 2 && majorVersion != 3) {
+      throw FormatException(
+        'Unsupported .npy format version: $majorVersion.$minorVersion',
+      );
+    }
 
     // 3. Read header length
     final int headerLen;
@@ -664,6 +673,12 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
           final realHeaderLen = pHeaderLen.value;
           final realDataLen = pDataLen.value;
           final majorVersion = activeHeaderBuf[6];
+          final minorVersion = activeHeaderBuf[7];
+          if (majorVersion != 1 && majorVersion != 2 && majorVersion != 3) {
+            throw FormatException(
+              'Unsupported .npy format version: $majorVersion.$minorVersion',
+            );
+          }
           final prefixLen = majorVersion >= 2 ? 12 : 10;
           final asciiLen = math.max(0, realHeaderLen - prefixLen);
           final headerBytes = (activeHeaderBuf + prefixLen).asTypedList(

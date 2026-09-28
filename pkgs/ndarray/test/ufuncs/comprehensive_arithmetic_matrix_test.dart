@@ -96,7 +96,7 @@ void main() {
             // add
             final sum = add(a, b);
             expect(sum.shape, [2, 3]);
-            expect(sum.dtype, resolveDType(dtype, dtype));
+            expect(sum.dtype, dtype);
 
             // subtract
             final diff = subtract(a, b);
@@ -106,7 +106,7 @@ void main() {
             // multiply
             final prod = multiply(a, b);
             expect(prod.shape, [2, 3]);
-            expect(prod.dtype, resolveDType(dtype, dtype));
+            expect(prod.dtype, dtype);
 
             // divide
             final quot = divide(a, b);
@@ -151,9 +151,20 @@ void main() {
               final a = createArray([2, 2], dtA, seedOffset: 1);
               final b = createArray([2, 2], dtB, seedOffset: 2);
 
+              if (dtA != dtB) {
+                expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+                expect(() => subtract<DTypeTag>(a, b), throwsArgumentError);
+                expect(() => multiply<DTypeTag>(a, b), throwsArgumentError);
+                expect(
+                  () => divide<DTypeTag, DTypeTag, DTypeTag>(a, b),
+                  throwsArgumentError,
+                );
+                continue;
+              }
+
               final sum = add<DTypeTag>(a, b);
               expect(sum.shape, [2, 2]);
-              expect(sum.dtype, resolveDType(dtA, dtB));
+              expect(sum.dtype, dtA);
 
               final diff = subtract<DTypeTag>(a, b);
               expect(diff.shape, [2, 2]);
@@ -161,7 +172,7 @@ void main() {
 
               final prod = multiply<DTypeTag>(a, b);
               expect(prod.shape, [2, 2]);
-              expect(prod.dtype, resolveDType(dtA, dtB));
+              expect(prod.dtype, dtA);
 
               final quot = divide<DTypeTag, DTypeTag, DTypeTag>(a, b);
               expect(quot.shape, [2, 2]);
@@ -743,12 +754,10 @@ void main() {
         final yf = NDArray.fromList([4.0, 12.0], [2], DType.float32);
         expect(hypot(xf, yf).toList(), [5.0, 13.0]);
 
-        // Complex hypot
+        // Complex hypot throws UnsupportedError (matching NumPy)
         final c1 = NDArray.fromList([Complex(3, 4)], [1], DType.complex128);
         final c2 = NDArray.fromList([Complex(0, 0)], [1], DType.complex128);
-        final ch = hypot(c1, c2);
-        expect(ch.dtype, DType.float64);
-        expect(ch.toList()[0], closeTo(5.0, 1e-6));
+        expect(() => hypot(c1, c2), throwsUnsupportedError);
 
         // atan2
         final at2 = atan2(y, x);

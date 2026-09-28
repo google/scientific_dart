@@ -206,6 +206,55 @@ DType resolveDType(DType a, DType b) {
   return DType.float64;
 }
 
+int saturatingDoubleToInt(double val, DType dtype) {
+  if (val.isNaN) return 0;
+  switch (dtype) {
+    case DType.int8:
+      if (val >= 127.0) return 127;
+      if (val <= -128.0) return -128;
+      return val.truncate();
+    case DType.uint8:
+      if (val >= 255.0) return 255;
+      if (val <= 0.0) return 0;
+      return val.truncate();
+    case DType.int16:
+      if (val >= 32767.0) return 32767;
+      if (val <= -32768.0) return -32768;
+      return val.truncate();
+    case DType.uint16:
+      if (val >= 65535.0) return 65535;
+      if (val <= 0.0) return 0;
+      return val.truncate();
+    case DType.int32:
+      if (val >= 2147483647.0) return 2147483647;
+      if (val <= -2147483648.0) return -2147483648;
+      return val.truncate();
+    case DType.uint32:
+      if (val >= 4294967295.0) return 4294967295;
+      if (val <= 0.0) return 0;
+      return val.truncate();
+    case DType.int64:
+      if (val >= 9223372036854775808.0) return 0x7FFFFFFFFFFFFFFF;
+      if (val <= -9223372036854775808.0) return -0x8000000000000000;
+      return val.truncate();
+    case DType.uint64:
+      if (val <= 0.0) return 0;
+      if (val >= 18446744073709551616.0) return -1;
+      if (val >= 9223372036854775808.0) {
+        return BigInt.from(val).toSigned(64).toInt();
+      }
+      return val.truncate();
+    case DType.float64:
+    case DType.float32:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.complex128:
+    case DType.complex64:
+    case DType.boolean:
+      return val.truncate();
+  }
+}
+
 Object normalizeScalar(Object o, DType dtype) {
   switch (dtype) {
     case DType.complex64:
@@ -231,14 +280,11 @@ Object normalizeScalar(Object o, DType dtype) {
     case DType.uint32:
     case DType.uint16:
     case DType.uint8:
-      if (o is double && (o.isNaN || o.isInfinite)) return 0;
-      if (o is num) return o.toInt();
+      if (o is int) return o;
+      if (o is double) return saturatingDoubleToInt(o, dtype);
       if (o is bool) return o ? 1 : 0;
-      if (o is Complex) {
-        final r = o.real;
-        if (r.isNaN || r.isInfinite) return 0;
-        return r.toInt();
-      }
+      if (o is Complex) return saturatingDoubleToInt(o.real, dtype);
+      if (o is num) return o.toInt();
       return (o as dynamic).toInt() as int;
     case DType.boolean:
       if (o is bool) return o;
@@ -303,12 +349,18 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
         final e = (stop as num).toDouble();
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         v_linspace_double(arr.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          arr.pointer.cast<ffi.Double>()[numSamples - 1] = e;
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.float32:
         final s = (start as num).toDouble();
         final e = (stop as num).toDouble();
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         v_linspace_float(arr.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          arr.pointer.cast<ffi.Float>()[numSamples - 1] = e;
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.complex128:
         final s = normalizeScalar(start as Object, DType.complex128) as Complex;
@@ -322,6 +374,9 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
           stp.imag,
           numSamples,
         );
+        if (endpoint && numSamples > 1) {
+          arr.setCellRaw(numSamples - 1, e);
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.complex64:
         final s = normalizeScalar(start as Object, DType.complex128) as Complex;
@@ -335,33 +390,71 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
           stp.imag,
           numSamples,
         );
+        if (endpoint && numSamples > 1) {
+          arr.setCellRaw(numSamples - 1, e);
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.int64:
         final s = (start as num).toDouble();
         final e = (stop as num).toDouble();
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         v_linspace_int64(arr.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          arr.setCellRaw(
+            numSamples - 1,
+            normalizeScalar(e.floor(), resolvedDType),
+          );
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.int32:
         final s = (start as num).toDouble();
         final e = (stop as num).toDouble();
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         v_linspace_int32(arr.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          arr.setCellRaw(
+            numSamples - 1,
+            normalizeScalar(e.floor(), resolvedDType),
+          );
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.int16:
         final s = (start as num).toDouble();
         final e = (stop as num).toDouble();
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         v_linspace_int16(arr.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          arr.setCellRaw(
+            numSamples - 1,
+            normalizeScalar(e.floor(), resolvedDType),
+          );
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.uint8:
         final s = (start as num).toDouble();
         final e = (stop as num).toDouble();
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         v_linspace_uint8(arr.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          arr.setCellRaw(
+            numSamples - 1,
+            normalizeScalar(e.floor(), resolvedDType),
+          );
+        }
         step = normalizeScalar(stp, resolvedDType);
       case DType.float16:
       case DType.bfloat16:
+        final s = (start as num).toDouble();
+        final e = (stop as num).toDouble();
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        final temp = NDArray<Float64>.create([numSamples], DType.float64);
+        v_linspace_double(temp.pointer.cast(), s, stp, numSamples);
+        if (endpoint && numSamples > 1) {
+          temp.pointer.cast<ffi.Double>()[numSamples - 1] = e;
+        }
+        final casted = castNDArray(temp, resolvedDType);
+        casted.copy(out: arr);
+        step = normalizeScalar(stp, resolvedDType);
       case DType.int8:
       case DType.uint64:
       case DType.uint32:
@@ -371,6 +464,13 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
         final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
         final temp = NDArray<Float64>.create([numSamples], DType.float64);
         v_linspace_double(temp.pointer.cast(), s, stp, numSamples);
+        final tempPtr = temp.pointer.cast<ffi.Double>();
+        for (var i = 0; i < numSamples; i++) {
+          tempPtr[i] = tempPtr[i].floorToDouble();
+        }
+        if (endpoint && numSamples > 1) {
+          tempPtr[numSamples - 1] = e.floorToDouble();
+        }
         final casted = castNDArray(temp, resolvedDType);
         casted.copy(out: arr);
         step = normalizeScalar(stp, resolvedDType);
@@ -1015,26 +1115,6 @@ dynamic castValue(dynamic val, DType dtype, {DType? sourceDType}) {
       if (val is bool) return val ? 1.0 : 0.0;
       return 0.0;
     case DType.uint64:
-      if (val is double) {
-        if (val.isNaN || val.isInfinite || val <= 0) return 0;
-        if (val >= 18446744073709551615.0) return -1;
-        if (val >= 9223372036854775808.0) {
-          return BigInt.from(val).toSigned(64).toInt();
-        }
-        return val.toInt();
-      }
-      if (val is num) return val.toInt();
-      if (val is Complex) {
-        final r = val.real;
-        if (r.isNaN || r.isInfinite || r <= 0) return 0;
-        if (r >= 18446744073709551615.0) return -1;
-        if (r >= 9223372036854775808.0) {
-          return BigInt.from(r).toSigned(64).toInt();
-        }
-        return r.toInt();
-      }
-      if (val is bool) return val ? 1 : 0;
-      return 0;
     case DType.int64:
     case DType.int32:
     case DType.int16:
@@ -1042,9 +1122,11 @@ dynamic castValue(dynamic val, DType dtype, {DType? sourceDType}) {
     case DType.uint32:
     case DType.uint16:
     case DType.uint8:
-      if (val is num) return val.toInt();
-      if (val is Complex) return val.real.toInt();
+      if (val is int) return val;
+      if (val is double) return saturatingDoubleToInt(val, dtype);
+      if (val is Complex) return saturatingDoubleToInt(val.real, dtype);
       if (val is bool) return val ? 1 : 0;
+      if (val is num) return val.toInt();
       return 0;
     case DType.boolean:
       if (val is bool) return val;
@@ -1072,6 +1154,22 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
       final temp = NDArray<R>.create(result.shape, result.dtype);
       cumOpFFI<T, R>(a, axis, temp, opType);
       return temp.copy(out: result);
+    });
+  }
+  if (a.dtype != result.dtype) {
+    if (result.dtype == DType.boolean) {
+      _cumOpFallbackHelper(
+        a,
+        result,
+        axis,
+        opType == CumOpType.sum ? s_cumsum_double : s_cumprod_double,
+        opType,
+      );
+      return result;
+    }
+    return NDArray.scope(() {
+      final casted = castNDArray<R>(a, result.dtype);
+      return cumOpFFI<R, R>(casted, axis, result, opType);
     });
   }
   final rank = a.shape.length;
@@ -1106,6 +1204,7 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
               axis,
             );
           case DType.int64:
+          case DType.uint64:
             s_cumsum_int64(
               a.pointer.cast(),
               cStridesA,
@@ -1116,6 +1215,7 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
               axis,
             );
           case DType.int32:
+          case DType.uint32:
             s_cumsum_int32(
               a.pointer.cast(),
               cStridesA,
@@ -1149,8 +1249,6 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
           case DType.bfloat16:
           case DType.int16:
           case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
@@ -1187,6 +1285,7 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
               axis,
             );
           case DType.int64:
+          case DType.uint64:
             s_cumprod_int64(
               a.pointer.cast(),
               cStridesA,
@@ -1197,6 +1296,7 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
               axis,
             );
           case DType.int32:
+          case DType.uint32:
             s_cumprod_int32(
               a.pointer.cast(),
               cStridesA,
@@ -1230,8 +1330,6 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
           case DType.bfloat16:
           case DType.int16:
           case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:

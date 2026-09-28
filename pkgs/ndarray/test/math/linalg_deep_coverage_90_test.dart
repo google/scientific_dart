@@ -967,7 +967,8 @@ void main() {
             2,
           ], DType.int32);
 
-          final res = outer(a, b);
+          expect(() => outer(a, b), throwsArgumentError);
+          final res = outer(a, b.astype(DType.float64));
           expect(res.shape, [3, 2]);
           expect(res.dtype, DType.float64);
           expect(res.toList(), [10.0, 20.0, 20.0, 40.0, 30.0, 60.0]);
@@ -1592,19 +1593,19 @@ void main() {
           );
           final bBatch = NDArray.fromList(
             Float64List.fromList([4.0, 6.0, 3.0, 8.0]),
-            [2, 2],
+            [2, 2, 1],
             DType.float64,
           );
-          final outBuf = NDArray.zeros([2, 2], DType.float64);
+          final outBuf = NDArray.zeros([2, 2, 1], DType.float64);
           final x = solve(aBatch, bBatch, out: outBuf);
           expect(identical(x, outBuf), isTrue);
-          expect(x.shape, [2, 2]);
+          expect(x.shape, [2, 2, 1]);
           // Matrix 0: 2x = 4, 3y = 6 -> x = 2, y = 2
-          expect(x.getCell([0, 0]), closeTo(2.0, 1e-6));
-          expect(x.getCell([0, 1]), closeTo(2.0, 1e-6));
+          expect(x.getCell([0, 0, 0]), closeTo(2.0, 1e-6));
+          expect(x.getCell([0, 1, 0]), closeTo(2.0, 1e-6));
           // Matrix 1: 1x = 3, 4y = 8 -> x = 3, y = 2
-          expect(x.getCell([1, 0]), closeTo(3.0, 1e-6));
-          expect(x.getCell([1, 1]), closeTo(2.0, 1e-6));
+          expect(x.getCell([1, 0, 0]), closeTo(3.0, 1e-6));
+          expect(x.getCell([1, 1, 0]), closeTo(2.0, 1e-6));
         }),
       );
 

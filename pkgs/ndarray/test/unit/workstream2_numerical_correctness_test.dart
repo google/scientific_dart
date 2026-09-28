@@ -310,10 +310,15 @@ void main() {
           const uMax = -1;
 
           final odd = NDArray.fromList([uMax, uLow, uHigh], [3], DType.uint64);
-          expect(median(odd).scalar, equals(uHigh));
+          expect(median(odd).dtype, equals(DType.float64));
+          expect(
+            median(odd).scalar,
+            equals(BigInt.from(uHigh).toUnsigned(64).toDouble()),
+          );
 
           final even = NDArray.fromList([10, 20], [2], DType.uint64);
-          expect(median(even).scalar, equals(15));
+          expect(median(even).dtype, equals(DType.float64));
+          expect(median(even).scalar, equals(15.0));
         });
       });
     });

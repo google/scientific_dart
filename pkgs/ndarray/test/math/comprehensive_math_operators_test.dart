@@ -244,9 +244,19 @@ void main() {
 
           final f32 = NDArray<Float32>.fromList([0.0, 2.0], [2], DType.float32);
           final i64 = NDArray<Int64>.fromList([1, 0], [2], DType.int64);
-          expect(logicalAnd(f32, i64).toList(), equals([false, false]));
-          expect(logicalOr(f32, i64).toList(), equals([true, true]));
-          expect(logicalXor(f32, i64).toList(), equals([true, true]));
+          expect(() => logicalAnd(f32, i64), throwsArgumentError);
+          expect(
+            logicalAnd(f32, i64.astype(DType.float32)).toList(),
+            equals([false, false]),
+          );
+          expect(
+            logicalOr(f32, i64.astype(DType.float32)).toList(),
+            equals([true, true]),
+          );
+          expect(
+            logicalXor(f32, i64.astype(DType.float32)).toList(),
+            equals([true, true]),
+          );
         });
       });
 

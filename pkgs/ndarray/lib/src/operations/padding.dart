@@ -1034,11 +1034,51 @@ void _padAxis<T extends DTypeTag>(
           statLengthBefore,
           statLengthAfter,
         );
-      case DType.float16:
-      case DType.bfloat16:
       case DType.int8:
+        NDArray.scope(() {
+          final i64Src = castNDArray<Int64>(src, DType.int64);
+          final i64Dest = NDArray<Int64>.zeros(dest.shape, DType.int64);
+          _padAxis<Int64>(
+            i64Src,
+            i64Dest,
+            axis,
+            padBefore,
+            padAfter,
+            mode,
+            (constantBefore as num).toInt(),
+            (constantAfter as num).toInt(),
+            (endBefore as num).toInt(),
+            (endAfter as num).toInt(),
+            statLengthBefore,
+            statLengthAfter,
+          );
+          final castedDest = castNDArray(i64Dest, dest.dtype);
+          castedDest.copy(out: dest);
+        });
       case DType.uint32:
       case DType.uint16:
+        NDArray.scope(() {
+          final u64Src = castNDArray<Uint64>(src, DType.uint64);
+          final u64Dest = NDArray<Uint64>.zeros(dest.shape, DType.uint64);
+          _padAxis<Uint64>(
+            u64Src,
+            u64Dest,
+            axis,
+            padBefore,
+            padAfter,
+            mode,
+            (constantBefore as num).toInt(),
+            (constantAfter as num).toInt(),
+            (endBefore as num).toInt(),
+            (endAfter as num).toInt(),
+            statLengthBefore,
+            statLengthAfter,
+          );
+          final castedDest = castNDArray(u64Dest, dest.dtype);
+          castedDest.copy(out: dest);
+        });
+      case DType.float16:
+      case DType.bfloat16:
         NDArray.scope(() {
           double toDoubleUnsignedAware(Object v) => (v as num).toDouble();
           final doubleSrc = castNDArray<Float64>(src, DType.float64);

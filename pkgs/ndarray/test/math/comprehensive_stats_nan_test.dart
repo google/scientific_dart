@@ -223,13 +223,17 @@ void main() {
           });
         });
 
-        test('std and var_ with ddof >= N resulting in NaN', () {
+        test('std and var_ with ddof >= N resulting in Inf or NaN', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
             final v = var_(a, ddof: 3);
-            expect(v.scalar.isNaN, true);
+            expect(v.scalar, double.infinity);
             final s = std(a, ddof: 4);
-            expect(s.scalar.isNaN, true);
+            expect(s.scalar, double.infinity);
+
+            final constArr = NDArray.fromList([5.0, 5.0], [2], DType.float64);
+            expect(var_(constArr, ddof: 2).scalar, isNaN);
+            expect(std(constArr, ddof: 2).scalar, isNaN);
           });
         });
 
@@ -362,7 +366,7 @@ void main() {
 
         test('median across all 15 DTypes', () {
           NDArray.scope(() {
-            final dtypes = [
+            final dtypes = <DType<AnySpec>>[
               DType.float64,
               DType.float32,
               DType.float16,
@@ -380,15 +384,18 @@ void main() {
             for (final dt in dtypes) {
               final a = NDArray.fromList([10, 30, 20], [3], dt);
               final m = median(a);
-              expect(m.dtype, dt);
-              expect(m.scalar, 20);
+              expect(
+                m.dtype,
+                dt == DType.float32 ? DType.float32 : DType.float64,
+              );
+              expect(m.scalar, 20.0);
             }
 
             // boolean
             final b = NDArray.fromList([true, false, true], [3], DType.boolean);
             final mb = median(b);
-            expect(mb.dtype, DType.boolean);
-            expect(mb.scalar, true);
+            expect(mb.dtype, DType.float64);
+            expect(mb.scalar, 1.0);
 
             // complex128 and complex64
             final c128 = NDArray.fromList(
@@ -614,7 +621,7 @@ void main() {
 
         test('sum and prod across all 15 DTypes', () {
           NDArray.scope(() {
-            final dtypes = [
+            final dtypes = <DType<AnySpec>>[
               DType.float64,
               DType.float32,
               DType.float16,
@@ -636,8 +643,8 @@ void main() {
             }
 
             final b = NDArray.fromList([true, false, true], [3], DType.boolean);
-            expect(sum(b).scalar, true);
-            expect(prod(b).scalar, false);
+            expect(sum(b).scalar, 2);
+            expect(prod(b).scalar, 0);
             expect(sumAs(b, DType.int64).scalar, 2);
             expect(prodAs(b, DType.int64).scalar, 0);
 

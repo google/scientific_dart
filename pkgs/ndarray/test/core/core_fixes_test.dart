@@ -418,7 +418,7 @@ void main() {
         "cumsum into non-contiguous strided result",
         () => NDArray.scope(() {
           final src = NDArray.fromList([1, 2, 3, 4, 5, 6], [2, 3], DType.int16);
-          final dest = NDArray.zeros([4, 3], DType.int16);
+          final dest = NDArray.zeros([4, 3], DType.int64);
           final stridedDest = dest.slice([
             Slice(start: 0, stop: 4, step: 2),
             Slice.all(),
@@ -427,6 +427,14 @@ void main() {
 
           cumsum(src, axis: 1, out: stridedDest);
           expect(stridedDest.toList(), [1, 3, 6, 4, 9, 15]);
+
+          final dest16 = NDArray.zeros([4, 3], DType.int16);
+          final stridedDest16 = dest16.slice([
+            Slice(start: 0, stop: 4, step: 2),
+            Slice.all(),
+          ]);
+          cumsumAs(src, DType.int16, axis: 1, out: stridedDest16);
+          expect(stridedDest16.toList(), [1, 3, 6, 4, 9, 15]);
         }),
       );
     });

@@ -621,6 +621,13 @@ NDArray<T> copysign<T extends DTypeTag>(
   if (x1.dtype.isComplex || x2.dtype.isComplex) {
     throw UnsupportedError('Complex numbers are not supported for copysign');
   }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
+  }
 
   final broadcastResult = broadcast(x1, x2);
   final shape = broadcastResult.shape;
@@ -766,6 +773,26 @@ NDArray<T> copysign<T extends DTypeTag>(
         (x, y) => castValue(copysignOp(toDbl(x), toDbl(y)), targetDType),
         maskHolder.pointer,
       );
+    } else if (targetDType == DType.uint64 ||
+        targetDType == DType.uint32 ||
+        targetDType == DType.uint16 ||
+        targetDType == DType.uint8 ||
+        targetDType == DType.boolean) {
+      elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
+        result,
+        x1,
+        x2,
+        shape,
+        stridesA,
+        stridesB,
+        result.strides,
+        0,
+        x1.offsetElements,
+        x2.offsetElements,
+        result.offsetElements,
+        (x, _) => x,
+        maskHolder.pointer,
+      );
     } else {
       elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
         result,
@@ -779,8 +806,12 @@ NDArray<T> copysign<T extends DTypeTag>(
         x1.offsetElements,
         x2.offsetElements,
         result.offsetElements,
-        (x, y) =>
-            castValue(copysignOp(toDbl(x), toDbl(y)).toInt(), targetDType),
+        (x, y) {
+          final xi = x as int;
+          final yi = y as int;
+          final absX = xi < 0 ? -xi : xi;
+          return castValue(yi < 0 ? -absX : absX, targetDType);
+        },
         maskHolder.pointer,
       );
     }

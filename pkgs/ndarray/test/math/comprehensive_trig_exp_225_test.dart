@@ -74,6 +74,34 @@ void main() {
               // Broadcast
               final bBcast = makeArr(dtB, [1, 3], seed: 3);
 
+              if (dtA != dtB) {
+                final expectedErr = (dtA.isComplex || dtB.isComplex)
+                    ? anyOf(isA<ArgumentError>(), isA<UnsupportedError>())
+                    : isA<ArgumentError>();
+                expect(() => hypot(aContig, bContig), throwsA(expectedErr));
+                expect(() => logaddexp(aContig, bContig), throwsA(expectedErr));
+                expect(
+                  () => logaddexp2(aContig, bContig),
+                  throwsA(expectedErr),
+                );
+                expect(() => atan2(aContig, bContig), throwsA(expectedErr));
+                continue;
+              }
+
+              if (dtA.isComplex) {
+                expect(() => hypot(aContig, bContig), throwsUnsupportedError);
+                expect(
+                  () => logaddexp(aContig, bContig),
+                  throwsUnsupportedError,
+                );
+                expect(
+                  () => logaddexp2(aContig, bContig),
+                  throwsUnsupportedError,
+                );
+                expect(() => atan2(aContig, bContig), throwsUnsupportedError);
+                continue;
+              }
+
               final rHypot1 = hypot(aContig, bContig);
               expect(rHypot1.shape, [2, 3]);
 
@@ -83,34 +111,32 @@ void main() {
               final rHypot3 = hypot(aContig, bBcast);
               expect(rHypot3.shape, [2, 3]);
 
-              if (!dtA.isComplex && !dtB.isComplex) {
-                final rLog1 = logaddexp(aContig, bContig);
-                expect(rLog1.shape, [2, 3]);
+              final rLog1 = logaddexp(aContig, bContig);
+              expect(rLog1.shape, [2, 3]);
 
-                final rLog21 = logaddexp2(aContig, bContig);
-                expect(rLog21.shape, [2, 3]);
+              final rLog21 = logaddexp2(aContig, bContig);
+              expect(rLog21.shape, [2, 3]);
 
-                final rLog2 = logaddexp(aTrans, bTrans, where: mask);
-                expect(rLog2.shape, [2, 3]);
+              final rLog2 = logaddexp(aTrans, bTrans, where: mask);
+              expect(rLog2.shape, [2, 3]);
 
-                final rLog22 = logaddexp2(aTrans, bTrans, where: mask);
-                expect(rLog22.shape, [2, 3]);
+              final rLog22 = logaddexp2(aTrans, bTrans, where: mask);
+              expect(rLog22.shape, [2, 3]);
 
-                final rLog3 = logaddexp(aContig, bBcast);
-                expect(rLog3.shape, [2, 3]);
+              final rLog3 = logaddexp(aContig, bBcast);
+              expect(rLog3.shape, [2, 3]);
 
-                final rLog23 = logaddexp2(aContig, bBcast);
-                expect(rLog23.shape, [2, 3]);
+              final rLog23 = logaddexp2(aContig, bBcast);
+              expect(rLog23.shape, [2, 3]);
 
-                final rAtan21 = atan2(aContig, bContig);
-                expect(rAtan21.shape, [2, 3]);
+              final rAtan21 = atan2(aContig, bContig);
+              expect(rAtan21.shape, [2, 3]);
 
-                final rAtan22 = atan2(aTrans, bTrans, where: mask);
-                expect(rAtan22.shape, [2, 3]);
+              final rAtan22 = atan2(aTrans, bTrans, where: mask);
+              expect(rAtan22.shape, [2, 3]);
 
-                final rAtan23 = atan2(aContig, bBcast);
-                expect(rAtan23.shape, [2, 3]);
-              }
+              final rAtan23 = atan2(aContig, bBcast);
+              expect(rAtan23.shape, [2, 3]);
             }
           }
         });

@@ -459,9 +459,7 @@ void main() {
             closeTo(0.5 * math.atan2(0.4, 1.0 - 0.01 - 0.04), 1e-9),
           );
 
-          final h = hypot(a, a);
-          expect(h.dtype, DType.float64);
-          expect(h.getCell([1]), closeTo(math.sqrt(0.1), 1e-9));
+          expect(() => hypot(a, a), throwsUnsupportedError);
 
           final z2 = NDArray.fromList(List.filled(3, Complex(2.0, 0.0)), [
             3,

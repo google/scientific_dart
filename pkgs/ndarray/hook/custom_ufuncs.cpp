@@ -278,21 +278,35 @@ static inline uint16_t encode_float16(double value) {
     if (exp64 == 0) {
         return (uint16_t)(sign << 15);
     }
-    int exp16 = exp64 - 1023 + 15;
-    if (exp16 >= 31) {
+    int exp = exp64 - 1023;
+    if (exp > 15) {
         return (uint16_t)((sign << 15) | 0x7C00);
     }
-    if (exp16 <= 0) {
-        if (exp16 < -10) {
-            return (uint16_t)(sign << 15);
+    if (exp < -25) {
+        return (uint16_t)(sign << 15);
+    }
+    uint64_t mantissa = 0x10000000000000ULL | frac64;
+    if (exp < -14) {
+        int shift = 42 + (-14 - exp);
+        uint64_t halfBit = 1ULL << (shift - 1);
+        uint64_t mask = halfBit - 1ULL;
+        uint16_t frac16 = (uint16_t)(mantissa >> shift);
+        uint64_t rem = mantissa & (halfBit | mask);
+        if (rem > halfBit || (rem == halfBit && (frac16 & 1) != 0)) {
+            frac16++;
         }
-        uint64_t fullFrac = frac64 | 0x10000000000000ULL;
-        int shift = 1 - exp16 + 42;
-        uint16_t frac16 = (uint16_t)((fullFrac >> shift) & 0x3FF);
         return (uint16_t)((sign << 15) | frac16);
     }
-    uint16_t frac16 = (uint16_t)((frac64 >> 42) & 0x3FF);
-    return (uint16_t)((sign << 15) | ((uint16_t)exp16 << 10) | frac16);
+    uint16_t exp16 = (uint16_t)(exp + 15);
+    uint16_t frac16 = (uint16_t)((mantissa >> 42) & 0x3FF);
+    uint64_t halfBit = 1ULL << 41;
+    uint64_t mask = halfBit - 1ULL;
+    uint64_t rem = mantissa & (halfBit | mask);
+    uint16_t combined = (uint16_t)((exp16 << 10) | frac16);
+    if (rem > halfBit || (rem == halfBit && (frac16 & 1) != 0)) {
+        combined++;
+    }
+    return (uint16_t)((sign << 15) | combined);
 }
 
 static inline double decode_float16(uint16_t bits) {
@@ -324,16 +338,51 @@ static inline double decode_float16(uint16_t bits) {
 }
 
 static inline uint16_t encode_bfloat16(double value) {
-    if (std::isnan(value)) {
-        return 0x7FC0;
+    uint64_t f64Bits;
+    memcpy(&f64Bits, &value, sizeof(double));
+    uint16_t sign = (uint16_t)((f64Bits >> 63) & 0x1);
+    int exp64 = (int)((f64Bits >> 52) & 0x7FF);
+    uint64_t frac64 = f64Bits & 0xFFFFFFFFFFFFFULL;
+
+    if (exp64 == 0x7FF) {
+        if (frac64 == 0) {
+            return (uint16_t)((sign << 15) | 0x7F80);
+        } else {
+            return (uint16_t)((sign << 15) | 0x7FC0);
+        }
     }
-    float f = (float)value;
-    uint32_t f32Bits;
-    memcpy(&f32Bits, &f, sizeof(float));
-    uint32_t lsb = (f32Bits >> 16) & 1;
-    uint32_t roundingBias = 0x7FFF + lsb;
-    uint32_t rounded = f32Bits + roundingBias;
-    return (uint16_t)((rounded >> 16) & 0xFFFF);
+    if (exp64 == 0) {
+        return (uint16_t)(sign << 15);
+    }
+    int exp = exp64 - 1023;
+    if (exp > 127) {
+        return (uint16_t)((sign << 15) | 0x7F80);
+    }
+    if (exp < -134) {
+        return (uint16_t)(sign << 15);
+    }
+    uint64_t mantissa = 0x10000000000000ULL | frac64;
+    if (exp < -126) {
+        int shift = 45 + (-126 - exp);
+        uint64_t halfBit = 1ULL << (shift - 1);
+        uint64_t mask = halfBit - 1ULL;
+        uint16_t frac16 = (uint16_t)(mantissa >> shift);
+        uint64_t rem = mantissa & (halfBit | mask);
+        if (rem > halfBit || (rem == halfBit && (frac16 & 1) != 0)) {
+            frac16++;
+        }
+        return (uint16_t)((sign << 15) | frac16);
+    }
+    uint16_t exp16 = (uint16_t)(exp + 127);
+    uint16_t frac16 = (uint16_t)((mantissa >> 45) & 0x7F);
+    uint64_t halfBit = 1ULL << 44;
+    uint64_t mask = halfBit - 1ULL;
+    uint64_t rem = mantissa & (halfBit | mask);
+    uint16_t combined = (uint16_t)((exp16 << 7) | frac16);
+    if (rem > halfBit || (rem == halfBit && (frac16 & 1) != 0)) {
+        combined++;
+    }
+    return (uint16_t)((sign << 15) | combined);
 }
 
 static inline double decode_bfloat16(uint16_t bits) {
@@ -388,6 +437,30 @@ inline bool operator>=(const bfloat16_t& x, const bfloat16_t& y) { return (doubl
 static_assert(sizeof(float16_t) == 2, "float16_t must be 2 bytes");
 static_assert(sizeof(bfloat16_t) == 2, "bfloat16_t must be 2 bytes");
 
+// --- Saturating Float-to-Int Helper ---
+template <typename IntT>
+static inline IntT saturating_float_to_int(double val) {
+    if (std::isnan(val)) return static_cast<IntT>(0);
+    if constexpr (std::is_same<IntT, int64_t>::value) {
+        if (val >= 9223372036854775808.0) return INT64_MAX;
+        if (val <= -9223372036854775808.0) return INT64_MIN;
+        return static_cast<int64_t>(val);
+    } else if constexpr (std::is_same<IntT, uint64_t>::value) {
+        if (val <= 0.0) return 0ULL;
+        if (val >= 18446744073709551616.0) return UINT64_MAX;
+        if (val >= 9223372036854775808.0) {
+            return static_cast<uint64_t>(val - 9223372036854775808.0) + 9223372036854775808ULL;
+        }
+        return static_cast<uint64_t>(val);
+    } else {
+        constexpr double kMin = static_cast<double>(std::numeric_limits<IntT>::min());
+        constexpr double kMax = static_cast<double>(std::numeric_limits<IntT>::max());
+        if (val >= kMax) return std::numeric_limits<IntT>::max();
+        if (val <= kMin) return std::numeric_limits<IntT>::min();
+        return static_cast<IntT>(val);
+    }
+}
+
 // --- Casting Templates ---
 template <typename DestType, typename SrcType>
 struct caster {
@@ -435,38 +508,6 @@ struct caster<bool_byte_t, bool_byte_t> {
     }
 };
 
-// Also specialize double/float -> uint64_t to avoid undefined behavior for values >= 2^63:
-template <>
-struct caster<uint64_t, double> {
-    static inline uint64_t cast(double val) {
-        if (std::isnan(val) || std::isinf(val) || val <= 0.0) return 0;
-        if (val >= 18446744073709551615.0) return 18446744073709551615ULL;
-        if (val >= 9223372036854775808.0) {
-            return static_cast<uint64_t>(val - 9223372036854775808.0) + 9223372036854775808ULL;
-        }
-        return static_cast<uint64_t>(val);
-    }
-};
-template <>
-struct caster<uint64_t, float> {
-    static inline uint64_t cast(float val) {
-        return caster<uint64_t, double>::cast(static_cast<double>(val));
-    }
-};
-template <>
-struct caster<uint64_t, cpx_t> {
-    static inline uint64_t cast(cpx_t val) {
-        return caster<uint64_t, double>::cast(val.r);
-    }
-};
-template <>
-struct caster<uint64_t, cpx_f_t> {
-    static inline uint64_t cast(cpx_f_t val) {
-        return caster<uint64_t, double>::cast(static_cast<double>(val.r));
-    }
-};
-
-
 // Casting FROM complex to scalar (returns real part cast to DestType)
 template <typename DestType>
 struct caster<DestType, cpx_t> {
@@ -477,6 +518,37 @@ template <typename DestType>
 struct caster<DestType, cpx_f_t> {
     static inline DestType cast(cpx_f_t val) { return static_cast<DestType>(val.r); }
 };
+
+// Specialize float/complex -> integer casts to use saturating + NaN->0 semantics
+#define DEFINE_SATURATING_INT_CASTERS(INT_T) \
+template <> struct caster<INT_T, double> { \
+    static inline INT_T cast(double val) { return saturating_float_to_int<INT_T>(val); } \
+}; \
+template <> struct caster<INT_T, float> { \
+    static inline INT_T cast(float val) { return saturating_float_to_int<INT_T>(static_cast<double>(val)); } \
+}; \
+template <> struct caster<INT_T, float16_t> { \
+    static inline INT_T cast(float16_t val) { return saturating_float_to_int<INT_T>(decode_float16(val.bits)); } \
+}; \
+template <> struct caster<INT_T, bfloat16_t> { \
+    static inline INT_T cast(bfloat16_t val) { return saturating_float_to_int<INT_T>(decode_bfloat16(val.bits)); } \
+}; \
+template <> struct caster<INT_T, cpx_t> { \
+    static inline INT_T cast(cpx_t val) { return saturating_float_to_int<INT_T>(val.r); } \
+}; \
+template <> struct caster<INT_T, cpx_f_t> { \
+    static inline INT_T cast(cpx_f_t val) { return saturating_float_to_int<INT_T>(static_cast<double>(val.r)); } \
+};
+
+DEFINE_SATURATING_INT_CASTERS(int64_t)
+DEFINE_SATURATING_INT_CASTERS(int32_t)
+DEFINE_SATURATING_INT_CASTERS(int16_t)
+DEFINE_SATURATING_INT_CASTERS(int8_t)
+DEFINE_SATURATING_INT_CASTERS(uint64_t)
+DEFINE_SATURATING_INT_CASTERS(uint32_t)
+DEFINE_SATURATING_INT_CASTERS(uint16_t)
+DEFINE_SATURATING_INT_CASTERS(uint8_t)
+#undef DEFINE_SATURATING_INT_CASTERS
 
 // Casting FROM scalar to complex (sets real part, imag is 0)
 template <typename SrcType>
@@ -719,9 +791,46 @@ struct set_comparator<cpx_f_t> {
 };
 
 template <typename T>
+struct set_is_nan {
+    static inline bool check(T) { return false; }
+};
+template <>
+struct set_is_nan<double> {
+    static inline bool check(double a) { return std::isnan(a); }
+};
+template <>
+struct set_is_nan<float> {
+    static inline bool check(float a) { return std::isnan(a); }
+};
+template <>
+struct set_is_nan<float16_t> {
+    static inline bool check(float16_t a) { return std::isnan((double)a); }
+};
+template <>
+struct set_is_nan<bfloat16_t> {
+    static inline bool check(bfloat16_t a) { return std::isnan((double)a); }
+};
+template <>
+struct set_is_nan<cpx_t> {
+    static inline bool check(cpx_t a) { return std::isnan(a.r) || std::isnan(a.i); }
+};
+template <>
+struct set_is_nan<cpx_f_t> {
+    static inline bool check(cpx_f_t a) { return std::isnan(a.r) || std::isnan(a.i); }
+};
+
+template <typename T>
 static int intersect1d_impl(const T *ar1, int size1, const T *ar2, int size2, T *dest) {
     int i = 0, j = 0, k = 0;
     while (i < size1 && j < size2) {
+        if (set_is_nan<T>::check(ar1[i])) {
+            i++;
+            continue;
+        }
+        if (set_is_nan<T>::check(ar2[j])) {
+            j++;
+            continue;
+        }
         int cmp = set_comparator<T>::compare(ar1[i], ar2[j]);
         if (cmp < 0) {
             i++;
@@ -812,18 +921,24 @@ static void isin_impl(const T *ar1, int size1, const T *ar2, int size2, uint8_t 
     for (int i = 0; i < size1; i++) {
         T val = ar1[i];
         int found = 0;
-        int low = 0;
-        int high = size2 - 1;
-        while (low <= high) {
-            int mid = low + (high - low) / 2;
-            int cmp = set_comparator<T>::compare(ar2[mid], val);
-            if (cmp < 0) {
-                low = mid + 1;
-            } else if (cmp > 0) {
-                high = mid - 1;
-            } else {
-                found = 1;
-                break;
+        if (!set_is_nan<T>::check(val)) {
+            int low = 0;
+            int high = size2 - 1;
+            while (low <= high) {
+                int mid = low + (high - low) / 2;
+                if (set_is_nan<T>::check(ar2[mid])) {
+                    high = mid - 1;
+                    continue;
+                }
+                int cmp = set_comparator<T>::compare(ar2[mid], val);
+                if (cmp < 0) {
+                    low = mid + 1;
+                } else if (cmp > 0) {
+                    high = mid - 1;
+                } else {
+                    found = 1;
+                    break;
+                }
             }
         }
         dest[i] = invert ? !found : found;
@@ -2338,7 +2453,7 @@ double r_mean_double(const double *src, int size) {
 }
 
 double r_var_double(const double *src, int size, int ddof) {
-    if (src == nullptr || size <= 0 || size <= ddof) return NAN;
+    if (src == nullptr || size <= 0) return NAN;
     double m = r_sum_double(src, size) / (double)size;
     int i = 0;
 #if HAS_AVX2_REDUCTIONS
@@ -2387,6 +2502,9 @@ double r_var_double(const double *src, int size, int ddof) {
         double d = src[i] - m;
         sum_sq += d * d;
     }
+    if (size <= ddof) {
+        return (sum_sq == 0.0 || std::isnan(sum_sq)) ? NAN : INFINITY;
+    }
     return sum_sq / (double)(size - ddof);
 }
 
@@ -2398,41 +2516,18 @@ double r_std_double(const double *src, int size, int ddof) {
 float r_sum_float(const float *src, int size) {
     if (src == nullptr || size <= 0) return 0.0f;
     int i = 0;
-#if HAS_AVX2_REDUCTIONS
-    __m256 acc0 = _mm256_setzero_ps();
-    __m256 acc1 = _mm256_setzero_ps();
-    __m256 acc2 = _mm256_setzero_ps();
-    __m256 acc3 = _mm256_setzero_ps();
-
-    for (; i + 31 < size; i += 32) {
-        acc0 = _mm256_add_ps(acc0, _mm256_loadu_ps(src + i));
-        acc1 = _mm256_add_ps(acc1, _mm256_loadu_ps(src + i + 8));
-        acc2 = _mm256_add_ps(acc2, _mm256_loadu_ps(src + i + 16));
-        acc3 = _mm256_add_ps(acc3, _mm256_loadu_ps(src + i + 24));
-    }
-    acc0 = _mm256_add_ps(acc0, acc1);
-    acc2 = _mm256_add_ps(acc2, acc3);
-    acc0 = _mm256_add_ps(acc0, acc2);
-
-    for (; i + 7 < size; i += 8) {
-        acc0 = _mm256_add_ps(acc0, _mm256_loadu_ps(src + i));
-    }
-    float total = hsum_avx2_ps(acc0);
-#else
-    float total = 0.0f;
-    float a0 = 0.0f, a1 = 0.0f, a2 = 0.0f, a3 = 0.0f;
+    double a0 = 0.0, a1 = 0.0, a2 = 0.0, a3 = 0.0;
     for (; i + 3 < size; i += 4) {
-        a0 += src[i];
-        a1 += src[i + 1];
-        a2 += src[i + 2];
-        a3 += src[i + 3];
+        a0 += (double)src[i];
+        a1 += (double)src[i + 1];
+        a2 += (double)src[i + 2];
+        a3 += (double)src[i + 3];
     }
-    total = (a0 + a1) + (a2 + a3);
-#endif
+    double total = (a0 + a1) + (a2 + a3);
     for (; i < size; i++) {
-        total += src[i];
+        total += (double)src[i];
     }
-    return total;
+    return (float)total;
 }
 
 float r_prod_float(const float *src, int size) {
@@ -2463,7 +2558,7 @@ double r_mean_float_to_double(const float *src, int size) {
 }
 
 float r_var_float(const float *src, int size, int ddof) {
-    if (src == nullptr || size <= 0 || size <= ddof) return NAN;
+    if (src == nullptr || size <= 0) return NAN;
     float m = r_sum_float(src, size) / (float)size;
     int i = 0;
 #if HAS_AVX2_REDUCTIONS
@@ -2512,16 +2607,22 @@ float r_var_float(const float *src, int size, int ddof) {
         float d = src[i] - m;
         sum_sq += d * d;
     }
+    if (size <= ddof) {
+        return (sum_sq == 0.0f || std::isnan(sum_sq)) ? NAN : INFINITY;
+    }
     return sum_sq / (float)(size - ddof);
 }
 
 double r_var_float_to_double(const float *src, int size, int ddof) {
-    if (src == nullptr || size <= 0 || size <= ddof) return NAN;
+    if (src == nullptr || size <= 0) return NAN;
     double m = (double)r_sum_float(src, size) / (double)size;
     double sum_sq = 0.0;
     for (int i = 0; i < size; i++) {
         double d = (double)src[i] - m;
         sum_sq += d * d;
+    }
+    if (size <= ddof) {
+        return (sum_sq == 0.0 || std::isnan(sum_sq)) ? NAN : INFINITY;
     }
     return sum_sq / (double)(size - ddof);
 }
@@ -2546,12 +2647,15 @@ static inline double r_mean_int_impl(const T *src, int size) {
 
 template <typename T>
 static inline double r_var_int_impl(const T *src, int size, int ddof) {
-    if (src == nullptr || size <= 0 || size <= ddof) return NAN;
+    if (src == nullptr || size <= 0) return NAN;
     double m = r_mean_int_impl(src, size);
     double sum_sq = 0.0;
     for (int i = 0; i < size; i++) {
         double d = (double)src[i] - m;
         sum_sq += d * d;
+    }
+    if (size <= ddof) {
+        return (sum_sq == 0.0 || std::isnan(sum_sq)) ? NAN : INFINITY;
     }
     return sum_sq / (double)(size - ddof);
 }
@@ -2801,7 +2905,7 @@ void s_var_double(const double *src, const int *stridesSrc,
                   const int *shape, int rank, int axis, int ddof) {
     if (src == nullptr || dest == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
     int size_axis = shape[axis];
-    if (size_axis <= ddof || size_axis <= 0) {
+    if (size_axis <= 0) {
         int outer_size = 1;
         for (int d = 0; d < rank; d++) if (d != axis) outer_size *= shape[d];
         DECLARE_RANK_BUFFER(int, coord, rank);
@@ -2889,6 +2993,12 @@ void s_var_double(const double *src, const int *stridesSrc,
                 dest[c] += diff * diff;
             }
         }
+        if (M <= ddof) {
+            for (int c = 0; c < N; c++) {
+                dest[c] = (dest[c] == 0.0 || std::isnan(dest[c])) ? NAN : INFINITY;
+            }
+            return;
+        }
         double scale = 1.0 / (double)(M - ddof);
         int c = 0;
 #if HAS_AVX2_REDUCTIONS
@@ -2942,7 +3052,7 @@ void s_var_double(const double *src, const int *stridesSrc,
     int offsetDest = 0;
     int stride_axis = stridesSrc[axis];
     double inv_size = 1.0 / (double)size_axis;
-    double inv_denom = 1.0 / (double)(size_axis - ddof);
+    double inv_denom = (size_axis > ddof) ? (1.0 / (double)(size_axis - ddof)) : 0.0;
 
     for (int o = 0; o < outer_size; o++) {
         const double *axis_ptr = src + offsetSrc;
@@ -2956,7 +3066,11 @@ void s_var_double(const double *src, const int *stridesSrc,
             double diff = axis_ptr[i * stride_axis] - mean_val;
             sum_sq += diff * diff;
         }
-        dest[offsetDest] = sum_sq * inv_denom;
+        if (size_axis <= ddof) {
+            dest[offsetDest] = (sum_sq == 0.0 || std::isnan(sum_sq)) ? NAN : INFINITY;
+        } else {
+            dest[offsetDest] = sum_sq * inv_denom;
+        }
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -3026,32 +3140,6 @@ void s_sum_float(const float *src, const int *stridesSrc,
     int size_axis = shape[axis];
     if (size_axis <= 0) return;
 
-    if (rank == 2 && axis == 0 && stridesSrc[1] == 1 && stridesDest[0] == 1) {
-        int M = shape[0];
-        int N = shape[1];
-        int S = stridesSrc[0];
-        memcpy(dest, src, N * sizeof(float));
-        for (int r = 1; r < M; r++) {
-            const float *row = src + r * S;
-            int c = 0;
-#if HAS_AVX2_REDUCTIONS
-            for (; c + 31 < N; c += 32) {
-                _mm256_storeu_ps(dest + c, _mm256_add_ps(_mm256_loadu_ps(dest + c), _mm256_loadu_ps(row + c)));
-                _mm256_storeu_ps(dest + c + 8, _mm256_add_ps(_mm256_loadu_ps(dest + c + 8), _mm256_loadu_ps(row + c + 8)));
-                _mm256_storeu_ps(dest + c + 16, _mm256_add_ps(_mm256_loadu_ps(dest + c + 16), _mm256_loadu_ps(row + c + 16)));
-                _mm256_storeu_ps(dest + c + 24, _mm256_add_ps(_mm256_loadu_ps(dest + c + 24), _mm256_loadu_ps(row + c + 24)));
-            }
-            for (; c + 7 < N; c += 8) {
-                _mm256_storeu_ps(dest + c, _mm256_add_ps(_mm256_loadu_ps(dest + c), _mm256_loadu_ps(row + c)));
-            }
-#endif
-            for (; c < N; c++) {
-                dest[c] += row[c];
-            }
-        }
-        return;
-    }
-
     if (axis == rank - 1 && stridesSrc[rank - 1] == 1) {
         int L = shape[rank - 1];
         int outer_size = 1;
@@ -3087,11 +3175,11 @@ void s_sum_float(const float *src, const int *stridesSrc,
 
     for (int o = 0; o < outer_size; o++) {
         const float *axis_ptr = src + offsetSrc;
-        float sum = 0.0f;
+        double sum = 0.0;
         for (int i = 0; i < size_axis; i++) {
-            sum += axis_ptr[i * stride_axis];
+            sum += (double)axis_ptr[i * stride_axis];
         }
-        dest[offsetDest] = sum;
+        dest[offsetDest] = (float)sum;
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -3176,11 +3264,11 @@ void s_mean_float(const float *src, const int *stridesSrc,
 
     for (int o = 0; o < outer_size; o++) {
         const float *axis_ptr = src + offsetSrc;
-        float sum = 0.0f;
+        double sum = 0.0;
         for (int i = 0; i < size_axis; i++) {
-            sum += axis_ptr[i * stride_axis];
+            sum += (double)axis_ptr[i * stride_axis];
         }
-        dest[offsetDest] = sum * inv_size;
+        dest[offsetDest] = (float)(sum * (double)inv_size);
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -3203,7 +3291,7 @@ void s_var_float(const float *src, const int *stridesSrc,
                  const int *shape, int rank, int axis, int ddof) {
     if (src == nullptr || dest == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
     int size_axis = shape[axis];
-    if (size_axis <= ddof || size_axis <= 0) {
+    if (size_axis <= 0) {
         int outer_size = 1;
         for (int d = 0; d < rank; d++) if (d != axis) outer_size *= shape[d];
         DECLARE_RANK_BUFFER(int, coord, rank);
@@ -3291,6 +3379,12 @@ void s_var_float(const float *src, const int *stridesSrc,
                 dest[c] += diff * diff;
             }
         }
+        if (M <= ddof) {
+            for (int c = 0; c < N; c++) {
+                dest[c] = (dest[c] == 0.0f || std::isnan(dest[c])) ? NAN : INFINITY;
+            }
+            return;
+        }
         float scale = 1.0f / (float)(M - ddof);
         int c = 0;
 #if HAS_AVX2_REDUCTIONS
@@ -3344,21 +3438,25 @@ void s_var_float(const float *src, const int *stridesSrc,
     int offsetDest = 0;
     int stride_axis = stridesSrc[axis];
     float inv_size = 1.0f / (float)size_axis;
-    float inv_denom = 1.0f / (float)(size_axis - ddof);
+    float inv_denom = (size_axis > ddof) ? (1.0f / (float)(size_axis - ddof)) : 0.0f;
 
     for (int o = 0; o < outer_size; o++) {
         const float *axis_ptr = src + offsetSrc;
-        float sum = 0.0f;
+        double sum = 0.0;
         for (int i = 0; i < size_axis; i++) {
-            sum += axis_ptr[i * stride_axis];
+            sum += (double)axis_ptr[i * stride_axis];
         }
-        float mean_val = sum * inv_size;
+        float mean_val = (float)(sum * (double)inv_size);
         float sum_sq = 0.0f;
         for (int i = 0; i < size_axis; i++) {
             float diff = axis_ptr[i * stride_axis] - mean_val;
             sum_sq += diff * diff;
         }
-        dest[offsetDest] = sum_sq * inv_denom;
+        if (size_axis <= ddof) {
+            dest[offsetDest] = (sum_sq == 0.0f || std::isnan(sum_sq)) ? NAN : INFINITY;
+        } else {
+            dest[offsetDest] = sum_sq * inv_denom;
+        }
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -3491,7 +3589,7 @@ void s_var_float_to_double(const float *src, const int *stridesSrc,
                            const int *shape, int rank, int axis, int ddof) {
     if (src == nullptr || dest == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
     int size_axis = shape[axis];
-    if (size_axis <= ddof || size_axis <= 0) {
+    if (size_axis <= 0) {
         int outer_size = 1;
         for (int d = 0; d < rank; d++) if (d != axis) outer_size *= shape[d];
         DECLARE_RANK_BUFFER(int, coord, rank);
@@ -3546,7 +3644,7 @@ void s_var_float_to_double(const float *src, const int *stridesSrc,
     int offsetDest = 0;
     int stride_axis = stridesSrc[axis];
     double inv_size = 1.0 / (double)size_axis;
-    double inv_denom = 1.0 / (double)(size_axis - ddof);
+    double inv_denom = (size_axis > ddof) ? (1.0 / (double)(size_axis - ddof)) : 0.0;
 
     for (int o = 0; o < outer_size; o++) {
         const float *axis_ptr = src + offsetSrc;
@@ -3560,7 +3658,11 @@ void s_var_float_to_double(const float *src, const int *stridesSrc,
             double diff = (double)axis_ptr[i * stride_axis] - mean_val;
             sum_sq += diff * diff;
         }
-        dest[offsetDest] = sum_sq * inv_denom;
+        if (size_axis <= ddof) {
+            dest[offsetDest] = (sum_sq == 0.0 || std::isnan(sum_sq)) ? NAN : INFINITY;
+        } else {
+            dest[offsetDest] = sum_sq * inv_denom;
+        }
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -3696,7 +3798,7 @@ static inline void s_var_int_impl(const T *src, const int *stridesSrc,
                                   const int *shape, int rank, int axis, int ddof) {
     if (src == nullptr || dest == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
     int size_axis = shape[axis];
-    if (size_axis <= ddof || size_axis <= 0) {
+    if (size_axis <= 0) {
         int outer_size = 1;
         for (int d = 0; d < rank; d++) if (d != axis) outer_size *= shape[d];
         DECLARE_RANK_BUFFER(int, coord, rank);
@@ -3751,7 +3853,7 @@ static inline void s_var_int_impl(const T *src, const int *stridesSrc,
     int offsetDest = 0;
     int stride_axis = stridesSrc[axis];
     double inv_size = 1.0 / (double)size_axis;
-    double inv_denom = 1.0 / (double)(size_axis - ddof);
+    double inv_denom = (size_axis > ddof) ? (1.0 / (double)(size_axis - ddof)) : 0.0;
 
     for (int o = 0; o < outer_size; o++) {
         const T *axis_ptr = src + offsetSrc;
@@ -3765,7 +3867,11 @@ static inline void s_var_int_impl(const T *src, const int *stridesSrc,
             double diff = (double)axis_ptr[i * stride_axis] - mean_val;
             sum_sq += diff * diff;
         }
-        dest[offsetDest] = sum_sq * inv_denom;
+        if (size_axis <= ddof) {
+            dest[offsetDest] = (sum_sq == 0.0 || std::isnan(sum_sq)) ? NAN : INFINITY;
+        } else {
+            dest[offsetDest] = sum_sq * inv_denom;
+        }
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -4195,11 +4301,12 @@ void v_floor_double(const double *src, double *res, int size, const uint8_t *mas
 }
 
 void v_round_double(const double *src, double *res, int size, const uint8_t *mask) {
-    v_unary_impl(src, res, size, mask, [](double x) { return round(x); });
+    v_unary_impl(src, res, size, mask, [](double x) { return std::rint(x); });
 }
 
 void v_clip_double(const double *src, double *res, double min_val, double max_val, int size, const uint8_t *mask) {
     v_unary_impl(src, res, size, mask, [min_val, max_val](double val) {
+        if (std::isnan(val) || std::isnan(min_val) || std::isnan(max_val)) return static_cast<double>(NAN);
         if (val < min_val) val = min_val;
         if (val > max_val) val = max_val;
         return val;
@@ -4227,11 +4334,12 @@ void v_floor_float(const float *src, float *res, int size, const uint8_t *mask) 
 }
 
 void v_round_float(const float *src, float *res, int size, const uint8_t *mask) {
-    v_unary_impl(src, res, size, mask, [](float x) { return roundf(x); });
+    v_unary_impl(src, res, size, mask, [](float x) { return std::rintf(x); });
 }
 
 void v_clip_float(const float *src, float *res, float min_val, float max_val, int size, const uint8_t *mask) {
     v_unary_impl(src, res, size, mask, [min_val, max_val](float val) {
+        if (std::isnan(val) || std::isnan(min_val) || std::isnan(max_val)) return static_cast<float>(NAN);
         if (val < min_val) val = min_val;
         if (val > max_val) val = max_val;
         return val;
@@ -4467,28 +4575,28 @@ void v_linspace_complex64(cpx_f_t *res, float startR, float startI, float stepR,
 void v_linspace_int64(int64_t *res, double start, double step, int size) {
     if (res == nullptr || size <= 0) return;
     for (int i = 0; i < size; i++) {
-        res[i] = (int64_t)(start + i * step);
+        res[i] = (int64_t)std::floor(start + i * step);
     }
 }
 
 void v_linspace_int32(int32_t *res, double start, double step, int size) {
     if (res == nullptr || size <= 0) return;
     for (int i = 0; i < size; i++) {
-        res[i] = (int32_t)(start + i * step);
+        res[i] = (int32_t)std::floor(start + i * step);
     }
 }
 
 void v_linspace_int16(int16_t *res, double start, double step, int size) {
     if (res == nullptr || size <= 0) return;
     for (int i = 0; i < size; i++) {
-        res[i] = (int16_t)(start + i * step);
+        res[i] = (int16_t)std::floor(start + i * step);
     }
 }
 
 void v_linspace_uint8(uint8_t *res, double start, double step, int size) {
     if (res == nullptr || size <= 0) return;
     for (int i = 0; i < size; i++) {
-        res[i] = (uint8_t)(start + i * step);
+        res[i] = (uint8_t)std::floor(start + i * step);
     }
 }
 
@@ -5564,32 +5672,40 @@ void FUNCNAME(const T *src, const int *stridesSrc, \
 // standard real ops
 #define OP_ADD(x, y) ((x) + (y))
 #define OP_MUL(x, y) ((x) * (y))
+#define OP_ADD_I64(x, y) ((int64_t)((uint64_t)(x) + (uint64_t)(y)))
+#define OP_ADD_I32(x, y) ((int32_t)((uint32_t)(x) + (uint32_t)(y)))
+#define OP_ADD_I16(x, y) ((int16_t)((uint16_t)(x) + (uint16_t)(y)))
+#define OP_MUL_I64(x, y) ((int64_t)((uint64_t)(x) * (uint64_t)(y)))
+#define OP_MUL_I32(x, y) ((int32_t)((uint32_t)(x) * (uint32_t)(y)))
+#define OP_MUL_I16(x, y) ((int16_t)((uint16_t)(x) * (uint16_t)(y)))
 #define OP_MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define OP_MAX(x, y) (((x) > (y)) ? (x) : (y))
+#define OP_MIN_FLOAT(x, y) ((std::isnan(x) || std::isnan(y)) ? ((x) + (y)) : (((x) < (y)) ? (x) : (y)))
+#define OP_MAX_FLOAT(x, y) ((std::isnan(x) || std::isnan(y)) ? ((x) + (y)) : (((x) > (y)) ? (x) : (y)))
 
 DEFINE_STRIDED_CUM_OP(s_cumsum_double, double, OP_ADD)
 DEFINE_STRIDED_CUM_OP(s_cumsum_float, float, OP_ADD)
-DEFINE_STRIDED_CUM_OP(s_cumsum_int64, int64_t, OP_ADD)
-DEFINE_STRIDED_CUM_OP(s_cumsum_int32, int32_t, OP_ADD)
-DEFINE_STRIDED_CUM_OP(s_cumsum_int16, int16_t, OP_ADD)
+DEFINE_STRIDED_CUM_OP(s_cumsum_int64, int64_t, OP_ADD_I64)
+DEFINE_STRIDED_CUM_OP(s_cumsum_int32, int32_t, OP_ADD_I32)
+DEFINE_STRIDED_CUM_OP(s_cumsum_int16, int16_t, OP_ADD_I16)
 DEFINE_STRIDED_CUM_OP(s_cumsum_uint8, uint8_t, OP_ADD)
 
 DEFINE_STRIDED_CUM_OP(s_cumprod_double, double, OP_MUL)
 DEFINE_STRIDED_CUM_OP(s_cumprod_float, float, OP_MUL)
-DEFINE_STRIDED_CUM_OP(s_cumprod_int64, int64_t, OP_MUL)
-DEFINE_STRIDED_CUM_OP(s_cumprod_int32, int32_t, OP_MUL)
-DEFINE_STRIDED_CUM_OP(s_cumprod_int16, int16_t, OP_MUL)
+DEFINE_STRIDED_CUM_OP(s_cumprod_int64, int64_t, OP_MUL_I64)
+DEFINE_STRIDED_CUM_OP(s_cumprod_int32, int32_t, OP_MUL_I32)
+DEFINE_STRIDED_CUM_OP(s_cumprod_int16, int16_t, OP_MUL_I16)
 DEFINE_STRIDED_CUM_OP(s_cumprod_uint8, uint8_t, OP_MUL)
 
-DEFINE_STRIDED_CUM_OP(s_cummin_double, double, OP_MIN)
-DEFINE_STRIDED_CUM_OP(s_cummin_float, float, OP_MIN)
+DEFINE_STRIDED_CUM_OP(s_cummin_double, double, OP_MIN_FLOAT)
+DEFINE_STRIDED_CUM_OP(s_cummin_float, float, OP_MIN_FLOAT)
 DEFINE_STRIDED_CUM_OP(s_cummin_int64, int64_t, OP_MIN)
 DEFINE_STRIDED_CUM_OP(s_cummin_int32, int32_t, OP_MIN)
 DEFINE_STRIDED_CUM_OP(s_cummin_int16, int16_t, OP_MIN)
 DEFINE_STRIDED_CUM_OP(s_cummin_uint8, uint8_t, OP_MIN)
 
-DEFINE_STRIDED_CUM_OP(s_cummax_double, double, OP_MAX)
-DEFINE_STRIDED_CUM_OP(s_cummax_float, float, OP_MAX)
+DEFINE_STRIDED_CUM_OP(s_cummax_double, double, OP_MAX_FLOAT)
+DEFINE_STRIDED_CUM_OP(s_cummax_float, float, OP_MAX_FLOAT)
 DEFINE_STRIDED_CUM_OP(s_cummax_int64, int64_t, OP_MAX)
 DEFINE_STRIDED_CUM_OP(s_cummax_int32, int32_t, OP_MAX)
 DEFINE_STRIDED_CUM_OP(s_cummax_int16, int16_t, OP_MAX)
@@ -5989,78 +6105,21 @@ DEFINE_STRIDED_UNARY_OP(s_acosh_complex128, cpx_t, cpx_acosh)
 DEFINE_STRIDED_UNARY_OP(s_acosh_complex64, cpx_f_t, cpx_acosh_f)
 
 static inline double cpx_abs(cpx_t z) {
-    return std::sqrt(z.r * z.r + z.i * z.i);
+    return std::hypot(z.r, z.i);
 }
 
 static inline float cpx_abs_f(cpx_f_t z) {
-    return std::sqrt(z.r * z.r + z.i * z.i);
+    return std::hypotf(z.r, z.i);
 }
 
 void v_abs_complex128(const cpx_t *src, double *res, int size, const uint8_t *mask) {
     if (src == nullptr || res == nullptr || size <= 0) return;
-    if (mask != nullptr ||
-        contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(cpx_t), res, (size_t)size * sizeof(double)) ||
-        static_cast<const void *>(src) == static_cast<const void *>(res)) {
-        v_unary_cast_impl(src, res, size, mask, cpx_abs);
-        return;
-    }
-
-    const double *src_d = (const double*)src;
-    int i = 0;
-#if defined(__AVX2__)
-    for (; i <= size - 4; i += 4) {
-        __m256d v0 = _mm256_loadu_pd(src_d + i * 2);
-        __m256d v1 = _mm256_loadu_pd(src_d + i * 2 + 4);
-
-        __m256d sq0 = _mm256_mul_pd(v0, v0);
-        __m256d sq1 = _mm256_mul_pd(v1, v1);
-
-        __m256d hadd = _mm256_hadd_pd(sq0, sq1);
-        __m256d sum = _mm256_permute4x64_pd(hadd, _MM_SHUFFLE(3, 1, 2, 0));
-
-        __m256d r = _mm256_sqrt_pd(sum);
-        _mm256_storeu_pd(res + i, r);
-    }
-#endif
-    for (; i < size; i++) {
-        double r = src[i].r;
-        double im = src[i].i;
-        res[i] = std::sqrt(r * r + im * im);
-    }
+    v_unary_cast_impl(src, res, size, mask, cpx_abs);
 }
 
 void v_abs_complex64(const cpx_f_t *src, float *res, int size, const uint8_t *mask) {
     if (src == nullptr || res == nullptr || size <= 0) return;
-    if (mask != nullptr ||
-        contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(cpx_f_t), res, (size_t)size * sizeof(float)) ||
-        static_cast<const void *>(src) == static_cast<const void *>(res)) {
-        v_unary_cast_impl(src, res, size, mask, cpx_abs_f);
-        return;
-    }
-
-    const float *src_f = (const float*)src;
-    int i = 0;
-#if defined(__AVX2__)
-    const __m256i perm_mask = _mm256_setr_epi32(0, 1, 4, 5, 2, 3, 6, 7);
-    for (; i <= size - 8; i += 8) {
-        __m256 v0 = _mm256_loadu_ps(src_f + i * 2);
-        __m256 v1 = _mm256_loadu_ps(src_f + i * 2 + 8);
-
-        __m256 sq0 = _mm256_mul_ps(v0, v0);
-        __m256 sq1 = _mm256_mul_ps(v1, v1);
-
-        __m256 hadd = _mm256_hadd_ps(sq0, sq1);
-        __m256 sum = _mm256_permutevar8x32_ps(hadd, perm_mask);
-
-        __m256 r = _mm256_sqrt_ps(sum);
-        _mm256_storeu_ps(res + i, r);
-    }
-#endif
-    for (; i < size; i++) {
-        float r = src[i].r;
-        float im = src[i].i;
-        res[i] = std::sqrt(r * r + im * im);
-    }
+    v_unary_cast_impl(src, res, size, mask, cpx_abs_f);
 }
 
 void s_abs_complex128(const cpx_t *src, const int *stridesSrc,
@@ -6290,8 +6349,8 @@ static inline cpx_f_t cpx_f_from_cpx(cpx_t v) { return (cpx_f_t){(float)v.r, (fl
 #define EXPR_float(OP, Ta, Tb, x, y, OP_SYM) ((float)x OP_SYM (float)y)
 #define EXPR_int64(OP, Ta, Tb, x, y, OP_SYM) ((int64_t)((uint64_t)(int64_t)(x) OP_SYM (uint64_t)(int64_t)(y)))
 #define EXPR_int32(OP, Ta, Tb, x, y, OP_SYM) ((int32_t)((uint32_t)(int32_t)(x) OP_SYM (uint32_t)(int32_t)(y)))
-#define EXPR_int16(OP, Ta, Tb, x, y, OP_SYM) ((int16_t)((uint16_t)(int16_t)(x) OP_SYM (uint16_t)(int16_t)(y)))
-#define EXPR_uint8(OP, Ta, Tb, x, y, OP_SYM) ((uint8_t)((uint8_t)(x) OP_SYM (uint8_t)(y)))
+#define EXPR_int16(OP, Ta, Tb, x, y, OP_SYM) ((int16_t)((uint32_t)(uint16_t)(int16_t)(x) OP_SYM (uint32_t)(uint16_t)(int16_t)(y)))
+#define EXPR_uint8(OP, Ta, Tb, x, y, OP_SYM) ((uint8_t)((uint32_t)(uint8_t)(x) OP_SYM (uint32_t)(uint8_t)(y)))
 #define EXPR_cpx(OP, Ta, Tb, x, y, OP_SYM) cpx_##OP(cpx_from_##Ta(x), cpx_from_##Tb(y))
 #define EXPR_cpx64(OP, Ta, Tb, x, y, OP_SYM) cpx_f_from_cpx(cpx_##OP(cpx_from_##Ta(x), cpx_from_##Tb(y)))
 
@@ -6403,14 +6462,14 @@ void cast_int16_to_double(const int16_t *src, double *dst, int size) {
 void cast_double_to_uint8(const double *src, uint8_t *dst, int size) {
     if (src == nullptr || dst == nullptr || size <= 0) return;
     for (int i = 0; i < size; i++) {
-        dst[i] = (uint8_t)src[i];
+        dst[i] = saturating_float_to_int<uint8_t>(src[i]);
     }
 }
 
 void cast_double_to_int16(const double *src, int16_t *dst, int size) {
     if (src == nullptr || dst == nullptr || size <= 0) return;
     for (int i = 0; i < size; i++) {
-        dst[i] = (int16_t)src[i];
+        dst[i] = saturating_float_to_int<int16_t>(src[i]);
     }
 }
 
@@ -6465,7 +6524,7 @@ void s_cast_double_to_uint8(const double *src, const int *stridesSrc, uint8_t *d
     DECLARE_RANK_BUFFER(int, coord, rank);
     int offsetSrc = 0, offsetDst = 0;
     for (int el = 0; el < total_elements; el++) {
-        dst[offsetDst] = (uint8_t)src[offsetSrc];
+        dst[offsetDst] = saturating_float_to_int<uint8_t>(src[offsetSrc]);
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
             if (coord[d] < shape[d]) {
@@ -6487,7 +6546,7 @@ void s_cast_double_to_int16(const double *src, const int *stridesSrc, int16_t *d
     DECLARE_RANK_BUFFER(int, coord, rank);
     int offsetSrc = 0, offsetDst = 0;
     for (int el = 0; el < total_elements; el++) {
-        dst[offsetDst] = (int16_t)src[offsetSrc];
+        dst[offsetDst] = saturating_float_to_int<int16_t>(src[offsetSrc]);
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
             if (coord[d] < shape[d]) {
@@ -6634,7 +6693,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((int64_t*)dest_ptr)[el] = i64_val;
                 } else {
-                    ((int64_t*)dest_ptr)[el] = (int64_t)r_val;
+                    ((int64_t*)dest_ptr)[el] = saturating_float_to_int<int64_t>(r_val);
                 }
                 break;
             case 5: // int32
@@ -6643,7 +6702,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((int32_t*)dest_ptr)[el] = (int32_t)i64_val;
                 } else {
-                    ((int32_t*)dest_ptr)[el] = (int32_t)r_val;
+                    ((int32_t*)dest_ptr)[el] = saturating_float_to_int<int32_t>(r_val);
                 }
                 break;
             case 6: // int16
@@ -6652,7 +6711,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((int16_t*)dest_ptr)[el] = (int16_t)i64_val;
                 } else {
-                    ((int16_t*)dest_ptr)[el] = (int16_t)r_val;
+                    ((int16_t*)dest_ptr)[el] = saturating_float_to_int<int16_t>(r_val);
                 }
                 break;
             case 7: // int8
@@ -6661,7 +6720,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((int8_t*)dest_ptr)[el] = (int8_t)i64_val;
                 } else {
-                    ((int8_t*)dest_ptr)[el] = (int8_t)r_val;
+                    ((int8_t*)dest_ptr)[el] = saturating_float_to_int<int8_t>(r_val);
                 }
                 break;
             case 8: // uint64
@@ -6670,19 +6729,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((uint64_t*)dest_ptr)[el] = (uint64_t)i64_val;
                 } else {
-                    uint64_t u_out = 0;
-                    if (std::isnan(r_val)) {
-                        u_out = 0ULL;
-                    } else if (r_val >= 18446744073709551615.0) {
-                        u_out = 18446744073709551615ULL;
-                    } else if (r_val >= 9223372036854775808.0) {
-                        u_out = (uint64_t)(r_val - 9223372036854775808.0) + 9223372036854775808ULL;
-                    } else if (r_val < 0.0) {
-                        u_out = (uint64_t)(int64_t)r_val;
-                    } else {
-                        u_out = (uint64_t)r_val;
-                    }
-                    ((uint64_t*)dest_ptr)[el] = u_out;
+                    ((uint64_t*)dest_ptr)[el] = saturating_float_to_int<uint64_t>(r_val);
                 }
                 break;
             case 9: // uint32
@@ -6691,7 +6738,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((uint32_t*)dest_ptr)[el] = (uint32_t)i64_val;
                 } else {
-                    ((uint32_t*)dest_ptr)[el] = (uint32_t)r_val;
+                    ((uint32_t*)dest_ptr)[el] = saturating_float_to_int<uint32_t>(r_val);
                 }
                 break;
             case 10: // uint16
@@ -6700,7 +6747,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((uint16_t*)dest_ptr)[el] = (uint16_t)i64_val;
                 } else {
-                    ((uint16_t*)dest_ptr)[el] = (uint16_t)r_val;
+                    ((uint16_t*)dest_ptr)[el] = saturating_float_to_int<uint16_t>(r_val);
                 }
                 break;
             case 11: // uint8
@@ -6709,7 +6756,7 @@ void copy_and_cast_strided(
                 } else if (is_int_src) {
                     ((uint8_t*)dest_ptr)[el] = (uint8_t)i64_val;
                 } else {
-                    ((uint8_t*)dest_ptr)[el] = (uint8_t)r_val;
+                    ((uint8_t*)dest_ptr)[el] = saturating_float_to_int<uint8_t>(r_val);
                 }
                 break;
             case 12: // complex128
@@ -6869,13 +6916,73 @@ int get_and_reset_division_error(void) {
     return err;
 }
 
-static inline double double_floordiv(double x, double y) {
-    if (y == 0.0) return NAN;
-    return floor(x / y);
+static inline double double_floordiv(double a, double b) {
+    if (b == 0.0) {
+        if (a == 0.0 || std::isnan(a)) return NAN;
+        return std::copysign(INFINITY, a) * std::copysign(1.0, b);
+    }
+    if (std::isnan(a) || std::isnan(b) || std::isinf(a)) {
+        return NAN;
+    }
+    if (std::isinf(b)) {
+        if (a == 0.0) return std::copysign(0.0, a) * std::copysign(1.0, b);
+        return ((std::signbit(a) != 0) == (std::signbit(b) != 0)) ? 0.0 : -1.0;
+    }
+    if (a == 0.0) {
+        return std::copysign(0.0, a) * std::copysign(1.0, b);
+    }
+    double mod = std::fmod(a, b);
+    double div = (a - mod) / b;
+    if (mod != 0.0) {
+        if ((b < 0.0) != (mod < 0.0)) {
+            mod += b;
+            div -= 1.0;
+        }
+    }
+    double floordiv;
+    if (div != 0.0) {
+        floordiv = std::floor(div);
+        if (div - floordiv > 0.5) {
+            floordiv += 1.0;
+        }
+    } else {
+        floordiv = std::copysign(0.0, a / b);
+    }
+    return floordiv;
 }
-static inline float float_floordiv(float x, float y) {
-    if (y == 0.0f) return NAN;
-    return floorf(x / y);
+static inline float float_floordiv(float a, float b) {
+    if (b == 0.0f) {
+        if (a == 0.0f || std::isnan(a)) return NAN;
+        return std::copysignf(INFINITY, a) * std::copysignf(1.0f, b);
+    }
+    if (std::isnan(a) || std::isnan(b) || std::isinf(a)) {
+        return NAN;
+    }
+    if (std::isinf(b)) {
+        if (a == 0.0f) return std::copysignf(0.0f, a) * std::copysignf(1.0f, b);
+        return ((std::signbit(a) != 0) == (std::signbit(b) != 0)) ? 0.0f : -1.0f;
+    }
+    if (a == 0.0f) {
+        return std::copysignf(0.0f, a) * std::copysignf(1.0f, b);
+    }
+    float mod = std::fmodf(a, b);
+    float div = (a - mod) / b;
+    if (mod != 0.0f) {
+        if ((b < 0.0f) != (mod < 0.0f)) {
+            mod += b;
+            div -= 1.0f;
+        }
+    }
+    float floordiv;
+    if (div != 0.0f) {
+        floordiv = std::floorf(div);
+        if (div - floordiv > 0.5f) {
+            floordiv += 1.0f;
+        }
+    } else {
+        floordiv = std::copysignf(0.0f, a / b);
+    }
+    return floordiv;
 }
 static inline int64_t int64_floordiv(int64_t x, int64_t y) {
     if (y == 0) {
@@ -6883,7 +6990,6 @@ static inline int64_t int64_floordiv(int64_t x, int64_t y) {
         return 0;
     }
     if (x == INT64_MIN && y == -1) {
-        division_error_flag = 2;
         return INT64_MIN;
     }
     int64_t res = x / y;
@@ -6899,7 +7005,6 @@ static inline int32_t int32_floordiv(int32_t x, int32_t y) {
         return 0;
     }
     if (x == INT32_MIN && y == -1) {
-        division_error_flag = 2;
         return INT32_MIN;
     }
     int32_t res = x / y;
@@ -6911,18 +7016,26 @@ static inline int32_t int32_floordiv(int32_t x, int32_t y) {
 }
 
 static inline double double_remainder(double x, double y) {
-    if (y == 0.0) return NAN;
+    if (y == 0.0 || std::isnan(x) || std::isnan(y) || std::isinf(x)) return NAN;
     double rem = fmod(x, y);
-    if (rem != 0.0 && ((rem < 0.0) != (y < 0.0))) {
-        rem += y;
+    if (rem != 0.0) {
+        if ((rem < 0.0) != (y < 0.0)) {
+            rem += y;
+        }
+    } else {
+        rem = std::copysign(0.0, y);
     }
     return rem;
 }
 static inline float float_remainder(float x, float y) {
-    if (y == 0.0f) return NAN;
+    if (y == 0.0f || std::isnan(x) || std::isnan(y) || std::isinf(x)) return NAN;
     float rem = fmodf(x, y);
-    if (rem != 0.0f && ((rem < 0.0f) != (y < 0.0f))) {
-        rem += y;
+    if (rem != 0.0f) {
+        if ((rem < 0.0f) != (y < 0.0f)) {
+            rem += y;
+        }
+    } else {
+        rem = std::copysignf(0.0f, y);
     }
     return rem;
 }
@@ -6932,7 +7045,6 @@ static inline int64_t int64_remainder(int64_t x, int64_t y) {
         return 0;
     }
     if (x == INT64_MIN && y == -1) {
-        division_error_flag = 2;
         return 0;
     }
     int64_t rem = x % y;
@@ -6947,7 +7059,6 @@ static inline int32_t int32_remainder(int32_t x, int32_t y) {
         return 0;
     }
     if (x == INT32_MIN && y == -1) {
-        division_error_flag = 2;
         return 0;
     }
     int32_t rem = x % y;
@@ -6963,7 +7074,6 @@ static inline int64_t int64_fmod(int64_t x, int64_t y) {
         return 0;
     }
     if (x == INT64_MIN && y == -1) {
-        division_error_flag = 2;
         return 0;
     }
     return x % y;
@@ -6974,31 +7084,34 @@ static inline int32_t int32_fmod(int32_t x, int32_t y) {
         return 0;
     }
     if (x == INT32_MIN && y == -1) {
-        division_error_flag = 2;
         return 0;
     }
     return x % y;
+}
+
+static inline uint64_t gcd_u64(uint64_t u, uint64_t v) {
+    while (v != 0) {
+        uint64_t t = v;
+        v = u % v;
+        u = t;
+    }
+    return u;
 }
 
 template <typename T>
 static inline T gcd_impl(T a, T b) {
     uint64_t u = (a < 0) ? -static_cast<uint64_t>(a) : static_cast<uint64_t>(a);
     uint64_t v = (b < 0) ? -static_cast<uint64_t>(b) : static_cast<uint64_t>(b);
-    while (v != 0) {
-        uint64_t t = v;
-        v = u % v;
-        u = t;
-    }
-    return static_cast<T>(u);
+    return static_cast<T>(gcd_u64(u, v));
 }
 
 template <typename T>
 static inline T lcm_impl(T a, T b) {
     if (a == 0 || b == 0) return 0;
-    T g = gcd_impl(a, b);
     uint64_t u = (a < 0) ? -static_cast<uint64_t>(a) : static_cast<uint64_t>(a);
     uint64_t v = (b < 0) ? -static_cast<uint64_t>(b) : static_cast<uint64_t>(b);
-    return static_cast<T>((u / static_cast<uint64_t>(g)) * v);
+    uint64_t g = gcd_u64(u, v);
+    return static_cast<T>((u / g) * v);
 }
 
 template <typename T>
@@ -7266,25 +7379,27 @@ DEFINE_STRIDED_UNARY_IMPL(s_logical_not, uint8_t, uint8_t, (!x) ? 1 : 0)
 /* Safe shift helpers to prevent undefined C behavior */
 static inline int32_t safe_left_shift_int32(int32_t x, int32_t y) {
     if (y < 0 || y >= 32) return 0;
-    return x << y;
+    return (int32_t)((uint32_t)x << y);
 }
 static inline int32_t safe_right_shift_int32(int32_t x, int32_t y) {
-    if (y < 0 || y >= 32) return 0;
+    if (y < 0) return 0;
+    if (y >= 32) return (x < 0) ? -1 : 0;
     return x >> y;
 }
 
 static inline int64_t safe_left_shift_int64(int64_t x, int64_t y) {
     if (y < 0 || y >= 64) return 0;
-    return x << y;
+    return (int64_t)((uint64_t)x << y);
 }
 static inline int64_t safe_right_shift_int64(int64_t x, int64_t y) {
-    if (y < 0 || y >= 64) return 0;
+    if (y < 0) return 0;
+    if (y >= 64) return (x < 0) ? -1 : 0;
     return x >> y;
 }
 
 static inline uint8_t safe_left_shift_uint8(uint8_t x, uint8_t y) {
     if (y >= 8) return 0;
-    return (uint8_t)(x << y);
+    return (uint8_t)((uint32_t)x << y);
 }
 static inline uint8_t safe_right_shift_uint8(uint8_t x, uint8_t y) {
     if (y >= 8) return 0;
@@ -7293,10 +7408,11 @@ static inline uint8_t safe_right_shift_uint8(uint8_t x, uint8_t y) {
 
 static inline int16_t safe_left_shift_int16(int16_t x, int16_t y) {
     if (y < 0 || y >= 16) return 0;
-    return (int16_t)(x << y);
+    return (int16_t)((uint32_t)(uint16_t)x << y);
 }
 static inline int16_t safe_right_shift_int16(int16_t x, int16_t y) {
-    if (y < 0 || y >= 16) return 0;
+    if (y < 0) return 0;
+    if (y >= 16) return (x < 0) ? -1 : 0;
     return (int16_t)(x >> y);
 }
 
@@ -7984,7 +8100,10 @@ void s_kron_boolean(const uint8_t *a, const int *stridesA, const int *shapeA,
 
 /* Vector Outer Product */
 #define NUM_MUL_OP(x, y) ((x) * (y))
-#define BOOL_AND_OP(x, y) ((x) & (y))
+#define INT64_MUL_OP(x, y) ((int64_t)((uint64_t)(x) * (uint64_t)(y)))
+#define INT32_MUL_OP(x, y) ((int32_t)((uint32_t)(x) * (uint32_t)(y)))
+#define INT16_MUL_OP(x, y) ((int16_t)((uint16_t)(x) * (uint16_t)(y)))
+#define BOOL_AND_OP(x, y) (((x) != 0 && (y) != 0) ? 1 : 0)
 #define DEFINE_OUTER_IMPL(name, type, op) \
 void name(const type *a, int strideA, int sizeA, \
           const type *b, int strideB, int sizeB, \
@@ -8000,10 +8119,10 @@ void name(const type *a, int strideA, int sizeA, \
 
 DEFINE_OUTER_IMPL(s_outer_double, double, NUM_MUL_OP)
 DEFINE_OUTER_IMPL(s_outer_float, float, NUM_MUL_OP)
-DEFINE_OUTER_IMPL(s_outer_int64, int64_t, NUM_MUL_OP)
-DEFINE_OUTER_IMPL(s_outer_int32, int32_t, NUM_MUL_OP)
+DEFINE_OUTER_IMPL(s_outer_int64, int64_t, INT64_MUL_OP)
+DEFINE_OUTER_IMPL(s_outer_int32, int32_t, INT32_MUL_OP)
 DEFINE_OUTER_IMPL(s_outer_uint8, uint8_t, NUM_MUL_OP)
-DEFINE_OUTER_IMPL(s_outer_int16, int16_t, NUM_MUL_OP)
+DEFINE_OUTER_IMPL(s_outer_int16, int16_t, INT16_MUL_OP)
 DEFINE_OUTER_IMPL(s_outer_boolean, uint8_t, BOOL_AND_OP)
 DEFINE_OUTER_IMPL(s_outer_complex128, cpx_t, cpx_kron_mul)
 DEFINE_OUTER_IMPL(s_outer_complex64, cpx_f_t, cpx_f_kron_mul)
@@ -8026,7 +8145,10 @@ void name(const type *a, int strideA, const type *b, int strideB, type *res) { \
 }
 
 #define NUM_SUB_OP(x, y) ((x) - (y))
-#define BOOL_SUB_OP(x, y) ((x) ^ (y))
+#define INT64_SUB_OP(x, y) ((int64_t)((uint64_t)(x) - (uint64_t)(y)))
+#define INT32_SUB_OP(x, y) ((int32_t)((uint32_t)(x) - (uint32_t)(y)))
+#define INT16_SUB_OP(x, y) ((int16_t)((uint16_t)(x) - (uint16_t)(y)))
+#define BOOL_SUB_OP(x, y) ((((x) != 0) != ((y) != 0)) ? 1 : 0)
 
 DEFINE_CROSS_3D_IMPL(s_cross_3d_double, double, NUM_MUL_OP, NUM_SUB_OP)
 DEFINE_CROSS_2D_IMPL(s_cross_2d_double, double, NUM_MUL_OP, NUM_SUB_OP)
@@ -8034,17 +8156,17 @@ DEFINE_CROSS_2D_IMPL(s_cross_2d_double, double, NUM_MUL_OP, NUM_SUB_OP)
 DEFINE_CROSS_3D_IMPL(s_cross_3d_float, float, NUM_MUL_OP, NUM_SUB_OP)
 DEFINE_CROSS_2D_IMPL(s_cross_2d_float, float, NUM_MUL_OP, NUM_SUB_OP)
 
-DEFINE_CROSS_3D_IMPL(s_cross_3d_int64, int64_t, NUM_MUL_OP, NUM_SUB_OP)
-DEFINE_CROSS_2D_IMPL(s_cross_2d_int64, int64_t, NUM_MUL_OP, NUM_SUB_OP)
+DEFINE_CROSS_3D_IMPL(s_cross_3d_int64, int64_t, INT64_MUL_OP, INT64_SUB_OP)
+DEFINE_CROSS_2D_IMPL(s_cross_2d_int64, int64_t, INT64_MUL_OP, INT64_SUB_OP)
 
-DEFINE_CROSS_3D_IMPL(s_cross_3d_int32, int32_t, NUM_MUL_OP, NUM_SUB_OP)
-DEFINE_CROSS_2D_IMPL(s_cross_2d_int32, int32_t, NUM_MUL_OP, NUM_SUB_OP)
+DEFINE_CROSS_3D_IMPL(s_cross_3d_int32, int32_t, INT32_MUL_OP, INT32_SUB_OP)
+DEFINE_CROSS_2D_IMPL(s_cross_2d_int32, int32_t, INT32_MUL_OP, INT32_SUB_OP)
 
 DEFINE_CROSS_3D_IMPL(s_cross_3d_uint8, uint8_t, NUM_MUL_OP, NUM_SUB_OP)
 DEFINE_CROSS_2D_IMPL(s_cross_2d_uint8, uint8_t, NUM_MUL_OP, NUM_SUB_OP)
 
-DEFINE_CROSS_3D_IMPL(s_cross_3d_int16, int16_t, NUM_MUL_OP, NUM_SUB_OP)
-DEFINE_CROSS_2D_IMPL(s_cross_2d_int16, int16_t, NUM_MUL_OP, NUM_SUB_OP)
+DEFINE_CROSS_3D_IMPL(s_cross_3d_int16, int16_t, INT16_MUL_OP, INT16_SUB_OP)
+DEFINE_CROSS_2D_IMPL(s_cross_2d_int16, int16_t, INT16_MUL_OP, INT16_SUB_OP)
 
 DEFINE_CROSS_3D_IMPL(s_cross_3d_boolean, uint8_t, BOOL_AND_OP, BOOL_SUB_OP)
 DEFINE_CROSS_2D_IMPL(s_cross_2d_boolean, uint8_t, BOOL_AND_OP, BOOL_SUB_OP)
@@ -8283,6 +8405,18 @@ void v_hamming_float(float *res, int M) {
 // 14. STRIDED TERNARY CLIP FUNCTIONS FOR ALL NUMERIC TYPES
 // ============================================================================
 
+template <typename T>
+static inline T clip_scalar_val(T val, T mn, T mx) {
+    if constexpr (std::is_floating_point_v<T>) {
+        if (std::isnan(val) || std::isnan(mn) || std::isnan(mx)) {
+            return std::numeric_limits<T>::quiet_NaN();
+        }
+    }
+    if (val < mn) val = mn;
+    if (val > mx) val = mx;
+    return val;
+}
+
 #define IMPLEMENT_S_CLIP(TYPE_NAME, TYPE) \
 void s_clip_##TYPE_NAME(const TYPE *a, const int *stridesA, \
                         const TYPE *min_val, const int *stridesMin, \
@@ -8298,10 +8432,7 @@ void s_clip_##TYPE_NAME(const TYPE *a, const int *stridesA, \
     } \
     if (rank == 0) { \
         if (mask != nullptr && mask[0] == 0) return; \
-        TYPE val = a[0]; \
-        if (val < min_val[0]) val = min_val[0]; \
-        if (val > max_val[0]) val = max_val[0]; \
-        res[0] = val; \
+        res[0] = clip_scalar_val<TYPE>(a[0], min_val[0], max_val[0]); \
         return; \
     } \
     bool overlap = strided_buffers_overlap_not_identical(a, stridesA, sizeof(TYPE), res, stridesRes, sizeof(TYPE), shape, rank) || \
@@ -8317,10 +8448,7 @@ void s_clip_##TYPE_NAME(const TYPE *a, const int *stridesA, \
         int offsetA = 0, offsetMin = 0, offsetMax = 0; \
         for (int el = 0; el < total_elements; el++) { \
             if (mask == nullptr || mask[el] != 0) { \
-                TYPE val = a[offsetA]; \
-                if (val < min_val[offsetMin]) val = min_val[offsetMin]; \
-                if (val > max_val[offsetMax]) val = max_val[offsetMax]; \
-                temp[el] = val; \
+                temp[el] = clip_scalar_val<TYPE>(a[offsetA], min_val[offsetMin], max_val[offsetMax]); \
             } \
             for (int d = rank - 1; d >= 0; d--) { \
                 coord[d]++; \
@@ -8369,10 +8497,7 @@ void s_clip_##TYPE_NAME(const TYPE *a, const int *stridesA, \
     if (is_contiguous) { \
         for (int i = 0; i < total_elements; i++) { \
             if (mask != nullptr && mask[i] == 0) continue; \
-            TYPE val = a[i]; \
-            if (val < min_val[i]) val = min_val[i]; \
-            if (val > max_val[i]) val = max_val[i]; \
-            res[i] = val; \
+            res[i] = clip_scalar_val<TYPE>(a[i], min_val[i], max_val[i]); \
         } \
         return; \
     } \
@@ -8380,10 +8505,7 @@ void s_clip_##TYPE_NAME(const TYPE *a, const int *stridesA, \
     int offsetA = 0, offsetMin = 0, offsetMax = 0, offsetRes = 0; \
     for (int el = 0; el < total_elements; el++) { \
         if (mask == nullptr || mask[el] != 0) { \
-            TYPE val = a[offsetA]; \
-            if (val < min_val[offsetMin]) val = min_val[offsetMin]; \
-            if (val > max_val[offsetMax]) val = max_val[offsetMax]; \
-            res[offsetRes] = val; \
+            res[offsetRes] = clip_scalar_val<TYPE>(a[offsetA], min_val[offsetMin], max_val[offsetMax]); \
         } \
         for (int d = rank - 1; d >= 0; d--) { \
             coord[d]++; \
@@ -9593,7 +9715,11 @@ void name(const type *start, const int *stridesStart, \
     for (int el = 0; el < total_elements; el++) { \
         int i = coord[axis]; \
         double t = (div <= 0.0) ? 0.0 : (double)i / div; \
-        val_expr; \
+        if (endpoint && numSamples > 1 && i == numSamples - 1) { \
+            res[offsetRes] = stop[offsetStop]; \
+        } else { \
+            val_expr; \
+        } \
         if (step != nullptr && coord[axis] == 0) { \
             step_expr; \
         } \
@@ -9653,26 +9779,26 @@ DEFINE_LINSPACE_GRID(
 
 DEFINE_LINSPACE_GRID(
     s_linspace_grid_int64, int64_t,
-    { res[offsetRes] = (int64_t)((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
-    { step[offsetStep] = (div <= 0.0) ? 0 : (int64_t)(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
+    { res[offsetRes] = (int64_t)std::floor((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
+    { step[offsetStep] = (div <= 0.0) ? 0 : (int64_t)std::floor(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
 )
 
 DEFINE_LINSPACE_GRID(
     s_linspace_grid_int32, int32_t,
-    { res[offsetRes] = (int32_t)((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
-    { step[offsetStep] = (div <= 0.0) ? 0 : (int32_t)(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
+    { res[offsetRes] = (int32_t)std::floor((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
+    { step[offsetStep] = (div <= 0.0) ? 0 : (int32_t)std::floor(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
 )
 
 DEFINE_LINSPACE_GRID(
     s_linspace_grid_int16, int16_t,
-    { res[offsetRes] = (int16_t)((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
-    { step[offsetStep] = (div <= 0.0) ? 0 : (int16_t)(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
+    { res[offsetRes] = (int16_t)std::floor((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
+    { step[offsetStep] = (div <= 0.0) ? 0 : (int16_t)std::floor(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
 )
 
 DEFINE_LINSPACE_GRID(
     s_linspace_grid_uint8, uint8_t,
-    { res[offsetRes] = (uint8_t)((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
-    { step[offsetStep] = (div <= 0.0) ? 0 : (uint8_t)(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
+    { res[offsetRes] = (uint8_t)std::floor((double)start[offsetStart] + ((double)stop[offsetStop] - (double)start[offsetStart]) * t); },
+    { step[offsetStep] = (div <= 0.0) ? 0 : (uint8_t)std::floor(((double)stop[offsetStop] - (double)start[offsetStart]) / div); }
 )
 
 /* ============================================================================
@@ -9900,15 +10026,15 @@ void assemble_eigenvectors_float(
  * Macro to define optimized matrix multiplication for integer types.
  * Performs a standard 3-loop matmul supporting arbitrary strides for input and output matrices.
  */
-#define DEFINE_MATMUL_INT(name, type) \
+#define DEFINE_MATMUL_INT(name, T) \
 void name( \
-    type *res, \
+    T *res, \
     int strideResRow, \
     int strideResCol, \
-    const type *a, \
+    const T *a, \
     int strideARow, \
     int strideACol, \
-    const type *b, \
+    const T *b, \
     int strideBRow, \
     int strideBCol, \
     int m, \
@@ -9918,13 +10044,14 @@ void name( \
     if (res == nullptr || a == nullptr || b == nullptr || m <= 0 || n <= 0 || k <= 0) { \
         return; \
     } \
+    using utype = typename std::conditional<sizeof(T) < 4, uint32_t, typename std::make_unsigned<T>::type>::type; \
     for (int r = 0; r < m; r++) { \
         for (int c = 0; c < n; c++) { \
-            type sum = 0; \
+            utype sum = 0; \
             for (int i = 0; i < k; i++) { \
-                sum += a[r * strideARow + i * strideACol] * b[i * strideBRow + c * strideBCol]; \
+                sum += static_cast<utype>(a[r * strideARow + i * strideACol]) * static_cast<utype>(b[i * strideBRow + c * strideBCol]); \
             } \
-            res[r * strideResRow + c * strideResCol] = sum; \
+            res[r * strideResRow + c * strideResCol] = static_cast<T>(sum); \
         } \
     } \
 }
@@ -10265,8 +10392,7 @@ static inline int64_t interpolate_int64(int64_t start, int64_t end, int step, in
     __int128 num = (__int128)start * (d - (__int128)step) + (__int128)end * (__int128)step;
     __int128 q = num / d;
     __int128 r = num % d;
-    if (r > 0 && 2 * r >= d) q += 1;
-    else if (r < 0 && -2 * r >= d) q -= 1;
+    if (r < 0) q -= 1;
     return (int64_t)q;
 }
 static inline uint64_t interpolate_uint64(uint64_t start, uint64_t end, int step, int total_steps) {
@@ -10276,24 +10402,22 @@ static inline uint64_t interpolate_uint64(uint64_t start, uint64_t end, int step
     unsigned __int128 d = (unsigned __int128)total_steps;
     unsigned __int128 num = (unsigned __int128)start * (d - (unsigned __int128)step) + (unsigned __int128)end * (unsigned __int128)step;
     unsigned __int128 q = num / d;
-    unsigned __int128 r = num % d;
-    if (2 * r >= d) q += 1;
     return (uint64_t)q;
 }
 static inline int32_t interpolate_int32(int32_t start, int32_t end, int step, int total_steps) {
     if (total_steps <= 0) return end;
     double val = (double)start + ((double)end - (double)start) * (double)step / total_steps;
-    return (int32_t)round(val);
+    return (int32_t)std::floor(val);
 }
 static inline int16_t interpolate_int16(int16_t start, int16_t end, int step, int total_steps) {
     if (total_steps <= 0) return end;
     double val = (double)start + ((double)end - (double)start) * (double)step / total_steps;
-    return (int16_t)round(val);
+    return (int16_t)std::floor(val);
 }
 static inline uint8_t interpolate_uint8(uint8_t start, uint8_t end, int step, int total_steps) {
     if (total_steps <= 0) return end;
     double val = (double)start + ((double)end - (double)start) * (double)step / total_steps;
-    return (uint8_t)round(val);
+    return (uint8_t)std::floor(val);
 }
 static inline cpx_t interpolate_complex128(cpx_t start, cpx_t end, int step, int total_steps) {
     if (total_steps <= 0) return end;
@@ -10308,6 +10432,15 @@ static inline cpx_f_t interpolate_complex64(cpx_f_t start, cpx_f_t end, int step
     return (cpx_f_t){r, i};
 }
 
+static inline double round_half_to_even_d(double x) {
+    double fl = std::floor(x);
+    double diff = x - fl;
+    if (diff > 0.5) return fl + 1.0;
+    if (diff < 0.5) return fl;
+    int64_t fl_int = (int64_t)fl;
+    return ((fl_int & 1) != 0) ? (fl + 1.0) : fl;
+}
+
 // Helper macros for defining numeric statistics (double, float, int64, int32, uint8)
 template <typename T>
 static inline bool is_nan_check(T val) {
@@ -10317,7 +10450,7 @@ static inline bool is_nan_check(T val) {
     return false;
 }
 
-#define DEFINE_NUMERIC_STATS(TYPE, NAME_SUFFIX, SORTER, CAST_TYPE) static inline TYPE stats_min_##NAME_SUFFIX(const TYPE *base, int stride, int len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v < m) m = v;     }     return m; } static inline TYPE stats_max_##NAME_SUFFIX(const TYPE *base, int stride, int len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v > m) m = v;     }     return m; } static inline TYPE stats_mean_##NAME_SUFFIX(const TYPE *base, int stride, int len) {     if (len <= 0) return (TYPE)0;     if constexpr (std::is_same_v<TYPE, int64_t>) {         __int128 sum = 0;         for (int i = 0; i < len; i++) {             sum += (__int128)*(base + i * stride);         }         __int128 d = (__int128)len;         __int128 q = sum / d;         __int128 r = sum % d;         if (r > 0 && 2 * r >= d) q += 1;         else if (r < 0 && -2 * r >= d) q -= 1;         return (int64_t)q;     } else {         double sum = 0;         for (int i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)(sum / len);     } } static inline TYPE stats_median_##NAME_SUFFIX(const TYPE *base, int _stride, int len) {     if (len <= 0) return (TYPE)0;     /* Median calculation requires temporary buffer. We use malloc here. */     /* In actual usage, len is capped by dimension size. */     TYPE *buf = (TYPE*)malloc(len * sizeof(TYPE));     if (buf == nullptr) { ndarray_set_oom_flag(); return (TYPE)0; }     bool has_nan = false;     for (int i = 0; i < len; i++) {         TYPE v = *(base + i * _stride);         if (is_nan_check(v)) has_nan = true;         buf[i] = v;     }     if (has_nan) {         free(buf);         if constexpr (std::is_floating_point_v<TYPE>) {             return (TYPE)NAN;         }         return (TYPE)0;     }     SORTER((CAST_TYPE)buf, len, 0); /* 0 = quicksort */     TYPE res;     if (len % 2 == 1) {         res = buf[len / 2];     } else if constexpr (std::is_same_v<TYPE, int64_t>) {         __int128 sum = (__int128)buf[len / 2 - 1] + (__int128)buf[len / 2];         __int128 q = sum / 2;         __int128 r = sum % 2;         if (r > 0) q += 1;         else if (r < 0) q -= 1;         res = (int64_t)q;     } else {         res = (TYPE)(((double)buf[len / 2 - 1] + (double)buf[len / 2]) / 2.0);     }     free(buf);     return res; }
+#define DEFINE_NUMERIC_STATS(TYPE, NAME_SUFFIX, SORTER, CAST_TYPE) static inline TYPE stats_min_##NAME_SUFFIX(const TYPE *base, int stride, int len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v < m) m = v;     }     return m; } static inline TYPE stats_max_##NAME_SUFFIX(const TYPE *base, int stride, int len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v > m) m = v;     }     return m; } static inline TYPE stats_mean_##NAME_SUFFIX(const TYPE *base, int stride, int len) {     if (len <= 0) return (TYPE)0;     if constexpr (std::is_same_v<TYPE, int64_t>) {         __int128 sum = 0;         for (int i = 0; i < len; i++) {             sum += (__int128)*(base + i * stride);         }         __int128 d = (__int128)len;         __int128 q = sum / d;         __int128 r = sum % d;         if (r > 0 && (2 * r > d || (2 * r == d && (q & 1) != 0))) q += 1;         else if (r < 0 && (-2 * r > d || (-2 * r == d && (q & 1) != 0))) q -= 1;         return (int64_t)q;     } else if constexpr (std::is_floating_point_v<TYPE>) {         double sum = 0;         for (int i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)(sum / len);     } else {         double sum = 0;         for (int i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)round_half_to_even_d(sum / len);     } } static inline TYPE stats_median_##NAME_SUFFIX(const TYPE *base, int _stride, int len) {     if (len <= 0) return (TYPE)0;     TYPE *buf = (TYPE*)malloc(len * sizeof(TYPE));     if (buf == nullptr) { ndarray_set_oom_flag(); return (TYPE)0; }     bool has_nan = false;     for (int i = 0; i < len; i++) {         TYPE v = *(base + i * _stride);         if (is_nan_check(v)) has_nan = true;         buf[i] = v;     }     if (has_nan) {         free(buf);         if constexpr (std::is_floating_point_v<TYPE>) {             return (TYPE)NAN;         }         return (TYPE)0;     }     SORTER((CAST_TYPE)buf, len, 0); /* 0 = quicksort */     TYPE res;     if (len % 2 == 1) {         res = buf[len / 2];     } else if constexpr (std::is_same_v<TYPE, int64_t>) {         __int128 sum = (__int128)buf[len / 2 - 1] + (__int128)buf[len / 2];         __int128 q = sum / 2;         __int128 r = sum % 2;         if (r != 0 && (q & 1) != 0) q += (r > 0 ? 1 : -1);         res = (int64_t)q;     } else if constexpr (std::is_floating_point_v<TYPE>) {         res = (TYPE)(((double)buf[len / 2 - 1] + (double)buf[len / 2]) / 2.0);     } else {         res = (TYPE)round_half_to_even_d(((double)buf[len / 2 - 1] + (double)buf[len / 2]) / 2.0);     }     free(buf);     return res; }
 
 DEFINE_NUMERIC_STATS(double, double, native_sort_double, double*)
 DEFINE_NUMERIC_STATS(float, float, native_sort_float, float*)
@@ -10353,7 +10486,7 @@ static inline uint64_t stats_mean_uint64(const uint64_t *base, int stride, int l
     unsigned __int128 d = (unsigned __int128)len;
     unsigned __int128 q = sum / d;
     unsigned __int128 r = sum % d;
-    if (2 * r >= d) q += 1;
+    if (2 * r > d || (2 * r == d && (q & 1) != 0)) q += 1;
     return (uint64_t)q;
 }
 static inline uint64_t stats_median_uint64(const uint64_t *base, int _stride, int len) {
@@ -10372,7 +10505,10 @@ static inline uint64_t stats_median_uint64(const uint64_t *base, int _stride, in
         res = buf[len / 2];
     } else {
         unsigned __int128 sum = (unsigned __int128)buf[len / 2 - 1] + (unsigned __int128)buf[len / 2];
-        res = (uint64_t)((sum + 1) / 2);
+        unsigned __int128 q = sum / 2;
+        unsigned __int128 r = sum % 2;
+        if (r != 0 && (q & 1) != 0) q += 1;
+        res = (uint64_t)q;
     }
     free(buf);
     return res;
@@ -10411,32 +10547,31 @@ static inline cpx_t stats_mean_complex128(const cpx_t *base, int stride, int len
 }
 static inline cpx_t stats_median_complex128(const cpx_t *base, int stride, int len) {
     if (len <= 0) return (cpx_t){0, 0};
-    double *buf_r = (double*)malloc(len * sizeof(double));
-    double *buf_i = (double*)malloc(len * sizeof(double));
-    if (buf_r == nullptr || buf_i == nullptr) {
-        if (buf_r) free(buf_r);
-        if (buf_i) free(buf_i);
+    cpx_t *buf = (cpx_t*)malloc(len * sizeof(cpx_t));
+    if (buf == nullptr) {
         ndarray_set_oom_flag();
         return (cpx_t){0, 0};
     }
     for (int i = 0; i < len; i++) {
         cpx_t v = *(base + i * stride);
-        buf_r[i] = v.r;
-        buf_i[i] = v.i;
+        if (std::isnan(v.r) || std::isnan(v.i)) {
+            free(buf);
+            return (cpx_t){NAN, NAN};
+        }
+        buf[i] = v;
     }
-    native_sort_double(buf_r, len, 0);
-    native_sort_double(buf_i, len, 0);
-    double res_r, res_i;
+    std::sort(buf, buf + len, [](const cpx_t &a, const cpx_t &b) {
+        return cmp_cpx_lex_d(a, b) < 0;
+    });
+    cpx_t res;
     if (len % 2 == 1) {
-        res_r = buf_r[len / 2];
-        res_i = buf_i[len / 2];
+        res = buf[len / 2];
     } else {
-        res_r = (buf_r[len / 2 - 1] + buf_r[len / 2]) / 2.0;
-        res_i = (buf_i[len / 2 - 1] + buf_i[len / 2]) / 2.0;
+        res.r = (buf[len / 2 - 1].r + buf[len / 2].r) / 2.0;
+        res.i = (buf[len / 2 - 1].i + buf[len / 2].i) / 2.0;
     }
-    free(buf_r);
-    free(buf_i);
-    return (cpx_t){res_r, res_i};
+    free(buf);
+    return res;
 }
 
 static inline cpx_f_t stats_min_complex64(const cpx_f_t *base, int stride, int len) {
@@ -10470,32 +10605,31 @@ static inline cpx_f_t stats_mean_complex64(const cpx_f_t *base, int stride, int 
 }
 static inline cpx_f_t stats_median_complex64(const cpx_f_t *base, int stride, int len) {
     if (len <= 0) return (cpx_f_t){0, 0};
-    float *buf_r = (float*)malloc(len * sizeof(float));
-    float *buf_i = (float*)malloc(len * sizeof(float));
-    if (buf_r == nullptr || buf_i == nullptr) {
-        if (buf_r) free(buf_r);
-        if (buf_i) free(buf_i);
+    cpx_f_t *buf = (cpx_f_t*)malloc(len * sizeof(cpx_f_t));
+    if (buf == nullptr) {
         ndarray_set_oom_flag();
         return (cpx_f_t){0, 0};
     }
     for (int i = 0; i < len; i++) {
         cpx_f_t v = *(base + i * stride);
-        buf_r[i] = v.r;
-        buf_i[i] = v.i;
+        if (std::isnan(v.r) || std::isnan(v.i)) {
+            free(buf);
+            return (cpx_f_t){NAN, NAN};
+        }
+        buf[i] = v;
     }
-    native_sort_float(buf_r, len, 0);
-    native_sort_float(buf_i, len, 0);
-    float res_r, res_i;
+    std::sort(buf, buf + len, [](const cpx_f_t &a, const cpx_f_t &b) {
+        return cmp_cpx_lex_f(a, b) < 0;
+    });
+    cpx_f_t res;
     if (len % 2 == 1) {
-        res_r = buf_r[len / 2];
-        res_i = buf_i[len / 2];
+        res = buf[len / 2];
     } else {
-        res_r = (buf_r[len / 2 - 1] + buf_r[len / 2]) / 2.0f;
-        res_i = (buf_i[len / 2 - 1] + buf_i[len / 2]) / 2.0f;
+        res.r = (buf[len / 2 - 1].r + buf[len / 2].r) / 2.0f;
+        res.i = (buf[len / 2 - 1].i + buf[len / 2].i) / 2.0f;
     }
-    free(buf_r);
-    free(buf_i);
-    return (cpx_f_t){res_r, res_i};
+    free(buf);
+    return res;
 }
 
 #define DEFINE_PAD_AXIS(TYPE_NAME, T, STATS_MIN, STATS_MAX, STATS_MEAN, STATS_MEDIAN, INTERPOLATE) \
@@ -11215,11 +11349,6 @@ void s_median_complex128(const cpx_t *src, const int *stridesSrc,
     if (src == nullptr || dest == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
     int size_axis = shape[axis];
     if (size_axis <= 0) return;
-    double *tmp_buf = (double *)malloc(size_axis * sizeof(double));
-    if (tmp_buf == nullptr) {
-        ndarray_set_oom_flag();
-        return;
-    }
     DECLARE_RANK_BUFFER(int, coord, rank);
     int outer_size = 1;
     for (int d = 0; d < rank; d++) {
@@ -11238,33 +11367,7 @@ void s_median_complex128(const cpx_t *src, const int *stridesSrc,
             }
         }
         int stride_axis = stridesSrc[axis];
-        
-        // Real part
-        for (int i = 0; i < size_axis; i++) {
-            tmp_buf[i] = src[offsetSrc + i * stride_axis].r;
-        }
-        native_sort_double(tmp_buf, size_axis, 0);
-        double median_r;
-        if (size_axis % 2 == 1) {
-            median_r = tmp_buf[size_axis / 2];
-        } else {
-            median_r = (tmp_buf[size_axis / 2 - 1] + tmp_buf[size_axis / 2]) / 2.0;
-        }
-
-        // Imaginary part
-        for (int i = 0; i < size_axis; i++) {
-            tmp_buf[i] = src[offsetSrc + i * stride_axis].i;
-        }
-        native_sort_double(tmp_buf, size_axis, 0);
-        double median_i;
-        if (size_axis % 2 == 1) {
-            median_i = tmp_buf[size_axis / 2];
-        } else {
-            median_i = (tmp_buf[size_axis / 2 - 1] + tmp_buf[size_axis / 2]) / 2.0;
-        }
-
-        dest[offsetRes].r = median_r;
-        dest[offsetRes].i = median_i;
+        dest[offsetRes] = stats_median_complex128(src + offsetSrc, stride_axis, size_axis);
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -11273,7 +11376,6 @@ void s_median_complex128(const cpx_t *src, const int *stridesSrc,
             coord[d] = 0;
         }
     }
-    free(tmp_buf);
 }
 
 void s_median_complex64(const cpx_f_t *src, const int *stridesSrc,
@@ -11282,11 +11384,6 @@ void s_median_complex64(const cpx_f_t *src, const int *stridesSrc,
     if (src == nullptr || dest == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
     int size_axis = shape[axis];
     if (size_axis <= 0) return;
-    float *tmp_buf = (float *)malloc(size_axis * sizeof(float));
-    if (tmp_buf == nullptr) {
-        ndarray_set_oom_flag();
-        return;
-    }
     DECLARE_RANK_BUFFER(int, coord, rank);
     int outer_size = 1;
     for (int d = 0; d < rank; d++) {
@@ -11305,33 +11402,7 @@ void s_median_complex64(const cpx_f_t *src, const int *stridesSrc,
             }
         }
         int stride_axis = stridesSrc[axis];
-        
-        // Real part
-        for (int i = 0; i < size_axis; i++) {
-            tmp_buf[i] = src[offsetSrc + i * stride_axis].r;
-        }
-        native_sort_float(tmp_buf, size_axis, 0);
-        float median_r;
-        if (size_axis % 2 == 1) {
-            median_r = tmp_buf[size_axis / 2];
-        } else {
-            median_r = (tmp_buf[size_axis / 2 - 1] + tmp_buf[size_axis / 2]) / 2.0f;
-        }
-
-        // Imaginary part
-        for (int i = 0; i < size_axis; i++) {
-            tmp_buf[i] = src[offsetSrc + i * stride_axis].i;
-        }
-        native_sort_float(tmp_buf, size_axis, 0);
-        float median_i;
-        if (size_axis % 2 == 1) {
-            median_i = tmp_buf[size_axis / 2];
-        } else {
-            median_i = (tmp_buf[size_axis / 2 - 1] + tmp_buf[size_axis / 2]) / 2.0f;
-        }
-
-        dest[offsetRes].r = median_r;
-        dest[offsetRes].i = median_i;
+        dest[offsetRes] = stats_median_complex64(src + offsetSrc, stride_axis, size_axis);
 
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -11340,7 +11411,6 @@ void s_median_complex64(const cpx_f_t *src, const int *stridesSrc,
             coord[d] = 0;
         }
     }
-    free(tmp_buf);
 }
 
 // Global reductions for median (contiguous)
@@ -13053,16 +13123,16 @@ void ndarray_cdist(
 }
 
 // Integer Absolute Value Implementations (Contiguous)
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_int64, int64_t, int64_t, std::abs(x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_int32, int32_t, int32_t, std::abs(x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_int16, int16_t, int16_t, std::abs(x))
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_int64, int64_t, int64_t, (x < 0) ? (int64_t)(-(uint64_t)x) : x)
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_int32, int32_t, int32_t, (x < 0) ? (int32_t)(-(uint32_t)x) : x)
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_int16, int16_t, int16_t, (x < 0) ? (int16_t)(-(uint16_t)x) : x)
 
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_abs_uint8, uint8_t, uint8_t, x)
 
 // Integer Absolute Value Implementations (Strided)
-DEFINE_STRIDED_UNARY_IMPL(s_abs_int64, int64_t, int64_t, std::abs(x))
-DEFINE_STRIDED_UNARY_IMPL(s_abs_int32, int32_t, int32_t, std::abs(x))
-DEFINE_STRIDED_UNARY_IMPL(s_abs_int16, int16_t, int16_t, std::abs(x))
+DEFINE_STRIDED_UNARY_IMPL(s_abs_int64, int64_t, int64_t, (x < 0) ? (int64_t)(-(uint64_t)x) : x)
+DEFINE_STRIDED_UNARY_IMPL(s_abs_int32, int32_t, int32_t, (x < 0) ? (int32_t)(-(uint32_t)x) : x)
+DEFINE_STRIDED_UNARY_IMPL(s_abs_int16, int16_t, int16_t, (x < 0) ? (int16_t)(-(uint16_t)x) : x)
 DEFINE_STRIDED_UNARY_IMPL(s_abs_uint8, uint8_t, uint8_t, x)
 
 // Integer & Extended DType Exponentiation Implementations (Contiguous)
@@ -13783,29 +13853,29 @@ static inline void s_reduce_op_impl(
 #define OP_LXOR(x, y) (((x) != 0) != ((y) != 0) ? 1 : 0)
 
 // Integer sums
-int64_t r_sum_int64(const int64_t *src, int size) { return r_reduce_op_impl(src, size, (int64_t)0, [](int64_t a, int64_t b) { return a + b; }); }
-int32_t r_sum_int32(const int32_t *src, int size) { return r_reduce_op_impl(src, size, (int32_t)0, [](int32_t a, int32_t b) { return a + b; }); }
+int64_t r_sum_int64(const int64_t *src, int size) { return r_reduce_op_impl(src, size, (int64_t)0, [](int64_t a, int64_t b) { return (int64_t)((uint64_t)a + (uint64_t)b); }); }
+int32_t r_sum_int32(const int32_t *src, int size) { return r_reduce_op_impl(src, size, (int32_t)0, [](int32_t a, int32_t b) { return (int32_t)((uint32_t)a + (uint32_t)b); }); }
 uint8_t r_sum_uint8(const uint8_t *src, int size) { return r_reduce_op_impl(src, size, (uint8_t)0, [](uint8_t a, uint8_t b) { return (uint8_t)(a + b); }); }
-int16_t r_sum_int16(const int16_t *src, int size) { return r_reduce_op_impl(src, size, (int16_t)0, [](int16_t a, int16_t b) { return (int16_t)(a + b); }); }
+int16_t r_sum_int16(const int16_t *src, int size) { return r_reduce_op_impl(src, size, (int16_t)0, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a + (uint16_t)b); }); }
 
 void s_sum_int64(const int64_t *src, const int *stridesSrc, int64_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int64_t a, int64_t b) { return a + b; });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int64_t a, int64_t b) { return (int64_t)((uint64_t)a + (uint64_t)b); });
 }
 void s_sum_int32(const int32_t *src, const int *stridesSrc, int32_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int32_t a, int32_t b) { return a + b; });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int32_t a, int32_t b) { return (int32_t)((uint32_t)a + (uint32_t)b); });
 }
 void s_sum_uint8(const uint8_t *src, const int *stridesSrc, uint8_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](uint8_t a, uint8_t b) { return (uint8_t)(a + b); });
 }
 void s_sum_int16(const int16_t *src, const int *stridesSrc, int16_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int16_t a, int16_t b) { return (int16_t)(a + b); });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a + (uint16_t)b); });
 }
 
 // Integer and Complex Products
-int64_t r_prod_int64(const int64_t *src, int size) { return r_reduce_op_impl(src, size, (int64_t)1, [](int64_t a, int64_t b) { return a * b; }); }
-int32_t r_prod_int32(const int32_t *src, int size) { return r_reduce_op_impl(src, size, (int32_t)1, [](int32_t a, int32_t b) { return a * b; }); }
+int64_t r_prod_int64(const int64_t *src, int size) { return r_reduce_op_impl(src, size, (int64_t)1, [](int64_t a, int64_t b) { return (int64_t)((uint64_t)a * (uint64_t)b); }); }
+int32_t r_prod_int32(const int32_t *src, int size) { return r_reduce_op_impl(src, size, (int32_t)1, [](int32_t a, int32_t b) { return (int32_t)((uint32_t)a * (uint32_t)b); }); }
 uint8_t r_prod_uint8(const uint8_t *src, int size) { return r_reduce_op_impl(src, size, (uint8_t)1, [](uint8_t a, uint8_t b) { return (uint8_t)(a * b); }); }
-int16_t r_prod_int16(const int16_t *src, int size) { return r_reduce_op_impl(src, size, (int16_t)1, [](int16_t a, int16_t b) { return (int16_t)(a * b); }); }
+int16_t r_prod_int16(const int16_t *src, int size) { return r_reduce_op_impl(src, size, (int16_t)1, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a * (uint16_t)b); }); }
 cpx_t r_prod_complex128(const cpx_t *src, int size) { return r_reduce_op_impl(src, size, cpx_t{1.0, 0.0}, cpx_mul); }
 cpx_f_t r_prod_complex64(const cpx_f_t *src, int size) { return r_reduce_op_impl(src, size, cpx_f_t{1.0f, 0.0f}, cpx_mul_f); }
 
@@ -13816,16 +13886,16 @@ void s_prod_float(const float *src, const int *stridesSrc, float *dest, const in
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](float a, float b) { return a * b; });
 }
 void s_prod_int64(const int64_t *src, const int *stridesSrc, int64_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int64_t a, int64_t b) { return a * b; });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int64_t a, int64_t b) { return (int64_t)((uint64_t)a * (uint64_t)b); });
 }
 void s_prod_int32(const int32_t *src, const int *stridesSrc, int32_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int32_t a, int32_t b) { return a * b; });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int32_t a, int32_t b) { return (int32_t)((uint32_t)a * (uint32_t)b); });
 }
 void s_prod_uint8(const uint8_t *src, const int *stridesSrc, uint8_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](uint8_t a, uint8_t b) { return (uint8_t)(a * b); });
 }
 void s_prod_int16(const int16_t *src, const int *stridesSrc, int16_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int16_t a, int16_t b) { return (int16_t)(a * b); });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a * (uint16_t)b); });
 }
 void s_prod_complex128(const cpx_t *src, const int *stridesSrc, cpx_t *dest, const int *stridesDest, const int *shape, int rank, int axis) {
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, cpx_mul);
@@ -13926,6 +13996,43 @@ DEFINE_STRIDED_CUM_OP(s_cumlogical_xor, uint8_t, OP_LXOR)
 
 // Unbuffered Scatter Update Kernels (s_at_*)
 template <typename T>
+static inline T fdiv_int(T a, T b) {
+    if (b == 0) return 0;
+    if (a == std::numeric_limits<T>::min() && b == -1) return std::numeric_limits<T>::min();
+    return static_cast<T>(a / b);
+}
+
+template <typename T>
+static inline T floordiv_int(T a, T b) {
+    if (b == 0) return 0;
+    if (a == std::numeric_limits<T>::min() && b == -1) return std::numeric_limits<T>::min();
+    T res = static_cast<T>(a / b);
+    T rem = static_cast<T>(a % b);
+    if (rem != 0 && ((a < 0) ^ (b < 0))) {
+        res--;
+    }
+    return res;
+}
+
+template <typename T>
+static inline T rem_int(T a, T b) {
+    if (b == 0) return 0;
+    if (a == std::numeric_limits<T>::min() && b == -1) return 0;
+    T rem = static_cast<T>(a % b);
+    if (rem != 0 && ((rem < 0) != (b < 0))) {
+        rem = static_cast<T>(rem + b);
+    }
+    return rem;
+}
+
+template <typename T>
+static inline T fmod_int(T a, T b) {
+    if (b == 0) return 0;
+    if (a == std::numeric_limits<T>::min() && b == -1) return 0;
+    return static_cast<T>(a % b);
+}
+
+template <typename T>
 static inline T apply_at_op(T a, T b, int opCode) {
     switch (opCode) {
         case 0: return a + b;
@@ -13954,80 +14061,60 @@ static inline T apply_at_op(T a, T b, int opCode) {
 template <>
 inline int64_t apply_at_op<int64_t>(int64_t a, int64_t b, int opCode) {
     switch (opCode) {
-        case 0: return a + b;
-        case 1: return a * b;
-        case 2: return (a < b) ? a : b;
-        case 3: return (a > b) ? a : b;
+        case 0: return (int64_t)((uint64_t)a + (uint64_t)b);
+        case 1: return (int64_t)((uint64_t)a * (uint64_t)b);
+        case 2:
         case 4: return (a < b) ? a : b;
+        case 3:
         case 5: return (a > b) ? a : b;
-        case 8: {
-            int64_t x = std::abs(a), y = std::abs(b);
-            while (y != 0) { int64_t t = y; y = x % y; x = t; }
-            return x;
-        }
-        case 9: {
-            if (a == 0 || b == 0) return 0;
-            int64_t x = std::abs(a), y = std::abs(b);
-            int64_t ox = x, oy = y;
-            while (y != 0) { int64_t t = y; y = x % y; x = t; }
-            return (ox / x) * oy;
-        }
+        case 8: return gcd_impl<int64_t>(a, b);
+        case 9: return lcm_impl<int64_t>(a, b);
         case 10: return a & b;
         case 11: return a | b;
         case 12: return a ^ b;
         case 13: return (a != 0) && (b != 0) ? 1 : 0;
         case 14: return (a != 0) || (b != 0) ? 1 : 0;
         case 15: return ((a != 0) != (b != 0)) ? 1 : 0;
-        case 16: return a - b;
-        case 17: return (b != 0) ? (a / b) : 0;
-        case 18: return (b != 0) ? (int64_t)std::floor((double)a / (double)b) : 0;
-        case 19:
-        case 20: return (b != 0) ? (a % b) : 0;
+        case 16: return (int64_t)((uint64_t)a - (uint64_t)b);
+        case 17: return fdiv_int<int64_t>(a, b);
+        case 18: return floordiv_int<int64_t>(a, b);
+        case 19: return rem_int<int64_t>(a, b);
+        case 20: return fmod_int<int64_t>(a, b);
         case 21:
-        case 22: return (int64_t)std::pow((double)a, (double)b);
-        case 26: return a << b;
-        case 27: return a >> b;
-        default: return a + b;
+        case 22: return ipow<int64_t>(a, b);
+        case 26: return safe_left_shift_int64(a, b);
+        case 27: return safe_right_shift_int64(a, b);
+        default: return (int64_t)((uint64_t)a + (uint64_t)b);
     }
 }
 
 template <>
 inline int32_t apply_at_op<int32_t>(int32_t a, int32_t b, int opCode) {
     switch (opCode) {
-        case 0: return a + b;
-        case 1: return a * b;
-        case 2: return (a < b) ? a : b;
-        case 3: return (a > b) ? a : b;
+        case 0: return (int32_t)((uint32_t)a + (uint32_t)b);
+        case 1: return (int32_t)((uint32_t)a * (uint32_t)b);
+        case 2:
         case 4: return (a < b) ? a : b;
+        case 3:
         case 5: return (a > b) ? a : b;
-        case 8: {
-            int32_t x = std::abs(a), y = std::abs(b);
-            while (y != 0) { int32_t t = y; y = x % y; x = t; }
-            return x;
-        }
-        case 9: {
-            if (a == 0 || b == 0) return 0;
-            int32_t x = std::abs(a), y = std::abs(b);
-            int32_t ox = x, oy = y;
-            while (y != 0) { int32_t t = y; y = x % y; x = t; }
-            return (ox / x) * oy;
-        }
+        case 8: return gcd_impl<int32_t>(a, b);
+        case 9: return lcm_impl<int32_t>(a, b);
         case 10: return a & b;
         case 11: return a | b;
         case 12: return a ^ b;
         case 13: return (a != 0) && (b != 0) ? 1 : 0;
         case 14: return (a != 0) || (b != 0) ? 1 : 0;
         case 15: return ((a != 0) != (b != 0)) ? 1 : 0;
-        case 16: return a - b;
-        case 17: return (b != 0) ? (a / b) : 0;
-        case 18: return (b != 0) ? (int32_t)std::floor((double)a / (double)b) : 0;
-        case 19:
-        case 20: return (b != 0) ? (a % b) : 0;
+        case 16: return (int32_t)((uint32_t)a - (uint32_t)b);
+        case 17: return fdiv_int<int32_t>(a, b);
+        case 18: return floordiv_int<int32_t>(a, b);
+        case 19: return rem_int<int32_t>(a, b);
+        case 20: return fmod_int<int32_t>(a, b);
         case 21:
-        case 22: return (int32_t)std::pow((double)a, (double)b);
-        case 26: return a << b;
-        case 27: return a >> b;
-        default: return a + b;
+        case 22: return ipow<int32_t>(a, b);
+        case 26: return safe_left_shift_int32(a, b);
+        case 27: return safe_right_shift_int32(a, b);
+        default: return (int32_t)((uint32_t)a + (uint32_t)b);
     }
 }
 
@@ -14036,10 +14123,12 @@ inline uint8_t apply_at_op<uint8_t>(uint8_t a, uint8_t b, int opCode) {
     switch (opCode) {
         case 0: return (uint8_t)(a + b);
         case 1: return (uint8_t)(a * b);
-        case 2: return (a < b) ? a : b;
-        case 3: return (a > b) ? a : b;
+        case 2:
         case 4: return (a < b) ? a : b;
+        case 3:
         case 5: return (a > b) ? a : b;
+        case 8: return gcd_impl<uint8_t>(a, b);
+        case 9: return lcm_impl<uint8_t>(a, b);
         case 10: return (uint8_t)(a & b);
         case 11: return (uint8_t)(a | b);
         case 12: return (uint8_t)(a ^ b);
@@ -14047,14 +14136,14 @@ inline uint8_t apply_at_op<uint8_t>(uint8_t a, uint8_t b, int opCode) {
         case 14: return (a != 0) || (b != 0) ? 1 : 0;
         case 15: return ((a != 0) != (b != 0)) ? 1 : 0;
         case 16: return (uint8_t)(a - b);
-        case 17: return (b != 0) ? (uint8_t)(a / b) : 0;
+        case 17:
         case 18: return (b != 0) ? (uint8_t)(a / b) : 0;
         case 19:
         case 20: return (b != 0) ? (uint8_t)(a % b) : 0;
         case 21:
-        case 22: return (uint8_t)std::pow((double)a, (double)b);
-        case 26: return (uint8_t)(a << b);
-        case 27: return (uint8_t)(a >> b);
+        case 22: return ipow<uint8_t>(a, b);
+        case 26: return safe_left_shift_uint8(a, b);
+        case 27: return safe_right_shift_uint8(a, b);
         default: return (uint8_t)(a + b);
     }
 }
@@ -14062,28 +14151,50 @@ inline uint8_t apply_at_op<uint8_t>(uint8_t a, uint8_t b, int opCode) {
 template <>
 inline int16_t apply_at_op<int16_t>(int16_t a, int16_t b, int opCode) {
     switch (opCode) {
-        case 0: return (int16_t)(a + b);
-        case 1: return (int16_t)(a * b);
-        case 2: return (a < b) ? a : b;
-        case 3: return (a > b) ? a : b;
+        case 0: return (int16_t)((uint16_t)a + (uint16_t)b);
+        case 1: return (int16_t)((uint16_t)a * (uint16_t)b);
+        case 2:
         case 4: return (a < b) ? a : b;
+        case 3:
         case 5: return (a > b) ? a : b;
+        case 8: return gcd_impl<int16_t>(a, b);
+        case 9: return lcm_impl<int16_t>(a, b);
         case 10: return (int16_t)(a & b);
         case 11: return (int16_t)(a | b);
         case 12: return (int16_t)(a ^ b);
         case 13: return (a != 0) && (b != 0) ? 1 : 0;
         case 14: return (a != 0) || (b != 0) ? 1 : 0;
         case 15: return ((a != 0) != (b != 0)) ? 1 : 0;
-        case 16: return (int16_t)(a - b);
-        case 17: return (b != 0) ? (int16_t)(a / b) : 0;
-        case 18: return (b != 0) ? (int16_t)std::floor((double)a / (double)b) : 0;
-        case 19:
-        case 20: return (b != 0) ? (int16_t)(a % b) : 0;
+        case 16: return (int16_t)((uint16_t)a - (uint16_t)b);
+        case 17: return fdiv_int<int16_t>(a, b);
+        case 18: return floordiv_int<int16_t>(a, b);
+        case 19: return rem_int<int16_t>(a, b);
+        case 20: return fmod_int<int16_t>(a, b);
         case 21:
-        case 22: return (int16_t)std::pow((double)a, (double)b);
-        case 26: return (int16_t)(a << b);
-        case 27: return (int16_t)(a >> b);
-        default: return (int16_t)(a + b);
+        case 22: return ipow<int16_t>(a, b);
+        case 26: return safe_left_shift_int16(a, b);
+        case 27: return safe_right_shift_int16(a, b);
+        default: return (int16_t)((uint16_t)a + (uint16_t)b);
+    }
+}
+
+static inline uint8_t apply_at_op_boolean(uint8_t a, uint8_t b, int opCode) {
+    uint8_t ba = (a != 0) ? 1 : 0;
+    uint8_t bb = (b != 0) ? 1 : 0;
+    switch (opCode) {
+        case 0: return (ba || bb) ? 1 : 0;
+        case 1: return (ba && bb) ? 1 : 0;
+        case 2:
+        case 4: return (ba < bb) ? ba : bb;
+        case 3:
+        case 5: return (ba > bb) ? ba : bb;
+        case 10:
+        case 13: return (ba && bb) ? 1 : 0;
+        case 11:
+        case 14: return (ba || bb) ? 1 : 0;
+        case 12:
+        case 15: return (ba != bb) ? 1 : 0;
+        default: return apply_at_op<uint8_t>(ba, bb, opCode) != 0 ? 1 : 0;
     }
 }
 
@@ -14109,11 +14220,11 @@ inline cpx_f_t apply_at_op<cpx_f_t>(cpx_f_t a, cpx_f_t b, int opCode) {
     }
 }
 
-template <typename T>
-static void s_at_impl(T *a, const int *stridesA, const int *shapeA, int rankA,
-                      const int64_t *indices, int numIndices, int strideIdx,
-                      const T *b, const int *stridesB, const int *shapeB, int rankB,
-                      int opCode) {
+template <typename T, typename Op>
+static void s_at_op_impl(T *a, const int *stridesA, const int *shapeA, int rankA,
+                         const int64_t *indices, int numIndices, int strideIdx,
+                         const T *b, const int *stridesB, const int *shapeB, int rankB,
+                         Op op) {
     if (a == nullptr || indices == nullptr || b == nullptr || numIndices <= 0 || rankA <= 0) return;
     int axis0_len = shapeA[0];
     int sliceSize = 1;
@@ -14128,7 +14239,7 @@ static void s_at_impl(T *a, const int *stridesA, const int *shapeA, int rankA,
         int offsetB = (rankB == 0) ? 0 : (rankB == rankA ? i * stridesB[0] : 0);
 
         if (sliceSize == 1) {
-            a[offsetA] = apply_at_op(a[offsetA], b[offsetB], opCode);
+            a[offsetA] = op(a[offsetA], b[offsetB]);
         } else {
             NoThrowBuffer<int> coord_vec;
             int coord_stack[32] = {0};
@@ -14151,7 +14262,7 @@ static void s_at_impl(T *a, const int *stridesA, const int *shapeA, int rankA,
                         offB += coord[d - 1] * stridesB[dB];
                     }
                 }
-                a[offA] = apply_at_op(a[offA], b[offB], opCode);
+                a[offA] = op(a[offA], b[offB]);
 
                 for (int d = rankA - 2; d >= 0; d--) {
                     coord[d]++;
@@ -14161,6 +14272,14 @@ static void s_at_impl(T *a, const int *stridesA, const int *shapeA, int rankA,
             }
         }
     }
+}
+
+template <typename T>
+static void s_at_impl(T *a, const int *stridesA, const int *shapeA, int rankA,
+                      const int64_t *indices, int numIndices, int strideIdx,
+                      const T *b, const int *stridesB, const int *shapeB, int rankB,
+                      int opCode) {
+    s_at_op_impl(a, stridesA, shapeA, rankA, indices, numIndices, strideIdx, b, stridesB, shapeB, rankB, [opCode](T x, T y) { return apply_at_op(x, y, opCode); });
 }
 
 void s_at_double(double *a, const int *stridesA, const int *shapeA, int rankA, const int64_t *indices, int numIndices, int strideIdx, const double *b, const int *stridesB, const int *shapeB, int rankB, int opCode) {
@@ -14188,7 +14307,7 @@ void s_at_complex64(cpx_f_t *a, const int *stridesA, const int *shapeA, int rank
     s_at_impl(a, stridesA, shapeA, rankA, indices, numIndices, strideIdx, b, stridesB, shapeB, rankB, opCode);
 }
 void s_at_boolean(uint8_t *a, const int *stridesA, const int *shapeA, int rankA, const int64_t *indices, int numIndices, int strideIdx, const uint8_t *b, const int *stridesB, const int *shapeB, int rankB, int opCode) {
-    s_at_impl(a, stridesA, shapeA, rankA, indices, numIndices, strideIdx, b, stridesB, shapeB, rankB, opCode);
+    s_at_op_impl(a, stridesA, shapeA, rankA, indices, numIndices, strideIdx, b, stridesB, shapeB, rankB, [opCode](uint8_t x, uint8_t y) { return apply_at_op_boolean(x, y, opCode); });
 }
 
 
@@ -14477,7 +14596,8 @@ void v_reduceat_complex64(const cpx_f_t *src, int64_t size, const int64_t *indic
     v_reduceat_generic(src, size, indices, numIndices, dest, opCode);
 }
 void v_reduceat_boolean(const uint8_t *src, int64_t size, const int64_t *indices, int64_t numIndices, uint8_t *dest, int opCode) {
-    v_reduceat_generic(src, size, indices, numIndices, dest, opCode);
+    int unrollOp = (opCode == 0) ? 14 : ((opCode == 1) ? 13 : opCode);
+    v_reduceat_op_impl(src, size, indices, numIndices, dest, [opCode](uint8_t a, uint8_t b) { return apply_at_op_boolean(a, b, opCode); }, unrollOp);
 }
 
 void s_reduceat_double(const double *src, const int *stridesSrc, double *dest, const int *stridesDest, const int *shape, int rank, int axis, const int64_t *indices, int numIndices, int opCode) {
@@ -14505,7 +14625,7 @@ void s_reduceat_complex64(const cpx_f_t *src, const int *stridesSrc, cpx_f_t *de
     s_reduceat_generic(src, stridesSrc, dest, stridesDest, shape, rank, axis, indices, numIndices, opCode);
 }
 void s_reduceat_boolean(const uint8_t *src, const int *stridesSrc, uint8_t *dest, const int *stridesDest, const int *shape, int rank, int axis, const int64_t *indices, int numIndices, int opCode) {
-    s_reduceat_generic(src, stridesSrc, dest, stridesDest, shape, rank, axis, indices, numIndices, opCode);
+    s_reduceat_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, indices, numIndices, [opCode](uint8_t a, uint8_t b) { return apply_at_op_boolean(a, b, opCode); }, opCode);
 }
 
 /* ============================================================================
@@ -15820,6 +15940,7 @@ static void v_histogram_uniform_kernel(
     double norm,
     H *hist
 ) {
+    double step = (max_val - min_val) / (double)nbins;
     for (int i = 0; i < size; ++i) {
         double val = (double)src[i];
         if (std::isnan(val) || val < min_val || val > max_val) continue;
@@ -15828,8 +15949,13 @@ static void v_histogram_uniform_kernel(
             bin = nbins - 1;
         } else {
             bin = (int)((val - min_val) * norm);
-            if (bin < 0) continue;
+            if (bin < 0) bin = 0;
             if (bin >= nbins) bin = nbins - 1;
+            if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
+                bin++;
+            } else if (bin > 0 && val < min_val + (double)bin * step) {
+                bin--;
+            }
         }
         if (weights != nullptr) {
             hist[bin] += (H)weights[i];
@@ -15850,6 +15976,7 @@ static void s_histogram_uniform_kernel(
     double norm,
     H *hist, int strideHist
 ) {
+    double step = (max_val - min_val) / (double)nbins;
     for (int i = 0; i < size; ++i) {
         double val = (double)src[i * strideSrc];
         if (std::isnan(val) || val < min_val || val > max_val) continue;
@@ -15858,8 +15985,13 @@ static void s_histogram_uniform_kernel(
             bin = nbins - 1;
         } else {
             bin = (int)((val - min_val) * norm);
-            if (bin < 0) continue;
+            if (bin < 0) bin = 0;
             if (bin >= nbins) bin = nbins - 1;
+            if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
+                bin++;
+            } else if (bin > 0 && val < min_val + (double)bin * step) {
+                bin--;
+            }
         }
         if (weights != nullptr) {
             hist[bin * strideHist] += (H)weights[i * strideWeights];

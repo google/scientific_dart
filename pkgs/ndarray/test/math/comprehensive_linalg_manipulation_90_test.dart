@@ -1666,10 +1666,10 @@ void main() {
             );
             final b32 = NDArray.fromList(
               Float32List.fromList([4.0, 6.0, 9.0, 12.0]),
-              [2, 2],
+              [2, 2, 1],
               DType.float32,
             );
-            final outX = NDArray.zeros([2, 2], DType.float32);
+            final outX = NDArray.zeros([2, 2, 1], DType.float32);
             final x = solve(a32, b32, out: outX);
             expect(identical(x, outX), true);
             expect(x.toList()[0], closeTo(2.0, 1e-4));

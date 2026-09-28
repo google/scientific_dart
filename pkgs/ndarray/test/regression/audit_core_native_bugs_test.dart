@@ -424,14 +424,15 @@ void main() {
         final u64 = NDArray.fromList([10], [1], DType.uint64);
         final i64 = NDArray.fromList([-1], [1], DType.int64);
         try {
+          // With saturating scalar casts (P7): 300 saturates to 255 in uint8, -1 saturates to 0 in uint8/uint64
           final eq300 = u8.eq(300);
           final ltNeg1 = u8 < -1;
           final gtNeg1 = u8 > -1;
           final lt300 = u8 < 300;
           final u64LtNeg1 = u64 < -1;
           final u64EqNeg1 = u64.eq(-1);
-          final cmpMixedLt = less(i64, u64);
-          final cmpMixedGt = greater(u64, i64);
+          expect(() => less(i64, u64), throwsArgumentError);
+          expect(() => greater(u64, i64), throwsArgumentError);
           try {
             expect(eq300.toList(), equals([false]));
             expect(ltNeg1.toList(), equals([false]));
@@ -439,8 +440,6 @@ void main() {
             expect(lt300.toList(), equals([true]));
             expect(u64LtNeg1.toList(), equals([false]));
             expect(u64EqNeg1.toList(), equals([false]));
-            expect(cmpMixedLt.toList(), equals([true]));
-            expect(cmpMixedGt.toList(), equals([true]));
           } finally {
             eq300.dispose();
             ltNeg1.dispose();
@@ -448,8 +447,6 @@ void main() {
             lt300.dispose();
             u64LtNeg1.dispose();
             u64EqNeg1.dispose();
-            cmpMixedLt.dispose();
-            cmpMixedGt.dispose();
           }
         } finally {
           u8.dispose();

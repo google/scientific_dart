@@ -525,17 +525,17 @@ void main() {
     });
 
     test(
-      'H5: sum of boolean preserves Boolean and sumAs returns int64 count of trues',
+      'H5: sum of boolean returns int64 count of trues and sumAs(boolean) preserves Boolean',
       () {
         final b = NDArray.fromList(
           [true, true, false, true],
           [4],
           DType.boolean,
         );
-        final sSame = sum(b);
+        final sSame = sumAs(b, DType.boolean);
         expect(sSame.dtype, DType.boolean);
         expect(sSame.scalar, true);
-        final s = sumAs(b, DType.int64);
+        final s = sum(b);
         expect(s.dtype, DType.int64);
         expect(s.scalar, 3);
         b.dispose();

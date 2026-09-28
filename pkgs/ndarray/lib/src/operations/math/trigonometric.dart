@@ -2688,6 +2688,13 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute atan2() on a disposed array.');
   }
+  if (y.dtype != x.dtype) {
+    throw ArgumentError.value(
+      x.dtype,
+      'x',
+      'Must have the same dtype as y (${y.dtype})',
+    );
+  }
   if (y.dtype.isInteger ||
       y.dtype == DType.boolean ||
       x.dtype.isInteger ||
@@ -2887,27 +2894,21 @@ NDArray<R> hypot<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute hypot() on a disposed array.');
   }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  if (a.dtype.isComplex || b.dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for hypot');
+  }
   final broadcastResult = broadcast(a, b);
   final shape = broadcastResult.shape;
-  final isCpx = (a.dtype.isComplex || b.dtype.isComplex);
-  final is64BitComplex =
-      (a.dtype == DType.complex128 ||
-      b.dtype == DType.complex128 ||
-      a.dtype == DType.float64 ||
-      b.dtype == DType.float64 ||
-      a.dtype == DType.int64 ||
-      b.dtype == DType.int64 ||
-      a.dtype == DType.uint64 ||
-      b.dtype == DType.uint64);
-
-  final DType<R> targetDType;
-  if (isCpx) {
-    targetDType = (is64BitComplex ? DType.float64 : DType.float32) as DType<R>;
-  } else {
-    final resType = resolveDType(a.dtype, b.dtype);
-    targetDType =
-        (resType == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
-  }
+  final resType = resolveDType(a.dtype, b.dtype);
+  final DType<R> targetDType =
+      (resType == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
 
   if (out != null) {
     if (!out.isWriteable ||
@@ -2922,104 +2923,6 @@ NDArray<R> hypot<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   try {
     final NDArray<R> result =
         out ?? NDArray<R>.create(shape, targetDType, zeroInit: where != null);
-    if (isCpx) {
-      final DType<DTypeTag> cpxDType = is64BitComplex
-          ? DType.complex128
-          : DType.complex64;
-      return NDArray.scope(() {
-        final aCpx = castNDArray<DTypeTag>(a, cpxDType);
-        final bCpx = castNDArray<DTypeTag>(b, cpxDType);
-        final cpxBroadcast = broadcast(aCpx, bCpx);
-        if (listEquals(a.shape, b.shape) &&
-            a.isContiguous &&
-            b.isContiguous &&
-            result.isContiguous) {
-          switch (cpxDType) {
-            case DType.complex128:
-              v_hypot_complex128(
-                aCpx.pointer.cast(),
-                bCpx.pointer.cast(),
-                result.pointer.cast(),
-                aCpx.size,
-                maskHolder.pointer,
-              );
-            case DType.float64:
-            case DType.float32:
-            case DType.float16:
-            case DType.bfloat16:
-            case DType.int64:
-            case DType.int32:
-            case DType.int16:
-            case DType.int8:
-            case DType.uint64:
-            case DType.uint32:
-            case DType.uint16:
-            case DType.uint8:
-            case DType.boolean:
-            case DType.complex64:
-              v_hypot_complex64(
-                aCpx.pointer.cast(),
-                bCpx.pointer.cast(),
-                result.pointer.cast(),
-                aCpx.size,
-                maskHolder.pointer,
-              );
-          }
-          return result;
-        } else {
-          final rank = shape.length;
-          final marker = ScratchArena.marker;
-          try {
-            final cShape = ScratchArena.copyInts(shape);
-            final cStridesA = ScratchArena.copyInts(cpxBroadcast.stridesA);
-            final cStridesB = ScratchArena.copyInts(cpxBroadcast.stridesB);
-            final cStridesRes = ScratchArena.copyInts(result.strides);
-            switch (cpxDType) {
-              case DType.complex128:
-                s_hypot_complex128(
-                  aCpx.pointer.cast(),
-                  cStridesA,
-                  bCpx.pointer.cast(),
-                  cStridesB,
-                  result.pointer.cast(),
-                  cStridesRes,
-                  cShape,
-                  rank,
-                  maskHolder.pointer,
-                );
-              case DType.float64:
-              case DType.float32:
-              case DType.float16:
-              case DType.bfloat16:
-              case DType.int64:
-              case DType.int32:
-              case DType.int16:
-              case DType.int8:
-              case DType.uint64:
-              case DType.uint32:
-              case DType.uint16:
-              case DType.uint8:
-              case DType.boolean:
-              case DType.complex64:
-                s_hypot_complex64(
-                  aCpx.pointer.cast(),
-                  cStridesA,
-                  bCpx.pointer.cast(),
-                  cStridesB,
-                  result.pointer.cast(),
-                  cStridesRes,
-                  cShape,
-                  rank,
-                  maskHolder.pointer,
-                );
-            }
-            return result;
-          } finally {
-            ScratchArena.reset(marker);
-          }
-        }
-      });
-    }
 
     double hypotOp(double x, double y) {
       if (x.isInfinite || y.isInfinite) return double.infinity;
@@ -3108,11 +3011,16 @@ NDArray<R> deg2rad<R extends DTypeTag>(
     }
   }
 
+  final aPromoted = (a.dtype as DType<DTypeTag>) == targetDType
+      ? a
+      : castNDArray(a, targetDType);
   final factor = NDArray.fromList([0.017453292519943295], [], targetDType);
   try {
-    return multiply<DTypeTag>(a, factor, where: where, out: out) as NDArray<R>;
+    return multiply<DTypeTag>(aPromoted, factor, where: where, out: out)
+        as NDArray<R>;
   } finally {
     factor.dispose();
+    if (!identical(aPromoted, a)) aPromoted.dispose();
   }
 }
 
@@ -3163,10 +3071,15 @@ NDArray<R> rad2deg<R extends DTypeTag>(
     }
   }
 
+  final aPromoted = (a.dtype as DType<DTypeTag>) == targetDType
+      ? a
+      : castNDArray(a, targetDType);
   final factor = NDArray.fromList([57.29577951308232], [], targetDType);
   try {
-    return multiply<DTypeTag>(a, factor, where: where, out: out) as NDArray<R>;
+    return multiply<DTypeTag>(aPromoted, factor, where: where, out: out)
+        as NDArray<R>;
   } finally {
     factor.dispose();
+    if (!identical(aPromoted, a)) aPromoted.dispose();
   }
 }

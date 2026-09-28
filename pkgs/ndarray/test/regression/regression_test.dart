@@ -188,43 +188,48 @@ void main() {
       final a = NDArray<Uint8>.fromList([4, 5, 6], [3], DType.uint8);
       final b = NDArray<Int16>.fromList([2, 2, 2], [3], DType.int16);
 
-      // This should not crash
-      final c = floorDivide(a, b);
+      expect(() => floorDivide<DTypeTag>(a, b), throwsArgumentError);
+      final aCast = castNDArray(a, DType.int16);
+      final c = floorDivide(aCast, b);
       expect(c.toList(), [2, 2, 3]);
-      expect(
-        c.dtype,
-        DType.int16,
-      ); // resolved dtype of uint8 and int16 is int16 (NumPy style)
+      expect(c.dtype, DType.int16);
+      aCast.dispose();
     });
 
     test('floorDivide with uint8/float64', () {
       final a = NDArray<Uint8>.fromList([5, 6, 7], [3], DType.uint8);
       final b = NDArray<Float64>.fromList([2.0, 2.0, 2.0], [3], DType.float64);
 
-      // This should not crash
-      final c = floorDivide(a, b);
+      expect(() => floorDivide<DTypeTag>(a, b), throwsArgumentError);
+      final aCast = castNDArray(a, DType.float64);
+      final c = floorDivide(aCast, b);
       expect(c.toList(), [2.0, 3.0, 3.0]);
       expect(c.dtype, DType.float64);
+      aCast.dispose();
     });
 
     test('remainder with uint8/int16', () {
       final a = NDArray<Uint8>.fromList([5, 6, 7], [3], DType.uint8);
       final b = NDArray<Int16>.fromList([3, 3, 3], [3], DType.int16);
 
-      // This should not crash
-      final c = remainder(a, b);
+      expect(() => remainder<DTypeTag>(a, b), throwsArgumentError);
+      final aCast = castNDArray(a, DType.int16);
+      final c = remainder(aCast, b);
       expect(c.toList(), [2, 0, 1]);
       expect(c.dtype, DType.int16);
+      aCast.dispose();
     });
 
     test('remainder with uint8/float64', () {
       final a = NDArray<Uint8>.fromList([5, 6, 7], [3], DType.uint8);
       final b = NDArray<Float64>.fromList([3.0, 3.0, 3.0], [3], DType.float64);
 
-      // This should not crash
-      final c = remainder(a, b);
+      expect(() => remainder<DTypeTag>(a, b), throwsArgumentError);
+      final aCast = castNDArray(a, DType.float64);
+      final c = remainder(aCast, b);
       expect(c.toList(), [2.0, 0.0, 1.0]);
       expect(c.dtype, DType.float64);
+      aCast.dispose();
     });
 
     test('sin with uint8/int16', () {

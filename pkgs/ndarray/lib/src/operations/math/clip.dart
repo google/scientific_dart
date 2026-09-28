@@ -164,7 +164,12 @@ NDArray<T> clip<T extends DTypeTag>(
           0,
           a.offsetElements,
           result.offsetElements,
-          (x) => castValue((x as num).toInt().clamp(mn, mx), a.dtype),
+          (x) {
+            var v = (x as num).toInt();
+            if (v < mn) v = mn;
+            if (v > mx) v = mx;
+            return castValue(v, a.dtype);
+          },
           maskHolder.pointer,
         );
       case DType.float64:
@@ -185,7 +190,15 @@ NDArray<T> clip<T extends DTypeTag>(
           0,
           a.offsetElements,
           result.offsetElements,
-          (x) => castValue((x as num).toDouble().clamp(mn, mx), a.dtype),
+          (x) {
+            final d = (x as num).toDouble();
+            if (d.isNaN || mn.isNaN || mx.isNaN) {
+              return castValue(double.nan, a.dtype);
+            }
+            var v = d < mn ? mn : d;
+            if (v > mx) v = mx;
+            return castValue(v, a.dtype);
+          },
           maskHolder.pointer,
         );
     }

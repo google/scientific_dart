@@ -354,11 +354,12 @@ void main() {
         expect(outAtan2.getCell([1]), 0.0);
         expect(outAtan2.getCell([2]), closeTo(math.pi, 1e-14));
 
-        // Complex throws UnsupportedError
+        // Complex throws UnsupportedError, mixed dtypes throw ArgumentError
         final cArray = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
         final rArray = NDArray.fromList([1.0], [1], DType.float64);
-        expect(() => atan2(cArray, rArray), throwsUnsupportedError);
-        expect(() => atan2(rArray, cArray), throwsUnsupportedError);
+        expect(() => atan2(cArray, cArray), throwsUnsupportedError);
+        expect(() => atan2(cArray, rArray), throwsArgumentError);
+        expect(() => atan2(rArray, cArray), throwsArgumentError);
 
         // Disposed checks
         final disposedY = NDArray.fromList([1.0], [1], DType.float64)
@@ -592,7 +593,7 @@ void main() {
         expect(hMat.getCell([1, 0]), closeTo(math.sqrt(25 + 16), 1e-14));
         expect(hMat.getCell([1, 1]), closeTo(13.0, 1e-14));
 
-        // Complex hypot
+        // Complex hypot throws UnsupportedError (S7)
         final aCpx = NDArray.fromList(
           [Complex(3.0, 0.0)],
           [1],
@@ -603,8 +604,7 @@ void main() {
           [1],
           DType.complex128,
         );
-        final hCpx = hypot(aCpx, bCpx);
-        expect(hCpx.getCell([0]), closeTo(5.0, 1e-14));
+        expect(() => hypot(aCpx, bCpx), throwsUnsupportedError);
 
         // Infinities
         final aInf = NDArray.fromList(

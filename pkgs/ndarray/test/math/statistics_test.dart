@@ -116,9 +116,9 @@ void main() {
             DType.int32,
           );
           final m = median(a);
-          // 1, 2, 3, 4 -> (2+3)/2 = 2 (integer division in C kernel: (2+3)/2 = 2)
-          expect(m.dtype, DType.int32);
-          expect(m.toList()[0], 2);
+          // 1, 2, 3, 4 -> (2+3)/2 = 2.5 in Float64
+          expect(m.dtype, DType.float64);
+          expect(m.toList()[0], 2.5);
         });
       });
 
@@ -130,8 +130,8 @@ void main() {
             DType.int64,
           );
           final m = median(a);
-          expect(m.dtype, DType.int64);
-          expect(m.toList()[0], 20);
+          expect(m.dtype, DType.float64);
+          expect(m.toList()[0], 20.0);
         });
       });
 
@@ -143,13 +143,13 @@ void main() {
             DType.uint8,
           );
           final m = median(a);
-          // 1, 3, 4, 5 -> (3+4)/2 = 3
-          expect(m.dtype, DType.uint8);
-          expect(m.toList()[0], 3);
+          // 1, 3, 4, 5 -> (3+4)/2 = 3.5 in Float64
+          expect(m.dtype, DType.float64);
+          expect(m.toList()[0], 3.5);
         });
       });
 
-      test('Median complex128 (independent real/imag)', () {
+      test('Median complex128 (lexicographic real/imag)', () {
         NDArray.scope(() {
           final a = NDArray<Complex128>.fromList(
             ([Complex(3.0, 1.0), Complex(1.0, 9.0), Complex(2.0, 5.0)])
@@ -158,15 +158,14 @@ void main() {
             [3],
             DType.complex128,
           );
-          // Reals: 3, 1, 2 -> median is 2
-          // Imags: 1, 9, 5 -> median is 5
+          // Sorted lexicographically: 1+9i, 2+5i, 3+1i -> median is 2+5i
           final m = median(a);
           expect(m.dtype, DType.complex128);
           expect(m.scalar, Complex(2.0, 5.0));
         });
       });
 
-      test('Median complex64 (independent real/imag)', () {
+      test('Median complex64 (lexicographic real/imag)', () {
         NDArray.scope(() {
           final a = NDArray<Complex64>.fromList(
             ([
@@ -180,11 +179,10 @@ void main() {
             [4],
             DType.complex64,
           );
-          // Reals: 1, 2, 3, 4 -> median: (2+3)/2 = 2.5
-          // Imags: 1, 2, 3, 4 -> median: (2+3)/2 = 2.5
+          // Sorted lexicographically: 1+4i, 2+2i, 3+1i, 4+3i -> middle two are 2+2i and 3+1i -> 2.5 + 1.5i
           final m = median(a);
           expect(m.dtype, DType.complex64);
-          expect(m.scalar, Complex(2.5, 2.5));
+          expect(m.scalar, Complex(2.5, 1.5));
         });
       });
 
@@ -2092,9 +2090,9 @@ void main() {
           DType.float64,
         );
         final res = intersect1d(a, b);
-        // NaNs should match
-        expect(res.shape, [2]);
-        expectListEqualsWithNaNs(res.toList(), [2.0, double.nan]);
+        // NaN != NaN per IEEE-754 and NumPy parity (S5)
+        expect(res.shape, [1]);
+        expect(res.toList(), [2.0]);
         a.dispose();
         b.dispose();
         res.dispose();

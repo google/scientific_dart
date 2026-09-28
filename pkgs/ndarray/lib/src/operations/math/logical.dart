@@ -297,9 +297,9 @@ NDArray<Boolean> logicalNot<T extends DTypeTag>(
 /// ```
 ///
 /// Reference: [NumPy equal](https://numpy.org/doc/stable/reference/generated/numpy.equal.html)
-NDArray<Boolean> equal<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> equal<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -308,6 +308,13 @@ NDArray<Boolean> equal<Ta extends DTypeTag, Tb extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError("Cannot execute equal() on a disposed array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
@@ -349,9 +356,9 @@ NDArray<Boolean> equal<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// ```
 ///
 /// Reference: [NumPy not_equal](https://numpy.org/doc/stable/reference/generated/numpy.not_equal.html)
-NDArray<Boolean> notEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> notEqual<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -360,6 +367,13 @@ NDArray<Boolean> notEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError("Cannot execute notEqual() on a disposed array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
@@ -403,9 +417,9 @@ NDArray<Boolean> notEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// ```
 ///
 /// Reference: [NumPy greater](https://numpy.org/doc/stable/reference/generated/numpy.greater.html)
-NDArray<Boolean> greater<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> greater<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -414,6 +428,13 @@ NDArray<Boolean> greater<Ta extends DTypeTag, Tb extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError("Cannot execute greater() on a disposed array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   if (a.dtype.isComplex || b.dtype.isComplex) {
     throw UnsupportedError(
@@ -462,9 +483,9 @@ NDArray<Boolean> greater<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// ```
 ///
 /// Reference: [NumPy greater_equal](https://numpy.org/doc/stable/reference/generated/numpy.greater_equal.html)
-NDArray<Boolean> greaterEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> greaterEqual<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -473,6 +494,13 @@ NDArray<Boolean> greaterEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError("Cannot execute greaterEqual() on a disposed array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   if (a.dtype.isComplex || b.dtype.isComplex) {
     throw UnsupportedError(
@@ -521,9 +549,9 @@ NDArray<Boolean> greaterEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// ```
 ///
 /// Reference: [NumPy less](https://numpy.org/doc/stable/reference/generated/numpy.less.html)
-NDArray<Boolean> less<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> less<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -532,6 +560,13 @@ NDArray<Boolean> less<Ta extends DTypeTag, Tb extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError("Cannot execute less() on a disposed array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   if (a.dtype.isComplex || b.dtype.isComplex) {
     throw UnsupportedError(
@@ -580,9 +615,9 @@ NDArray<Boolean> less<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// ```
 ///
 /// Reference: [NumPy less_equal](https://numpy.org/doc/stable/reference/generated/numpy.less_equal.html)
-NDArray<Boolean> lessEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> lessEqual<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -591,6 +626,13 @@ NDArray<Boolean> lessEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
     throw StateError("Cannot execute lessEqual() on a disposed array.");
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
   if (a.dtype.isComplex || b.dtype.isComplex) {
     throw UnsupportedError(
@@ -1116,6 +1158,13 @@ NDArray<Boolean> _runBinaryLogical<Ta extends DTypeTag, Tb extends DTypeTag>(
 ) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot perform $opName on disposed arrays.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
 
   final marker = ScratchArena.marker;

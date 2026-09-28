@@ -754,18 +754,16 @@ void main() {
       );
 
       test(
-        'Batched 3D solve with 2D vector RHS',
+        'Batched 3D solve with 1D vector RHS',
         () => NDArray.scope(() {
           final a = NDArray.fromList(
             Float64List.fromList([3.0, 1.0, 1.0, 2.0, 3.0, 1.0, 1.0, 2.0]),
             [2, 2, 2],
             DType.float64,
           );
-          final b = NDArray.fromList(
-            Float64List.fromList([9.0, 8.0, 9.0, 8.0]),
-            [2, 2],
-            DType.float64,
-          );
+          final b = NDArray.fromList(Float64List.fromList([9.0, 8.0]), [
+            2,
+          ], DType.float64);
 
           final x = solve(a, b);
           expect(x.shape, [2, 2]);
@@ -1671,11 +1669,10 @@ void main() {
 
             final res = kron(a, b);
             expect(res.shape, [4]);
-            final expectedDType = dtype == DType.boolean ? DType.uint8 : dtype;
-            expect(res.dtype, expectedDType);
+            expect(res.dtype, dtype);
 
             if (dtype == DType.boolean) {
-              expect(res.toList(), [1, 1, 0, 0]);
+              expect(res.toList(), [true, true, false, false]);
             } else if (dtype.isComplex) {
               expect(res.toList()[0].real, 3.0);
               expect(res.toList()[1].real, 4.0);
@@ -1738,11 +1735,10 @@ void main() {
 
             final res = outer(a, b);
             expect(res.shape, [2, 2]);
-            final expectedDType = dtype == DType.boolean ? DType.uint8 : dtype;
-            expect(res.dtype, expectedDType);
+            expect(res.dtype, dtype);
 
             if (dtype == DType.boolean) {
-              expect(res.toList(), [1, 1, 0, 0]);
+              expect(res.toList(), [true, true, false, false]);
             } else if (dtype.isComplex) {
               expect(res.toList()[0].real, 8.0);
               expect(res.toList()[1].real, 10.0);
@@ -1813,11 +1809,10 @@ void main() {
 
             final res = cross(a, b);
             expect(res.shape, [3]);
-            final expectedDType = dtype == DType.boolean ? DType.uint8 : dtype;
-            expect(res.dtype, expectedDType);
+            expect(res.dtype, dtype);
 
             if (dtype == DType.boolean) {
-              expect(res.toList(), [0, 0, 1]);
+              expect(res.toList(), [false, false, true]);
             } else if (dtype.isComplex) {
               expect(res.toList()[0].real, 0.0);
               expect(res.toList()[1].real, 0.0);
@@ -1866,7 +1861,9 @@ void main() {
                         )
                       : (dtype.isFloating
                             ? NDArray.fromList([1.0, -2.0, 3.0], [3], dtype)
-                            : NDArray.fromList([1, -2, 3], [3], dtype)));
+                            : (dtype == DType.uint8
+                                  ? NDArray.fromList([1, 2, 3], [3], dtype)
+                                  : NDArray.fromList([1, -2, 3], [3], dtype))));
 
             final res = norm((x as NDArray<AnySpec>), ord: 1);
             expect(res.shape, []);
@@ -1878,8 +1875,6 @@ void main() {
 
             if (dtype == DType.boolean) {
               expect(res.toList()[0], 2.0);
-            } else if (dtype == DType.uint8) {
-              expect(res.toList()[0], 258.0);
             } else {
               expect(res.toList()[0], 6.0);
             }

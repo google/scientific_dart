@@ -769,9 +769,25 @@ NDArray<T> convolve<T extends DTypeTag>(
       (_) => const Slice(step: -1),
     );
     final flippedKernel = in2.slice(reversedSelectors);
-    final contiguousKernel = flippedKernel.isContiguous
+    final contiguousKernel =
+        (flippedKernel.isContiguous && !in2.dtype.isComplex)
         ? flippedKernel
         : flippedKernel.copy();
+    if (in2.dtype == DType.complex128) {
+      bindings.v_conj_complex128(
+        contiguousKernel.pointer.cast(),
+        contiguousKernel.pointer.cast(),
+        contiguousKernel.size,
+        ffi.nullptr,
+      );
+    } else if (in2.dtype == DType.complex64) {
+      bindings.v_conj_complex64(
+        contiguousKernel.pointer.cast(),
+        contiguousKernel.pointer.cast(),
+        contiguousKernel.size,
+        ffi.nullptr,
+      );
+    }
     final res = correlate<T>(in1, contiguousKernel, mode: mode, out: out);
     if (out != null) return out;
     return res.detachToParentScope();

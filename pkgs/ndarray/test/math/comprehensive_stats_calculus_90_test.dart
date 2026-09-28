@@ -921,10 +921,10 @@ void main() {
                 expect(prod(emptyCpx).scalar, equals(Complex(1.0, 0.0)));
 
                 final emptyBool = NDArray.create([0], DType.boolean);
-                expect(sum(emptyBool).scalar, isFalse);
-                expect(prod(emptyBool).scalar, isTrue);
-                expect(sumAs(emptyBool, DType.int64).scalar, equals(0));
-                expect(prodAs(emptyBool, DType.int64).scalar, equals(1));
+                expect(sum(emptyBool).scalar, equals(0));
+                expect(prod(emptyBool).scalar, equals(1));
+                expect(sumAs(emptyBool, DType.boolean).scalar, isFalse);
+                expect(prodAs(emptyBool, DType.boolean).scalar, isTrue);
 
                 final aI32 = NDArray.fromList([2, 3, 4], [3], DType.int32);
                 expect(sum(aI32).scalar, 9);

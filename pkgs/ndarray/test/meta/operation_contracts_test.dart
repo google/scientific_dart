@@ -1214,12 +1214,9 @@ void main() {
     );
   });
 
-  group('Mixed-dtype binary kernel contracts', () {
-    // Every specialized mixed-dtype kernel must agree with casting both
-    // operands to the result dtype first. This catches kernels that write a
-    // narrower element type than the promoted result buffer (e.g. float32
-    // results written into a float64 buffer, leaving half of it
-    // uninitialized).
+  group('Same-dtype binary kernel contracts', () {
+    // Binary arithmetic operations require matching operand dtypes, while *As
+    // variants require matching operand dtypes and match cast-then-compute.
     const realDTypes = <DType>[
       DType.float64,
       DType.float32,
@@ -1256,7 +1253,7 @@ void main() {
     for (final MapEntry(key: name, value: op) in ops.entries) {
       for (final dtypeA in realDTypes) {
         for (final dtypeB in realDTypes) {
-          test('$name($dtypeA, $dtypeB) matches cast-then-compute', () {
+          test('$name($dtypeA, $dtypeB) enforces same-dtype contract', () {
             NDArray.scope(() {
               // Contiguous and strided operands exercise both v_ and s_
               // kernels.
@@ -1267,12 +1264,16 @@ void main() {
                 (a, b),
                 (a.slice(strided), b.slice(strided)),
               ]) {
-                final actual = op(x, y);
-                final expected = op(
-                  castNDArray(x, actual.dtype),
-                  castNDArray(y, actual.dtype),
-                );
-                expect(actual.toList(), expected.toList());
+                if (dtypeA != dtypeB) {
+                  expect(() => op(x, y), throwsArgumentError);
+                } else {
+                  final actual = op(x, y);
+                  final expected = op(
+                    castNDArray(x, actual.dtype),
+                    castNDArray(y, actual.dtype),
+                  );
+                  expect(actual.toList(), expected.toList());
+                }
               }
             });
           });

@@ -501,10 +501,11 @@ void main() {
     test(
       'median on uint64 with values >= 2^63 does not clamp to signed int64 max',
       () {
-        // Two elements both equal to -2 (2^64 - 2) -> median should be -2
+        // Two elements both equal to -2 (2^64 - 2) -> median is Float64 (2^64 - 2).toDouble()
         final u = NDArray.fromList([-2, -2], [2], DType.uint64);
         final med = median(u);
-        expect(med.scalar, equals(-2));
+        expect(med.dtype, equals(DType.float64));
+        expect(med.scalar, equals(BigInt.from(-2).toUnsigned(64).toDouble()));
 
         u.dispose();
         med.dispose();

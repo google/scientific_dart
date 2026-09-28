@@ -319,15 +319,70 @@ void main() {
                   }
                 }
 
-                // 1. add, subtract, multiply, divide (all 15x15 pairs)
+                if (dtA != dtB) {
+                  expect(() => add(a, b, where: where), throwsArgumentError);
+                  expect(
+                    () => subtract(a, b, where: where),
+                    throwsArgumentError,
+                  );
+                  expect(
+                    () => multiply(a, b, where: where),
+                    throwsArgumentError,
+                  );
+                  expect(() => divide(a, b, where: where), throwsArgumentError);
+                  expect(() => power(a, b, where: where), throwsArgumentError);
+                  expect(() => hypot(a, b, where: where), throwsArgumentError);
+                  expect(
+                    () => floorDivide(a, b, where: where),
+                    throwsArgumentError,
+                  );
+                  expect(
+                    () => remainder(a, b, where: where),
+                    throwsArgumentError,
+                  );
+                  expect(() => fmod(a, b, where: where), throwsArgumentError);
+                  expect(
+                    () => heaviside(a, b, where: where),
+                    throwsArgumentError,
+                  );
+                  expect(
+                    () => logaddexp(a, b, where: where),
+                    throwsA(
+                      anyOf(isA<ArgumentError>(), isA<UnsupportedError>()),
+                    ),
+                  );
+                  expect(
+                    () => logaddexp2(a, b, where: where),
+                    throwsA(
+                      anyOf(isA<ArgumentError>(), isA<UnsupportedError>()),
+                    ),
+                  );
+                  expect(
+                    () => copysign(a, b, where: where),
+                    throwsA(
+                      anyOf(isA<ArgumentError>(), isA<UnsupportedError>()),
+                    ),
+                  );
+                  expect(() => atan2(a, b, where: where), throwsArgumentError);
+                  expect(() => gcd(a, b, where: where), throwsArgumentError);
+                  expect(() => lcm(a, b, where: where), throwsArgumentError);
+                  if (!useMask) {
+                    expect(() => kron(a, b), throwsArgumentError);
+                  }
+                  return;
+                }
+
+                // 1. add, subtract, multiply, divide (same-dtype pairs)
                 verifyGrid(
                   add(a, b, where: where),
-                  resolved,
-                  (va, vb) => resolved.isComplex
-                      ? _toComplex(va) + _toComplex(vb)
-                      : (resolved.isInteger
-                            ? _toInt(va) + _toInt(vb)
-                            : _toDouble(va) + _toDouble(vb)),
+                  dtA,
+                  (va, vb) => dtA == DType.boolean
+                      ? (va as bool) || (vb as bool)
+                      : (dtA.isComplex
+                            ? _toComplex(va) + _toComplex(vb)
+                            : (dtA.isInteger
+                                  ? _toInt(va) + _toInt(vb)
+                                  : _toDouble(va) + _toDouble(vb))),
                   'add',
                 );
 
@@ -344,12 +399,14 @@ void main() {
 
                 verifyGrid(
                   multiply(a, b, where: where),
-                  resolved,
-                  (va, vb) => resolved.isComplex
-                      ? _toComplex(va) * _toComplex(vb)
-                      : (resolved.isInteger
-                            ? _toInt(va) * _toInt(vb)
-                            : _toDouble(va) * _toDouble(vb)),
+                  dtA,
+                  (va, vb) => dtA == DType.boolean
+                      ? (va as bool) && (vb as bool)
+                      : (dtA.isComplex
+                            ? _toComplex(va) * _toComplex(vb)
+                            : (dtA.isInteger
+                                  ? _toInt(va) * _toInt(vb)
+                                  : _toDouble(va) * _toDouble(vb))),
                   'multiply',
                 );
 
@@ -366,66 +423,44 @@ void main() {
                   'divide',
                 );
 
-                // 2. power (same dtype succeeds, mixed dtype throws ArgumentError)
-                if (dtA == dtB) {
-                  verifyGrid(power(a, b, where: where), dtA, (va, vb) {
-                    if (dtA == DType.boolean) {
-                      final ba = va as bool;
-                      final bb = vb as bool;
-                      return !bb || ba;
-                    }
-                    if (dtA.isComplex) {
-                      return _complexPow(_toComplex(va), _toComplex(vb));
-                    }
-                    if (dtA.isFloating) {
-                      return math.pow(_toDouble(va), _toDouble(vb)).toDouble();
-                    }
-                    var res = 1;
-                    final base = _toInt(va);
-                    final exp = _toInt(vb);
-                    for (var k = 0; k < exp; k++) {
-                      res *= base;
-                    }
-                    return res;
-                  }, 'power');
-                } else {
-                  expect(
-                    () => power(a, b, where: where),
-                    throwsArgumentError,
-                    reason: 'power($dtA, $dtB) must reject mixed dtypes',
-                  );
-                }
-
-                // 3. hypot (all 15x15 pairs)
-                final hypotDType = (dtA.isComplex || dtB.isComplex)
-                    ? ((dtA == DType.complex128 ||
-                              dtB == DType.complex128 ||
-                              dtA == DType.float64 ||
-                              dtB == DType.float64 ||
-                              dtA == DType.int64 ||
-                              dtB == DType.int64 ||
-                              dtA == DType.uint64 ||
-                              dtB == DType.uint64)
-                          ? DType.float64
-                          : DType.float32)
-                    : (resolved == DType.float32
-                          ? DType.float32
-                          : DType.float64);
-                verifyGrid(hypot(a, b, where: where), hypotDType, (va, vb) {
-                  if (dtA.isComplex || dtB.isComplex) {
-                    final ca = _toComplex(va);
-                    final cb = _toComplex(vb);
-                    return math.sqrt(
-                      ca.real * ca.real +
-                          ca.imag * ca.imag +
-                          cb.real * cb.real +
-                          cb.imag * cb.imag,
-                    );
+                // 2. power (same dtype succeeds)
+                verifyGrid(power(a, b, where: where), dtA, (va, vb) {
+                  if (dtA == DType.boolean) {
+                    final ba = va as bool;
+                    final bb = vb as bool;
+                    return !bb || ba;
                   }
-                  final da = _toDouble(va);
-                  final db = _toDouble(vb);
-                  return math.sqrt(da * da + db * db);
-                }, 'hypot');
+                  if (dtA.isComplex) {
+                    return _complexPow(_toComplex(va), _toComplex(vb));
+                  }
+                  if (dtA.isFloating) {
+                    return math.pow(_toDouble(va), _toDouble(vb)).toDouble();
+                  }
+                  var res = 1;
+                  final base = _toInt(va);
+                  final exp = _toInt(vb);
+                  for (var k = 0; k < exp; k++) {
+                    res *= base;
+                  }
+                  return res;
+                }, 'power');
+
+                // 3. hypot (disallows complex)
+                if (dtA.isComplex) {
+                  expect(
+                    () => hypot(a, b, where: where),
+                    throwsUnsupportedError,
+                  );
+                } else {
+                  final hypotDType = resolved == DType.float32
+                      ? DType.float32
+                      : DType.float64;
+                  verifyGrid(hypot(a, b, where: where), hypotDType, (va, vb) {
+                    final da = _toDouble(va);
+                    final db = _toDouble(vb);
+                    return math.sqrt(da * da + db * db);
+                  }, 'hypot');
+                }
 
                 // 4. floorDivide, remainder, fmod, heaviside, logaddexp, logaddexp2
                 if (dtA.isComplex || dtB.isComplex) {
@@ -559,24 +594,26 @@ void main() {
                 // 7. kron (when not masked)
                 if (!useMask) {
                   final kRes = kron(a, b);
-                  expect(kRes.dtype, equals(resolved));
+                  expect(kRes.dtype, equals(dtA));
                   expect(kRes.shape, equals([4, 4]));
                   for (var r = 0; r < 4; r++) {
                     for (var c = 0; c < 4; c++) {
                       final va = a.getCell([r ~/ 2, c ~/ 2]);
                       final vb = b.getCell([r % 2, c % 2]);
                       final Object expected = _wrapCast(
-                        resolved.isComplex
-                            ? _toComplex(va) * _toComplex(vb)
-                            : (resolved.isInteger
-                                  ? _toInt(va) * _toInt(vb)
-                                  : _toDouble(va) * _toDouble(vb)),
-                        resolved,
+                        dtA == DType.boolean
+                            ? (va as bool) && (vb as bool)
+                            : (dtA.isComplex
+                                  ? _toComplex(va) * _toComplex(vb)
+                                  : (dtA.isInteger
+                                        ? _toInt(va) * _toInt(vb)
+                                        : _toDouble(va) * _toDouble(vb))),
+                        dtA,
                       );
                       _expectCellMatches(
                         kRes.getCell([r, c]),
                         expected,
-                        resolved,
+                        dtA,
                         context: 'kron($dtA, $dtB, $mode) at [$r, $c]',
                       );
                     }
@@ -854,7 +891,7 @@ void main() {
                 'power',
               );
               checkSentinelWritten(
-                resolved,
+                dt,
                 (out) => add(a, b, out: out),
                 () => add(a, b),
                 'add',
@@ -866,7 +903,7 @@ void main() {
                 'subtract',
               );
               checkSentinelWritten(
-                resolved,
+                dt,
                 (out) => multiply(a, b, out: out),
                 () => multiply(a, b),
                 'multiply',
@@ -917,7 +954,7 @@ void main() {
                 'heaviside',
               );
               checkSentinelWritten(
-                resolved,
+                dt,
                 (out) => kron(a, b, out: out),
                 () => kron(a, b),
                 'kron',

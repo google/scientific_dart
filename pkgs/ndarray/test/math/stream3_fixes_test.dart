@@ -19,21 +19,29 @@ void main() {
   group('Stream 3 Fixes', () {
     test('Task 1: einsum mixed dtypes and out buffer handling', () {
       NDArray.scope(() {
-        // Mixed dtypes in einsum (int32 + float64)
+        // Mixed dtypes in einsum (int32 + float64) throw ArgumentError
         final aInt = NDArray<Int32>.fromList([1, 2, 3, 4], [2, 2], DType.int32);
         final bFloat = NDArray<Float64>.fromList(
           [0.5, 1.5, 2.5, 3.5],
           [2, 2],
           DType.float64,
         );
-        final res = einsum<DTypeTag>(EinsumSubscripts.parse('ij,jk->ik'), [
-          aInt,
+        expect(
+          () => einsum<DTypeTag>(EinsumSubscripts.parse('ij,jk->ik'), [
+            aInt,
+            bFloat,
+          ]),
+          throwsArgumentError,
+        );
+        final aFloat = aInt.astype(DType.float64);
+        final res = einsum(EinsumSubscripts.parse('ij,jk->ik'), [
+          aFloat,
           bFloat,
         ]);
         expect(res.dtype, equals(DType.float64));
         expect(res.shape, equals([2, 2]));
         // [1*0.5 + 2*2.5, 1*1.5 + 2*3.5] = [5.5, 8.5]
-        // [3*0.5 + 4*2.5, 3*1.5 + 4*3.5] = [11.5, 15.5]
+        // [3*0.5 + 4*2.5, 3*1.5 + 4*3.5] = [11.5, 18.5]
         expect(res[[0, 0]], closeTo(5.5, 1e-9));
         expect(res[[0, 1]], closeTo(8.5, 1e-9));
         expect(res[[1, 0]], closeTo(11.5, 1e-9));
@@ -41,8 +49,8 @@ void main() {
 
         // User-supplied out buffer in einsum
         final outBuf = NDArray<Float64>.zeros([2, 2], DType.float64);
-        final outRes = einsum<DTypeTag>(EinsumSubscripts.parse('ij,jk->ik'), [
-          aInt,
+        final outRes = einsum(EinsumSubscripts.parse('ij,jk->ik'), [
+          aFloat,
           bFloat,
         ], out: outBuf);
         expect(identical(outRes, outBuf), isTrue);

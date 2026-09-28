@@ -22,6 +22,7 @@ import '../exceptions.dart';
 import '../ndarray_bindings.dart';
 
 // Standalone operational relative cross-imports
+import 'broadcasting.dart';
 import 'math.dart';
 import 'helpers.dart';
 
@@ -254,33 +255,6 @@ void _checkLapackInfo(
   }
 }
 
-void _matmulUint64(
-  ffi.Pointer<ffi.Uint64> res,
-  int strideResRow,
-  int strideResCol,
-  ffi.Pointer<ffi.Uint64> a,
-  int strideARow,
-  int strideACol,
-  ffi.Pointer<ffi.Uint64> b,
-  int strideBRow,
-  int strideBCol,
-  int m,
-  int n,
-  int k,
-) {
-  for (var r = 0; r < m; r++) {
-    for (var c = 0; c < n; c++) {
-      var sum = 0;
-      for (var i = 0; i < k; i++) {
-        sum +=
-            a[r * strideARow + i * strideACol] *
-            b[i * strideBRow + c * strideBCol];
-      }
-      res[r * strideResRow + c * strideResCol] = sum;
-    }
-  }
-}
-
 /// Matrix multiplication using OpenBLAS, supporting high-dimensional stack broadcasting and 1D vector promotions.
 NDArray<T> matmul<T extends DTypeTag>(
   NDArray<T> a,
@@ -298,7 +272,14 @@ NDArray<T> matmul<T extends DTypeTag>(
       'matmul does not support 0D scalar arrays (got shapes ${a.shape} and ${b.shape}).',
     );
   }
-  final targetDType = resolveDType(a.dtype, b.dtype);
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  final targetDType = a.dtype;
 
   switch (targetDType) {
     case DType.float16:
@@ -307,26 +288,7 @@ NDArray<T> matmul<T extends DTypeTag>(
         final aF32 = castNDArray<Float32>(a, DType.float32);
         final bF32 = castNDArray<Float32>(b, DType.float32);
         final resF32 = matmul<Float32>(aF32, bF32);
-        final res = castNDArray<T>(resF32, targetDType as DType<T>);
-        if (out != null) {
-          if (!listEquals(out.shape, res.shape) || out.dtype != targetDType) {
-            throw ArgumentError(
-              'Provided out buffer has incompatible shape or dtype (expected shape ${res.shape} and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).',
-            );
-          }
-          res.copy(out: out);
-          return out;
-        }
-        return res.detachToParentScope();
-      });
-    case DType.int8:
-    case DType.uint16:
-    case DType.uint32:
-      return NDArray.scope(() {
-        final aI64 = castNDArray<Int64>(a, DType.int64);
-        final bI64 = castNDArray<Int64>(b, DType.int64);
-        final resI64 = matmul<Int64>(aI64, bI64);
-        final res = castNDArray<T>(resI64, targetDType as DType<T>);
+        final res = castNDArray<T>(resF32, targetDType);
         if (out != null) {
           if (!listEquals(out.shape, res.shape) || out.dtype != targetDType) {
             throw ArgumentError(
@@ -1080,9 +1042,13 @@ NDArray<T> matmul<T extends DTypeTag>(
               }
             case DType.uint64:
             case DType.int64:
+            case DType.uint32:
             case DType.int32:
+            case DType.uint16:
             case DType.int16:
             case DType.uint8:
+            case DType.int8:
+            case DType.boolean:
               final strideARow = aView.strides[rankA - 2];
               final strideACol = aView.strides[rankA - 1];
 
@@ -1094,20 +1060,6 @@ NDArray<T> matmul<T extends DTypeTag>(
 
               switch (targetDType) {
                 case DType.uint64:
-                  _matmulUint64(
-                    result.pointer.cast<ffi.Uint64>() + offsetRes,
-                    strideResRow,
-                    strideResCol,
-                    aView.pointer.cast<ffi.Uint64>() + offsetA,
-                    strideARow,
-                    strideACol,
-                    bView.pointer.cast<ffi.Uint64>() + offsetB,
-                    strideBRow,
-                    strideBCol,
-                    m,
-                    n,
-                    kA,
-                  );
                 case DType.int64:
                   matmul_int64(
                     result.pointer.cast<ffi.Int64>() + offsetRes,
@@ -1123,6 +1075,7 @@ NDArray<T> matmul<T extends DTypeTag>(
                     n,
                     kA,
                   );
+                case DType.uint32:
                 case DType.int32:
                   matmul_int32(
                     result.pointer.cast<ffi.Int32>() + offsetRes,
@@ -1138,6 +1091,7 @@ NDArray<T> matmul<T extends DTypeTag>(
                     n,
                     kA,
                   );
+                case DType.uint16:
                 case DType.int16:
                   matmul_int16(
                     result.pointer.cast<ffi.Int16>() + offsetRes,
@@ -1154,6 +1108,7 @@ NDArray<T> matmul<T extends DTypeTag>(
                     kA,
                   );
                 case DType.uint8:
+                case DType.int8:
                   matmul_uint8(
                     result.pointer.cast<ffi.Uint8>() + offsetRes,
                     strideResRow,
@@ -1168,6 +1123,23 @@ NDArray<T> matmul<T extends DTypeTag>(
                     n,
                     kA,
                   );
+                case DType.boolean:
+                  final aPtr = aView.pointer.cast<ffi.Uint8>() + offsetA;
+                  final bPtr = bView.pointer.cast<ffi.Uint8>() + offsetB;
+                  final resPtr = result.pointer.cast<ffi.Uint8>() + offsetRes;
+                  for (var r = 0; r < m; r++) {
+                    for (var c = 0; c < n; c++) {
+                      var acc = 0;
+                      for (var i = 0; i < kA; i++) {
+                        if (aPtr[r * strideARow + i * strideACol] != 0 &&
+                            bPtr[i * strideBRow + c * strideBCol] != 0) {
+                          acc = 1;
+                          break;
+                        }
+                      }
+                      resPtr[r * strideResRow + c * strideResCol] = acc;
+                    }
+                  }
                 default:
                   throw UnsupportedError(
                     'Unsupported integer type: $targetDType',
@@ -2481,11 +2453,10 @@ NDArray<T> solve<T extends DTypeTag>(
     }
   } else {
     final stackShapeA = a.shape.sublist(0, rankA - 2);
-    if (rankB == rankA - 1) {
-      if (!listEquals(b.shape.sublist(0, rankA - 2), stackShapeA) ||
-          b.shape[rankB - 1] != n) {
+    if (rankB == 1) {
+      if (b.shape[0] != n) {
         throw ArgumentError(
-          'Dimensions of b (${b.shape}) must match stack shape $stackShapeA and matrix dimension $n of a (${a.shape})',
+          'Dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape})',
         );
       }
     } else if (rankB == rankA) {
@@ -2497,10 +2468,14 @@ NDArray<T> solve<T extends DTypeTag>(
       }
     } else {
       throw ArgumentError(
-        'Dimensions of b (${b.shape}) are incompatible with a (${a.shape}). Expected rank ${rankA - 1} or $rankA.',
+        'Dimensions of b (${b.shape}) are incompatible with a (${a.shape}). Expected rank 1 or $rankA.',
       );
     }
   }
+
+  final expectedOutShape = (rankA > 2 && rankB == 1)
+      ? [...a.shape.sublist(0, rankA - 2), n]
+      : b.shape;
 
   if (a.dtype != b.dtype) {
     throw ArgumentError(
@@ -2521,10 +2496,10 @@ NDArray<T> solve<T extends DTypeTag>(
 
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
-      if (!listEquals(out.shape, b.shape) ||
+      if (!listEquals(out.shape, expectedOutShape) ||
           (out.dtype != DType.float64 && out.dtype != b.dtype)) {
         throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype (expected shape ${b.shape} and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
+          'Provided out buffer has incompatible shape or dtype (expected shape $expectedOutShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
         );
       }
     }
@@ -2545,9 +2520,9 @@ NDArray<T> solve<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!listEquals(out.shape, b.shape) || out.dtype != b.dtype) {
+    if (!listEquals(out.shape, expectedOutShape) || out.dtype != b.dtype) {
       throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype (expected shape ${b.shape} and dtype ${b.dtype}, got shape ${out.shape} and dtype ${out.dtype}).',
+        'Provided out buffer has incompatible shape or dtype (expected shape $expectedOutShape and dtype ${b.dtype}, got shape ${out.shape} and dtype ${out.dtype}).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
@@ -2562,7 +2537,12 @@ NDArray<T> solve<T extends DTypeTag>(
   final nrhs = rankB == rankA ? b.shape[rankB - 1] : 1;
 
   final NDArray<T> bCopy;
-  if (out != null) {
+  if (rankA > 2 && rankB == 1) {
+    bCopy = out ?? NDArray<T>.create(expectedOutShape, b.dtype);
+    final bBroadcast = broadcastTo<T>(b, expectedOutShape);
+    bBroadcast.copy(out: bCopy);
+    bBroadcast.dispose();
+  } else if (out != null) {
     bCopy = out;
     b.copy(out: bCopy);
   } else {
@@ -5991,11 +5971,18 @@ NDArray<T> outer<T extends DTypeTag>(
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute outer() on a disposed array.');
   }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
 
   final sizeA = a.size;
   final sizeB = b.size;
   final expectedShape = [sizeA, sizeB];
-  final targetDType = resolveDType(a.dtype, b.dtype);
+  final targetDType = a.dtype;
 
   if (out != null) {
     if (!listEquals(out.shape, expectedShape) || out.dtype != targetDType) {
@@ -6013,14 +6000,13 @@ NDArray<T> outer<T extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final result =
-        out ?? NDArray<T>.create(expectedShape, targetDType as DType<T>);
+    final result = out ?? NDArray<T>.create(expectedShape, targetDType);
 
     final flatA = a.rank == 1 ? a : a.ravel();
     final flatB = b.rank == 1 ? b : b.ravel();
 
-    final aCast = castNDArray(flatA, targetDType);
-    final bCast = castNDArray(flatB, targetDType);
+    final aCast = flatA;
+    final bCast = flatB;
 
     try {
       switch (targetDType) {
@@ -6049,6 +6035,7 @@ NDArray<T> outer<T extends DTypeTag>(
             result.strides[1],
           );
         case DType.int64:
+        case DType.uint64:
           s_outer_int64(
             aCast.pointer.cast(),
             aCast.strides.isEmpty ? 1 : aCast.strides[0],
@@ -6061,6 +6048,7 @@ NDArray<T> outer<T extends DTypeTag>(
             result.strides[1],
           );
         case DType.int32:
+        case DType.uint32:
           s_outer_int32(
             aCast.pointer.cast(),
             aCast.strides.isEmpty ? 1 : aCast.strides[0],
@@ -6073,6 +6061,7 @@ NDArray<T> outer<T extends DTypeTag>(
             result.strides[1],
           );
         case DType.uint8:
+        case DType.int8:
           s_outer_uint8(
             aCast.pointer.cast(),
             aCast.strides.isEmpty ? 1 : aCast.strides[0],
@@ -6085,6 +6074,7 @@ NDArray<T> outer<T extends DTypeTag>(
             result.strides[1],
           );
         case DType.int16:
+        case DType.uint16:
           s_outer_int16(
             aCast.pointer.cast(),
             aCast.strides.isEmpty ? 1 : aCast.strides[0],
@@ -6134,10 +6124,6 @@ NDArray<T> outer<T extends DTypeTag>(
           );
         case DType.float16:
         case DType.bfloat16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
           final doubleA = castNDArray(flatA, DType.float64);
           final doubleB = castNDArray(flatB, DType.float64);
           final doubleRes = outer(doubleA, doubleB);
@@ -6151,8 +6137,6 @@ NDArray<T> outer<T extends DTypeTag>(
     } finally {
       if (!identical(flatA, a)) flatA.dispose();
       if (!identical(flatB, b)) flatB.dispose();
-      if (!identical(aCast, flatA)) aCast.dispose();
-      if (!identical(bCast, flatB)) bCast.dispose();
     }
 
     if (out == null) {
@@ -6190,6 +6174,13 @@ NDArray<T> cross<T extends DTypeTag>(
 }) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute cross() on a disposed array.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
   }
 
   var axisA = axis ?? axisa ?? -1;
@@ -6237,7 +6228,7 @@ NDArray<T> cross<T extends DTypeTag>(
     axisC = finalAxisC;
   }
 
-  final targetDType = resolveDType(a.dtype, b.dtype);
+  final targetDType = a.dtype;
   if (out != null) {
     if (!listEquals(out.shape, expectedShape) || out.dtype != targetDType) {
       throw ArgumentError(
@@ -6260,15 +6251,9 @@ NDArray<T> cross<T extends DTypeTag>(
     }
   }
 
-  final result =
-      out ?? NDArray<T>.create(expectedShape, targetDType as DType<T>);
+  final result = out ?? NDArray<T>.create(expectedShape, targetDType);
 
-  if (targetDType == DType.float16 ||
-      targetDType == DType.bfloat16 ||
-      targetDType == DType.int8 ||
-      targetDType == DType.uint64 ||
-      targetDType == DType.uint32 ||
-      targetDType == DType.uint16) {
+  if (targetDType == DType.float16 || targetDType == DType.bfloat16) {
     final doubleA = castNDArray(a, DType.float64);
     final doubleB = castNDArray(b, DType.float64);
     final doubleRes = cross(
@@ -6279,7 +6264,7 @@ NDArray<T> cross<T extends DTypeTag>(
       axisc: axisc,
       axis: axis,
     );
-    final casted = castNDArray(doubleRes, targetDType as DType<T>);
+    final casted = castNDArray(doubleRes, targetDType);
     casted.copy(out: result);
     doubleA.dispose();
     doubleB.dispose();
@@ -6288,249 +6273,244 @@ NDArray<T> cross<T extends DTypeTag>(
     return result;
   }
 
-  final aCast = castNDArray(a, targetDType);
-  final bCast = castNDArray(b, targetDType);
+  final aCast = a;
+  final bCast = b;
 
-  try {
-    final lenResult = broadcastStack.length;
-    final walkStridesA = List<int>.filled(lenResult, 0);
-    final walkStridesB = List<int>.filled(lenResult, 0);
-    final walkStridesRes = List<int>.filled(lenResult, 0);
+  final lenResult = broadcastStack.length;
+  final walkStridesA = List<int>.filled(lenResult, 0);
+  final walkStridesB = List<int>.filled(lenResult, 0);
+  final walkStridesRes = List<int>.filled(lenResult, 0);
 
-    for (var i = 0; i < lenResult; i++) {
-      final resAxis = lenResult - 1 - i;
-      final axisIdxA = stackA.length - 1 - i;
-      final axisIdxB = stackB.length - 1 - i;
+  for (var i = 0; i < lenResult; i++) {
+    final resAxis = lenResult - 1 - i;
+    final axisIdxA = stackA.length - 1 - i;
+    final axisIdxB = stackB.length - 1 - i;
 
-      var resAxisIdx = resAxis;
-      if (is3D && resAxis >= axisC) {
-        resAxisIdx = resAxis + 1;
-      }
-
-      if (axisIdxA >= 0) {
-        final origAxisA = axisIdxA < axisA ? axisIdxA : axisIdxA + 1;
-        walkStridesA[resAxis] = (stackA[axisIdxA] == broadcastStack[resAxis])
-            ? aCast.strides[origAxisA]
-            : 0;
-      }
-      if (axisIdxB >= 0) {
-        final origAxisB = axisIdxB < axisB ? axisIdxB : axisIdxB + 1;
-        walkStridesB[resAxis] = (stackB[axisIdxB] == broadcastStack[resAxis])
-            ? bCast.strides[origAxisB]
-            : 0;
-      }
-      walkStridesRes[resAxis] = result.strides[resAxisIdx];
+    var resAxisIdx = resAxis;
+    if (is3D && resAxis >= axisC) {
+      resAxisIdx = resAxis + 1;
     }
 
-    final strideVecA = aCast.strides[axisA];
-    final strideVecB = bCast.strides[axisB];
-    final strideVecRes = is3D ? result.strides[axisC] : 0;
-
-    void walk(int dim, int offsetA, int offsetB, int offsetRes) {
-      if (dim == lenResult) {
-        switch (targetDType) {
-          case DType.float64:
-            if (is3D) {
-              s_cross_3d_double(
-                aCast.pointer.cast<ffi.Double>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Double>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Double>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_double(
-                aCast.pointer.cast<ffi.Double>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Double>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Double>() + offsetRes,
-              );
-            }
-          case DType.float32:
-            if (is3D) {
-              s_cross_3d_float(
-                aCast.pointer.cast<ffi.Float>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Float>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Float>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_float(
-                aCast.pointer.cast<ffi.Float>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Float>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Float>() + offsetRes,
-              );
-            }
-          case DType.int64:
-            if (is3D) {
-              s_cross_3d_int64(
-                aCast.pointer.cast<ffi.Int64>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Int64>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Int64>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_int64(
-                aCast.pointer.cast<ffi.Int64>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Int64>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Int64>() + offsetRes,
-              );
-            }
-          case DType.int32:
-            if (is3D) {
-              s_cross_3d_int32(
-                aCast.pointer.cast<ffi.Int32>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Int32>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Int32>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_int32(
-                aCast.pointer.cast<ffi.Int32>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Int32>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Int32>() + offsetRes,
-              );
-            }
-          case DType.uint8:
-            if (is3D) {
-              s_cross_3d_uint8(
-                aCast.pointer.cast<ffi.Uint8>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Uint8>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Uint8>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_uint8(
-                aCast.pointer.cast<ffi.Uint8>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Uint8>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Uint8>() + offsetRes,
-              );
-            }
-          case DType.int16:
-            if (is3D) {
-              s_cross_3d_int16(
-                aCast.pointer.cast<ffi.Int16>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Int16>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Int16>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_int16(
-                aCast.pointer.cast<ffi.Int16>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Int16>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Int16>() + offsetRes,
-              );
-            }
-          case DType.complex128:
-            if (is3D) {
-              s_cross_3d_complex128(
-                aCast.pointer.cast<cpx_t>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<cpx_t>() + offsetB,
-                strideVecB,
-                result.pointer.cast<cpx_t>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_complex128(
-                aCast.pointer.cast<cpx_t>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<cpx_t>() + offsetB,
-                strideVecB,
-                result.pointer.cast<cpx_t>() + offsetRes,
-              );
-            }
-          case DType.complex64:
-            if (is3D) {
-              s_cross_3d_complex64(
-                aCast.pointer.cast<cpx_f_t>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<cpx_f_t>() + offsetB,
-                strideVecB,
-                result.pointer.cast<cpx_f_t>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_complex64(
-                aCast.pointer.cast<cpx_f_t>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<cpx_f_t>() + offsetB,
-                strideVecB,
-                result.pointer.cast<cpx_f_t>() + offsetRes,
-              );
-            }
-          case DType.boolean:
-            if (is3D) {
-              s_cross_3d_boolean(
-                aCast.pointer.cast<ffi.Uint8>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Uint8>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Uint8>() + offsetRes,
-                strideVecRes,
-              );
-            } else {
-              s_cross_2d_boolean(
-                aCast.pointer.cast<ffi.Uint8>() + offsetA,
-                strideVecA,
-                bCast.pointer.cast<ffi.Uint8>() + offsetB,
-                strideVecB,
-                result.pointer.cast<ffi.Uint8>() + offsetRes,
-              );
-            }
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-            break;
-        }
-        return;
-      }
-
-      final size = broadcastStack[dim];
-      final strideA = walkStridesA[dim];
-      final strideB = walkStridesB[dim];
-      final strideRes = walkStridesRes[dim];
-
-      for (var i = 0; i < size; i++) {
-        walk(
-          dim + 1,
-          offsetA + i * strideA,
-          offsetB + i * strideB,
-          offsetRes + i * strideRes,
-        );
-      }
+    if (axisIdxA >= 0) {
+      final origAxisA = axisIdxA < axisA ? axisIdxA : axisIdxA + 1;
+      walkStridesA[resAxis] = (stackA[axisIdxA] == broadcastStack[resAxis])
+          ? aCast.strides[origAxisA]
+          : 0;
     }
-
-    walk(0, 0, 0, 0);
-  } finally {
-    if (!identical(aCast, a)) aCast.dispose();
-    if (!identical(bCast, b)) bCast.dispose();
+    if (axisIdxB >= 0) {
+      final origAxisB = axisIdxB < axisB ? axisIdxB : axisIdxB + 1;
+      walkStridesB[resAxis] = (stackB[axisIdxB] == broadcastStack[resAxis])
+          ? bCast.strides[origAxisB]
+          : 0;
+    }
+    walkStridesRes[resAxis] = result.strides[resAxisIdx];
   }
+
+  final strideVecA = aCast.strides[axisA];
+  final strideVecB = bCast.strides[axisB];
+  final strideVecRes = is3D ? result.strides[axisC] : 0;
+
+  void walk(int dim, int offsetA, int offsetB, int offsetRes) {
+    if (dim == lenResult) {
+      switch (targetDType) {
+        case DType.float64:
+          if (is3D) {
+            s_cross_3d_double(
+              aCast.pointer.cast<ffi.Double>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Double>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Double>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_double(
+              aCast.pointer.cast<ffi.Double>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Double>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Double>() + offsetRes,
+            );
+          }
+        case DType.float32:
+          if (is3D) {
+            s_cross_3d_float(
+              aCast.pointer.cast<ffi.Float>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Float>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Float>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_float(
+              aCast.pointer.cast<ffi.Float>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Float>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Float>() + offsetRes,
+            );
+          }
+        case DType.int64:
+        case DType.uint64:
+          if (is3D) {
+            s_cross_3d_int64(
+              aCast.pointer.cast<ffi.Int64>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Int64>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Int64>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_int64(
+              aCast.pointer.cast<ffi.Int64>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Int64>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Int64>() + offsetRes,
+            );
+          }
+        case DType.int32:
+        case DType.uint32:
+          if (is3D) {
+            s_cross_3d_int32(
+              aCast.pointer.cast<ffi.Int32>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Int32>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Int32>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_int32(
+              aCast.pointer.cast<ffi.Int32>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Int32>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Int32>() + offsetRes,
+            );
+          }
+        case DType.uint8:
+        case DType.int8:
+          if (is3D) {
+            s_cross_3d_uint8(
+              aCast.pointer.cast<ffi.Uint8>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Uint8>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Uint8>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_uint8(
+              aCast.pointer.cast<ffi.Uint8>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Uint8>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Uint8>() + offsetRes,
+            );
+          }
+        case DType.int16:
+        case DType.uint16:
+          if (is3D) {
+            s_cross_3d_int16(
+              aCast.pointer.cast<ffi.Int16>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Int16>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Int16>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_int16(
+              aCast.pointer.cast<ffi.Int16>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Int16>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Int16>() + offsetRes,
+            );
+          }
+        case DType.complex128:
+          if (is3D) {
+            s_cross_3d_complex128(
+              aCast.pointer.cast<cpx_t>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<cpx_t>() + offsetB,
+              strideVecB,
+              result.pointer.cast<cpx_t>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_complex128(
+              aCast.pointer.cast<cpx_t>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<cpx_t>() + offsetB,
+              strideVecB,
+              result.pointer.cast<cpx_t>() + offsetRes,
+            );
+          }
+        case DType.complex64:
+          if (is3D) {
+            s_cross_3d_complex64(
+              aCast.pointer.cast<cpx_f_t>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<cpx_f_t>() + offsetB,
+              strideVecB,
+              result.pointer.cast<cpx_f_t>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_complex64(
+              aCast.pointer.cast<cpx_f_t>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<cpx_f_t>() + offsetB,
+              strideVecB,
+              result.pointer.cast<cpx_f_t>() + offsetRes,
+            );
+          }
+        case DType.boolean:
+          if (is3D) {
+            s_cross_3d_boolean(
+              aCast.pointer.cast<ffi.Uint8>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Uint8>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Uint8>() + offsetRes,
+              strideVecRes,
+            );
+          } else {
+            s_cross_2d_boolean(
+              aCast.pointer.cast<ffi.Uint8>() + offsetA,
+              strideVecA,
+              bCast.pointer.cast<ffi.Uint8>() + offsetB,
+              strideVecB,
+              result.pointer.cast<ffi.Uint8>() + offsetRes,
+            );
+          }
+        case DType.float16:
+        case DType.bfloat16:
+          break;
+      }
+      return;
+    }
+
+    final size = broadcastStack[dim];
+    final strideA = walkStridesA[dim];
+    final strideB = walkStridesB[dim];
+    final strideRes = walkStridesRes[dim];
+
+    for (var i = 0; i < size; i++) {
+      walk(
+        dim + 1,
+        offsetA + i * strideA,
+        offsetB + i * strideB,
+        offsetRes + i * strideRes,
+      );
+    }
+  }
+
+  walk(0, 0, 0, 0);
 
   return result;
 }
@@ -6613,17 +6593,17 @@ NDArray<R> norm<R extends DTypeTag>(
     }
     targetAxes = [normAx];
   } else if (axis is List<int>) {
-    if (axis.length != 2) {
+    if (axis.length != 1 && axis.length != 2) {
       throw ArgumentError('axis list must contain exactly 1 or 2 elements.');
     }
     final normAxes = List<int>.from(axis);
-    for (var i = 0; i < 2; i++) {
+    for (var i = 0; i < normAxes.length; i++) {
       if (normAxes[i] < 0) normAxes[i] = rank + normAxes[i];
       if (normAxes[i] < 0 || normAxes[i] >= rank) {
         throw ArgumentError('axis ${axis[i]} is out of bounds.');
       }
     }
-    if (normAxes[0] == normAxes[1]) {
+    if (normAxes.length == 2 && normAxes[0] == normAxes[1]) {
       throw ArgumentError('axes must be distinct.');
     }
     targetAxes = normAxes;

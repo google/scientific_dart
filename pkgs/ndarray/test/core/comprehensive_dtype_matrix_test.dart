@@ -118,10 +118,19 @@ void main() {
                 final a = createSampleArray(dtA, [2, 3], strided: isStrided);
                 final b = createSampleArray(dtB, [2, 3], strided: isStrided);
 
+                if (dtA != dtB) {
+                  expect(() => add(a, b), throwsArgumentError);
+                  expect(() => subtract(a, b), throwsArgumentError);
+                  expect(() => multiply(a, b), throwsArgumentError);
+                  expect(() => divide(a, b), throwsArgumentError);
+                  expect(() => power(a, b), throwsArgumentError);
+                  continue;
+                }
+
                 final expectedDType = resolveDType(dtA, dtB);
                 final resAdd = add(a, b);
                 expect(resAdd.shape, [2, 3]);
-                expect(resAdd.dtype, expectedDType);
+                expect(resAdd.dtype, dtA);
 
                 final resSub = subtract(a, b);
                 expect(resSub.shape, [2, 3]);
@@ -129,7 +138,7 @@ void main() {
 
                 final resMul = multiply(a, b);
                 expect(resMul.shape, [2, 3]);
-                expect(resMul.dtype, expectedDType);
+                expect(resMul.dtype, dtA);
 
                 final resDiv = divide(a, b);
                 expect(resDiv.shape, [2, 3]);
@@ -167,7 +176,7 @@ void main() {
 
                     final ca = toCpx(va);
                     final cb = toCpx(vb);
-                    if (expectedDType.isComplex) {
+                    if (dtA.isComplex) {
                       final gotAdd = resAdd.getCell([r, c]) as Complex;
                       final gotSub = resSub.getCell([r, c]) as Complex;
                       final gotMul = resMul.getCell([r, c]) as Complex;
@@ -176,17 +185,20 @@ void main() {
                       expectCpxClose(gotSub, ca - cb);
                       expectCpxClose(gotMul, ca * cb);
                       expectCpxClose(gotDiv, ca / cb);
-                    } else if (expectedDType == DType.boolean) {
+                    } else if (dtA == DType.boolean) {
                       final ba = va as bool;
                       final bb = vb as bool;
                       expect(resAdd.getCell([r, c]), ba || bb);
-                      expect(resSub.getCell([r, c]), ba ^ bb);
+                      expect(
+                        resSub.getCell([r, c]),
+                        ((ba ? 1 : 0) - (bb ? 1 : 0)).toUnsigned(8),
+                      );
                       expect(resMul.getCell([r, c]), ba && bb);
                       expectRealClose(
                         toDbl(resDiv.getCell([r, c])),
                         (ba ? 1.0 : 0.0) / (bb ? 1.0 : 0.0),
                       );
-                    } else if (expectedDType.isInteger) {
+                    } else if (dtA.isInteger) {
                       int wrapInt(int v, DType dt) => switch (dt) {
                         DType.int8 => v.toSigned(8),
                         DType.uint8 => v.toUnsigned(8),
@@ -234,70 +246,62 @@ void main() {
                   }
                 }
 
-                if (dtA == dtB) {
-                  final resPow = power(a, b);
-                  expect(resPow.shape, [2, 3]);
-                  expect(resPow.dtype, dtA);
-                  for (var r = 0; r < 2; r++) {
-                    for (var c = 0; c < 3; c++) {
-                      final va = a.getCell([r, c]);
-                      final vb = b.getCell([r, c]);
-                      final got = resPow.getCell([r, c]);
-                      if (dtA == DType.boolean) {
-                        expect(got, !(vb as bool) || (va as bool));
-                      } else if (dtA.isComplex) {
-                        final ca = va as Complex;
-                        final cb = vb as Complex;
-                        final rad = (ca.real * ca.real + ca.imag * ca.imag);
-                        if (rad == 0.0) {
-                          expectCpxClose(
-                            got as Complex,
-                            (cb.real == 0.0 && cb.imag == 0.0)
-                                ? Complex(1.0, 0.0)
-                                : Complex(0.0, 0.0),
-                          );
-                        } else {
-                          expect((got as Complex).real.isNaN, isFalse);
-                        }
-                      } else if (dtA.isInteger) {
-                        final ia = (va as num).toInt();
-                        final ib = (vb as num).toInt();
-                        var p = 1;
-                        for (var k = 0; k < ib; k++) {
-                          p *= ia;
-                        }
-                        final wrapped = switch (dtA) {
-                          DType.int8 => p.toSigned(8),
-                          DType.uint8 => p.toUnsigned(8),
-                          DType.int16 => p.toSigned(16),
-                          DType.uint16 => p.toUnsigned(16),
-                          DType.int32 => p.toSigned(32),
-                          DType.uint32 => p.toUnsigned(32),
-                          _ => p,
-                        };
-                        expect(got, wrapped);
-                      } else {
-                        final da = (va as num).toDouble();
-                        final db = (vb as num).toDouble();
-                        var expP = 1.0;
-                        for (var k = 0; k < db.toInt(); k++) {
-                          expP *= da;
-                        }
-                        expectRealClose(
-                          toDbl(got),
-                          toDbl(castValue(expP, dtA)),
+                final resPow = power(a, b);
+                expect(resPow.shape, [2, 3]);
+                expect(resPow.dtype, dtA);
+                for (var r = 0; r < 2; r++) {
+                  for (var c = 0; c < 3; c++) {
+                    final va = a.getCell([r, c]);
+                    final vb = b.getCell([r, c]);
+                    final got = resPow.getCell([r, c]);
+                    if (dtA == DType.boolean) {
+                      expect(got, !(vb as bool) || (va as bool));
+                    } else if (dtA.isComplex) {
+                      final ca = va as Complex;
+                      final cb = vb as Complex;
+                      final rad = (ca.real * ca.real + ca.imag * ca.imag);
+                      if (rad == 0.0) {
+                        expectCpxClose(
+                          got as Complex,
+                          (cb.real == 0.0 && cb.imag == 0.0)
+                              ? Complex(1.0, 0.0)
+                              : Complex(0.0, 0.0),
                         );
+                      } else {
+                        expect((got as Complex).real.isNaN, isFalse);
                       }
+                    } else if (dtA.isInteger) {
+                      final ia = (va as num).toInt();
+                      final ib = (vb as num).toInt();
+                      var p = 1;
+                      for (var k = 0; k < ib; k++) {
+                        p *= ia;
+                      }
+                      final wrapped = switch (dtA) {
+                        DType.int8 => p.toSigned(8),
+                        DType.uint8 => p.toUnsigned(8),
+                        DType.int16 => p.toSigned(16),
+                        DType.uint16 => p.toUnsigned(16),
+                        DType.int32 => p.toSigned(32),
+                        DType.uint32 => p.toUnsigned(32),
+                        _ => p,
+                      };
+                      expect(got, wrapped);
+                    } else {
+                      final da = (va as num).toDouble();
+                      final db = (vb as num).toDouble();
+                      var expP = 1.0;
+                      for (var k = 0; k < db.toInt(); k++) {
+                        expP *= da;
+                      }
+                      expectRealClose(toDbl(got), toDbl(castValue(expP, dtA)));
                     }
                   }
                 }
 
                 if (dtA != DType.complex128 &&
                     dtA != DType.complex64 &&
-                    dtA != DType.boolean &&
-                    dtB != DType.complex128 &&
-                    dtB != DType.complex64 &&
-                    dtB != DType.boolean) {
+                    dtA != DType.boolean) {
                   final resFDiv = floorDivide(a, b);
                   expect(resFDiv.shape, [2, 3]);
 
@@ -340,6 +344,12 @@ void main() {
               final a = createNumericArray(dtA, [2, 2], strided: isStrided);
               final b = createNumericArray(dtB, [2, 2], strided: isStrided);
 
+              if (dtA != dtB) {
+                expect(() => gcd(a, b), throwsArgumentError);
+                expect(() => lcm(a, b), throwsArgumentError);
+                continue;
+              }
+
               int scalarGcd(int x, int y) {
                 var u = x.abs();
                 var v = y.abs();
@@ -356,7 +366,7 @@ void main() {
                 return (x.abs() ~/ scalarGcd(x, y)) * y.abs();
               }
 
-              final targetDt = resolveDType(dtA, dtB);
+              final targetDt = dtA;
               final resGcd = gcd(a, b);
               expect(resGcd.shape, [2, 2]);
               expect(resGcd.dtype, targetDt);
