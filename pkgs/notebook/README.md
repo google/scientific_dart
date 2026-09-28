@@ -1,5 +1,7 @@
 # Scientific Dart Notebook (`package:notebook`) — Experimental
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="notebook mascot">
+
 > [!WARNING]
 > **Experimental**: This package is an experimental prototype and under active development. Its architecture, protocol, and UI may change significantly.
 

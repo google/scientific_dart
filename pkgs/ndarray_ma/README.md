@@ -1,5 +1,7 @@
 # ndarray_ma (Experimental)
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="ndarray_ma mascot">
+
 > [!WARNING]
 > **Experimental**: This package is experimental and under active development. Its API may change significantly before reaching a stable release.
 

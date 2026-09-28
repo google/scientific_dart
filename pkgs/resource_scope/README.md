@@ -1,5 +1,7 @@
 # resource_scope
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="resource_scope mascot">
+
 Zone-based automatic scoped resource management for deterministic FFI and native memory disposal in Dart.
 
 ## Features

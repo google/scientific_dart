@@ -1,5 +1,7 @@
 # ndarray
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="ndarray mascot">
+
 [![Pub Version](https://img.shields.io/pub/v/ndarray)](https://pub.dev/packages/ndarray)
 [![Dart SDK](https://img.shields.io/badge/Dart-%5E3.10.0-blue.svg)](https://dart.dev)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)

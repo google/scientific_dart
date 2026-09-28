@@ -1,5 +1,7 @@
 # scientific_dart_analysis_plugin (Experimental)
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="scientific_dart_analysis_plugin mascot">
+
 > [!WARNING]
 > **Experimental**: This analyzer plugin is experimental and under active development. Rule names, diagnostics, and quick fixes may change across versions.
 

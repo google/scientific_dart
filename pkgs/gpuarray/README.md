@@ -1,5 +1,7 @@
 # gpuarray (Experimental)
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="gpuarray mascot">
+
 > [!WARNING]
 > **Experimental**: This package is experimental and under active development. Its APIs and native shader pipelines may change significantly or be removed without notice.
 

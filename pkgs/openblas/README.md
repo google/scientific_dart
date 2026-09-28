@@ -1,5 +1,7 @@
 # OpenBLAS for Dart
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="openblas mascot">
+
 A Dart native library providing high-performance linear algebra operations through bindings to OpenBLAS. This package allows you to leverage highly optimized, multi-threaded BLAS (Basic Linear Algebra Subprograms) and LAPACK (Linear Algebra Package) routines directly from your Dart code.
 
 ## Thread Safety

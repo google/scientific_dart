@@ -1,5 +1,7 @@
 # symbolic_dart (Experimental)
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="symbolic_dart mascot">
+
 > [!WARNING]
 > **Experimental**: This package is experimental and under active development. Its API and native SymEngine/FLINT build hooks may change significantly before reaching a stable release.
 

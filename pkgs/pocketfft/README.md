@@ -1,5 +1,7 @@
 # pocketfft
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="pocketfft mascot">
+
 Native AOT FFI bindings for high-performance, mixed-radix Fast Fourier Transforms (FFT) in Dart.
 
 This package wraps the highly reliable **KissFFT** mixed-radix library in unmanaged C space, enabling Fourier transform calculations across arbitrary sequence lengths (with optimal $O(N \log N)$ scaling even for non-power-of-two signals).

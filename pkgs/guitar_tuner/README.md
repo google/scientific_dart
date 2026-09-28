@@ -1,5 +1,7 @@
 # guitar_tuner (Experimental)
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="guitar_tuner mascot">
+
 > [!WARNING]
 > **Experimental**: This package is an experimental example application demonstrating real-time audio processing with `package:ndarray`.
 

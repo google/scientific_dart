@@ -1,5 +1,7 @@
 # Scientific Dart
 
+<img src="doc/images/mascot.png" align="right" width="220" alt="Scientific Dart mascot">
+
 Scientific Dart is an ecosystem of packages bringing high-performance numerical, mathematical, and scientific computing to the Dart language.
 
 The initial release centers on **`package:ndarray`**, providing a powerful N-dimensional array library inspired by NumPy, backed by optimized native SIMD, BLAS, LAPACK, and FFT routines.
