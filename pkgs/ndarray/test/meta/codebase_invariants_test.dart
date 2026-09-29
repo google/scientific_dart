@@ -1621,6 +1621,50 @@ void main() {
           '${pkgRoot.path}/lib/src/operations/binning.dart',
         ).readAsStringSync();
         expect(binningContent, matches(RegExp(r'NDArray<Int64>\s+digitize\b')));
+
+        final indexingContent = File(
+          '${pkgRoot.path}/lib/src/operations/indexing.dart',
+        ).readAsStringSync();
+        expect(
+          indexingContent,
+          matches(RegExp(r'List<NDArray<Int64>>\s+unravel_index\b')),
+        );
+        expect(
+          indexingContent,
+          matches(RegExp(r'NDArray<Int64>\s+ravel_multi_index\b')),
+        );
+        expect(
+          indexingContent,
+          matches(RegExp(r'List<NDArray<Int64>>\s+diag_indices\b')),
+        );
+        expect(
+          indexingContent,
+          matches(RegExp(r'List<NDArray<Int64>>\s+diag_indices_from\b')),
+        );
+        expect(
+          indexingContent,
+          matches(
+            RegExp(
+              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+tril_indices\b',
+            ),
+          ),
+        );
+        expect(
+          indexingContent,
+          matches(
+            RegExp(
+              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+triu_indices\b',
+            ),
+          ),
+        );
+        expect(
+          indexingContent,
+          matches(
+            RegExp(
+              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+mask_indices\b',
+            ),
+          ),
+        );
       },
     );
 

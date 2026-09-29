@@ -14,7 +14,7 @@
 
 name: pocketfft
 description: Native AOT FFI bindings for high-performance mixed-radix Fast Fourier Transforms.
-version: 0.1.0
+version: 0.2.0
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/pocketfft
 

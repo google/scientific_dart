@@ -148,6 +148,62 @@ int native_roll_nd(
     const int64_t *dest_strides
 );
 
+int native_unravel_index(
+    int index_dtype,
+    const void *indices_ptr,
+    const int64_t *indices_shape,
+    const int64_t *indices_strides,
+    int64_t indices_rank,
+    int64_t indices_size,
+    const int64_t *dims,
+    int64_t ndims,
+    int order,
+    int64_t **out_ptrs,
+    const int64_t *out_strides_flat,
+    int is_contiguous,
+    int64_t *out_error_idx
+);
+
+int native_ravel_multi_index(
+    const int64_t *const *coords_ptrs,
+    const int64_t *coords_strides_flat,
+    const int64_t *target_shape,
+    int64_t target_rank,
+    int64_t total_size,
+    const int64_t *dims,
+    const int *modes,
+    int64_t ndims,
+    int order,
+    int64_t *out_ptr,
+    const int64_t *out_strides,
+    int is_contiguous,
+    int64_t *out_error_val
+);
+
+int native_indices_int64(
+    const int64_t *dims,
+    int64_t ndims,
+    int64_t slice_size,
+    int64_t *out_ptr
+);
+
+int native_tril_indices(
+    int64_t n,
+    int64_t m,
+    int64_t k,
+    int64_t *out_row,
+    int64_t *out_col
+);
+
+int native_triu_indices(
+    int64_t n,
+    int64_t m,
+    int64_t k,
+    int64_t *out_row,
+    int64_t *out_col
+);
+
 #ifdef __cplusplus
 }
 #endif
+

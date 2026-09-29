@@ -402,6 +402,241 @@ void main() {
           expect(() => select([cond], [choice, choice]), throwsArgumentError);
         }),
       );
+
+      test(
+        'select defaults pure integer scalar choices to DType.int64 and respects NEP 50 weak scalars',
+        () => NDArray.scope(() {
+          final cond = NDArray<Boolean>.fromList(
+            [true, false],
+            [2],
+            DType.boolean,
+          );
+          final res64 = select([cond], [10], defaultValue: 20);
+          expect(res64.dtype, DType.int64);
+          expect(res64.toList(), [10, 20]);
+
+          // Weak scalar with Int32 array preserves Int32 if in range
+          final choice32 = NDArray.fromList([10, 20], [2], DType.int32);
+          final res32 = select([cond], [choice32], defaultValue: 5);
+          expect(res32.dtype, DType.int32);
+          expect(res32.toList(), [10, 5]);
+
+          // Scalar exceeding Int32 promotes to Int64
+          final bigVal = 1 << 40;
+          final resPromoted = select([cond], [choice32], defaultValue: bigVal);
+          expect(resPromoted.dtype, DType.int64);
+          expect(resPromoted.toList(), [10, bigVal]);
+        }),
+      );
     });
+
+    group('unravel_index and ravel_multi_index', () {
+      test(
+        'unravel_index C and Fortran order and round-trip with ravel_multi_index',
+        () => NDArray.scope(() {
+          final idx = NDArray.fromList([22, 41, 37], [3], DType.int64);
+          final coordsC = unravel_index(idx, [7, 6]);
+          expect(coordsC.length, 2);
+          expect(coordsC[0].dtype, DType.int64);
+          expect(coordsC[1].dtype, DType.int64);
+          expect(coordsC[0].toList(), [3, 6, 6]);
+          expect(coordsC[1].toList(), [4, 5, 1]);
+
+          final raveledC = ravel_multi_index(coordsC, [7, 6]);
+          expect(raveledC.dtype, DType.int64);
+          expect(raveledC.toList(), [22, 41, 37]);
+
+          final coordsF = unravelIndex(idx, [7, 6], order: IndexOrder.f);
+          expect(coordsF[0].toList(), [1, 6, 2]);
+          expect(coordsF[1].toList(), [3, 5, 5]);
+
+          final raveledF = ravelMultiIndex(coordsF, [
+            7,
+            6,
+          ], order: IndexOrder.f);
+          expect(raveledF.toList(), [22, 41, 37]);
+        }),
+      );
+
+      test(
+        'unravel_index and ravel_multi_index support 64-bit shapes and flat indices > 2^31 - 1',
+        () => NDArray.scope(() {
+          const bigRows = 1 << 22;
+          const bigCols = 1 << 22;
+          const flatIdx = (3 * bigCols) + 1234567;
+          final idx = NDArray.fromList([flatIdx], [1], DType.int64);
+          final coords = unravel_index(idx, [bigRows, bigCols]);
+          expect(coords[0].toList(), [3]);
+          expect(coords[1].toList(), [1234567]);
+
+          final back = ravel_multi_index(coords, [bigRows, bigCols]);
+          expect(back.toList(), [flatIdx]);
+        }),
+      );
+
+      test(
+        'unravel_index supports all integer dtypes, strided inputs, and out aliasing',
+        () => NDArray.scope(() {
+          for (final dt in <DType<DTypeTag>>[
+            DType.int8,
+            DType.uint8,
+            DType.int16,
+            DType.uint16,
+            DType.int32,
+            DType.uint32,
+            DType.int64,
+            DType.uint64,
+          ]) {
+            final idx = NDArray.fromList([5, 11], [2], dt);
+            final coords = unravel_index(idx, [3, 4]);
+            expect(coords[0].dtype, DType.int64);
+            expect(coords[0].toList(), [1, 2]);
+            expect(coords[1].toList(), [1, 3]);
+          }
+
+          // Strided 2D indices and aliased out
+          final mat = NDArray.fromList([0, 5, 7, 11], [2, 2], DType.int64);
+          final matT = mat.transpose();
+          final out0 = NDArray.create([2, 2], DType.int64);
+          final res = unravel_index(matT, [3, 4], out: [matT, out0]);
+          expect(identical(res[0], matT), isTrue);
+          expect(identical(res[1], out0), isTrue);
+          // matT was [[0, 7], [5, 11]] -> rows [[0, 1], [1, 2]], cols [[0, 3], [1, 3]]
+          expect(matT.shape, [2, 2]);
+          expect(matT.toList(), [0, 1, 1, 2]);
+          expect(out0.shape, [2, 2]);
+          expect(out0.toList(), [0, 3, 1, 3]);
+        }),
+      );
+
+      test(
+        'ravel_multi_index supports broadcasting, ChooseMode wrap/clip, and per-axis modes',
+        () => NDArray.scope(() {
+          final rows = NDArray.fromList([-1, 4], [2, 1], DType.int32);
+          final cols = NDArray.fromList([-2, 1, 5], [1, 3], DType.int64);
+
+          final wrapped = ravel_multi_index(
+            [rows, cols],
+            [3, 4],
+            mode: ChooseMode.wrap,
+          );
+          expect(wrapped.shape, [2, 3]);
+          // rows [-1, 4] mod 3 -> [2, 1]; cols [-2, 1, 5] mod 4 -> [2, 1, 1]
+          expect(wrapped.toList(), [
+            2 * 4 + 2,
+            2 * 4 + 1,
+            2 * 4 + 1,
+            1 * 4 + 2,
+            1 * 4 + 1,
+            1 * 4 + 1,
+          ]);
+
+          final mixed = ravel_multi_index(
+            [rows, cols],
+            [3, 4],
+            mode: [ChooseMode.wrap, ChooseMode.clip],
+          );
+          // rows mod 3 -> [2, 1]; cols clipped to [0..3] -> [0, 1, 3]
+          expect(mixed.toList(), [
+            2 * 4 + 0,
+            2 * 4 + 1,
+            2 * 4 + 3,
+            1 * 4 + 0,
+            1 * 4 + 1,
+            1 * 4 + 3,
+          ]);
+
+          expect(
+            () => ravel_multi_index([rows, cols], [3, 4]),
+            throwsRangeError,
+          );
+          expect(
+            () =>
+                unravel_index(NDArray.fromList([12], [1], DType.int64), [3, 4]),
+            throwsRangeError,
+          );
+        }),
+      );
+    });
+
+    group(
+      'indices, sparse_indices, diag_indices, tril/triu_indices, mask_indices',
+      () {
+        test(
+          'indices and sparse_indices return DType.int64 by default and match grid coordinates',
+          () => NDArray.scope(() {
+            final grid = indices([2, 3]);
+            expect(grid.dtype, DType.int64);
+            expect(grid.shape, [2, 2, 3]);
+            expect(grid.toList(), [0, 0, 0, 1, 1, 1, 0, 1, 2, 0, 1, 2]);
+
+            final sparse = sparse_indices([2, 3]);
+            expect(sparse.length, 2);
+            expect(sparse[0].dtype, DType.int64);
+            expect(sparse[0].shape, [2, 1]);
+            expect(sparse[0].toList(), [0, 1]);
+            expect(sparse[1].dtype, DType.int64);
+            expect(sparse[1].shape, [1, 3]);
+            expect(sparse[1].toList(), [0, 1, 2]);
+          }),
+        );
+
+        test(
+          'diag_indices and diag_indices_from return DType.int64 coordinate arrays',
+          () => NDArray.scope(() {
+            final di = diag_indices(4);
+            expect(di.length, 2);
+            expect(di[0].dtype, DType.int64);
+            expect(di[0].toList(), [0, 1, 2, 3]);
+            expect(di[1].toList(), [0, 1, 2, 3]);
+
+            final cube = NDArray.zeros([3, 3, 3], DType.float64);
+            final diCube = diag_indices_from(cube);
+            expect(diCube.length, 3);
+            for (final c in diCube) {
+              expect(c.dtype, DType.int64);
+              expect(c.toList(), [0, 1, 2]);
+            }
+
+            final nonSquare = NDArray.zeros([3, 4], DType.float64);
+            expect(() => diag_indices_from(nonSquare), throwsArgumentError);
+          }),
+        );
+
+        test(
+          'tril_indices, triu_indices, and mask_indices produce 64-bit row/col coordinates',
+          () => NDArray.scope(() {
+            final (row: lRows, col: lCols) = tril_indices(3);
+            expect(lRows.dtype, DType.int64);
+            expect(lCols.dtype, DType.int64);
+            expect(lRows.toList(), [0, 1, 1, 2, 2, 2]);
+            expect(lCols.toList(), [0, 0, 1, 0, 1, 2]);
+
+            final (row: uRows, col: uCols) = triu_indices(3, k: 1);
+            expect(uRows.dtype, DType.int64);
+            expect(uCols.dtype, DType.int64);
+            expect(uRows.toList(), [0, 0, 1]);
+            expect(uCols.toList(), [1, 2, 2]);
+
+            // Rectangular matrix with tril_indices_from / triu_indices_from
+            final rect = NDArray.zeros([3, 4], DType.float64);
+            final (row: rfRows, col: rfCols) = tril_indices_from(rect, k: -1);
+            expect(rfRows.toList(), [1, 2, 2]);
+            expect(rfCols.toList(), [0, 0, 1]);
+
+            final (row: ufRows, col: ufCols) = triu_indices_from(rect, k: 2);
+            expect(ufRows.toList(), [0, 0, 1]);
+            expect(ufCols.toList(), [2, 3, 3]);
+
+            // mask_indices with triu and tril
+            final (row: mRows, col: mCols) = mask_indices(3, triu, k: 1);
+            expect(mRows.dtype, DType.int64);
+            expect(mCols.dtype, DType.int64);
+            expect(mRows.toList(), uRows.toList());
+            expect(mCols.toList(), uCols.toList());
+          }),
+        );
+      },
+    );
   });
 }

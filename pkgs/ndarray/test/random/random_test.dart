@@ -1025,7 +1025,7 @@ void main() {
       final samples = multinomial(10, pvals, size: [1000]);
 
       expect(samples.shape, [1000, 3]);
-      expect(samples.dtype, DType.int32);
+      expect(samples.dtype, DType.int64);
 
       // Test multinomial with pvals requiring normalization (does not sum to 1.0)
       final nonNormalizedPvals = NDArray.fromList(

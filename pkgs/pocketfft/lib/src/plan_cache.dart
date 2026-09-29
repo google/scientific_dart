@@ -384,7 +384,7 @@ final class PocketFFTPlanCache {
     }
 
     final ndims = dimensions.length;
-    final pDims = pkg_ffi.malloc<ffi.Int>(ndims);
+    final pDims = pkg_ffi.malloc<ffi.Int64>(ndims);
     final pLen = pkg_ffi.malloc<ffi.Size>();
     try {
       for (var i = 0; i < ndims; i++) {

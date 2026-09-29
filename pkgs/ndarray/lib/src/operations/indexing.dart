@@ -20,8 +20,10 @@ import '../ndarray_extensions_bindings.dart';
 import '../nditer.dart';
 import '../scratch_arena.dart';
 import 'helpers.dart';
+import 'sorting.dart';
 
-/// Modes for handling out-of-bounds choice indices in [choose].
+/// Modes for handling out-of-bounds choice indices in [choose] and
+/// [ravel_multi_index].
 enum ChooseMode {
   /// It is an error if an index is out of bounds (default).
   raise,
@@ -32,6 +34,29 @@ enum ChooseMode {
   /// Clamps indices to the valid choice range `[0, N - 1]`.
   clip,
 }
+
+/// Memory layout order for multi-dimensional index conversion in
+/// [unravel_index] and [ravel_multi_index].
+enum IndexOrder {
+  /// Row-major (C-style) order, where the last axis index varies fastest.
+  c,
+
+  /// Column-major (Fortran-style) order, where the first axis index varies
+  /// fastest.
+  f,
+}
+
+bool _scalarFitsIntDType(int value, DType dtype) => switch (dtype) {
+  DType.int8 => value >= -128 && value <= 127,
+  DType.uint8 => value >= 0 && value <= 255,
+  DType.int16 => value >= -32768 && value <= 32767,
+  DType.uint16 => value >= 0 && value <= 65535,
+  DType.int32 => value >= -2147483648 && value <= 2147483647,
+  DType.uint32 => value >= 0 && value <= 4294967295,
+  DType.int64 => true,
+  DType.uint64 => value >= 0,
+  _ => false,
+};
 
 /// Helper function to broadcast a list of shapes into a common compatible shape.
 List<int> _broadcastMultiShapes(List<List<int>> shapes) {
@@ -507,17 +532,17 @@ NDArray<T> choose<T extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final hasArray = choices.any((c) => c is NDArray);
+    final arrayIntDTypes = choices
+        .whereType<NDArray>()
+        .map((a) => a.dtype)
+        .where((dt) => dt.isInteger)
+        .toList();
     DType getItemDType(Object item) {
       if (item is NDArray) return item.dtype;
       if (item is int) {
-        if (hasArray) {
-          final arrayIntDTypes = choices
-              .whereType<NDArray>()
-              .map((a) => a.dtype)
-              .where((dt) => dt.isInteger);
-          if (arrayIntDTypes.isNotEmpty) {
-            return arrayIntDTypes.first;
+        for (final dt in arrayIntDTypes) {
+          if (_scalarFitsIntDType(item, dt)) {
+            return dt;
           }
         }
         return DType.int64;
@@ -1001,13 +1026,26 @@ NDArray<T> select<T extends DTypeTag>(
   }
 
   return NDArray.scope(() {
+    final allChoiceItems = <Object>[...choicelist, ?defaultValue];
+    final arrayIntDTypes = allChoiceItems
+        .whereType<NDArray>()
+        .map((a) => a.dtype)
+        .where((dt) => dt.isInteger)
+        .toList();
     final resolvedDType =
         dtype ??
         (out?.dtype) ??
         (() {
           DType getItemDType(Object item) {
             if (item is NDArray) return item.dtype;
-            if (item is int) return DType.int32;
+            if (item is int) {
+              for (final dt in arrayIntDTypes) {
+                if (_scalarFitsIntDType(item, dt)) {
+                  return dt;
+                }
+              }
+              return DType.int64;
+            }
             if (item is bool) return DType.boolean;
             if (item is Complex) return DType.complex128;
             return DType.float64;
@@ -1129,3 +1167,971 @@ NDArray<T> select<T extends DTypeTag>(
     }
   });
 }
+
+/// Converts a flat index or array of flat indices into a list of
+/// multi-dimensional coordinate arrays.
+///
+/// Each returned coordinate array has the same shape as [indices] and
+/// data type [DType.int64], with one array per dimension in [shape].
+///
+/// The [shape] must be non-empty and must not contain negative dimensions.
+/// It is an error if any index in [indices] is negative or greater than or
+/// equal to the total number of elements implied by [shape].
+///
+/// Parameters:
+/// - `indices`: An integer [NDArray] whose elements are flat indices into an
+///   array of dimensions [shape].
+/// - `shape`: The shape of the array used for unraveling [indices].
+/// - `order`: Determines whether the indices should be viewed as indexing in
+///   row-major ([IndexOrder.c], default) or column-major ([IndexOrder.f])
+///   order.
+/// - `out`: Optional list of pre-allocated [NDArray]s of dtype [DType.int64]
+///   and shape `indices.shape`, with length equal to `shape.length`.
+///
+/// Returns a list of [NDArray]s of dtype [DType.int64], where the `i`-th
+/// array contains the coordinates along axis `i`.
+///
+/// Example:
+/// ```dart
+/// final idx = NDArray.fromList([22, 41, 37], [3], DType.int64);
+/// final coords = unravel_index(idx, [7, 6]);
+/// // coords[0] is [3, 6, 6], coords[1] is [4, 5, 1]
+/// ```
+List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
+  NDArray<T> indices,
+  List<int> shape, {
+  IndexOrder order = IndexOrder.c,
+  List<NDArray<Int64>>? out,
+}) {
+  if (indices.isDisposed) {
+    throw StateError('Cannot execute unravel_index on a disposed array.');
+  }
+  if (!indices.dtype.isInteger) {
+    throw ArgumentError.value(
+      indices.dtype,
+      'indices',
+      'Must have an integer dtype',
+    );
+  }
+  if (shape.isEmpty) {
+    throw ArgumentError.value(shape, 'shape', 'Must not be empty');
+  }
+  for (var i = 0; i < shape.length; i++) {
+    if (shape[i] < 0) {
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not contain negative dimensions',
+      );
+    }
+  }
+
+  final ndims = shape.length;
+  if (out != null) {
+    if (out.length != ndims) {
+      throw ArgumentError.value(
+        out.length,
+        'out',
+        'Must have length equal to shape.length ($ndims)',
+      );
+    }
+    for (var i = 0; i < ndims; i++) {
+      final o = out[i];
+      if (o.isDisposed) {
+        throw StateError(
+          'Cannot write unravel_index result to a disposed out array at index $i.',
+        );
+      }
+      if (!o.isWriteable) {
+        throw ArgumentError.value(o, 'out[$i]', 'Must be writeable');
+      }
+      if (o.dtype != DType.int64) {
+        throw ArgumentError.value(o.dtype, 'out[$i]', 'Must have dtype int64');
+      }
+      if (!listEquals(o.shape, indices.shape)) {
+        throw ArgumentError.value(
+          o.shape,
+          'out[$i]',
+          'Must match indices.shape (${indices.shape})',
+        );
+      }
+    }
+  }
+
+  return NDArray.scope(() {
+    var needsTemp = false;
+    if (out != null) {
+      for (var i = 0; i < ndims; i++) {
+        if (sharesMemory(indices, out[i])) {
+          needsTemp = true;
+          break;
+        }
+        for (var j = 0; j < i; j++) {
+          if (sharesMemory(out[i], out[j])) {
+            needsTemp = true;
+            break;
+          }
+        }
+        if (needsTemp) break;
+      }
+    }
+
+    final workOut = (out == null || needsTemp)
+        ? List<NDArray<Int64>>.generate(
+            ndims,
+            (_) => NDArray<Int64>.create(indices.shape, DType.int64),
+          )
+        : out;
+
+    final isContig =
+        indices.isContiguous && workOut.every((a) => a.isContiguous);
+    final rank = indices.shape.length;
+    final orderCode = order == IndexOrder.c ? 0 : 1;
+
+    final marker = ScratchArena.marker;
+    try {
+      final dimsPtr = ScratchArena.copyInts(shape);
+      final outPtrs = ScratchArena.allocate<ffi.Pointer<ffi.Int64>>(
+        ndims * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
+      );
+      for (var d = 0; d < ndims; d++) {
+        outPtrs[d] = workOut[d].pointer.cast<ffi.Int64>();
+      }
+
+      final inPtr = indices.pointer;
+
+      ffi.Pointer<ffi.Int64> inShapePtr = ffi.nullptr;
+      ffi.Pointer<ffi.Int64> inStridesPtr = ffi.nullptr;
+      ffi.Pointer<ffi.Int64> outStridesFlat = ffi.nullptr;
+      if (!isContig) {
+        inShapePtr = ScratchArena.copyInts(indices.shape);
+        inStridesPtr = ScratchArena.copyInts(indices.strides);
+        final strideCount = ndims * (rank > 0 ? rank : 1);
+        outStridesFlat = ScratchArena.allocate<ffi.Int64>(
+          strideCount * ffi.sizeOf<ffi.Int64>(),
+        );
+        for (var d = 0; d < ndims; d++) {
+          final ostrides = workOut[d].strides;
+          for (var r = 0; r < rank; r++) {
+            outStridesFlat[d * rank + r] = ostrides[r];
+          }
+        }
+      }
+
+      final errIdxPtr = ScratchArena.allocate<ffi.Int64>(
+        1 * ffi.sizeOf<ffi.Int64>(),
+      );
+      errIdxPtr.value = 0;
+
+      final status = native_unravel_index(
+        indices.dtype.index,
+        inPtr,
+        inShapePtr,
+        inStridesPtr,
+        rank,
+        indices.size,
+        dimsPtr,
+        ndims,
+        orderCode,
+        outPtrs,
+        outStridesFlat,
+        isContig ? 1 : 0,
+        errIdxPtr,
+      );
+
+      if (status == -2) {
+        throw RangeError(
+          'Index ${errIdxPtr.value} is out of bounds for array with shape $shape',
+        );
+      }
+      if (status == -4) {
+        throw OutOfMemoryError();
+      }
+      if (status != 0) {
+        throw StateError('native_unravel_index failed with status $status');
+      }
+
+      if (out != null) {
+        if (needsTemp) {
+          for (var d = 0; d < ndims; d++) {
+            workOut[d].copy(out: out[d]);
+          }
+        }
+        return out;
+      }
+
+      return [for (final arr in workOut) arr.detachToParentScope()];
+    } finally {
+      ScratchArena.reset(marker);
+    }
+  });
+}
+
+/// Alias for [unravel_index].
+List<NDArray<Int64>> unravelIndex<T extends DTypeTag>(
+  NDArray<T> indices,
+  List<int> shape, {
+  IndexOrder order = IndexOrder.c,
+  List<NDArray<Int64>>? out,
+}) => unravel_index(indices, shape, order: order, out: out);
+
+/// Converts a list of coordinate arrays into an array of flat indices.
+///
+/// The coordinate arrays in [multi_index] are broadcast to a common shape,
+/// and each tuple of coordinates is mapped to a 64-bit flat index into an
+/// array of dimensions [dims].
+///
+/// Parameters:
+/// - `multi_index`: A non-empty list of integer [NDArray]s, one for each
+///   dimension in [dims].
+/// - `dims`: The dimensions of the array into which the indices from
+///   [multi_index] apply. Every dimension must be positive, and their product
+///   must fit in a 64-bit signed integer.
+/// - `mode`: Specifies how out-of-bounds indices are handled. May be either a
+///   single [ChooseMode] applied to all dimensions or a `List<ChooseMode>` of
+///   length `dims.length` specifying a mode per dimension. Defaults to
+///   [ChooseMode.raise].
+/// - `order`: Determines whether the multi-indices should be viewed as
+///   indexing in row-major ([IndexOrder.c], default) or column-major
+///   ([IndexOrder.f]) order.
+/// - `out`: Optional pre-allocated [NDArray] of dtype [DType.int64] with shape
+///   matching the broadcast shape of [multi_index].
+///
+/// Returns an [NDArray] of dtype [DType.int64] containing the flat indices.
+///
+/// Example:
+/// ```dart
+/// final rows = NDArray.fromList([3, 6, 6], [3], DType.int64);
+/// final cols = NDArray.fromList([4, 5, 1], [3], DType.int64);
+/// final flat = ravel_multi_index([rows, cols], [7, 6]);
+/// // flat is [22, 41, 37]
+/// ```
+NDArray<Int64> ravel_multi_index(
+  List<NDArray<DTypeTag>> multi_index,
+  List<int> dims, {
+  Object mode = ChooseMode.raise,
+  IndexOrder order = IndexOrder.c,
+  NDArray<Int64>? out,
+}) {
+  if (multi_index.isEmpty) {
+    throw ArgumentError.value(multi_index, 'multi_index', 'Must not be empty');
+  }
+  if (multi_index.length != dims.length) {
+    throw ArgumentError.value(
+      multi_index.length,
+      'multi_index',
+      'Must have length equal to dims.length (${dims.length})',
+    );
+  }
+  for (var i = 0; i < multi_index.length; i++) {
+    final c = multi_index[i];
+    if (c.isDisposed) {
+      throw StateError(
+        'Cannot execute ravel_multi_index with a disposed coordinate array at index $i.',
+      );
+    }
+    if (!c.dtype.isInteger) {
+      throw ArgumentError.value(
+        c.dtype,
+        'multi_index[$i]',
+        'Must have an integer dtype',
+      );
+    }
+  }
+
+  var maxFlat = 1;
+  for (var i = 0; i < dims.length; i++) {
+    final d = dims[i];
+    if (d <= 0) {
+      throw ArgumentError.value(
+        dims,
+        'dims',
+        'Must contain positive dimensions',
+      );
+    }
+    if (maxFlat > 0x7fffffffffffffff ~/ d) {
+      throw ArgumentError.value(
+        dims,
+        'dims',
+        'Must have a product that fits in a 64-bit signed integer',
+      );
+    }
+    maxFlat *= d;
+  }
+
+  final List<ChooseMode> modesList;
+  if (mode is ChooseMode) {
+    modesList = List<ChooseMode>.filled(dims.length, mode);
+  } else if (mode is List<ChooseMode>) {
+    if (mode.length != dims.length) {
+      throw ArgumentError.value(
+        mode.length,
+        'mode',
+        'Must have length equal to dims.length (${dims.length})',
+      );
+    }
+    modesList = mode;
+  } else {
+    throw ArgumentError.value(
+      mode,
+      'mode',
+      'Must be a ChooseMode or List<ChooseMode>',
+    );
+  }
+
+  return NDArray.scope(() {
+    final ndims = dims.length;
+    final coordArrays = <NDArray<Int64>>[
+      for (final c in multi_index)
+        identical(c.dtype, DType.int64)
+            ? c as NDArray<Int64>
+            : c.astype(DType.int64),
+    ];
+
+    final targetShape = _broadcastMultiShapes(
+      coordArrays.map((c) => c.shape).toList(),
+    );
+
+    if (out != null) {
+      if (out.isDisposed) {
+        throw StateError(
+          'Cannot write ravel_multi_index result to a disposed out array.',
+        );
+      }
+      if (!out.isWriteable) {
+        throw ArgumentError.value(out, 'out', 'Must be writeable');
+      }
+      if (out.dtype != DType.int64) {
+        throw ArgumentError.value(out.dtype, 'out', 'Must have dtype int64');
+      }
+      if (!listEquals(out.shape, targetShape)) {
+        throw ArgumentError.value(
+          out.shape,
+          'out',
+          'Must match broadcast shape ($targetShape)',
+        );
+      }
+    }
+
+    final needsTemp =
+        out != null &&
+        (multi_index.any((c) => sharesMemory(c, out)) ||
+            coordArrays.any((c) => sharesMemory(c, out)));
+    final workOut = (out == null || needsTemp)
+        ? NDArray<Int64>.create(targetShape, DType.int64)
+        : out;
+
+    final isContig =
+        workOut.isContiguous &&
+        coordArrays.every(
+          (c) => listEquals(c.shape, targetShape) && c.isContiguous,
+        );
+    final targetRank = targetShape.length;
+    final orderCode = order == IndexOrder.c ? 0 : 1;
+
+    final marker = ScratchArena.marker;
+    try {
+      final coordsPtrs = ScratchArena.allocate<ffi.Pointer<ffi.Int64>>(
+        ndims * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
+      );
+      for (var d = 0; d < ndims; d++) {
+        coordsPtrs[d] = coordArrays[d].pointer.cast<ffi.Int64>();
+      }
+
+      final dimsPtr = ScratchArena.copyInts(dims);
+      final modesPtr = ScratchArena.allocate<ffi.Int>(
+        ndims * ffi.sizeOf<ffi.Int>(),
+      );
+      for (var d = 0; d < ndims; d++) {
+        modesPtr[d] = switch (modesList[d]) {
+          ChooseMode.raise => 0,
+          ChooseMode.wrap => 1,
+          ChooseMode.clip => 2,
+        };
+      }
+
+      ffi.Pointer<ffi.Int64> coordsStridesFlat = ffi.nullptr;
+      ffi.Pointer<ffi.Int64> targetShapePtr = ffi.nullptr;
+      ffi.Pointer<ffi.Int64> outStridesPtr = ffi.nullptr;
+      if (!isContig) {
+        final strideCount = ndims * (targetRank > 0 ? targetRank : 1);
+        coordsStridesFlat = ScratchArena.allocate<ffi.Int64>(
+          strideCount * ffi.sizeOf<ffi.Int64>(),
+        );
+        for (var d = 0; d < ndims; d++) {
+          final c = coordArrays[d];
+          final cShape = c.shape;
+          final cStrides = c.strides;
+          final offsetRank = targetRank - cShape.length;
+          for (var r = 0; r < targetRank; r++) {
+            final cAxis = r - offsetRank;
+            coordsStridesFlat[d * targetRank + r] =
+                (cAxis < 0 || cShape[cAxis] == 1) ? 0 : cStrides[cAxis];
+          }
+        }
+        targetShapePtr = ScratchArena.copyInts(targetShape);
+        outStridesPtr = ScratchArena.copyInts(workOut.strides);
+      }
+
+      final outPtr = workOut.pointer.cast<ffi.Int64>();
+      final errValPtr = ScratchArena.allocate<ffi.Int64>(
+        1 * ffi.sizeOf<ffi.Int64>(),
+      );
+      errValPtr.value = 0;
+
+      final status = native_ravel_multi_index(
+        coordsPtrs,
+        coordsStridesFlat,
+        targetShapePtr,
+        targetRank,
+        workOut.size,
+        dimsPtr,
+        modesPtr,
+        ndims,
+        orderCode,
+        outPtr,
+        outStridesPtr,
+        isContig ? 1 : 0,
+        errValPtr,
+      );
+
+      if (status == -2) {
+        throw RangeError(
+          'Coordinate ${errValPtr.value} is out of bounds for dimensions $dims',
+        );
+      }
+      if (status == -4) {
+        throw OutOfMemoryError();
+      }
+      if (status != 0) {
+        throw StateError('native_ravel_multi_index failed with status $status');
+      }
+
+      if (out != null) {
+        if (needsTemp) {
+          workOut.copy(out: out);
+        }
+        return out;
+      }
+      return workOut.detachToParentScope();
+    } finally {
+      ScratchArena.reset(marker);
+    }
+  });
+}
+
+/// Alias for [ravel_multi_index].
+NDArray<Int64> ravelMultiIndex(
+  List<NDArray<DTypeTag>> multiIndex,
+  List<int> dims, {
+  Object mode = ChooseMode.raise,
+  IndexOrder order = IndexOrder.c,
+  NDArray<Int64>? out,
+}) => ravel_multi_index(multiIndex, dims, mode: mode, order: order, out: out);
+
+/// Returns an array representing the indices of a grid.
+///
+/// Computes an array where the subarrays contain index values `0, 1, ...`
+/// varying only along the corresponding axis. For a grid with [dimensions]
+/// `[d_0, ..., d_{N-1}]`, the returned array has shape
+/// `[N, d_0, ..., d_{N-1}]`.
+///
+/// For the sparse open-grid representation (equivalent to `sparse=True` in
+/// NumPy), use [sparse_indices].
+///
+/// Parameters:
+/// - `dimensions`: The shape of the grid. Every dimension must be
+///   non-negative.
+/// - `dtype`: Data type of the result. Defaults to [DType.int64].
+/// - `out`: Optional pre-allocated [NDArray] with shape
+///   `[dimensions.length, ...dimensions]`.
+///
+/// Returns an [NDArray] of grid indices with shape
+/// `[dimensions.length, ...dimensions]`.
+///
+/// Example:
+/// ```dart
+/// final grid = indices([2, 3]);
+/// // grid.shape is [2, 2, 3]
+/// // grid[[0]] contains row indices [[0, 0, 0], [1, 1, 1]]
+/// // grid[[1]] contains col indices [[0, 1, 2], [0, 1, 2]]
+/// ```
+NDArray<T> indices<T extends DTypeTag>(
+  List<int> dimensions, {
+  DType<T>? dtype,
+  NDArray<T>? out,
+}) {
+  for (var i = 0; i < dimensions.length; i++) {
+    if (dimensions[i] < 0) {
+      throw ArgumentError.value(
+        dimensions,
+        'dimensions',
+        'Must not contain negative dimensions',
+      );
+    }
+  }
+
+  final resolvedDType = dtype ?? (out?.dtype ?? DType.int64 as DType<T>);
+  final ndims = dimensions.length;
+  final targetShape = <int>[ndims, ...dimensions];
+
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError('Cannot write indices result to a disposed out array.');
+    }
+    if (!out.isWriteable) {
+      throw ArgumentError.value(out, 'out', 'Must be writeable');
+    }
+    if (out.dtype != resolvedDType) {
+      throw ArgumentError.value(
+        out.dtype,
+        'out',
+        'Must match resolved dtype ($resolvedDType)',
+      );
+    }
+    if (!listEquals(out.shape, targetShape)) {
+      throw ArgumentError.value(
+        out.shape,
+        'out',
+        'Must match target shape ($targetShape)',
+      );
+    }
+  }
+
+  return NDArray.scope(() {
+    final needsContigTemp =
+        out != null &&
+        (!out.isContiguous || !identical(resolvedDType, DType.int64));
+    final int64Grid =
+        (identical(resolvedDType, DType.int64) &&
+            out != null &&
+            !needsContigTemp)
+        ? out as NDArray<Int64>
+        : NDArray<Int64>.create(targetShape, DType.int64);
+
+    var sliceSize = 1;
+    for (final d in dimensions) {
+      sliceSize *= d;
+    }
+
+    if (ndims > 0 && sliceSize > 0) {
+      final marker = ScratchArena.marker;
+      try {
+        final dimsPtr = ScratchArena.copyInts(dimensions);
+        final outPtr = int64Grid.pointer.cast<ffi.Int64>();
+        final status = native_indices_int64(dimsPtr, ndims, sliceSize, outPtr);
+        if (status == -4) {
+          throw OutOfMemoryError();
+        }
+        if (status != 0) {
+          throw StateError('native_indices_int64 failed with status $status');
+        }
+      } finally {
+        ScratchArena.reset(marker);
+      }
+    }
+
+    if (identical(resolvedDType, DType.int64)) {
+      if (out != null) {
+        if (needsContigTemp) {
+          (int64Grid as NDArray<T>).copy(out: out);
+        }
+        return out;
+      }
+      return (int64Grid as NDArray<T>).detachToParentScope();
+    }
+
+    final casted = int64Grid.astype(resolvedDType);
+    if (out != null) {
+      casted.copy(out: out);
+      return out;
+    }
+    return casted.detachToParentScope();
+  });
+}
+
+/// Returns a list of sparse coordinate arrays representing the indices of a
+/// grid (equivalent to `np.indices(dimensions, sparse=True)`).
+///
+/// For a grid with [dimensions] `[d_0, ..., d_{N-1}]`, returns `N` arrays
+/// where the `i`-th array has shape `[1, ..., d_i, ..., 1]` (of rank `N`)
+/// with values `0, 1, ..., d_i - 1` along axis `i`.
+///
+/// Parameters:
+/// - `dimensions`: The shape of the grid. Every dimension must be
+///   non-negative.
+/// - `dtype`: Data type of the returned coordinate arrays. Defaults to
+///   [DType.int64].
+///
+/// Returns a `List<NDArray<T>>` of length `dimensions.length`.
+///
+/// Example:
+/// ```dart
+/// final grid = sparse_indices([2, 3]);
+/// // grid[0].shape is [2, 1], grid[1].shape is [1, 3]
+/// ```
+List<NDArray<T>> sparse_indices<T extends DTypeTag>(
+  List<int> dimensions, {
+  DType<T>? dtype,
+}) {
+  for (var i = 0; i < dimensions.length; i++) {
+    if (dimensions[i] < 0) {
+      throw ArgumentError.value(
+        dimensions,
+        'dimensions',
+        'Must not contain negative dimensions',
+      );
+    }
+  }
+  final resolvedDType = dtype ?? DType.int64 as DType<T>;
+  final ndims = dimensions.length;
+  return NDArray.scope(() {
+    final result = <NDArray<T>>[];
+    for (var i = 0; i < ndims; i++) {
+      final sparseShape = List<int>.filled(ndims, 1);
+      sparseShape[i] = dimensions[i];
+      final vec = NDArray<T>.arange(
+        0,
+        dimensions[i].toDouble(),
+        dtype: resolvedDType,
+      );
+      result.add(vec.reshape(sparseShape).copy().detachToParentScope());
+    }
+    return result;
+  });
+}
+
+/// Alias for [sparse_indices].
+List<NDArray<T>> sparseIndices<T extends DTypeTag>(
+  List<int> dimensions, {
+  DType<T>? dtype,
+}) => sparse_indices(dimensions, dtype: dtype);
+
+/// Returns the indices to access the main diagonal of an array.
+///
+/// Returns a list of [ndim] 1-D coordinate arrays of dtype [DType.int64],
+/// each containing `0, 1, ..., n - 1`, suitable for indexing the main
+/// diagonal of an [ndim]-dimensional array of shape `[n, n, ..., n]`.
+///
+/// The [n] must be non-negative and [ndim] must be at least `1`.
+///
+/// Parameters:
+/// - `n`: The size along each dimension of the array for which the diagonal
+///   indices are returned.
+/// - `ndim`: The number of dimensions (defaults to `2`).
+///
+/// Returns a `List<NDArray<Int64>>` of length [ndim], each of shape `[n]`.
+///
+/// Example:
+/// ```dart
+/// final di = diag_indices(4);
+/// // di is a list of 2 arrays, each [0, 1, 2, 3] of dtype int64
+/// ```
+List<NDArray<Int64>> diag_indices(int n, {int ndim = 2}) {
+  if (n < 0) {
+    throw ArgumentError.value(n, 'n', 'Must be non-negative');
+  }
+  if (ndim < 1) {
+    throw ArgumentError.value(ndim, 'ndim', 'Must be at least 1');
+  }
+  return List<NDArray<Int64>>.generate(
+    ndim,
+    (_) => NDArray<Int64>.arange(0, n.toDouble(), dtype: DType.int64),
+  );
+}
+
+/// Alias for [diag_indices].
+List<NDArray<Int64>> diagIndices(int n, {int ndim = 2}) =>
+    diag_indices(n, ndim: ndim);
+
+/// Returns the indices to access the main diagonal of [arr].
+///
+/// The [arr] must be at least 2-dimensional and have equal length along all
+/// dimensions.
+///
+/// Parameters:
+/// - `arr`: The input [NDArray], which must be at least 2-D with equal-length
+///   dimensions.
+///
+/// Returns a `List<NDArray<Int64>>` of length `arr.shape.length`.
+///
+/// Example:
+/// ```dart
+/// final a = NDArray.zeros([3, 3], dtype: DType.float64);
+/// final di = diag_indices_from(a);
+/// ```
+List<NDArray<Int64>> diag_indices_from<T extends DTypeTag>(NDArray<T> arr) {
+  if (arr.isDisposed) {
+    throw StateError('Cannot execute diag_indices_from on a disposed array.');
+  }
+  if (arr.shape.length < 2) {
+    throw ArgumentError.value(
+      arr.shape,
+      'arr',
+      'Must be at least 2-dimensional',
+    );
+  }
+  final n = arr.shape[0];
+  for (var i = 1; i < arr.shape.length; i++) {
+    if (arr.shape[i] != n) {
+      throw ArgumentError.value(
+        arr.shape,
+        'arr',
+        'Must have equal length along all dimensions',
+      );
+    }
+  }
+  return diag_indices(n, ndim: arr.shape.length);
+}
+
+/// Alias for [diag_indices_from].
+List<NDArray<Int64>> diagIndicesFrom<T extends DTypeTag>(NDArray<T> arr) =>
+    diag_indices_from(arr);
+
+int _trilCount(int n, int m, int k) {
+  if (n <= 0 || m <= 0) return 0;
+  final negK = -k;
+  final i0 = negK < 0 ? 0 : (negK > n ? n : negK);
+  final limit = m - k - 1;
+  final clampedLimit = limit < 0 ? 0 : (limit > n ? n : limit);
+  final i1 = clampedLimit < i0 ? i0 : clampedLimit;
+  final l1 = i1 - i0;
+  final sum1 = l1 > 0 ? (l1 * ((i0 + k + 1) + (i1 + k))) ~/ 2 : 0;
+  final l2 = n - i1;
+  final sum2 = l2 * m;
+  return sum1 + sum2;
+}
+
+/// Returns the indices for the lower-triangle of an `(n, m)` array.
+///
+/// Both [n] and [m] (when provided) must be non-negative.
+///
+/// Parameters:
+/// - `n`: The row dimension of the arrays for which the returned indices will
+///   be valid.
+/// - `k`: Diagonal offset (defaults to `0`, the main diagonal; `k < 0` is
+///   below and `k > 0` is above the main diagonal).
+/// - `m`: The column dimension of the arrays for which the returned arrays
+///   will be valid. By default, [m] is taken equal to [n].
+///
+/// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`
+/// in row-major order.
+///
+/// Example:
+/// ```dart
+/// final (rows, cols) = tril_indices(3);
+/// // rows is [0, 1, 1, 2, 2, 2], cols is [0, 0, 1, 0, 1, 2]
+/// ```
+({NDArray<Int64> row, NDArray<Int64> col}) tril_indices(
+  int n, {
+  int k = 0,
+  int? m,
+}) {
+  if (n < 0) {
+    throw ArgumentError.value(n, 'n', 'Must be non-negative');
+  }
+  final cols = m ?? n;
+  if (cols < 0) {
+    throw ArgumentError.value(m, 'm', 'Must be non-negative');
+  }
+  final count = _trilCount(n, cols, k);
+  return NDArray.scope(() {
+    final rowArr = NDArray<Int64>.create([count], DType.int64);
+    final colArr = NDArray<Int64>.create([count], DType.int64);
+    if (count > 0) {
+      final rowPtr = rowArr.pointer.cast<ffi.Int64>();
+      final colPtr = colArr.pointer.cast<ffi.Int64>();
+      final status = native_tril_indices(n, cols, k, rowPtr, colPtr);
+      if (status == -4) {
+        throw OutOfMemoryError();
+      }
+      if (status != 0) {
+        throw StateError('native_tril_indices failed with status $status');
+      }
+    }
+    return (
+      row: rowArr.detachToParentScope(),
+      col: colArr.detachToParentScope(),
+    );
+  });
+}
+
+/// Alias for [tril_indices].
+({NDArray<Int64> row, NDArray<Int64> col}) trilIndices(
+  int n, {
+  int k = 0,
+  int? m,
+}) => tril_indices(n, k: k, m: m);
+
+/// Returns the indices for the lower-triangle of [arr].
+///
+/// The [arr] must be a 2-dimensional array.
+///
+/// Parameters:
+/// - `arr`: A 2-dimensional [NDArray].
+/// - `k`: Diagonal offset (defaults to `0`).
+///
+/// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`.
+({NDArray<Int64> row, NDArray<Int64> col})
+tril_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
+  if (arr.isDisposed) {
+    throw StateError('Cannot execute tril_indices_from on a disposed array.');
+  }
+  if (arr.shape.length != 2) {
+    throw ArgumentError.value(arr.shape, 'arr', 'Must be 2-dimensional');
+  }
+  return tril_indices(arr.shape[0], k: k, m: arr.shape[1]);
+}
+
+/// Alias for [tril_indices_from].
+({NDArray<Int64> row, NDArray<Int64> col}) trilIndicesFrom<T extends DTypeTag>(
+  NDArray<T> arr, {
+  int k = 0,
+}) => tril_indices_from(arr, k: k);
+
+/// Returns the indices for the upper-triangle of an `(n, m)` array.
+///
+/// Both [n] and [m] (when provided) must be non-negative.
+///
+/// Parameters:
+/// - `n`: The row dimension of the arrays for which the returned indices will
+///   be valid.
+/// - `k`: Diagonal offset (defaults to `0`, the main diagonal; `k < 0` is
+///   below and `k > 0` is above the main diagonal).
+/// - `m`: The column dimension of the arrays for which the returned arrays
+///   will be valid. By default, [m] is taken equal to [n].
+///
+/// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`
+/// in row-major order.
+///
+/// Example:
+/// ```dart
+/// final (rows, cols) = triu_indices(3);
+/// // rows is [0, 0, 0, 1, 1, 2], cols is [0, 1, 2, 1, 2, 2]
+/// ```
+({NDArray<Int64> row, NDArray<Int64> col}) triu_indices(
+  int n, {
+  int k = 0,
+  int? m,
+}) {
+  if (n < 0) {
+    throw ArgumentError.value(n, 'n', 'Must be non-negative');
+  }
+  final cols = m ?? n;
+  if (cols < 0) {
+    throw ArgumentError.value(m, 'm', 'Must be non-negative');
+  }
+  final count = n * cols - _trilCount(n, cols, k - 1);
+  return NDArray.scope(() {
+    final rowArr = NDArray<Int64>.create([count], DType.int64);
+    final colArr = NDArray<Int64>.create([count], DType.int64);
+    if (count > 0) {
+      final rowPtr = rowArr.pointer.cast<ffi.Int64>();
+      final colPtr = colArr.pointer.cast<ffi.Int64>();
+      final status = native_triu_indices(n, cols, k, rowPtr, colPtr);
+      if (status == -4) {
+        throw OutOfMemoryError();
+      }
+      if (status != 0) {
+        throw StateError('native_triu_indices failed with status $status');
+      }
+    }
+    return (
+      row: rowArr.detachToParentScope(),
+      col: colArr.detachToParentScope(),
+    );
+  });
+}
+
+/// Alias for [triu_indices].
+({NDArray<Int64> row, NDArray<Int64> col}) triuIndices(
+  int n, {
+  int k = 0,
+  int? m,
+}) => triu_indices(n, k: k, m: m);
+
+/// Returns the indices for the upper-triangle of [arr].
+///
+/// The [arr] must be a 2-dimensional array.
+///
+/// Parameters:
+/// - `arr`: A 2-dimensional [NDArray].
+/// - `k`: Diagonal offset (defaults to `0`).
+///
+/// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`.
+({NDArray<Int64> row, NDArray<Int64> col})
+triu_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
+  if (arr.isDisposed) {
+    throw StateError('Cannot execute triu_indices_from on a disposed array.');
+  }
+  if (arr.shape.length != 2) {
+    throw ArgumentError.value(arr.shape, 'arr', 'Must be 2-dimensional');
+  }
+  return triu_indices(arr.shape[0], k: k, m: arr.shape[1]);
+}
+
+/// Alias for [triu_indices_from].
+({NDArray<Int64> row, NDArray<Int64> col}) triuIndicesFrom<T extends DTypeTag>(
+  NDArray<T> arr, {
+  int k = 0,
+}) => triu_indices_from(arr, k: k);
+
+/// Returns the indices to access `(n, n)` arrays, given a masking function.
+///
+/// Assume [mask_func] is a function that, for a square array `m` of size
+/// `(n, n)` with a possible offset argument `k`, when called as
+/// `mask_func(m, k: k)` returns a new 2-D array with zeros in certain
+/// locations (functions like `triu` or `tril` match this signature). This
+/// function returns the indices where the non-zero values would be located.
+///
+/// The [n] must be non-negative.
+///
+/// Parameters:
+/// - `n`: The square matrix dimension `(n, n)`.
+/// - `mask_func`: A function whose call signature matches `(m, {int k})`
+///   (such as `triu` or `tril`) and returns a 2-dimensional mask [NDArray].
+/// - `k`: An optional diagonal offset argument passed through to [mask_func].
+///
+/// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`
+/// corresponding to the non-zero positions of `mask_func(ones([n, n]), k: k)`.
+///
+/// Example:
+/// ```dart
+/// final (rows, cols) = mask_indices(3, triu);
+/// // Equivalent to triu_indices(3)
+/// ```
+({NDArray<Int64> row, NDArray<Int64> col}) mask_indices<T extends DTypeTag>(
+  int n,
+  NDArray<T> Function(NDArray<Int64> m, {int k}) mask_func, {
+  int k = 0,
+}) {
+  if (n < 0) {
+    throw ArgumentError.value(n, 'n', 'Must be non-negative');
+  }
+  return NDArray.scope(() {
+    final m = NDArray<Int64>.ones([n, n], DType.int64);
+    final mask = mask_func(m, k: k);
+    if (mask.isDisposed) {
+      throw StateError('mask_func returned a disposed array.');
+    }
+    if (mask.shape.length != 2) {
+      throw ArgumentError.value(
+        mask.shape,
+        'mask_func',
+        'Must return a 2-dimensional mask array',
+      );
+    }
+    final coords = nonzero(mask);
+    return (
+      row: coords[0].detachToParentScope(),
+      col: coords[1].detachToParentScope(),
+    );
+  });
+}
+
+/// Alias for [mask_indices].
+({NDArray<Int64> row, NDArray<Int64> col}) maskIndices<T extends DTypeTag>(
+  int n,
+  NDArray<T> Function(NDArray<Int64> m, {int k}) maskFunc, {
+  int k = 0,
+}) => mask_indices(n, maskFunc, k: k);

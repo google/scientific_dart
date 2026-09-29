@@ -1614,6 +1614,74 @@ void main() {
         });
       },
     );
+    test(
+      '64-bit index utilities (unravel_index, ravel_multi_index, indices, sparse_indices, diag_indices, tril/triu_indices, mask_indices) satisfy algebraic identities',
+      () {
+        NDArray.scope(() {
+          // 1. unravel_index <-> ravel_multi_index round-trip in C and F orders
+          final dims = [4, 5, 3];
+          final flat = NDArray<Int64>.arange(0, 60, dtype: DType.int64);
+          for (final order in IndexOrder.values) {
+            final coords = unravel_index(flat, dims, order: order);
+            for (final c in coords) {
+              expect(c.dtype, equals(DType.int64));
+              expect(c.shape, equals([60]));
+            }
+            final reconstructed = ravel_multi_index(coords, dims, order: order);
+            expect(reconstructed.dtype, equals(DType.int64));
+            expect(reconstructed.toList(), equals(flat.toList()));
+          }
+
+          // 2. tril_indices(n, m: m, k: k - 1) and triu_indices(n, m: m, k: k) partition all n * m cells
+          for (final (n, m, k) in [(4, 4, 0), (3, 5, 1), (5, 3, -1)]) {
+            final (row: lRow, col: lCol) = tril_indices(n, m: m, k: k - 1);
+            final (row: uRow, col: uCol) = triu_indices(n, m: m, k: k);
+            expect(lRow.dtype, equals(DType.int64));
+            expect(uRow.dtype, equals(DType.int64));
+            expect(lRow.size + uRow.size, equals(n * m));
+            final visited = NDArray<Int64>.zeros([n, m], DType.int64);
+            for (var i = 0; i < lRow.size; i++) {
+              final r = lRow.getCell([i]);
+              final c = lCol.getCell([i]);
+              visited.setCell([r, c], visited.getCell([r, c]) + 1);
+            }
+            for (var i = 0; i < uRow.size; i++) {
+              final r = uRow.getCell([i]);
+              final c = uCol.getCell([i]);
+              visited.setCell([r, c], visited.getCell([r, c]) + 1);
+            }
+            expect(
+              visited.toList(),
+              equals(NDArray<Int64>.ones([n, m], DType.int64).toList()),
+            );
+          }
+
+          // 3. mask_indices(n, triu, k: k) == triu_indices(n, k: k)
+          final (row: mRow, col: mCol) = mask_indices(4, triu, k: -1);
+          final (row: tRow, col: tCol) = triu_indices(4, k: -1);
+          expect(mRow.toList(), equals(tRow.toList()));
+          expect(mCol.toList(), equals(tCol.toList()));
+
+          // 4. select and multinomial default to DType.int64
+          final cond = NDArray<Boolean>.fromList(
+            [true, false],
+            [2],
+            DType.boolean,
+          );
+          expect(
+            select([cond], [1], defaultValue: 0).dtype,
+            equals(DType.int64),
+          );
+          final pvals = NDArray<Float64>.fromList(
+            [0.5, 0.5],
+            [2],
+            DType.float64,
+          );
+          expect(multinomial(5, pvals, seed: 42).dtype, equals(DType.int64));
+        });
+      },
+    );
+
   });
 }
 

@@ -36,7 +36,7 @@ platforms:
 dependencies:
   openblas: ^0.1.0
   ffi: ^2.2.0
-  pocketfft: ^0.1.0
+  pocketfft: ^0.2.0
   hooks: '>=1.0.3 <3.0.0'
   code_assets: '>=1.0.0 <3.0.0'
   crypto: ^3.0.7

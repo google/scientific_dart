@@ -2424,3 +2424,456 @@ extern "C" int native_roll_nd(
             dtype, src, shape, src_strides, rank, shift, axis, dest, dest_strides);
     }
 }
+
+namespace {
+
+template <typename IdxT>
+int unravel_index_typed(
+    const IdxT *indices_ptr,
+    const int64_t *indices_shape,
+    const int64_t *indices_strides,
+    int64_t indices_rank,
+    int64_t indices_size,
+    const int64_t *dims,
+    int64_t ndims,
+    int order,
+    int64_t **out_ptrs,
+    const int64_t *out_strides_flat,
+    int is_contiguous,
+    int64_t *out_error_idx
+) {
+    int64_t max_flat = 1;
+    bool saturated = false;
+    for (int64_t d = 0; d < ndims; ++d) {
+        int64_t dim = dims[d];
+        if (dim == 0) {
+            max_flat = 0;
+            saturated = false;
+            break;
+        }
+        if (!saturated) {
+            if (max_flat > INT64_MAX / dim) {
+                max_flat = INT64_MAX;
+                saturated = true;
+            } else {
+                max_flat *= dim;
+            }
+        }
+    }
+
+    if (indices_size == 0) {
+        return 0;
+    }
+
+    if (is_contiguous != 0) {
+        for (int64_t i = 0; i < indices_size; ++i) {
+            IdxT raw = indices_ptr[i];
+            if constexpr (std::is_signed_v<IdxT>) {
+                int64_t val = static_cast<int64_t>(raw);
+                if (val < 0 || (!saturated && val >= max_flat)) {
+                    if (out_error_idx != nullptr) *out_error_idx = val;
+                    return -2;
+                }
+                int64_t rem = val;
+                if (order == 0) {
+                    for (int64_t d = ndims - 1; d >= 0; --d) {
+                        int64_t dim = dims[d];
+                        out_ptrs[d][i] = rem % dim;
+                        rem /= dim;
+                    }
+                } else {
+                    for (int64_t d = 0; d < ndims; ++d) {
+                        int64_t dim = dims[d];
+                        out_ptrs[d][i] = rem % dim;
+                        rem /= dim;
+                    }
+                }
+            } else {
+                uint64_t uval = static_cast<uint64_t>(raw);
+                if ((!saturated && uval >= static_cast<uint64_t>(max_flat)) ||
+                    uval > static_cast<uint64_t>(INT64_MAX)) {
+                    if (out_error_idx != nullptr) *out_error_idx = static_cast<int64_t>(uval);
+                    return -2;
+                }
+                int64_t rem = static_cast<int64_t>(uval);
+                if (order == 0) {
+                    for (int64_t d = ndims - 1; d >= 0; --d) {
+                        int64_t dim = dims[d];
+                        out_ptrs[d][i] = rem % dim;
+                        rem /= dim;
+                    }
+                } else {
+                    for (int64_t d = 0; d < ndims; ++d) {
+                        int64_t dim = dims[d];
+                        out_ptrs[d][i] = rem % dim;
+                        rem /= dim;
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
+    NoThrowBuffer<int64_t> coord(static_cast<size_t>(indices_rank > 0 ? indices_rank : 1), true);
+    if (!coord.ok()) return -4;
+
+    for (int64_t i = 0; i < indices_size; ++i) {
+        int64_t in_off = 0;
+        for (int64_t r = 0; r < indices_rank; ++r) {
+            in_off += coord[r] * indices_strides[r];
+        }
+        IdxT raw = indices_ptr[in_off];
+        int64_t rem = 0;
+        if constexpr (std::is_signed_v<IdxT>) {
+            int64_t val = static_cast<int64_t>(raw);
+            if (val < 0 || (!saturated && val >= max_flat)) {
+                if (out_error_idx != nullptr) *out_error_idx = val;
+                return -2;
+            }
+            rem = val;
+        } else {
+            uint64_t uval = static_cast<uint64_t>(raw);
+            if ((!saturated && uval >= static_cast<uint64_t>(max_flat)) ||
+                uval > static_cast<uint64_t>(INT64_MAX)) {
+                if (out_error_idx != nullptr) *out_error_idx = static_cast<int64_t>(uval);
+                return -2;
+            }
+            rem = static_cast<int64_t>(uval);
+        }
+
+        if (order == 0) {
+            for (int64_t d = ndims - 1; d >= 0; --d) {
+                int64_t dim = dims[d];
+                int64_t out_off = 0;
+                const int64_t *ostrides = out_strides_flat + d * indices_rank;
+                for (int64_t r = 0; r < indices_rank; ++r) {
+                    out_off += coord[r] * ostrides[r];
+                }
+                out_ptrs[d][out_off] = rem % dim;
+                rem /= dim;
+            }
+        } else {
+            for (int64_t d = 0; d < ndims; ++d) {
+                int64_t dim = dims[d];
+                int64_t out_off = 0;
+                const int64_t *ostrides = out_strides_flat + d * indices_rank;
+                for (int64_t r = 0; r < indices_rank; ++r) {
+                    out_off += coord[r] * ostrides[r];
+                }
+                out_ptrs[d][out_off] = rem % dim;
+                rem /= dim;
+            }
+        }
+
+        for (int64_t r = indices_rank - 1; r >= 0; --r) {
+            coord[r]++;
+            if (coord[r] < indices_shape[r]) break;
+            coord[r] = 0;
+        }
+    }
+    return 0;
+}
+
+}  // namespace
+
+extern "C" int native_unravel_index(
+    int index_dtype,
+    const void *indices_ptr,
+    const int64_t *indices_shape,
+    const int64_t *indices_strides,
+    int64_t indices_rank,
+    int64_t indices_size,
+    const int64_t *dims,
+    int64_t ndims,
+    int order,
+    int64_t **out_ptrs,
+    const int64_t *out_strides_flat,
+    int is_contiguous,
+    int64_t *out_error_idx
+) {
+    if (indices_ptr == nullptr || dims == nullptr || out_ptrs == nullptr || ndims <= 0) {
+        return -3;
+    }
+    for (int64_t d = 0; d < ndims; ++d) {
+        if (dims[d] < 0) return -3;
+    }
+
+    switch (index_dtype) {
+        case DTYPE_INT64:
+            return unravel_index_typed<int64_t>(
+                static_cast<const int64_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_INT32:
+            return unravel_index_typed<int32_t>(
+                static_cast<const int32_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_INT16:
+            return unravel_index_typed<int16_t>(
+                static_cast<const int16_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_INT8:
+            return unravel_index_typed<int8_t>(
+                static_cast<const int8_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_UINT64:
+            return unravel_index_typed<uint64_t>(
+                static_cast<const uint64_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_UINT32:
+            return unravel_index_typed<uint32_t>(
+                static_cast<const uint32_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_UINT16:
+            return unravel_index_typed<uint16_t>(
+                static_cast<const uint16_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        case DTYPE_UINT8:
+            return unravel_index_typed<uint8_t>(
+                static_cast<const uint8_t *>(indices_ptr), indices_shape, indices_strides,
+                indices_rank, indices_size, dims, ndims, order, out_ptrs, out_strides_flat,
+                is_contiguous, out_error_idx);
+        default:
+            return -1;
+    }
+}
+
+extern "C" int native_ravel_multi_index(
+    const int64_t *const *coords_ptrs,
+    const int64_t *coords_strides_flat,
+    const int64_t *target_shape,
+    int64_t target_rank,
+    int64_t total_size,
+    const int64_t *dims,
+    const int *modes,
+    int64_t ndims,
+    int order,
+    int64_t *out_ptr,
+    const int64_t *out_strides,
+    int is_contiguous,
+    int64_t *out_error_val
+) {
+    if (coords_ptrs == nullptr || dims == nullptr || modes == nullptr || out_ptr == nullptr || ndims <= 0) {
+        return -3;
+    }
+    for (int64_t d = 0; d < ndims; ++d) {
+        if (dims[d] <= 0) {
+            if (total_size > 0) {
+                if (out_error_val != nullptr) *out_error_val = 0;
+                return -2;
+            }
+            return 0;
+        }
+    }
+    if (total_size == 0) {
+        return 0;
+    }
+
+    if (is_contiguous != 0) {
+        for (int64_t i = 0; i < total_size; ++i) {
+            int64_t flat = 0;
+            if (order == 0) {
+                for (int64_t d = 0; d < ndims; ++d) {
+                    int64_t c = coords_ptrs[d][i];
+                    int64_t dim = dims[d];
+                    int mode = modes[d];
+                    if (mode == 0) {
+                        if (c < 0 || c >= dim) {
+                            if (out_error_val != nullptr) *out_error_val = c;
+                            return -2;
+                        }
+                    } else if (mode == 1) {
+                        c %= dim;
+                        if (c < 0) c += dim;
+                    } else {
+                        if (c < 0) c = 0;
+                        else if (c >= dim) c = dim - 1;
+                    }
+                    flat = flat * dim + c;
+                }
+            } else {
+                for (int64_t d = ndims - 1; d >= 0; --d) {
+                    int64_t c = coords_ptrs[d][i];
+                    int64_t dim = dims[d];
+                    int mode = modes[d];
+                    if (mode == 0) {
+                        if (c < 0 || c >= dim) {
+                            if (out_error_val != nullptr) *out_error_val = c;
+                            return -2;
+                        }
+                    } else if (mode == 1) {
+                        c %= dim;
+                        if (c < 0) c += dim;
+                    } else {
+                        if (c < 0) c = 0;
+                        else if (c >= dim) c = dim - 1;
+                    }
+                    flat = flat * dim + c;
+                }
+            }
+            out_ptr[i] = flat;
+        }
+        return 0;
+    }
+
+    NoThrowBuffer<int64_t> iter_coord(static_cast<size_t>(target_rank > 0 ? target_rank : 1), true);
+    if (!iter_coord.ok()) return -4;
+
+    for (int64_t i = 0; i < total_size; ++i) {
+        int64_t flat = 0;
+        if (order == 0) {
+            for (int64_t d = 0; d < ndims; ++d) {
+                const int64_t *cstrides = coords_strides_flat + d * target_rank;
+                int64_t c_off = 0;
+                for (int64_t r = 0; r < target_rank; ++r) {
+                    c_off += iter_coord[r] * cstrides[r];
+                }
+                int64_t c = coords_ptrs[d][c_off];
+                int64_t dim = dims[d];
+                int mode = modes[d];
+                if (mode == 0) {
+                    if (c < 0 || c >= dim) {
+                        if (out_error_val != nullptr) *out_error_val = c;
+                        return -2;
+                    }
+                } else if (mode == 1) {
+                    c %= dim;
+                    if (c < 0) c += dim;
+                } else {
+                    if (c < 0) c = 0;
+                    else if (c >= dim) c = dim - 1;
+                }
+                flat = flat * dim + c;
+            }
+        } else {
+            for (int64_t d = ndims - 1; d >= 0; --d) {
+                const int64_t *cstrides = coords_strides_flat + d * target_rank;
+                int64_t c_off = 0;
+                for (int64_t r = 0; r < target_rank; ++r) {
+                    c_off += iter_coord[r] * cstrides[r];
+                }
+                int64_t c = coords_ptrs[d][c_off];
+                int64_t dim = dims[d];
+                int mode = modes[d];
+                if (mode == 0) {
+                    if (c < 0 || c >= dim) {
+                        if (out_error_val != nullptr) *out_error_val = c;
+                        return -2;
+                    }
+                } else if (mode == 1) {
+                    c %= dim;
+                    if (c < 0) c += dim;
+                } else {
+                    if (c < 0) c = 0;
+                    else if (c >= dim) c = dim - 1;
+                }
+                flat = flat * dim + c;
+            }
+        }
+
+        int64_t out_off = 0;
+        for (int64_t r = 0; r < target_rank; ++r) {
+            out_off += iter_coord[r] * out_strides[r];
+        }
+        out_ptr[out_off] = flat;
+
+        for (int64_t r = target_rank - 1; r >= 0; --r) {
+            iter_coord[r]++;
+            if (iter_coord[r] < target_shape[r]) break;
+            iter_coord[r] = 0;
+        }
+    }
+    return 0;
+}
+
+extern "C" int native_indices_int64(
+    const int64_t *dims,
+    int64_t ndims,
+    int64_t slice_size,
+    int64_t *out_ptr
+) {
+    if (dims == nullptr || out_ptr == nullptr || ndims < 0) {
+        return -3;
+    }
+    if (ndims == 0 || slice_size <= 0) {
+        return 0;
+    }
+
+    int64_t outer = 1;
+    int64_t inner = slice_size;
+    for (int64_t d = 0; d < ndims; ++d) {
+        int64_t dim = dims[d];
+        if (dim <= 0) return 0;
+        inner /= dim;
+        int64_t *slice_out = out_ptr + d * slice_size;
+        int64_t pos = 0;
+        for (int64_t o = 0; o < outer; ++o) {
+            for (int64_t v = 0; v < dim; ++v) {
+                for (int64_t in = 0; in < inner; ++in) {
+                    slice_out[pos++] = v;
+                }
+            }
+        }
+        outer *= dim;
+    }
+    return 0;
+}
+
+extern "C" int native_tril_indices(
+    int64_t n,
+    int64_t m,
+    int64_t k,
+    int64_t *out_row,
+    int64_t *out_col
+) {
+    if (out_row == nullptr || out_col == nullptr) {
+        return -3;
+    }
+    if (n <= 0 || m <= 0) {
+        return 0;
+    }
+    int64_t idx = 0;
+    for (int64_t i = 0; i < n; ++i) {
+        int64_t max_j = i + k;
+        if (max_j >= m) max_j = m - 1;
+        for (int64_t j = 0; j <= max_j; ++j) {
+            out_row[idx] = i;
+            out_col[idx] = j;
+            idx++;
+        }
+    }
+    return 0;
+}
+
+extern "C" int native_triu_indices(
+    int64_t n,
+    int64_t m,
+    int64_t k,
+    int64_t *out_row,
+    int64_t *out_col
+) {
+    if (out_row == nullptr || out_col == nullptr) {
+        return -3;
+    }
+    if (n <= 0 || m <= 0) {
+        return 0;
+    }
+    int64_t idx = 0;
+    for (int64_t i = 0; i < n; ++i) {
+        int64_t min_j = i + k;
+        if (min_j < 0) min_j = 0;
+        for (int64_t j = min_j; j < m; ++j) {
+            out_row[idx] = i;
+            out_col[idx] = j;
+            idx++;
+        }
+    }
+    return 0;
+}
+

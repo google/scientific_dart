@@ -2507,7 +2507,7 @@ external int strlcat(
 /// buffer size in *lenmem.
 @ffi.Native<
   kiss_fft_cfg Function(
-    ffi.Int,
+    ffi.Int64,
     ffi.Int,
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Size>,
@@ -2547,7 +2547,7 @@ external void kiss_fft(
     kiss_fft_cfg,
     ffi.Pointer<kiss_fft_cpx>,
     ffi.Pointer<kiss_fft_cpx>,
-    ffi.Int,
+    ffi.Int64,
   )
 >()
 external void kiss_fft_stride(
@@ -2563,12 +2563,12 @@ external void kiss_fft_stride(
 external void kiss_fft_cleanup();
 
 /// Returns the smallest integer k, such that k>=n and k has only "fast" factors (2,3,5)
-@ffi.Native<ffi.Int Function(ffi.Int)>()
+@ffi.Native<ffi.Int64 Function(ffi.Int64)>()
 external int kiss_fft_next_fast_size(int n);
 
 @ffi.Native<
   kiss_fftr_cfg Function(
-    ffi.Int,
+    ffi.Int64,
     ffi.Int,
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Size>,
@@ -2614,7 +2614,7 @@ external void kiss_fftri(
 
 @ffi.Native<
   kiss_fftnd_cfg Function(
-    ffi.Pointer<ffi.Int>,
+    ffi.Pointer<ffi.Int64>,
     ffi.Int,
     ffi.Int,
     ffi.Pointer<ffi.Void>,
@@ -2622,7 +2622,7 @@ external void kiss_fftri(
   )
 >()
 external kiss_fftnd_cfg kiss_fftnd_alloc(
-  ffi.Pointer<ffi.Int> dims,
+  ffi.Pointer<ffi.Int64> dims,
   int ndims,
   int inverse_fft,
   ffi.Pointer<ffi.Void> mem,

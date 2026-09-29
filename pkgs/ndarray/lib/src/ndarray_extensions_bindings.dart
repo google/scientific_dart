@@ -301,6 +301,126 @@ external int native_pad_2d(
   int isUniformConstant,
 );
 
+/// Unravels flat indices into multi-dimensional coordinate arrays.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Int,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int64,
+    ffi.Int,
+    ffi.Pointer<ffi.Pointer<ffi.Int64>>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external int native_unravel_index(
+  int indexDtype,
+  ffi.Pointer<ffi.Void> indicesPtr,
+  ffi.Pointer<ffi.Int64> indicesShape,
+  ffi.Pointer<ffi.Int64> indicesStrides,
+  int indicesRank,
+  int indicesSize,
+  ffi.Pointer<ffi.Int64> dims,
+  int ndims,
+  int order,
+  ffi.Pointer<ffi.Pointer<ffi.Int64>> outPtrs,
+  ffi.Pointer<ffi.Int64> outStridesFlat,
+  int isContiguous,
+  ffi.Pointer<ffi.Int64> outErrorIdx,
+);
+
+/// Converts multi-dimensional coordinate arrays into flat indices.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<ffi.Pointer<ffi.Int64>>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int>,
+    ffi.Int64,
+    ffi.Int,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external int native_ravel_multi_index(
+  ffi.Pointer<ffi.Pointer<ffi.Int64>> coordsPtrs,
+  ffi.Pointer<ffi.Int64> coordsStridesFlat,
+  ffi.Pointer<ffi.Int64> targetShape,
+  int targetRank,
+  int totalSize,
+  ffi.Pointer<ffi.Int64> dims,
+  ffi.Pointer<ffi.Int> modes,
+  int ndims,
+  int order,
+  ffi.Pointer<ffi.Int64> outPtr,
+  ffi.Pointer<ffi.Int64> outStrides,
+  int isContiguous,
+  ffi.Pointer<ffi.Int64> outErrorVal,
+);
+
+/// Fills a dense grid of 64-bit indices for the given dimensions.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external int native_indices_int64(
+  ffi.Pointer<ffi.Int64> dims,
+  int ndims,
+  int sliceSize,
+  ffi.Pointer<ffi.Int64> outPtr,
+);
+
+/// Fills lower-triangle 64-bit row and column index arrays.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external int native_tril_indices(
+  int n,
+  int m,
+  int k,
+  ffi.Pointer<ffi.Int64> outRow,
+  ffi.Pointer<ffi.Int64> outCol,
+);
+
+/// Fills upper-triangle 64-bit row and column index arrays.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external int native_triu_indices(
+  int n,
+  int m,
+  int k,
+  ffi.Pointer<ffi.Int64> outRow,
+  ffi.Pointer<ffi.Int64> outCol,
+);
+
 /// Custom Padding: ND
 @ffi.Native<
   ffi.Int Function(

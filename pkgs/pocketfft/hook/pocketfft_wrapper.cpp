@@ -27,6 +27,7 @@
 #include "pocketfft_hdronly.h"
 
 #include <complex>
+#include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
@@ -43,13 +44,13 @@ typedef struct {
 } kiss_fft_cpx;
 
 struct kiss_fft_state {
-  int nfft;
+  int64_t nfft;
   int inverse;
 };
 typedef struct kiss_fft_state* kiss_fft_cfg;
 
 struct kiss_fftr_state {
-  int nfft;
+  int64_t nfft;
   int inverse;
 };
 typedef struct kiss_fftr_state* kiss_fftr_cfg;
@@ -57,7 +58,7 @@ typedef struct kiss_fftr_state* kiss_fftr_cfg;
 struct kiss_fftnd_state {
   int inverse;
   int ndims;
-  int dims[1];
+  int64_t dims[1];
 };
 typedef struct kiss_fftnd_state* kiss_fftnd_cfg;
 
@@ -90,7 +91,7 @@ inline const pocketfft::detail::pocketfft_r<double>& get_r_plan(size_t n) {
 }  // namespace
 
 POCKETFFT_EXPORT kiss_fft_cfg kiss_fft_alloc(
-    int nfft,
+    int64_t nfft,
     int inverse_fft,
     void* mem,
     size_t* lenmem) {
@@ -124,7 +125,7 @@ POCKETFFT_EXPORT void kiss_fft_stride(
     kiss_fft_cfg cfg,
     const kiss_fft_cpx* fin,
     kiss_fft_cpx* fout,
-    int fin_stride) {
+    int64_t fin_stride) {
   if (cfg == nullptr || fin == nullptr || fout == nullptr || cfg->nfft <= 0 ||
       fin_stride <= 0) {
     return;
@@ -173,16 +174,16 @@ POCKETFFT_EXPORT void kiss_fft(
 
 POCKETFFT_EXPORT void kiss_fft_cleanup(void) {}
 
-POCKETFFT_EXPORT int kiss_fft_next_fast_size(int n) {
+POCKETFFT_EXPORT int64_t kiss_fft_next_fast_size(int64_t n) {
   if (n <= 1) {
     return 1;
   }
-  return static_cast<int>(
+  return static_cast<int64_t>(
       pocketfft::detail::util::good_size_cmplx(static_cast<size_t>(n)));
 }
 
 POCKETFFT_EXPORT kiss_fftr_cfg kiss_fftr_alloc(
-    int nfft,
+    int64_t nfft,
     int inverse_fft,
     void* mem,
     size_t* lenmem) {
@@ -297,7 +298,7 @@ POCKETFFT_EXPORT void kiss_fftri(
 }
 
 POCKETFFT_EXPORT kiss_fftnd_cfg kiss_fftnd_alloc(
-    const int* dims,
+    const int64_t* dims,
     int ndims,
     int inverse_fft,
     void* mem,
@@ -320,7 +321,7 @@ POCKETFFT_EXPORT kiss_fftnd_cfg kiss_fftnd_alloc(
   }
 
   const size_t memneeded = sizeof(struct kiss_fftnd_state) +
-      static_cast<size_t>(ndims - 1) * sizeof(int);
+      static_cast<size_t>(ndims - 1) * sizeof(int64_t);
   kiss_fftnd_cfg st = nullptr;
   if (lenmem == nullptr) {
     st = static_cast<kiss_fftnd_cfg>(std::malloc(memneeded));

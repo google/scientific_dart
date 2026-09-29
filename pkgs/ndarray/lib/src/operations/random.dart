@@ -1232,7 +1232,7 @@ NDArray<T> multinomial<T extends DTypeTag, P extends DTypeTag>(
     );
   }
 
-  final resolvedDType = dtype ?? (out?.dtype ?? DType.int32 as DType<T>);
+  final resolvedDType = dtype ?? (out?.dtype ?? DType.int64 as DType<T>);
   if (!identical(resolvedDType, DType.int32) &&
       !identical(resolvedDType, DType.int64)) {
     throw ArgumentError(
