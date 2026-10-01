@@ -478,7 +478,7 @@ void main() {
       expect(
         module.code,
         contains(
-          'flat_to_strided_offsets(idx, meta, &off_a, &off_b, &off_dst);',
+          'flat_to_strided_offsets(idx, metadata, &off_a, &off_b, &off_dst);',
         ),
       );
 

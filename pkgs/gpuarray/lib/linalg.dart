@@ -16,11 +16,12 @@
 /// [GpuArray] tensors.
 ///
 /// Includes matrix products ([matmul], [dot], [vdot], [multiDot]),
-/// decompositions ([svd], [svdvals], [qr], [cholesky], [eigh], [eigvalsh],
-/// [eig], [eigvals], [lu], [luFactor], [luSolve]), solvers and invariants
-/// ([solve], [inv], [pinv], [det], [slogdet], [matrixPower], [matrixRank],
-/// [norm], [cond], [trace], [diagonal]), and tensor contractions ([einsum],
-/// [tensordot], [kron], [inner], [outer], [cross]).
+/// decompositions ([svd], [svdvals], [svdValues], [qr], [qrR], [cholesky],
+/// [eigh], [eigvalsh], [eig], [eigvals], [lu], [luFactor], [luSolve]), solvers
+/// and invariants ([solve], [inv], [pinv], [lstsq], [det], [slogdet],
+/// [matrixPower], [matrixRank], [norm], [cond], [trace], [diagonal]), and
+/// tensor contractions ([einsum], [tensordot], [kron], [inner], [outer],
+/// [cross]).
 library;
 
 export 'src/linalg/linalg.dart';

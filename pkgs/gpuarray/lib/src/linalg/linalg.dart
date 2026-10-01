@@ -12,262 +12,587 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'dart:ffi' as ffi;
 import 'dart:math' as math;
 
-import 'package:ndarray/ndarray.dart' as nd;
-import 'package:ndarray/ndarray.dart' show DTypeTag, NDArray;
-
 import '../device.dart';
-import '../exceptions.dart';
+import '../dtype.dart';
 import '../gpu_array.dart';
+import 'linalg_buffer_ops.dart';
+import 'linalg_wgsl_df64.dart';
+import 'tensor_kernels.dart';
+import 'tensors.dart';
 
-export '../operations/manipulation.dart' show diagonal, trace;
 export 'decompositions.dart';
 export 'solvers.dart';
 export 'tensors.dart';
 
-bool _shapesEqual(List<int> first, List<int> second) {
-  if (first.length != second.length) return false;
-  for (var i = 0; i < first.length; i++) {
-    if (first[i] != second[i]) return false;
+void _checkBinaryInputs(GpuArray a, GpuArray b) {
+  if (a.isDisposed) {
+    throw StateError('Cannot operate on a disposed GpuArray (a).');
   }
-  return true;
+  if (b.isDisposed) {
+    throw StateError('Cannot operate on a disposed GpuArray (b).');
+  }
+  if (a.device != b.device) {
+    throw ArgumentError.value(
+      b,
+      'b',
+      'Must reside on the same GpuDevice as a.',
+    );
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b,
+      'b',
+      'Must have the same DType as a (${a.dtype}), got ${b.dtype}.',
+    );
+  }
 }
 
-List<int> _broadcastBatchShapes(
-  String operation,
-  List<int> shapeA,
-  List<int> shapeB,
-) {
+({List<int> batchShape, List<int> aPadded, List<int> bPadded})
+_broadcastBatchShapes(List<int> shapeA, List<int> shapeB) {
   final maxRank = math.max(shapeA.length, shapeB.length);
-  final outShape = List<int>.filled(maxRank, 0);
+  final batchShape = List<int>.filled(maxRank, 1);
+  final aPadded = List<int>.filled(maxRank, 1);
+  final bPadded = List<int>.filled(maxRank, 1);
   for (var i = 0; i < maxRank; i++) {
-    final indexA = shapeA.length - 1 - i;
-    final indexB = shapeB.length - 1 - i;
-    final extentA = indexA >= 0 ? shapeA[indexA] : 1;
-    final extentB = indexB >= 0 ? shapeB[indexB] : 1;
-    if (extentA != extentB && extentA != 1 && extentB != 1) {
-      throw GpuShapeMismatchException(operation, shapeA, shapeB);
-    }
-    outShape[maxRank - 1 - i] = math.max(extentA, extentB);
-  }
-  return outShape;
-}
-
-GpuArray<R> _writeOrWrapResult<R extends DTypeTag>(
-  NDArray<R> hostResult,
-  GpuDevice device,
-  GpuArray<R>? out,
-) {
-  if (out != null) {
-    if (!_shapesEqual(out.shape, hostResult.shape) ||
-        out.dtype != hostResult.dtype) {
+    final dimA = i >= maxRank - shapeA.length
+        ? shapeA[i - (maxRank - shapeA.length)]
+        : 1;
+    final dimB = i >= maxRank - shapeB.length
+        ? shapeB[i - (maxRank - shapeB.length)]
+        : 1;
+    if (dimA != dimB && dimA != 1 && dimB != 1) {
       throw ArgumentError.value(
-        out,
-        'out',
-        'Must be an array with shape ${hostResult.shape} and dtype '
-            '${hostResult.dtype}, got shape ${out.shape} and dtype ${out.dtype}.',
+        shapeB,
+        'b',
+        'Must have broadcast-compatible batch dimensions with $shapeA.',
       );
     }
-    if (out.isContiguous) {
-      final contiguous = hostResult.isContiguous
-          ? hostResult
-          : hostResult.copy();
-      if (out.byteSize > 0) {
-        out.buffer.copyFromHost(
-          contiguous.pointer.cast<ffi.Void>(),
-          out.byteSize,
-          offset: out.offsetElements * out.dtype.byteWidth,
-        );
-      }
-    } else if (out.byteSize > 0) {
-      out.buffer.copyToHost(
-        out.buffer.address.cast<ffi.Void>(),
-        out.buffer.sizeInBytes,
-      );
-      final totalBufferElements = out.buffer.sizeInBytes ~/ out.dtype.byteWidth;
-      final rootBufferView = NDArray<R>.fromPointer(
-        out.buffer.address.cast<ffi.Void>(),
-        <int>[totalBufferElements],
-        out.dtype,
-      );
-      final outView = NDArray<R>.view(
-        rootBufferView,
-        shape: out.shape,
-        strides: out.strides,
-        offsetElements: out.offsetElements,
-      );
-      hostResult.copy(out: outView);
-      out.buffer.copyFromHost(
-        out.buffer.address.cast<ffi.Void>(),
-        out.buffer.sizeInBytes,
-      );
-    }
-    return out;
+    aPadded[i] = dimA;
+    bPadded[i] = dimB;
+    batchShape[i] = math.max(dimA, dimB);
   }
-  final gpuResult = GpuArray<R>.fromNDArray(hostResult, device: device);
-  gpuResult.detachToParentScope();
-  return gpuResult;
+  return (batchShape: batchShape, aPadded: aPadded, bPadded: bPadded);
 }
 
-void _copyGpuToOut<R extends DTypeTag>(GpuArray<R> source, GpuArray<R> out) {
-  NDArray.scope(() {
-    final hostSource = source.toNDArray();
-    _writeOrWrapResult(hostSource, source.device, out);
-  });
-}
-
-/// Computes the matrix product of two [GpuArray]s [a] and [b].
+/// Matrix product of two [GpuArray] tensors [a] and [b].
 ///
-/// Supports 1D dot products, 2D matrix multiplication, and higher-rank batched
-/// matrix multiplication with leading dimension broadcasting.
-/// None of [a], [b], or [out] may be disposed, and neither [a] nor [b] may be
-/// 0-dimensional.
+/// The behavior depends on the dimensionality of [a] and [b]:
+/// - If both arguments are 2-D (`[M, K]` and `[K, N]`), they are multiplied as
+///   conventional matrices producing shape `[M, N]`.
+/// - If either argument is N-D (`N > 2`), it is treated as a stack of matrices
+///   residing in the last two indices and broadcast accordingly.
+/// - If the first argument is 1-D (`[K]`), it is promoted to a matrix by
+///   prepending a `1` to its dimensions (`[1, K]`), and the prepended `1` is
+///   removed after matrix multiplication.
+/// - If the second argument is 1-D (`[K]`), it is promoted to a matrix by
+///   appending a `1` to its dimensions (`[K, 1]`), and the appended `1` is
+///   removed after matrix multiplication.
+/// - If both arguments are 1-D (`[K]`), the inner product (0-D scalar) is
+///   computed.
+///
+/// Both [a] and [b] must have at least 1 dimension (`ndim >= 1`), reside on the
+/// same [GpuDevice], have matching [DType]s, and have matching inner dimensions.
+/// If [out] is provided, it must match the result shape, dtype, and device.
 GpuArray<T> matmul<T extends DTypeTag>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
 }) {
-  if (a.isDisposed || b.isDisposed) {
-    throw StateError('Cannot execute matmul on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write matmul result to a disposed output GpuArray.',
+  _checkBinaryInputs(a, b);
+  if (a.ndim == 0) {
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must be at least 1-dimensional for matmul (0-D scalars are not allowed).',
     );
   }
-  if (a.rank == 0 || b.rank == 0) {
-    throw GpuShapeMismatchException('matmul', a.shape, b.shape);
+  if (b.ndim == 0) {
+    throw ArgumentError.value(
+      b.shape,
+      'b',
+      'Must be at least 1-dimensional for matmul (0-D scalars are not allowed).',
+    );
   }
 
-  final is1DA = a.rank == 1;
-  final is1DB = b.rank == 1;
-
-  if (is1DA && is1DB) {
-    if (a.shape[0] != b.shape[0]) {
-      throw GpuShapeMismatchException('matmul', a.shape, b.shape);
-    }
-    if (out == null) {
-      return a.matmul<T>(b);
-    }
-    return ResourceScope.scope(() {
-      final result = a.matmul<T>(b);
-      _copyGpuToOut(result, out);
-      return out;
-    });
+  if (a.ndim == 1 && b.ndim == 1) {
+    return dot(a, b, out: out);
   }
 
-  final shapeA = is1DA ? <int>[1, a.shape[0]] : a.shape;
-  final shapeB = is1DB ? <int>[b.shape[0], 1] : b.shape;
+  final squeezeA = a.ndim == 1;
+  final squeezeB = b.ndim == 1;
+  final shapeA = squeezeA ? <int>[1, a.shape[0]] : a.shape;
+  final shapeB = squeezeB ? <int>[b.shape[0], 1] : b.shape;
 
   final m = shapeA[shapeA.length - 2];
   final kA = shapeA[shapeA.length - 1];
   final kB = shapeB[shapeB.length - 2];
   final n = shapeB[shapeB.length - 1];
-
   if (kA != kB) {
-    throw GpuShapeMismatchException('matmul', a.shape, b.shape);
-  }
-
-  if (out == null && !is1DA && !is1DB) {
-    return a.matmul<T>(b);
-  }
-
-  final batchA = shapeA.sublist(0, shapeA.length - 2);
-  final batchB = shapeB.sublist(0, shapeB.length - 2);
-  final batchShape = _broadcastBatchShapes('matmul', batchA, batchB);
-  final outShape = <int>[...batchShape, if (!is1DA) m, if (!is1DB) n];
-
-  if (out != null &&
-      (!_shapesEqual(out.shape, outShape) || out.dtype != a.dtype)) {
     throw ArgumentError.value(
-      out,
-      'out',
-      'Must be an array with shape $outShape and dtype ${a.dtype}, '
-          'got shape ${out.shape} and dtype ${out.dtype}.',
+      b.shape,
+      'b',
+      'Must have inner dimension matching a ($kA != $kB).',
     );
   }
 
-  return NDArray.scope(() {
-    final hostA = a.toNDArray();
-    final hostB = b.toNDArray();
-    final hostResult = nd.matmul<T>(hostA, hostB);
-    return _writeOrWrapResult(hostResult, a.device, out);
+  final batchInfo = _broadcastBatchShapes(
+    shapeA.sublist(0, shapeA.length - 2),
+    shapeB.sublist(0, shapeB.length - 2),
+  );
+  final resultShape = <int>[
+    ...batchInfo.batchShape,
+    if (!squeezeA) m,
+    if (!squeezeB) n,
+  ];
+  validateLinalgOut(out, a.device, resultShape, a.dtype);
+
+  final batchCount = batchInfo.batchShape.isEmpty
+      ? 1
+      : batchInfo.batchShape.reduce((x, y) => x * y);
+
+  return ResourceScope.scope(() {
+    if (isComplexDType(a.dtype)) {
+      final bufferA = toContiguousComplex128Buffer(a);
+      final bufferB = toContiguousComplex128Buffer(b);
+      final bufferC = dispatchBatchedMatmulC128Gpu(
+        a.device,
+        bufferA,
+        bufferB,
+        batchCount: batchCount,
+        m: m,
+        k: kA,
+        n: n,
+        batchShape: batchInfo.batchShape,
+        aBatchShape: batchInfo.aPadded,
+        bBatchShape: batchInfo.bPadded,
+      );
+      final output = writeComplex128BufferToArray<T>(
+        a.device,
+        bufferC,
+        resultShape,
+        a.dtype,
+        out: out,
+      );
+      if (out == null) output.detachToParentScope();
+      return output;
+    } else {
+      final bufferA = toContiguousFloat64Buffer(a);
+      final bufferB = toContiguousFloat64Buffer(b);
+      final bufferC = dispatchBatchedMatmulF64Gpu(
+        a.device,
+        bufferA,
+        bufferB,
+        batchCount: batchCount,
+        m: m,
+        k: kA,
+        n: n,
+        batchShape: batchInfo.batchShape,
+        aBatchShape: batchInfo.aPadded,
+        bBatchShape: batchInfo.bPadded,
+      );
+      final output = writeFloat64BufferToArray<T>(
+        a.device,
+        bufferC,
+        resultShape,
+        a.dtype,
+        out: out,
+      );
+      if (out == null) output.detachToParentScope();
+      return output;
+    }
   });
 }
 
-/// Computes the dot product of two [GpuArray]s [a] and [b].
+/// Dot product of two [GpuArray] tensors [a] and [b].
 ///
-/// For 0D scalars, performs multiplication. For 1D vectors or 2D matrices,
-/// performs inner/matrix multiplication via [matmul].
-/// None of [a], [b], or [out] may be disposed.
+/// Specifically:
+/// - If both [a] and [b] are 1-D arrays, computes the inner product of vectors
+///   (without complex conjugation) as a 0-D scalar [GpuArray].
+/// - If both [a] and [b] are 2-D arrays, computes matrix multiplication.
+/// - If either [a] or [b] is 0-D (scalar), computes elementwise multiplication.
+/// - If [a] is an N-D array and [b] is a 1-D array, computes the sum product
+///   over the last axis of [a] and [b].
+/// - If [a] is an N-D array and [b] is an M-D array (where `M >= 2`), computes
+///   the sum product over the last axis of [a] and the second-to-last axis of
+///   [b].
+///
+/// The [a] and [b] arrays must reside on the same [GpuDevice], have matching
+/// [DType]s, and have compatible contracted dimensions.
 GpuArray<T> dot<T extends DTypeTag>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
 }) {
-  if (a.isDisposed || b.isDisposed) {
-    throw StateError('Cannot execute dot on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write dot result to a disposed output GpuArray.');
-  }
-  if (a.rank == 0 || b.rank == 0) {
+  _checkBinaryInputs(a, b);
+
+  if (a.ndim == 0 || b.ndim == 0) {
+    final resultShape = a.ndim == 0 ? b.shape : a.shape;
+    validateLinalgOut(out, a.device, resultShape, a.dtype);
+    final m = a.ndim == 0 ? 1 : a.size;
+    final n = b.ndim == 0 ? 1 : b.size;
     return ResourceScope.scope(() {
-      final product = a.multiply(b) as GpuArray<T>;
-      if (out != null) {
-        _copyGpuToOut(product, out);
-        return out;
+      if (isComplexDType(a.dtype)) {
+        final bufferA = toContiguousComplex128Buffer(a);
+        final bufferB = toContiguousComplex128Buffer(b);
+        final bufferC = dispatchBatchedMatmulC128Gpu(
+          a.device,
+          bufferA,
+          bufferB,
+          batchCount: 1,
+          m: m,
+          k: 1,
+          n: n,
+        );
+        final output = writeComplex128BufferToArray<T>(
+          a.device,
+          bufferC,
+          resultShape,
+          a.dtype,
+          out: out,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      } else {
+        final bufferA = toContiguousFloat64Buffer(a);
+        final bufferB = toContiguousFloat64Buffer(b);
+        final bufferC = dispatchBatchedMatmulF64Gpu(
+          a.device,
+          bufferA,
+          bufferB,
+          batchCount: 1,
+          m: m,
+          k: 1,
+          n: n,
+        );
+        final output = writeFloat64BufferToArray<T>(
+          a.device,
+          bufferC,
+          resultShape,
+          a.dtype,
+          out: out,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
       }
-      product.detachToParentScope();
-      return product;
     });
   }
-  return matmul(a, b, out: out);
+
+  if (a.ndim == 1 && b.ndim == 1) {
+    if (a.shape[0] != b.shape[0]) {
+      throw ArgumentError.value(
+        b.shape,
+        'b',
+        'Must have the same length as a (${a.shape[0]} != ${b.shape[0]}).',
+      );
+    }
+    validateLinalgOut(out, a.device, const <int>[], a.dtype);
+    final k = a.shape[0];
+    return ResourceScope.scope(() {
+      if (isComplexDType(a.dtype)) {
+        final bufferA = toContiguousComplex128Buffer(a);
+        final bufferB = toContiguousComplex128Buffer(b);
+        final bufferC = dispatchBatchedMatmulC128Gpu(
+          a.device,
+          bufferA,
+          bufferB,
+          batchCount: 1,
+          m: 1,
+          k: k,
+          n: 1,
+        );
+        final output = writeComplex128BufferToArray<T>(
+          a.device,
+          bufferC,
+          const <int>[],
+          a.dtype,
+          out: out,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      } else {
+        final bufferA = toContiguousFloat64Buffer(a);
+        final bufferB = toContiguousFloat64Buffer(b);
+        final bufferC = dispatchBatchedMatmulF64Gpu(
+          a.device,
+          bufferA,
+          bufferB,
+          batchCount: 1,
+          m: 1,
+          k: k,
+          n: 1,
+        );
+        final output = writeFloat64BufferToArray<T>(
+          a.device,
+          bufferC,
+          const <int>[],
+          a.dtype,
+          out: out,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      }
+    });
+  }
+
+  if (a.ndim == 2 && b.ndim == 2) {
+    return matmul(a, b, out: out);
+  }
+
+  if (b.ndim == 1) {
+    final kA = a.shape.last;
+    final kB = b.shape[0];
+    if (kA != kB) {
+      throw ArgumentError.value(
+        b.shape,
+        'b',
+        'Must match the last dimension of a ($kA != $kB).',
+      );
+    }
+    final resultShape = a.shape.sublist(0, a.ndim - 1);
+    validateLinalgOut(out, a.device, resultShape, a.dtype);
+    final m = kA == 0 ? 0 : a.size ~/ kA;
+    return ResourceScope.scope(() {
+      if (isComplexDType(a.dtype)) {
+        final bufferA = toContiguousComplex128Buffer(a);
+        final bufferB = toContiguousComplex128Buffer(b);
+        final bufferC = dispatchBatchedMatmulC128Gpu(
+          a.device,
+          bufferA,
+          bufferB,
+          batchCount: 1,
+          m: m,
+          k: kA,
+          n: 1,
+        );
+        final output = writeComplex128BufferToArray<T>(
+          a.device,
+          bufferC,
+          resultShape,
+          a.dtype,
+          out: out,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      } else {
+        final bufferA = toContiguousFloat64Buffer(a);
+        final bufferB = toContiguousFloat64Buffer(b);
+        final bufferC = dispatchBatchedMatmulF64Gpu(
+          a.device,
+          bufferA,
+          bufferB,
+          batchCount: 1,
+          m: m,
+          k: kA,
+          n: 1,
+        );
+        final output = writeFloat64BufferToArray<T>(
+          a.device,
+          bufferC,
+          resultShape,
+          a.dtype,
+          out: out,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      }
+    });
+  }
+
+  return tensordot(
+    a,
+    b,
+    axes: (<int>[a.ndim - 1], <int>[b.ndim - 2]),
+    out: out,
+  );
 }
 
-/// Computes the flattened vector dot product of [a] and [b].
+/// Vector dot product of two [GpuArray] tensors [a] and [b].
 ///
-/// Both [a] and [b] must have the same total number of elements, and none of
-/// [a], [b], or [out] may be disposed.
+/// Flattens multidimensional inputs before computing the inner product and
+/// returns a 0-D scalar [GpuArray]. If [a] has a complex data type
+/// ([DType.complex64] or [DType.complex128]), the complex conjugate of [a] is
+/// used for the calculation.
+///
+/// The [a] and [b] arrays must reside on the same [GpuDevice], have matching
+/// [DType]s, and contain the same total number of elements (`a.size == b.size`).
 GpuArray<T> vdot<T extends DTypeTag>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
 }) {
-  if (a.isDisposed || b.isDisposed) {
-    throw StateError('Cannot execute vdot on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write vdot result to a disposed output GpuArray.');
-  }
+  _checkBinaryInputs(a, b);
   if (a.size != b.size) {
     throw ArgumentError.value(
       b.shape,
       'b',
-      'Must be of the same total size as a (${a.size}), got ${b.size}.',
+      'Must have the same number of elements as a (${a.size} != ${b.size}).',
     );
   }
+  validateLinalgOut(out, a.device, const <int>[], a.dtype);
+
+  final k = a.size;
   return ResourceScope.scope(() {
-    final flatA = a.reshape(<int>[a.size]);
-    final flatB = b.reshape(<int>[b.size]);
-    final product = flatA.multiply(flatB) as GpuArray<T>;
-    final summed = product.sum();
-    if (out != null) {
-      _copyGpuToOut(summed, out);
-      return out;
+    if (isComplexDType(a.dtype)) {
+      final bufferA = toContiguousComplex128Buffer(a);
+      final bufferB = toContiguousComplex128Buffer(b);
+      final bufferC = dispatchBatchedMatmulC128Gpu(
+        a.device,
+        bufferA,
+        bufferB,
+        batchCount: 1,
+        m: 1,
+        k: k,
+        n: 1,
+        conjugateA: true,
+      );
+      final output = writeComplex128BufferToArray<T>(
+        a.device,
+        bufferC,
+        const <int>[],
+        a.dtype,
+        out: out,
+      );
+      if (out == null) output.detachToParentScope();
+      return output;
+    } else {
+      final bufferA = toContiguousFloat64Buffer(a);
+      final bufferB = toContiguousFloat64Buffer(b);
+      final bufferC = dispatchBatchedMatmulF64Gpu(
+        a.device,
+        bufferA,
+        bufferB,
+        batchCount: 1,
+        m: 1,
+        k: k,
+        n: 1,
+      );
+      final output = writeFloat64BufferToArray<T>(
+        a.device,
+        bufferC,
+        const <int>[],
+        a.dtype,
+        out: out,
+      );
+      if (out == null) output.detachToParentScope();
+      return output;
     }
-    summed.detachToParentScope();
-    return summed;
   });
 }
 
-/// Linear algebra convenience methods on [GpuArray].
-extension GpuArrayLinalgExtension<T extends DTypeTag> on GpuArray<T> {
-  /// Flattened vector dot product of this array and [other].
-  GpuArray<T> vdot(GpuArray<T> other, {GpuArray<T>? out}) =>
-      _linalgVdot(this, other, out: out);
+/// Extracts the specified diagonal of [a] along [axis1] and [axis2].
+///
+/// If [a] is 2-D, returns a 1-D [GpuArray] containing the diagonal elements at
+/// [offset]. If `a.ndim > 2`, the axes specified by [axis1] and [axis2] are
+/// used to extract the 2-D diagonals, and the diagonal axis is appended to the
+/// end of the output shape.
+///
+/// The [a] array must have at least 2 dimensions (`ndim >= 2`), and [axis1] and
+/// [axis2] must be distinct valid axes.
+GpuArray<T> diagonal<T extends DTypeTag>(
+  GpuArray<T> a, {
+  int offset = 0,
+  int axis1 = 0,
+  int axis2 = 1,
+  GpuArray<T>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot extract diagonal of a disposed GpuArray.');
+  }
+  if (a.ndim < 2) {
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must have at least 2 dimensions for diagonal, got ${a.ndim}-D.',
+    );
+  }
+  final normAxis1 = axis1 < 0 ? axis1 + a.ndim : axis1;
+  final normAxis2 = axis2 < 0 ? axis2 + a.ndim : axis2;
+  if (normAxis1 < 0 || normAxis1 >= a.ndim) {
+    throw RangeError.range(axis1, -a.ndim, a.ndim - 1, 'axis1');
+  }
+  if (normAxis2 < 0 || normAxis2 >= a.ndim) {
+    throw RangeError.range(axis2, -a.ndim, a.ndim - 1, 'axis2');
+  }
+  if (normAxis1 == normAxis2) {
+    throw ArgumentError.value(
+      axis2,
+      'axis2',
+      'Must be distinct from axis1 ($axis1).',
+    );
+  }
+
+  final dim1 = a.shape[normAxis1];
+  final dim2 = a.shape[normAxis2];
+  final int diagonalLength;
+  final int startOffsetElements;
+  if (offset >= 0) {
+    diagonalLength = math.max(0, math.min(dim1, dim2 - offset));
+    startOffsetElements = a.offsetElements + offset * a.strides[normAxis2];
+  } else {
+    diagonalLength = math.max(0, math.min(dim1 + offset, dim2));
+    startOffsetElements = a.offsetElements + (-offset) * a.strides[normAxis1];
+  }
+
+  final diagShape = <int>[];
+  final diagStrides = <int>[];
+  for (var i = 0; i < a.ndim; i++) {
+    if (i != normAxis1 && i != normAxis2) {
+      diagShape.add(a.shape[i]);
+      diagStrides.add(a.strides[i]);
+    }
+  }
+  diagShape.add(diagonalLength);
+  diagStrides.add(a.strides[normAxis1] + a.strides[normAxis2]);
+
+  validateLinalgOut(out, a.device, diagShape, a.dtype);
+
+  final view = GpuArray<T>.fromBuffer(
+    buffer: a.buffer,
+    shape: diagShape,
+    strides: diagStrides,
+    dtype: a.dtype,
+    device: a.device,
+    offsetElements: diagonalLength == 0
+        ? a.offsetElements
+        : startOffsetElements,
+    parent: a,
+  );
+  if (out != null) {
+    try {
+      return copyGpuArray(view, out: out);
+    } finally {
+      view.dispose();
+    }
+  }
+  return view;
 }
 
-const _linalgVdot = vdot;
+/// Sum along the diagonals of [a] at [offset] across [axis1] and [axis2].
+///
+/// If [a] is 2-D, returns a 0-D scalar [GpuArray] containing the sum along the
+/// diagonal. If [a] has more than two dimensions, the axes specified by [axis1]
+/// and [axis2] are used to determine the 2-D sub-arrays whose traces are
+/// returned.
+///
+/// The [a] array must have at least 2 dimensions (`ndim >= 2`), and [axis1] and
+/// [axis2] must be distinct valid axes.
+GpuArray<T> trace<T extends DTypeTag>(
+  GpuArray<T> a, {
+  int offset = 0,
+  int axis1 = 0,
+  int axis2 = 1,
+  GpuArray<T>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot compute trace of a disposed GpuArray.');
+  }
+  return ResourceScope.scope(() {
+    final diagView = diagonal(a, offset: offset, axis1: axis1, axis2: axis2);
+    final resultShape = diagView.shape.sublist(0, diagView.ndim - 1);
+    final result = sumLastAxisGpu(diagView, resultShape: resultShape, out: out);
+    if (out == null) result.detachToParentScope();
+    return result;
+  });
+}

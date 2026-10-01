@@ -120,13 +120,13 @@ final class WgslBinding {
   /// Generates the WGSL variable declaration line.
   String toWgslDeclaration() {
     if (isUniform) {
-      final typeStr = customTypeName ?? dtype.wgslType;
-      return '@group($group) @binding($binding) var<uniform> $name: $typeStr;';
+      final typeName = customTypeName ?? dtype.wgslType;
+      return '@group($group) @binding($binding) var<uniform> $name: $typeName;';
     }
-    final typeStr =
+    final typeName =
         customTypeName ??
         (isArray ? 'array<${dtype.wgslType}>' : dtype.wgslType);
-    return '@group($group) @binding($binding) var<storage, ${access.qualifier}> $name: $typeStr;';
+    return '@group($group) @binding($binding) var<storage, ${access.qualifier}> $name: $typeName;';
   }
 
   @override

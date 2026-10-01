@@ -12,23 +12,29 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Counter-based pseudo-random number generation (Philox 4x32-10) for
-/// [GpuArray] tensors.
-///
-/// Provides [Philox4x32Engine], [RandomState], and top-level sampling functions
-/// ([seed], [rand], [randn], [randint], [uniform], [normal], [standardNormal],
-/// [standard_normal], [exponential], [choice], [permutation], [shuffle]).
+/// Counter-based GPU random number generation (`Philox4x32-10`) executed via
+/// WebGPU compute shaders (`rand`, `randn`, `uniform`, `normal`, `standardNormal`,
+/// `truncatedNormal`, `randint`, `bernoulli`, `exponential`, `gamma`, `beta`,
+/// `chisquare`, `poisson`, `binomial`, `categorical`, `choice`, `permutation`,
+/// `shuffle`).
 library;
 
 export 'src/random/random.dart'
     show
         Philox4x32Engine,
         RandomState,
+        bernoulli,
+        beta,
+        binomial,
+        categorical,
+        chisquare,
         choice,
         defaultRng,
         exponential,
+        gamma,
         normal,
         permutation,
+        poisson,
         rand,
         randint,
         randn,
@@ -36,4 +42,5 @@ export 'src/random/random.dart'
         shuffle,
         standardNormal,
         standard_normal,
+        truncatedNormal,
         uniform;

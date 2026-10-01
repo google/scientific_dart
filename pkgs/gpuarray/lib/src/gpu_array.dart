@@ -12,9 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:core' as core;
+import 'dart:core';
 import 'dart:ffi' as ffi;
 import 'dart:math' as math;
 
+import 'package:ffi/ffi.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 import 'package:resource_scope/resource_scope.dart';
 
@@ -63,13 +66,34 @@ final class GpuArray<T extends DTypeTag>
 
   /// The parent array if this tensor is a view, preventing early garbage
   /// collection.
-  final GpuArray? _parent;
+  final GpuArray<DTypeTag>? _parent;
+
+  bool _requiresGrad;
 
   /// Whether this tensor tracks gradients for automatic differentiation.
-  bool requiresGrad;
+  bool get requiresGrad => _requiresGrad;
+
+  /// Updates whether this tensor tracks gradients for automatic differentiation.
+  ///
+  /// The [dtype] must be a floating-point or complex type when [value] is
+  /// `true`.
+  set requiresGrad(core.bool value) {
+    _validateRequiresGrad(dtype, value);
+    _requiresGrad = value;
+  }
+
+  static void _validateRequiresGrad(DType<DTypeTag> dtype, bool requiresGrad) {
+    if (requiresGrad && !dtype.isFloating && !dtype.isComplex) {
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be a floating-point or complex DType when requiresGrad is true.',
+      );
+    }
+  }
 
   /// Accumulated gradient tensor on device.
-  GpuArray? grad;
+  GpuArray<DTypeTag>? grad;
 
   /// The backward computation node that produced this tensor.
   GradFn? gradFn;
@@ -78,18 +102,22 @@ final class GpuArray<T extends DTypeTag>
 
   GpuArray._(
     this.buffer, {
-    required this.shape,
-    required this.strides,
+    required List<int> shape,
+    required List<int> strides,
     required this.dtype,
     required this.device,
     this.offsetElements = 0,
     bool? isContiguous,
-    GpuArray? parent,
-    this.requiresGrad = false,
+    GpuArray<DTypeTag>? parent,
+    bool requiresGrad = false,
     this.grad,
     this.gradFn,
-  }) : isContiguous = isContiguous ?? isContiguousLayout(shape, strides),
+  }) : shape = List<int>.unmodifiable(shape),
+       strides = List<int>.unmodifiable(strides),
+       _requiresGrad = requiresGrad,
+       isContiguous = isContiguous ?? isContiguousLayout(shape, strides),
        _parent = parent {
+    _validateRequiresGrad(dtype, requiresGrad);
     ResourceScope.track(this);
     if (parent != null) {
       buffer.retain();
@@ -104,9 +132,9 @@ final class GpuArray<T extends DTypeTag>
     required GpuDevice device,
     int offsetElements = 0,
     bool? isContiguous,
-    GpuArray? parent,
+    GpuArray<DTypeTag>? parent,
     bool requiresGrad = false,
-    GpuArray? grad,
+    GpuArray<DTypeTag>? grad,
     GradFn? gradFn,
   }) {
     final GpuArray<DTypeTag> instance = switch (dtype) {
@@ -312,12 +340,22 @@ final class GpuArray<T extends DTypeTag>
   /// Creates a [GpuArray] initialized from a flat or nested Dart list of
   /// [values].
   factory GpuArray.fromList(
-    List<dynamic> values,
+    List<Object?> values,
     List<int> shape,
     DType<T> dtype, {
     GpuDevice? device,
     bool requiresGrad = false,
   }) {
+    for (final dim in shape) {
+      if (dim < 0) {
+        throw ArgumentError.value(
+          shape,
+          'shape',
+          'Must not contain negative dimensions.',
+        );
+      }
+    }
+    _validateRequiresGrad(dtype, requiresGrad);
     final dev = device ?? GpuDevice.defaultDevice;
     final totalSize = computeSize(shape);
     final flatList = _flattenList(values);
@@ -328,6 +366,19 @@ final class GpuArray<T extends DTypeTag>
         'values',
         'Must have flattened length ($totalSize) matching shape $shape.',
       );
+    }
+    for (var i = 0; i < totalSize; i++) {
+      final item = flatList[i];
+      if (item is! num &&
+          item is! bool &&
+          item is! BigInt &&
+          item is! Complex) {
+        throw ArgumentError.value(
+          item,
+          'values',
+          'Must contain only numeric, boolean, BigInt, or Complex elements.',
+        );
+      }
     }
 
     final byteSize = totalSize * dtype.byteWidth;
@@ -350,8 +401,14 @@ final class GpuArray<T extends DTypeTag>
       requiresGrad: requiresGrad,
     );
 
-    for (var i = 0; i < totalSize; i++) {
-      writeBufferAny(gpuBuffer, dtype, i, flatList[i]);
+    if (totalSize > 0) {
+      using((arena) {
+        final staging = arena<ffi.Uint8>(byteSize);
+        for (var i = 0; i < totalSize; i++) {
+          writePointerAny(staging, dtype, i, flatList[i]);
+        }
+        gpuBuffer.copyFromHost(staging.cast<ffi.Void>(), byteSize);
+      });
     }
 
     return array;
@@ -373,6 +430,7 @@ final class GpuArray<T extends DTypeTag>
         );
       }
     }
+    _validateRequiresGrad(dtype, requiresGrad);
     final dev = device ?? GpuDevice.defaultDevice;
     final totalSize = computeSize(shape);
     final byteSize = totalSize * dtype.byteWidth;
@@ -406,7 +464,7 @@ final class GpuArray<T extends DTypeTag>
     required GpuDevice device,
     int offsetElements = 0,
     bool? isContiguous,
-    GpuArray? parent,
+    GpuArray<DTypeTag>? parent,
     bool requiresGrad = false,
   }) {
     if (buffer.isDisposed) {
@@ -414,6 +472,7 @@ final class GpuArray<T extends DTypeTag>
         'Cannot create GpuArray from a disposed GpuBuffer.',
       );
     }
+    _validateRequiresGrad(dtype, requiresGrad);
     if (parent == null) {
       buffer.retain();
     }
@@ -443,9 +502,8 @@ final class GpuArray<T extends DTypeTag>
       device: device,
       requiresGrad: requiresGrad,
     );
-    final totalSize = array.size;
-    for (var i = 0; i < totalSize; i++) {
-      writeBufferValue(array.buffer, dtype, i, 0.0);
+    if (array.byteSize > 0) {
+      array.buffer.clear();
     }
     return array;
   }
@@ -477,15 +535,331 @@ final class GpuArray<T extends DTypeTag>
     GpuDevice? device,
     bool requiresGrad = false,
   }) {
+    if (value is! num &&
+        value is! bool &&
+        value is! BigInt &&
+        value is! Complex) {
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Must be a numeric, boolean, BigInt, or Complex value.',
+      );
+    }
     final array = GpuArray<T>.empty(
       shape,
       dtype,
       device: device,
       requiresGrad: requiresGrad,
     );
-    final totalSize = array.size;
-    for (var i = 0; i < totalSize; i++) {
-      writeBufferAny(array.buffer, dtype, i, value);
+    if (array.size > 0) {
+      GpuKernels.executeFill(
+        dst: array.buffer,
+        outShape: array.shape,
+        outStrides: array.strides,
+        offsetDst: 0,
+        dtypeDst: dtype,
+        value: value,
+      );
+    }
+    return array;
+  }
+
+  /// Creates a [GpuArray] of the specified [shape] filled with [value] (alias for [GpuArray.filled]).
+  factory GpuArray.full(
+    List<int> shape,
+    Object value,
+    DType<T> dtype, {
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) => GpuArray<T>.filled(
+    shape,
+    value,
+    dtype,
+    device: device,
+    requiresGrad: requiresGrad,
+  );
+
+  /// Creates an uninitialized [GpuArray] with the same shape and device as [prototype].
+  static GpuArray<R> emptyLike<R extends DTypeTag>(
+    GpuArray<DTypeTag> prototype, {
+    DType<R>? dtype,
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) {
+    prototype._checkNotDisposed();
+    final targetDType = dtype ?? (prototype.dtype as DType<R>);
+    return GpuArray<R>.empty(
+      prototype.shape,
+      targetDType,
+      device: device ?? prototype.device,
+      requiresGrad: requiresGrad,
+    );
+  }
+
+  /// Creates a zero-filled [GpuArray] with the same shape and device as [prototype].
+  static GpuArray<R> zerosLike<R extends DTypeTag>(
+    GpuArray<DTypeTag> prototype, {
+    DType<R>? dtype,
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) {
+    prototype._checkNotDisposed();
+    final targetDType = dtype ?? (prototype.dtype as DType<R>);
+    return GpuArray<R>.zeros(
+      prototype.shape,
+      targetDType,
+      device: device ?? prototype.device,
+      requiresGrad: requiresGrad,
+    );
+  }
+
+  /// Creates a ones-filled [GpuArray] with the same shape and device as [prototype].
+  static GpuArray<R> onesLike<R extends DTypeTag>(
+    GpuArray<DTypeTag> prototype, {
+    DType<R>? dtype,
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) {
+    prototype._checkNotDisposed();
+    final targetDType = dtype ?? (prototype.dtype as DType<R>);
+    return GpuArray<R>.ones(
+      prototype.shape,
+      targetDType,
+      device: device ?? prototype.device,
+      requiresGrad: requiresGrad,
+    );
+  }
+
+  /// Creates a [GpuArray] filled with [fillValue] matching the shape and device of [prototype].
+  static GpuArray<R> fullLike<R extends DTypeTag>(
+    GpuArray<DTypeTag> prototype,
+    Object fillValue, {
+    DType<R>? dtype,
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) {
+    prototype._checkNotDisposed();
+    final targetDType = dtype ?? (prototype.dtype as DType<R>);
+    return GpuArray<R>.filled(
+      prototype.shape,
+      fillValue,
+      targetDType,
+      device: device ?? prototype.device,
+      requiresGrad: requiresGrad,
+    );
+  }
+
+  /// Creates a 1D [GpuArray] with evenly spaced values within `[start, stop)`.
+  static GpuArray<R> arange<R extends DTypeTag>(
+    num startOrStop, [
+    num? stop,
+    num step = 1,
+    DType<R>? dtype,
+    GpuDevice? device,
+  ]) {
+    if (step == 0) {
+      throw ArgumentError.value(step, 'step', 'Must not be zero.');
+    }
+    final actualStart = stop == null ? 0.0 : startOrStop.toDouble();
+    final actualStop = stop == null ? startOrStop.toDouble() : stop.toDouble();
+    final stepDouble = step.toDouble();
+    final rawCount = ((actualStop - actualStart) / stepDouble).ceil();
+    final count = math.max(0, rawCount);
+    final targetDType =
+        dtype ??
+        ((startOrStop is double || stop is double || step is double)
+            ? DType.float32 as DType<R>
+            : DType.int32 as DType<R>);
+    final array = GpuArray<R>.empty([count], targetDType, device: device);
+    if (count > 0) {
+      GpuKernels.executeGenerator(
+        mode: 'arange',
+        dst: array.buffer,
+        outShape: array.shape,
+        offsetDst: 0,
+        dtypeDst: targetDType,
+        start: actualStart,
+        step: stepDouble,
+      );
+    }
+    return array;
+  }
+
+  /// Creates a 1D [GpuArray] of [num] evenly spaced samples over `[start, stop]`.
+  static GpuArray<R> linspace<R extends DTypeTag>(
+    num start,
+    num stop, {
+    int num = 50,
+    bool endpoint = true,
+    DType<R>? dtype,
+    GpuDevice? device,
+  }) {
+    RangeError.checkNotNegative(num, 'num');
+    final targetDType = dtype ?? (DType.float32 as DType<R>);
+    final array = GpuArray<R>.empty([num], targetDType, device: device);
+    if (num == 0) return array;
+    final startDouble = start.toDouble();
+    final stopDouble = stop.toDouble();
+    final div = endpoint ? (num - 1) : num;
+    final stepDouble = div > 0 ? (stopDouble - startDouble) / div : 0.0;
+    GpuKernels.executeGenerator(
+      mode: 'linspace',
+      dst: array.buffer,
+      outShape: array.shape,
+      offsetDst: 0,
+      dtypeDst: targetDType,
+      start: startDouble,
+      step: stepDouble,
+    );
+    if (endpoint && num > 1) {
+      GpuKernels.executeFill(
+        dst: array.buffer,
+        outShape: const [1],
+        outStrides: const [1],
+        offsetDst: num - 1,
+        dtypeDst: targetDType,
+        value: stopDouble,
+      );
+    }
+    return array;
+  }
+
+  /// Creates a 1D [GpuArray] of [num] numbers spaced evenly on a log scale (`base^start` to `base^stop`).
+  static GpuArray<R> logspace<R extends DTypeTag>(
+    num start,
+    num stop, {
+    int num = 50,
+    bool endpoint = true,
+    num base = 10.0,
+    DType<R>? dtype,
+    GpuDevice? device,
+  }) {
+    RangeError.checkNotNegative(num, 'num');
+    final targetDType = dtype ?? (DType.float32 as DType<R>);
+    final array = GpuArray<R>.empty([num], targetDType, device: device);
+    if (num == 0) return array;
+    final startDouble = start.toDouble();
+    final stopDouble = stop.toDouble();
+    final baseDouble = base.toDouble();
+    final div = endpoint ? (num - 1) : num;
+    final stepDouble = div > 0 ? (stopDouble - startDouble) / div : 0.0;
+    GpuKernels.executeGenerator(
+      mode: 'logspace',
+      dst: array.buffer,
+      outShape: array.shape,
+      offsetDst: 0,
+      dtypeDst: targetDType,
+      start: startDouble,
+      step: stepDouble,
+      base: baseDouble,
+    );
+    return array;
+  }
+
+  /// Creates a 1D [GpuArray] of [num] numbers spaced evenly on a geometric progression from [start] to [stop].
+  static GpuArray<R> geomspace<R extends DTypeTag>(
+    num start,
+    num stop, {
+    int num = 50,
+    bool endpoint = true,
+    DType<R>? dtype,
+    GpuDevice? device,
+  }) {
+    if (start == 0) {
+      throw ArgumentError.value(start, 'start', 'Must not be zero.');
+    }
+    if (stop == 0) {
+      throw ArgumentError.value(stop, 'stop', 'Must not be zero.');
+    }
+    if ((start < 0) != (stop < 0)) {
+      throw ArgumentError.value(
+        stop,
+        'stop',
+        'Must have the same sign as start ($start).',
+      );
+    }
+    final sign = start < 0 ? -1.0 : 1.0;
+    final logStart = math.log(start.abs()) / math.ln10;
+    final logStop = math.log(stop.abs()) / math.ln10;
+    final positive = logspace<R>(
+      logStart,
+      logStop,
+      num: num,
+      endpoint: endpoint,
+      base: 10.0,
+      dtype: dtype,
+      device: device,
+    );
+    if (sign < 0) {
+      final negated = positive.negate();
+      positive.dispose();
+      return negated;
+    }
+    return positive;
+  }
+
+  /// Creates a 2D [GpuArray] with ones on the [k]-th diagonal and zeros elsewhere.
+  static GpuArray<R> eye<R extends DTypeTag>(
+    int rows, {
+    int? cols,
+    int k = 0,
+    DType<R>? dtype,
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) {
+    RangeError.checkNotNegative(rows, 'rows');
+    final actualCols = cols ?? rows;
+    RangeError.checkNotNegative(actualCols, 'cols');
+    final targetDType = dtype ?? (DType.float32 as DType<R>);
+    final array = GpuArray<R>.empty(
+      [rows, actualCols],
+      targetDType,
+      device: device,
+      requiresGrad: requiresGrad,
+    );
+    if (array.size > 0) {
+      GpuKernels.executeGenerator(
+        mode: 'eye',
+        dst: array.buffer,
+        outShape: array.shape,
+        offsetDst: 0,
+        dtypeDst: targetDType,
+        cols: actualCols,
+        k: k,
+      );
+    }
+    return array;
+  }
+
+  /// Creates a 2D [GpuArray] with ones at and below the [k]-th diagonal and zeros elsewhere.
+  static GpuArray<R> tri<R extends DTypeTag>(
+    int rows, {
+    int? cols,
+    int k = 0,
+    DType<R>? dtype,
+    GpuDevice? device,
+    bool requiresGrad = false,
+  }) {
+    RangeError.checkNotNegative(rows, 'rows');
+    final actualCols = cols ?? rows;
+    RangeError.checkNotNegative(actualCols, 'cols');
+    final targetDType = dtype ?? (DType.float32 as DType<R>);
+    final array = GpuArray<R>.empty(
+      [rows, actualCols],
+      targetDType,
+      device: device,
+      requiresGrad: requiresGrad,
+    );
+    if (array.size > 0) {
+      GpuKernels.executeGenerator(
+        mode: 'tri',
+        dst: array.buffer,
+        outShape: array.shape,
+        offsetDst: 0,
+        dtypeDst: targetDType,
+        cols: actualCols,
+        k: k,
+      );
     }
     return array;
   }
@@ -496,6 +870,7 @@ final class GpuArray<T extends DTypeTag>
     GpuDevice? device,
     bool requiresGrad = false,
   }) {
+    _validateRequiresGrad(ndarray.dtype, requiresGrad);
     final dev = device ?? GpuDevice.defaultDevice;
     final contiguousND = ndarray.isContiguous ? ndarray : ndarray.copy();
     final byteSize = contiguousND.size * contiguousND.dtype.byteWidth;
@@ -529,34 +904,6 @@ final class GpuArray<T extends DTypeTag>
     }
   }
 
-  /// Executes [callback] with a zero-copy, unmanaged [nd.NDArray] view backed
-  /// directly by this array's synchronized host mirror pointer.
-  ///
-  /// The [shape] must not contain zero-length dimensions (`!shape.contains(0)`).
-  R withTemporaryNDArrayView<R>(R Function(nd.NDArray<T> view) callback) {
-    _checkNotDisposed();
-    if (shape.contains(0)) {
-      throw StateError(
-        'Cannot create an NDArray.fromPointer view for an empty shape $shape.',
-      );
-    }
-    buffer.ensureHostSynced();
-
-    var minRelativeOffset = 0;
-    for (var d = 0; d < shape.length; d++) {
-      if (strides[d] < 0 && shape[d] > 0) {
-        minRelativeOffset += (shape[d] - 1) * strides[d];
-      }
-    }
-    final byteOffset = (offsetElements + minRelativeOffset) * dtype.byteWidth;
-    final dataPtr = (buffer.address + byteOffset).cast<ffi.Void>();
-
-    final view = nd.NDArray.unmanaged(
-      () => nd.NDArray<T>.fromPointer(dataPtr, shape, dtype, strides: strides),
-    );
-    return callback(view);
-  }
-
   /// Total number of elements in this tensor.
   int get size => computeSize(shape);
 
@@ -576,7 +923,7 @@ final class GpuArray<T extends DTypeTag>
   bool get isLeaf => requiresGrad && gradFn == null;
 
   /// Runs backward automatic differentiation starting from this tensor.
-  void backward({GpuArray? gradient, bool retainGraph = false}) {
+  void backward({GpuArray<DTypeTag>? gradient, bool retainGraph = false}) {
     _checkNotDisposed();
     runBackward(this, gradient: gradient, retainGraph: retainGraph);
   }
@@ -627,50 +974,50 @@ final class GpuArray<T extends DTypeTag>
   // --- Elementwise Arithmetic & Operations ---
 
   /// Elementwise addition (`this + other`). Supports broadcasting and scalars.
-  GpuArray operator +(Object? other) => add(other);
+  GpuArray<DTypeTag> operator +(Object? other) => add(other);
 
   /// Elementwise subtraction (`this - other`). Supports broadcasting and scalars.
-  GpuArray operator -(Object? other) => subtract(other);
+  GpuArray<DTypeTag> operator -(Object? other) => subtract(other);
 
   /// Elementwise multiplication (`this * other`). Supports broadcasting and scalars.
-  GpuArray operator *(Object? other) => multiply(other);
+  GpuArray<DTypeTag> operator *(Object? other) => multiply(other);
 
   /// Elementwise division (`this / other`). Supports broadcasting and scalars.
-  GpuArray operator /(Object? other) => divide(other);
+  GpuArray<DTypeTag> operator /(Object? other) => divide(other);
 
   /// Elementwise negation (`-this`).
   GpuArray<T> operator -() => negate();
 
   /// Elementwise addition with another [GpuArray] or scalar.
-  GpuArray add(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> add(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.add, other, out: out);
 
   /// Elementwise subtraction with another [GpuArray] or scalar.
-  GpuArray subtract(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> subtract(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.subtract, other, out: out);
 
   /// Elementwise multiplication with another [GpuArray] or scalar.
-  GpuArray multiply(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> multiply(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.multiply, other, out: out);
 
   /// Elementwise division with another [GpuArray] or scalar.
-  GpuArray divide(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> divide(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.divide, other, out: out);
 
   /// Elementwise power with another [GpuArray] or scalar.
-  GpuArray pow(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> pow(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.power, other, out: out);
 
   /// Elementwise remainder with another [GpuArray] or scalar.
-  GpuArray remainder(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> remainder(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.remainder, other, out: out);
 
   /// Elementwise maximum with another [GpuArray] or scalar.
-  GpuArray maximum(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> maximum(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.maximum, other, out: out);
 
   /// Elementwise minimum with another [GpuArray] or scalar.
-  GpuArray minimum(Object? other, {GpuArray? out}) =>
+  GpuArray<DTypeTag> minimum(Object? other, {GpuArray<DTypeTag>? out}) =>
       _dispatchBinary(BinaryOp.minimum, other, out: out);
 
   /// Elementwise equality comparison (`==`). Returns a boolean [GpuArray].
@@ -788,8 +1135,11 @@ final class GpuArray<T extends DTypeTag>
 
   /// Computes the arithmetic mean of elements over the entire tensor or along
   /// [axis].
-  GpuArray mean({int? axis, bool keepDims = false, GpuArray? out}) =>
-      _dispatchReduction('mean', axis: axis, keepDims: keepDims, out: out);
+  GpuArray<DTypeTag> mean({
+    int? axis,
+    bool keepDims = false,
+    GpuArray<DTypeTag>? out,
+  }) => _dispatchReduction('mean', axis: axis, keepDims: keepDims, out: out);
 
   /// Computes the product of elements over the entire tensor or along [axis].
   GpuArray<T> prod({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
@@ -806,12 +1156,61 @@ final class GpuArray<T extends DTypeTag>
       _dispatchReduction('max', axis: axis, keepDims: keepDims, out: out)
           as GpuArray<T>;
 
+  /// Computes the indices of minimum values over the entire tensor or along [axis].
+  GpuArray<Int32> argmin({
+    int? axis,
+    bool keepDims = false,
+    GpuArray<Int32>? out,
+  }) =>
+      _dispatchReduction('argmin', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<Int32>;
+
+  /// Computes the indices of maximum values over the entire tensor or along [axis].
+  GpuArray<Int32> argmax({
+    int? axis,
+    bool keepDims = false,
+    GpuArray<Int32>? out,
+  }) =>
+      _dispatchReduction('argmax', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<Int32>;
+
+  /// Tests whether all array elements along [axis] (or the entire array) evaluate to true.
+  GpuArray<Boolean> all({
+    int? axis,
+    bool keepDims = false,
+    GpuArray<Boolean>? out,
+  }) =>
+      _dispatchReduction('all', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<Boolean>;
+
+  /// Tests whether any array element along [axis] (or the entire array) evaluates to true.
+  GpuArray<Boolean> any({
+    int? axis,
+    bool keepDims = false,
+    GpuArray<Boolean>? out,
+  }) =>
+      _dispatchReduction('any', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<Boolean>;
+
   // --- Linear Algebra ---
 
   /// Matrix multiplication of two 1D, 2D, or batched N-D tensors.
-  GpuArray<R> matmul<R extends DTypeTag>(GpuArray other, {GpuArray<R>? out}) {
+  GpuArray<R> matmul<R extends DTypeTag>(
+    GpuArray<DTypeTag> other, {
+    GpuArray<R>? out,
+  }) {
     _checkNotDisposed();
     other._checkNotDisposed();
+    if (out != null) {
+      out._checkNotDisposed();
+    }
+    if (other.device != device) {
+      throw ArgumentError.value(
+        other.device,
+        'other.device',
+        'Must reside on the same GpuDevice ($device) as this tensor.',
+      );
+    }
 
     if (rank < 1 || other.rank < 1) {
       throw GpuShapeMismatchException('matmul', shape, other.shape);
@@ -848,6 +1247,76 @@ final class GpuArray<T extends DTypeTag>
       return dst;
     }
 
+    // 2D (or N-D) x 1D: [..., M, K] @ [K] -> [..., M]
+    if (rank >= 2 && other.rank == 1) {
+      final k1 = shape[rank - 1];
+      final k2 = other.shape[0];
+      if (k1 != k2) {
+        throw GpuShapeMismatchException('matmul', shape, other.shape);
+      }
+      final outShape = shape.sublist(0, rank - 1);
+      final dst = _prepareOut<R>('matmul', outShape, outDtype, out);
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: shape,
+        stridesA: strides,
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: [...List<int>.filled(rank - 2, 1), k2, 1],
+        stridesB: [...List<int>.filled(rank - 2, 0), other.strides[0], 0],
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: [...outShape, 1],
+        outStrides: [...dst.strides, 0],
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
+      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+        dst.requiresGrad = true;
+        dst.gradFn = MatmulBackward(this, other);
+      }
+      return dst;
+    }
+
+    // 1D x 2D (or N-D): [K] @ [..., K, N] -> [..., N]
+    if (rank == 1 && other.rank >= 2) {
+      final k1 = shape[0];
+      final k2 = other.shape[other.rank - 2];
+      final n = other.shape[other.rank - 1];
+      if (k1 != k2) {
+        throw GpuShapeMismatchException('matmul', shape, other.shape);
+      }
+      final batchB = other.shape.sublist(0, other.rank - 2);
+      final outShape = [...batchB, n];
+      final dst = _prepareOut<R>('matmul', outShape, outDtype, out);
+      final batchDstStrides = dst.strides.sublist(0, dst.strides.length - 1);
+      final nStrideDst = dst.strides.last;
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: [...List<int>.filled(other.rank - 2, 1), 1, k1],
+        stridesA: [...List<int>.filled(other.rank - 2, 0), 0, strides[0]],
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: other.shape,
+        stridesB: other.strides,
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: [...batchB, 1, n],
+        outStrides: [...batchDstStrides, 0, nStrideDst],
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
+      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+        dst.requiresGrad = true;
+        dst.gradFn = MatmulBackward(this, other);
+      }
+      return dst;
+    }
+
     if (rank == 2 && other.rank == 2) {
       if (shape[1] != other.shape[0]) {
         throw GpuShapeMismatchException('matmul', shape, other.shape);
@@ -855,45 +1324,23 @@ final class GpuArray<T extends DTypeTag>
       final outShape = [shape[0], other.shape[1]];
       final dst = _prepareOut<R>('matmul', outShape, outDtype, out);
 
-      var executedViaNDArray = false;
-      if (device.backend.isSimulated &&
-          dtype == other.dtype &&
-          dtype == outDtype &&
-          (dtype == DType.float32 || dtype == DType.float64) &&
-          !shape.contains(0) &&
-          !other.shape.contains(0) &&
-          dst.buffer.address != buffer.address &&
-          dst.buffer.address != other.buffer.address) {
-        withTemporaryNDArrayView((viewA) {
-          other.withTemporaryNDArrayView((viewB) {
-            dst.withTemporaryNDArrayView((viewDst) {
-              nd.matmul(viewA, viewB, out: viewDst);
-            });
-          });
-        });
-        dst.buffer.markHostModified();
-        executedViaNDArray = true;
-      }
-
-      if (!executedViaNDArray) {
-        GpuKernels.executeMatmul(
-          srcA: buffer,
-          shapeA: shape,
-          stridesA: strides,
-          offsetA: offsetElements,
-          dtypeA: dtype,
-          srcB: other.buffer,
-          shapeB: other.shape,
-          stridesB: other.strides,
-          offsetB: other.offsetElements,
-          dtypeB: other.dtype,
-          dst: dst.buffer,
-          outShape: outShape,
-          outStrides: dst.strides,
-          offsetDst: dst.offsetElements,
-          dtypeDst: outDtype,
-        );
-      }
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: shape,
+        stridesA: strides,
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: other.shape,
+        stridesB: other.strides,
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: outShape,
+        outStrides: dst.strides,
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
       if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
         dst.requiresGrad = true;
         dst.gradFn = MatmulBackward(this, other);
@@ -902,9 +1349,6 @@ final class GpuArray<T extends DTypeTag>
     }
 
     // Batched N-D matmul
-    if (rank < 2 || other.rank < 2) {
-      throw GpuShapeMismatchException('matmul', shape, other.shape);
-    }
     final m = shape[rank - 2];
     final k1 = shape[rank - 1];
     final k2 = other.shape[other.rank - 2];
@@ -945,8 +1389,10 @@ final class GpuArray<T extends DTypeTag>
   }
 
   /// Dot product or matrix multiplication.
-  GpuArray<R> dot<R extends DTypeTag>(GpuArray other, {GpuArray<R>? out}) =>
-      matmul<R>(other, out: out);
+  GpuArray<R> dot<R extends DTypeTag>(
+    GpuArray<DTypeTag> other, {
+    GpuArray<R>? out,
+  }) => matmul<R>(other, out: out);
 
   // --- Tensor Views & Transformations ---
 
@@ -1293,7 +1739,8 @@ final class GpuArray<T extends DTypeTag>
       manip.broadcastTo(this, targetShape);
 
   /// Promotes two [DType]s following NumPy's type promotion hierarchy.
-  static DType promoteDTypes(DType a, DType b) => _promotedDType(a, b);
+  static DType<DTypeTag> promoteDTypes(DType<DTypeTag> a, DType<DTypeTag> b) =>
+      _promotedDType(a, b);
 
   // --- Conversions & Host Interop ---
 
@@ -1322,30 +1769,30 @@ final class GpuArray<T extends DTypeTag>
     final total = size;
     final result = <dynamic>[];
     if (total == 0) return result;
-    final coords = List<int>.filled(rank, 0);
-    for (var i = 0; i < total; i++) {
-      var elemOffset = 0;
-      for (var d = 0; d < rank; d++) {
-        elemOffset += coords[d] * strides[d];
-      }
-      final raw = readBufferAny(
-        buffer,
-        dtype,
-        elemOffset,
-        offsetElements: offsetElements,
-      );
-      if (dtype == DType.boolean) {
-        result.add(raw == true || (raw is num && raw != 0));
-      } else {
-        result.add(raw);
-      }
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < shape[d]) break;
-        coords[d] = 0;
+    final contiguousArray = isContiguous ? this : copy();
+    try {
+      return using((arena) {
+        final staging = arena<ffi.Uint8>(byteSize);
+        contiguousArray.buffer.copyToHost(
+          staging.cast<ffi.Void>(),
+          byteSize,
+          offset: contiguousArray.offsetElements * dtype.byteWidth,
+        );
+        for (var i = 0; i < total; i++) {
+          final raw = readPointerAny(staging, dtype, i);
+          if (dtype == DType.boolean) {
+            result.add(raw == true || (raw is num && raw != 0));
+          } else {
+            result.add(raw);
+          }
+        }
+        return result;
+      });
+    } finally {
+      if (!identical(contiguousArray, this)) {
+        contiguousArray.dispose();
       }
     }
-    return result;
   }
 
   /// Copies the elements of this tensor into a nested Dart list matching
@@ -1387,10 +1834,17 @@ final class GpuArray<T extends DTypeTag>
     String opName,
     List<int> outShape,
     DType<R> outDType,
-    GpuArray? out,
+    GpuArray<DTypeTag>? out,
   ) {
     if (out != null) {
       out._checkNotDisposed();
+      if (out.device != device) {
+        throw ArgumentError.value(
+          out.device,
+          'out.device',
+          'Must reside on the same GpuDevice ($device) as this tensor.',
+        );
+      }
       if (out.size > 1 && out.strides.contains(0)) {
         throw ArgumentError.value(
           out,
@@ -1413,150 +1867,46 @@ final class GpuArray<T extends DTypeTag>
     return GpuArray<R>.empty(outShape, outDType, device: device);
   }
 
-  bool _tryNDArrayBinary(BinaryOp op, GpuArray other, GpuArray dst) {
-    if (!device.backend.isSimulated ||
-        dtype != other.dtype ||
-        dtype != dst.dtype ||
-        shape.contains(0) ||
-        other.shape.contains(0) ||
-        dst.shape.contains(0) ||
-        dst.buffer.address == buffer.address ||
-        dst.buffer.address == other.buffer.address) {
-      return false;
-    }
-
-    final isFloat = dtype == DType.float32 || dtype == DType.float64;
-    final isComplex = dtype == DType.complex64 || dtype == DType.complex128;
-    final isStdInt =
-        dtype == DType.int8 ||
-        dtype == DType.int16 ||
-        dtype == DType.int32 ||
-        dtype == DType.int64 ||
-        dtype == DType.uint8 ||
-        dtype == DType.uint16 ||
-        dtype == DType.uint32 ||
-        dtype == DType.uint64;
-
-    switch (op) {
-      case BinaryOp.add:
-      case BinaryOp.subtract:
-      case BinaryOp.multiply:
-        if (!isFloat && !isComplex && !isStdInt) return false;
-      case BinaryOp.divide:
-        if (!isFloat && !isComplex) return false;
-      case BinaryOp.power:
-      case BinaryOp.remainder:
-      case BinaryOp.maximum:
-      case BinaryOp.minimum:
-        if (!isFloat) return false;
-      default:
-        return false;
-    }
-
-    withTemporaryNDArrayView((viewA) {
-      other.withTemporaryNDArrayView((viewB) {
-        dst.withTemporaryNDArrayView((viewDst) {
-          switch (op) {
-            case BinaryOp.add:
-              nd.add(viewA, viewB, out: viewDst);
-            case BinaryOp.subtract:
-              nd.subtract(viewA, viewB, out: viewDst);
-            case BinaryOp.multiply:
-              nd.multiply(viewA, viewB, out: viewDst);
-            case BinaryOp.divide:
-              nd.divide(viewA, viewB, out: viewDst);
-            case BinaryOp.power:
-              nd.power(viewA, viewB, out: viewDst);
-            case BinaryOp.remainder:
-              nd.remainder(viewA, viewB, out: viewDst);
-            case BinaryOp.maximum:
-              nd.binaryUfunc(
-                viewA,
-                viewB,
-                op: nd.BinaryOp.maximum,
-                out: viewDst,
-              );
-            case BinaryOp.minimum:
-              nd.binaryUfunc(
-                viewA,
-                viewB,
-                op: nd.BinaryOp.minimum,
-                out: viewDst,
-              );
-            default:
-              break;
-          }
-        });
-      });
-    });
-    dst.buffer.markHostModified();
-    return true;
-  }
-
-  bool _tryNDArrayUnary(UnaryOp op, GpuArray<T> dst) {
-    if (!device.backend.isSimulated ||
-        (dtype != DType.float32 && dtype != DType.float64) ||
-        shape.contains(0) ||
-        dst.buffer.address == buffer.address) {
-      return false;
-    }
-
-    withTemporaryNDArrayView((viewSrc) {
-      dst.withTemporaryNDArrayView((viewDst) {
-        final ndOp = switch (op) {
-          UnaryOp.negate => nd.UnaryOp.negative,
-          UnaryOp.abs => nd.UnaryOp.abs,
-          UnaryOp.sqrt => nd.UnaryOp.sqrt,
-          UnaryOp.exp => nd.UnaryOp.exp,
-          UnaryOp.log => nd.UnaryOp.log,
-          UnaryOp.sin => nd.UnaryOp.sin,
-          UnaryOp.cos => nd.UnaryOp.cos,
-          UnaryOp.tan => nd.UnaryOp.tan,
-          UnaryOp.asin => nd.UnaryOp.arcsin,
-          UnaryOp.acos => nd.UnaryOp.arccos,
-          UnaryOp.atan => nd.UnaryOp.arctan,
-          UnaryOp.sinh => nd.UnaryOp.sinh,
-          UnaryOp.cosh => nd.UnaryOp.cosh,
-          UnaryOp.tanh => nd.UnaryOp.tanh,
-          UnaryOp.floor => nd.UnaryOp.floor,
-          UnaryOp.ceil => nd.UnaryOp.ceil,
-          UnaryOp.round => nd.UnaryOp.rint,
-        };
-        nd.unaryUfunc(viewSrc, op: ndOp, out: viewDst);
-      });
-    });
-    dst.buffer.markHostModified();
-    return true;
-  }
-
-  GpuArray _dispatchBinary(BinaryOp op, Object? other, {GpuArray? out}) {
+  GpuArray<DTypeTag> _dispatchBinary(
+    BinaryOp op,
+    Object? other, {
+    GpuArray<DTypeTag>? out,
+  }) {
     _checkNotDisposed();
-    if (other is GpuArray) {
+    if (out != null) {
+      out._checkNotDisposed();
+    }
+    if (other is GpuArray<DTypeTag>) {
       other._checkNotDisposed();
+      if (other.device != device) {
+        throw ArgumentError.value(
+          other.device,
+          'other.device',
+          'Must reside on the same GpuDevice ($device) as this tensor.',
+        );
+      }
       final outShape = broadcastShapes(shape, other.shape);
       final outDtype = _promotedDType(dtype, other.dtype);
       final dst = _prepareOut(op.name, outShape, outDtype, out);
 
-      if (!_tryNDArrayBinary(op, other, dst)) {
-        GpuKernels.executeBinaryOp(
-          op: op,
-          srcA: buffer,
-          shapeA: shape,
-          stridesA: strides,
-          offsetA: offsetElements,
-          dtypeA: dtype,
-          srcB: other.buffer,
-          shapeB: other.shape,
-          stridesB: other.strides,
-          offsetB: other.offsetElements,
-          dtypeB: other.dtype,
-          dst: dst.buffer,
-          outShape: outShape,
-          outStrides: dst.strides,
-          offsetDst: dst.offsetElements,
-          dtypeDst: outDtype,
-        );
-      }
+      GpuKernels.executeBinaryOp(
+        op: op,
+        srcA: buffer,
+        shapeA: shape,
+        stridesA: strides,
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: other.shape,
+        stridesB: other.strides,
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: outShape,
+        outStrides: dst.strides,
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
 
       if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
         dst.requiresGrad = true;
@@ -1604,8 +1954,31 @@ final class GpuArray<T extends DTypeTag>
     GpuArray<Boolean>? out,
   }) {
     _checkNotDisposed();
-    if (other is GpuArray) {
+    if (out != null) {
+      out._checkNotDisposed();
+    }
+    final isOrdering =
+        op == BinaryOp.greater ||
+        op == BinaryOp.greaterEqual ||
+        op == BinaryOp.less ||
+        op == BinaryOp.lessEqual;
+    if (isOrdering &&
+        (dtype.isComplex ||
+            (other is GpuArray<DTypeTag> && other.dtype.isComplex) ||
+            other is Complex)) {
+      throw UnsupportedError(
+        'Ordering comparison (${op.name}) is not supported for complex numbers.',
+      );
+    }
+    if (other is GpuArray<DTypeTag>) {
       other._checkNotDisposed();
+      if (other.device != device) {
+        throw ArgumentError.value(
+          other.device,
+          'other.device',
+          'Must reside on the same GpuDevice ($device) as this tensor.',
+        );
+      }
       final outShape = broadcastShapes(shape, other.shape);
       final dst = _prepareOut<Boolean>(op.name, outShape, DType.boolean, out);
 
@@ -1653,32 +2026,36 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<T> _dispatchUnary(UnaryOp op, {GpuArray<T>? out}) {
     _checkNotDisposed();
     final dst = _prepareOut<T>(op.name, shape, dtype, out);
-    if (!_tryNDArrayUnary(op, dst)) {
-      GpuKernels.executeUnaryOp(
-        op: op,
-        src: buffer,
-        shape: shape,
-        strides: strides,
-        offsetSrc: offsetElements,
-        dtypeSrc: dtype,
-        dst: dst.buffer,
-        outStrides: dst.strides,
-        offsetDst: dst.offsetElements,
-        dtypeDst: dtype,
-      );
-    }
+    GpuKernels.executeUnaryOp(
+      op: op,
+      src: buffer,
+      shape: shape,
+      strides: strides,
+      offsetSrc: offsetElements,
+      dtypeSrc: dtype,
+      dst: dst.buffer,
+      outStrides: dst.strides,
+      offsetDst: dst.offsetElements,
+      dtypeDst: dtype,
+    );
 
     if (isGradEnabled && requiresGrad) {
       dst.requiresGrad = true;
       switch (op) {
         case UnaryOp.negate:
           dst.gradFn = NegBackward(this);
+        case UnaryOp.abs:
+          dst.gradFn = AbsBackward(this);
         case UnaryOp.sqrt:
           dst.gradFn = SqrtBackward(this, dst);
         case UnaryOp.exp:
           dst.gradFn = ExpBackward(this, dst);
         case UnaryOp.log:
           dst.gradFn = LogBackward(this);
+        case UnaryOp.sin:
+          dst.gradFn = SinBackward(this);
+        case UnaryOp.cos:
+          dst.gradFn = CosBackward(this);
         case UnaryOp.tanh:
           dst.gradFn = TanhBackward(this, dst);
         default:
@@ -1689,20 +2066,31 @@ final class GpuArray<T extends DTypeTag>
     return dst;
   }
 
-  GpuArray _dispatchReduction(
+  GpuArray<DTypeTag> _dispatchReduction(
     String op, {
     int? axis,
     bool keepDims = false,
-    GpuArray? out,
+    GpuArray<DTypeTag>? out,
   }) {
     _checkNotDisposed();
+    if (out != null) {
+      out._checkNotDisposed();
+    }
+    final requiresNonEmpty =
+        op == 'min' || op == 'max' || op == 'argmin' || op == 'argmax';
     List<int> outShape;
     if (axis == null) {
+      if (requiresNonEmpty && size == 0) {
+        throw StateError('Cannot compute $op of an empty array.');
+      }
       outShape = keepDims ? List.filled(rank, 1) : const [];
     } else {
       final normAxis = axis < 0 ? axis + rank : axis;
       if (normAxis < 0 || normAxis >= rank) {
         throw GpuAxisOutOfBoundsException(axis, rank);
+      }
+      if (requiresNonEmpty && shape[normAxis] == 0) {
+        throw StateError('Cannot compute $op along an empty axis (size 0).');
       }
       outShape = <int>[];
       for (var i = 0; i < rank; i++) {
@@ -1715,9 +2103,23 @@ final class GpuArray<T extends DTypeTag>
     }
 
     final isComplex = dtype == DType.complex64 || dtype == DType.complex128;
-    final GpuArray dst;
+    final GpuArray<DTypeTag> dst;
     if (out != null) {
-      dst = _prepareOut(op, outShape, out.dtype, out);
+      final DType<DTypeTag> expectedOutDType;
+      if (op == 'argmin' || op == 'argmax') {
+        expectedOutDType = DType.int32;
+      } else if (op == 'all' || op == 'any') {
+        expectedOutDType = DType.boolean;
+      } else if (op == 'mean' && !isComplex) {
+        expectedOutDType = out.dtype == dtype ? dtype : DType.float64;
+      } else {
+        expectedOutDType = dtype;
+      }
+      dst = _prepareOut(op, outShape, expectedOutDType, out);
+    } else if (op == 'argmin' || op == 'argmax') {
+      dst = GpuArray<Int32>.empty(outShape, DType.int32, device: device);
+    } else if (op == 'all' || op == 'any') {
+      dst = GpuArray<Boolean>.empty(outShape, DType.boolean, device: device);
     } else if (op == 'mean' && !isComplex) {
       dst = GpuArray<Float64>.empty(outShape, DType.float64, device: device);
     } else {
@@ -1740,10 +2142,11 @@ final class GpuArray<T extends DTypeTag>
     );
 
     if (isGradEnabled && requiresGrad) {
-      dst.requiresGrad = true;
       if (op == 'sum') {
+        dst.requiresGrad = true;
         dst.gradFn = SumBackward(this, axis: axis, keepDims: keepDims);
       } else if (op == 'mean') {
+        dst.requiresGrad = true;
         dst.gradFn = MeanBackward(this, axis: axis, keepDims: keepDims);
       }
     }
@@ -1751,7 +2154,7 @@ final class GpuArray<T extends DTypeTag>
     return dst;
   }
 
-  static DType _promotedDType(DType a, DType b) {
+  static DType<DTypeTag> _promotedDType(DType<DTypeTag> a, DType<DTypeTag> b) {
     if (a == DType.boolean && b == DType.boolean) return DType.boolean;
     if (a == b) return a;
     if (a == DType.boolean) return b;
@@ -1867,6 +2270,7 @@ final class GpuArray<T extends DTypeTag>
 
   @override
   ScopedResource detachFromScope() {
+    _checkNotDisposed();
     ResourceScope.untrack(this);
     buffer.detachFromScope();
     return this;
@@ -1874,6 +2278,7 @@ final class GpuArray<T extends DTypeTag>
 
   @override
   ScopedResource detachToParentScope() {
+    _checkNotDisposed();
     ResourceScope.promoteToParent(this);
     return this;
   }

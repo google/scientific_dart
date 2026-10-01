@@ -12,59 +12,45 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
-
-import 'dart:ffi' as ffi;
 import 'dart:math' as math;
 
-import 'package:ndarray/ndarray.dart' as nd;
-import 'package:ndarray/ndarray.dart'
-    show Complex128, DType, DTypeTag, Float64, Int32, NDArray, Slice;
-
-import '../device.dart';
-import '../exceptions.dart';
+import '../dtype.dart';
 import '../gpu_array.dart';
+import 'decomposition_kernels.dart';
+import 'linalg_buffer_ops.dart';
+import 'spectral_kernels.dart';
 
-/// Mode for QR matrix decomposition.
+/// Mode for [qr] decomposition.
 enum QrMode {
-  /// Reduced (thin) QR decomposition where $Q$ has shape `(m, min(m, n))`
-  /// and $R$ has shape `(min(m, n), n)`.
-  reduced(isReduced: true),
+  /// Returns `Q` of shape `[M, K]` and `R` of shape `[K, N]`, where
+  /// `K = min(M, N)`.
+  reduced,
 
-  /// Complete (full) QR decomposition where $Q$ has shape `(m, m)` and $R$
-  /// has shape `(m, n)`.
-  complete(isReduced: false);
+  /// Returns `Q` of shape `[M, M]` and `R` of shape `[M, N]`.
+  complete,
 
-  const QrMode({required this.isReduced});
-
-  /// Whether this mode produces the reduced (thin) factorization.
-  final bool isReduced;
-
-  /// Computes the inner factor dimension ($\min(m, n)$ for [reduced], $m$ for
-  /// [complete]) for a matrix with [rows] rows and [cols] columns.
-  int factorDimension(int rows, int cols) =>
-      isReduced ? math.min(rows, cols) : rows;
+  /// Computes the upper-triangular `R` factor of shape `[K, N]` where
+  /// `K = min(M, N)`.
+  r,
 }
 
-/// Matrix triangle selection for symmetric, Hermitian, and Cholesky
-/// operations.
-enum MatrixTriangle {
-  /// Uses the lower triangular portion of the matrix.
-  lower(isUpper: false),
+/// Triangle selection for symmetric/Hermitian matrix operations ([eigh],
+/// [eigvalsh]).
+enum UpLo {
+  /// Uses the lower-triangular part of the matrix.
+  lower,
 
-  /// Uses the upper triangular portion of the matrix.
-  upper(isUpper: true);
-
-  const MatrixTriangle({required this.isUpper});
-
-  /// Whether the upper triangle is selected.
-  final bool isUpper;
+  /// Uses the upper-triangular part of the matrix.
+  upper,
 }
 
-/// Resource disposal extension for the record returned by [svd].
-extension SvdRecordDispose<T extends DTypeTag>
-    on ({GpuArray<T> u, GpuArray<T> s, GpuArray<T> vt}) {
-  /// Disposes [u], [s], and [vt].
+/// Alias for [UpLo] triangle selection.
+typedef MatrixTriangle = UpLo;
+
+/// Convenience disposal extension for [svd] output records.
+extension SvdRecordDispose
+    on ({GpuArray<Float64> u, GpuArray<Float64> s, GpuArray<Float64> vt}) {
+  /// Disposes all [GpuArray] fields (`u`, `s`, `vt`) in this record.
   void dispose() {
     u.dispose();
     s.dispose();
@@ -72,30 +58,41 @@ extension SvdRecordDispose<T extends DTypeTag>
   }
 }
 
-/// Resource disposal extension for the record returned by [qr].
-extension QrRecordDispose<T extends DTypeTag>
-    on ({GpuArray<T> q, GpuArray<T> r}) {
-  /// Disposes [q] and [r].
+/// Convenience disposal extension for [qr] output records.
+extension QrRecordDispose on ({GpuArray<Float64> q, GpuArray<Float64> r}) {
+  /// Disposes both [GpuArray] fields (`q`, `r`) in this record.
   void dispose() {
     q.dispose();
     r.dispose();
   }
 }
 
-/// Resource disposal extension for the record returned by [eigh] and [eig].
-extension EigRecordDispose<T extends DTypeTag, V extends DTypeTag>
-    on ({GpuArray<T> eigenvalues, GpuArray<V> eigenvectors}) {
-  /// Disposes [eigenvalues] and [eigenvectors].
+/// Convenience disposal extension for [eigh] output records.
+extension EighRecordDispose
+    on ({GpuArray<Float64> eigenvalues, GpuArray<Float64> eigenvectors}) {
+  /// Disposes both [GpuArray] fields (`eigenvalues`, `eigenvectors`) in this
+  /// record.
   void dispose() {
     eigenvalues.dispose();
     eigenvectors.dispose();
   }
 }
 
-/// Resource disposal extension for the record returned by [lu].
-extension LuRecordDispose<T extends DTypeTag>
-    on ({GpuArray<T> p, GpuArray<T> l, GpuArray<T> u}) {
-  /// Disposes [p], [l], and [u].
+/// Convenience disposal extension for [eig] output records.
+extension EigRecordDispose
+    on ({GpuArray<Complex128> eigenvalues, GpuArray<Complex128> eigenvectors}) {
+  /// Disposes both [GpuArray] fields (`eigenvalues`, `eigenvectors`) in this
+  /// record.
+  void dispose() {
+    eigenvalues.dispose();
+    eigenvectors.dispose();
+  }
+}
+
+/// Convenience disposal extension for [lu] output records.
+extension LuRecordDispose
+    on ({GpuArray<Float64> p, GpuArray<Float64> l, GpuArray<Float64> u}) {
+  /// Disposes all [GpuArray] fields (`p`, `l`, `u`) in this record.
   void dispose() {
     p.dispose();
     l.dispose();
@@ -103,1043 +100,679 @@ extension LuRecordDispose<T extends DTypeTag>
   }
 }
 
-/// Resource disposal extension for the record returned by [luFactor].
-extension LuFactorRecordDispose<T extends DTypeTag>
-    on ({GpuArray<T> lu, GpuArray<Int32> pivots}) {
-  /// Disposes [lu] and [pivots].
+/// Convenience disposal extension for [luFactor] output records.
+extension LuFactorRecordDispose<P extends DTypeTag>
+    on ({GpuArray<Float64> lu, GpuArray<P> pivots}) {
+  /// Disposes both [GpuArray] fields (`lu`, `pivots`) in this record.
   void dispose() {
     this.lu.dispose();
     pivots.dispose();
   }
 }
 
-bool _shapesEqual(List<int> first, List<int> second) {
-  if (first.length != second.length) return false;
-  for (var i = 0; i < first.length; i++) {
-    if (first[i] != second[i]) return false;
+void _require2d(GpuArray a, String functionName) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute $functionName on a disposed GpuArray.');
   }
-  return true;
-}
-
-void _validateOutBuffer<R extends DTypeTag>(
-  GpuArray<R> out,
-  List<int> expectedShape,
-  DType<R> expectedDType, {
-  String name = 'out',
-}) {
-  if (out.size > 1 && out.strides.contains(0)) {
+  if (a.ndim != 2) {
     throw ArgumentError.value(
-      out,
-      name,
-      'Must be writeable and not a broadcasted view.',
-    );
-  }
-  if (!_shapesEqual(out.shape, expectedShape) || out.dtype != expectedDType) {
-    throw ArgumentError.value(
-      out,
-      name,
-      'Must be an array with shape $expectedShape and dtype $expectedDType, '
-      'got shape ${out.shape} and dtype ${out.dtype}.',
+      a.shape,
+      'a',
+      'Must be a 2-D matrix for $functionName, got ${a.ndim}-D.',
     );
   }
 }
 
-GpuArray<R> _writeOrWrapResult<R extends DTypeTag>(
-  NDArray<R> hostResult,
-  GpuDevice device,
-  GpuArray<R>? out, {
-  String outName = 'out',
-  bool promote = true,
-}) {
-  if (out != null) {
-    _validateOutBuffer(out, hostResult.shape, hostResult.dtype, name: outName);
-    if (out.isContiguous) {
-      final contiguous = hostResult.isContiguous
-          ? hostResult
-          : hostResult.copy();
-      if (out.byteSize > 0) {
-        out.buffer.copyFromHost(
-          contiguous.pointer.cast<ffi.Void>(),
-          out.byteSize,
-          offset: out.offsetElements * out.dtype.byteWidth,
-        );
-      }
-    } else if (out.byteSize > 0) {
-      out.buffer.copyToHost(
-        out.buffer.address.cast<ffi.Void>(),
-        out.buffer.sizeInBytes,
-      );
-      final totalBufferElements = out.buffer.sizeInBytes ~/ out.dtype.byteWidth;
-      final rootBufferView = NDArray<R>.fromPointer(
-        out.buffer.address.cast<ffi.Void>(),
-        <int>[totalBufferElements],
-        out.dtype,
-      );
-      final outView = NDArray<R>.view(
-        rootBufferView,
-        shape: out.shape,
-        strides: out.strides,
-        offsetElements: out.offsetElements,
-      );
-      hostResult.copy(out: outView);
-      out.buffer.copyFromHost(
-        out.buffer.address.cast<ffi.Void>(),
-        out.buffer.sizeInBytes,
-      );
-    }
-    return out;
+void _requireSquare2d(GpuArray a, String functionName) {
+  _require2d(a, functionName);
+  if (a.shape[0] != a.shape[1]) {
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must be a square 2-D matrix for $functionName, got ${a.shape}.',
+    );
   }
-  final gpuResult = GpuArray<R>.fromNDArray(hostResult, device: device);
-  if (promote) {
-    gpuResult.detachToParentScope();
-  }
-  return gpuResult;
 }
 
-NDArray<Float64> _toContiguousFloat64(NDArray array) {
-  if (array.dtype == DType.float64) {
-    return array.isContiguous
-        ? array as NDArray<Float64>
-        : (array as NDArray<Float64>).copy();
-  }
-  return array.astype<Float64>(DType.float64);
-}
-
-NDArray<T> _matchDType<T extends DTypeTag>(
-  NDArray<Float64> array,
-  DType<T> targetDType,
-) {
-  if (targetDType == DType.float64) {
-    return array as NDArray<T>;
-  }
-  return array.astype<T>(targetDType);
-}
-
-/// Computes the Singular Value Decomposition (SVD) of a 2D matrix or batch of
-/// matrices [a]: $A = U \cdot \text{diag}(S) \cdot V^T$.
+/// Singular Value Decomposition (`U`, `S`, `Vt`) of a 2-D matrix [a].
 ///
-/// If [fullMatrices] is `true` (the default), `u` has shape `(..., m, m)` and
-/// `vt` has shape `(..., n, n)`. If [fullMatrices] is `false`, `u` has shape
-/// `(..., m, k)` and `vt` has shape `(..., k, n)` where $k = \min(m, n)$.
+/// Factorizes an `[M, N]` matrix [a] into `U * diag(S) * Vt`, where:
+/// - `u` is an orthogonal matrix of shape `[M, M]` (when [fullMatrices] is
+///   `true`) or `[M, K]` (when [fullMatrices] is `false`), with `K = min(M, N)`.
+/// - `s` is a 1-D array of shape `[K]` containing the singular values in
+///   descending order.
+/// - `vt` is an orthogonal matrix of shape `[N, N]` (when [fullMatrices] is
+///   `true`) or `[K, N]` (when [fullMatrices] is `false`).
 ///
-/// Neither [a] nor any array in [out] may be disposed, and [a] must have at
-/// least 2 dimensions.
-({GpuArray<T> u, GpuArray<T> s, GpuArray<T> vt}) svd<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// The [a] tensor must be a 2-D matrix. Optional [outU], [outS], and [outVt]
+/// arrays must match the expected shapes, `Float64` dtype, and device of [a].
+({GpuArray<Float64> u, GpuArray<Float64> s, GpuArray<Float64> vt}) svd(
+  GpuArray<DTypeTag> a, {
   bool fullMatrices = true,
-  ({GpuArray<T> u, GpuArray<T> s, GpuArray<T> vt})? out,
+  GpuArray<Float64>? outU,
+  GpuArray<Float64>? outS,
+  GpuArray<Float64>? outVt,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute svd on a disposed GpuArray.');
-  }
-  if (out != null &&
-      (out.u.isDisposed || out.s.isDisposed || out.vt.isDisposed)) {
-    throw StateError('Cannot write svd result to a disposed output GpuArray.');
-  }
-  if (a.rank < 2) {
-    throw GpuShapeMismatchException('svd', a.shape, const <int>[]);
-  }
-
-  final rank = a.rank;
-  final m = a.shape[rank - 2];
-  final n = a.shape[rank - 1];
-  final k = math.min(m, n);
-  final batchShape = a.shape.sublist(0, rank - 2);
-  final expectedUShape = <int>[...batchShape, m, fullMatrices ? m : k];
-  final expectedSShape = <int>[...batchShape, k];
-  final expectedVtShape = <int>[...batchShape, fullMatrices ? n : k, n];
-
-  if (out != null) {
-    _validateOutBuffer(out.u, expectedUShape, a.dtype, name: 'out.u');
-    _validateOutBuffer(out.s, expectedSShape, a.dtype, name: 'out.s');
-    _validateOutBuffer(out.vt, expectedVtShape, a.dtype, name: 'out.vt');
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final ({NDArray<Float64> u, NDArray<Float64> s, NDArray<Float64> vh})
-    rawSvd;
-    try {
-      rawSvd = nd.svd<Float64, Float64>(f64Input);
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-
-    NDArray<Float64> uF64 = rawSvd.u;
-    final NDArray<Float64> sF64 = rawSvd.s;
-    NDArray<Float64> vtF64 = rawSvd.vh;
-
-    if (!fullMatrices) {
-      if (m > k) {
-        final sliceSpecs = <Slice>[
-          for (var i = 0; i < batchShape.length; i++) const Slice.all(),
-          const Slice.all(),
-          Slice(start: 0, stop: k),
-        ];
-        uF64 = uF64.slice(sliceSpecs).copy();
-      }
-      if (n > k) {
-        final sliceSpecs = <Slice>[
-          for (var i = 0; i < batchShape.length; i++) const Slice.all(),
-          Slice(start: 0, stop: k),
-          const Slice.all(),
-        ];
-        vtF64 = vtF64.slice(sliceSpecs).copy();
-      }
-    }
-
-    final uHost = _matchDType<T>(uF64, a.dtype);
-    final sHost = _matchDType<T>(sF64, a.dtype);
-    final vtHost = _matchDType<T>(vtF64, a.dtype);
-
-    final uGpu = _writeOrWrapResult(
-      uHost,
-      a.device,
-      out?.u,
-      outName: 'out.u',
-      promote: false,
-    );
-    final sGpu = _writeOrWrapResult(
-      sHost,
-      a.device,
-      out?.s,
-      outName: 'out.s',
-      promote: false,
-    );
-    final vtGpu = _writeOrWrapResult(
-      vtHost,
-      a.device,
-      out?.vt,
-      outName: 'out.vt',
-      promote: false,
-    );
-    if (out == null) {
-      uGpu.detachToParentScope();
-      sGpu.detachToParentScope();
-      vtGpu.detachToParentScope();
-    }
-    return (u: uGpu, s: sGpu, vt: vtGpu);
-  });
-}
-
-/// Computes only the singular values of a 2D matrix or batch of matrices [a]
-/// in descending order.
-///
-/// Neither [a] nor [out] (if provided) may be disposed, and [a] must have at
-/// least 2 dimensions.
-GpuArray<T> svdvals<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute svdvals on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write svdvals result to a disposed output GpuArray.',
-    );
-  }
-  if (a.rank < 2) {
-    throw GpuShapeMismatchException('svdvals', a.shape, const <int>[]);
-  }
-  final rank = a.rank;
-  final k = math.min(a.shape[rank - 2], a.shape[rank - 1]);
-  final expectedShape = <int>[...a.shape.sublist(0, rank - 2), k];
-  if (out != null) {
-    _validateOutBuffer(out, expectedShape, a.dtype);
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final ({NDArray<Float64> u, NDArray<Float64> s, NDArray<Float64> vh})
-    rawSvd;
-    try {
-      rawSvd = nd.svd<Float64, Float64>(f64Input);
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-    final sHost = _matchDType<T>(rawSvd.s, a.dtype);
-    return _writeOrWrapResult(sHost, a.device, out);
-  });
-}
-
-/// Computes the QR decomposition of a 2D matrix [a]: $A = Q \cdot R$.
-///
-/// Uses Householder reflections. When [mode] is [QrMode.reduced] (default),
-/// `q` has shape `(m, k)` and `r` has shape `(k, n)` where $k = \min(m, n)$.
-/// When [mode] is [QrMode.complete], `q` has shape `(m, m)` and `r` has shape
-/// `(m, n)`.
-///
-/// Neither [a] nor any array in [out] may be disposed, and [a] must be
-/// 2-dimensional.
-({GpuArray<T> q, GpuArray<T> r}) qr<T extends DTypeTag>(
-  GpuArray<T> a, {
-  QrMode mode = QrMode.reduced,
-  ({GpuArray<T> q, GpuArray<T> r})? out,
-}) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute qr on a disposed GpuArray.');
-  }
-  if (out != null && (out.q.isDisposed || out.r.isDisposed)) {
-    throw StateError('Cannot write qr result to a disposed output GpuArray.');
-  }
-  if (a.rank != 2) {
-    throw GpuShapeMismatchException('qr', a.shape, const <int>[]);
-  }
-
+  _require2d(a, 'svd');
   final m = a.shape[0];
   final n = a.shape[1];
   final k = math.min(m, n);
-  final factorDimension = mode.factorDimension(m, n);
-  final expectedQShape = <int>[m, factorDimension];
-  final expectedRShape = <int>[factorDimension, n];
+  final uShape = fullMatrices ? <int>[m, m] : <int>[m, k];
+  final sShape = <int>[k];
+  final vtShape = fullMatrices ? <int>[n, n] : <int>[k, n];
 
-  if (out != null) {
-    _validateOutBuffer(out.q, expectedQShape, a.dtype, name: 'out.q');
-    _validateOutBuffer(out.r, expectedRShape, a.dtype, name: 'out.r');
-  }
+  validateLinalgOut(outU, a.device, uShape, DType.float64, paramName: 'outU');
+  validateLinalgOut(outS, a.device, sShape, DType.float64, paramName: 'outS');
+  validateLinalgOut(
+    outVt,
+    a.device,
+    vtShape,
+    DType.float64,
+    paramName: 'outVt',
+  );
 
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final rWork = _toContiguousFloat64(hostInput).copy();
-    final rWorkPointer = rWork.pointer.cast<ffi.Double>();
-
-    final qFull = NDArray<Float64>.zeros(<int>[m, m], DType.float64);
-    final qFullPointer = qFull.pointer.cast<ffi.Double>();
-    for (var i = 0; i < m; i++) {
-      qFullPointer[i * m + i] = 1.0;
-    }
-
-    final householderVector = List<double>.filled(m, 0.0);
-
-    for (var col = 0; col < k; col++) {
-      var normX = 0.0;
-      for (var row = col; row < m; row++) {
-        final entry = rWorkPointer[row * n + col];
-        normX += entry * entry;
-      }
-      normX = math.sqrt(normX);
-      if (normX < 1e-15) continue;
-
-      final x0 = rWorkPointer[col * n + col];
-      final sign = x0 >= 0.0 ? 1.0 : -1.0;
-      final u1 = x0 + sign * normX;
-
-      for (var i = 0; i < col; i++) {
-        householderVector[i] = 0.0;
-      }
-      householderVector[col] = 1.0;
-      var vNormSq = 1.0;
-      for (var row = col + 1; row < m; row++) {
-        final scaled = rWorkPointer[row * n + col] / u1;
-        householderVector[row] = scaled;
-        vNormSq += scaled * scaled;
-      }
-      final tau = 2.0 / vNormSq;
-
-      for (var j = col; j < n; j++) {
-        var dotProduct = 0.0;
-        for (var row = col; row < m; row++) {
-          dotProduct += householderVector[row] * rWorkPointer[row * n + j];
-        }
-        final factor = tau * dotProduct;
-        for (var row = col; row < m; row++) {
-          rWorkPointer[row * n + j] -= factor * householderVector[row];
-        }
-      }
-
-      for (var row = 0; row < m; row++) {
-        var dotProduct = 0.0;
-        for (var j = col; j < m; j++) {
-          dotProduct += qFullPointer[row * m + j] * householderVector[j];
-        }
-        final factor = tau * dotProduct;
-        for (var j = col; j < m; j++) {
-          qFullPointer[row * m + j] -= factor * householderVector[j];
-        }
-      }
-    }
-
-    for (var i = 0; i < m; i++) {
-      final limit = math.min(i, n);
-      for (var j = 0; j < limit; j++) {
-        rWorkPointer[i * n + j] = 0.0;
-      }
-    }
-
-    final qOutF64 = factorDimension == m
-        ? qFull
-        : qFull.slice(<Slice>[
-            const Slice.all(),
-            Slice(start: 0, stop: factorDimension),
-          ]).copy();
-    final rOutF64 = factorDimension == m
-        ? rWork
-        : rWork.slice(<Slice>[
-            Slice(start: 0, stop: factorDimension),
-            const Slice.all(),
-          ]).copy();
-
-    final qHost = _matchDType<T>(qOutF64, a.dtype);
-    final rHost = _matchDType<T>(rOutF64, a.dtype);
-
-    final qGpu = _writeOrWrapResult(
-      qHost,
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchSvdGpu(
       a.device,
-      out?.q,
-      outName: 'out.q',
-      promote: false,
+      inputF64,
+      m,
+      n,
+      fullMatrices: fullMatrices,
     );
-    final rGpu = _writeOrWrapResult(
-      rHost,
+    final uArray = writeFloat64BufferToArray<Float64>(
       a.device,
-      out?.r,
-      outName: 'out.r',
-      promote: false,
+      buffers.u,
+      uShape,
+      DType.float64,
+      out: outU,
+      outParamName: 'outU',
     );
-    if (out == null) {
-      qGpu.detachToParentScope();
-      rGpu.detachToParentScope();
-    }
-    return (q: qGpu, r: rGpu);
+    final sArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.s,
+      sShape,
+      DType.float64,
+      out: outS,
+      outParamName: 'outS',
+    );
+    final vtArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.vt,
+      vtShape,
+      DType.float64,
+      out: outVt,
+      outParamName: 'outVt',
+    );
+    if (outU == null) uArray.detachToParentScope();
+    if (outS == null) sArray.detachToParentScope();
+    if (outVt == null) vtArray.detachToParentScope();
+    return (u: uArray, s: sArray, vt: vtArray);
   });
 }
 
-/// Computes the Cholesky decomposition of a symmetric positive-definite matrix
-/// [a].
+/// Singular values of a 2-D matrix [a] in descending order.
 ///
-/// By default ([uplo] == [MatrixTriangle.lower] and [upper] == `false`),
-/// returns the lower-triangular factor $L$ such that $A = L \cdot L^T$.
-/// When [uplo] is [MatrixTriangle.upper] or [upper] is `true`, returns the
-/// upper-triangular factor $U$ such that $A = U^T \cdot U$.
+/// For an `[M, N]` matrix [a], produces a 1-D [GpuArray] of shape `[min(M, N)]`
+/// with [DType.float64].
 ///
-/// Neither [a] nor [out] (if provided) may be disposed, and [a] must be a
-/// square 2D matrix that is symmetric positive-definite.
-GpuArray<T> cholesky<T extends DTypeTag>(
-  GpuArray<T> a, {
-  MatrixTriangle uplo = MatrixTriangle.lower,
+/// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
+/// shape `[min(M, N)]`, [DType.float64], and reside on `a.device`.
+GpuArray<Float64> svdvals(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) {
+  _require2d(a, 'svdvals');
+  final m = a.shape[0];
+  final n = a.shape[1];
+  final k = math.min(m, n);
+  final sShape = <int>[k];
+  validateLinalgOut(out, a.device, sShape, DType.float64);
+
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchSvdGpu(
+      a.device,
+      inputF64,
+      m,
+      n,
+      fullMatrices: false,
+    );
+    final sArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.s,
+      sShape,
+      DType.float64,
+      out: out,
+    );
+    if (out == null) sArray.detachToParentScope();
+    return sArray;
+  });
+}
+
+/// Alias for [svdvals] computing the singular values of [a].
+///
+/// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
+/// shape `[min(M, N)]`, [DType.float64], and reside on `a.device`.
+GpuArray<Float64> svdValues(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) =>
+    svdvals(a, out: out);
+
+/// QR factorization of a 2-D matrix [a].
+///
+/// Factorizes an `[M, N]` matrix [a] into `Q * R`, where `Q` has orthonormal
+/// columns and `R` is upper-triangular:
+/// - For [QrMode.reduced] or [QrMode.r], `q` has shape `[M, K]` and `r` has
+///   shape `[K, N]`, where `K = min(M, N)`.
+/// - For [QrMode.complete], `q` has shape `[M, M]` and `r` has shape `[M, N]`.
+///
+/// The [a] tensor must be a 2-D matrix. Optional [outQ] and [outR] arrays must
+/// match the expected shapes, [DType.float64], and reside on `a.device`.
+({GpuArray<Float64> q, GpuArray<Float64> r}) qr(
+  GpuArray<DTypeTag> a, {
+  QrMode mode = QrMode.reduced,
+  GpuArray<Float64>? outQ,
+  GpuArray<Float64>? outR,
+}) {
+  _require2d(a, 'qr');
+  final m = a.shape[0];
+  final n = a.shape[1];
+  final k = math.min(m, n);
+  final qCols = mode == QrMode.complete ? m : k;
+  final rRows = mode == QrMode.complete ? m : k;
+  final qShape = <int>[m, qCols];
+  final rShape = <int>[rRows, n];
+
+  validateLinalgOut(outQ, a.device, qShape, DType.float64, paramName: 'outQ');
+  validateLinalgOut(outR, a.device, rShape, DType.float64, paramName: 'outR');
+
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchQrGpu(
+      a.device,
+      inputF64,
+      m,
+      n,
+      qCols: qCols,
+      rRows: rRows,
+    );
+    final qArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.q,
+      qShape,
+      DType.float64,
+      out: outQ,
+      outParamName: 'outQ',
+    );
+    final rArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.r,
+      rShape,
+      DType.float64,
+      out: outR,
+      outParamName: 'outR',
+    );
+    if (outQ == null) qArray.detachToParentScope();
+    if (outR == null) rArray.detachToParentScope();
+    return (q: qArray, r: rArray);
+  });
+}
+
+/// Upper-triangular `R` factor of the QR decomposition of a 2-D matrix [a].
+///
+/// For an `[M, N]` matrix [a], produces an upper-triangular [GpuArray] of shape
+/// `[min(M, N), N]` with [DType.float64].
+///
+/// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
+/// shape `[min(M, N), N]`, [DType.float64], and reside on `a.device`.
+GpuArray<Float64> qrR(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) {
+  _require2d(a, 'qrR');
+  final m = a.shape[0];
+  final n = a.shape[1];
+  final k = math.min(m, n);
+  final rShape = <int>[k, n];
+  validateLinalgOut(out, a.device, rShape, DType.float64);
+
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchQrGpu(a.device, inputF64, m, n, qCols: k, rRows: k);
+    final rArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.r,
+      rShape,
+      DType.float64,
+      out: out,
+    );
+    if (out == null) rArray.detachToParentScope();
+    return rArray;
+  });
+}
+
+/// Cholesky decomposition of a symmetric positive-definite 2-D matrix [a].
+///
+/// Factorizes [a] into `L * L^T` (when [upper] is `false` or [uplo] is
+/// [UpLo.lower]) or `U^T * U` (when [upper] is `true` or [uplo] is
+/// [UpLo.upper]), returning the triangular factor of shape `[N, N]`.
+///
+/// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
+/// have shape `[N, N]`, [DType.float64], and reside on `a.device`.
+GpuArray<Float64> cholesky(
+  GpuArray<DTypeTag> a, {
   bool upper = false,
-  GpuArray<T>? out,
+  UpLo? uplo,
+  GpuArray<Float64>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute cholesky on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write cholesky result to a disposed output GpuArray.',
-    );
-  }
-  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
-    throw GpuShapeMismatchException('cholesky', a.shape, const <int>[]);
-  }
-  if (out != null) {
-    _validateOutBuffer(out, a.shape, a.dtype);
-  }
+  _requireSquare2d(a, 'cholesky');
+  final n = a.shape[0];
+  validateLinalgOut(out, a.device, a.shape, DType.float64);
+  final isUpper = uplo != null ? uplo == UpLo.upper : upper;
 
-  final useUpper = uplo.isUpper || upper;
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final NDArray<Float64> lowerFactor;
-    try {
-      lowerFactor = nd.cholesky<Float64>(f64Input);
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-
-    final NDArray<Float64> factorF64;
-    if (useUpper) {
-      final rank = f64Input.rank;
-      final axes = List<int>.generate(rank, (index) => index);
-      axes[rank - 2] = rank - 1;
-      axes[rank - 1] = rank - 2;
-      factorF64 = lowerFactor.transpose(axes).copy();
-    } else {
-      factorF64 = lowerFactor;
-    }
-
-    final hostResult = _matchDType<T>(factorF64, a.dtype);
-    return _writeOrWrapResult(hostResult, a.device, out);
-  });
-}
-
-/// Computes the eigenvalues and eigenvectors of a real symmetric (or Hermitian)
-/// matrix [a]: $A \cdot V = V \cdot \text{diag}(\lambda)$.
-///
-/// Returns a record `(eigenvalues, eigenvectors)` where `eigenvalues` are in
-/// ascending order and the columns of `eigenvectors` are the corresponding
-/// orthonormal eigenvectors.
-///
-/// Neither [a] nor any array in [out] may be disposed, and [a] must be square
-/// in its last two dimensions.
-({GpuArray<T> eigenvalues, GpuArray<T> eigenvectors}) eigh<T extends DTypeTag>(
-  GpuArray<T> a, {
-  MatrixTriangle uplo = MatrixTriangle.lower,
-  ({GpuArray<T> eigenvalues, GpuArray<T> eigenvectors})? out,
-}) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute eigh on a disposed GpuArray.');
-  }
-  if (out != null &&
-      (out.eigenvalues.isDisposed || out.eigenvectors.isDisposed)) {
-    throw StateError('Cannot write eigh result to a disposed output GpuArray.');
-  }
-  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
-    throw GpuShapeMismatchException('eigh', a.shape, const <int>[]);
-  }
-
-  final rank = a.rank;
-  final n = a.shape[rank - 1];
-  final batchShape = a.shape.sublist(0, rank - 2);
-  final expectedValuesShape = <int>[...batchShape, n];
-  final expectedVectorsShape = <int>[...batchShape, n, n];
-
-  if (out != null) {
-    _validateOutBuffer(
-      out.eigenvalues,
-      expectedValuesShape,
-      a.dtype,
-      name: 'out.eigenvalues',
-    );
-    _validateOutBuffer(
-      out.eigenvectors,
-      expectedVectorsShape,
-      a.dtype,
-      name: 'out.eigenvectors',
-    );
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final ({NDArray<Float64> eigenvalues, NDArray<Float64> eigenvectors})
-    rawEigh;
-    try {
-      rawEigh = nd.eigh<Float64, Float64>(
-        f64Input,
-        uplo: uplo.isUpper ? nd.MatrixTriangle.upper : nd.MatrixTriangle.lower,
-      );
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-
-    final valuesHost = _matchDType<T>(rawEigh.eigenvalues, a.dtype);
-    final vectorsHost = _matchDType<T>(rawEigh.eigenvectors, a.dtype);
-
-    final valuesGpu = _writeOrWrapResult(
-      valuesHost,
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final outBuffer = dispatchCholeskyGpu(
       a.device,
-      out?.eigenvalues,
-      outName: 'out.eigenvalues',
-      promote: false,
+      inputF64,
+      n,
+      upper: isUpper,
     );
-    final vectorsGpu = _writeOrWrapResult(
-      vectorsHost,
+    final result = writeFloat64BufferToArray<Float64>(
       a.device,
-      out?.eigenvectors,
-      outName: 'out.eigenvectors',
-      promote: false,
+      outBuffer,
+      a.shape,
+      DType.float64,
+      out: out,
     );
-    if (out == null) {
-      valuesGpu.detachToParentScope();
-      vectorsGpu.detachToParentScope();
-    }
-    return (eigenvalues: valuesGpu, eigenvectors: vectorsGpu);
+    if (out == null) result.detachToParentScope();
+    return result;
   });
 }
 
-/// Computes only the eigenvalues of a real symmetric (or Hermitian) matrix [a]
-/// in ascending order.
+/// Eigenvalues and eigenvectors of a real symmetric 2-D matrix [a].
 ///
-/// Neither [a] nor [out] (if provided) may be disposed, and [a] must be square
-/// in its last two dimensions.
-GpuArray<T> eigvalsh<T extends DTypeTag>(
-  GpuArray<T> a, {
-  MatrixTriangle uplo = MatrixTriangle.lower,
-  GpuArray<T>? out,
+/// Produces `eigenvalues` of shape `[N]` in ascending order and `eigenvectors`
+/// of shape `[N, N]` whose columns are the corresponding orthonormal
+/// eigenvectors (`a * V = V * diag(w)`).
+///
+/// The [a] tensor must be a square 2-D matrix. Optional [outEigenvalues] and
+/// [outEigenvectors] arrays must match shapes `[N]` and `[N, N]` with
+/// [DType.float64] on `a.device`.
+({GpuArray<Float64> eigenvalues, GpuArray<Float64> eigenvectors}) eigh(
+  GpuArray<DTypeTag> a, {
+  UpLo uplo = UpLo.lower,
+  GpuArray<Float64>? outEigenvalues,
+  GpuArray<Float64>? outEigenvectors,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute eigvalsh on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write eigvalsh result to a disposed output GpuArray.',
+  _requireSquare2d(a, 'eigh');
+  final n = a.shape[0];
+  final wShape = <int>[n];
+  final vShape = <int>[n, n];
+  validateLinalgOut(
+    outEigenvalues,
+    a.device,
+    wShape,
+    DType.float64,
+    paramName: 'outEigenvalues',
+  );
+  validateLinalgOut(
+    outEigenvectors,
+    a.device,
+    vShape,
+    DType.float64,
+    paramName: 'outEigenvectors',
+  );
+
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchEighGpu(
+      a.device,
+      inputF64,
+      n,
+      useUpper: uplo == UpLo.upper,
     );
-  }
-  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
-    throw GpuShapeMismatchException('eigvalsh', a.shape, const <int>[]);
-  }
-
-  final rank = a.rank;
-  final n = a.shape[rank - 1];
-  final expectedShape = <int>[...a.shape.sublist(0, rank - 2), n];
-  if (out != null) {
-    _validateOutBuffer(out, expectedShape, a.dtype);
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final NDArray<Float64> rawValues;
-    try {
-      rawValues = nd.eigvalsh<Float64>(
-        f64Input,
-        uplo: uplo.isUpper ? nd.MatrixTriangle.upper : nd.MatrixTriangle.lower,
-      );
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-    final valuesHost = _matchDType<T>(rawValues, a.dtype);
-    return _writeOrWrapResult(valuesHost, a.device, out);
+    final wArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.eigenvalues,
+      wShape,
+      DType.float64,
+      out: outEigenvalues,
+      outParamName: 'outEigenvalues',
+    );
+    final vArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.eigenvectors,
+      vShape,
+      DType.float64,
+      out: outEigenvectors,
+      outParamName: 'outEigenvectors',
+    );
+    if (outEigenvalues == null) wArray.detachToParentScope();
+    if (outEigenvectors == null) vArray.detachToParentScope();
+    return (eigenvalues: wArray, eigenvectors: vArray);
   });
 }
 
-/// Computes the eigenvalues and right eigenvectors of a general square matrix
-/// [a].
+/// Eigenvalues of a real symmetric 2-D matrix [a] in ascending order.
 ///
-/// Because a general real matrix may have complex conjugate eigenvalue pairs,
-/// both `eigenvalues` and `eigenvectors` are returned as [Complex128] arrays.
-///
-/// Neither [a] nor any array in [out] may be disposed, and [a] must be square
-/// in its last two dimensions.
-({GpuArray<Complex128> eigenvalues, GpuArray<Complex128> eigenvectors})
-eig<T extends DTypeTag>(
-  GpuArray<T> a, {
-  ({GpuArray<Complex128> eigenvalues, GpuArray<Complex128> eigenvectors})? out,
+/// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
+/// have shape `[N]`, [DType.float64], and reside on `a.device`.
+GpuArray<Float64> eigvalsh(
+  GpuArray<DTypeTag> a, {
+  UpLo uplo = UpLo.lower,
+  GpuArray<Float64>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute eig on a disposed GpuArray.');
-  }
-  if (out != null &&
-      (out.eigenvalues.isDisposed || out.eigenvectors.isDisposed)) {
-    throw StateError('Cannot write eig result to a disposed output GpuArray.');
-  }
-  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
-    throw GpuShapeMismatchException('eig', a.shape, const <int>[]);
-  }
+  _requireSquare2d(a, 'eigvalsh');
+  final n = a.shape[0];
+  final wShape = <int>[n];
+  validateLinalgOut(out, a.device, wShape, DType.float64);
 
-  final rank = a.rank;
-  final n = a.shape[rank - 1];
-  final batchShape = a.shape.sublist(0, rank - 2);
-  final expectedValuesShape = <int>[...batchShape, n];
-  final expectedVectorsShape = <int>[...batchShape, n, n];
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchEighGpu(
+      a.device,
+      inputF64,
+      n,
+      useUpper: uplo == UpLo.upper,
+    );
+    final wArray = writeFloat64BufferToArray<Float64>(
+      a.device,
+      buffers.eigenvalues,
+      wShape,
+      DType.float64,
+      out: out,
+    );
+    if (out == null) wArray.detachToParentScope();
+    return wArray;
+  });
+}
 
-  if (out != null) {
-    _validateOutBuffer(
-      out.eigenvalues,
-      expectedValuesShape,
+/// Eigenvalues and right eigenvectors of a general square 2-D matrix [a].
+///
+/// Produces complex `eigenvalues` of shape `[N]` ([DType.complex128]) and
+/// normalized right `eigenvectors` of shape `[N, N]` ([DType.complex128])
+/// satisfying `a * v[:, i] = w[i] * v[:, i]`.
+///
+/// The [a] tensor must be a square 2-D matrix. Optional [outEigenvalues] and
+/// [outEigenvectors] arrays must have [DType.complex128] and shapes `[N]` and
+/// `[N, N]` on `a.device`.
+({GpuArray<Complex128> eigenvalues, GpuArray<Complex128> eigenvectors}) eig(
+  GpuArray<DTypeTag> a, {
+  GpuArray<Complex128>? outEigenvalues,
+  GpuArray<Complex128>? outEigenvectors,
+}) {
+  _requireSquare2d(a, 'eig');
+  final n = a.shape[0];
+  final wShape = <int>[n];
+  final vShape = <int>[n, n];
+  validateLinalgOut(
+    outEigenvalues,
+    a.device,
+    wShape,
+    DType.complex128,
+    paramName: 'outEigenvalues',
+  );
+  validateLinalgOut(
+    outEigenvectors,
+    a.device,
+    vShape,
+    DType.complex128,
+    paramName: 'outEigenvectors',
+  );
+
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchEigGpu(a.device, inputF64, n, computeVectors: true);
+    final wArray = writeComplex128BufferToArray<Complex128>(
+      a.device,
+      buffers.eigenvalues,
+      wShape,
       DType.complex128,
-      name: 'out.eigenvalues',
+      out: outEigenvalues,
+      outParamName: 'outEigenvalues',
     );
-    _validateOutBuffer(
-      out.eigenvectors,
-      expectedVectorsShape,
+    final vArray = writeComplex128BufferToArray<Complex128>(
+      a.device,
+      buffers.eigenvectors,
+      vShape,
       DType.complex128,
-      name: 'out.eigenvectors',
+      out: outEigenvectors,
+      outParamName: 'outEigenvectors',
     );
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final ({NDArray<Complex128> eigenvalues, NDArray<Complex128> eigenvectors})
-    rawEig;
-    try {
-      rawEig = nd.eig<Complex128>(f64Input);
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-
-    final valuesGpu = _writeOrWrapResult(
-      rawEig.eigenvalues,
-      a.device,
-      out?.eigenvalues,
-      outName: 'out.eigenvalues',
-      promote: false,
-    );
-    final vectorsGpu = _writeOrWrapResult(
-      rawEig.eigenvectors,
-      a.device,
-      out?.eigenvectors,
-      outName: 'out.eigenvectors',
-      promote: false,
-    );
-    if (out == null) {
-      valuesGpu.detachToParentScope();
-      vectorsGpu.detachToParentScope();
-    }
-    return (eigenvalues: valuesGpu, eigenvectors: vectorsGpu);
+    if (outEigenvalues == null) wArray.detachToParentScope();
+    if (outEigenvectors == null) vArray.detachToParentScope();
+    return (eigenvalues: wArray, eigenvectors: vArray);
   });
 }
 
-/// Computes the eigenvalues of a general square matrix [a] as a [Complex128]
-/// array.
+/// Eigenvalues of a general square 2-D matrix [a].
 ///
-/// Neither [a] nor [out] (if provided) may be disposed, and [a] must be square
-/// in its last two dimensions.
-GpuArray<Complex128> eigvals<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// Produces a 1-D [GpuArray] of shape `[N]` with [DType.complex128].
+///
+/// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
+/// have shape `[N]`, [DType.complex128], and reside on `a.device`.
+GpuArray<Complex128> eigvals(
+  GpuArray<DTypeTag> a, {
   GpuArray<Complex128>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute eigvals on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write eigvals result to a disposed output GpuArray.',
+  _requireSquare2d(a, 'eigvals');
+  final n = a.shape[0];
+  final wShape = <int>[n];
+  validateLinalgOut(out, a.device, wShape, DType.complex128);
+
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchEigGpu(
+      a.device,
+      inputF64,
+      n,
+      computeVectors: false,
     );
-  }
-  if (a.rank < 2 || a.shape[a.rank - 2] != a.shape[a.rank - 1]) {
-    throw GpuShapeMismatchException('eigvals', a.shape, const <int>[]);
-  }
-
-  final rank = a.rank;
-  final n = a.shape[rank - 1];
-  final expectedShape = <int>[...a.shape.sublist(0, rank - 2), n];
-  if (out != null) {
-    _validateOutBuffer(out, expectedShape, DType.complex128);
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final f64Input = _toContiguousFloat64(hostInput);
-    final NDArray<Complex128> rawValues;
-    try {
-      rawValues = nd.eigvals<Complex128>(f64Input);
-    } on nd.LinAlgException catch (error) {
-      throw StateError(error.message);
-    }
-    return _writeOrWrapResult(rawValues, a.device, out);
+    final wArray = writeComplex128BufferToArray<Complex128>(
+      a.device,
+      buffers.eigenvalues,
+      wShape,
+      DType.complex128,
+      out: out,
+    );
+    if (out == null) wArray.detachToParentScope();
+    return wArray;
   });
 }
 
-/// Computes the pivoted LU decomposition of a 2D matrix [a] such that
-/// $A = P \cdot L \cdot U$.
+/// Pivoted LU decomposition of a 2-D matrix [a].
 ///
-/// Returns a record `(p, l, u)` where `p` is the $(m, m)$ permutation matrix,
-/// `l` is the $(m, k)$ lower-triangular matrix with unit diagonal, and `u` is
-/// the $(k, n)$ upper-triangular matrix, with $k = \min(m, n)$.
+/// Factorizes an `[M, N]` matrix [a] into `P * L * U`, where `P` is an
+/// `[M, M]` permutation matrix, `L` is an `[M, K]` unit lower-triangular
+/// matrix, and `U` is a `[K, N]` upper-triangular matrix, with `K = min(M, N)`.
 ///
-/// Neither [a] nor any array in [out] may be disposed, and [a] must be
-/// 2-dimensional.
-({GpuArray<T> p, GpuArray<T> l, GpuArray<T> u}) lu<T extends DTypeTag>(
-  GpuArray<T> a, {
-  ({GpuArray<T> p, GpuArray<T> l, GpuArray<T> u})? out,
+/// The [a] tensor must be a 2-D matrix. Optional [outP], [outL], and [outU]
+/// arrays must match the expected shapes and [DType.float64] on `a.device`.
+({GpuArray<Float64> p, GpuArray<Float64> l, GpuArray<Float64> u}) lu(
+  GpuArray<DTypeTag> a, {
+  GpuArray<Float64>? outP,
+  GpuArray<Float64>? outL,
+  GpuArray<Float64>? outU,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute lu on a disposed GpuArray.');
-  }
-  if (out != null &&
-      (out.p.isDisposed || out.l.isDisposed || out.u.isDisposed)) {
-    throw StateError('Cannot write lu result to a disposed output GpuArray.');
-  }
-  if (a.rank != 2) {
-    throw GpuShapeMismatchException('lu', a.shape, const <int>[]);
-  }
-
+  _require2d(a, 'lu');
   final m = a.shape[0];
   final n = a.shape[1];
   final k = math.min(m, n);
+  final pShape = <int>[m, m];
+  final lShape = <int>[m, k];
+  final uShape = <int>[k, n];
 
-  if (out != null) {
-    _validateOutBuffer(out.p, <int>[m, m], a.dtype, name: 'out.p');
-    _validateOutBuffer(out.l, <int>[m, k], a.dtype, name: 'out.l');
-    _validateOutBuffer(out.u, <int>[k, n], a.dtype, name: 'out.u');
-  }
+  validateLinalgOut(outP, a.device, pShape, DType.float64, paramName: 'outP');
+  validateLinalgOut(outL, a.device, lShape, DType.float64, paramName: 'outL');
+  validateLinalgOut(outU, a.device, uShape, DType.float64, paramName: 'outU');
 
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final work = _toContiguousFloat64(hostInput).copy();
-    final workPointer = work.pointer.cast<ffi.Double>();
-    final permutationIndices = List<int>.generate(m, (index) => index);
-
-    for (var j = 0; j < k; j++) {
-      var maxRow = j;
-      var maxAbs = workPointer[j * n + j].abs();
-      for (var i = j + 1; i < m; i++) {
-        final candidate = workPointer[i * n + j].abs();
-        if (candidate > maxAbs) {
-          maxAbs = candidate;
-          maxRow = i;
-        }
-      }
-
-      if (maxRow != j) {
-        final tempIndex = permutationIndices[j];
-        permutationIndices[j] = permutationIndices[maxRow];
-        permutationIndices[maxRow] = tempIndex;
-        for (var col = 0; col < n; col++) {
-          final temp = workPointer[j * n + col];
-          workPointer[j * n + col] = workPointer[maxRow * n + col];
-          workPointer[maxRow * n + col] = temp;
-        }
-      }
-
-      final pivotValue = workPointer[j * n + j];
-      if (pivotValue.abs() > 1e-15) {
-        for (var i = j + 1; i < m; i++) {
-          workPointer[i * n + j] /= pivotValue;
-          final multiplier = workPointer[i * n + j];
-          for (var col = j + 1; col < n; col++) {
-            workPointer[i * n + col] -= multiplier * workPointer[j * n + col];
-          }
-        }
-      }
-    }
-
-    final pF64 = NDArray<Float64>.zeros(<int>[m, m], DType.float64);
-    final lF64 = NDArray<Float64>.zeros(<int>[m, k], DType.float64);
-    final uF64 = NDArray<Float64>.zeros(<int>[k, n], DType.float64);
-
-    final pPointer = pF64.pointer.cast<ffi.Double>();
-    final lPointer = lF64.pointer.cast<ffi.Double>();
-    final uPointer = uF64.pointer.cast<ffi.Double>();
-
-    for (var i = 0; i < m; i++) {
-      pPointer[permutationIndices[i] * m + i] = 1.0;
-    }
-
-    for (var i = 0; i < m; i++) {
-      for (var j = 0; j < k; j++) {
-        if (i == j) {
-          lPointer[i * k + j] = 1.0;
-        } else if (i > j) {
-          lPointer[i * k + j] = workPointer[i * n + j];
-        }
-      }
-    }
-
-    for (var i = 0; i < k; i++) {
-      for (var j = i; j < n; j++) {
-        uPointer[i * n + j] = workPointer[i * n + j];
-      }
-    }
-
-    final pHost = _matchDType<T>(pF64, a.dtype);
-    final lHost = _matchDType<T>(lF64, a.dtype);
-    final uHost = _matchDType<T>(uF64, a.dtype);
-
-    final pGpu = _writeOrWrapResult(
-      pHost,
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchLuGpu(a.device, inputF64, m, n);
+    final pArray = writeFloat64BufferToArray<Float64>(
       a.device,
-      out?.p,
-      outName: 'out.p',
-      promote: false,
+      buffers.p,
+      pShape,
+      DType.float64,
+      out: outP,
+      outParamName: 'outP',
     );
-    final lGpu = _writeOrWrapResult(
-      lHost,
+    final lArray = writeFloat64BufferToArray<Float64>(
       a.device,
-      out?.l,
-      outName: 'out.l',
-      promote: false,
+      buffers.l,
+      lShape,
+      DType.float64,
+      out: outL,
+      outParamName: 'outL',
     );
-    final uGpu = _writeOrWrapResult(
-      uHost,
+    final uArray = writeFloat64BufferToArray<Float64>(
       a.device,
-      out?.u,
-      outName: 'out.u',
-      promote: false,
+      buffers.u,
+      uShape,
+      DType.float64,
+      out: outU,
+      outParamName: 'outU',
     );
-    if (out == null) {
-      pGpu.detachToParentScope();
-      lGpu.detachToParentScope();
-      uGpu.detachToParentScope();
-    }
-    return (p: pGpu, l: lGpu, u: uGpu);
+    if (outP == null) pArray.detachToParentScope();
+    if (outL == null) lArray.detachToParentScope();
+    if (outU == null) uArray.detachToParentScope();
+    return (p: pArray, l: lArray, u: uArray);
   });
 }
 
-/// Computes the compact LU factorization of a square 2D matrix [a] for use with
-/// [luSolve].
+/// Compact LU factorization of a square 2-D matrix [a] for use with [luSolve].
 ///
-/// Returns a record `(lu, pivots)` where `lu` packs $L$ (strictly lower
-/// triangle) and $U$ (upper triangle including diagonal) in a single `(n, n)`
-/// matrix, and `pivots` is a 1D `Int32` array of row swap indices.
+/// Produces a combined `lu` matrix of shape `[N, N]` containing the unit
+/// lower-triangular `L` (below the diagonal) and upper-triangular `U` (on and
+/// above the diagonal), together with a 1-D `pivots` array of shape `[N]`
+/// ([DType.int32]).
 ///
-/// Neither [a] nor any array in [out] may be disposed, and [a] must be a
-/// square 2D matrix.
-({GpuArray<T> lu, GpuArray<Int32> pivots}) luFactor<T extends DTypeTag>(
-  GpuArray<T> a, {
-  ({GpuArray<T> lu, GpuArray<Int32> pivots})? out,
+/// The [a] tensor must be a square 2-D matrix. Optional [outLu] and [outPivots]
+/// arrays must match the expected shapes and dtypes on `a.device`.
+({GpuArray<Float64> lu, GpuArray<Int32> pivots}) luFactor(
+  GpuArray<DTypeTag> a, {
+  GpuArray<Float64>? outLu,
+  GpuArray<Int32>? outPivots,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute luFactor on a disposed GpuArray.');
-  }
-  if (out != null && (out.lu.isDisposed || out.pivots.isDisposed)) {
-    throw StateError(
-      'Cannot write luFactor result to a disposed output GpuArray.',
-    );
-  }
-  if (a.rank != 2 || a.shape[0] != a.shape[1]) {
-    throw GpuShapeMismatchException('luFactor', a.shape, const <int>[]);
-  }
-
+  _requireSquare2d(a, 'luFactor');
   final n = a.shape[0];
-  if (out != null) {
-    _validateOutBuffer(out.lu, <int>[n, n], a.dtype, name: 'out.lu');
-    _validateOutBuffer(out.pivots, <int>[n], DType.int32, name: 'out.pivots');
-  }
+  final luShape = <int>[n, n];
+  final pivShape = <int>[n];
 
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final luF64 = _toContiguousFloat64(hostInput).copy();
-    final luPointer = luF64.pointer.cast<ffi.Double>();
-    final pivotsNd = NDArray<Int32>.zeros(<int>[n], DType.int32);
-    final pivotsPointer = pivotsNd.pointer.cast<ffi.Int32>();
+  validateLinalgOut(
+    outLu,
+    a.device,
+    luShape,
+    DType.float64,
+    paramName: 'outLu',
+  );
+  validateLinalgOut(
+    outPivots,
+    a.device,
+    pivShape,
+    DType.int32,
+    paramName: 'outPivots',
+  );
 
-    for (var j = 0; j < n; j++) {
-      var maxRow = j;
-      var maxAbs = luPointer[j * n + j].abs();
-      for (var i = j + 1; i < n; i++) {
-        final candidate = luPointer[i * n + j].abs();
-        if (candidate > maxAbs) {
-          maxAbs = candidate;
-          maxRow = i;
-        }
-      }
-      pivotsPointer[j] = maxRow;
-      if (maxRow != j) {
-        for (var col = 0; col < n; col++) {
-          final temp = luPointer[j * n + col];
-          luPointer[j * n + col] = luPointer[maxRow * n + col];
-          luPointer[maxRow * n + col] = temp;
-        }
-      }
-      final pivotValue = luPointer[j * n + j];
-      if (pivotValue.abs() < 1e-15) {
-        throw StateError('Matrix is singular in luFactor at column $j.');
-      }
-      for (var i = j + 1; i < n; i++) {
-        luPointer[i * n + j] /= pivotValue;
-        final multiplier = luPointer[i * n + j];
-        for (var col = j + 1; col < n; col++) {
-          luPointer[i * n + col] -= multiplier * luPointer[j * n + col];
-        }
-      }
-    }
-
-    final luHost = _matchDType<T>(luF64, a.dtype);
-    final luGpu = _writeOrWrapResult(
-      luHost,
+  return ResourceScope.scope(() {
+    final inputF64 = toContiguousFloat64Buffer(a);
+    final buffers = dispatchLuGpu(a.device, inputF64, n, n);
+    final luArray = writeFloat64BufferToArray<Float64>(
       a.device,
-      out?.lu,
-      outName: 'out.lu',
-      promote: false,
+      buffers.lu,
+      luShape,
+      DType.float64,
+      out: outLu,
+      outParamName: 'outLu',
     );
-    final pivotsGpu = _writeOrWrapResult(
-      pivotsNd,
+    final pivArray = writeFloat64BufferToArray<Int32>(
       a.device,
-      out?.pivots,
-      outName: 'out.pivots',
-      promote: false,
+      buffers.pivots,
+      pivShape,
+      DType.int32,
+      out: outPivots,
+      outParamName: 'outPivots',
     );
-    if (out == null) {
-      luGpu.detachToParentScope();
-      pivotsGpu.detachToParentScope();
-    }
-    return (lu: luGpu, pivots: pivotsGpu);
+    if (outLu == null) luArray.detachToParentScope();
+    if (outPivots == null) pivArray.detachToParentScope();
+    return (lu: luArray, pivots: pivArray);
   });
 }
 
 /// Snake-case alias for [luFactor].
-({GpuArray<T> lu, GpuArray<Int32> pivots}) lu_factor<T extends DTypeTag>(
-  GpuArray<T> a, {
-  ({GpuArray<T> lu, GpuArray<Int32> pivots})? out,
-}) => luFactor(a, out: out);
+// ignore: non_constant_identifier_names
+final lu_factor = luFactor;
 
-/// Solves a linear system $A x = b$ given the compact LU factorization
-/// `(lu, pivots)` from [luFactor].
+/// Solves a linear system `A * x = b` given the [luFactor] decomposition
+/// `(` [lu], [pivots] `)` and right-hand side [b].
 ///
-/// Supports 1D right-hand side vectors `(n,)` and 2D right-hand side matrices
-/// `(n, k)`. None of [lu], [pivots], [b], or [out] may be disposed.
-GpuArray<T> luSolve<T extends DTypeTag>(
-  GpuArray<T> lu,
-  GpuArray<Int32> pivots,
-  GpuArray<T> b, {
-  GpuArray<T>? out,
+/// The [lu] tensor must be a square 2-D matrix of shape `[N, N]`, [pivots] must
+/// be a 1-D array of length `N`, and [b] must be a 1-D (`[N]`) or 2-D
+/// (`[N, K]`) array on the same device.
+GpuArray<Float64> luSolve(
+  GpuArray<DTypeTag> lu,
+  GpuArray<DTypeTag> pivots,
+  GpuArray<DTypeTag> b, {
+  GpuArray<Float64>? out,
 }) {
-  if (lu.isDisposed || pivots.isDisposed || b.isDisposed) {
-    throw StateError('Cannot execute luSolve on a disposed GpuArray.');
+  _requireSquare2d(lu, 'luSolve');
+  if (pivots.isDisposed) {
+    throw StateError('Cannot execute luSolve with a disposed pivots GpuArray.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write luSolve result to a disposed output GpuArray.',
+  if (b.isDisposed) {
+    throw StateError('Cannot execute luSolve with a disposed b GpuArray.');
+  }
+  if (pivots.device != lu.device) {
+    throw ArgumentError.value(
+      pivots,
+      'pivots',
+      'Must reside on the same GpuDevice as lu.',
     );
   }
-  if (lu.rank != 2 || lu.shape[0] != lu.shape[1]) {
-    throw GpuShapeMismatchException('luSolve', lu.shape, b.shape);
+  if (b.device != lu.device) {
+    throw ArgumentError.value(
+      b,
+      'b',
+      'Must reside on the same GpuDevice as lu.',
+    );
   }
   final n = lu.shape[0];
-  if (pivots.rank != 1 || pivots.shape[0] != n) {
-    throw GpuShapeMismatchException('luSolve', lu.shape, pivots.shape);
+  if (pivots.ndim != 1 || pivots.shape[0] != n) {
+    throw ArgumentError.value(
+      pivots.shape,
+      'pivots',
+      'Must be a 1-D array of length $n, got ${pivots.shape}.',
+    );
   }
-  if ((b.rank != 1 && b.rank != 2) || b.shape[0] != n) {
-    throw GpuShapeMismatchException('luSolve', lu.shape, b.shape);
+  if (b.ndim != 1 && b.ndim != 2) {
+    throw ArgumentError.value(
+      b.shape,
+      'b',
+      'Must be a 1-D or 2-D array for luSolve, got ${b.ndim}-D.',
+    );
   }
-  if (out != null) {
-    _validateOutBuffer(out, b.shape, b.dtype);
+  if (b.shape[0] != n) {
+    throw ArgumentError.value(
+      b.shape,
+      'b',
+      'Must have first dimension $n matching lu, got ${b.shape[0]}.',
+    );
   }
 
-  final is1D = b.rank == 1;
-  final rightHandSides = is1D ? 1 : b.shape[1];
+  validateLinalgOut(out, lu.device, b.shape, DType.float64);
+  final nrhs = b.ndim == 1 ? 1 : b.shape[1];
 
-  return NDArray.scope(() {
-    final luF64 = _toContiguousFloat64(lu.toNDArray());
-    final luPointer = luF64.pointer.cast<ffi.Double>();
-
-    final pivotsHost = pivots.toNDArray();
-    final contiguousPivots = pivotsHost.isContiguous
-        ? pivotsHost
-        : pivotsHost.copy();
-    final pivotsPointer = contiguousPivots.pointer.cast<ffi.Int32>();
-
-    final xF64 = _toContiguousFloat64(b.toNDArray()).copy().reshape(b.shape);
-    final xPointer = xF64.pointer.cast<ffi.Double>();
-
-    for (var i = 0; i < n; i++) {
-      final pivotRow = pivotsPointer[i];
-      if (pivotRow != i) {
-        for (var col = 0; col < rightHandSides; col++) {
-          final temp = xPointer[i * rightHandSides + col];
-          xPointer[i * rightHandSides + col] =
-              xPointer[pivotRow * rightHandSides + col];
-          xPointer[pivotRow * rightHandSides + col] = temp;
-        }
-      }
-    }
-
-    for (var i = 1; i < n; i++) {
-      for (var k = 0; k < i; k++) {
-        final lowerEntry = luPointer[i * n + k];
-        for (var col = 0; col < rightHandSides; col++) {
-          xPointer[i * rightHandSides + col] -=
-              lowerEntry * xPointer[k * rightHandSides + col];
-        }
-      }
-    }
-
-    for (var i = n - 1; i >= 0; i--) {
-      final diagonalEntry = luPointer[i * n + i];
-      if (diagonalEntry.abs() < 1e-15) {
-        throw StateError('Matrix is singular in luSolve.');
-      }
-      for (var col = 0; col < rightHandSides; col++) {
-        var sum = xPointer[i * rightHandSides + col];
-        for (var k = i + 1; k < n; k++) {
-          sum -= luPointer[i * n + k] * xPointer[k * rightHandSides + col];
-        }
-        xPointer[i * rightHandSides + col] = sum / diagonalEntry;
-      }
-    }
-
-    final xHost = _matchDType<T>(xF64, b.dtype);
-    return _writeOrWrapResult(xHost, b.device, out);
+  return ResourceScope.scope(() {
+    final luF64 = toContiguousFloat64Buffer(lu);
+    final pivotsF64 = toContiguousFloat64Buffer(pivots);
+    final bF64 = toContiguousFloat64Buffer(b);
+    final xF64 = dispatchLuSolveGpu(lu.device, luF64, pivotsF64, bF64, n, nrhs);
+    final result = writeFloat64BufferToArray<Float64>(
+      lu.device,
+      xF64,
+      b.shape,
+      DType.float64,
+      out: out,
+    );
+    if (out == null) result.detachToParentScope();
+    return result;
   });
 }
 
 /// Snake-case alias for [luSolve].
-GpuArray<T> lu_solve<T extends DTypeTag>(
-  GpuArray<T> lu,
-  GpuArray<Int32> pivots,
-  GpuArray<T> b, {
-  GpuArray<T>? out,
-}) => luSolve(lu, pivots, b, out: out);
+// ignore: non_constant_identifier_names
+final lu_solve = luSolve;

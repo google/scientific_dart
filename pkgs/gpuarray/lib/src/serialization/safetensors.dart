@@ -13,11 +13,8 @@
 // limitations under the License.
 
 import 'dart:convert';
-import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:typed_data';
-
-import 'package:ndarray/ndarray.dart' show NDArray;
 
 import '../device.dart';
 import '../dtype.dart';
@@ -65,7 +62,7 @@ DType _safetensorsToDtype(String code) => switch (code) {
   _ => throw FormatException('Unsupported SafeTensors dtype: "$code".'),
 };
 
-GpuArray _createEmptyTypedTensor(
+GpuArray<DTypeTag> _createEmptyTypedTensor(
   List<int> shape,
   DType dtype,
   GpuDevice device,
@@ -121,10 +118,10 @@ GpuArray _createEmptyTypedTensor(
 /// None of the arrays in [tensors] may be disposed, and no key in [tensors]
 /// may be the reserved `'__metadata__'` key.
 Uint8List saveSafetensors(
-  Map<String, GpuArray> tensors, {
+  Map<String, GpuArray<DTypeTag>> tensors, {
   Map<String, String>? metadata,
 }) {
-  final snapshot = Map<String, GpuArray>.of(tensors);
+  final snapshot = Map<String, GpuArray<DTypeTag>>.of(tensors);
   for (final entry in snapshot.entries) {
     if (entry.key == '__metadata__') {
       throw ArgumentError.value(
@@ -152,30 +149,31 @@ Uint8List saveSafetensors(
     final name = entry.key;
     final tensor = entry.value;
 
-    final payload = NDArray.scope(() {
-      final hostTensor = tensor.toNDArray();
-      final contiguousHost = hostTensor.isContiguous
-          ? hostTensor
-          : hostTensor.copy();
-      final byteLength = contiguousHost.size * contiguousHost.dtype.byteWidth;
-
+    final contiguousTensor = tensor.isContiguous ? tensor : tensor.copy();
+    try {
+      final byteLength =
+          contiguousTensor.size * contiguousTensor.dtype.byteWidth;
       headerMap[name] = <String, Object>{
-        'dtype': _dtypeToSafetensors(contiguousHost.dtype),
-        'shape': List<int>.of(contiguousHost.shape),
+        'dtype': _dtypeToSafetensors(contiguousTensor.dtype),
+        'shape': List<int>.of(contiguousTensor.shape),
         'data_offsets': <int>[currentOffset, currentOffset + byteLength],
       };
-
       currentOffset += byteLength;
 
-      final tensorBytes = Uint8List(byteLength);
-      if (byteLength > 0) {
-        final sourceAddress = contiguousHost.pointer.cast<ffi.Uint8>();
-        tensorBytes.setAll(0, sourceAddress.asTypedList(byteLength));
+      final byteOffset =
+          contiguousTensor.offsetElements * contiguousTensor.dtype.byteWidth;
+      final tensorBytes = byteLength > 0
+          ? contiguousTensor.buffer.readBytes(
+              offset: byteOffset,
+              bytes: byteLength,
+            )
+          : Uint8List(0);
+      tensorPayloads.add(tensorBytes);
+    } finally {
+      if (!identical(contiguousTensor, tensor)) {
+        contiguousTensor.dispose();
       }
-      return tensorBytes;
-    });
-
-    tensorPayloads.add(payload);
+    }
   }
 
   final headerJson = jsonEncode(headerMap);
@@ -213,7 +211,10 @@ Uint8List saveSafetensors(
 /// Throws a [FormatException] if [bytes] is truncated, has a malformed UTF-8
 /// or JSON header, specifies an unknown dtype, contains negative dimensions,
 /// or has invalid or out-of-bounds `data_offsets`.
-Map<String, GpuArray> loadSafetensors(Uint8List bytes, {GpuDevice? device}) {
+Map<String, GpuArray<DTypeTag>> loadSafetensors(
+  Uint8List bytes, {
+  GpuDevice? device,
+}) {
   final targetDevice = device ?? GpuDevice.defaultDevice;
   if (targetDevice.isDisposed) {
     throw GpuDeviceDisposedException(targetDevice.name);
@@ -258,7 +259,7 @@ Map<String, GpuArray> loadSafetensors(Uint8List bytes, {GpuDevice? device}) {
   }
 
   final dataStartOffset = 8 + headerLength;
-  final loadedTensors = <String, GpuArray>{};
+  final loadedTensors = <String, GpuArray<DTypeTag>>{};
 
   try {
     for (final entry in decodedHeader.entries) {
@@ -345,22 +346,12 @@ Map<String, GpuArray> loadSafetensors(Uint8List bytes, {GpuDevice? device}) {
 
       final tensor = _createEmptyTypedTensor(shape, dtype, targetDevice);
       if (expectedByteSize > 0) {
-        NDArray.scope(() {
-          final hostStaging = NDArray.create(shape, dtype);
-          final sourceView = Uint8List.sublistView(
-            bytes,
-            absoluteStart,
-            absoluteEnd,
-          );
-          hostStaging.pointer
-              .cast<ffi.Uint8>()
-              .asTypedList(expectedByteSize)
-              .setAll(0, sourceView);
-          tensor.buffer.copyFromHost(
-            hostStaging.pointer.cast<ffi.Void>(),
-            expectedByteSize,
-          );
-        });
+        final sourceView = Uint8List.sublistView(
+          bytes,
+          absoluteStart,
+          absoluteEnd,
+        );
+        tensor.buffer.writeBytes(sourceView);
       }
 
       loadedTensors[tensorName] = tensor;
@@ -381,7 +372,7 @@ Map<String, GpuArray> loadSafetensors(Uint8List bytes, {GpuDevice? device}) {
 /// None of the arrays in [tensors] may be disposed.
 void saveSafetensorsFile(
   String filePath,
-  Map<String, GpuArray> tensors, {
+  Map<String, GpuArray<DTypeTag>> tensors, {
   Map<String, String>? metadata,
 }) {
   final bytes = saveSafetensors(tensors, metadata: metadata);
@@ -393,7 +384,7 @@ void saveSafetensorsFile(
 ///
 /// Throws a [FormatException] if the file contents do not conform to the
 /// SafeTensors binary specification.
-Map<String, GpuArray> loadSafetensorsFile(
+Map<String, GpuArray<DTypeTag>> loadSafetensorsFile(
   String filePath, {
   GpuDevice? device,
 }) {

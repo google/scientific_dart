@@ -12,12 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-/// Fast Fourier Transform (FFT) operations for [GpuArray] tensors.
-///
-/// Provides 1D and 2D complex and real discrete Fourier transforms ([fft],
-/// [ifft], [rfft], [irfft], [fft2], [ifft2]), frequency bin generators
-/// ([fftfreq], [rfftfreq]), spectrum shifting utilities ([fftshift],
-/// [ifftshift]), and normalization modes ([FftNorm]).
+/// Fast Fourier Transform operations (`fft`, `ifft`, `rfft`, `irfft`, `fft2`,
+/// `ifft2`, `rfft2`, `irfft2`, `fftn`, `ifftn`, `rfftn`, `irfftn`, `hfft`,
+/// `ihfft`, `fftfreq`, `rfftfreq`, `fftshift`, `ifftshift`) executed on WebGPU.
 library;
 
 export 'src/fft/fft.dart'
@@ -26,10 +23,18 @@ export 'src/fft/fft.dart'
         fft,
         fft2,
         fftfreq,
+        fftn,
         fftshift,
+        hfft,
         ifft,
         ifft2,
+        ifftn,
         ifftshift,
+        ihfft,
         irfft,
+        irfft2,
+        irfftn,
         rfft,
-        rfftfreq;
+        rfft2,
+        rfftfreq,
+        rfftn;

@@ -171,7 +171,7 @@ void main() {
             path,
             result.lineInfo,
             violations,
-            requirePublicDocs: !path.startsWith('lib/src/backend/native/'),
+            requirePublicDocs: true,
           );
           result.unit.accept(visitor);
         }
@@ -183,7 +183,6 @@ void main() {
       final violations = <String>[];
       for (final file in libFiles) {
         final path = relPath(file);
-        if (path.endsWith('wgpu_bindings.dart')) continue;
         final result = parseString(content: file.readAsStringSync());
         final visitor = _IdentifierAbbreviationVisitor(
           path,
@@ -222,6 +221,136 @@ void main() {
               violations,
             );
             result.unit.accept(visitor);
+          }
+        }
+        final barrels = [
+          'lib/gpuarray.dart',
+          'lib/linalg.dart',
+          'lib/fft.dart',
+          'lib/random.dart',
+          'lib/autograd.dart',
+          'lib/nn.dart',
+          'lib/serialization.dart',
+        ];
+        final libContext = collection.contextFor(
+          Directory('${pkgRoot.path}/lib').absolute.path,
+        );
+        for (final barrelRel in barrels) {
+          final barrelPath = File('${pkgRoot.path}/$barrelRel').absolute.path;
+          final libRes = await libContext.currentSession.getResolvedLibrary(
+            barrelPath,
+          );
+          if (libRes is! ResolvedLibraryResult) {
+            violations.add('$barrelRel: failed to resolve library');
+            continue;
+          }
+          final exportNames = libRes.element.exportNamespace.definedNames2;
+          if (exportNames.isEmpty) {
+            violations.add('$barrelRel: exportNamespace is empty');
+          }
+          for (final entry in exportNames.entries) {
+            final name = entry.key;
+            final el = entry.value;
+            if (el.metadata.annotations.any((a) => a.isInternal)) {
+              violations.add(
+                '$barrelRel: exported symbol "$name" (${el.kind.displayName}) is annotated @internal',
+              );
+            }
+            if (el.library?.uri.scheme == 'package' &&
+                el.library?.uri.pathSegments.firstOrNull == 'gpuarray') {
+              final docComment =
+                  el.documentationComment ??
+                  (el is PropertyAccessorElement
+                      ? el.variable.documentationComment
+                      : null);
+              if (docComment == null) {
+                violations.add(
+                  '$barrelRel: exported symbol "$name" (${el.kind.displayName}) is missing /// dartdoc',
+                );
+              }
+            }
+          }
+        }
+
+        expect(violations, isEmpty, reason: violations.join('\n'));
+      },
+    );
+
+    test(
+      'R4.1: wgpu_bindings.dart uses @ffi.DefaultAsset and @ffi.Native with zero DynamicLibrary.open in lib/',
+      () {
+        final bindingsFile = File(
+          '${pkgRoot.path}/lib/src/backend/native/wgpu_bindings.dart',
+        );
+        expect(bindingsFile.existsSync(), isTrue);
+        final bindingsSrc = bindingsFile.readAsStringSync();
+        expect(
+          bindingsSrc,
+          contains("@ffi.DefaultAsset('package:gpuarray/wgpu_native')"),
+        );
+        expect(bindingsSrc, contains('@ffi.Native<'));
+
+        final violations = <String>[];
+        for (final file in libFiles) {
+          final src = file.readAsStringSync();
+          if (src.contains('DynamicLibrary.open')) {
+            violations.add('${relPath(file)}: contains DynamicLibrary.open');
+          }
+        }
+        expect(violations, isEmpty, reason: violations.join('\n'));
+      },
+    );
+
+    test(
+      'R4.1: zero mock/CPU-fallback tokens, zero forbidden package:ndarray imports, and zero NativeFinalizer externalSize',
+      () {
+        final violations = <String>[];
+        const forbiddenTokens = [
+          'CpuVectorBackend',
+          'isMock',
+          'isSimulated',
+          'cpu_kernel',
+          'withTemporaryNDArrayView',
+          'GpuDevice.cpu',
+        ];
+        for (final file in [...libFiles, ...testFiles, ...benchmarkFiles]) {
+          final path = relPath(file);
+          if (path == 'test/meta/codebase_invariants_test.dart') continue;
+          final src = file.readAsStringSync();
+          for (final token in forbiddenTokens) {
+            if (RegExp('\\b${RegExp.escape(token)}\\b').hasMatch(src)) {
+              violations.add('$path: contains forbidden token "$token"');
+            }
+          }
+        }
+
+        const allowedNdarrayFiles = {
+          'lib/gpuarray.dart',
+          'lib/src/interop.dart',
+          'lib/src/gpu_array.dart',
+          'lib/src/dtype.dart',
+        };
+        for (final file in libFiles) {
+          final path = relPath(file);
+          final result = parseString(content: file.readAsStringSync());
+          final finalizerVisitor = _FinalizerExternalSizeVisitor(
+            path,
+            result.lineInfo,
+            violations,
+          );
+          result.unit.accept(finalizerVisitor);
+
+          if (!allowedNdarrayFiles.contains(path)) {
+            for (final directive in result.unit.directives) {
+              if (directive is UriBasedDirective) {
+                final uri = directive.uri.stringValue ?? '';
+                if (uri.startsWith('package:ndarray/')) {
+                  violations.add(
+                    '$path: forbidden package:ndarray import/export "$uri"',
+                  );
+                }
+              }
+            }
           }
         }
         expect(violations, isEmpty, reason: violations.join('\n'));
@@ -634,6 +763,9 @@ class _IdentifierAbbreviationVisitor extends RecursiveAstVisitor<void> {
     'cfg',
     'ctx',
     'cb',
+    'len',
+    'pos',
+    'str',
   };
 
   _IdentifierAbbreviationVisitor(this.filePath, this.lineInfo, this.violations);
@@ -665,6 +797,19 @@ class _IdentifierAbbreviationVisitor extends RecursiveAstVisitor<void> {
     final nameToken = node.namePart.typeName;
     _checkName(nameToken.lexeme, nameToken.offset);
     super.visitClassDeclaration(node);
+  }
+
+  @override
+  void visitConstructorDeclaration(ConstructorDeclaration node) {
+    if (node.name != null) {
+      _checkName(node.name!.lexeme, node.name!.offset);
+    }
+    for (final param in node.parameters.parameters) {
+      if (param.name != null) {
+        _checkName(param.name!.lexeme, param.name!.offset);
+      }
+    }
+    super.visitConstructorDeclaration(node);
   }
 
   @override
@@ -701,6 +846,29 @@ class _IdentifierAbbreviationVisitor extends RecursiveAstVisitor<void> {
   }
 }
 
+class _FinalizerExternalSizeVisitor extends RecursiveAstVisitor<void> {
+  final String filePath;
+  final LineInfo lineInfo;
+  final List<String> violations;
+
+  _FinalizerExternalSizeVisitor(this.filePath, this.lineInfo, this.violations);
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) {
+    if (node.methodName.name == 'attach') {
+      for (final arg in node.argumentList.arguments) {
+        if (arg.toSource().startsWith('externalSize:')) {
+          final line = lineInfo.getLocation(arg.offset).lineNumber;
+          violations.add(
+            '$filePath:$line: externalSize passed to NativeFinalizer.attach',
+          );
+        }
+      }
+    }
+    super.visitMethodInvocation(node);
+  }
+}
+
 class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
   final String filePath;
   final LineInfo lineInfo;
@@ -731,6 +899,63 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
     return false;
   }
 
+  void _checkRawGpuArrayTypeAnnotation(TypeAnnotation? typeNode, String owner) {
+    if (typeNode == null) return;
+    typeNode.accept(
+      _RawGpuArrayTypeVisitor(filePath, lineInfo, owner, violations),
+    );
+  }
+
+  @override
+  void visitConstructorDeclaration(ConstructorDeclaration node) {
+    final element = node.declaredFragment?.element;
+    if (element != null &&
+        element.isPublic &&
+        (element.enclosingElement is! ClassElement ||
+            (element.enclosingElement as ClassElement).isPublic)) {
+      final line = lineInfo.getLocation(node.offset).lineNumber;
+      for (final param in element.formalParameters) {
+        if (_containsDynamic(param.type)) {
+          violations.add(
+            '$filePath:$line: public constructor "${element.displayName}" parameter "${param.name}" has dynamic in type (${param.type})',
+          );
+        }
+      }
+      node.parameters.accept(
+        _RawGpuArrayTypeVisitor(
+          filePath,
+          lineInfo,
+          'public constructor "${element.displayName}"',
+          violations,
+        ),
+      );
+    }
+    super.visitConstructorDeclaration(node);
+  }
+
+  @override
+  void visitFieldDeclaration(FieldDeclaration node) {
+    for (final variable in node.fields.variables) {
+      final element = variable.declaredFragment?.element;
+      if (element is FieldElement &&
+          element.isPublic &&
+          (element.enclosingElement is! ClassElement ||
+              (element.enclosingElement as ClassElement).isPublic)) {
+        final line = lineInfo.getLocation(variable.offset).lineNumber;
+        if (_containsDynamic(element.type)) {
+          violations.add(
+            '$filePath:$line: public field "${element.name}" has dynamic in type (${element.type})',
+          );
+        }
+        _checkRawGpuArrayTypeAnnotation(
+          node.fields.type,
+          'public field "${element.name}"',
+        );
+      }
+    }
+    super.visitFieldDeclaration(node);
+  }
+
   @override
   void visitMethodDeclaration(MethodDeclaration node) {
     final element = node.declaredFragment?.element;
@@ -745,6 +970,10 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
           '$filePath:$line: public method/getter "${element.name}" has dynamic in return type (${element.returnType})',
         );
       }
+      _checkRawGpuArrayTypeAnnotation(
+        node.returnType,
+        'public method "${element.name}"',
+      );
       for (final param in element.formalParameters) {
         if (_containsDynamic(param.type)) {
           violations.add(
@@ -752,6 +981,14 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
           );
         }
       }
+      node.parameters?.accept(
+        _RawGpuArrayTypeVisitor(
+          filePath,
+          lineInfo,
+          'public method "${element.name}"',
+          violations,
+        ),
+      );
     }
     super.visitMethodDeclaration(node);
   }
@@ -770,6 +1007,10 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
           '$filePath:$line: public function "${element.name}" has dynamic in return type (${element.returnType})',
         );
       }
+      _checkRawGpuArrayTypeAnnotation(
+        node.returnType,
+        'public function "${element.name}"',
+      );
       for (final param in element.formalParameters) {
         if (_containsDynamic(param.type)) {
           violations.add(
@@ -777,7 +1018,40 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
           );
         }
       }
+      node.functionExpression.parameters?.accept(
+        _RawGpuArrayTypeVisitor(
+          filePath,
+          lineInfo,
+          'public function "${element.name}"',
+          violations,
+        ),
+      );
     }
     super.visitFunctionDeclaration(node);
+  }
+}
+
+class _RawGpuArrayTypeVisitor extends RecursiveAstVisitor<void> {
+  final String filePath;
+  final LineInfo lineInfo;
+  final String owner;
+  final List<String> violations;
+
+  _RawGpuArrayTypeVisitor(
+    this.filePath,
+    this.lineInfo,
+    this.owner,
+    this.violations,
+  );
+
+  @override
+  void visitNamedType(NamedType node) {
+    if (node.name.lexeme == 'GpuArray' && node.typeArguments == null) {
+      final line = lineInfo.getLocation(node.offset).lineNumber;
+      violations.add(
+        '$filePath:$line: $owner uses untyped GpuArray without explicit <DTypeTag> type argument',
+      );
+    }
+    super.visitNamedType(node);
   }
 }

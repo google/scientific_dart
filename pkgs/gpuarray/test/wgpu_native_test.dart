@@ -150,56 +150,23 @@ void main() {
     });
   });
 
-  group('WebGPU Dynamic Library Loader (WgpuNativeLib)', () {
-    test('tryLoad resolves without throwing exceptions', () {
-      final lib = WgpuNativeLib.tryLoad();
-      // On systems without wgpu installed, returns null gracefully
-      if (lib != null) {
-        expect(lib.isAvailable, isTrue);
-      }
-    });
-
-    test('load throws GpuDeviceException for non-existent library path', () {
-      expect(
-        () => WgpuNativeLib.load(
-          customPath: '/invalid/path/to/non_existent_wgpu.so',
-        ),
-        throwsA(isA<GpuDeviceException>()),
-      );
-    });
-  });
-
   group('Native WebGPU Driver Backend (WgpuNativeBackend)', () {
-    test('Initialization via mock factory and async create', () async {
-      final mockBackend = WgpuNativeBackend.mock();
-      expect(mockBackend.deviceType, equals(GpuDeviceType.webgpu));
-      expect(mockBackend.isMock, isTrue);
-      expect(mockBackend.isDisposed, isFalse);
-      expect(mockBackend.activeAllocationCount, equals(0));
+    test('Initialization via createSync and async create', () async {
+      final syncBackend = WgpuNativeBackend.createSync();
+      expect(syncBackend.deviceType, equals(GpuDeviceType.webgpu));
+      expect(syncBackend.isDisposed, isFalse);
+      expect(syncBackend.activeAllocationCount, equals(0));
+      syncBackend.dispose();
+      expect(syncBackend.isDisposed, isTrue);
 
-      final autoBackend = await WgpuNativeBackend.create(
-        libPath: '/non_existent_path.so',
-        useMockIfUnavailable: true,
-      );
-      expect(autoBackend.deviceType, equals(GpuDeviceType.webgpu));
-      expect(autoBackend.isMock, isTrue);
+      final asyncBackend = await WgpuNativeBackend.create();
+      expect(asyncBackend.deviceType, equals(GpuDeviceType.webgpu));
+      expect(asyncBackend.isDisposed, isFalse);
+      asyncBackend.dispose();
     });
-
-    test(
-      'throws when useMockIfUnavailable is false and lib is missing',
-      () async {
-        expect(
-          () => WgpuNativeBackend.create(
-            libPath: '/non_existent_path.so',
-            useMockIfUnavailable: false,
-          ),
-          throwsA(isA<GpuDeviceException>()),
-        );
-      },
-    );
 
     test('Buffer memory allocation, tracking and freeing', () {
-      final backend = WgpuNativeBackend.mock();
+      final backend = WgpuNativeBackend.createSync();
 
       // Allocating 0 bytes returns nullptr
       final nullPtr = backend.allocateBuffer(0);
@@ -232,45 +199,69 @@ void main() {
       );
     });
 
-    test('Host to Buffer and Buffer to Host memory copies', () {
-      final backend = WgpuNativeBackend.mock();
-      final device = GpuDevice.create(
-        backend: backend,
-        type: GpuDeviceType.webgpu,
-      );
+    test(
+      'Host to Buffer and Buffer to Host memory copies (aligned and unaligned)',
+      () {
+        final backend = WgpuNativeBackend.createSync();
+        final device = GpuDevice.create(
+          backend: backend,
+          type: GpuDeviceType.webgpu,
+        );
 
-      final buffer = GpuBuffer.allocate(
-        sizeInBytes: 16,
-        usage: GpuBufferUsage.storage,
-        device: device,
-      );
+        final buffer = GpuBuffer.allocate(
+          sizeInBytes: 16,
+          usage: GpuBufferUsage.storage,
+          device: device,
+        );
 
-      using((arena) {
-        final src = arena<ffi.Float>(4);
-        src[0] = 1.0;
-        src[1] = 2.5;
-        src[2] = -4.0;
-        src[3] = 8.25;
+        using((arena) {
+          final src = arena<ffi.Float>(4);
+          src[0] = 1.0;
+          src[1] = 2.5;
+          src[2] = -4.0;
+          src[3] = 8.25;
 
-        // Copy host -> GPU buffer
-        backend.copyHostToBuffer(src.cast<ffi.Uint8>(), buffer, 16);
+          // Copy host -> GPU buffer
+          backend.copyHostToBuffer(src.cast<ffi.Uint8>(), buffer, 16);
 
-        // Copy GPU buffer -> host dst
-        final dst = arena<ffi.Float>(4);
-        backend.copyBufferToHost(buffer, dst.cast<ffi.Uint8>(), 16);
+          // Copy GPU buffer -> host dst
+          final dst = arena<ffi.Float>(4);
+          backend.copyBufferToHost(buffer, dst.cast<ffi.Uint8>(), 16);
 
-        expect(dst[0], equals(1.0));
-        expect(dst[1], equals(2.5));
-        expect(dst[2], equals(-4.0));
-        expect(dst[3], equals(8.25));
-      });
+          expect(dst[0], equals(1.0));
+          expect(dst[1], equals(2.5));
+          expect(dst[2], equals(-4.0));
+          expect(dst[3], equals(8.25));
+        });
 
-      buffer.dispose();
-      device.dispose();
-    });
+        // Test unaligned byte lengths and unaligned offsets (COPY_BUFFER_ALIGNMENT = 4)
+        final oddBuffer = GpuBuffer.allocate(
+          sizeInBytes: 7,
+          usage: GpuBufferUsage.storage,
+          device: device,
+        );
+        expect(oddBuffer.sizeInBytes, equals(7));
+        expect(oddBuffer.allocatedBytes, equals(8));
 
-    test('Buffer to Buffer copies', () {
-      final backend = WgpuNativeBackend.mock();
+        oddBuffer.writeBytes([10, 20, 30, 40, 50, 60, 70]);
+        expect(oddBuffer.readBytes(), equals([10, 20, 30, 40, 50, 60, 70]));
+
+        // Partial unaligned write at offset 1 of length 3
+        oddBuffer.writeBytes([99, 88, 77], offset: 1);
+        expect(oddBuffer.readBytes(), equals([10, 99, 88, 77, 50, 60, 70]));
+        expect(oddBuffer.readBytes(offset: 2, length: 3), equals([88, 77, 50]));
+
+        oddBuffer.clear(offset: 1, length: 3);
+        expect(oddBuffer.readBytes(), equals([10, 0, 0, 0, 50, 60, 70]));
+
+        oddBuffer.dispose();
+        buffer.dispose();
+        device.dispose();
+      },
+    );
+
+    test('Buffer to Buffer copies (aligned and unaligned)', () {
+      final backend = WgpuNativeBackend.createSync();
       final device = GpuDevice.create(
         backend: backend,
         type: GpuDeviceType.webgpu,
@@ -306,47 +297,55 @@ void main() {
         expect(readback[3], equals(40));
       });
 
+      // Unaligned buffer-to-buffer copy (srcOffset: 1, dstOffset: 2, bytes: 5)
+      bufA.writeBytes([1, 2, 3, 4, 5, 6, 7, 8]);
+      bufB.clear();
+      bufA.copyTo(bufB, srcOffset: 1, dstOffset: 2, length: 5);
+      expect(bufB.readBytes(length: 8), equals([0, 0, 2, 3, 4, 5, 6, 0]));
+
       bufA.dispose();
       bufB.dispose();
       device.dispose();
     });
 
-    test('dispatchComputePipeline recording and CPU simulation', () {
-      final backend = WgpuNativeBackend.mock();
-      final device = GpuDevice.create(
-        backend: backend,
-        type: GpuDeviceType.webgpu,
-      );
+    test(
+      'dispatchComputePipeline executes real WGSL on GPU including aliased buffers',
+      () {
+        final backend = WgpuNativeBackend.createSync();
+        final device = GpuDevice.create(
+          backend: backend,
+          type: GpuDeviceType.webgpu,
+        );
 
-      final bufA = GpuBuffer.allocate(
-        sizeInBytes: 16,
-        usage: GpuBufferUsage.storage,
-        device: device,
-      );
-      final bufB = GpuBuffer.allocate(
-        sizeInBytes: 16,
-        usage: GpuBufferUsage.storage,
-        device: device,
-      );
-      final bufOut = GpuBuffer.allocate(
-        sizeInBytes: 16,
-        usage: GpuBufferUsage.storage,
-        device: device,
-      );
+        final bufA = GpuBuffer.allocate(
+          sizeInBytes: 16,
+          usage: GpuBufferUsage.storage,
+          device: device,
+        );
+        final bufB = GpuBuffer.allocate(
+          sizeInBytes: 16,
+          usage: GpuBufferUsage.storage,
+          device: device,
+        );
+        final bufOut = GpuBuffer.allocate(
+          sizeInBytes: 16,
+          usage: GpuBufferUsage.storage,
+          device: device,
+        );
 
-      // Initialize inputs
-      using((arena) {
-        final a = arena<ffi.Float>(4);
-        final b = arena<ffi.Float>(4);
-        for (var i = 0; i < 4; i++) {
-          a[i] = (i + 1) * 2.0;
-          b[i] = 10.0;
-        }
-        backend.copyHostToBuffer(a.cast<ffi.Uint8>(), bufA, 16);
-        backend.copyHostToBuffer(b.cast<ffi.Uint8>(), bufB, 16);
-      });
+        // Initialize inputs
+        using((arena) {
+          final a = arena<ffi.Float>(4);
+          final b = arena<ffi.Float>(4);
+          for (var i = 0; i < 4; i++) {
+            a[i] = (i + 1) * 2.0;
+            b[i] = 10.0;
+          }
+          backend.copyHostToBuffer(a.cast<ffi.Uint8>(), bufA, 16);
+          backend.copyHostToBuffer(b.cast<ffi.Uint8>(), bufB, 16);
+        });
 
-      const wgslCode = '''
+        const wgslCode = '''
 @group(0) @binding(0) var<storage, read> inA: array<f32>;
 @group(0) @binding(1) var<storage, read> inB: array<f32>;
 @group(0) @binding(2) var<storage, read_write> out: array<f32>;
@@ -354,67 +353,89 @@ void main() {
 @compute @workgroup_size(64)
 fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
-    out[idx] = inA[idx] + inB[idx];
+    if (idx < 4u) {
+        out[idx] = inA[idx] + inB[idx];
+    }
 }
 ''';
 
-      final shaderModule = WgslShaderModule(
-        name: 'vector_add',
-        code: wgslCode,
-        entryPoint: 'main',
-        metadata: {
-          'cpu_kernel':
-              (List<GpuBuffer> bufs, List<int>? uniforms, int x, int y, int z) {
-                final aPtr = bufs[0].address.cast<ffi.Float>();
-                final bPtr = bufs[1].address.cast<ffi.Float>();
-                final outPtr = bufs[2].address.cast<ffi.Float>();
-                for (var i = 0; i < 4; i++) {
-                  outPtr[i] = aPtr[i] + bPtr[i];
-                }
-              },
-        },
-      );
+        final shaderModule = WgslShaderModule(
+          name: 'vector_add',
+          code: wgslCode,
+          entryPoint: 'main',
+        );
 
-      expect(backend.dispatches, isEmpty);
+        expect(backend.dispatches, isEmpty);
 
-      backend.dispatchComputePipeline(
-        shaderModule: shaderModule,
-        buffers: [bufA, bufB, bufOut],
-        uniforms: [4],
-        workgroupsX: 1,
-        workgroupsY: 1,
-        workgroupsZ: 1,
-      );
+        backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [bufA, bufB, bufOut],
+          uniforms: [4],
+          workgroupsX: 1,
+          workgroupsY: 1,
+          workgroupsZ: 1,
+        );
 
-      expect(backend.dispatches.length, equals(1));
-      final record = backend.dispatches.first;
-      expect(record.shaderModule.name, equals('vector_add'));
-      expect(record.buffers.length, equals(3));
-      expect(record.workgroupsX, equals(1));
-      expect(record.uniforms, equals([4]));
+        expect(backend.dispatches.length, equals(1));
+        final record = backend.dispatches.first;
+        expect(record.shaderModule.name, equals('vector_add'));
+        expect(record.buffers.length, equals(3));
+        expect(record.workgroupsX, equals(1));
+        expect(record.uniforms, equals([4]));
 
-      // Verify CPU simulation result
-      using((arena) {
-        final result = arena<ffi.Float>(4);
-        backend.copyBufferToHost(bufOut, result.cast<ffi.Uint8>(), 16);
-        expect(result[0], equals(12.0));
-        expect(result[1], equals(14.0));
-        expect(result[2], equals(16.0));
-        expect(result[3], equals(18.0));
-      });
+        // Verify GPU execution result
+        using((arena) {
+          final result = arena<ffi.Float>(4);
+          backend.copyBufferToHost(bufOut, result.cast<ffi.Uint8>(), 16);
+          expect(result[0], equals(12.0));
+          expect(result[1], equals(14.0));
+          expect(result[2], equals(16.0));
+          expect(result[3], equals(18.0));
+        });
 
-      // Clear dispatches
-      backend.clearDispatches();
-      expect(backend.dispatches, isEmpty);
+        // Test aliased bindings: [bufA, bufA, bufOut] (a + a -> out)
+        backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [bufA, bufA, bufOut],
+          workgroupsX: 1,
+        );
+        using((arena) {
+          final result = arena<ffi.Float>(4);
+          backend.copyBufferToHost(bufOut, result.cast<ffi.Uint8>(), 16);
+          expect(result[0], equals(4.0));
+          expect(result[1], equals(8.0));
+          expect(result[2], equals(12.0));
+          expect(result[3], equals(16.0));
+        });
 
-      bufA.dispose();
-      bufB.dispose();
-      bufOut.dispose();
-      device.dispose();
-    });
+        // Test in-place aliased output binding: [bufA, bufB, bufA] (a + b -> a)
+        backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [bufA, bufB, bufA],
+          workgroupsX: 1,
+        );
+        using((arena) {
+          final result = arena<ffi.Float>(4);
+          backend.copyBufferToHost(bufA, result.cast<ffi.Uint8>(), 16);
+          expect(result[0], equals(12.0));
+          expect(result[1], equals(14.0));
+          expect(result[2], equals(16.0));
+          expect(result[3], equals(18.0));
+        });
+
+        // Clear dispatches
+        backend.clearDispatches();
+        expect(backend.dispatches, isEmpty);
+
+        bufA.dispose();
+        bufB.dispose();
+        bufOut.dispose();
+        device.dispose();
+      },
+    );
 
     test('dispatchComputePipeline validation errors', () {
-      final backend = WgpuNativeBackend.mock();
+      final backend = WgpuNativeBackend.createSync();
       final device = GpuDevice.create(
         backend: backend,
         type: GpuDeviceType.webgpu,
@@ -468,8 +489,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
       device.dispose();
     });
 
-    test('Host and GPU dirty tracking synchronization lifecycle', () {
-      final backend = WgpuNativeBackend.mock();
+    test('Disposed GpuBuffer throws StateError on read/write/clear', () {
+      final backend = WgpuNativeBackend.createSync();
       final device = GpuDevice.create(
         backend: backend,
         type: GpuDeviceType.webgpu,
@@ -481,15 +502,13 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
         device: device,
       );
 
-      buf.markHostModified();
-      buf.ensureGpuSynced();
-      buf.ensureHostSynced();
-      expect(buf.pointer, isNot(equals(ffi.nullptr)));
+      expect(buf.nativeHandle, isNot(equals(ffi.nullptr)));
 
       buf.dispose();
-      expect(() => buf.markHostModified(), throwsA(isA<StateError>()));
-      expect(() => buf.ensureGpuSynced(), throwsA(isA<StateError>()));
-      expect(() => buf.ensureHostSynced(), throwsA(isA<StateError>()));
+      expect(() => buf.nativeHandle, throwsA(isA<StateError>()));
+      expect(() => buf.readBytes(), throwsA(isA<StateError>()));
+      expect(() => buf.writeBytes([1, 2, 3, 4]), throwsA(isA<StateError>()));
+      expect(() => buf.clear(), throwsA(isA<StateError>()));
       device.dispose();
     });
   });

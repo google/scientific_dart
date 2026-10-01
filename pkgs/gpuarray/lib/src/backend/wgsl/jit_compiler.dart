@@ -137,6 +137,14 @@ WgslValidationResult validateWgslShader(String code) {
     }
   }
 
+  // 6. Reserved keyword check (Naga WGSL reserved words)
+  final reservedRegex = RegExp(
+    r'\b(meta|pass|target|mod|ref|filter|set|final|match|override|handle|subpass)\b',
+  );
+  for (final match in reservedRegex.allMatches(cleanCode)) {
+    errors.add('Reserved WGSL keyword "${match.group(1)}" used as identifier');
+  }
+
   return WgslValidationResult(
     isValid: errors.isEmpty,
     errors: errors,

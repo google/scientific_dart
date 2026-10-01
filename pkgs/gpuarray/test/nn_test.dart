@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:test/test.dart';
-import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/nn.dart' as nn;
+import 'package:gpuarray/src/dtype.dart';
+import 'package:gpuarray/src/gpu_array.dart' hide ResourceScope, ScopedResource;
 import 'package:resource_scope/resource_scope.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('GpuArray Neural Network Primitives (gpuarray.nn)', () {
@@ -365,5 +366,81 @@ void main() {
         expect(() => emb(badIndices), throwsRangeError);
       });
     });
+
+    test(
+      'BatchNorm1d (2D & 3D, train/eval), L1Loss, BCELoss, and Float32 Dropout',
+      () {
+        ResourceScope.scope(() {
+          final bn = nn.BatchNorm1d(3);
+          final x2d = GpuArray.fromList(
+            [1.0, 2.0, 3.0, 5.0, 6.0, 7.0],
+            [2, 3],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final outTrain = bn(x2d);
+          expect(outTrain.shape, equals([2, 3]));
+          final colMeans = (outTrain.sum(axis: 0) * 0.5)
+              .toList()
+              .cast<double>();
+          for (final m in colMeans) {
+            expect(m, closeTo(0.0, 1e-4));
+          }
+          outTrain.sum().backward();
+          expect(x2d.grad, isNotNull);
+          expect(bn.weight!.grad, isNotNull);
+          expect(bn.bias!.grad, isNotNull);
+
+          bn.eval();
+          final outEval = bn(x2d);
+          expect(outEval.shape, equals([2, 3]));
+
+          final x3d = GpuArray.ones([2, 3, 4], DType.float64);
+          expect(bn(x3d).shape, equals([2, 3, 4]));
+
+          // L1Loss & l1Loss
+          final pred = GpuArray.fromList(
+            [1.0, 4.0],
+            [2],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final target = GpuArray.fromList([2.0, 1.0], [2], DType.float64);
+          final l1 = const nn.L1Loss()(pred, target);
+          expect((l1.scalar as num).toDouble(), closeTo(2.0, 1e-5));
+          l1.backward();
+          expect(pred.grad!.toList().cast<double>(), equals([-0.5, 0.5]));
+
+          // BCELoss & binaryCrossEntropy
+          final probs = GpuArray.fromList(
+            [0.8, 0.2],
+            [2],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final bceTarget = GpuArray.fromList([1.0, 0.0], [2], DType.float64);
+          final bce = const nn.BCELoss()(probs, bceTarget);
+          expect((bce.scalar as num).toDouble(), closeTo(0.2231435, 1e-4));
+          bce.backward();
+          expect(probs.grad, isNotNull);
+
+          // MSELoss & CrossEntropyLoss classes
+          expect(
+            (const nn.MSELoss()(pred, target).scalar as num).toDouble(),
+            closeTo(5.0, 1e-5),
+          );
+          final ceCriterion = const nn.CrossEntropyLoss();
+          final logits = GpuArray.ones([2, 3], DType.float64);
+          final labels = GpuArray.fromList([0, 1], [2], DType.int32);
+          expect(ceCriterion(logits, labels).rank, equals(0));
+
+          // Float32 Dropout
+          final f32Input = GpuArray.ones([8, 8], DType.float32);
+          final drop32 = nn.Dropout(p: 0.25)(f32Input);
+          expect(drop32.dtype, equals(DType.float32));
+          expect(drop32.shape, equals([8, 8]));
+        });
+      },
+    );
   });
 }

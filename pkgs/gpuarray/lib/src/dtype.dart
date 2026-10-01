@@ -25,6 +25,7 @@ export 'package:ndarray/ndarray.dart'
         Float64,
         Float32,
         Float16,
+        Float16Utils,
         BFloat16,
         Int64,
         Int32,

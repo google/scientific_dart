@@ -13,7 +13,6 @@
 // limitations under the License.
 
 import 'dart:convert';
-import 'dart:ffi' as ffi;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
@@ -653,16 +652,16 @@ final class WebGpuWidget {
   String toString() => toHtml();
 }
 
-String _encodeArrayAsFloat32Base64(GpuArray array) {
+String _encodeArrayAsFloat32Base64(GpuArray<DTypeTag> array) {
   final f32Array = array.dtype == DType.float32
       ? (array.isContiguous ? array : array.copy())
       : array.astype(DType.float32);
   try {
-    f32Array.buffer.ensureHostSynced();
     final byteLength = f32Array.size * DType.float32.byteWidth;
     final byteOffset = f32Array.offsetElements * DType.float32.byteWidth;
-    final bytes = (f32Array.buffer.address + byteOffset).asTypedList(
-      byteLength,
+    final bytes = f32Array.buffer.readBytes(
+      offset: byteOffset,
+      bytes: byteLength,
     );
     return base64Encode(bytes);
   } finally {
@@ -677,7 +676,7 @@ String _encodeArrayAsFloat32Base64(GpuArray array) {
 extension FusedKernelBrowserWidgetExtension on FusedKernelDescriptor {
   /// Packages this fused kernel and its [inputArrays] into an interactive [WebGpuWidget].
   WebGpuWidget createBrowserWidget({
-    List<GpuArray> inputArrays = const [],
+    List<GpuArray<DTypeTag>> inputArrays = const [],
     required List<int> outputShape,
     String? title,
     List<WebGpuSlider> sliders = const [],

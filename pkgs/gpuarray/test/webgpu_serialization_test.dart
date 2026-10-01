@@ -130,7 +130,7 @@ void main() {
     );
 
     test('GpuArray.toWebGpuWidget exports input tensor payload cleanly', () {
-      final dev = GpuDevice.cpu(name: 'Test Device');
+      final dev = GpuDevice.create(name: 'Test Device');
       final arr = GpuArray.fromList(
         [1.0, 2.0, 3.0, 4.0],
         [4],
@@ -152,7 +152,7 @@ void main() {
     });
 
     test('FusedKernelDescriptor creates interactive WebGPU browser widget', () {
-      final dev = GpuDevice.cpu(name: 'Test Device');
+      final dev = GpuDevice.create(name: 'Test Device');
       final x = GpuArray.fromList(
         [1.0, 2.0, 3.0, 4.0],
         [4],

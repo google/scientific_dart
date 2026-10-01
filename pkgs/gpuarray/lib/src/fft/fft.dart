@@ -12,504 +12,1102 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'dart:ffi' as ffi;
 import 'dart:math' as math;
+import 'dart:typed_data';
 
-import 'package:ndarray/ndarray.dart' as nd;
-import 'package:ndarray/ndarray.dart'
-    show Complex128, DType, DTypeTag, Float64, NDArray;
-
+import '../buffer.dart';
 import '../device.dart';
+import '../dtype.dart';
 import '../exceptions.dart';
 import '../gpu_array.dart';
-import '../operations/manipulation.dart' as manip;
+import 'fft_post_wgsl.dart';
+import 'fft_wgsl.dart';
 
-/// Normalization mode for Discrete Fourier Transform operations.
+/// Normalization mode for Fast Fourier Transform operations.
 enum FftNorm {
-  /// Unnormalized forward transform; inverse transform scaled by $1/N$.
+  /// No normalization on forward transforms; scales inverse transforms by `1/n`.
   backward,
 
-  /// Unitary (orthonormal) transform; both forward and inverse transforms
-  /// scaled by $1/\sqrt{N}$.
+  /// Scales both forward and inverse transforms by `1/sqrt(n)`.
   ortho,
 
-  /// Forward transform scaled by $1/N$; unnormalized inverse transform.
+  /// Scales forward transforms by `1/n`; no normalization on inverse transforms.
   forward;
 
-  /// Multiplier applied to the output of `package:ndarray`'s forward FFT
-  /// (which is unnormalized by default) for transform size [length].
-  double forwardFactor(int length) => switch (this) {
+  /// Normalization multiplier for a forward transform of length [n].
+  double forwardFactor(int n) => switch (this) {
     FftNorm.backward => 1.0,
-    FftNorm.ortho => 1.0 / math.sqrt(length),
-    FftNorm.forward => 1.0 / length,
+    FftNorm.ortho => 1.0 / math.sqrt(n),
+    FftNorm.forward => 1.0 / n,
   };
 
-  /// Multiplier applied to the output of `package:ndarray`'s inverse FFT
-  /// (which already includes a $1/N$ factor) for transform size [length].
-  double inverseFactor(int length) => switch (this) {
-    FftNorm.backward => 1.0,
-    FftNorm.ortho => math.sqrt(length),
-    FftNorm.forward => length.toDouble(),
+  /// Normalization multiplier for an inverse transform of length [n].
+  double inverseFactor(int n) => switch (this) {
+    FftNorm.backward => 1.0 / n,
+    FftNorm.ortho => 1.0 / math.sqrt(n),
+    FftNorm.forward => 1.0,
   };
 }
 
-bool _shapesEqual(List<int> first, List<int> second) {
-  if (first.length != second.length) return false;
-  for (var i = 0; i < first.length; i++) {
-    if (first[i] != second[i]) return false;
-  }
-  return true;
+const int _directDftMaxLength = 256;
+const int _workgroupSize = 64;
+
+int _workgroupsFor(int totalItems) =>
+    totalItems <= 0 ? 1 : (totalItems + _workgroupSize - 1) ~/ _workgroupSize;
+
+int _float32Bits(double value) {
+  final byteData = ByteData(4)..setFloat32(0, value, Endian.little);
+  return byteData.getUint32(0, Endian.little);
 }
 
-void _scaleArrayInPlace<T extends DTypeTag>(NDArray<T> array, double factor) {
-  if (factor == 1.0 || array.size == 0) return;
-  final totalElements = array.size;
-  switch (array.dtype) {
-    case DType.complex128:
-      final doubles = array.pointer.cast<ffi.Double>();
-      final count = totalElements * 2;
-      for (var i = 0; i < count; i++) {
-        doubles[i] = doubles[i] * factor;
-      }
-    case DType.float64:
-      final doubles = array.pointer.cast<ffi.Double>();
-      for (var i = 0; i < totalElements; i++) {
-        doubles[i] = doubles[i] * factor;
-      }
-    case DType.complex64:
-      final floats = array.pointer.cast<ffi.Float>();
-      final count = totalElements * 2;
-      for (var i = 0; i < count; i++) {
-        floats[i] = floats[i] * factor;
-      }
-    case DType.float32:
-      final floats = array.pointer.cast<ffi.Float>();
-      for (var i = 0; i < totalElements; i++) {
-        floats[i] = floats[i] * factor;
-      }
-    default:
-      break;
+bool _isPowerOfTwo(int value) => value > 0 && (value & (value - 1)) == 0;
+
+int _log2Exact(int value) {
+  var power = 0;
+  var current = value;
+  while (current > 1) {
+    current >>= 1;
+    power++;
   }
+  return power;
 }
 
-GpuArray<R> _writeOrWrapResult<R extends DTypeTag>(
-  NDArray<R> hostResult,
-  GpuDevice device,
-  GpuArray<R>? out,
-) {
-  if (out != null) {
-    if (out.size > 1 && out.strides.contains(0)) {
-      throw ArgumentError.value(
-        out,
-        'out',
-        'Must be writeable and not a broadcasted view.',
-      );
-    }
-    if (!_shapesEqual(out.shape, hostResult.shape) ||
-        out.dtype != hostResult.dtype) {
-      throw ArgumentError.value(
-        out,
-        'out',
-        'Must be an array with shape ${hostResult.shape} and dtype '
-            '${hostResult.dtype}, got shape ${out.shape} and dtype ${out.dtype}.',
-      );
-    }
-    if (out.isContiguous) {
-      final contiguous = hostResult.isContiguous
-          ? hostResult
-          : hostResult.copy();
-      if (out.byteSize > 0) {
-        out.buffer.copyFromHost(
-          contiguous.pointer.cast<ffi.Void>(),
-          out.byteSize,
-          offset: out.offsetElements * out.dtype.byteWidth,
-        );
-      }
-    } else if (out.byteSize > 0) {
-      out.buffer.copyToHost(
-        out.buffer.address.cast<ffi.Void>(),
-        out.buffer.sizeInBytes,
-      );
-      final totalBufferElements = out.buffer.sizeInBytes ~/ out.dtype.byteWidth;
-      final rootBufferView = NDArray<R>.fromPointer(
-        out.buffer.address.cast<ffi.Void>(),
-        <int>[totalBufferElements],
-        out.dtype,
-      );
-      final outView = NDArray<R>.view(
-        rootBufferView,
-        shape: out.shape,
-        strides: out.strides,
-        offsetElements: out.offsetElements,
-      );
-      hostResult.copy(out: outView);
-      out.buffer.copyFromHost(
-        out.buffer.address.cast<ffi.Void>(),
-        out.buffer.sizeInBytes,
-      );
-    }
-    return out;
+int _nextPowerOfTwo(int value) {
+  var power = 1;
+  while (power < value) {
+    power <<= 1;
   }
-  final gpuResult = GpuArray<R>.fromNDArray(hostResult, device: device);
-  gpuResult.detachToParentScope();
-  return gpuResult;
+  return power;
+}
+
+void _checkInputAlive(GpuArray array, String name, [GpuArray? out]) {
+  if (array.isDisposed) {
+    throw StateError('Cannot execute FFT operation on disposed input $name.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError('Output GpuArray has already been disposed.');
+  }
+  if (array.ndim == 0) {
+    throw ArgumentError.value(
+      array.shape,
+      name,
+      'Must have at least 1 dimension',
+    );
+  }
+  if (array.ndim > 8) {
+    throw ArgumentError.value(
+      array.shape,
+      name,
+      'Must have rank at most 8 for GPU FFT shaders',
+    );
+  }
 }
 
 int _resolveAxis(int axis, int rank) {
-  final normalized = axis < 0 ? axis + rank : axis;
-  if (normalized < 0 || normalized >= rank) {
+  final resolved = axis < 0 ? rank + axis : axis;
+  if (resolved < 0 || resolved >= rank) {
     throw GpuAxisOutOfBoundsException(axis, rank);
   }
-  return normalized;
+  return resolved;
 }
 
-/// Computes the 1D Discrete Fourier Transform of [a] along [axis].
+List<int> _resolveAxes(List<int> axes, int rank) {
+  if (axes.isEmpty) {
+    throw ArgumentError.value(axes, 'axes', 'Must not be empty');
+  }
+  return [for (final axis in axes) _resolveAxis(axis, rank)];
+}
+
+void _validateOut<T extends DTypeTag>(
+  GpuArray<T>? out,
+  List<int> expectedShape,
+  DType<T> expectedDType,
+  GpuDevice expectedDevice,
+) {
+  if (out == null) return;
+  if (out.isDisposed) {
+    throw StateError('Output GpuArray has already been disposed.');
+  }
+  if (out.size > 1 && out.strides.contains(0)) {
+    throw UnsupportedError('Cannot write FFT output into a broadcasted view.');
+  }
+  if (!identical(out.device, expectedDevice)) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must reside on the same GpuDevice as input (${expectedDevice.name})',
+    );
+  }
+  if (out.dtype != expectedDType) {
+    throw ArgumentError.value(
+      out.dtype,
+      'out',
+      'Must have dtype ${expectedDType.name}, got ${out.dtype.name}',
+    );
+  }
+  if (out.shape.length != expectedShape.length) {
+    throw GpuShapeMismatchException('fft', expectedShape, out.shape);
+  }
+  for (var i = 0; i < expectedShape.length; i++) {
+    if (out.shape[i] != expectedShape[i]) {
+      throw GpuShapeMismatchException('fft', expectedShape, out.shape);
+    }
+  }
+}
+
+({
+  int batchCount,
+  int outerRank,
+  List<int> outerShape,
+  List<int> inputOuterStrides,
+  int inputAxisStride,
+})
+_computeAxisLayout(GpuArray input, int resolvedAxis) {
+  final outerShape = <int>[];
+  final inputOuterStrides = <int>[];
+  var batchCount = 1;
+  for (var d = 0; d < input.ndim; d++) {
+    if (d == resolvedAxis) continue;
+    final dimSize = input.shape[d];
+    outerShape.add(dimSize);
+    inputOuterStrides.add(input.strides[d]);
+    batchCount *= dimSize;
+  }
+  if (outerShape.isEmpty) {
+    outerShape.add(1);
+    inputOuterStrides.add(0);
+  }
+  return (
+    batchCount: batchCount,
+    outerRank: outerShape.length,
+    outerShape: outerShape,
+    inputOuterStrides: inputOuterStrides,
+    inputAxisStride: input.strides[resolvedAxis],
+  );
+}
+
+List<int> _computeOutOuterStrides(GpuArray out, int resolvedAxis) {
+  final outOuterStrides = <int>[];
+  for (var d = 0; d < out.ndim; d++) {
+    if (d == resolvedAxis) continue;
+    outOuterStrides.add(out.strides[d]);
+  }
+  if (outOuterStrides.isEmpty) {
+    outOuterStrides.add(0);
+  }
+  return outOuterStrides;
+}
+
+List<int> _packVec8U32(List<int> values, {int defaultFill = 1}) {
+  return [
+    for (var i = 0; i < 8; i++)
+      (i < values.length ? values[i] : defaultFill) & 0xFFFFFFFF,
+  ];
+}
+
+List<int> _packVec8I32(List<int> values) {
+  return [
+    for (var i = 0; i < 8; i++)
+      (i < values.length ? values[i] : 0) & 0xFFFFFFFF,
+  ];
+}
+
+/// Executes a 1D complex DFT between contiguous `[batchCount, transformLength]`
+/// `Complex128` buffers on [device], returning the buffer holding the unscaled result.
+GpuBuffer _executeContiguous1dComplexDft({
+  required GpuDevice device,
+  required GpuBuffer inputBuffer,
+  required GpuBuffer scratchBuffer,
+  required int batchCount,
+  required int transformLength,
+  required bool inverse,
+}) {
+  final totalElements = batchCount * transformLength;
+  if (totalElements == 0 || transformLength <= 1) {
+    return inputBuffer;
+  }
+  final signDir = inverse ? 1.0 : -1.0;
+  final signBits = _float32Bits(signDir);
+
+  if (_isPowerOfTwo(transformLength)) {
+    final log2N = _log2Exact(transformLength);
+    device.backend.dispatchComputePipeline(
+      shaderModule: buildFftBitReverseShader(),
+      buffers: [inputBuffer, scratchBuffer],
+      uniforms: [batchCount, transformLength, log2N, 0],
+      workgroupsX: _workgroupsFor(totalElements),
+    );
+    var currentSource = scratchBuffer;
+    var currentTarget = inputBuffer;
+    final butterflyShader = buildFftButterflyStageShader();
+    final totalPairs = batchCount * (transformLength >> 1);
+    final pairWorkgroups = _workgroupsFor(totalPairs);
+
+    for (var stage = 0; stage < log2N; stage++) {
+      final halfSpan = 1 << stage;
+      device.backend.dispatchComputePipeline(
+        shaderModule: butterflyShader,
+        buffers: [currentSource, currentTarget],
+        uniforms: [batchCount, transformLength, halfSpan, signBits],
+        workgroupsX: pairWorkgroups,
+      );
+      final swap = currentSource;
+      currentSource = currentTarget;
+      currentTarget = swap;
+    }
+    return currentSource;
+  }
+
+  if (transformLength <= _directDftMaxLength) {
+    device.backend.dispatchComputePipeline(
+      shaderModule: buildFftDirectDftShader(),
+      buffers: [inputBuffer, scratchBuffer],
+      uniforms: [batchCount, transformLength, signBits, 0],
+      workgroupsX: _workgroupsFor(totalElements),
+    );
+    return scratchBuffer;
+  }
+
+  // Bluestein's Chirp-Z algorithm on GPU for large non-power-of-2 lengths.
+  final chirpM = _nextPowerOfTwo(2 * transformLength - 1);
+  final chirpElements = batchCount * chirpM;
+  final chirpBytes = chirpElements * DType.complex128.byteWidth;
+  final aPadBuffer = GpuBuffer.allocate(
+    sizeInBytes: chirpBytes,
+    device: device,
+  );
+  final bPadBuffer = GpuBuffer.allocate(
+    sizeInBytes: chirpBytes,
+    device: device,
+  );
+  final workPadBuffer = GpuBuffer.allocate(
+    sizeInBytes: chirpBytes,
+    device: device,
+  );
+  try {
+    device.backend.dispatchComputePipeline(
+      shaderModule: buildFftBluesteinPreShader(),
+      buffers: [inputBuffer, aPadBuffer, bPadBuffer],
+      uniforms: [batchCount, transformLength, chirpM, signBits],
+      workgroupsX: _workgroupsFor(chirpElements),
+    );
+
+    final aFftBuffer = _executeContiguous1dComplexDft(
+      device: device,
+      inputBuffer: aPadBuffer,
+      scratchBuffer: workPadBuffer,
+      batchCount: batchCount,
+      transformLength: chirpM,
+      inverse: false,
+    );
+    if (identical(aFftBuffer, workPadBuffer)) {
+      device.backend.copyBufferToBuffer(workPadBuffer, aPadBuffer, chirpBytes);
+    }
+
+    final bFftBuffer = _executeContiguous1dComplexDft(
+      device: device,
+      inputBuffer: bPadBuffer,
+      scratchBuffer: workPadBuffer,
+      batchCount: batchCount,
+      transformLength: chirpM,
+      inverse: false,
+    );
+
+    final convFftTarget = identical(bFftBuffer, bPadBuffer)
+        ? workPadBuffer
+        : bPadBuffer;
+    device.backend.dispatchComputePipeline(
+      shaderModule: buildFftComplexMulShader(),
+      buffers: [aPadBuffer, bFftBuffer, convFftTarget],
+      uniforms: [chirpElements, 0, 0, 0],
+      workgroupsX: _workgroupsFor(chirpElements),
+    );
+
+    final convTimeBuffer = _executeContiguous1dComplexDft(
+      device: device,
+      inputBuffer: convFftTarget,
+      scratchBuffer: aPadBuffer,
+      batchCount: batchCount,
+      transformLength: chirpM,
+      inverse: true,
+    );
+
+    final (invMHi, invMLo) = encodeDoubleFloatUniform(1.0 / chirpM);
+    device.backend.dispatchComputePipeline(
+      shaderModule: buildFftBluesteinPostShader(),
+      buffers: [convTimeBuffer, scratchBuffer],
+      uniforms: [
+        batchCount,
+        transformLength,
+        chirpM,
+        signBits,
+        invMHi,
+        invMLo,
+        0,
+        0,
+      ],
+      workgroupsX: _workgroupsFor(totalElements),
+    );
+    return scratchBuffer;
+  } finally {
+    aPadBuffer.dispose();
+    bPadBuffer.dispose();
+    workPadBuffer.dispose();
+  }
+}
+
+GpuArray<Complex128> _fft1dComplexInternal(
+  GpuArray a, {
+  required int? n,
+  required int axis,
+  required double scaleFactor,
+  required bool inverse,
+  required int? truncateBins,
+  required bool conjugateInput,
+  required bool conjugateOutput,
+  required GpuArray<Complex128>? out,
+}) {
+  _checkInputAlive(a, 'a');
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? a.shape[resolvedAxis];
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
+  }
+  final outAxisLength = truncateBins ?? targetN;
+  final outShape = List<int>.of(a.shape)..[resolvedAxis] = outAxisLength;
+  _validateOut(out, outShape, DType.complex128, a.device);
+
+  final destination =
+      out ?? GpuArray.empty(outShape, DType.complex128, device: a.device);
+  if (destination.size == 0) {
+    return destination;
+  }
+
+  final layout = _computeAxisLayout(a, resolvedAxis);
+  final workElements = layout.batchCount * targetN;
+  final workBytes = workElements * DType.complex128.byteWidth;
+
+  final gatheredBuffer = GpuBuffer.allocate(
+    sizeInBytes: workBytes,
+    device: a.device,
+  );
+  final scratchBuffer = GpuBuffer.allocate(
+    sizeInBytes: workBytes,
+    device: a.device,
+  );
+  try {
+    final copyLength = math.min(a.shape[resolvedAxis], targetN);
+    final gatherUniforms = <int>[
+      layout.batchCount,
+      targetN,
+      copyLength,
+      layout.outerRank,
+      a.offsetElements,
+      layout.inputAxisStride & 0xFFFFFFFF,
+      conjugateInput ? 1 : 0,
+      0,
+      ..._packVec8U32(layout.outerShape),
+      ..._packVec8I32(layout.inputOuterStrides),
+    ];
+    a.device.backend.dispatchComputePipeline(
+      shaderModule: buildFftGatherShader(a.dtype),
+      buffers: [a.buffer, gatheredBuffer],
+      uniforms: gatherUniforms,
+      workgroupsX: _workgroupsFor(workElements),
+    );
+
+    final resultBuffer = _executeContiguous1dComplexDft(
+      device: a.device,
+      inputBuffer: gatheredBuffer,
+      scratchBuffer: scratchBuffer,
+      batchCount: layout.batchCount,
+      transformLength: targetN,
+      inverse: inverse,
+    );
+
+    final (scaleHi, scaleLo) = encodeDoubleFloatUniform(scaleFactor);
+    final outOuterStrides = _computeOutOuterStrides(destination, resolvedAxis);
+    final scatterUniforms = <int>[
+      layout.batchCount,
+      targetN,
+      outAxisLength,
+      layout.outerRank,
+      destination.offsetElements,
+      destination.strides[resolvedAxis] & 0xFFFFFFFF,
+      scaleHi,
+      scaleLo,
+      conjugateOutput ? 1 : 0,
+      0,
+      0,
+      0,
+      ..._packVec8U32(layout.outerShape),
+      ..._packVec8I32(outOuterStrides),
+    ];
+    a.device.backend.dispatchComputePipeline(
+      shaderModule: buildFftScatterComplexShader(),
+      buffers: [resultBuffer, destination.buffer],
+      uniforms: scatterUniforms,
+      workgroupsX: _workgroupsFor(layout.batchCount * outAxisLength),
+    );
+    return destination;
+  } finally {
+    gatheredBuffer.dispose();
+    scratchBuffer.dispose();
+  }
+}
+
+GpuArray<Float64> _hermitianToReal1dInternal(
+  GpuArray a, {
+  required int? n,
+  required int axis,
+  required double scaleFactor,
+  required bool conjugateInput,
+  required GpuArray<Float64>? out,
+}) {
+  _checkInputAlive(a, 'a');
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final inputAxisLength = a.shape[resolvedAxis];
+  final targetN = n ?? (2 * (inputAxisLength - 1));
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
+  }
+  final outShape = List<int>.of(a.shape)..[resolvedAxis] = targetN;
+  _validateOut(out, outShape, DType.float64, a.device);
+
+  final destination =
+      out ?? GpuArray.empty(outShape, DType.float64, device: a.device);
+  if (destination.size == 0) {
+    return destination;
+  }
+
+  final layout = _computeAxisLayout(a, resolvedAxis);
+  final halfN = (targetN ~/ 2) + 1;
+  final copyBins = math.min(inputAxisLength, halfN);
+  final gatherBins = math.max(1, copyBins);
+  final gatherElements = layout.batchCount * gatherBins;
+  final workElements = layout.batchCount * targetN;
+
+  final gatherBuffer = GpuBuffer.allocate(
+    sizeInBytes: gatherElements * DType.complex128.byteWidth,
+    device: a.device,
+  );
+  final spectrumBuffer = GpuBuffer.allocate(
+    sizeInBytes: workElements * DType.complex128.byteWidth,
+    device: a.device,
+  );
+  final scratchBuffer = GpuBuffer.allocate(
+    sizeInBytes: workElements * DType.complex128.byteWidth,
+    device: a.device,
+  );
+  try {
+    final gatherUniforms = <int>[
+      layout.batchCount,
+      gatherBins,
+      copyBins,
+      layout.outerRank,
+      a.offsetElements,
+      layout.inputAxisStride & 0xFFFFFFFF,
+      conjugateInput ? 1 : 0,
+      0,
+      ..._packVec8U32(layout.outerShape),
+      ..._packVec8I32(layout.inputOuterStrides),
+    ];
+    a.device.backend.dispatchComputePipeline(
+      shaderModule: buildFftGatherShader(a.dtype),
+      buffers: [a.buffer, gatherBuffer],
+      uniforms: gatherUniforms,
+      workgroupsX: _workgroupsFor(gatherElements),
+    );
+
+    a.device.backend.dispatchComputePipeline(
+      shaderModule: buildFftHermitianExpandShader(),
+      buffers: [gatherBuffer, spectrumBuffer],
+      uniforms: [layout.batchCount, gatherBins, targetN, halfN],
+      workgroupsX: _workgroupsFor(workElements),
+    );
+
+    final resultBuffer = _executeContiguous1dComplexDft(
+      device: a.device,
+      inputBuffer: spectrumBuffer,
+      scratchBuffer: scratchBuffer,
+      batchCount: layout.batchCount,
+      transformLength: targetN,
+      inverse: true,
+    );
+
+    final (scaleHi, scaleLo) = encodeDoubleFloatUniform(scaleFactor);
+    final outOuterStrides = _computeOutOuterStrides(destination, resolvedAxis);
+    final scatterUniforms = <int>[
+      layout.batchCount,
+      targetN,
+      layout.outerRank,
+      destination.offsetElements,
+      destination.strides[resolvedAxis] & 0xFFFFFFFF,
+      scaleHi,
+      scaleLo,
+      0,
+      ..._packVec8U32(layout.outerShape),
+      ..._packVec8I32(outOuterStrides),
+    ];
+    a.device.backend.dispatchComputePipeline(
+      shaderModule: buildFftScatterRealShader(),
+      buffers: [resultBuffer, destination.buffer],
+      uniforms: scatterUniforms,
+      workgroupsX: _workgroupsFor(workElements),
+    );
+    return destination;
+  } finally {
+    gatherBuffer.dispose();
+    spectrumBuffer.dispose();
+    scratchBuffer.dispose();
+  }
+}
+
+/// Computes the 1D discrete Fourier Transform along [axis] on the GPU.
 ///
-/// If [n] is provided, the input along [axis] is truncated or zero-padded to
-/// length [n] before computing the transform. The normalization convention is
-/// controlled by [norm] (defaulting to [FftNorm.backward]).
-///
-/// Both [a] and [out] (if provided) must not be disposed, [a] must have at
-/// least 1 dimension, and [n] (if provided) must be positive.
-GpuArray<Complex128> fft<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// The transform length [n] must be positive when provided.
+/// If [out] is provided, the result is written into [out] and returned.
+GpuArray<Complex128> fft(
+  GpuArray<DTypeTag> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
   GpuArray<Complex128>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute fft on a disposed GpuArray.');
+  _checkInputAlive(a, 'a', out);
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? a.shape[resolvedAxis];
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write fft result to a disposed output GpuArray.');
-  }
-  if (a.rank == 0) {
-    throw ArgumentError.value(
-      a.shape,
-      'a',
-      'Must be at least 1-dimensional for fft.',
-    );
-  }
-  if (n != null && n <= 0) {
-    throw ArgumentError.value(n, 'n', 'Must be positive.');
-  }
-  final normalizedAxis = _resolveAxis(axis, a.rank);
-  final transformLength = n ?? a.shape[normalizedAxis];
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final complexInput = hostInput.dtype == DType.complex128
-        ? hostInput as NDArray<Complex128>
-        : hostInput.astype<Complex128>(DType.complex128);
-    final hostResult = nd.fft<Complex128>(
-      complexInput,
-      n: n,
-      axis: normalizedAxis,
-    );
-    _scaleArrayInPlace(hostResult, norm.forwardFactor(transformLength));
-    return _writeOrWrapResult(hostResult, a.device, out);
-  });
+  return _fft1dComplexInternal(
+    a,
+    n: targetN,
+    axis: resolvedAxis,
+    scaleFactor: norm.forwardFactor(targetN),
+    inverse: false,
+    truncateBins: null,
+    conjugateInput: false,
+    conjugateOutput: false,
+    out: out,
+  );
 }
 
-/// Computes the 1D Inverse Discrete Fourier Transform of [a] along [axis].
+/// Computes the 1D inverse discrete Fourier Transform along [axis] on the GPU.
 ///
-/// If [n] is provided, the input along [axis] is truncated or zero-padded to
-/// length [n] before computing the inverse transform. The normalization
-/// convention is controlled by [norm] (defaulting to [FftNorm.backward]).
-///
-/// Both [a] and [out] (if provided) must not be disposed, [a] must have at
-/// least 1 dimension, and [n] (if provided) must be positive.
-GpuArray<Complex128> ifft<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// The transform length [n] must be positive when provided.
+/// If [out] is provided, the result is written into [out] and returned.
+GpuArray<Complex128> ifft(
+  GpuArray<DTypeTag> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
   GpuArray<Complex128>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute ifft on a disposed GpuArray.');
+  _checkInputAlive(a, 'a', out);
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? a.shape[resolvedAxis];
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write ifft result to a disposed output GpuArray.');
-  }
-  if (a.rank == 0) {
-    throw ArgumentError.value(
-      a.shape,
-      'a',
-      'Must be at least 1-dimensional for ifft.',
-    );
-  }
-  if (n != null && n <= 0) {
-    throw ArgumentError.value(n, 'n', 'Must be positive.');
-  }
-  final normalizedAxis = _resolveAxis(axis, a.rank);
-  final transformLength = n ?? a.shape[normalizedAxis];
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final complexInput = hostInput.dtype == DType.complex128
-        ? hostInput as NDArray<Complex128>
-        : hostInput.astype<Complex128>(DType.complex128);
-    final hostResult = nd.ifft<Complex128>(
-      complexInput,
-      n: n,
-      axis: normalizedAxis,
-    );
-    _scaleArrayInPlace(hostResult, norm.inverseFactor(transformLength));
-    return _writeOrWrapResult(hostResult, a.device, out);
-  });
+  return _fft1dComplexInternal(
+    a,
+    n: targetN,
+    axis: resolvedAxis,
+    scaleFactor: norm.inverseFactor(targetN),
+    inverse: true,
+    truncateBins: null,
+    conjugateInput: false,
+    conjugateOutput: false,
+    out: out,
+  );
 }
 
-/// Computes the 1D Discrete Fourier Transform of a real-valued array [a] along
-/// [axis], returning the non-redundant positive frequency terms of length
-/// `(n ~/ 2) + 1`.
+/// Computes the 1D discrete Fourier Transform of a real-valued input [a] along [axis].
 ///
-/// Both [a] and [out] (if provided) must not be disposed, [a] must have at
-/// least 1 dimension and a real dtype, and [n] (if provided) must be positive.
-GpuArray<Complex128> rfft<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// The input [a] must have a real-valued data type, and [n] must be positive when provided.
+/// Produces `(n ~/ 2) + 1` non-redundant Hermitian frequency bins along [axis].
+GpuArray<Complex128> rfft(
+  GpuArray<DTypeTag> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
   GpuArray<Complex128>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute rfft on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write rfft result to a disposed output GpuArray.');
-  }
-  if (a.rank == 0) {
-    throw ArgumentError.value(
-      a.shape,
-      'a',
-      'Must be at least 1-dimensional for rfft.',
-    );
-  }
+  _checkInputAlive(a, 'a', out);
   if (a.dtype.isComplex) {
     throw ArgumentError.value(
       a.dtype,
       'a',
-      'Must not have a complex dtype for rfft.',
+      'Must be a real-valued array for rfft',
     );
   }
-  if (n != null && n <= 0) {
-    throw ArgumentError.value(n, 'n', 'Must be positive.');
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? a.shape[resolvedAxis];
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  final normalizedAxis = _resolveAxis(axis, a.rank);
-  final transformLength = n ?? a.shape[normalizedAxis];
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final floatInput = hostInput.dtype == DType.float64
-        ? hostInput as NDArray<Float64>
-        : hostInput.astype<Float64>(DType.float64);
-    final hostResult = nd.rfft<Complex128>(
-      floatInput,
-      n: n,
-      axis: normalizedAxis,
-    );
-    _scaleArrayInPlace(hostResult, norm.forwardFactor(transformLength));
-    return _writeOrWrapResult(hostResult, a.device, out);
-  });
+  final outBins = (targetN ~/ 2) + 1;
+  return _fft1dComplexInternal(
+    a,
+    n: targetN,
+    axis: resolvedAxis,
+    scaleFactor: norm.forwardFactor(targetN),
+    inverse: false,
+    truncateBins: outBins,
+    conjugateInput: false,
+    conjugateOutput: false,
+    out: out,
+  );
 }
 
-/// Computes the inverse of [rfft], transforming a Hermitian-symmetric complex
-/// spectrum [a] into a real-valued [GpuArray] of [Float64].
+/// Computes the inverse of [rfft], reconstructing a real-valued signal of length [n] along [axis].
 ///
-/// If [n] is omitted, the output length along [axis] defaults to
-/// `2 * (a.shape[axis] - 1)`.
-///
-/// Both [a] and [out] (if provided) must not be disposed, [a] must have at
-/// least 1 dimension, and the resolved output length [n] must be positive.
-GpuArray<Float64> irfft<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// When [n] is omitted, defaults to `2 * (a.shape[axis] - 1)`. The resulting [n] must be positive.
+GpuArray<Float64> irfft(
+  GpuArray<DTypeTag> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
   GpuArray<Float64>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute irfft on a disposed GpuArray.');
+  _checkInputAlive(a, 'a', out);
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? (2 * (a.shape[resolvedAxis] - 1));
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write irfft result to a disposed output GpuArray.',
-    );
-  }
-  if (a.rank == 0) {
-    throw ArgumentError.value(
-      a.shape,
-      'a',
-      'Must be at least 1-dimensional for irfft.',
-    );
-  }
-  if (n != null && n <= 0) {
-    throw ArgumentError.value(n, 'n', 'Must be positive.');
-  }
-  final normalizedAxis = _resolveAxis(axis, a.rank);
-  final inputLength = a.shape[normalizedAxis];
-  final transformLength = n ?? (2 * (inputLength - 1));
-  if (transformLength <= 0) {
-    throw ArgumentError.value(
-      transformLength,
-      'n',
-      'Must be positive (specify n explicitly when input axis length is 1).',
-    );
-  }
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final complexInput = hostInput.dtype == DType.complex128
-        ? hostInput as NDArray<Complex128>
-        : hostInput.astype<Complex128>(DType.complex128);
-    final hostResult = nd.irfft<Float64>(
-      complexInput,
-      n: n,
-      axis: normalizedAxis,
-    );
-    _scaleArrayInPlace(hostResult, norm.inverseFactor(transformLength));
-    return _writeOrWrapResult(hostResult, a.device, out);
-  });
+  return _hermitianToReal1dInternal(
+    a,
+    n: targetN,
+    axis: resolvedAxis,
+    scaleFactor: norm.inverseFactor(targetN),
+    conjugateInput: false,
+    out: out,
+  );
 }
 
-/// Computes the 2D Discrete Fourier Transform of [a] along [axes].
+/// Computes the 1D FFT of a signal [a] that has Hermitian symmetry in the time domain,
+/// producing a real-valued spectrum of length [n] along [axis].
 ///
-/// Both [a] and [out] (if provided) must not be disposed, [a] must have at
-/// least 2 dimensions, and [axes] must contain exactly 2 axis indices.
-GpuArray<Complex128> fft2<T extends DTypeTag>(
-  GpuArray<T> a, {
-  List<int>? s,
-  List<int> axes = const <int>[-2, -1],
+/// When [n] is omitted, defaults to `2 * (a.shape[axis] - 1)`. The resulting [n] must be positive.
+GpuArray<Float64> hfft(
+  GpuArray<DTypeTag> a, {
+  int? n,
+  int axis = -1,
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Float64>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? (2 * (a.shape[resolvedAxis] - 1));
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
+  }
+  return _hermitianToReal1dInternal(
+    a,
+    n: targetN,
+    axis: resolvedAxis,
+    scaleFactor: norm.forwardFactor(targetN),
+    conjugateInput: true,
+    out: out,
+  );
+}
+
+/// Computes the inverse FFT of a real-valued spectrum [a], producing `(n ~/ 2) + 1`
+/// Hermitian-symmetric complex coefficients along [axis].
+///
+/// The input [a] must have a real-valued data type, and [n] must be positive when provided.
+GpuArray<Complex128> ihfft(
+  GpuArray<DTypeTag> a, {
+  int? n,
+  int axis = -1,
   FftNorm norm = FftNorm.backward,
   GpuArray<Complex128>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute fft2 on a disposed GpuArray.');
+  _checkInputAlive(a, 'a', out);
+  if (a.dtype.isComplex) {
+    throw ArgumentError.value(
+      a.dtype,
+      'a',
+      'Must be a real-valued array for ihfft',
+    );
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write fft2 result to a disposed output GpuArray.');
+  final resolvedAxis = _resolveAxis(axis, a.ndim);
+  final targetN = n ?? a.shape[resolvedAxis];
+  if (targetN <= 0) {
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  if (a.rank < 2) {
+  final outBins = (targetN ~/ 2) + 1;
+  return _fft1dComplexInternal(
+    a,
+    n: targetN,
+    axis: resolvedAxis,
+    scaleFactor: norm.inverseFactor(targetN),
+    inverse: false,
+    truncateBins: outBins,
+    conjugateInput: false,
+    conjugateOutput: true,
+    out: out,
+  );
+}
+
+({List<int> resolvedAxes, List<int> lengths}) _resolveNdTransformAxesAndLengths(
+  GpuArray a, {
+  required List<int>? s,
+  required List<int>? axes,
+  required int? requiredCount,
+  required bool lastAxisIsHermitianInverse,
+}) {
+  if (requiredCount != null && a.ndim < requiredCount) {
     throw ArgumentError.value(
       a.shape,
       'a',
-      'Must be at least 2-dimensional for fft2.',
+      'Must have at least $requiredCount dimensions',
     );
   }
-  if (axes.length != 2) {
+  if (axes != null && requiredCount != null && axes.length != requiredCount) {
     throw ArgumentError.value(
       axes,
       'axes',
-      'Must be a list of exactly 2 axes.',
+      'Must contain exactly $requiredCount axes',
     );
   }
-  if (s != null) {
-    if (s.length != 2) {
-      throw ArgumentError.value(s, 's', 'Must be a list of exactly 2 lengths.');
-    }
-    if (s[0] <= 0 || s[1] <= 0) {
+  if (s != null && requiredCount != null && s.length != requiredCount) {
+    throw ArgumentError.value(
+      s,
+      's',
+      'Must contain exactly $requiredCount lengths',
+    );
+  }
+
+  final List<int> resolvedAxes;
+  if (axes != null) {
+    resolvedAxes = _resolveAxes(axes, a.ndim);
+  } else if (s != null) {
+    if (s.isEmpty || s.length > a.ndim) {
       throw ArgumentError.value(
         s,
         's',
-        'Must not contain non-positive lengths.',
+        'Must have between 1 and ${a.ndim} lengths',
       );
     }
+    final startAxis = a.ndim - s.length;
+    resolvedAxes = [for (var i = 0; i < s.length; i++) startAxis + i];
+  } else {
+    resolvedAxes = [for (var i = 0; i < a.ndim; i++) i];
   }
-  final axis0 = _resolveAxis(axes[0], a.rank);
-  final axis1 = _resolveAxis(axes[1], a.rank);
-  final length0 = s != null ? s[0] : a.shape[axis0];
-  final length1 = s != null ? s[1] : a.shape[axis1];
-  final totalLength = length0 * length1;
 
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final complexInput = hostInput.dtype == DType.complex128
-        ? hostInput as NDArray<Complex128>
-        : hostInput.astype<Complex128>(DType.complex128);
-    final hostResult = nd.fft2<Complex128>(
-      complexInput,
-      s: s,
-      axes: <int>[axis0, axis1],
+  if (s != null && s.length != resolvedAxes.length) {
+    throw ArgumentError.value(
+      s,
+      's',
+      'Must match length of axes (${resolvedAxes.length})',
     );
-    _scaleArrayInPlace(hostResult, norm.forwardFactor(totalLength));
-    return _writeOrWrapResult(hostResult, a.device, out);
-  });
+  }
+
+  final lengths = <int>[];
+  for (var i = 0; i < resolvedAxes.length; i++) {
+    final ax = resolvedAxes[i];
+    final int length;
+    if (s != null) {
+      length = s[i];
+    } else if (lastAxisIsHermitianInverse && i == resolvedAxes.length - 1) {
+      length = 2 * (a.shape[ax] - 1);
+    } else {
+      length = a.shape[ax];
+    }
+    if (length <= 0) {
+      throw ArgumentError.value(s, 's', 'Must contain positive lengths');
+    }
+    lengths.add(length);
+  }
+  return (resolvedAxes: resolvedAxes, lengths: lengths);
 }
 
-/// Computes the 2D Inverse Discrete Fourier Transform of [a] along [axes].
+/// Computes the N-dimensional discrete Fourier Transform over [axes] on the GPU.
 ///
-/// Both [a] and [out] (if provided) must not be disposed, [a] must have at
-/// least 2 dimensions, and [axes] must contain exactly 2 axis indices.
-GpuArray<Complex128> ifft2<T extends DTypeTag>(
-  GpuArray<T> a, {
+/// When [axes] is omitted, transforms all axes (or the last `s.length` axes when [s] is given).
+GpuArray<Complex128> fftn(
+  GpuArray<DTypeTag> a, {
   List<int>? s,
-  List<int> axes = const <int>[-2, -1],
+  List<int>? axes,
   FftNorm norm = FftNorm.backward,
   GpuArray<Complex128>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute ifft2 on a disposed GpuArray.');
+  _checkInputAlive(a, 'a', out);
+  final plan = _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: null,
+    lastAxisIsHermitianInverse: false,
+  );
+  final outShape = List<int>.of(a.shape);
+  for (var i = 0; i < plan.resolvedAxes.length; i++) {
+    outShape[plan.resolvedAxes[i]] = plan.lengths[i];
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write ifft2 result to a disposed output GpuArray.',
-    );
-  }
-  if (a.rank < 2) {
-    throw ArgumentError.value(
-      a.shape,
-      'a',
-      'Must be at least 2-dimensional for ifft2.',
-    );
-  }
-  if (axes.length != 2) {
-    throw ArgumentError.value(
-      axes,
-      'axes',
-      'Must be a list of exactly 2 axes.',
-    );
-  }
-  if (s != null) {
-    if (s.length != 2) {
-      throw ArgumentError.value(s, 's', 'Must be a list of exactly 2 lengths.');
-    }
-    if (s[0] <= 0 || s[1] <= 0) {
-      throw ArgumentError.value(
-        s,
-        's',
-        'Must not contain non-positive lengths.',
+  _validateOut(out, outShape, DType.complex128, a.device);
+
+  return ResourceScope.scope(() {
+    GpuArray<DTypeTag> current = a;
+    for (var i = 0; i < plan.resolvedAxes.length; i++) {
+      final isLast = i == plan.resolvedAxes.length - 1;
+      current = fft(
+        current,
+        n: plan.lengths[i],
+        axis: plan.resolvedAxes[i],
+        norm: norm,
+        out: isLast ? out : null,
       );
     }
-  }
-  final axis0 = _resolveAxis(axes[0], a.rank);
-  final axis1 = _resolveAxis(axes[1], a.rank);
-  final length0 = s != null ? s[0] : a.shape[axis0];
-  final length1 = s != null ? s[1] : a.shape[axis1];
-  final totalLength = length0 * length1;
-
-  return NDArray.scope(() {
-    final hostInput = a.toNDArray();
-    final complexInput = hostInput.dtype == DType.complex128
-        ? hostInput as NDArray<Complex128>
-        : hostInput.astype<Complex128>(DType.complex128);
-    final hostResult = nd.ifft2<Complex128>(
-      complexInput,
-      s: s,
-      axes: <int>[axis0, axis1],
-    );
-    _scaleArrayInPlace(hostResult, norm.inverseFactor(totalLength));
-    return _writeOrWrapResult(hostResult, a.device, out);
+    final result = current as GpuArray<Complex128>;
+    if (out == null) {
+      result.detachToParentScope();
+    }
+    return result;
   });
 }
 
-/// Computes the Discrete Fourier Transform sample frequencies for a window of
-/// length [n] and sample spacing [d].
+/// Computes the N-dimensional inverse discrete Fourier Transform over [axes] on the GPU.
 ///
-/// The window length [n] must be positive and [d] must be non-zero. If [out]
-/// is provided, it must not be disposed and must have shape `[n]` and dtype
-/// [DType.float64].
+/// When [axes] is omitted, transforms all axes (or the last `s.length` axes when [s] is given).
+GpuArray<Complex128> ifftn(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int>? axes,
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Complex128>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  final plan = _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: null,
+    lastAxisIsHermitianInverse: false,
+  );
+  final outShape = List<int>.of(a.shape);
+  for (var i = 0; i < plan.resolvedAxes.length; i++) {
+    outShape[plan.resolvedAxes[i]] = plan.lengths[i];
+  }
+  _validateOut(out, outShape, DType.complex128, a.device);
+
+  return ResourceScope.scope(() {
+    GpuArray<DTypeTag> current = a;
+    for (var i = 0; i < plan.resolvedAxes.length; i++) {
+      final isLast = i == plan.resolvedAxes.length - 1;
+      current = ifft(
+        current,
+        n: plan.lengths[i],
+        axis: plan.resolvedAxes[i],
+        norm: norm,
+        out: isLast ? out : null,
+      );
+    }
+    final result = current as GpuArray<Complex128>;
+    if (out == null) {
+      result.detachToParentScope();
+    }
+    return result;
+  });
+}
+
+/// Computes the N-dimensional discrete Fourier Transform of a real-valued input [a] on the GPU.
+///
+/// Transforms the last axis in [axes] via [rfft] and all preceding axes via [fft].
+GpuArray<Complex128> rfftn(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int>? axes,
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Complex128>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  if (a.dtype.isComplex) {
+    throw ArgumentError.value(
+      a.dtype,
+      'a',
+      'Must be a real-valued array for rfftn',
+    );
+  }
+  final plan = _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: null,
+    lastAxisIsHermitianInverse: false,
+  );
+  final outShape = List<int>.of(a.shape);
+  for (var i = 0; i < plan.resolvedAxes.length - 1; i++) {
+    outShape[plan.resolvedAxes[i]] = plan.lengths[i];
+  }
+  final lastAxisPosition = plan.resolvedAxes.length - 1;
+  outShape[plan.resolvedAxes[lastAxisPosition]] =
+      (plan.lengths[lastAxisPosition] ~/ 2) + 1;
+  _validateOut(out, outShape, DType.complex128, a.device);
+
+  return ResourceScope.scope(() {
+    GpuArray<Complex128> current = rfft(
+      a,
+      n: plan.lengths[lastAxisPosition],
+      axis: plan.resolvedAxes[lastAxisPosition],
+      norm: norm,
+      out: plan.resolvedAxes.length == 1 ? out : null,
+    );
+    for (var i = 0; i < lastAxisPosition; i++) {
+      final isFinalPass = i == lastAxisPosition - 1;
+      current = fft(
+        current,
+        n: plan.lengths[i],
+        axis: plan.resolvedAxes[i],
+        norm: norm,
+        out: isFinalPass ? out : null,
+      );
+    }
+    if (out == null) {
+      current.detachToParentScope();
+    }
+    return current;
+  });
+}
+
+/// Computes the inverse of [rfftn], reconstructing a real-valued N-D array on the GPU.
+///
+/// Transforms all axes in [axes] except the last via [ifft], and the last axis via [irfft].
+GpuArray<Float64> irfftn(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int>? axes,
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Float64>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  final plan = _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: null,
+    lastAxisIsHermitianInverse: true,
+  );
+  final outShape = List<int>.of(a.shape);
+  for (var i = 0; i < plan.resolvedAxes.length; i++) {
+    outShape[plan.resolvedAxes[i]] = plan.lengths[i];
+  }
+  _validateOut(out, outShape, DType.float64, a.device);
+
+  return ResourceScope.scope(() {
+    GpuArray<DTypeTag> current = a;
+    final lastAxisPosition = plan.resolvedAxes.length - 1;
+    for (var i = 0; i < lastAxisPosition; i++) {
+      current = ifft(
+        current,
+        n: plan.lengths[i],
+        axis: plan.resolvedAxes[i],
+        norm: norm,
+      );
+    }
+    final result = irfft(
+      current,
+      n: plan.lengths[lastAxisPosition],
+      axis: plan.resolvedAxes[lastAxisPosition],
+      norm: norm,
+      out: out,
+    );
+    if (out == null) {
+      result.detachToParentScope();
+    }
+    return result;
+  });
+}
+
+/// Computes the 2D discrete Fourier Transform over [axes] on the GPU.
+///
+/// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
+GpuArray<Complex128> fft2(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int> axes = const [-2, -1],
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Complex128>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: 2,
+    lastAxisIsHermitianInverse: false,
+  );
+  return fftn(a, s: s, axes: axes, norm: norm, out: out);
+}
+
+/// Computes the 2D inverse discrete Fourier Transform over [axes] on the GPU.
+///
+/// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
+GpuArray<Complex128> ifft2(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int> axes = const [-2, -1],
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Complex128>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: 2,
+    lastAxisIsHermitianInverse: false,
+  );
+  return ifftn(a, s: s, axes: axes, norm: norm, out: out);
+}
+
+/// Computes the 2D discrete Fourier Transform of a real-valued array [a] over [axes] on the GPU.
+///
+/// The input [a] must be real-valued with at least 2 dimensions, and [axes] must contain 2 axes.
+GpuArray<Complex128> rfft2(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int> axes = const [-2, -1],
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Complex128>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: 2,
+    lastAxisIsHermitianInverse: false,
+  );
+  return rfftn(a, s: s, axes: axes, norm: norm, out: out);
+}
+
+/// Computes the inverse of [rfft2], reconstructing a 2D real-valued array over [axes] on the GPU.
+///
+/// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
+GpuArray<Float64> irfft2(
+  GpuArray<DTypeTag> a, {
+  List<int>? s,
+  List<int> axes = const [-2, -1],
+  FftNorm norm = FftNorm.backward,
+  GpuArray<Float64>? out,
+}) {
+  _checkInputAlive(a, 'a', out);
+  _resolveNdTransformAxesAndLengths(
+    a,
+    s: s,
+    axes: axes,
+    requiredCount: 2,
+    lastAxisIsHermitianInverse: true,
+  );
+  return irfftn(a, s: s, axes: axes, norm: norm, out: out);
+}
+
+/// Discrete Fourier Transform sample frequencies for a window of length [n] and spacing [d].
+///
+/// Both [n] and [d] must be positive. Executes directly on the GPU.
 GpuArray<Float64> fftfreq(
   int n, {
   double d = 1.0,
@@ -517,29 +1115,41 @@ GpuArray<Float64> fftfreq(
   GpuArray<Float64>? out,
 }) {
   if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write fftfreq result to a disposed output GpuArray.',
-    );
+    throw StateError('Output GpuArray has already been disposed.');
   }
   if (n <= 0) {
-    throw ArgumentError.value(n, 'n', 'Must be positive.');
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  if (d == 0.0 || d.isNaN) {
-    throw ArgumentError.value(d, 'd', 'Must be non-zero and finite.');
+  if (d <= 0.0 || d.isNaN) {
+    throw ArgumentError.value(d, 'd', 'Must be positive');
   }
-  final targetDevice = out?.device ?? device ?? GpuDevice.defaultDevice;
-  return NDArray.scope(() {
-    final hostFrequencies = nd.fftfreq(n, d: d);
-    return _writeOrWrapResult(hostFrequencies, targetDevice, out);
-  });
+  final targetDevice = device ?? out?.device ?? GpuDevice.defaultDevice;
+  _validateOut(out, [n], DType.float64, targetDevice);
+  final destination =
+      out ?? GpuArray.empty([n], DType.float64, device: targetDevice);
+  final positiveCount = (n - 1) ~/ 2 + 1;
+  final (denomHi, denomLo) = encodeDoubleFloatUniform(d * n);
+  targetDevice.backend.dispatchComputePipeline(
+    shaderModule: buildFftFreqShader(),
+    buffers: [destination.buffer],
+    uniforms: [
+      n,
+      n,
+      positiveCount,
+      0,
+      destination.offsetElements,
+      destination.strides[0] & 0xFFFFFFFF,
+      denomHi,
+      denomLo,
+    ],
+    workgroupsX: _workgroupsFor(n),
+  );
+  return destination;
 }
 
-/// Computes the Discrete Fourier Transform sample frequencies for real-input
-/// transforms ([rfft]) of window length [n] and sample spacing [d].
+/// Discrete Fourier Transform sample frequencies for [rfft] of window length [n] and spacing [d].
 ///
-/// The window length [n] must be positive and [d] must be non-zero. If [out]
-/// is provided, it must not be disposed and must have shape `[(n ~/ 2) + 1]`
-/// and dtype [DType.float64].
+/// Both [n] and [d] must be positive. Executes directly on the GPU.
 GpuArray<Float64> rfftfreq(
   int n, {
   double d = 1.0,
@@ -547,118 +1157,133 @@ GpuArray<Float64> rfftfreq(
   GpuArray<Float64>? out,
 }) {
   if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write rfftfreq result to a disposed output GpuArray.',
-    );
+    throw StateError('Output GpuArray has already been disposed.');
   }
   if (n <= 0) {
-    throw ArgumentError.value(n, 'n', 'Must be positive.');
+    throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  if (d == 0.0 || d.isNaN) {
-    throw ArgumentError.value(d, 'd', 'Must be non-zero and finite.');
+  if (d <= 0.0 || d.isNaN) {
+    throw ArgumentError.value(d, 'd', 'Must be positive');
   }
-  final targetDevice = out?.device ?? device ?? GpuDevice.defaultDevice;
-  return NDArray.scope(() {
-    final hostFrequencies = nd.rfftfreq(n, d: d);
-    return _writeOrWrapResult(hostFrequencies, targetDevice, out);
-  });
+  final outLength = (n ~/ 2) + 1;
+  final targetDevice = device ?? out?.device ?? GpuDevice.defaultDevice;
+  _validateOut(out, [outLength], DType.float64, targetDevice);
+  final destination =
+      out ?? GpuArray.empty([outLength], DType.float64, device: targetDevice);
+  final (denomHi, denomLo) = encodeDoubleFloatUniform(d * n);
+  targetDevice.backend.dispatchComputePipeline(
+    shaderModule: buildFftFreqShader(),
+    buffers: [destination.buffer],
+    uniforms: [
+      outLength,
+      n,
+      outLength,
+      1,
+      destination.offsetElements,
+      destination.strides[0] & 0xFFFFFFFF,
+      denomHi,
+      denomLo,
+    ],
+    workgroupsX: _workgroupsFor(outLength),
+  );
+  return destination;
 }
 
 List<int> _normalizeShiftAxes(Object? axes, int rank) {
   if (axes == null) {
-    return List<int>.generate(rank, (index) => index);
+    return [for (var i = 0; i < rank; i++) i];
   }
   if (axes is int) {
-    return <int>[_resolveAxis(axes, rank)];
+    return [_resolveAxis(axes, rank)];
   }
-  if (axes is Iterable<int>) {
-    return <int>[for (final axis in axes) _resolveAxis(axis, rank)];
+  if (axes is List<int>) {
+    return _resolveAxes(axes, rank);
   }
   throw ArgumentError.value(
     axes,
     'axes',
-    'Must be an int, Iterable<int>, or null.',
+    'Must be null, an int, or a List<int>',
   );
 }
 
-/// Shifts the zero-frequency component to the center of the spectrum along
-/// [axes] (or all axes when [axes] is `null`).
-///
-/// Neither [x] nor [out] (if provided) may be disposed.
-GpuArray<T> fftshift<T extends DTypeTag>(
-  GpuArray<T> x, {
-  Object? axes,
-  GpuArray<T>? out,
+GpuArray<T> _dispatchShift<T extends DTypeTag>(
+  GpuArray<T> a, {
+  required Object? axes,
+  required bool inverse,
+  required GpuArray<T>? out,
 }) {
-  if (x.isDisposed) {
-    throw StateError('Cannot execute fftshift on a disposed GpuArray.');
+  if (a.isDisposed) {
+    throw StateError('Cannot shift a disposed GpuArray.');
   }
   if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write fftshift result to a disposed output GpuArray.',
+    throw StateError('Output GpuArray has already been disposed.');
+  }
+  if (a.ndim > 8) {
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must have rank at most 8 for GPU shift shaders',
     );
   }
-  final resolvedAxes = _normalizeShiftAxes(axes, x.rank);
-  if (resolvedAxes.isEmpty) {
-    return NDArray.scope(() {
-      final copied = x.toNDArray().copy();
-      return _writeOrWrapResult(copied, x.device, out);
-    });
+  _validateOut(out, a.shape, a.dtype, a.device);
+  final destination = out ?? GpuArray.zeros(a.shape, a.dtype, device: a.device);
+  if (a.size == 0) {
+    return destination;
   }
-  return ResourceScope.scope(() {
-    var current = x;
-    for (final axis in resolvedAxes) {
-      final shiftAmount = x.shape[axis] ~/ 2;
-      current = manip.roll(current, shiftAmount, axis: axis);
+  if (a.ndim == 0) {
+    a.copy(out: destination);
+    return destination;
+  }
+  final resolvedAxes = _normalizeShiftAxes(axes, a.ndim);
+  final shiftsPerDim = List<int>.filled(a.ndim, 0);
+  for (final ax in resolvedAxes) {
+    final dimSize = a.shape[ax];
+    if (dimSize > 1) {
+      final shiftAmount = inverse ? (dimSize - (dimSize ~/ 2)) : (dimSize ~/ 2);
+      shiftsPerDim[ax] = (shiftsPerDim[ax] + shiftAmount) % dimSize;
     }
-    if (out != null) {
-      return NDArray.scope(() {
-        final hostResult = current.toNDArray();
-        return _writeOrWrapResult(hostResult, x.device, out);
-      });
+  }
+  if (out != null && a.dtype.byteWidth < 4) {
+    final zeroFill = GpuArray.zeros(a.shape, a.dtype, device: a.device);
+    try {
+      zeroFill.copy(out: destination);
+    } finally {
+      zeroFill.dispose();
     }
-    current.detachToParentScope();
-    return current;
-  });
+  }
+  final uniforms = <int>[
+    a.size,
+    a.ndim,
+    a.offsetElements,
+    destination.offsetElements,
+    ..._packVec8U32(a.shape),
+    ..._packVec8U32(shiftsPerDim, defaultFill: 0),
+    ..._packVec8I32(a.strides),
+    ..._packVec8I32(destination.strides),
+  ];
+  a.device.backend.dispatchComputePipeline(
+    shaderModule: buildFftShiftShader(a.dtype),
+    buffers: [a.buffer, destination.buffer],
+    uniforms: uniforms,
+    workgroupsX: _workgroupsFor(a.size),
+  );
+  return destination;
 }
 
-/// Inverse of [fftshift], shifting the zero-frequency component back to the
-/// beginning of the spectrum along [axes] (or all axes when [axes] is `null`).
+/// Shifts the zero-frequency component to the center of the spectrum along [axes] on the GPU.
 ///
-/// Neither [x] nor [out] (if provided) may be disposed.
-GpuArray<T> ifftshift<T extends DTypeTag>(
-  GpuArray<T> x, {
+/// The [axes] parameter may be `null` (all axes), an `int`, or a `List<int>`.
+GpuArray<T> fftshift<T extends DTypeTag>(
+  GpuArray<T> a, {
   Object? axes,
   GpuArray<T>? out,
-}) {
-  if (x.isDisposed) {
-    throw StateError('Cannot execute ifftshift on a disposed GpuArray.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write ifftshift result to a disposed output GpuArray.',
-    );
-  }
-  final resolvedAxes = _normalizeShiftAxes(axes, x.rank);
-  if (resolvedAxes.isEmpty) {
-    return NDArray.scope(() {
-      final copied = x.toNDArray().copy();
-      return _writeOrWrapResult(copied, x.device, out);
-    });
-  }
-  return ResourceScope.scope(() {
-    var current = x;
-    for (final axis in resolvedAxes) {
-      final shiftAmount = -(x.shape[axis] ~/ 2);
-      current = manip.roll(current, shiftAmount, axis: axis);
-    }
-    if (out != null) {
-      return NDArray.scope(() {
-        final hostResult = current.toNDArray();
-        return _writeOrWrapResult(hostResult, x.device, out);
-      });
-    }
-    current.detachToParentScope();
-    return current;
-  });
-}
+}) => _dispatchShift(a, axes: axes, inverse: false, out: out);
+
+/// Inverse of [fftshift], shifting the zero-frequency component back to index 0 along [axes] on the GPU.
+///
+/// The [axes] parameter may be `null` (all axes), an `int`, or a `List<int>`.
+GpuArray<T> ifftshift<T extends DTypeTag>(
+  GpuArray<T> a, {
+  Object? axes,
+  GpuArray<T>? out,
+}) => _dispatchShift(a, axes: axes, inverse: true, out: out);

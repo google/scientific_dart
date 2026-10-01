@@ -40,7 +40,7 @@ enum PadMode {
   wrap,
 }
 
-void _checkNotDisposed(GpuArray a, String name) {
+void _checkNotDisposed(GpuArray<DTypeTag> a, String name) {
   if (a.isDisposed || a.buffer.isDisposed) {
     throw GpuDeviceDisposedException(
       'Cannot operate on disposed GpuArray ($name).',
@@ -52,7 +52,7 @@ GpuArray<T> _allocateOrValidateOut<T extends DTypeTag>(
   String opName,
   List<int> outShape,
   DType<T> outDType,
-  GpuArray reference,
+  GpuArray<DTypeTag> reference,
   GpuArray<T>? out,
 ) {
   if (out != null) {
@@ -65,13 +65,24 @@ GpuArray<T> _allocateOrValidateOut<T extends DTypeTag>(
       );
     }
     if (!areShapesEqual(out.shape, outShape)) {
-      throw GpuShapeMismatchException('$opName(out)', out.shape, outShape);
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape for $opName.',
+      );
     }
     if (out.dtype != outDType) {
       throw ArgumentError.value(
         out.dtype,
         'out.dtype',
         'Must match output dtype $outDType.',
+      );
+    }
+    if (out.device != reference.device) {
+      throw ArgumentError.value(
+        out.device,
+        'out.device',
+        'Must be on the same device as input (${reference.device}).',
       );
     }
     return out;
@@ -81,7 +92,7 @@ GpuArray<T> _allocateOrValidateOut<T extends DTypeTag>(
 
 /// Joins a sequence of [arrays] along an existing [axis].
 GpuArray<T> concatenate<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   int axis = 0,
   GpuArray<T>? out,
 }) {
@@ -97,11 +108,18 @@ GpuArray<T> concatenate<T extends DTypeTag>(
   }
 
   var outDType = first.dtype;
-  var totalAxisLen = 0;
+  var totalAxisLength = 0;
 
   for (var i = 0; i < arrays.length; i++) {
     final arr = arrays[i];
     _checkNotDisposed(arr, 'arrays[$i]');
+    if (arr.device != first.device) {
+      throw ArgumentError.value(
+        arr.device,
+        'arrays[$i].device',
+        'Must be on the same device as arrays[0] (${first.device}).',
+      );
+    }
     if (arr.shape.length != rank) {
       throw GpuShapeMismatchException('concatenate', arr.shape, first.shape);
     }
@@ -110,12 +128,12 @@ GpuArray<T> concatenate<T extends DTypeTag>(
         throw GpuShapeMismatchException('concatenate', arr.shape, first.shape);
       }
     }
-    totalAxisLen += arr.shape[normAxis];
+    totalAxisLength += arr.shape[normAxis];
     outDType = GpuArray.promoteDTypes(outDType, arr.dtype);
   }
 
   final outShape = List<int>.of(first.shape);
-  outShape[normAxis] = totalAxisLen;
+  outShape[normAxis] = totalAxisLength;
   final result = _allocateOrValidateOut<T>(
     'concatenate',
     outShape,
@@ -148,7 +166,7 @@ GpuArray<T> concatenate<T extends DTypeTag>(
 
 /// Joins a sequence of [arrays] along a new [axis].
 GpuArray<T> stack<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   int axis = 0,
   GpuArray<T>? out,
 }) {
@@ -167,13 +185,13 @@ GpuArray<T> stack<T extends DTypeTag>(
 
 /// Stacks arrays in sequence vertically (row-wise / along axis 0).
 GpuArray<T> vstack<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
   if (arrays.isEmpty) {
     throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
-  final tempViews = <GpuArray>[];
+  final tempViews = <GpuArray<DTypeTag>>[];
   final prepared = arrays.map((a) {
     _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
@@ -194,13 +212,13 @@ GpuArray<T> vstack<T extends DTypeTag>(
 
 /// Stacks arrays in sequence horizontally (column-wise / along axis 1).
 GpuArray<T> hstack<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
   if (arrays.isEmpty) {
     throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
-  final tempViews = <GpuArray>[];
+  final tempViews = <GpuArray<DTypeTag>>[];
   final prepared = arrays.map((a) {
     _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
@@ -222,13 +240,13 @@ GpuArray<T> hstack<T extends DTypeTag>(
 
 /// Stacks arrays in sequence depth-wise (along axis 2).
 GpuArray<T> dstack<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
   if (arrays.isEmpty) {
     throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
-  final tempViews = <GpuArray>[];
+  final tempViews = <GpuArray<DTypeTag>>[];
   final prepared = arrays.map((a) {
     _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
@@ -253,13 +271,13 @@ GpuArray<T> dstack<T extends DTypeTag>(
 
 /// Stacks 1D or 2D arrays as columns to create a 2D array.
 GpuArray<T> columnStack<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
   if (arrays.isEmpty) {
     throw ArgumentError.value(arrays, 'arrays', 'Must not be empty.');
   }
-  final tempViews = <GpuArray>[];
+  final tempViews = <GpuArray<DTypeTag>>[];
   final prepared = arrays.map((a) {
     _checkNotDisposed(a, 'arrays');
     if (a.shape.length == 1) {
@@ -282,7 +300,7 @@ GpuArray<T> columnStack<T extends DTypeTag>(
 @Deprecated('Use columnStack instead.')
 // ignore: non_constant_identifier_names
 GpuArray<T> column_stack<T extends DTypeTag>(
-  List<GpuArray> arrays, {
+  List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) => columnStack<T>(arrays, out: out);
 
@@ -298,20 +316,20 @@ List<GpuArray<T>> split<T extends DTypeTag>(
   if (normAxis < 0 || normAxis >= rank) {
     throw GpuAxisOutOfBoundsException(axis, rank);
   }
-  final dimLen = a.shape[normAxis];
+  final dimensionLength = a.shape[normAxis];
 
   final splitPoints = <int>[0];
 
   if (indicesOrSections is int) {
     final sections = indicesOrSections;
-    if (sections <= 0 || dimLen % sections != 0) {
+    if (sections <= 0 || dimensionLength % sections != 0) {
       throw ArgumentError.value(
         indicesOrSections,
         'indicesOrSections',
-        'Must evenly divide axis length ($dimLen).',
+        'Must evenly divide axis length ($dimensionLength).',
       );
     }
-    final step = dimLen ~/ sections;
+    final step = dimensionLength ~/ sections;
     for (var i = 1; i < sections; i++) {
       splitPoints.add(i * step);
     }
@@ -324,7 +342,7 @@ List<GpuArray<T>> split<T extends DTypeTag>(
       'Must be an int or List<int>.',
     );
   }
-  splitPoints.add(dimLen);
+  splitPoints.add(dimensionLength);
 
   final result = <GpuArray<T>>[];
   for (var i = 0; i < splitPoints.length - 1; i++) {
@@ -358,7 +376,7 @@ List<GpuArray<T>> arraySplit<T extends DTypeTag>(
   if (normAxis < 0 || normAxis >= rank) {
     throw GpuAxisOutOfBoundsException(axis, rank);
   }
-  final dimLen = a.shape[normAxis];
+  final dimensionLength = a.shape[normAxis];
   final n = indicesOrSections;
   if (n <= 0) {
     throw ArgumentError.value(
@@ -368,8 +386,8 @@ List<GpuArray<T>> arraySplit<T extends DTypeTag>(
     );
   }
 
-  final div = dimLen ~/ n;
-  final mod = dimLen % n;
+  final div = dimensionLength ~/ n;
+  final mod = dimensionLength % n;
 
   final splitPoints = <int>[0];
   var current = 0;
@@ -380,7 +398,7 @@ List<GpuArray<T>> arraySplit<T extends DTypeTag>(
       splitPoints.add(current);
     }
   }
-  splitPoints.add(dimLen);
+  splitPoints.add(dimensionLength);
 
   final result = <GpuArray<T>>[];
   for (var i = 0; i < splitPoints.length - 1; i++) {
@@ -525,24 +543,20 @@ GpuArray<T> repeat<T extends DTypeTag>(
         out,
       );
 
-      for (var i = 0; i < total; i++) {
-        final val = readBufferAny(
-          flat.buffer,
-          flat.dtype,
-          i * flat.strides[0],
-          offsetElements: flat.offsetElements,
-        );
-        for (var r = 0; r < repeats; r++) {
-          final dstIndex = (i * repeats + r) * result.strides[0];
-          writeBufferAny(
-            result.buffer,
-            a.dtype,
-            dstIndex,
-            val,
-            offsetElements: result.offsetElements,
-          );
-        }
-      }
+      GpuKernels.executeRepeat(
+        src: flat.buffer,
+        shapeSrc: flat.shape,
+        stridesSrc: flat.strides,
+        offsetSrc: flat.offsetElements,
+        dtypeSrc: flat.dtype,
+        dst: result.buffer,
+        outShape: outShape,
+        outStrides: result.strides,
+        offsetDst: result.offsetElements,
+        dtypeDst: a.dtype,
+        repeats: repeats,
+        axis: 0,
+      );
 
       return result;
     } finally {
@@ -562,65 +576,22 @@ GpuArray<T> repeat<T extends DTypeTag>(
 
   final result = _allocateOrValidateOut<T>('repeat', outShape, a.dtype, a, out);
 
-  final total = computeSize(a.shape);
-  final coords = List<int>.filled(rank, 0);
-
-  for (var i = 0; i < total; i++) {
-    var srcIndex = 0;
-    for (var d = 0; d < rank; d++) {
-      srcIndex += coords[d] * a.strides[d];
-    }
-    final val = readBufferAny(
-      a.buffer,
-      a.dtype,
-      srcIndex,
-      offsetElements: a.offsetElements,
-    );
-
-    for (var r = 0; r < repeats; r++) {
-      var dstIndex = 0;
-      for (var d = 0; d < rank; d++) {
-        final coordDst = (d == normAxis) ? coords[d] * repeats + r : coords[d];
-        dstIndex += coordDst * result.strides[d];
-      }
-      writeBufferAny(
-        result.buffer,
-        a.dtype,
-        dstIndex,
-        val,
-        offsetElements: result.offsetElements,
-      );
-    }
-
-    for (var d = rank - 1; d >= 0; d--) {
-      coords[d]++;
-      if (coords[d] < a.shape[d]) break;
-      coords[d] = 0;
-    }
-  }
+  GpuKernels.executeRepeat(
+    src: a.buffer,
+    shapeSrc: a.shape,
+    stridesSrc: a.strides,
+    offsetSrc: a.offsetElements,
+    dtypeSrc: a.dtype,
+    dst: result.buffer,
+    outShape: outShape,
+    outStrides: result.strides,
+    offsetDst: result.offsetElements,
+    dtypeDst: a.dtype,
+    repeats: repeats,
+    axis: normAxis,
+  );
 
   return result;
-}
-
-int _resolvePadCoord(int rawCoord, int dim, PadMode mode) {
-  if (rawCoord >= 0 && rawCoord < dim) return rawCoord;
-  if (dim <= 1) return 0;
-  switch (mode) {
-    case PadMode.constant:
-      return -1;
-    case PadMode.edge:
-      return rawCoord < 0 ? 0 : dim - 1;
-    case PadMode.reflect:
-      final period = 2 * (dim - 1);
-      final m = ((rawCoord % period) + period) % period;
-      return m < dim ? m : period - m;
-    case PadMode.symmetric:
-      final period = 2 * dim;
-      final m = ((rawCoord % period) + period) % period;
-      return m < dim ? m : period - 1 - m;
-    case PadMode.wrap:
-      return ((rawCoord % dim) + dim) % dim;
-  }
 }
 
 /// Pads an array with [padWidth] according to [mode].
@@ -663,59 +634,21 @@ GpuArray<T> pad<T extends DTypeTag>(
   );
   final result = _allocateOrValidateOut<T>('pad', outShape, a.dtype, a, out);
 
-  if (mode == PadMode.constant) {
-    GpuKernels.executePad(
-      src: a.buffer,
-      shapeSrc: a.shape,
-      stridesSrc: a.strides,
-      offsetSrc: a.offsetElements,
-      dtypeSrc: a.dtype,
-      dst: result.buffer,
-      outShape: outShape,
-      outStrides: result.strides,
-      offsetDst: result.offsetElements,
-      dtypeDst: a.dtype,
-      padWidth: padWidth,
-      constantValue: constantValues,
-    );
-    return result;
-  }
-
-  final totalElements = computeSize(outShape);
-  final coords = List<int>.filled(rank, 0);
-
-  for (var i = 0; i < totalElements; i++) {
-    var elemOffsetDst = 0;
-    var elemOffsetSrc = 0;
-
-    for (var d = 0; d < rank; d++) {
-      elemOffsetDst += coords[d] * result.strides[d];
-      final rawCoord = coords[d] - padWidth[d][0];
-      final srcCoord = _resolvePadCoord(rawCoord, a.shape[d], mode);
-      elemOffsetSrc += srcCoord * a.strides[d];
-    }
-
-    final val = readBufferAny(
-      a.buffer,
-      a.dtype,
-      elemOffsetSrc,
-      offsetElements: a.offsetElements,
-    );
-    writeBufferAny(
-      result.buffer,
-      a.dtype,
-      elemOffsetDst,
-      val,
-      offsetElements: result.offsetElements,
-    );
-
-    for (var d = rank - 1; d >= 0; d--) {
-      coords[d]++;
-      if (coords[d] < outShape[d]) break;
-      coords[d] = 0;
-    }
-  }
-
+  GpuKernels.executePad(
+    src: a.buffer,
+    shapeSrc: a.shape,
+    stridesSrc: a.strides,
+    offsetSrc: a.offsetElements,
+    dtypeSrc: a.dtype,
+    dst: result.buffer,
+    outShape: outShape,
+    outStrides: result.strides,
+    offsetDst: result.offsetElements,
+    dtypeDst: a.dtype,
+    padWidth: padWidth,
+    constantValue: constantValues,
+    padMode: mode.index,
+  );
   return result;
 }
 
@@ -728,56 +661,30 @@ GpuArray<T> roll<T extends DTypeTag>(
 }) {
   _checkNotDisposed(a, 'a');
   if (axis == null) {
-    final flat = a.flatten();
-    try {
-      final total = flat.shape[0];
-      if (total == 0) {
-        return _allocateOrValidateOut<T>('roll', a.shape, a.dtype, a, out);
-      }
-      final s = (shift is int) ? shift : (shift as List<int>)[0];
-      final sNorm = ((s % total) + total) % total;
-
-      final result = _allocateOrValidateOut<T>(
-        'roll',
-        a.shape,
-        a.dtype,
-        a,
-        out,
-      );
-      final outStrides = result.strides;
-      final cStrides = computeCStrides(a.shape);
-      final rank = a.shape.length;
-
-      for (var i = 0; i < total; i++) {
-        final srcIndex = (i - sNorm + total) % total;
-        final val = readBufferAny(
-          flat.buffer,
-          flat.dtype,
-          srcIndex * flat.strides[0],
-          offsetElements: flat.offsetElements,
-        );
-        var rem = i;
-        var dstIndex = 0;
-        for (var d = 0; d < rank; d++) {
-          final coord = rem ~/ cStrides[d];
-          rem = rem % cStrides[d];
-          dstIndex += coord * outStrides[d];
-        }
-        writeBufferAny(
-          result.buffer,
-          a.dtype,
-          dstIndex,
-          val,
-          offsetElements: result.offsetElements,
-        );
-      }
-
-      return result;
-    } finally {
-      if (!identical(flat, a)) {
-        flat.dispose();
-      }
+    final total = a.size;
+    if (total == 0) {
+      return _allocateOrValidateOut<T>('roll', a.shape, a.dtype, a, out);
     }
+    final s = (shift is int) ? shift : (shift as List<int>)[0];
+
+    final result = _allocateOrValidateOut<T>('roll', a.shape, a.dtype, a, out);
+
+    GpuKernels.executeRoll(
+      src: a.buffer,
+      shapeSrc: a.shape,
+      stridesSrc: a.strides,
+      offsetSrc: a.offsetElements,
+      dtypeSrc: a.dtype,
+      dst: result.buffer,
+      outShape: a.shape,
+      outStrides: result.strides,
+      offsetDst: result.offsetElements,
+      dtypeDst: a.dtype,
+      shift: s,
+      axis: null,
+    );
+
+    return result;
   }
 
   final rank = a.shape.length;
@@ -799,47 +706,26 @@ GpuArray<T> roll<T extends DTypeTag>(
       throw GpuAxisOutOfBoundsException(axes[i], rank);
     }
     final s = shifts[i];
-    final dim = current.shape[ax];
-    final sNorm = dim == 0 ? 0 : ((s % dim) + dim) % dim;
 
     final isLast = i == axes.length - 1;
     final nextArr = (isLast && out != null)
         ? _allocateOrValidateOut<T>('roll', current.shape, a.dtype, a, out)
         : GpuArray<T>.empty(current.shape, a.dtype, device: a.device);
-    final total = computeSize(current.shape);
-    final coords = List<int>.filled(rank, 0);
 
-    for (var j = 0; j < total; j++) {
-      var dstIndex = 0;
-      var srcIndex = 0;
-      for (var d = 0; d < rank; d++) {
-        dstIndex += coords[d] * nextArr.strides[d];
-        final srcCoord = (d == ax)
-            ? (coords[d] - sNorm + dim) % dim
-            : coords[d];
-        srcIndex += srcCoord * current.strides[d];
-      }
-
-      final val = readBufferAny(
-        current.buffer,
-        current.dtype,
-        srcIndex,
-        offsetElements: current.offsetElements,
-      );
-      writeBufferAny(
-        nextArr.buffer,
-        a.dtype,
-        dstIndex,
-        val,
-        offsetElements: nextArr.offsetElements,
-      );
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < current.shape[d]) break;
-        coords[d] = 0;
-      }
-    }
+    GpuKernels.executeRoll(
+      src: current.buffer,
+      shapeSrc: current.shape,
+      stridesSrc: current.strides,
+      offsetSrc: current.offsetElements,
+      dtypeSrc: current.dtype,
+      dst: nextArr.buffer,
+      outShape: current.shape,
+      outStrides: nextArr.strides,
+      offsetDst: nextArr.offsetElements,
+      dtypeDst: a.dtype,
+      shift: s,
+      axis: ax,
+    );
 
     if (!identical(current, a)) {
       current.dispose();
@@ -964,38 +850,19 @@ GpuArray<T> diag<T extends DTypeTag>(
       v,
       out,
     );
-    // Zero-fill result
-    final total = size * size;
-    for (var i = 0; i < total; i++) {
-      writeBufferAny(
-        result.buffer,
-        result.dtype,
-        i,
-        0,
-        offsetElements: result.offsetElements,
-      );
-    }
-    final rowOffset = k < 0 ? -k : 0;
-    final colOffset = k > 0 ? k : 0;
-
-    for (var i = 0; i < n; i++) {
-      final val = readBufferAny(
-        v.buffer,
-        v.dtype,
-        i * v.strides[0],
-        offsetElements: v.offsetElements,
-      );
-      final r = i + rowOffset;
-      final c = i + colOffset;
-      final dstIndex = r * result.strides[0] + c * result.strides[1];
-      writeBufferAny(
-        result.buffer,
-        result.dtype,
-        dstIndex,
-        val,
-        offsetElements: result.offsetElements,
-      );
-    }
+    GpuKernels.executeDiag1DTo2D(
+      src: v.buffer,
+      srcLength: n,
+      strideSrc: v.strides[0],
+      offsetSrc: v.offsetElements,
+      dtypeSrc: v.dtype,
+      dst: result.buffer,
+      outSize: size,
+      outStrides: result.strides,
+      offsetDst: result.offsetElements,
+      dtypeDst: result.dtype,
+      k: k,
+    );
     return result;
   } else if (v.shape.length == 2) {
     return diagonal(v, offset: k, out: out);
@@ -1043,20 +910,18 @@ GpuArray<T> diagonal<T extends DTypeTag>(
   final rows = a.shape[ax1];
   final cols = a.shape[ax2];
 
-  var diagLen = offset >= 0
+  var diagonalLength = offset >= 0
       ? ((rows < cols - offset) ? rows : (cols - offset))
       : ((rows + offset < cols) ? (rows + offset) : cols);
-  if (diagLen < 0) diagLen = 0;
+  if (diagonalLength < 0) diagonalLength = 0;
 
-  final nonDiagAxes = <int>[];
   final outShape = <int>[];
   for (var d = 0; d < rank; d++) {
     if (d != ax1 && d != ax2) {
-      nonDiagAxes.add(d);
       outShape.add(a.shape[d]);
     }
   }
-  outShape.add(diagLen);
+  outShape.add(diagonalLength);
 
   final result = _allocateOrValidateOut<T>(
     'diagonal',
@@ -1068,47 +933,21 @@ GpuArray<T> diagonal<T extends DTypeTag>(
   final totalOut = computeSize(outShape);
   if (totalOut == 0) return result;
 
-  final startRow = offset < 0 ? -offset : 0;
-  final startCol = offset > 0 ? offset : 0;
-
-  final outRank = outShape.length;
-  final outCoords = List<int>.filled(outRank, 0);
-
-  for (var elementIndex = 0; elementIndex < totalOut; elementIndex++) {
-    var srcIndex = 0;
-    for (var i = 0; i < nonDiagAxes.length; i++) {
-      srcIndex += outCoords[i] * a.strides[nonDiagAxes[i]];
-    }
-    final k = outCoords[outRank - 1];
-    final r = startRow + k;
-    final c = startCol + k;
-    srcIndex += r * a.strides[ax1] + c * a.strides[ax2];
-
-    var dstIndex = 0;
-    for (var d = 0; d < outRank; d++) {
-      dstIndex += outCoords[d] * result.strides[d];
-    }
-
-    final val = readBufferAny(
-      a.buffer,
-      a.dtype,
-      srcIndex,
-      offsetElements: a.offsetElements,
-    );
-    writeBufferAny(
-      result.buffer,
-      a.dtype,
-      dstIndex,
-      val,
-      offsetElements: result.offsetElements,
-    );
-
-    for (var d = outRank - 1; d >= 0; d--) {
-      outCoords[d]++;
-      if (outCoords[d] < outShape[d]) break;
-      outCoords[d] = 0;
-    }
-  }
+  GpuKernels.executeDiagonal(
+    src: a.buffer,
+    shapeSrc: a.shape,
+    stridesSrc: a.strides,
+    offsetSrc: a.offsetElements,
+    dtypeSrc: a.dtype,
+    dst: result.buffer,
+    outShape: outShape,
+    outStrides: result.strides,
+    offsetDst: result.offsetElements,
+    dtypeDst: result.dtype,
+    offset: offset,
+    axis1: ax1,
+    axis2: ax2,
+  );
 
   return result;
 }
@@ -1328,7 +1167,7 @@ GpuArray<T> broadcast_to<T extends DTypeTag>(GpuArray<T> a, List<int> shape) =>
     broadcastTo<T>(a, shape);
 
 /// Broadcasts any number of [arrays] against each other to a common shape.
-List<GpuArray> broadcastArrays(List<GpuArray> arrays) {
+List<GpuArray<DTypeTag>> broadcastArrays(List<GpuArray<DTypeTag>> arrays) {
   if (arrays.isEmpty) return const [];
   var commonShape = arrays[0].shape;
   for (var i = 0; i < arrays.length; i++) {
@@ -1341,5 +1180,5 @@ List<GpuArray> broadcastArrays(List<GpuArray> arrays) {
 /// Broadcasts any number of [arrays] against each other to a common shape.
 @Deprecated('Use broadcastArrays instead.')
 // ignore: non_constant_identifier_names
-List<GpuArray> broadcast_arrays(List<GpuArray> arrays) =>
+List<GpuArray<DTypeTag>> broadcast_arrays(List<GpuArray<DTypeTag>> arrays) =>
     broadcastArrays(arrays);

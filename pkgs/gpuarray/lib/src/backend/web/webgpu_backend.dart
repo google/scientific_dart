@@ -17,7 +17,6 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:ffi/ffi.dart';
 import 'package:web/web.dart' as web;
 
 import '../../buffer.dart';
@@ -158,8 +157,10 @@ extension type GPUCompilationInfo(JSObject _) implements JSObject {
 extension type GPUCompilationMessage(JSObject _) implements JSObject {
   external String get message;
   external String get type;
-  external int get lineNum;
-  external int get linePos;
+  @JS('lineNum')
+  external int get lineNumber;
+  @JS('linePos')
+  external int get linePosition;
 }
 
 @JS()
@@ -339,17 +340,15 @@ final class BrowserWebGpuBackend extends GpuBackend {
   /// The active WebGPU logical compute device, if available.
   final GPUDevice? device;
 
-  /// Whether this backend operates in simulated test mode.
-  @override
-  final bool isSimulated;
-
+  int _nextBufferHandleId = 1;
   final Map<int, GPUBuffer> _deviceBuffers = {};
   final Map<int, int> _bufferSizes = {};
   final Map<String, GPUComputePipeline> _pipelineCache = {};
   final List<String> _dispatchLog = [];
   bool _isDisposed = false;
 
-  BrowserWebGpuBackend({this.adapter, this.device, this.isSimulated = false});
+  /// Creates a [BrowserWebGpuBackend] wrapping [adapter] and [device].
+  BrowserWebGpuBackend({this.adapter, this.device});
 
   @override
   GpuDeviceType get deviceType => GpuDeviceType.webgpu;
@@ -366,87 +365,83 @@ final class BrowserWebGpuBackend extends GpuBackend {
   /// Clears cached compute pipelines.
   void clearPipelineCache() => _pipelineCache.clear();
 
-  /// Asynchronously creates and initializes a [BrowserWebGpuBackend] using `window.navigator.gpu`.
+  /// Creates and initializes a [BrowserWebGpuBackend] using `window.navigator.gpu`.
   ///
-  /// Requests a high-performance GPU adapter and acquires an active compute device.
-  /// If WebGPU is not supported or available and [fallbackToSimulation] is true,
-  /// returns a simulated WebGPU backend instance for testing and validation.
+  /// Throws a [GpuDeviceException] if WebGPU is not supported or device creation fails.
   static Future<BrowserWebGpuBackend> create({
     String? label,
     bool highPerformance = true,
-    bool fallbackToSimulation = false,
   }) async {
     try {
-      final nav = web.window.navigator;
-      final gpu = nav.gpu;
+      final navigator = web.window.navigator;
+      final gpu = navigator.gpu;
       if (gpu == null) {
-        if (fallbackToSimulation) {
-          return BrowserWebGpuBackend(isSimulated: true);
-        }
         throw const GpuDeviceException(
-          "WebGPU is not supported in this browser environment (navigator.gpu is null).",
+          'WebGPU is not supported in this browser environment (navigator.gpu is null).',
         );
       }
 
       final options = GPURequestAdapterOptions(
-        powerPreference: highPerformance ? "high-performance" : "low-power",
+        powerPreference: highPerformance ? 'high-performance' : 'low-power',
       );
       final adapter = await gpu.requestAdapter(options).toDart;
       if (adapter == null) {
-        if (fallbackToSimulation) {
-          return BrowserWebGpuBackend(isSimulated: true);
-        }
         throw const GpuDeviceException(
-          "Failed to acquire a WebGPU hardware adapter.",
+          'Failed to acquire a WebGPU hardware adapter.',
         );
       }
 
-      final desc = GPUDeviceDescriptor(label: label);
-      final device = await adapter.requestDevice(desc).toDart;
+      final descriptor = GPUDeviceDescriptor(label: label);
+      final device = await adapter.requestDevice(descriptor).toDart;
       return BrowserWebGpuBackend(adapter: adapter, device: device);
-    } catch (e) {
-      if (fallbackToSimulation) {
-        return BrowserWebGpuBackend(isSimulated: true);
-      }
-      if (e is GpuException) rethrow;
-      throw GpuDeviceException("WebGPU initialization failed: $e");
+    } catch (error) {
+      if (error is GpuException) rethrow;
+      throw GpuDeviceException('WebGPU initialization failed: $error');
     }
   }
 
   @override
-  ffi.Pointer<ffi.Uint8> allocateBuffer(int sizeInBytes) {
-    if (sizeInBytes <= 0) return ffi.nullptr;
-    final ptr = calloc<ffi.Uint8>(sizeInBytes);
-
-    if (device != null && !isSimulated) {
-      final alignedSize = math.max(16, (sizeInBytes + 3) & ~3);
-      final gpuBuffer = device!.createBuffer(
-        GPUBufferDescriptor(
-          size: alignedSize,
-          usage:
-              GPUBufferUsageConstants.storage |
-              GPUBufferUsageConstants.copySrc |
-              GPUBufferUsageConstants.copyDst |
-              GPUBufferUsageConstants.uniform,
-        ),
+  ffi.Pointer<ffi.Void> allocateBuffer(
+    int sizeInBytes, {
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+  }) {
+    RangeError.checkNotNegative(sizeInBytes, 'sizeInBytes');
+    if (sizeInBytes == 0) return ffi.nullptr;
+    final activeDevice = device;
+    if (activeDevice == null) {
+      throw const GpuDeviceException(
+        'Cannot allocate buffer on uninitialized BrowserWebGpuBackend.',
       );
-      _deviceBuffers[ptr.address] = gpuBuffer;
-      _bufferSizes[ptr.address] = sizeInBytes;
     }
-    return ptr;
+
+    final alignedSize = math.max(16, (sizeInBytes + 3) & ~3);
+    final gpuBuffer = activeDevice.createBuffer(
+      GPUBufferDescriptor(
+        size: alignedSize,
+        usage:
+            GPUBufferUsageConstants.storage |
+            GPUBufferUsageConstants.copySrc |
+            GPUBufferUsageConstants.copyDst |
+            GPUBufferUsageConstants.uniform |
+            usage.value,
+      ),
+    );
+    final handleId = _nextBufferHandleId++;
+    _deviceBuffers[handleId] = gpuBuffer;
+    _bufferSizes[handleId] = alignedSize;
+    return ffi.Pointer<ffi.Void>.fromAddress(handleId);
   }
 
   @override
-  void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes) {
-    if (pointer == ffi.nullptr) return;
-    final gpuBuffer = _deviceBuffers.remove(pointer.address);
+  void freeBuffer(ffi.Pointer<ffi.Void> handle, int sizeInBytes) {
+    if (handle == ffi.nullptr) return;
+    final gpuBuffer = _deviceBuffers.remove(handle.address);
     if (gpuBuffer != null) {
       try {
         gpuBuffer.destroy();
       } catch (_) {}
     }
-    _bufferSizes.remove(pointer.address);
-    calloc.free(pointer);
+    _bufferSizes.remove(handle.address);
   }
 
   @override
@@ -457,17 +452,17 @@ final class BrowserWebGpuBackend extends GpuBackend {
     int offset = 0,
   }) {
     super.copyHostToBuffer(src, dst, bytes, offset: offset);
-    if (device != null && !isSimulated && bytes > 0) {
-      final gpuBuffer = _deviceBuffers[dst.address.address];
+    if (device != null && bytes > 0) {
+      final gpuBuffer = _deviceBuffers[dst.nativeHandle.address];
       if (gpuBuffer != null) {
-        final srcBytes = src.asTypedList(bytes);
-        final jsArray = srcBytes.toJS;
+        final sourceBytes = src.asTypedList(bytes);
+        final jsArray = sourceBytes.toJS;
         device!.queue.writeBuffer(gpuBuffer, offset, jsArray, 0, bytes);
       }
     }
   }
 
-  /// Asynchronously copies memory from GPU device buffer [src] into host pointer [dst]
+  /// Copies memory from GPU device buffer [src] into host pointer [dst]
   /// via a staging buffer and WebGPU `mapAsync(GPUMapMode.READ)`.
   Future<void> copyBufferToHostAsync(
     GpuBuffer src,
@@ -475,12 +470,12 @@ final class BrowserWebGpuBackend extends GpuBackend {
     int bytes, {
     int offset = 0,
   }) async {
-    if (device == null || isSimulated || bytes <= 0) {
+    if (device == null || bytes <= 0) {
       copyBufferToHost(src, dst, bytes, offset: offset);
       return;
     }
-    final srcGpu = _deviceBuffers[src.address.address];
-    if (srcGpu == null) {
+    final sourceGpu = _deviceBuffers[src.nativeHandle.address];
+    if (sourceGpu == null) {
       copyBufferToHost(src, dst, bytes, offset: offset);
       return;
     }
@@ -495,7 +490,13 @@ final class BrowserWebGpuBackend extends GpuBackend {
     );
 
     final encoder = device!.createCommandEncoder();
-    encoder.copyBufferToBuffer(srcGpu, offset, stagingBuffer, 0, alignedBytes);
+    encoder.copyBufferToBuffer(
+      sourceGpu,
+      offset,
+      stagingBuffer,
+      0,
+      alignedBytes,
+    );
     final commandBuffer = encoder.finish();
     device!.queue.submit([commandBuffer].toJS);
 
@@ -504,8 +505,8 @@ final class BrowserWebGpuBackend extends GpuBackend {
         .toDart;
     final arrayBuffer = stagingBuffer.getMappedRange(0, alignedBytes);
     final dartBytes = arrayBuffer.toDart.asUint8List();
-    final dstBytes = dst.asTypedList(bytes);
-    dstBytes.setRange(0, bytes, dartBytes);
+    final destinationBytes = dst.asTypedList(bytes);
+    destinationBytes.setRange(0, bytes, dartBytes);
 
     stagingBuffer.unmap();
     stagingBuffer.destroy();
@@ -526,16 +527,16 @@ final class BrowserWebGpuBackend extends GpuBackend {
       srcOffset: srcOffset,
       dstOffset: dstOffset,
     );
-    if (device != null && !isSimulated && bytes > 0) {
-      final srcGpu = _deviceBuffers[src.address.address];
-      final dstGpu = _deviceBuffers[dst.address.address];
-      if (srcGpu != null && dstGpu != null) {
+    if (device != null && bytes > 0) {
+      final sourceGpu = _deviceBuffers[src.nativeHandle.address];
+      final destinationGpu = _deviceBuffers[dst.nativeHandle.address];
+      if (sourceGpu != null && destinationGpu != null) {
         final alignedBytes = math.max(16, (bytes + 3) & ~3);
         final encoder = device!.createCommandEncoder();
         encoder.copyBufferToBuffer(
-          srcGpu,
+          sourceGpu,
           srcOffset,
-          dstGpu,
+          destinationGpu,
           dstOffset,
           alignedBytes,
         );
@@ -560,7 +561,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
       );
     }
     if (buffers.any((b) => b.isDisposed)) {
-      throw GpuMemoryException(
+      throw const GpuMemoryException(
         'Cannot dispatch pipeline with disposed buffers.',
       );
     }
@@ -590,15 +591,13 @@ final class BrowserWebGpuBackend extends GpuBackend {
     }
 
     _dispatchLog.add(
-      "${shaderModule.name}($workgroupsX, $workgroupsY, $workgroupsZ)",
+      '${shaderModule.name}($workgroupsX, $workgroupsY, $workgroupsZ)',
     );
 
-    if (isSimulated || device == null) {
-      final cpuKernel = shaderModule.metadata['cpu_kernel'];
-      if (cpuKernel is Function) {
-        cpuKernel(buffers, uniforms, workgroupsX, workgroupsY, workgroupsZ);
-      }
-      return;
+    if (device == null) {
+      throw const GpuDeviceException(
+        'Cannot dispatch compute pipeline on uninitialized BrowserWebGpuBackend.',
+      );
     }
 
     final pipeline = _getOrCreatePipeline(shaderModule);
@@ -608,10 +607,10 @@ final class BrowserWebGpuBackend extends GpuBackend {
 
     if (uniforms != null && uniforms.isNotEmpty) {
       final u32List = Uint32List.fromList(uniforms);
-      final uSize = math.max(16, (u32List.lengthInBytes + 15) & ~15);
+      final uniformSize = math.max(16, (u32List.lengthInBytes + 15) & ~15);
       uniformBuffer = device!.createBuffer(
         GPUBufferDescriptor(
-          size: uSize,
+          size: uniformSize,
           usage:
               GPUBufferUsageConstants.uniform | GPUBufferUsageConstants.copyDst,
         ),
@@ -633,7 +632,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
       } else {
         if (bufferIndex < buffers.length) {
           final gpuBuffer =
-              _deviceBuffers[buffers[bufferIndex].address.address];
+              _deviceBuffers[buffers[bufferIndex].nativeHandle.address];
           if (gpuBuffer != null) {
             entries.add(
               GPUBindGroupEntry(
@@ -661,8 +660,8 @@ final class BrowserWebGpuBackend extends GpuBackend {
     pass.dispatchWorkgroups(workgroupsX, workgroupsY, workgroupsZ);
     pass.end();
 
-    final cmdBuffer = encoder.finish();
-    device!.queue.submit([cmdBuffer].toJS);
+    final commandBuffer = encoder.finish();
+    device!.queue.submit([commandBuffer].toJS);
   }
 
   /// Compiles or retrieves a cached [GPUComputePipeline] for [shaderModule].
@@ -671,7 +670,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
         '${shaderModule.name}_${shaderModule.entryPoint}_${shaderModule.code}';
     if (_pipelineCache[key] case final cached?) return cached;
 
-    final sm = device!.createShaderModule(
+    final module = device!.createShaderModule(
       GPUShaderModuleDescriptor(
         label: shaderModule.name,
         code: shaderModule.code,
@@ -679,10 +678,10 @@ final class BrowserWebGpuBackend extends GpuBackend {
     );
     final pipeline = device!.createComputePipeline(
       GPUComputePipelineDescriptor(
-        label: "${shaderModule.name}_pipeline",
-        layout: "auto".toJS,
+        label: '${shaderModule.name}_pipeline',
+        layout: 'auto'.toJS,
         compute: GPUProgrammableStage(
-          module: sm,
+          module: module,
           entryPoint: shaderModule.entryPoint,
         ),
       ),
@@ -697,9 +696,9 @@ final class BrowserWebGpuBackend extends GpuBackend {
     if (_isDisposed) return;
     _isDisposed = true;
 
-    for (final buf in _deviceBuffers.values) {
+    for (final gpuBuffer in _deviceBuffers.values) {
       try {
-        buf.destroy();
+        gpuBuffer.destroy();
       } catch (_) {}
     }
     _deviceBuffers.clear();
@@ -712,15 +711,15 @@ final class BrowserWebGpuBackend extends GpuBackend {
   }
 }
 
+/// Synchronously creates a default [GpuBackend] placeholder on web platforms.
+GpuBackend createDefaultGpuBackend() => BrowserWebGpuBackend();
+
 /// Creates a [GpuDevice] backed by a browser WebGPU compute engine.
 Future<GpuDevice> createWebGpuDevice({
-  String name = "Browser WebGPU Device",
+  String name = 'Browser WebGPU Device',
   bool enableMemoryPool = true,
-  bool fallbackToSimulation = true,
 }) async {
-  final backend = await BrowserWebGpuBackend.create(
-    fallbackToSimulation: fallbackToSimulation,
-  );
+  final backend = await BrowserWebGpuBackend.create();
   return GpuDevice.create(
     name: name,
     type: GpuDeviceType.webgpu,

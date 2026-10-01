@@ -13,10 +13,11 @@
 // limitations under the License.
 
 import "dart:math" as math;
-import "package:test/test.dart";
-import "package:gpuarray/gpuarray.dart";
 import "package:gpuarray/nn.dart" as nn;
+import "package:gpuarray/src/dtype.dart";
+import "package:gpuarray/src/gpu_array.dart" hide ResourceScope, ScopedResource;
 import "package:resource_scope/resource_scope.dart";
+import "package:test/test.dart";
 
 void main() {
   group("Modern Transformer & LLM Primitives (Stream 3)", () {
@@ -145,6 +146,9 @@ void main() {
           expect(mha.outProj.weight.grad, isNotNull);
           expect(input.grad, isNotNull);
           expect(input.grad!.shape, equals([batchSize, seqLen, embedDim]));
+
+          final mhaAlias = nn.MultiHeadAttention(embedDim, numHeads);
+          expect(mhaAlias, isA<nn.MultiheadAttention>());
         });
       },
     );
@@ -205,7 +209,7 @@ void main() {
         ResourceScope.scope(() {
           const dim = 4;
           const seqLen = 3;
-          final rope = nn.RotaryEmbedding(dim, maxSeqLen: 16);
+          final rope = nn.RotaryEmbedding(dim, maxSequenceLength: 16);
 
           final x = GpuArray.fromList(
             [1.0, 2.0, 3.0, 4.0, 0.5, 1.5, 2.5, 3.5, -1.0, 0.0, 1.0, 2.0],

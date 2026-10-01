@@ -23,13 +23,10 @@ void main() {
   late GpuDevice device;
 
   setUpAll(() {
-    device = GpuDevice.cpu();
-    device.detachFromScope();
+    device = GpuDevice.defaultDevice;
   });
 
-  tearDownAll(() {
-    device.dispose();
-  });
+  tearDownAll(() {});
 
   void expectZeroLeaks(void Function() body) {
     final initialBuffers = device.activeBufferCount;

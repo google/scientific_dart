@@ -16,27 +16,95 @@ import 'dart:ffi' as ffi;
 import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 import 'package:resource_scope/resource_scope.dart';
-import 'package:gpuarray/src/backend/memory_pool.dart';
 import 'package:gpuarray/gpuarray.dart';
 
 class TrackingBackend extends GpuBackend {
-  final CpuVectorBackend _inner = const CpuVectorBackend();
+  final WgpuNativeBackend _inner = WgpuNativeBackend.createSync();
   int allocCount = 0;
   int freeCount = 0;
 
   @override
-  GpuDeviceType get deviceType => GpuDeviceType.cpu;
+  GpuDeviceType get deviceType => GpuDeviceType.webgpu;
 
   @override
-  ffi.Pointer<ffi.Uint8> allocateBuffer(int sizeInBytes) {
+  ffi.Pointer<ffi.Void> allocateBuffer(
+    int sizeInBytes, {
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+  }) {
     allocCount++;
-    return _inner.allocateBuffer(sizeInBytes);
+    return _inner.allocateBuffer(sizeInBytes, usage: usage);
   }
 
   @override
-  void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes) {
+  void freeBuffer(ffi.Pointer<ffi.Void> handle, int sizeInBytes) {
     freeCount++;
-    _inner.freeBuffer(pointer, sizeInBytes);
+    _inner.freeBuffer(handle, sizeInBytes);
+  }
+
+  @override
+  void copyHostToBuffer(
+    ffi.Pointer<ffi.Uint8> src,
+    GpuBuffer dst,
+    int bytes, {
+    int offset = 0,
+  }) {
+    _inner.copyHostToBuffer(src, dst, bytes, offset: offset);
+  }
+
+  @override
+  void copyBufferToHost(
+    GpuBuffer src,
+    ffi.Pointer<ffi.Uint8> dst,
+    int bytes, {
+    int offset = 0,
+  }) {
+    _inner.copyBufferToHost(src, dst, bytes, offset: offset);
+  }
+
+  @override
+  void copyBufferToBuffer(
+    GpuBuffer src,
+    GpuBuffer dst,
+    int bytes, {
+    int srcOffset = 0,
+    int dstOffset = 0,
+  }) {
+    _inner.copyBufferToBuffer(
+      src,
+      dst,
+      bytes,
+      srcOffset: srcOffset,
+      dstOffset: dstOffset,
+    );
+  }
+
+  @override
+  void clearBuffer(GpuBuffer buffer, {int offset = 0, int? bytes}) {
+    _inner.clearBuffer(buffer, offset: offset, bytes: bytes);
+  }
+
+  @override
+  void dispatchComputePipeline({
+    required WgslShaderModule shaderModule,
+    required List<GpuBuffer> buffers,
+    List<int>? uniforms,
+    required int workgroupsX,
+    int workgroupsY = 1,
+    int workgroupsZ = 1,
+  }) {
+    _inner.dispatchComputePipeline(
+      shaderModule: shaderModule,
+      buffers: buffers,
+      uniforms: uniforms,
+      workgroupsX: workgroupsX,
+      workgroupsY: workgroupsY,
+      workgroupsZ: workgroupsZ,
+    );
+  }
+
+  @override
+  void dispose() {
+    _inner.dispose();
   }
 }
 
@@ -194,30 +262,39 @@ void main() {
       device.dispose();
     });
 
-    test('GpuBuffer.unmanaged does not free external native pointers', () {
-      final backend = TrackingBackend();
-      final device = GpuDevice.create(backend: backend);
+    test(
+      'GpuMemoryPool zeroes recycled buffers on GPU and updates sizeInBytes on acquire',
+      () {
+        final device = GpuDevice.create(enableMemoryPool: true);
 
-      final nativePtr = calloc<ffi.Uint8>(128);
-      nativePtr[0] = 42;
+        // Allocate 80 bytes (bucket size 128), fill with non-zero bytes
+        final buf1 = device.createBuffer(
+          sizeInBytes: 80,
+          usage: GpuBufferUsage.storage,
+        );
+        expect(buf1.sizeInBytes, equals(80));
+        expect(buf1.allocatedBytes, equals(128));
+        buf1.writeBytes(List<int>.filled(80, 0xAB));
+        expect(buf1.readBytes(length: 4), equals([0xAB, 0xAB, 0xAB, 0xAB]));
 
-      final unmanagedBuf = GpuBuffer.unmanaged(
-        nativePtr.cast<ffi.Void>(),
-        128,
-        device: device,
-      );
-      expect(unmanagedBuf.isUnmanaged, isTrue);
+        // Dispose to return to pool
+        buf1.dispose();
 
-      unmanagedBuf.dispose();
-      expect(unmanagedBuf.isDisposed, isTrue);
-      expect(backend.freeCount, equals(0));
+        // Re-acquire from the same 128-byte bucket with a different requested size (96)
+        final buf2 = device.createBuffer(
+          sizeInBytes: 96,
+          usage: GpuBufferUsage.storage,
+        );
+        expect(identical(buf1, buf2), isTrue);
+        expect(buf2.sizeInBytes, equals(96));
+        expect(buf2.allocatedBytes, equals(128));
+        // Recycled buffer must be zero-cleared on the GPU
+        expect(buf2.readBytes(), equals(List<int>.filled(96, 0)));
 
-      // Native memory is still valid and readable
-      expect(nativePtr[0], equals(42));
-      calloc.free(nativePtr);
-
-      device.dispose();
-    });
+        buf2.dispose();
+        device.dispose();
+      },
+    );
 
     test('Negative sizeInBytes throws ArgumentError', () {
       final device = GpuDevice.create(enableMemoryPool: true);
@@ -232,10 +309,6 @@ void main() {
           usage: GpuBufferUsage.storage,
           device: device,
         ),
-        throwsA(isA<ArgumentError>()),
-      );
-      expect(
-        () => GpuBuffer.unmanaged(ffi.nullptr, -5, device: device),
         throwsA(isA<ArgumentError>()),
       );
 

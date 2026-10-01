@@ -18,7 +18,7 @@ import '../dtype.dart';
 import '../exceptions.dart';
 import '../gpu_array.dart';
 
-void _checkArrayNotDisposed(GpuArray arr, String name) {
+void _checkArrayNotDisposed(GpuArray<DTypeTag> arr, String name) {
   if (arr.isDisposed || arr.buffer.isDisposed) {
     throw GpuDeviceDisposedException(
       'Cannot operate on disposed GpuArray ($name).',
@@ -33,14 +33,21 @@ void _checkArrayNotDisposed(GpuArray arr, String name) {
 ///
 /// If [out] is provided, the result is written into [out] and returned.
 GpuArray<T> where<T extends DTypeTag>(
-  GpuArray condition,
-  GpuArray x,
-  GpuArray y, {
+  GpuArray<DTypeTag> condition,
+  GpuArray<DTypeTag> x,
+  GpuArray<DTypeTag> y, {
   GpuArray<T>? out,
 }) {
   _checkArrayNotDisposed(condition, 'condition');
   _checkArrayNotDisposed(x, 'x');
   _checkArrayNotDisposed(y, 'y');
+  if (condition.device != x.device || y.device != x.device) {
+    throw ArgumentError.value(
+      y.device,
+      'device',
+      'Operands must be on the same WebGPU device.',
+    );
+  }
 
   final outShape = broadcastShapes(
     condition.shape,
@@ -51,6 +58,13 @@ GpuArray<T> where<T extends DTypeTag>(
   final GpuArray<T> result;
   if (out != null) {
     _checkArrayNotDisposed(out, 'out');
+    if (out.device != x.device) {
+      throw ArgumentError.value(
+        out.device,
+        'out.device',
+        'Must be on the same WebGPU device as inputs.',
+      );
+    }
     if (out.size > 1 && out.strides.contains(0)) {
       throw ArgumentError.value(
         out,
@@ -59,7 +73,11 @@ GpuArray<T> where<T extends DTypeTag>(
       );
     }
     if (!areShapesEqual(out.shape, outShape)) {
-      throw GpuShapeMismatchException('where(out)', out.shape, outShape);
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape.',
+      );
     }
     if (out.dtype != outDType) {
       throw ArgumentError.value(
@@ -73,27 +91,36 @@ GpuArray<T> where<T extends DTypeTag>(
     result = GpuArray<T>.empty(outShape, outDType, device: x.device);
   }
 
-  GpuKernels.executeWhere(
-    cond: condition.buffer,
-    shapeCond: condition.shape,
-    stridesCond: condition.strides,
-    offsetCond: condition.offsetElements,
-    srcX: x.buffer,
-    shapeX: x.shape,
-    stridesX: x.strides,
-    offsetX: x.offsetElements,
-    dtypeX: x.dtype,
-    srcY: y.buffer,
-    shapeY: y.shape,
-    stridesY: y.strides,
-    offsetY: y.offsetElements,
-    dtypeY: y.dtype,
-    dst: result.buffer,
-    outShape: outShape,
-    outStrides: result.strides,
-    offsetDst: result.offsetElements,
-    dtypeDst: outDType,
-  );
+  final condBool = condition.dtype == DType.boolean
+      ? condition
+      : condition.astype<Boolean>(DType.boolean);
+  try {
+    GpuKernels.executeWhere(
+      cond: condBool.buffer,
+      shapeCond: condBool.shape,
+      stridesCond: condBool.strides,
+      offsetCond: condBool.offsetElements,
+      srcX: x.buffer,
+      shapeX: x.shape,
+      stridesX: x.strides,
+      offsetX: x.offsetElements,
+      dtypeX: x.dtype,
+      srcY: y.buffer,
+      shapeY: y.shape,
+      stridesY: y.strides,
+      offsetY: y.offsetElements,
+      dtypeY: y.dtype,
+      dst: result.buffer,
+      outShape: outShape,
+      outStrides: result.strides,
+      offsetDst: result.offsetElements,
+      dtypeDst: outDType,
+    );
+  } finally {
+    if (!identical(condBool, condition)) {
+      condBool.dispose();
+    }
+  }
 
   return result;
 }
@@ -103,10 +130,10 @@ GpuArray<T> where<T extends DTypeTag>(
 ///
 /// If [out] is provided, the final result is written into [out] and returned.
 GpuArray<T> select<T extends DTypeTag>(
-  List<GpuArray> condlist,
-  List<GpuArray> choicelist, {
-  GpuArray? defaultValue,
-  GpuArray? defaultArr,
+  List<GpuArray<DTypeTag>> condlist,
+  List<GpuArray<DTypeTag>> choicelist, {
+  GpuArray<DTypeTag>? defaultValue,
+  GpuArray<DTypeTag>? defaultArr,
   GpuArray<T>? out,
 }) {
   if (condlist.isEmpty) {
@@ -148,7 +175,7 @@ GpuArray<T> select<T extends DTypeTag>(
     final choice = choicelist[i];
     final isLast = i == 0;
     final next = where<T>(cond, choice, current, out: isLast ? out : null);
-    if (!identical(next, current)) {
+    if (!identical(current, fallback) && !identical(next, current)) {
       current.dispose();
     }
     current = next;
@@ -159,104 +186,132 @@ GpuArray<T> select<T extends DTypeTag>(
 
 /// Extracts a 1D array of the elements of [arr] that satisfy the boolean
 /// [condition].
-GpuArray<T> extract<T extends DTypeTag>(GpuArray condition, GpuArray<T> arr) {
+GpuArray<T> extract<T extends DTypeTag>(
+  GpuArray<DTypeTag> condition,
+  GpuArray<T> arr,
+) {
   _checkArrayNotDisposed(condition, 'condition');
   _checkArrayNotDisposed(arr, 'arr');
-
-  final flatIndices = flatnonzero(condition);
-  final count = flatIndices.shape[0];
-  if (count == 0) {
-    flatIndices.dispose();
-    return GpuArray<T>.zeros([0], arr.dtype, device: arr.device);
+  if (condition.device != arr.device) {
+    throw ArgumentError.value(
+      condition.device,
+      'condition.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
   }
 
-  final flatArr = arr.flatten();
-  final result = GpuArray<T>.empty([count], arr.dtype, device: arr.device);
-
+  final flatIndices = flatnonzero(condition);
   try {
-    final flatIndicesList = flatIndices.toList().cast<int>();
-    for (var i = 0; i < count; i++) {
-      final srcIndex = flatIndicesList[i];
-      final val = readBufferAny(
-        flatArr.buffer,
-        flatArr.dtype,
-        srcIndex,
-        offsetElements: flatArr.offsetElements,
-      );
-      writeBufferAny(result.buffer, arr.dtype, i, val);
+    final count = flatIndices.shape[0];
+    if (count == 0) {
+      return GpuArray<T>.zeros([0], arr.dtype, device: arr.device);
+    }
+    final flatArr = arr.flatten();
+    try {
+      return take<T>(flatArr, flatIndices);
+    } finally {
+      if (!identical(flatArr, arr)) {
+        flatArr.dispose();
+      }
     }
   } finally {
     flatIndices.dispose();
-    if (!identical(flatArr, arr)) {
-      flatArr.dispose();
-    }
   }
-
-  return result;
 }
+
+/// Extracts elements of [arr] matching the boolean mask [mask] (alias for [extract]).
+GpuArray<T> booleanMask<T extends DTypeTag>(
+  GpuArray<T> arr,
+  GpuArray<DTypeTag> mask,
+) => extract<T>(mask, arr);
 
 /// Takes elements from [arr] along [axis] (or from the flattened array if
 /// [axis] is `null`) at the given [indices].
 GpuArray<T> take<T extends DTypeTag>(
   GpuArray<T> arr,
-  GpuArray indices, {
+  GpuArray<DTypeTag> indices, {
   int? axis,
   GpuArray<T>? out,
 }) {
   _checkArrayNotDisposed(arr, 'arr');
   _checkArrayNotDisposed(indices, 'indices');
+  if (indices.device != arr.device) {
+    throw ArgumentError.value(
+      indices.device,
+      'indices.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
+  }
+  if (!indices.dtype.isInteger) {
+    throw ArgumentError.value(
+      indices.dtype,
+      'indices.dtype',
+      'Must be an integer DType.',
+    );
+  }
 
-  final indexList = indices.toList().map((e) => (e as num).toInt()).toList();
   if (axis == null) {
-    final flat = arr.flatten();
-    try {
-      final totalLen = flat.shape[0];
-      final outShape = List<int>.unmodifiable(indices.shape);
-      final GpuArray<T> result;
-      if (out != null) {
-        _checkArrayNotDisposed(out, 'out');
-        if (out.size > 1 && out.strides.contains(0)) {
-          throw ArgumentError.value(
-            out,
-            'out',
-            'Must be writeable and not a broadcasted view.',
-          );
-        }
-        if (!areShapesEqual(out.shape, outShape)) {
-          throw GpuShapeMismatchException('take(out)', out.shape, outShape);
-        }
-        result = out;
-      } else {
-        result = GpuArray<T>.empty(outShape, arr.dtype, device: arr.device);
-      }
-
-      for (var i = 0; i < indexList.length; i++) {
-        var k = indexList[i];
-        if (k < 0) k += totalLen;
-        if (k < 0 || k >= totalLen) {
-          throw IndexError.withLength(k, totalLen, name: 'indices');
-        }
-        final srcElemOffset = k * flat.strides[0];
-        final val = readBufferAny(
-          flat.buffer,
-          flat.dtype,
-          srcElemOffset,
-          offsetElements: flat.offsetElements,
-        );
-        writeBufferAny(
-          result.buffer,
-          result.dtype,
-          i,
-          val,
-          offsetElements: result.offsetElements,
+    final outShape = List<int>.unmodifiable(indices.shape);
+    final GpuArray<T> result;
+    if (out != null) {
+      _checkArrayNotDisposed(out, 'out');
+      if (out.device != arr.device) {
+        throw ArgumentError.value(
+          out.device,
+          'out.device',
+          'Must reside on the same GpuDevice (${arr.device}) as arr.',
         );
       }
-      return result;
-    } finally {
-      if (!identical(flat, arr)) {
-        flat.dispose();
+      if (out.size > 1 && out.strides.contains(0)) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must be writeable and not a broadcasted view.',
+        );
       }
+      if (!areShapesEqual(out.shape, outShape)) {
+        throw ArgumentError.value(
+          out.shape,
+          'out.shape',
+          'Must match expected output shape $outShape.',
+        );
+      }
+      if (out.dtype != arr.dtype) {
+        throw ArgumentError.value(
+          out.dtype,
+          'out.dtype',
+          'Must match arr.dtype (${arr.dtype}).',
+        );
+      }
+      result = out;
+    } else {
+      result = GpuArray<T>.empty(outShape, arr.dtype, device: arr.device);
     }
+
+    if (indices.size == 0) return result;
+    if (arr.size == 0) {
+      throw IndexError.withLength(0, 0, name: 'indices');
+    }
+
+    GpuKernels.executeTake(
+      src: arr.buffer,
+      shapeSrc: arr.shape,
+      stridesSrc: arr.strides,
+      offsetSrc: arr.offsetElements,
+      dtypeSrc: arr.dtype,
+      indices: indices.buffer,
+      shapeIndices: indices.shape,
+      stridesIndices: indices.strides,
+      offsetIndices: indices.offsetElements,
+      dtypeIndices: indices.dtype,
+      dst: result.buffer,
+      outShape: outShape,
+      outStrides: result.strides,
+      offsetDst: result.offsetElements,
+      dtypeDst: arr.dtype,
+      axis: null,
+    );
+    return result;
   }
 
   final rank = arr.shape.length;
@@ -265,7 +320,7 @@ GpuArray<T> take<T extends DTypeTag>(
     throw GpuAxisOutOfBoundsException(axis, rank);
   }
 
-  final axisLen = arr.shape[normAxis];
+  final axisLength = arr.shape[normAxis];
   final outShape = <int>[
     ...arr.shape.sublist(0, normAxis),
     ...indices.shape,
@@ -275,6 +330,13 @@ GpuArray<T> take<T extends DTypeTag>(
   final GpuArray<T> result;
   if (out != null) {
     _checkArrayNotDisposed(out, 'out');
+    if (out.device != arr.device) {
+      throw ArgumentError.value(
+        out.device,
+        'out.device',
+        'Must reside on the same GpuDevice (${arr.device}) as arr.',
+      );
+    }
     if (out.size > 1 && out.strides.contains(0)) {
       throw ArgumentError.value(
         out,
@@ -283,7 +345,18 @@ GpuArray<T> take<T extends DTypeTag>(
       );
     }
     if (!areShapesEqual(out.shape, outShape)) {
-      throw GpuShapeMismatchException('take(out)', out.shape, outShape);
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape.',
+      );
+    }
+    if (out.dtype != arr.dtype) {
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must match arr.dtype (${arr.dtype}).',
+      );
     }
     result = out;
   } else {
@@ -292,152 +365,11 @@ GpuArray<T> take<T extends DTypeTag>(
 
   final totalOut = computeSize(outShape);
   if (totalOut == 0) return result;
-
-  final indexRank = indices.shape.length;
-  final indexStrides = computeCStrides(indices.shape);
-  final outRank = outShape.length;
-  final coords = List<int>.filled(outRank, 0);
-
-  for (var i = 0; i < totalOut; i++) {
-    var flatIndexPos = 0;
-    for (var d = 0; d < indexRank; d++) {
-      flatIndexPos += coords[normAxis + d] * indexStrides[d];
-    }
-    var k = indexList[flatIndexPos];
-    if (k < 0) k += axisLen;
-    if (k < 0 || k >= axisLen) {
-      throw IndexError.withLength(k, axisLen, name: 'indices');
-    }
-
-    var srcElemOffset = 0;
-    for (var d = 0; d < rank; d++) {
-      final int coord;
-      if (d < normAxis) {
-        coord = coords[d];
-      } else if (d == normAxis) {
-        coord = k;
-      } else {
-        coord = coords[d - 1 + indexRank];
-      }
-      srcElemOffset += coord * arr.strides[d];
-    }
-
-    var dstElemOffset = 0;
-    for (var d = 0; d < outRank; d++) {
-      dstElemOffset += coords[d] * result.strides[d];
-    }
-
-    final val = readBufferAny(
-      arr.buffer,
-      arr.dtype,
-      srcElemOffset,
-      offsetElements: arr.offsetElements,
-    );
-    writeBufferAny(
-      result.buffer,
-      result.dtype,
-      dstElemOffset,
-      val,
-      offsetElements: result.offsetElements,
-    );
-
-    for (var d = outRank - 1; d >= 0; d--) {
-      coords[d]++;
-      if (coords[d] < outShape[d]) break;
-      coords[d] = 0;
-    }
+  if (axisLength == 0) {
+    throw IndexError.withLength(0, 0, name: 'indices');
   }
 
-  return result;
-}
-
-/// Replaces specified elements of [arr] with [values] using flat 1D [indices].
-void put<T extends DTypeTag>(
-  GpuArray<T> arr,
-  GpuArray indices,
-  GpuArray values,
-) {
-  _checkArrayNotDisposed(arr, 'arr');
-  _checkArrayNotDisposed(indices, 'indices');
-  _checkArrayNotDisposed(values, 'values');
-
-  final totalLen = arr.size;
-  final indexList = indices.toList().map((e) => (e as num).toInt()).toList();
-  final valList = values.toList();
-  if (valList.isEmpty && indexList.isNotEmpty) {
-    throw ArgumentError.value(values, 'values', 'Must not be empty.');
-  }
-
-  final rank = arr.shape.length;
-  final cStrides = computeCStrides(arr.shape);
-
-  for (var i = 0; i < indexList.length; i++) {
-    var k = indexList[i];
-    if (k < 0) k += totalLen;
-    if (k < 0 || k >= totalLen) {
-      throw IndexError.withLength(k, totalLen, name: 'indices');
-    }
-
-    var rem = k;
-    var dstElemOffset = 0;
-    for (var d = 0; d < rank; d++) {
-      final coord = rem ~/ cStrides[d];
-      rem = rem % cStrides[d];
-      dstElemOffset += coord * arr.strides[d];
-    }
-
-    final val = valList[i % valList.length];
-    writeBufferAny(
-      arr.buffer,
-      arr.dtype,
-      dstElemOffset,
-      val,
-      offsetElements: arr.offsetElements,
-    );
-  }
-}
-
-/// Takes values from [arr] along [axis] at specified 1D or multi-dimensional
-/// [indices].
-GpuArray<T> takeAlongAxis<T extends DTypeTag>(
-  GpuArray<T> arr,
-  GpuArray indices,
-  int axis, {
-  GpuArray<T>? out,
-}) {
-  _checkArrayNotDisposed(arr, 'arr');
-  _checkArrayNotDisposed(indices, 'indices');
-
-  final rank = arr.shape.length;
-  final normAxis = axis < 0 ? axis + rank : axis;
-  if (normAxis < 0 || normAxis >= rank) {
-    throw GpuAxisOutOfBoundsException(axis, rank);
-  }
-
-  final outShape = indices.shape;
-  final GpuArray<T> result;
-  if (out != null) {
-    _checkArrayNotDisposed(out, 'out');
-    if (out.size > 1 && out.strides.contains(0)) {
-      throw ArgumentError.value(
-        out,
-        'out',
-        'Must be writeable and not a broadcasted view.',
-      );
-    }
-    if (!areShapesEqual(out.shape, outShape)) {
-      throw GpuShapeMismatchException(
-        'takeAlongAxis(out)',
-        out.shape,
-        outShape,
-      );
-    }
-    result = out;
-  } else {
-    result = GpuArray<T>.empty(outShape, arr.dtype, device: arr.device);
-  }
-
-  GpuKernels.executeTakeAlongAxis(
+  GpuKernels.executeTake(
     src: arr.buffer,
     shapeSrc: arr.shape,
     stridesSrc: arr.strides,
@@ -459,12 +391,208 @@ GpuArray<T> takeAlongAxis<T extends DTypeTag>(
   return result;
 }
 
+/// Gathers elements from [arr] along [axis] (alias for [take]).
+GpuArray<T> gather<T extends DTypeTag>(
+  GpuArray<T> arr,
+  GpuArray<DTypeTag> indices, {
+  int? axis,
+  GpuArray<T>? out,
+}) => take<T>(arr, indices, axis: axis, out: out);
+
+/// Replaces specified elements of [arr] with [values] using flat 1D [indices].
+void put<T extends DTypeTag>(
+  GpuArray<T> arr,
+  GpuArray<DTypeTag> indices,
+  GpuArray<DTypeTag> values,
+) {
+  _checkArrayNotDisposed(arr, 'arr');
+  _checkArrayNotDisposed(indices, 'indices');
+  _checkArrayNotDisposed(values, 'values');
+  if (indices.device != arr.device) {
+    throw ArgumentError.value(
+      indices.device,
+      'indices.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
+  }
+  if (values.device != arr.device) {
+    throw ArgumentError.value(
+      values.device,
+      'values.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
+  }
+  if (!indices.dtype.isInteger) {
+    throw ArgumentError.value(
+      indices.dtype,
+      'indices.dtype',
+      'Must be an integer DType.',
+    );
+  }
+  if (values.size == 0 && indices.size > 0) {
+    throw ArgumentError.value(values, 'values', 'Must not be empty.');
+  }
+  if (indices.size == 0) return;
+  if (arr.size == 0) {
+    throw IndexError.withLength(0, 0, name: 'indices');
+  }
+
+  GpuKernels.executePut(
+    arr: arr.buffer,
+    shapeArr: arr.shape,
+    stridesArr: arr.strides,
+    offsetArr: arr.offsetElements,
+    dtypeArr: arr.dtype,
+    indices: indices.buffer,
+    shapeIndices: indices.shape,
+    stridesIndices: indices.strides,
+    offsetIndices: indices.offsetElements,
+    dtypeIndices: indices.dtype,
+    values: values.buffer,
+    shapeVal: values.shape,
+    stridesVal: values.strides,
+    offsetVal: values.offsetElements,
+    dtypeVal: values.dtype,
+  );
+}
+
+/// Scatters [values] into [arr] at flat [indices] (alias for [put]).
+void scatter<T extends DTypeTag>(
+  GpuArray<T> arr,
+  GpuArray<DTypeTag> indices,
+  GpuArray<DTypeTag> values,
+) => put<T>(arr, indices, values);
+
+/// Takes values from [arr] along [axis] at specified 1D or multi-dimensional
+/// [indices].
+GpuArray<T> takeAlongAxis<T extends DTypeTag>(
+  GpuArray<T> arr,
+  GpuArray<DTypeTag> indices,
+  int axis, {
+  GpuArray<T>? out,
+}) {
+  _checkArrayNotDisposed(arr, 'arr');
+  _checkArrayNotDisposed(indices, 'indices');
+  if (indices.device != arr.device) {
+    throw ArgumentError.value(
+      indices.device,
+      'indices.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
+  }
+  if (!indices.dtype.isInteger) {
+    throw ArgumentError.value(
+      indices.dtype,
+      'indices.dtype',
+      'Must be an integer DType.',
+    );
+  }
+
+  final rank = arr.shape.length;
+  if (indices.shape.length != rank) {
+    throw ArgumentError.value(
+      indices.shape,
+      'indices.shape',
+      'Must have the same rank ($rank) as arr (${arr.shape}).',
+    );
+  }
+  final normAxis = axis < 0 ? axis + rank : axis;
+  if (normAxis < 0 || normAxis >= rank) {
+    throw GpuAxisOutOfBoundsException(axis, rank);
+  }
+  final outShape = List<int>.filled(rank, 0);
+  final bStridesSrc = List<int>.filled(rank, 0);
+  final bStridesIndices = List<int>.filled(rank, 0);
+  for (var d = 0; d < rank; d++) {
+    if (d == normAxis) {
+      outShape[d] = indices.shape[d];
+      bStridesSrc[d] = arr.strides[d];
+      bStridesIndices[d] = indices.strides[d];
+    } else if (indices.shape[d] == arr.shape[d]) {
+      outShape[d] = indices.shape[d];
+      bStridesSrc[d] = arr.strides[d];
+      bStridesIndices[d] = indices.strides[d];
+    } else if (indices.shape[d] == 1) {
+      outShape[d] = arr.shape[d];
+      bStridesSrc[d] = arr.strides[d];
+      bStridesIndices[d] = 0;
+    } else if (arr.shape[d] == 1) {
+      outShape[d] = indices.shape[d];
+      bStridesSrc[d] = 0;
+      bStridesIndices[d] = indices.strides[d];
+    } else {
+      throw GpuShapeMismatchException(
+        'takeAlongAxis',
+        arr.shape,
+        indices.shape,
+      );
+    }
+  }
+
+  final GpuArray<T> result;
+  if (out != null) {
+    _checkArrayNotDisposed(out, 'out');
+    if (out.device != arr.device) {
+      throw ArgumentError.value(
+        out.device,
+        'out.device',
+        'Must reside on the same GpuDevice (${arr.device}) as arr.',
+      );
+    }
+    if (out.size > 1 && out.strides.contains(0)) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must be writeable and not a broadcasted view.',
+      );
+    }
+    if (!areShapesEqual(out.shape, outShape)) {
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape.',
+      );
+    }
+    if (out.dtype != arr.dtype) {
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must match arr.dtype (${arr.dtype}).',
+      );
+    }
+    result = out;
+  } else {
+    result = GpuArray<T>.empty(outShape, arr.dtype, device: arr.device);
+  }
+
+  GpuKernels.executeTakeAlongAxis(
+    src: arr.buffer,
+    shapeSrc: arr.shape,
+    stridesSrc: bStridesSrc,
+    offsetSrc: arr.offsetElements,
+    dtypeSrc: arr.dtype,
+    indices: indices.buffer,
+    shapeIndices: outShape,
+    stridesIndices: bStridesIndices,
+    offsetIndices: indices.offsetElements,
+    dtypeIndices: indices.dtype,
+    dst: result.buffer,
+    outShape: outShape,
+    outStrides: result.strides,
+    offsetDst: result.offsetElements,
+    dtypeDst: arr.dtype,
+    axis: normAxis,
+  );
+
+  return result;
+}
+
 /// Takes values from [arr] along [axis] at specified [indices].
 @Deprecated('Use takeAlongAxis instead.')
 // ignore: non_constant_identifier_names
 GpuArray<T> take_along_axis<T extends DTypeTag>(
   GpuArray<T> arr,
-  GpuArray indices,
+  GpuArray<DTypeTag> indices,
   int axis, {
   GpuArray<T>? out,
 }) => takeAlongAxis<T>(arr, indices, axis, out: out);
@@ -472,18 +600,62 @@ GpuArray<T> take_along_axis<T extends DTypeTag>(
 /// Puts [values] into [arr] along [axis] at positions specified by [indices].
 void putAlongAxis<T extends DTypeTag>(
   GpuArray<T> arr,
-  GpuArray indices,
-  GpuArray values,
+  GpuArray<DTypeTag> indices,
+  GpuArray<DTypeTag> values,
   int axis,
 ) {
   _checkArrayNotDisposed(arr, 'arr');
   _checkArrayNotDisposed(indices, 'indices');
   _checkArrayNotDisposed(values, 'values');
+  if (indices.device != arr.device) {
+    throw ArgumentError.value(
+      indices.device,
+      'indices.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
+  }
+  if (values.device != arr.device) {
+    throw ArgumentError.value(
+      values.device,
+      'values.device',
+      'Must reside on the same GpuDevice (${arr.device}) as arr.',
+    );
+  }
+  if (!indices.dtype.isInteger) {
+    throw ArgumentError.value(
+      indices.dtype,
+      'indices.dtype',
+      'Must be an integer DType.',
+    );
+  }
 
   final rank = arr.shape.length;
+  if (indices.shape.length != rank) {
+    throw ArgumentError.value(
+      indices.shape,
+      'indices.shape',
+      'Must have the same rank ($rank) as arr (${arr.shape}).',
+    );
+  }
   final normAxis = axis < 0 ? axis + rank : axis;
   if (normAxis < 0 || normAxis >= rank) {
     throw GpuAxisOutOfBoundsException(axis, rank);
+  }
+  final effShapeIndices = List<int>.filled(rank, 0);
+  final bStridesIndices = List<int>.filled(rank, 0);
+  for (var d = 0; d < rank; d++) {
+    if (d == normAxis) {
+      effShapeIndices[d] = indices.shape[d];
+      bStridesIndices[d] = indices.strides[d];
+    } else if (indices.shape[d] == arr.shape[d]) {
+      effShapeIndices[d] = arr.shape[d];
+      bStridesIndices[d] = indices.strides[d];
+    } else if (indices.shape[d] == 1) {
+      effShapeIndices[d] = arr.shape[d];
+      bStridesIndices[d] = 0;
+    } else {
+      throw GpuShapeMismatchException('putAlongAxis', arr.shape, indices.shape);
+    }
   }
 
   GpuKernels.executePutAlongAxis(
@@ -493,8 +665,8 @@ void putAlongAxis<T extends DTypeTag>(
     offsetArr: arr.offsetElements,
     dtypeArr: arr.dtype,
     indices: indices.buffer,
-    shapeIndices: indices.shape,
-    stridesIndices: indices.strides,
+    shapeIndices: effShapeIndices,
+    stridesIndices: bStridesIndices,
     offsetIndices: indices.offsetElements,
     dtypeIndices: indices.dtype,
     values: values.buffer,
@@ -511,96 +683,107 @@ void putAlongAxis<T extends DTypeTag>(
 // ignore: non_constant_identifier_names
 void put_along_axis<T extends DTypeTag>(
   GpuArray<T> arr,
-  GpuArray indices,
-  GpuArray values,
+  GpuArray<DTypeTag> indices,
+  GpuArray<DTypeTag> values,
   int axis,
 ) => putAlongAxis<T>(arr, indices, values, axis);
 
-bool _isNonZero(Object? val) {
-  if (val is Complex) {
-    return val.real != 0.0 || val.imag != 0.0;
-  }
-  if (val is bool) {
-    return val;
-  }
-  if (val is num) {
-    return val != 0;
-  }
-  return false;
-}
-
 /// Finds the indices of non-zero elements as a list of 1D arrays, one per
 /// dimension.
-List<GpuArray<Int32>> nonzero(GpuArray arr) {
+List<GpuArray<Int32>> nonzero(GpuArray<DTypeTag> arr) {
   _checkArrayNotDisposed(arr, 'arr');
   final rank = arr.shape.length;
-  final total = computeSize(arr.shape);
-  final coords = List<int>.filled(rank, 0);
-
-  final matchingCoords = List.generate(rank, (_) => <int>[]);
-
-  for (var i = 0; i < total; i++) {
-    var elemOffset = 0;
-    for (var d = 0; d < rank; d++) {
-      elemOffset += coords[d] * arr.strides[d];
-    }
-
-    final val = readBufferAny(
-      arr.buffer,
-      arr.dtype,
-      elemOffset,
-      offsetElements: arr.offsetElements,
-    );
-
-    if (_isNonZero(val)) {
-      for (var d = 0; d < rank; d++) {
-        matchingCoords[d].add(coords[d]);
-      }
-    }
-
-    for (var d = rank - 1; d >= 0; d--) {
-      coords[d]++;
-      if (coords[d] < arr.shape[d]) break;
-      coords[d] = 0;
+  if (rank == 0) {
+    final flat = arr.reshape([1]);
+    try {
+      return nonzero(flat);
+    } finally {
+      flat.dispose();
     }
   }
 
-  return matchingCoords.map((coordList) {
-    return GpuArray<Int32>.fromList(
-      coordList,
-      [coordList.length],
-      DType.int32,
-      device: arr.device,
-    );
-  }).toList();
+  final (prefixBuffer, count) = GpuKernels.executeNonZeroScan(
+    src: arr.buffer,
+    shapeSrc: arr.shape,
+    stridesSrc: arr.strides,
+    offsetSrc: arr.offsetElements,
+    dtypeSrc: arr.dtype,
+  );
+  try {
+    final results = <GpuArray<Int32>>[];
+    for (var d = 0; d < rank; d++) {
+      final axisOut = GpuArray<Int32>.empty(
+        [count],
+        DType.int32,
+        device: arr.device,
+      );
+      if (count > 0) {
+        GpuKernels.executeNonZeroScatter(
+          mode: 'nonzero_axis',
+          cond: arr.buffer,
+          shapeCond: arr.shape,
+          stridesCond: arr.strides,
+          offsetCond: arr.offsetElements,
+          dtypeCond: arr.dtype,
+          prefixBuffer: prefixBuffer,
+          src: arr.buffer,
+          stridesSrc: arr.strides,
+          offsetSrc: arr.offsetElements,
+          dtypeSrc: arr.dtype,
+          dst: axisOut.buffer,
+          offsetDst: 0,
+          dtypeDst: DType.int32,
+          targetAxis: d,
+        );
+      }
+      results.add(axisOut);
+    }
+    return results;
+  } finally {
+    prefixBuffer.dispose();
+  }
 }
 
 /// Finds indices that are non-zero in the flattened version of [arr].
-GpuArray<Int32> flatnonzero(GpuArray arr) {
+GpuArray<Int32> flatnonzero(GpuArray<DTypeTag> arr) {
   _checkArrayNotDisposed(arr, 'arr');
   final flat = arr.flatten();
   try {
-    final total = flat.shape[0];
-    final matching = <int>[];
-
-    for (var i = 0; i < total; i++) {
-      final val = readBufferAny(
-        flat.buffer,
-        flat.dtype,
-        i * flat.strides[0],
-        offsetElements: flat.offsetElements,
-      );
-      if (_isNonZero(val)) {
-        matching.add(i);
-      }
-    }
-
-    return GpuArray<Int32>.fromList(
-      matching,
-      [matching.length],
-      DType.int32,
-      device: arr.device,
+    final (prefixBuffer, count) = GpuKernels.executeNonZeroScan(
+      src: flat.buffer,
+      shapeSrc: flat.shape,
+      stridesSrc: flat.strides,
+      offsetSrc: flat.offsetElements,
+      dtypeSrc: flat.dtype,
     );
+    try {
+      final result = GpuArray<Int32>.empty(
+        [count],
+        DType.int32,
+        device: arr.device,
+      );
+      if (count > 0) {
+        GpuKernels.executeNonZeroScatter(
+          mode: 'flatnonzero',
+          cond: flat.buffer,
+          shapeCond: flat.shape,
+          stridesCond: flat.strides,
+          offsetCond: flat.offsetElements,
+          dtypeCond: flat.dtype,
+          prefixBuffer: prefixBuffer,
+          src: flat.buffer,
+          stridesSrc: flat.strides,
+          offsetSrc: flat.offsetElements,
+          dtypeSrc: flat.dtype,
+          dst: result.buffer,
+          offsetDst: 0,
+          dtypeDst: DType.int32,
+        );
+      }
+      return result;
+    } finally {
+      prefixBuffer.dispose();
+    }
   } finally {
     if (!identical(flat, arr)) {
       flat.dispose();
@@ -609,38 +792,42 @@ GpuArray<Int32> flatnonzero(GpuArray arr) {
 }
 
 /// Finds the indices of non-zero elements as a 2D array of shape `(N, rank)`.
-GpuArray<Int32> argwhere(GpuArray arr) {
+GpuArray<Int32> argwhere(GpuArray<DTypeTag> arr) {
   _checkArrayNotDisposed(arr, 'arr');
-  final nz = nonzero(arr);
+  final rank = arr.shape.length;
+  final (prefixBuffer, count) = GpuKernels.executeNonZeroScan(
+    src: arr.buffer,
+    shapeSrc: arr.shape,
+    stridesSrc: arr.strides,
+    offsetSrc: arr.offsetElements,
+    dtypeSrc: arr.dtype,
+  );
   try {
-    if (nz.isEmpty || nz[0].shape[0] == 0) {
-      return GpuArray<Int32>.zeros(
-        [0, arr.shape.length],
-        DType.int32,
-        device: arr.device,
-      );
-    }
-
-    final count = nz[0].shape[0];
-    final rank = arr.shape.length;
-    final list2D = <int>[];
-
-    final dimLists = nz.map((a) => a.toList().cast<int>()).toList();
-    for (var i = 0; i < count; i++) {
-      for (var d = 0; d < rank; d++) {
-        list2D.add(dimLists[d][i]);
-      }
-    }
-
-    return GpuArray<Int32>.fromList(
-      list2D,
+    final result = GpuArray<Int32>.empty(
       [count, rank],
       DType.int32,
       device: arr.device,
     );
-  } finally {
-    for (final coordArr in nz) {
-      coordArr.dispose();
+    if (count > 0 && rank > 0) {
+      GpuKernels.executeNonZeroScatter(
+        mode: 'argwhere',
+        cond: arr.buffer,
+        shapeCond: arr.shape,
+        stridesCond: arr.strides,
+        offsetCond: arr.offsetElements,
+        dtypeCond: arr.dtype,
+        prefixBuffer: prefixBuffer,
+        src: arr.buffer,
+        stridesSrc: arr.strides,
+        offsetSrc: arr.offsetElements,
+        dtypeSrc: arr.dtype,
+        dst: result.buffer,
+        offsetDst: 0,
+        dtypeDst: DType.int32,
+      );
     }
+    return result;
+  } finally {
+    prefixBuffer.dispose();
   }
 }

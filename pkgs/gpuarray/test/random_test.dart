@@ -13,10 +13,11 @@
 // limitations under the License.
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/src/gpu_array.dart' show ResourceScope;
 import 'package:test/test.dart';
 
 void main() {
-  group('Philox4x32Engine & RandomState (F10)', () {
+  group('Philox4x32Engine & RandomState (F18)', () {
     test('Philox4x32Engine is deterministic and supports reset/nextBlock', () {
       final engineA = Philox4x32Engine(seed: 42);
       final engineB = Philox4x32Engine(seed: 42);
@@ -121,6 +122,138 @@ void main() {
       }
     });
 
+    test('bernoulli, truncatedNormal, gamma, beta, and chisquare', () {
+      ResourceScope.scope(() {
+        final rng = RandomState(31415);
+        final bern = rng.bernoulli(p: 0.6, shape: <int>[64]);
+        for (final value in bern.toList().cast<double>()) {
+          expect(value == 0.0 || value == 1.0, isTrue);
+        }
+
+        final trunc = rng.truncatedNormal(
+          low: -1.5,
+          high: 1.5,
+          loc: 2.0,
+          scale: 0.5,
+          shape: <int>[64],
+        );
+        for (final value in trunc.toList().cast<double>()) {
+          expect(value, greaterThanOrEqualTo(1.25 - 1e-5));
+          expect(value, lessThanOrEqualTo(2.75 + 1e-5));
+        }
+
+        final gammaLarge = rng.gamma(alpha: 2.5, scale: 1.5, shape: <int>[64]);
+        final gammaSmall = rng.gamma(alpha: 0.5, scale: 2.0, shape: <int>[64]);
+        for (final value in [
+          ...gammaLarge.toList().cast<double>(),
+          ...gammaSmall.toList().cast<double>(),
+        ]) {
+          expect(value, greaterThan(0.0));
+          expect(value.isFinite, isTrue);
+        }
+
+        final betaSamples = rng.beta(a: 2.0, b: 3.0, shape: <int>[64]);
+        for (final value in betaSamples.toList().cast<double>()) {
+          expect(value, greaterThanOrEqualTo(0.0));
+          expect(value, lessThanOrEqualTo(1.0));
+        }
+
+        final chiSq = rng.chisquare(df: 4.0, shape: <int>[64]);
+        for (final value in chiSq.toList().cast<double>()) {
+          expect(value, greaterThan(0.0));
+          expect(value.isFinite, isTrue);
+        }
+      });
+    });
+
+    test('poisson, binomial, and categorical distributions', () {
+      ResourceScope.scope(() {
+        final rng = RandomState(271828);
+        final poisSmall = rng.poisson(lam: 4.0, shape: <int>[64]);
+        final poisLarge = rng.poisson(lam: 45.0, shape: <int>[32]);
+        for (final count in [
+          ...poisSmall.toList().cast<int>(),
+          ...poisLarge.toList().cast<int>(),
+        ]) {
+          expect(count, greaterThanOrEqualTo(0));
+        }
+
+        final binom = rng.binomial(n: 20, p: 0.35, shape: <int>[64]);
+        for (final successes in binom.toList().cast<int>()) {
+          expect(successes, greaterThanOrEqualTo(0));
+          expect(successes, lessThanOrEqualTo(20));
+        }
+
+        final logits = GpuArray.fromList(
+          <double>[-10.0, 0.0, 10.0, 10.0, 0.0, -10.0],
+          [2, 3],
+          DType.float64,
+        );
+        final catOut = GpuArray.zeros([2], DType.int64);
+        final catSamples = rng.categorical(logits, out: catOut);
+        expect(identical(catSamples, catOut), isTrue);
+        final classes = catSamples.toList().cast<int>();
+        expect(classes.length, equals(2));
+        for (final cls in classes) {
+          expect(cls, inInclusiveRange(0, 2));
+        }
+      });
+    });
+
+    test('weighted choice, 2D permutation, and strided out: views', () {
+      ResourceScope.scope(() {
+        final rng = RandomState(777);
+        final pop = GpuArray.fromList(
+          <int>[100, 200, 300, 400],
+          [4],
+          DType.int64,
+        );
+        final weightedWithReplace = rng.choice(
+          pop,
+          shape: <int>[12],
+          replace: true,
+          p: <double>[0.1, 0.2, 0.3, 0.4],
+        );
+        expect(weightedWithReplace.shape, equals(<int>[12]));
+        for (final item in weightedWithReplace.toList().cast<int>()) {
+          expect(<int>[100, 200, 300, 400], contains(item));
+        }
+
+        final weightedNoReplace = rng.choice(
+          pop,
+          shape: <int>[3],
+          replace: false,
+          p: <double>[0.1, 0.2, 0.3, 0.4],
+        );
+        final distinct = weightedNoReplace.toList().cast<int>().toSet();
+        expect(distinct.length, equals(3));
+
+        final matrix = GpuArray.fromList(
+          <double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+          [3, 2],
+          DType.float32,
+        );
+        final permutedMatrix = rng.permutation<Float32>(matrix);
+        expect(permutedMatrix.shape, equals(<int>[3, 2]));
+        final sortedVals = permutedMatrix.toList().cast<double>()..sort();
+        expect(sortedVals, equals(<double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]));
+
+        final fullOut = GpuArray.filled([6], -99.0, DType.float64);
+        final stridedOut = fullOut.slice([const Slice(0, 6, 2)]);
+        final res = rng.uniform(
+          low: 1.0,
+          high: 2.0,
+          shape: <int>[3],
+          out: stridedOut,
+        );
+        expect(identical(res, stridedOut), isTrue);
+        final fullVals = fullOut.toList().cast<double>();
+        expect(fullVals[1], equals(-99.0));
+        expect(fullVals[3], equals(-99.0));
+        expect(fullVals[5], equals(-99.0));
+      });
+    });
+
     test('RandomState permutation and shuffle support out: and in-place', () {
       final rng = RandomState(777);
       final outPerm = GpuArray.zeros([8], DType.int64);
@@ -138,7 +271,7 @@ void main() {
       }
     });
 
-    test('RandomState validates arguments', () {
+    test('RandomState validates arguments and disposed out: priority', () {
       final rng = RandomState(1);
       expect(
         () => rng.uniform(shape: <int>[4], low: 5.0, high: 2.0),
@@ -154,6 +287,13 @@ void main() {
         throwsArgumentError,
       );
       expect(() => rng.permutation<Int64>(-1), throwsArgumentError);
+
+      final disposedOut = GpuArray.zeros([4], DType.float64)..dispose();
+      expect(
+        () =>
+            rng.uniform(shape: <int>[8], low: 5.0, high: 1.0, out: disposedOut),
+        throwsStateError,
+      );
     });
   });
 }

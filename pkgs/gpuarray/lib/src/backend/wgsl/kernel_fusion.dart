@@ -594,7 +594,8 @@ final class CoordExpr extends Expr {
   final bool normalized;
 
   /// Creates a [CoordExpr] for [axis].
-  const CoordExpr(this.axis, {this.shape, this.normalized = false});
+  CoordExpr(this.axis, {List<int>? shape, this.normalized = false})
+    : shape = shape != null ? List.unmodifiable(shape) : null;
 
   @override
   String toWgsl() {
@@ -621,10 +622,10 @@ final class CoordExpr extends Expr {
         stride *= s[i];
       }
       final dim = s[axis];
-      final coordStr = '(idx / ${stride}u) % ${dim}u';
+      final coordinateExpression = '(idx / ${stride}u) % ${dim}u';
       return normalized
-          ? '(f32($coordStr) / ${dim.toDouble()}f)'
-          : 'f32($coordStr)';
+          ? '(f32($coordinateExpression) / ${dim.toDouble()}f)'
+          : 'f32($coordinateExpression)';
     }
     return normalized
         ? '(f32(idx) / f32(uniforms.total_elements))'
@@ -787,17 +788,18 @@ final class OffsetVarExpr extends Expr {
   final BoundaryMode boundary;
 
   /// Creates an [OffsetVarExpr] sampling [tensor] at [offsets].
-  const OffsetVarExpr(
+  OffsetVarExpr(
     this.tensor,
-    this.offsets, {
-    this.shape = const [],
+    List<int> offsets, {
+    List<int> shape = const [],
     this.boundary = BoundaryMode.clamp,
-  });
+  }) : offsets = List.unmodifiable(offsets),
+       shape = List.unmodifiable(shape);
 
   /// Generated WGSL helper function name for this stencil access.
   String get functionName {
-    final offStr = offsets.map((o) => o < 0 ? 'm${-o}' : 'p$o').join('_');
-    return 'stencil_${tensor.name}_${offStr}_${boundary.name}';
+    final offsetString = offsets.map((o) => o < 0 ? 'm${-o}' : 'p$o').join('_');
+    return 'stencil_${tensor.name}_${offsetString}_${boundary.name}';
   }
 
   @override
@@ -832,14 +834,14 @@ final class OffsetVarExpr extends Expr {
     if (offsets.length == 2) {
       final dr = offsets[0];
       final dc = offsets[1];
-      final String wStr;
-      final String hStr;
+      final String widthExpression;
+      final String heightExpression;
       if (shape.length >= 2) {
-        hStr = '${shape[0]}u';
-        wStr = '${shape[1]}u';
+        heightExpression = '${shape[0]}u';
+        widthExpression = '${shape[1]}u';
       } else {
-        wStr = 'u32(sqrt(f32(total_elements)))';
-        hStr = wStr;
+        widthExpression = 'u32(sqrt(f32(total_elements)))';
+        heightExpression = widthExpression;
       }
 
       String sampleLogic;
@@ -847,8 +849,8 @@ final class OffsetVarExpr extends Expr {
         case BoundaryMode.clamp:
           sampleLogic =
               '''
-  let W = $wStr;
-  let H = $hStr;
+  let W = $widthExpression;
+  let H = $heightExpression;
   let r = i32(idx / W);
   let c = i32(idx % W);
   let nr = clamp(r + ($dr), 0, i32(H - 1u));
@@ -859,8 +861,8 @@ final class OffsetVarExpr extends Expr {
         case BoundaryMode.wrap:
           sampleLogic =
               '''
-  let W = $wStr;
-  let H = $hStr;
+  let W = $widthExpression;
+  let H = $heightExpression;
   let r = i32(idx / W);
   let c = i32(idx % W);
   let nr = ((r + ($dr)) % i32(H) + i32(H)) % i32(H);
@@ -871,8 +873,8 @@ final class OffsetVarExpr extends Expr {
         case BoundaryMode.zero:
           sampleLogic =
               '''
-  let W = $wStr;
-  let H = $hStr;
+  let W = $widthExpression;
+  let H = $heightExpression;
   let r = i32(idx / W);
   let c = i32(idx % W);
   let nr = r + ($dr);
@@ -896,26 +898,26 @@ $sampleLogic}
         case BoundaryMode.clamp:
           sampleLogic =
               '''
-  let target = clamp(i32(idx) + ($d), 0, i32(total_elements - 1u));
-  return $tName[u32(target)];
+  let target_idx = clamp(i32(idx) + ($d), 0, i32(total_elements - 1u));
+  return $tName[u32(target_idx)];
 ''';
           break;
         case BoundaryMode.wrap:
           sampleLogic =
               '''
   let N = i32(total_elements);
-  let target = ((i32(idx) + ($d)) % N + N) % N;
-  return $tName[u32(target)];
+  let target_idx = ((i32(idx) + ($d)) % N + N) % N;
+  return $tName[u32(target_idx)];
 ''';
           break;
         case BoundaryMode.zero:
           sampleLogic =
               '''
-  let target = i32(idx) + ($d);
-  if (target < 0 || target >= i32(total_elements)) {
+  let target_idx = i32(idx) + ($d);
+  if (target_idx < 0 || target_idx >= i32(total_elements)) {
     return 0.0f;
   }
-  return $tName[u32(target)];
+  return $tName[u32(target_idx)];
 ''';
           break;
       }
@@ -1595,7 +1597,7 @@ final class FusedKernelDescriptor {
       WgslBinding(
         group: 0,
         binding: bindingIndex++,
-        name: isStrided ? 'meta' : 'uniforms',
+        name: isStrided ? 'metadata' : 'uniforms',
         isUniform: true,
         customTypeName: isStrided ? 'StridedMetadata' : 'FusedUniforms',
       ),
@@ -1702,14 +1704,14 @@ fn main(
   @builtin(num_workgroups) num_workgroups: vec3<u32>
 ) {
   let idx = global_id.x + global_id.y * (num_workgroups.x * ${workgroupSize}u);
-  if (idx >= meta.total_elements) {
+  if (idx >= metadata.total_elements) {
     return;
   }
 
   var off_a: u32 = 0u;
   var off_b: u32 = 0u;
   var off_dst: u32 = 0u;
-  flat_to_strided_offsets(idx, meta, &off_a, &off_b, &off_dst);
+  flat_to_strided_offsets(idx, metadata, &off_a, &off_b, &off_dst);
 
 $loadStatements
 $letStatements

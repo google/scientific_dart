@@ -80,7 +80,14 @@ final class GpuMemoryPool {
     RangeError.checkNotNegative(sizeInBytes, 'sizeInBytes');
 
     if (sizeInBytes == 0) {
-      return GpuBuffer.unmanaged(ffi.nullptr, 0, usage: usage, device: device);
+      return GpuBuffer.pooled(
+        device: device,
+        nativeHandle: ffi.nullptr,
+        sizeInBytes: 0,
+        allocatedBytes: 0,
+        usage: usage,
+        owningPool: this,
+      );
     }
 
     final bucketSize = computeBucketSize(sizeInBytes);
@@ -88,20 +95,19 @@ final class GpuMemoryPool {
       final recycled = bucket.removeLast();
       _cachedBytes -= bucketSize;
       _hits++;
-      if (recycled.rawAddress != ffi.nullptr) {
-        recycled.rawAddress.asTypedList(bucketSize).fillRange(0, bucketSize, 0);
-        device.backend.markHostModified(recycled);
+      recycled.reviveFromPool(requestedSize: sizeInBytes, newUsage: usage);
+      if (recycled.rawNativeHandle != ffi.nullptr) {
+        device.backend.clearBuffer(recycled, offset: 0, bytes: bucketSize);
       }
-      recycled.reviveFromPool(requestedSize: bucketSize, newUsage: usage);
       return recycled;
     }
 
     _misses++;
-    final pointer = device.backend.allocateBuffer(bucketSize);
+    final handle = device.backend.allocateBuffer(bucketSize, usage: usage);
     return GpuBuffer.pooled(
       device: device,
-      address: pointer,
-      sizeInBytes: bucketSize,
+      nativeHandle: handle,
+      sizeInBytes: sizeInBytes,
       allocatedBytes: bucketSize,
       usage: usage,
       owningPool: this,
@@ -117,8 +123,8 @@ final class GpuMemoryPool {
         device.isDisposed ||
         bucketSize <= 0 ||
         _cachedBytes + bucketSize > maxCachedBytes) {
-      if (buffer.rawAddress != ffi.nullptr) {
-        device.backend.freeBuffer(buffer.rawAddress, bucketSize);
+      if (buffer.rawNativeHandle != ffi.nullptr) {
+        device.backend.freeBuffer(buffer.rawNativeHandle, bucketSize);
       }
       return;
     }
@@ -136,8 +142,11 @@ final class GpuMemoryPool {
   void trim() {
     for (final bucket in _freeBuckets.values) {
       for (final buffer in bucket) {
-        if (buffer.rawAddress != ffi.nullptr) {
-          device.backend.freeBuffer(buffer.rawAddress, buffer.allocatedBytes);
+        if (buffer.rawNativeHandle != ffi.nullptr) {
+          device.backend.freeBuffer(
+            buffer.rawNativeHandle,
+            buffer.allocatedBytes,
+          );
         }
       }
       bucket.clear();

@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:test/test.dart';
-import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/autograd.dart';
 import 'package:gpuarray/nn.dart' as nn;
+import 'package:gpuarray/src/device.dart';
+import 'package:gpuarray/src/dtype.dart';
+import 'package:gpuarray/src/gpu_array.dart' hide ResourceScope, ScopedResource;
+import 'package:gpuarray/src/operations/manipulation.dart';
 import 'package:resource_scope/resource_scope.dart';
+import 'package:test/test.dart';
 
 void main() {
   group('GpuArray Automatic Differentiation (Autograd)', () {
@@ -331,26 +335,7 @@ void main() {
       });
     });
 
-    test('noGrad and no_grad context disable gradient graph building', () {
-      ResourceScope.scope(() {
-        final x = GpuArray.fromList(
-          [2.0],
-          [1],
-          DType.float64,
-          requiresGrad: true,
-        );
-
-        final y1 = noGrad(() => x * 3.0 + 4.0);
-        expect(y1.requiresGrad, isFalse);
-        expect(y1.gradFn, isNull);
-
-        final y2 = no_grad(() => x * 5.0);
-        expect(y2.requiresGrad, isFalse);
-        expect(y2.gradFn, isNull);
-      });
-    });
-
-    test('zeroGrad and detach', () {
+    test('noGrad, zeroGrad, detach, and non-scalar backward check', () {
       ResourceScope.scope(() {
         final x = GpuArray.fromList(
           [3.0],
@@ -358,9 +343,15 @@ void main() {
           DType.float64,
           requiresGrad: true,
         );
+        final y1 = noGrad(() => x * 3.0 + 4.0);
+        expect(y1.requiresGrad, isFalse);
+        expect(y1.gradFn, isNull);
+        final y2 = no_grad(() => x * 5.0);
+        expect(y2.requiresGrad, isFalse);
+        expect(y2.gradFn, isNull);
+
         final y = x * 2.0;
         y.backward();
-
         expect(x.grad, isNotNull);
         x.zeroGrad();
         expect(x.grad, isNull);
@@ -368,12 +359,21 @@ void main() {
         final detached = x.detach();
         expect(detached.requiresGrad, isFalse);
         expect(detached.toList(), equals([3.0]));
+
+        final nonScalar = GpuArray.fromList(
+          [1.0, 2.0],
+          [2],
+          DType.float64,
+          requiresGrad: true,
+        );
+        expect(() => (nonScalar * 2.0).backward(), throwsArgumentError);
       });
     });
 
     test(
-      'ConcatenateBackward, DivBackward, SqrtBackward, ExpBackward, and LogBackward gradient routing',
+      'ConcatenateBackward, Sqrt/Exp/LogBackward, and buffer leak check',
       () {
+        final baselineBuffers = GpuDevice.defaultDevice.activeBufferCount;
         ResourceScope.scope(() {
           final a = GpuArray.fromList(
             [1.0, 2.0],
@@ -387,11 +387,9 @@ void main() {
             DType.float64,
             requiresGrad: true,
           );
-
           final concatenated = concatenate([a, b], axis: 0);
           expect(concatenated.gradFn, isA<ConcatenateBackward>());
           (concatenated * 2.0).sum().backward();
-
           expect(a.grad!.toList().cast<double>(), equals([2.0, 2.0]));
           expect(b.grad!.toList().cast<double>(), equals([2.0, 2.0]));
 
@@ -401,58 +399,73 @@ void main() {
             DType.float64,
             requiresGrad: true,
           );
-          // f(z) = ln(exp(sqrt(z))) = sqrt(z), f'(4) = 1 / (2 * 2) = 0.25
-          final composed = z.sqrt().exp().log();
-          composed.backward();
+          z.sqrt().exp().log().backward();
           expect(z.grad!.scalar, closeTo(0.25, 1e-5));
-        });
-      },
-    );
-
-    test(
-      'Non-scalar backward without explicit gradient throws ArgumentError',
-      () {
-        ResourceScope.scope(() {
-          final x = GpuArray.fromList(
-            [1.0, 2.0],
-            [2],
-            DType.float64,
-            requiresGrad: true,
-          );
-          final y = x * 2.0;
-          expect(() => y.backward(), throwsArgumentError);
-        });
-      },
-    );
-
-    test(
-      'Autograd backward pass leaves zero leaked GPU buffers after scope exit',
-      () {
-        final baselineBuffers = GpuDevice.defaultDevice.activeBufferCount;
-        ResourceScope.scope(() {
-          final x = GpuArray.fromList(
-            [1.0, 2.0, 3.0, 4.0],
-            [2, 2],
-            DType.float64,
-            requiresGrad: true,
-          );
-          final w = GpuArray.fromList(
-            [0.5, -0.5, 1.5, 2.0],
-            [2, 2],
-            DType.float64,
-            requiresGrad: true,
-          );
-          final loss = nn.silu(x.matmul(w)).sum();
-          loss.backward();
-          expect(x.grad, isNotNull);
-          expect(w.grad, isNotNull);
-          x.zeroGrad();
-          w.zeroGrad();
+          a.zeroGrad();
+          b.zeroGrad();
+          z.zeroGrad();
         });
         expect(
           GpuDevice.defaultDevice.activeBufferCount,
           equals(baselineBuffers),
         );
+      },
+    );
+
+    test(
+      'retainGraph, released graph StateError, gradient shape check, and Sin/Cos/AbsBackward',
+      () {
+        ResourceScope.scope(() {
+          final xLeaf = GpuArray.fromList(
+            [3.0],
+            [1],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final loss = (xLeaf * xLeaf).sum();
+          loss.backward(retainGraph: true);
+          expect(xLeaf.grad!.toList().cast<double>(), equals([6.0]));
+
+          xLeaf.zeroGrad();
+          expect(xLeaf.grad, isNull);
+          loss.backward();
+          expect(xLeaf.grad!.toList().cast<double>(), equals([6.0]));
+          expect(() => loss.backward(), throwsStateError);
+
+          final vec = GpuArray.fromList(
+            [1.0, 2.0],
+            [2],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final out = vec * 2.0;
+          final wrongGrad = GpuArray.ones([3], DType.float64);
+          expect(() => out.backward(gradient: wrongGrad), throwsArgumentError);
+
+          final angle = GpuArray.fromList(
+            [0.0],
+            [1],
+            DType.float64,
+            requiresGrad: true,
+          );
+          final seed = GpuArray.ones([1], DType.float64);
+          expect(
+            SinBackward(angle).backward(seed).first!.scalar,
+            closeTo(1.0, 1e-5),
+          );
+          expect(
+            CosBackward(angle).backward(seed).first!.scalar,
+            closeTo(0.0, 1e-5),
+          );
+          expect(
+            AbsBackward(vec)
+                .backward(GpuArray.ones([2], DType.float64))
+                .first!
+                .toList()
+                .cast<double>(),
+            equals([1.0, 1.0]),
+          );
+        });
       },
     );
   });

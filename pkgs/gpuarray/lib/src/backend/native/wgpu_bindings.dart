@@ -13,8 +13,12 @@
 // limitations under the License.
 
 // ignore_for_file: constant_identifier_names
+
+/// Native C-FFI bindings for `libwgpu_native` resolved via Dart Native Assets.
+@ffi.DefaultAsset('package:gpuarray/wgpu_native')
+library;
+
 import 'dart:ffi' as ffi;
-import 'dart:io' show Platform;
 import 'package:ffi/ffi.dart';
 import '../../exceptions.dart';
 
@@ -22,83 +26,191 @@ import '../../exceptions.dart';
 // WebGPU Standard Usage and Enumeration Constants
 // =============================================================================
 
+/// Bitflag constants specifying allowed operations on a `WGPUBuffer`.
 extension type const WGPUBufferUsage._(int value) implements int {
+  /// No usage flags set.
   static const int none = 0x00000000;
+
+  /// Allows mapping the buffer for CPU reading (`wgpuBufferMapAsync`).
   static const int mapRead = 0x00000001;
+
+  /// Allows mapping the buffer for CPU writing (`wgpuBufferMapAsync`).
   static const int mapWrite = 0x00000002;
+
+  /// Allows using the buffer as the source of a copy operation.
   static const int copySrc = 0x00000004;
+
+  /// Allows using the buffer as the destination of a copy or write operation.
   static const int copyDst = 0x00000008;
+
+  /// Allows binding the buffer as an index buffer.
   static const int index = 0x00000010;
+
+  /// Allows binding the buffer as a vertex buffer.
   static const int vertex = 0x00000020;
+
+  /// Allows binding the buffer as a uniform buffer (`var<uniform>`).
   static const int uniform = 0x00000040;
+
+  /// Allows binding the buffer as a storage buffer (`var<storage>`).
   static const int storage = 0x00000080;
+
+  /// Allows using the buffer for indirect dispatch parameters.
   static const int indirect = 0x00000100;
+
+  /// Allows using the buffer as a query resolve destination.
   static const int queryResolve = 0x00000200;
 }
 
+/// C-style alias for [WGPUBufferUsage.none].
 const int WGPUBufferUsage_None = WGPUBufferUsage.none;
+
+/// C-style alias for [WGPUBufferUsage.mapRead].
 const int WGPUBufferUsage_MapRead = WGPUBufferUsage.mapRead;
+
+/// C-style alias for [WGPUBufferUsage.mapWrite].
 const int WGPUBufferUsage_MapWrite = WGPUBufferUsage.mapWrite;
+
+/// C-style alias for [WGPUBufferUsage.copySrc].
 const int WGPUBufferUsage_CopySrc = WGPUBufferUsage.copySrc;
+
+/// C-style alias for [WGPUBufferUsage.copyDst].
 const int WGPUBufferUsage_CopyDst = WGPUBufferUsage.copyDst;
+
+/// C-style alias for [WGPUBufferUsage.index].
 const int WGPUBufferUsage_Index = WGPUBufferUsage.index;
+
+/// C-style alias for [WGPUBufferUsage.vertex].
 const int WGPUBufferUsage_Vertex = WGPUBufferUsage.vertex;
+
+/// C-style alias for [WGPUBufferUsage.uniform].
 const int WGPUBufferUsage_Uniform = WGPUBufferUsage.uniform;
+
+/// C-style alias for [WGPUBufferUsage.storage].
 const int WGPUBufferUsage_Storage = WGPUBufferUsage.storage;
+
+/// C-style alias for [WGPUBufferUsage.indirect].
 const int WGPUBufferUsage_Indirect = WGPUBufferUsage.indirect;
+
+/// C-style alias for [WGPUBufferUsage.queryResolve].
 const int WGPUBufferUsage_QueryResolve = WGPUBufferUsage.queryResolve;
 
+/// Bitflag constants specifying CPU access mode when mapping a `WGPUBuffer`.
 extension type const WGPUMapMode._(int value) implements int {
+  /// No mapping mode specified.
   static const int none = 0x00000000;
+
+  /// Maps the buffer range for host read access.
   static const int read = 0x00000001;
+
+  /// Maps the buffer range for host write access.
   static const int write = 0x00000002;
 }
 
+/// C-style alias for [WGPUMapMode.none].
 const int WGPUMapMode_None = WGPUMapMode.none;
+
+/// C-style alias for [WGPUMapMode.read].
 const int WGPUMapMode_Read = WGPUMapMode.read;
+
+/// C-style alias for [WGPUMapMode.write].
 const int WGPUMapMode_Write = WGPUMapMode.write;
 
+/// Structure type discriminators for `WGPUChainedStruct` extension chains.
 extension type const WGPUSType._(int value) implements int {
+  /// Uninitialized or invalid chained structure type.
   static const int invalid = 0x00000000;
+
+  /// Metal layer surface descriptor chain type.
   static const int surfaceDescriptorFromMetalLayer = 0x00000001;
+
+  /// Windows HWND surface descriptor chain type.
   static const int surfaceDescriptorFromWindowsHWND = 0x00000002;
+
+  /// X11 Xlib window surface descriptor chain type.
   static const int surfaceDescriptorFromXlibWindow = 0x00000003;
+
+  /// HTML canvas selector surface descriptor chain type.
   static const int surfaceDescriptorFromCanvasHTMLSelector = 0x00000004;
+
+  /// WGSL shader source descriptor chain type in `webgpu.h` v29+.
   static const int shaderSourceWGSL = 0x00000002;
+
+  /// Legacy WGSL shader module descriptor chain type.
   static const int shaderModuleWGSLDescriptor = 0x00000006;
 }
 
+/// C-style alias for [WGPUSType.invalid].
 const int WGPUSType_Invalid = WGPUSType.invalid;
+
+/// C-style alias for [WGPUSType.shaderSourceWGSL].
 const int WGPUSType_ShaderSourceWGSL = WGPUSType.shaderSourceWGSL;
+
+/// C-style alias for [WGPUSType.shaderModuleWGSLDescriptor].
 const int WGPUSType_ShaderModuleWGSLDescriptor =
     WGPUSType.shaderModuleWGSLDescriptor;
 
+/// Execution modes for asynchronous WebGPU C callbacks.
 extension type const WGPUCallbackMode._(int value) implements int {
+  /// Fires callbacks only inside `wgpuInstanceWaitAny`.
   static const int waitAnyOnly = 0x00000001;
+
+  /// Allows callbacks to fire during `wgpuInstanceProcessEvents`.
   static const int allowProcessEvents = 0x00000002;
+
+  /// Allows callbacks to fire spontaneously on completion or during polling.
   static const int allowSpontaneous = 0x00000004;
 }
 
+/// Adapter power preference hints for `wgpuInstanceRequestAdapter`.
 extension type const WGPUPowerPreference._(int value) implements int {
+  /// No preference specified.
   static const int undefined = 0x00000000;
+
+  /// Prefers integrated or energy-efficient adapters.
   static const int lowPower = 0x00000001;
+
+  /// Prefers discrete high-throughput adapters.
   static const int highPerformance = 0x00000002;
 }
 
+/// C-style alias for [WGPUPowerPreference.undefined].
 const int WGPUPowerPreference_Undefined = WGPUPowerPreference.undefined;
+
+/// C-style alias for [WGPUPowerPreference.lowPower].
 const int WGPUPowerPreference_LowPower = WGPUPowerPreference.lowPower;
+
+/// C-style alias for [WGPUPowerPreference.highPerformance].
 const int WGPUPowerPreference_HighPerformance =
     WGPUPowerPreference.highPerformance;
 
+/// Graphics/compute driver API identifiers in `webgpu.h`.
 extension type const WGPUBackendType._(int value) implements int {
+  /// Unspecified backend type.
   static const int undefined = 0x00000000;
+
+  /// Null no-op backend.
   static const int nullBackend = 0x00000001;
+
+  /// Browser WebGPU backend.
   static const int webGpu = 0x00000002;
+
+  /// Direct3D 11 backend.
   static const int d3d11 = 0x00000003;
+
+  /// Direct3D 12 backend.
   static const int d3d12 = 0x00000004;
+
+  /// Apple Metal backend.
   static const int metal = 0x00000005;
+
+  /// Khronos Vulkan backend.
   static const int vulkan = 0x00000006;
+
+  /// Desktop OpenGL backend.
   static const int openGl = 0x00000007;
+
+  /// OpenGL ES backend.
   static const int openGlEs = 0x00000008;
 }
 
@@ -106,30 +218,42 @@ extension type const WGPUBackendType._(int value) implements int {
 // WebGPU C-FFI Native Struct Definitions
 // =============================================================================
 
+/// Sized UTF-8 string slice used by `webgpu.h` descriptors and callbacks.
 final class WGPUStringView extends ffi.Struct {
+  /// Pointer to the UTF-8 byte sequence.
   external ffi.Pointer<Utf8> data;
 
+  /// Byte length of the UTF-8 string slice.
   @ffi.UintPtr()
   external int length;
 }
 
+/// Header node for linked extension descriptor chains in `webgpu.h`.
 final class WGPUChainedStruct extends ffi.Struct {
+  /// Pointer to the next chained extension struct, or `nullptr`.
   external ffi.Pointer<WGPUChainedStruct> next;
 
+  /// Structure type discriminator from [WGPUSType].
   @ffi.Uint32()
   external int sType;
 }
 
+/// Descriptor passed to [wgpuCreateInstance].
 final class WGPUInstanceDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
 }
 
+/// Callback configuration passed to [wgpuAdapterRequestDevice].
 final class WGPURequestDeviceCallbackInfo extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<ffi.Void> nextInChain;
 
+  /// Callback invocation mode from [WGPUCallbackMode].
   @ffi.Uint32()
   external int mode;
 
+  /// Native callback function invoked when device creation completes.
   external ffi.Pointer<
     ffi.NativeFunction<
       ffi.Void Function(
@@ -143,16 +267,23 @@ final class WGPURequestDeviceCallbackInfo extends ffi.Struct {
   >
   callback;
 
+  /// First opaque user data pointer forwarded to [callback].
   external ffi.Pointer<ffi.Void> userdata1;
+
+  /// Second opaque user data pointer forwarded to [callback].
   external ffi.Pointer<ffi.Void> userdata2;
 }
 
+/// Callback configuration passed to [wgpuBufferMapAsync].
 final class WGPUBufferMapCallbackInfo extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<ffi.Void> nextInChain;
 
+  /// Callback invocation mode from [WGPUCallbackMode].
   @ffi.Uint32()
   external int mode;
 
+  /// Native callback function invoked when buffer mapping completes.
   external ffi.Pointer<
     ffi.NativeFunction<
       ffi.Void Function(
@@ -165,101 +296,175 @@ final class WGPUBufferMapCallbackInfo extends ffi.Struct {
   >
   callback;
 
+  /// First opaque user data pointer forwarded to [callback].
   external ffi.Pointer<ffi.Void> userdata1;
+
+  /// Second opaque user data pointer forwarded to [callback].
   external ffi.Pointer<ffi.Void> userdata2;
 }
 
+/// Descriptor specifying size and usage flags for [wgpuDeviceCreateBuffer].
 final class WGPUBufferDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the buffer.
   external WGPUStringView label;
 
+  /// Bitwise combination of [WGPUBufferUsage] flags.
   @ffi.Uint64()
   external int usage;
 
+  /// Buffer allocation size in bytes.
   @ffi.Uint64()
   external int size;
 
+  /// Non-zero if the buffer should be mapped at creation time.
   @ffi.Uint32()
   external int mappedAtCreation;
 }
 
+/// Chained descriptor supplying WGSL source code to [wgpuDeviceCreateShaderModule].
 final class WGPUShaderSourceWGSL extends ffi.Struct {
+  /// Base chained struct with `sType` set to [WGPUSType.shaderSourceWGSL].
   external WGPUChainedStruct chain;
+
+  /// UTF-8 WGSL source code view.
   external WGPUStringView code;
 }
 
+/// Descriptor passed to [wgpuDeviceCreateShaderModule].
 final class WGPUShaderModuleDescriptor extends ffi.Struct {
+  /// Pointer to the chained shader source descriptor (such as [WGPUShaderSourceWGSL]).
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the shader module.
   external WGPUStringView label;
 }
 
+/// Descriptor passed to [wgpuDeviceCreateComputePipeline].
 final class WGPUComputePipelineDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the compute pipeline.
   external WGPUStringView label;
+
+  /// Pipeline layout handle, or `nullptr` for automatic layout derivation.
   external ffi.Pointer<ffi.Void> layout;
+
+  /// Chained extension struct for the programmable compute stage.
   external ffi.Pointer<WGPUChainedStruct> computeNextInChain;
+
+  /// Compiled `WGPUShaderModule` handle.
   external ffi.Pointer<ffi.Void> computeModule;
+
+  /// Name of the compute entry-point function in the shader module.
   external WGPUStringView computeEntryPoint;
+
+  /// Number of pipeline-overridable constant entries.
   @ffi.UintPtr()
   external int computeConstantCount;
+
+  /// Pointer to pipeline-overridable constant entries.
   external ffi.Pointer<ffi.Void> computeConstants;
 }
 
+/// Single resource binding entry within a [WGPUBindGroupDescriptor].
 final class WGPUBindGroupEntry extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
 
+  /// Binding index matching `@binding(n)` in WGSL.
   @ffi.Uint32()
   external int binding;
 
+  /// `WGPUBuffer` handle to bind, or `nullptr` if not a buffer binding.
   external ffi.Pointer<ffi.Void> buffer;
 
+  /// Byte offset within [buffer].
   @ffi.Uint64()
   external int offset;
 
+  /// Byte length of the bound range within [buffer].
   @ffi.Uint64()
   external int size;
 
+  /// `WGPUSampler` handle to bind, or `nullptr`.
   external ffi.Pointer<ffi.Void> sampler;
+
+  /// `WGPUTextureView` handle to bind, or `nullptr`.
   external ffi.Pointer<ffi.Void> textureView;
 }
 
+/// Descriptor passed to [wgpuDeviceCreateBindGroup].
 final class WGPUBindGroupDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the bind group.
   external WGPUStringView label;
+
+  /// `WGPUBindGroupLayout` handle defining the bind group schema.
   external ffi.Pointer<ffi.Void> layout;
 
+  /// Number of entries in [entries].
   @ffi.UintPtr()
   external int entryCount;
 
+  /// Pointer to an array of [entryCount] bind group entries.
   external ffi.Pointer<WGPUBindGroupEntry> entries;
 }
 
+/// Descriptor passed to [wgpuDeviceCreateCommandEncoder].
 final class WGPUCommandEncoderDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the command encoder.
   external WGPUStringView label;
 }
 
+/// Descriptor passed to [wgpuCommandEncoderBeginComputePass].
 final class WGPUComputePassDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the compute pass.
   external WGPUStringView label;
 
+  /// Number of timestamp write entries.
   @ffi.UintPtr()
   external int timestampWritesCount;
 
+  /// Pointer to timestamp write configurations, or `nullptr`.
   external ffi.Pointer<ffi.Void> timestampWrites;
 }
 
+/// Descriptor passed to [wgpuCommandEncoderFinish].
 final class WGPUCommandBufferDescriptor extends ffi.Struct {
+  /// Pointer to optional chained extension descriptors.
   external ffi.Pointer<WGPUChainedStruct> nextInChain;
+
+  /// Debug label for the finished command buffer.
   external WGPUStringView label;
 }
 
+/// Dart configuration value describing a buffer binding in a bind group.
 final class WgpuBindGroupEntryData {
+  /// Binding slot index matching `@binding(n)` in the WGSL shader.
   final int binding;
+
+  /// Native `WGPUBuffer` handle.
   final ffi.Pointer<ffi.Void> buffer;
+
+  /// Byte offset within [buffer].
   final int offset;
+
+  /// Byte length to bind from [buffer].
   final int size;
 
+  /// Creates a [WgpuBindGroupEntryData] for a buffer binding slot.
   const WgpuBindGroupEntryData({
     required this.binding,
     required this.buffer,
@@ -267,10 +472,6 @@ final class WgpuBindGroupEntryData {
     this.size = 0,
   });
 }
-
-// =============================================================================
-// WebGPU Dynamic Native Library Loader & Driver Interface
-// =============================================================================
 
 extension type const _WgpuStaticState._(Object? _) {
   static ffi.Pointer<ffi.Void> lastAcquiredDevice = ffi.nullptr;
@@ -281,8 +482,8 @@ void _onGlobalDeviceRequested(
   int status,
   ffi.Pointer<ffi.Void> device,
   WGPUStringView message,
-  ffi.Pointer<ffi.Void> u1,
-  ffi.Pointer<ffi.Void> u2,
+  ffi.Pointer<ffi.Void> userdata1,
+  ffi.Pointer<ffi.Void> userdata2,
 ) {
   _WgpuStaticState.lastAcquiredDevice = device;
 }
@@ -290,574 +491,421 @@ void _onGlobalDeviceRequested(
 void _onGlobalBufferMapped(
   int status,
   WGPUStringView message,
-  ffi.Pointer<ffi.Void> u1,
-  ffi.Pointer<ffi.Void> u2,
+  ffi.Pointer<ffi.Void> userdata1,
+  ffi.Pointer<ffi.Void> userdata2,
 ) {
   _WgpuStaticState.mapDone = true;
 }
 
-final class WgpuNativeLib {
-  final ffi.DynamicLibrary dylib;
-  final String libraryPath;
+// =============================================================================
+// Top-Level @ffi.Native C Function Bindings (libwgpu_native)
+// =============================================================================
 
-  // C function pointers
-  late final ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)
-  _wgpuCreateInstance;
-  late final int Function(
+/// Creates a new `WGPUInstance` handle from an optional [descriptor].
+@ffi.Native<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>()
+external ffi.Pointer<ffi.Void> wgpuCreateInstance(
+  ffi.Pointer<ffi.Void> descriptor,
+);
+
+/// Enumerates physical or software `WGPUAdapter` handles available on [instance].
+@ffi.Native<
+  ffi.UintPtr Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
   )
-  _wgpuInstanceEnumerateAdapters;
-  late final int Function(
+>()
+external int wgpuInstanceEnumerateAdapters(
+  ffi.Pointer<ffi.Void> instance,
+  ffi.Pointer<ffi.Void> options,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> adapters,
+);
+
+/// Requests a logical `WGPUDevice` from [adapter] using [callbackInfo].
+@ffi.Native<
+  ffi.Uint64 Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Void>,
     WGPURequestDeviceCallbackInfo,
   )
-  _wgpuAdapterRequestDevice;
-  late final void Function(ffi.Pointer<ffi.Void>) _wgpuInstanceProcessEvents;
-  late final ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)
-  _wgpuDeviceGetQueue;
-  late final ffi.Pointer<ffi.Void> Function(
+>()
+external int wgpuAdapterRequestDevice(
+  ffi.Pointer<ffi.Void> adapter,
+  ffi.Pointer<ffi.Void> descriptor,
+  WGPURequestDeviceCallbackInfo callbackInfo,
+);
+
+/// Processes pending asynchronous callbacks on [instance].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuInstanceProcessEvents(ffi.Pointer<ffi.Void> instance);
+
+/// Retrieves the default `WGPUQueue` associated with [device].
+@ffi.Native<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)>()
+external ffi.Pointer<ffi.Void> wgpuDeviceGetQueue(ffi.Pointer<ffi.Void> device);
+
+/// Allocates a new `WGPUBuffer` on [device] matching [descriptor].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<WGPUBufferDescriptor>,
   )
-  _wgpuDeviceCreateBuffer;
-  late final void Function(
+>()
+external ffi.Pointer<ffi.Void> wgpuDeviceCreateBuffer(
+  ffi.Pointer<ffi.Void> device,
+  ffi.Pointer<WGPUBufferDescriptor> descriptor,
+);
+
+/// Schedules a write of [size] bytes from host [data] into [buffer] at [bufferOffset].
+@ffi.Native<
+  ffi.Void Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Void>,
-    int,
+    ffi.Uint64,
     ffi.Pointer<ffi.Void>,
-    int,
+    ffi.UintPtr,
   )
-  _wgpuQueueWriteBuffer;
-  late final int Function(
+>()
+external void wgpuQueueWriteBuffer(
+  ffi.Pointer<ffi.Void> queue,
+  ffi.Pointer<ffi.Void> buffer,
+  int bufferOffset,
+  ffi.Pointer<ffi.Void> data,
+  int size,
+);
+
+/// Asynchronously maps [size] bytes of [buffer] starting at [offset] for host access.
+@ffi.Native<
+  ffi.Uint64 Function(
     ffi.Pointer<ffi.Void>,
-    int,
-    int,
-    int,
+    ffi.Uint32,
+    ffi.UintPtr,
+    ffi.UintPtr,
     WGPUBufferMapCallbackInfo,
-  )?
-  _wgpuBufferMapAsync;
-  late final ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, int, int)?
-  _wgpuBufferGetMappedRange;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuBufferUnmap;
-  late final ffi.Pointer<ffi.Void> Function(
+  )
+>()
+external int wgpuBufferMapAsync(
+  ffi.Pointer<ffi.Void> buffer,
+  int mode,
+  int offset,
+  int size,
+  WGPUBufferMapCallbackInfo callbackInfo,
+);
+
+/// Obtains a host pointer to a mapped subrange of [buffer].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.UintPtr,
+    ffi.UintPtr,
+  )
+>()
+external ffi.Pointer<ffi.Void> wgpuBufferGetMappedRange(
+  ffi.Pointer<ffi.Void> buffer,
+  int offset,
+  int size,
+);
+
+/// Unmaps a previously mapped [buffer] and flushes host modifications.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuBufferUnmap(ffi.Pointer<ffi.Void> buffer);
+
+/// Compiles a `WGPUShaderModule` on [device] from [descriptor].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<WGPUShaderModuleDescriptor>,
   )
-  _wgpuDeviceCreateShaderModule;
-  late final ffi.Pointer<ffi.Void> Function(
+>()
+external ffi.Pointer<ffi.Void> wgpuDeviceCreateShaderModule(
+  ffi.Pointer<ffi.Void> device,
+  ffi.Pointer<WGPUShaderModuleDescriptor> descriptor,
+);
+
+/// Compiles a `WGPUComputePipeline` on [device] from [descriptor].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<WGPUComputePipelineDescriptor>,
   )
-  _wgpuDeviceCreateComputePipeline;
-  late final ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, int)?
-  _wgpuComputePipelineGetBindGroupLayout;
-  late final ffi.Pointer<ffi.Void> Function(
+>()
+external ffi.Pointer<ffi.Void> wgpuDeviceCreateComputePipeline(
+  ffi.Pointer<ffi.Void> device,
+  ffi.Pointer<WGPUComputePipelineDescriptor> descriptor,
+);
+
+/// Retrieves the `WGPUBindGroupLayout` for [groupIndex] of [computePipeline].
+@ffi.Native<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, ffi.Uint32)>()
+external ffi.Pointer<ffi.Void> wgpuComputePipelineGetBindGroupLayout(
+  ffi.Pointer<ffi.Void> computePipeline,
+  int groupIndex,
+);
+
+/// Creates a `WGPUBindGroup` on [device] from [descriptor].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<WGPUBindGroupDescriptor>,
   )
-  _wgpuDeviceCreateBindGroup;
-  late final ffi.Pointer<ffi.Void> Function(
+>()
+external ffi.Pointer<ffi.Void> wgpuDeviceCreateBindGroup(
+  ffi.Pointer<ffi.Void> device,
+  ffi.Pointer<WGPUBindGroupDescriptor> descriptor,
+);
+
+/// Creates a `WGPUCommandEncoder` on [device] from [descriptor].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)
+>()
+external ffi.Pointer<ffi.Void> wgpuDeviceCreateCommandEncoder(
+  ffi.Pointer<ffi.Void> device,
+  ffi.Pointer<ffi.Void> descriptor,
+);
+
+/// Begins recording a `WGPUComputePassEncoder` on [commandEncoder].
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)
+>()
+external ffi.Pointer<ffi.Void> wgpuCommandEncoderBeginComputePass(
+  ffi.Pointer<ffi.Void> commandEncoder,
+  ffi.Pointer<ffi.Void> descriptor,
+);
+
+/// Binds [pipeline] to [computePassEncoder].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)>()
+external void wgpuComputePassEncoderSetPipeline(
+  ffi.Pointer<ffi.Void> computePassEncoder,
+  ffi.Pointer<ffi.Void> pipeline,
+);
+
+/// Binds [group] at [groupIndex] on [computePassEncoder].
+@ffi.Native<
+  ffi.Void Function(
     ffi.Pointer<ffi.Void>,
+    ffi.Uint32,
     ffi.Pointer<ffi.Void>,
-  )
-  _wgpuDeviceCreateCommandEncoder;
-  late final ffi.Pointer<ffi.Void> Function(
-    ffi.Pointer<ffi.Void>,
-    ffi.Pointer<ffi.Void>,
-  )
-  _wgpuCommandEncoderBeginComputePass;
-  late final void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)
-  _wgpuComputePassEncoderSetPipeline;
-  late final void Function(
-    ffi.Pointer<ffi.Void>,
-    int,
-    ffi.Pointer<ffi.Void>,
-    int,
+    ffi.UintPtr,
     ffi.Pointer<ffi.Uint32>,
   )
-  _wgpuComputePassEncoderSetBindGroup;
-  late final void Function(ffi.Pointer<ffi.Void>, int, int, int)
-  _wgpuComputePassEncoderDispatchWorkgroups;
-  late final void Function(ffi.Pointer<ffi.Void>) _wgpuComputePassEncoderEnd;
-  late final void Function(
+>()
+external void wgpuComputePassEncoderSetBindGroup(
+  ffi.Pointer<ffi.Void> computePassEncoder,
+  int groupIndex,
+  ffi.Pointer<ffi.Void> group,
+  int dynamicOffsetCount,
+  ffi.Pointer<ffi.Uint32> dynamicOffsets,
+);
+
+/// Dispatches compute workgroups of grid dimensions ([workgroupCountX], [workgroupCountY], [workgroupCountZ]).
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Uint32, ffi.Uint32, ffi.Uint32)
+>()
+external void wgpuComputePassEncoderDispatchWorkgroups(
+  ffi.Pointer<ffi.Void> computePassEncoder,
+  int workgroupCountX,
+  int workgroupCountY,
+  int workgroupCountZ,
+);
+
+/// Ends the active compute pass on [computePassEncoder].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuComputePassEncoderEnd(
+  ffi.Pointer<ffi.Void> computePassEncoder,
+);
+
+/// Encodes a GPU buffer-to-buffer copy of [size] bytes from [source] to [destination].
+@ffi.Native<
+  ffi.Void Function(
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Void>,
-    int,
+    ffi.Uint64,
     ffi.Pointer<ffi.Void>,
-    int,
-    int,
-  )?
-  _wgpuCommandEncoderCopyBufferToBuffer;
-  late final ffi.Pointer<ffi.Void> Function(
-    ffi.Pointer<ffi.Void>,
-    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+    ffi.Uint64,
   )
-  _wgpuCommandEncoderFinish;
-  late final void Function(
+>()
+external void wgpuCommandEncoderCopyBufferToBuffer(
+  ffi.Pointer<ffi.Void> commandEncoder,
+  ffi.Pointer<ffi.Void> source,
+  int sourceOffset,
+  ffi.Pointer<ffi.Void> destination,
+  int destinationOffset,
+  int size,
+);
+
+/// Encodes a GPU zero-fill of [size] bytes on [buffer] starting at [offset].
+@ffi.Native<
+  ffi.Void Function(
     ffi.Pointer<ffi.Void>,
-    int,
+    ffi.Pointer<ffi.Void>,
+    ffi.Uint64,
+    ffi.Uint64,
+  )
+>()
+external void wgpuCommandEncoderClearBuffer(
+  ffi.Pointer<ffi.Void> commandEncoder,
+  ffi.Pointer<ffi.Void> buffer,
+  int offset,
+  int size,
+);
+
+/// Finishes recording commands on [commandEncoder] and produces a `WGPUCommandBuffer`.
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)
+>()
+external ffi.Pointer<ffi.Void> wgpuCommandEncoderFinish(
+  ffi.Pointer<ffi.Void> commandEncoder,
+  ffi.Pointer<ffi.Void> descriptor,
+);
+
+/// Submits [commandCount] encoded [commands] to [queue] for execution.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.UintPtr,
     ffi.Pointer<ffi.Pointer<ffi.Void>>,
   )
-  _wgpuQueueSubmit;
-  late final int Function(ffi.Pointer<ffi.Void>, int, ffi.Pointer<ffi.Void>)?
-  _wgpuDevicePoll;
-  late final void Function(ffi.Pointer<ffi.Void>) _wgpuBufferDestroy;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuDeviceDestroy;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuInstanceRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuAdapterRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuDeviceRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuQueueRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuBufferRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuShaderModuleRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuComputePipelineRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuBindGroupRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuBindGroupLayoutRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuCommandEncoderRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)?
-  _wgpuComputePassEncoderRelease;
-  late final void Function(ffi.Pointer<ffi.Void>)? _wgpuCommandBufferRelease;
+>()
+external void wgpuQueueSubmit(
+  ffi.Pointer<ffi.Void> queue,
+  int commandCount,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> commands,
+);
 
-  bool _isAvailable = false;
-  bool get isAvailable => _isAvailable;
+/// Polls [device] to advance work and optionally waits for queue completion when [wait] is non-zero.
+@ffi.Native<
+  ffi.Uint32 Function(ffi.Pointer<ffi.Void>, ffi.Uint32, ffi.Pointer<ffi.Void>)
+>()
+external int wgpuDevicePoll(
+  ffi.Pointer<ffi.Void> device,
+  int wait,
+  ffi.Pointer<ffi.Void> wrappedSubmissionIndex,
+);
 
-  WgpuNativeLib(this.dylib, {required this.libraryPath}) {
-    try {
-      _lookupSymbols();
-      _isAvailable = true;
-    } catch (_) {
-      _isAvailable = false;
-    }
-  }
+/// Immediately destroys the underlying GPU memory backing [buffer].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuBufferDestroy(ffi.Pointer<ffi.Void> buffer);
 
-  static T? _tryLookup<T>(T Function() lookupFn) {
-    try {
-      return lookupFn();
-    } catch (_) {
-      return null;
-    }
-  }
+/// Destroys the logical [device] and releases its hardware queue resources.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuDeviceDestroy(ffi.Pointer<ffi.Void> device);
 
-  void _lookupSymbols() {
-    _wgpuCreateInstance = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)
-          >
-        >("wgpuCreateInstance")
-        .asFunction();
+/// Releases a reference to [instance].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuInstanceRelease(ffi.Pointer<ffi.Void> instance);
 
-    _wgpuInstanceEnumerateAdapters = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.UintPtr Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Pointer<ffi.Void>>,
-            )
-          >
-        >("wgpuInstanceEnumerateAdapters")
-        .asFunction();
+/// Releases a reference to [adapter].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuAdapterRelease(ffi.Pointer<ffi.Void> adapter);
 
-    _wgpuAdapterRequestDevice = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Uint64 Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-              WGPURequestDeviceCallbackInfo,
-            )
-          >
-        >("wgpuAdapterRequestDevice")
-        .asFunction();
+/// Releases a reference to [device].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuDeviceRelease(ffi.Pointer<ffi.Void> device);
 
-    _wgpuInstanceProcessEvents = dylib
-        .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-          "wgpuInstanceProcessEvents",
-        )
-        .asFunction();
+/// Releases a reference to [queue].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuQueueRelease(ffi.Pointer<ffi.Void> queue);
 
-    _wgpuDeviceGetQueue = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>)
-          >
-        >("wgpuDeviceGetQueue")
-        .asFunction();
+/// Releases a reference to [buffer].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuBufferRelease(ffi.Pointer<ffi.Void> buffer);
 
-    _wgpuDeviceCreateBuffer = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<WGPUBufferDescriptor>,
-            )
-          >
-        >("wgpuDeviceCreateBuffer")
-        .asFunction();
+/// Releases a reference to [shaderModule].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuShaderModuleRelease(ffi.Pointer<ffi.Void> shaderModule);
 
-    _wgpuQueueWriteBuffer = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Void Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-              ffi.Uint64,
-              ffi.Pointer<ffi.Void>,
-              ffi.UintPtr,
-            )
-          >
-        >("wgpuQueueWriteBuffer")
-        .asFunction();
+/// Releases a reference to [computePipeline].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuComputePipelineRelease(ffi.Pointer<ffi.Void> computePipeline);
 
-    _wgpuBufferMapAsync = _tryLookup(
-      () => dylib
-          .lookup<
-            ffi.NativeFunction<
-              ffi.Uint64 Function(
-                ffi.Pointer<ffi.Void>,
-                ffi.Uint32,
-                ffi.UintPtr,
-                ffi.UintPtr,
-                WGPUBufferMapCallbackInfo,
-              )
-            >
-          >("wgpuBufferMapAsync")
-          .asFunction(),
-    );
+/// Releases a reference to [bindGroup].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuBindGroupRelease(ffi.Pointer<ffi.Void> bindGroup);
 
-    _wgpuBufferGetMappedRange = _tryLookup(
-      () => dylib
-          .lookup<
-            ffi.NativeFunction<
-              ffi.Pointer<ffi.Void> Function(
-                ffi.Pointer<ffi.Void>,
-                ffi.UintPtr,
-                ffi.UintPtr,
-              )
-            >
-          >("wgpuBufferGetMappedRange")
-          .asFunction(),
-    );
+/// Releases a reference to [bindGroupLayout].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuBindGroupLayoutRelease(ffi.Pointer<ffi.Void> bindGroupLayout);
 
-    _wgpuBufferUnmap = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuBufferUnmap",
-          )
-          .asFunction(),
-    );
+/// Releases a reference to [commandEncoder].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuCommandEncoderRelease(ffi.Pointer<ffi.Void> commandEncoder);
 
-    _wgpuDeviceCreateShaderModule = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<WGPUShaderModuleDescriptor>,
-            )
-          >
-        >("wgpuDeviceCreateShaderModule")
-        .asFunction();
+/// Releases a reference to [computePassEncoder].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuComputePassEncoderRelease(
+  ffi.Pointer<ffi.Void> computePassEncoder,
+);
 
-    _wgpuDeviceCreateComputePipeline = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<WGPUComputePipelineDescriptor>,
-            )
-          >
-        >("wgpuDeviceCreateComputePipeline")
-        .asFunction();
+/// Releases a reference to [commandBuffer].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void wgpuCommandBufferRelease(ffi.Pointer<ffi.Void> commandBuffer);
 
-    _wgpuComputePipelineGetBindGroupLayout = _tryLookup(
-      () => dylib
-          .lookup<
-            ffi.NativeFunction<
-              ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Void>, ffi.Uint32)
-            >
-          >("wgpuComputePipelineGetBindGroupLayout")
-          .asFunction(),
-    );
+/// High-level FFI wrapper invoking `@ffi.Native`-bound `libwgpu_native` functions.
+final class WgpuNativeBindings {
+  /// Whether native WebGPU bindings are linked via Native Assets.
+  final bool isAvailable;
 
-    _wgpuDeviceCreateBindGroup = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<WGPUBindGroupDescriptor>,
-            )
-          >
-        >("wgpuDeviceCreateBindGroup")
-        .asFunction();
-
-    _wgpuDeviceCreateCommandEncoder = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-            )
-          >
-        >("wgpuDeviceCreateCommandEncoder")
-        .asFunction();
-
-    _wgpuCommandEncoderBeginComputePass = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-            )
-          >
-        >("wgpuCommandEncoderBeginComputePass")
-        .asFunction();
-
-    _wgpuComputePassEncoderSetPipeline = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Pointer<ffi.Void>)
-          >
-        >("wgpuComputePassEncoderSetPipeline")
-        .asFunction();
-
-    _wgpuComputePassEncoderSetBindGroup = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Void Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Uint32,
-              ffi.Pointer<ffi.Void>,
-              ffi.UintPtr,
-              ffi.Pointer<ffi.Uint32>,
-            )
-          >
-        >("wgpuComputePassEncoderSetBindGroup")
-        .asFunction();
-
-    _wgpuComputePassEncoderDispatchWorkgroups = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Void Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Uint32,
-              ffi.Uint32,
-              ffi.Uint32,
-            )
-          >
-        >("wgpuComputePassEncoderDispatchWorkgroups")
-        .asFunction();
-
-    _wgpuComputePassEncoderEnd = dylib
-        .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-          "wgpuComputePassEncoderEnd",
-        )
-        .asFunction();
-
-    _wgpuCommandEncoderCopyBufferToBuffer = _tryLookup(
-      () => dylib
-          .lookup<
-            ffi.NativeFunction<
-              ffi.Void Function(
-                ffi.Pointer<ffi.Void>,
-                ffi.Pointer<ffi.Void>,
-                ffi.Uint64,
-                ffi.Pointer<ffi.Void>,
-                ffi.Uint64,
-                ffi.Uint64,
-              )
-            >
-          >("wgpuCommandEncoderCopyBufferToBuffer")
-          .asFunction(),
-    );
-
-    _wgpuCommandEncoderFinish = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Pointer<ffi.Void> Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-            )
-          >
-        >("wgpuCommandEncoderFinish")
-        .asFunction();
-
-    _wgpuQueueSubmit = dylib
-        .lookup<
-          ffi.NativeFunction<
-            ffi.Void Function(
-              ffi.Pointer<ffi.Void>,
-              ffi.UintPtr,
-              ffi.Pointer<ffi.Pointer<ffi.Void>>,
-            )
-          >
-        >("wgpuQueueSubmit")
-        .asFunction();
-
-    _wgpuDevicePoll = _tryLookup(
-      () => dylib
-          .lookup<
-            ffi.NativeFunction<
-              ffi.Uint32 Function(
-                ffi.Pointer<ffi.Void>,
-                ffi.Uint32,
-                ffi.Pointer<ffi.Void>,
-              )
-            >
-          >("wgpuDevicePoll")
-          .asFunction(),
-    );
-
-    _wgpuBufferDestroy = dylib
-        .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-          "wgpuBufferDestroy",
-        )
-        .asFunction();
-
-    _wgpuDeviceDestroy = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuDeviceDestroy",
-          )
-          .asFunction(),
-    );
-
-    _wgpuInstanceRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuInstanceRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuAdapterRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuAdapterRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuDeviceRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuDeviceRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuQueueRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuQueueRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuBufferRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuBufferRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuShaderModuleRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuShaderModuleRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuComputePipelineRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuComputePipelineRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuBindGroupRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuBindGroupRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuBindGroupLayoutRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuBindGroupLayoutRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuCommandEncoderRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuCommandEncoderRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuComputePassEncoderRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuComputePassEncoderRelease",
-          )
-          .asFunction(),
-    );
-
-    _wgpuCommandBufferRelease = _tryLookup(
-      () => dylib
-          .lookup<ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>>(
-            "wgpuCommandBufferRelease",
-          )
-          .asFunction(),
-    );
-  }
+  /// Creates a [WgpuNativeBindings] facade over `@ffi.Native` WebGPU symbols.
+  const WgpuNativeBindings({this.isAvailable = true});
 
   // ===========================================================================
   // High-Level FFI Invocation Methods
   // ===========================================================================
 
+  /// Allocates a new `WGPUInstance` handle.
   ffi.Pointer<ffi.Void> createInstance() {
-    return _wgpuCreateInstance(ffi.nullptr);
+    return wgpuCreateInstance(ffi.nullptr);
   }
 
-  Future<ffi.Pointer<ffi.Void>> requestAdapter(
+  /// Synchronously enumerates and selects the first available `WGPUAdapter` on [instance].
+  ///
+  /// Throws a [GpuDeviceException] if no WebGPU adapters are available.
+  ffi.Pointer<ffi.Void> requestAdapterSync(
     ffi.Pointer<ffi.Void> instance, {
     int powerPreference = WGPUPowerPreference.highPerformance,
     int backendType = WGPUBackendType.undefined,
-  }) async {
+  }) {
     return using((arena) {
-      final count = _wgpuInstanceEnumerateAdapters(
+      final count = wgpuInstanceEnumerateAdapters(
         instance,
         ffi.nullptr,
         ffi.nullptr,
       );
       if (count <= 0) {
-        throw GpuDeviceException("No WebGPU adapters found.");
+        throw const GpuDeviceException('No WebGPU adapters found.');
       }
       final adapters = arena<ffi.Pointer<ffi.Void>>(count);
-      _wgpuInstanceEnumerateAdapters(instance, ffi.nullptr, adapters);
+      wgpuInstanceEnumerateAdapters(instance, ffi.nullptr, adapters);
       return adapters[0];
     });
   }
 
-  Future<ffi.Pointer<ffi.Void>> requestDevice(
+  /// Enumerates and selects the first available `WGPUAdapter` on [instance].
+  ///
+  /// Throws a [GpuDeviceException] if no WebGPU adapters are available.
+  Future<ffi.Pointer<ffi.Void>> requestAdapter(
+    ffi.Pointer<ffi.Void> instance, {
+    int powerPreference = WGPUPowerPreference.highPerformance,
+    int backendType = WGPUBackendType.undefined,
+  }) async {
+    return requestAdapterSync(
+      instance,
+      powerPreference: powerPreference,
+      backendType: backendType,
+    );
+  }
+
+  /// Synchronously requests a logical `WGPUDevice` from [adapter] on [instance].
+  ///
+  /// Throws a [GpuDeviceException] if device acquisition fails.
+  ffi.Pointer<ffi.Void> requestDeviceSync(
     ffi.Pointer<ffi.Void> instance,
     ffi.Pointer<ffi.Void> adapter, {
     String? label,
-  }) async {
+  }) {
     _WgpuStaticState.lastAcquiredDevice = ffi.nullptr;
 
     return using((arena) {
-      final cbPointer =
+      final callbackPointer =
           ffi.Pointer.fromFunction<
             ffi.Void Function(
               ffi.Uint32,
@@ -868,32 +916,49 @@ final class WgpuNativeLib {
             )
           >(_onGlobalDeviceRequested);
 
-      final cbInfo = arena<WGPURequestDeviceCallbackInfo>();
-      cbInfo.ref.mode = WGPUCallbackMode.allowSpontaneous;
-      cbInfo.ref.callback = cbPointer;
+      final callbackInfo = arena<WGPURequestDeviceCallbackInfo>();
+      callbackInfo.ref.mode = WGPUCallbackMode.allowSpontaneous;
+      callbackInfo.ref.callback = callbackPointer;
 
-      _wgpuAdapterRequestDevice(adapter, ffi.nullptr, cbInfo.ref);
+      wgpuAdapterRequestDevice(adapter, ffi.nullptr, callbackInfo.ref);
 
       for (var i = 0; i < 100; i++) {
-        _wgpuInstanceProcessEvents(instance);
+        wgpuInstanceProcessEvents(instance);
         if (_WgpuStaticState.lastAcquiredDevice != ffi.nullptr) break;
       }
 
       if (_WgpuStaticState.lastAcquiredDevice == ffi.nullptr) {
-        throw GpuDeviceException("Failed to acquire WebGPU Device.");
+        throw const GpuDeviceException('Failed to acquire WebGPU Device.');
       }
       return _WgpuStaticState.lastAcquiredDevice;
     });
   }
 
+  /// Requests a logical `WGPUDevice` from [adapter] on [instance].
+  ///
+  /// Throws a [GpuDeviceException] if device acquisition fails.
+  Future<ffi.Pointer<ffi.Void>> requestDevice(
+    ffi.Pointer<ffi.Void> instance,
+    ffi.Pointer<ffi.Void> adapter, {
+    String? label,
+  }) async {
+    return requestDeviceSync(instance, adapter, label: label);
+  }
+
+  /// Retrieves the default `WGPUQueue` for [device].
+  ///
+  /// Throws a [GpuDeviceException] if the queue handle is null.
   ffi.Pointer<ffi.Void> deviceGetQueue(ffi.Pointer<ffi.Void> device) {
-    final queue = _wgpuDeviceGetQueue(device);
+    final queue = wgpuDeviceGetQueue(device);
     if (queue == ffi.nullptr) {
-      throw GpuDeviceException("Failed to retrieve device queue.");
+      throw const GpuDeviceException('Failed to retrieve device queue.');
     }
     return queue;
   }
 
+  /// Allocates a `WGPUBuffer` of [size] bytes with [usage] flags on [device].
+  ///
+  /// Throws a [GpuMemoryException] if the allocation fails.
   ffi.Pointer<ffi.Void> createBuffer(
     ffi.Pointer<ffi.Void> device, {
     required int size,
@@ -902,26 +967,27 @@ final class WgpuNativeLib {
     String? label,
   }) {
     return using((arena) {
-      final desc = arena<WGPUBufferDescriptor>();
-      desc.ref.nextInChain = ffi.nullptr;
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUBufferDescriptor>();
+      descriptor.ref.nextInChain = ffi.nullptr;
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
-      desc.ref.usage = usage;
-      desc.ref.size = size;
-      desc.ref.mappedAtCreation = mappedAtCreation ? 1 : 0;
+      descriptor.ref.label.length = label?.length ?? 0;
+      descriptor.ref.usage = usage;
+      descriptor.ref.size = size;
+      descriptor.ref.mappedAtCreation = mappedAtCreation ? 1 : 0;
 
-      final buf = _wgpuDeviceCreateBuffer(device, desc);
-      if (buf == ffi.nullptr) {
+      final allocatedBuffer = wgpuDeviceCreateBuffer(device, descriptor);
+      if (allocatedBuffer == ffi.nullptr) {
         throw GpuMemoryException(
-          "Failed to allocate GPU buffer of size $size bytes.",
+          'Failed to allocate GPU buffer of size $size bytes.',
         );
       }
-      return buf;
+      return allocatedBuffer;
     });
   }
 
+  /// Enqueues a write of [size] bytes from host [data] into [buffer] at [bufferOffset].
   void queueWriteBuffer(
     ffi.Pointer<ffi.Void> queue,
     ffi.Pointer<ffi.Void> buffer, {
@@ -930,9 +996,10 @@ final class WgpuNativeLib {
     required int size,
   }) {
     if (size == 0) return;
-    _wgpuQueueWriteBuffer(queue, buffer, bufferOffset, data, size);
+    wgpuQueueWriteBuffer(queue, buffer, bufferOffset, data, size);
   }
 
+  /// Synchronously maps [size] bytes of [buffer] starting at [offset] for host access.
   void bufferMapSync(
     ffi.Pointer<ffi.Void> instance,
     ffi.Pointer<ffi.Void> buffer, {
@@ -941,12 +1008,10 @@ final class WgpuNativeLib {
     int offset = 0,
     required int size,
   }) {
-    final mapAsyncFn = _wgpuBufferMapAsync;
-    if (mapAsyncFn == null) return;
     _WgpuStaticState.mapDone = false;
 
     using((arena) {
-      final cbPointer =
+      final callbackPointer =
           ffi.Pointer.fromFunction<
             ffi.Void Function(
               ffi.Uint32,
@@ -956,22 +1021,23 @@ final class WgpuNativeLib {
             )
           >(_onGlobalBufferMapped);
 
-      final cbInfo = arena<WGPUBufferMapCallbackInfo>();
-      cbInfo.ref.mode = WGPUCallbackMode.allowSpontaneous;
-      cbInfo.ref.callback = cbPointer;
+      final callbackInfo = arena<WGPUBufferMapCallbackInfo>();
+      callbackInfo.ref.mode = WGPUCallbackMode.allowSpontaneous;
+      callbackInfo.ref.callback = callbackPointer;
 
-      mapAsyncFn(buffer, mode, offset, size, cbInfo.ref);
+      wgpuBufferMapAsync(buffer, mode, offset, size, callbackInfo.ref);
 
       for (var i = 0; i < 1000; i++) {
         if (device != null && device != ffi.nullptr) {
           devicePoll(device, wait: true);
         }
-        _wgpuInstanceProcessEvents(instance);
+        wgpuInstanceProcessEvents(instance);
         if (_WgpuStaticState.mapDone) break;
       }
     });
   }
 
+  /// Maps [size] bytes of [buffer] starting at [offset] for host access.
   Future<int> bufferMapAsync(
     ffi.Pointer<ffi.Void> instance,
     ffi.Pointer<ffi.Void> buffer, {
@@ -980,52 +1046,34 @@ final class WgpuNativeLib {
     int offset = 0,
     required int size,
   }) async {
-    final mapAsyncFn = _wgpuBufferMapAsync;
-    if (mapAsyncFn == null) return 0;
-    _WgpuStaticState.mapDone = false;
-
-    return using((arena) {
-      final cbPointer =
-          ffi.Pointer.fromFunction<
-            ffi.Void Function(
-              ffi.Uint32,
-              WGPUStringView,
-              ffi.Pointer<ffi.Void>,
-              ffi.Pointer<ffi.Void>,
-            )
-          >(_onGlobalBufferMapped);
-
-      final cbInfo = arena<WGPUBufferMapCallbackInfo>();
-      cbInfo.ref.mode = WGPUCallbackMode.allowSpontaneous;
-      cbInfo.ref.callback = cbPointer;
-
-      mapAsyncFn(buffer, mode, offset, size, cbInfo.ref);
-
-      for (var i = 0; i < 1000; i++) {
-        if (device != null && device != ffi.nullptr) {
-          devicePoll(device, wait: true);
-        }
-        _wgpuInstanceProcessEvents(instance);
-        if (_WgpuStaticState.mapDone) break;
-      }
-      return 1;
-    });
+    bufferMapSync(
+      instance,
+      buffer,
+      device: device,
+      mode: mode,
+      offset: offset,
+      size: size,
+    );
+    return 1;
   }
 
+  /// Obtains the host pointer for a mapped range of [buffer] of [size] bytes at [offset].
   ffi.Pointer<ffi.Void> bufferGetMappedRange(
     ffi.Pointer<ffi.Void> buffer, {
     int offset = 0,
     required int size,
   }) {
-    final getMappedFn = _wgpuBufferGetMappedRange;
-    if (getMappedFn == null) return ffi.nullptr;
-    return getMappedFn(buffer, offset, size);
+    return wgpuBufferGetMappedRange(buffer, offset, size);
   }
 
+  /// Unmaps [buffer] after host access is complete.
   void bufferUnmap(ffi.Pointer<ffi.Void> buffer) {
-    _wgpuBufferUnmap?.call(buffer);
+    wgpuBufferUnmap(buffer);
   }
 
+  /// Compiles [wgslSource] into a `WGPUShaderModule` on [device].
+  ///
+  /// Throws a [GpuComputeException] if compilation fails.
   ffi.Pointer<ffi.Void> createShaderModule(
     ffi.Pointer<ffi.Void> device,
     String wgslSource, {
@@ -1038,62 +1086,69 @@ final class WgpuNativeLib {
       wgslChain.ref.code.data = wgslSource.toNativeUtf8(allocator: arena);
       wgslChain.ref.code.length = wgslSource.length;
 
-      final desc = arena<WGPUShaderModuleDescriptor>();
-      desc.ref.nextInChain = wgslChain.cast<WGPUChainedStruct>();
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUShaderModuleDescriptor>();
+      descriptor.ref.nextInChain = wgslChain.cast<WGPUChainedStruct>();
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
+      descriptor.ref.label.length = label?.length ?? 0;
 
-      final module = _wgpuDeviceCreateShaderModule(device, desc);
+      final module = wgpuDeviceCreateShaderModule(device, descriptor);
       if (module == ffi.nullptr) {
-        throw GpuComputeException("Failed to compile WGSL shader module.");
+        throw const GpuComputeException(
+          'Failed to compile WGSL shader module.',
+        );
       }
       return module;
     });
   }
 
+  /// Creates a `WGPUComputePipeline` on [device] for [shaderModule] and [entryPoint].
+  ///
+  /// Throws a [GpuComputeException] if pipeline creation fails.
   ffi.Pointer<ffi.Void> createComputePipeline(
     ffi.Pointer<ffi.Void> device, {
     required ffi.Pointer<ffi.Void> shaderModule,
-    String entryPoint = "main",
+    String entryPoint = 'main',
     ffi.Pointer<ffi.Void>? layout,
     String? label,
   }) {
     return using((arena) {
-      final desc = arena<WGPUComputePipelineDescriptor>();
-      desc.ref.nextInChain = ffi.nullptr;
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUComputePipelineDescriptor>();
+      descriptor.ref.nextInChain = ffi.nullptr;
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
-      desc.ref.layout = layout ?? ffi.nullptr;
-      desc.ref.computeNextInChain = ffi.nullptr;
-      desc.ref.computeModule = shaderModule;
-      desc.ref.computeEntryPoint.data = entryPoint.toNativeUtf8(
+      descriptor.ref.label.length = label?.length ?? 0;
+      descriptor.ref.layout = layout ?? ffi.nullptr;
+      descriptor.ref.computeNextInChain = ffi.nullptr;
+      descriptor.ref.computeModule = shaderModule;
+      descriptor.ref.computeEntryPoint.data = entryPoint.toNativeUtf8(
         allocator: arena,
       );
-      desc.ref.computeEntryPoint.length = entryPoint.length;
-      desc.ref.computeConstantCount = 0;
-      desc.ref.computeConstants = ffi.nullptr;
+      descriptor.ref.computeEntryPoint.length = entryPoint.length;
+      descriptor.ref.computeConstantCount = 0;
+      descriptor.ref.computeConstants = ffi.nullptr;
 
-      final pipeline = _wgpuDeviceCreateComputePipeline(device, desc);
+      final pipeline = wgpuDeviceCreateComputePipeline(device, descriptor);
       if (pipeline == ffi.nullptr) {
-        throw GpuComputeException("Failed to create compute pipeline.");
+        throw const GpuComputeException('Failed to create compute pipeline.');
       }
       return pipeline;
     });
   }
 
+  /// Retrieves the `WGPUBindGroupLayout` at [groupIndex] from [pipeline].
   ffi.Pointer<ffi.Void> pipelineGetBindGroupLayout(
     ffi.Pointer<ffi.Void> pipeline,
     int groupIndex,
   ) {
-    final getLayoutFn = _wgpuComputePipelineGetBindGroupLayout;
-    if (getLayoutFn == null) return ffi.nullptr;
-    return getLayoutFn(pipeline, groupIndex);
+    return wgpuComputePipelineGetBindGroupLayout(pipeline, groupIndex);
   }
 
+  /// Creates a `WGPUBindGroup` on [device] binding [entries] to [layout].
+  ///
+  /// Throws a [GpuComputeException] if bind group creation fails.
   ffi.Pointer<ffi.Void> createBindGroup(
     ffi.Pointer<ffi.Void> device, {
     required ffi.Pointer<ffi.Void> layout,
@@ -1103,90 +1158,101 @@ final class WgpuNativeLib {
     return using((arena) {
       final entriesPtr = arena<WGPUBindGroupEntry>(entries.length);
       for (var i = 0; i < entries.length; i++) {
-        final e = entries[i];
+        final entry = entries[i];
         final entryPtr = entriesPtr + i;
         entryPtr.ref.nextInChain = ffi.nullptr;
-        entryPtr.ref.binding = e.binding;
-        entryPtr.ref.buffer = e.buffer;
-        entryPtr.ref.offset = e.offset;
-        entryPtr.ref.size = e.size;
+        entryPtr.ref.binding = entry.binding;
+        entryPtr.ref.buffer = entry.buffer;
+        entryPtr.ref.offset = entry.offset;
+        entryPtr.ref.size = entry.size;
         entryPtr.ref.sampler = ffi.nullptr;
         entryPtr.ref.textureView = ffi.nullptr;
       }
 
-      final desc = arena<WGPUBindGroupDescriptor>();
-      desc.ref.nextInChain = ffi.nullptr;
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUBindGroupDescriptor>();
+      descriptor.ref.nextInChain = ffi.nullptr;
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
-      desc.ref.layout = layout;
-      desc.ref.entryCount = entries.length;
-      desc.ref.entries = entriesPtr;
+      descriptor.ref.label.length = label?.length ?? 0;
+      descriptor.ref.layout = layout;
+      descriptor.ref.entryCount = entries.length;
+      descriptor.ref.entries = entriesPtr;
 
-      final bg = _wgpuDeviceCreateBindGroup(device, desc);
-      if (bg == ffi.nullptr) {
-        throw GpuComputeException("Failed to create bind group.");
+      final bindGroup = wgpuDeviceCreateBindGroup(device, descriptor);
+      if (bindGroup == ffi.nullptr) {
+        throw const GpuComputeException('Failed to create bind group.');
       }
-      return bg;
+      return bindGroup;
     });
   }
 
+  /// Creates a `WGPUCommandEncoder` on [device].
+  ///
+  /// Throws a [GpuComputeException] if command encoder creation fails.
   ffi.Pointer<ffi.Void> createCommandEncoder(
     ffi.Pointer<ffi.Void> device, {
     String? label,
   }) {
     return using((arena) {
-      final desc = arena<WGPUCommandEncoderDescriptor>();
-      desc.ref.nextInChain = ffi.nullptr;
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUCommandEncoderDescriptor>();
+      descriptor.ref.nextInChain = ffi.nullptr;
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
+      descriptor.ref.label.length = label?.length ?? 0;
 
-      final encoder = _wgpuDeviceCreateCommandEncoder(device, desc.cast());
+      final encoder = wgpuDeviceCreateCommandEncoder(device, descriptor.cast());
       if (encoder == ffi.nullptr) {
-        throw GpuComputeException("Failed to create command encoder.");
+        throw const GpuComputeException('Failed to create command encoder.');
       }
       return encoder;
     });
   }
 
+  /// Begins a `WGPUComputePassEncoder` on [encoder].
+  ///
+  /// Throws a [GpuComputeException] if the compute pass cannot be started.
   ffi.Pointer<ffi.Void> commandEncoderBeginComputePass(
     ffi.Pointer<ffi.Void> encoder, {
     String? label,
   }) {
     return using((arena) {
-      final desc = arena<WGPUComputePassDescriptor>();
-      desc.ref.nextInChain = ffi.nullptr;
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUComputePassDescriptor>();
+      descriptor.ref.nextInChain = ffi.nullptr;
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
-      desc.ref.timestampWritesCount = 0;
-      desc.ref.timestampWrites = ffi.nullptr;
+      descriptor.ref.label.length = label?.length ?? 0;
+      descriptor.ref.timestampWritesCount = 0;
+      descriptor.ref.timestampWrites = ffi.nullptr;
 
-      final pass = _wgpuCommandEncoderBeginComputePass(encoder, desc.cast());
+      final pass = wgpuCommandEncoderBeginComputePass(
+        encoder,
+        descriptor.cast(),
+      );
       if (pass == ffi.nullptr) {
-        throw GpuComputeException("Failed to begin compute pass.");
+        throw const GpuComputeException('Failed to begin compute pass.');
       }
       return pass;
     });
   }
 
+  /// Binds [pipeline] to the active compute [pass].
   void computePassSetPipeline(
     ffi.Pointer<ffi.Void> pass,
     ffi.Pointer<ffi.Void> pipeline,
   ) {
-    _wgpuComputePassEncoderSetPipeline(pass, pipeline);
+    wgpuComputePassEncoderSetPipeline(pass, pipeline);
   }
 
+  /// Binds [bindGroup] at [groupIndex] on the active compute [pass].
   void computePassSetBindGroup(
     ffi.Pointer<ffi.Void> pass,
     int groupIndex,
     ffi.Pointer<ffi.Void> bindGroup,
   ) {
-    _wgpuComputePassEncoderSetBindGroup(
+    wgpuComputePassEncoderSetBindGroup(
       pass,
       groupIndex,
       bindGroup,
@@ -1195,13 +1261,14 @@ final class WgpuNativeLib {
     );
   }
 
+  /// Dispatches compute workgroups of dimensions ([workgroupsX], [workgroupsY], [workgroupsZ]) on [pass].
   void computePassDispatchWorkgroups(
     ffi.Pointer<ffi.Void> pass,
     int workgroupsX,
     int workgroupsY,
     int workgroupsZ,
   ) {
-    _wgpuComputePassEncoderDispatchWorkgroups(
+    wgpuComputePassEncoderDispatchWorkgroups(
       pass,
       workgroupsX,
       workgroupsY,
@@ -1209,10 +1276,12 @@ final class WgpuNativeLib {
     );
   }
 
+  /// Ends the active compute [pass].
   void computePassEnd(ffi.Pointer<ffi.Void> pass) {
-    _wgpuComputePassEncoderEnd(pass);
+    wgpuComputePassEncoderEnd(pass);
   }
 
+  /// Encodes a GPU copy of [size] bytes from [source] at [sourceOffset] to [destination] at [destinationOffset].
   void commandEncoderCopyBufferToBuffer(
     ffi.Pointer<ffi.Void> encoder,
     ffi.Pointer<ffi.Void> source,
@@ -1221,7 +1290,7 @@ final class WgpuNativeLib {
     int destinationOffset,
     int size,
   ) {
-    _wgpuCommandEncoderCopyBufferToBuffer?.call(
+    wgpuCommandEncoderCopyBufferToBuffer(
       encoder,
       source,
       sourceOffset,
@@ -1231,26 +1300,43 @@ final class WgpuNativeLib {
     );
   }
 
+  /// Encodes a GPU zero-fill of [size] bytes on [buffer] starting at [offset].
+  void commandEncoderClearBuffer(
+    ffi.Pointer<ffi.Void> encoder,
+    ffi.Pointer<ffi.Void> buffer,
+    int offset,
+    int size,
+  ) {
+    wgpuCommandEncoderClearBuffer(encoder, buffer, offset, size);
+  }
+
+  /// Finishes recording commands on [encoder] and produces a `WGPUCommandBuffer`.
+  ///
+  /// Throws a [GpuComputeException] if finishing the encoder fails.
   ffi.Pointer<ffi.Void> commandEncoderFinish(
     ffi.Pointer<ffi.Void> encoder, {
     String? label,
   }) {
     return using((arena) {
-      final desc = arena<WGPUCommandBufferDescriptor>();
-      desc.ref.nextInChain = ffi.nullptr;
-      desc.ref.label.data = label != null
+      final descriptor = arena<WGPUCommandBufferDescriptor>();
+      descriptor.ref.nextInChain = ffi.nullptr;
+      descriptor.ref.label.data = label != null
           ? label.toNativeUtf8(allocator: arena)
           : ffi.nullptr;
-      desc.ref.label.length = label?.length ?? 0;
+      descriptor.ref.label.length = label?.length ?? 0;
 
-      final cmdBuf = _wgpuCommandEncoderFinish(encoder, desc.cast());
-      if (cmdBuf == ffi.nullptr) {
-        throw GpuComputeException("Failed to finish command encoder.");
+      final commandBuffer = wgpuCommandEncoderFinish(
+        encoder,
+        descriptor.cast(),
+      );
+      if (commandBuffer == ffi.nullptr) {
+        throw const GpuComputeException('Failed to finish command encoder.');
       }
-      return cmdBuf;
+      return commandBuffer;
     });
   }
 
+  /// Submits [commandBuffers] to [queue] for execution.
   void queueSubmit(
     ffi.Pointer<ffi.Void> queue,
     List<ffi.Pointer<ffi.Void>> commandBuffers,
@@ -1261,175 +1347,110 @@ final class WgpuNativeLib {
       for (var i = 0; i < commandBuffers.length; i++) {
         array[i] = commandBuffers[i];
       }
-      _wgpuQueueSubmit(queue, commandBuffers.length, array);
+      wgpuQueueSubmit(queue, commandBuffers.length, array);
     });
   }
 
+  /// Polls [device] to process in-flight GPU work, optionally blocking when [wait] is `true`.
   bool devicePoll(ffi.Pointer<ffi.Void> device, {bool wait = false}) {
-    final pollFn = _wgpuDevicePoll;
-    if (pollFn == null) return true;
-    return pollFn(device, wait ? 1 : 0, ffi.nullptr) != 0;
+    return wgpuDevicePoll(device, wait ? 1 : 0, ffi.nullptr) != 0;
   }
 
+  /// Destroys the GPU allocation backing [buffer].
   void bufferDestroy(ffi.Pointer<ffi.Void> buffer) {
     if (buffer != ffi.nullptr) {
-      _wgpuBufferDestroy(buffer);
+      wgpuBufferDestroy(buffer);
     }
   }
 
+  /// Destroys the logical [device].
   void deviceDestroy(ffi.Pointer<ffi.Void> device) {
     if (device != ffi.nullptr) {
-      _wgpuDeviceDestroy?.call(device);
+      wgpuDeviceDestroy(device);
     }
   }
 
+  /// Releases a reference to [instance].
   void instanceRelease(ffi.Pointer<ffi.Void> instance) {
     if (instance != ffi.nullptr) {
-      _wgpuInstanceRelease?.call(instance);
+      wgpuInstanceRelease(instance);
     }
   }
 
+  /// Releases a reference to [adapter].
   void adapterRelease(ffi.Pointer<ffi.Void> adapter) {
     if (adapter != ffi.nullptr) {
-      _wgpuAdapterRelease?.call(adapter);
+      wgpuAdapterRelease(adapter);
     }
   }
 
+  /// Releases a reference to [device].
   void deviceRelease(ffi.Pointer<ffi.Void> device) {
     if (device != ffi.nullptr) {
-      _wgpuDeviceRelease?.call(device);
+      wgpuDeviceRelease(device);
     }
   }
 
+  /// Releases a reference to [queue].
   void queueRelease(ffi.Pointer<ffi.Void> queue) {
     if (queue != ffi.nullptr) {
-      _wgpuQueueRelease?.call(queue);
+      wgpuQueueRelease(queue);
     }
   }
 
+  /// Releases a reference to [buffer].
   void bufferRelease(ffi.Pointer<ffi.Void> buffer) {
     if (buffer != ffi.nullptr) {
-      _wgpuBufferRelease?.call(buffer);
+      wgpuBufferRelease(buffer);
     }
   }
 
+  /// Releases a reference to [shaderModule].
   void shaderModuleRelease(ffi.Pointer<ffi.Void> shaderModule) {
     if (shaderModule != ffi.nullptr) {
-      _wgpuShaderModuleRelease?.call(shaderModule);
+      wgpuShaderModuleRelease(shaderModule);
     }
   }
 
+  /// Releases a reference to [computePipeline].
   void computePipelineRelease(ffi.Pointer<ffi.Void> computePipeline) {
     if (computePipeline != ffi.nullptr) {
-      _wgpuComputePipelineRelease?.call(computePipeline);
+      wgpuComputePipelineRelease(computePipeline);
     }
   }
 
+  /// Releases a reference to [bindGroup].
   void bindGroupRelease(ffi.Pointer<ffi.Void> bindGroup) {
     if (bindGroup != ffi.nullptr) {
-      _wgpuBindGroupRelease?.call(bindGroup);
+      wgpuBindGroupRelease(bindGroup);
     }
   }
 
+  /// Releases a reference to [bindGroupLayout].
   void bindGroupLayoutRelease(ffi.Pointer<ffi.Void> bindGroupLayout) {
     if (bindGroupLayout != ffi.nullptr) {
-      _wgpuBindGroupLayoutRelease?.call(bindGroupLayout);
+      wgpuBindGroupLayoutRelease(bindGroupLayout);
     }
   }
 
+  /// Releases a reference to [commandEncoder].
   void commandEncoderRelease(ffi.Pointer<ffi.Void> commandEncoder) {
     if (commandEncoder != ffi.nullptr) {
-      _wgpuCommandEncoderRelease?.call(commandEncoder);
+      wgpuCommandEncoderRelease(commandEncoder);
     }
   }
 
+  /// Releases a reference to [computePassEncoder].
   void computePassEncoderRelease(ffi.Pointer<ffi.Void> computePassEncoder) {
     if (computePassEncoder != ffi.nullptr) {
-      _wgpuComputePassEncoderRelease?.call(computePassEncoder);
+      wgpuComputePassEncoderRelease(computePassEncoder);
     }
   }
 
+  /// Releases a reference to [commandBuffer].
   void commandBufferRelease(ffi.Pointer<ffi.Void> commandBuffer) {
     if (commandBuffer != ffi.nullptr) {
-      _wgpuCommandBufferRelease?.call(commandBuffer);
+      wgpuCommandBufferRelease(commandBuffer);
     }
-  }
-
-  // ===========================================================================
-  // Shared Dynamic Library Resolver
-  // ===========================================================================
-
-  static WgpuNativeLib? tryLoad({String? customPath}) {
-    if (customPath != null && customPath.isNotEmpty) {
-      try {
-        final dylib = ffi.DynamicLibrary.open(customPath);
-        return WgpuNativeLib(dylib, libraryPath: customPath);
-      } catch (_) {
-        return null;
-      }
-    }
-
-    final candidatePaths = <String>[
-      // 1. Try Native Assets bundled asset identifiers
-      "package:gpuarray/wgpu_native",
-      "wgpu_native",
-      "libwgpu_native",
-    ];
-
-    final envPath = Platform.environment["WGPU_LIB_PATH"];
-    if (envPath != null && envPath.isNotEmpty) {
-      candidatePaths.add(envPath);
-    }
-
-    if (Platform.isLinux) {
-      candidatePaths.addAll([
-        "/tmp/wgpu_test/lib/libwgpu_native.so",
-        "libwgpu_native.so",
-        "libwgpu.so",
-        "/usr/lib/libwgpu_native.so",
-        "/usr/local/lib/libwgpu_native.so",
-        "/usr/lib/x86_64-linux-gnu/libwgpu_native.so",
-        "/usr/lib64/libwgpu_native.so",
-      ]);
-    } else if (Platform.isMacOS) {
-      candidatePaths.addAll([
-        "libwgpu_native.dylib",
-        "libwgpu.dylib",
-        "/usr/local/lib/libwgpu_native.dylib",
-        "/opt/homebrew/lib/libwgpu_native.dylib",
-      ]);
-    } else if (Platform.isWindows) {
-      candidatePaths.addAll(["wgpu_native.dll", "wgpu.dll"]);
-    }
-
-    for (final path in candidatePaths) {
-      try {
-        final dylib = ffi.DynamicLibrary.open(path);
-        final lib = WgpuNativeLib(dylib, libraryPath: path);
-        if (lib.isAvailable) return lib;
-      } catch (_) {
-        // Continue searching candidates
-      }
-    }
-
-    // Try process lookup (embedded / statically linked on iOS or macOS)
-    try {
-      final processDylib = ffi.DynamicLibrary.process();
-      final lib = WgpuNativeLib(processDylib, libraryPath: 'process');
-      if (lib.isAvailable) return lib;
-    } catch (_) {}
-
-    return null;
-  }
-
-  static WgpuNativeLib load({String? customPath}) {
-    final lib = tryLoad(customPath: customPath);
-    if (lib == null) {
-      throw GpuDeviceException(
-        "Could not load native WebGPU dynamic library (libwgpu_native). "
-        "Ensure libwgpu_native is installed or set the WGPU_LIB_PATH environment variable.",
-      );
-    }
-    return lib;
   }
 }

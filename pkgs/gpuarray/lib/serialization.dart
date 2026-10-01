@@ -12,5 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+/// Serialization utilities for saving and loading GPU tensors in SafeTensors
+/// format and packaging interactive WebGPU browser compute pipelines.
+library;
+
 export 'src/serialization/safetensors.dart';
 export 'src/serialization/webgpu_pipeline.dart';

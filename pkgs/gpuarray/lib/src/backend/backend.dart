@@ -14,8 +14,6 @@
 
 import 'dart:ffi' as ffi;
 
-import 'package:ffi/ffi.dart';
-
 import '../buffer.dart';
 import '../device.dart';
 import '../exceptions.dart';
@@ -26,8 +24,8 @@ export '../device.dart' show GpuDeviceType;
 /// Abstract hardware execution and memory driver backend for a [GpuDevice].
 ///
 /// Implementations manage device memory allocation, host-device transfers,
-/// and compute kernel dispatch (e.g., native WebGPU via `wgpu-native`, browser
-/// WebGPU via `dart:js_interop`, or host SIMD via [CpuVectorBackend]).
+/// and compute kernel dispatch (such as native WebGPU via `wgpu-native` or
+/// browser WebGPU via `dart:js_interop`).
 abstract class GpuBackend {
   /// Creates a [GpuBackend].
   const GpuBackend();
@@ -35,33 +33,37 @@ abstract class GpuBackend {
   /// The hardware device type managed by this backend.
   GpuDeviceType get deviceType;
 
-  /// Whether this backend executes in a simulated or host CPU fallback mode
-  /// rather than dispatching to a physical hardware GPU driver.
-  bool get isSimulated => true;
-
-  /// Whether [GpuBuffer] instances on this backend should attach a
-  /// `calloc.nativeFree` [ffi.NativeFinalizer] as a garbage-collection safety net.
+  /// Whether buffers allocated by this backend attach a Dart `NativeFinalizer`.
   bool get usesNativeFinalizer => false;
 
-  /// Allocates a raw buffer of [sizeInBytes] bytes.
+  /// Allocates a device buffer handle of [sizeInBytes] bytes with [usage] flags.
   ///
   /// Throws a [GpuMemoryException] if the allocation fails.
-  ffi.Pointer<ffi.Uint8> allocateBuffer(int sizeInBytes);
+  ffi.Pointer<ffi.Void> allocateBuffer(
+    int sizeInBytes, {
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+  });
 
-  /// Frees a raw buffer previously allocated by [allocateBuffer].
-  void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes);
+  /// Frees a device buffer handle previously allocated by [allocateBuffer].
+  void freeBuffer(ffi.Pointer<ffi.Void> handle, int sizeInBytes);
 
-  /// Ensures the host-accessible staging memory for [buffer] reflects the
-  /// latest GPU buffer state before host CPU reads.
-  void ensureHostSynced(GpuBuffer buffer) {}
-
-  /// Marks the host-accessible memory for [buffer] as modified by the host CPU
-  /// so subsequent GPU dispatches upload the updated contents.
-  void markHostModified(GpuBuffer buffer) {}
-
-  /// Ensures the GPU buffer reflects any pending host modifications before a
-  /// GPU compute dispatch or device-to-device copy.
-  void ensureGpuSynced(GpuBuffer buffer) {}
+  /// Zero-fills [bytes] bytes of [buffer] starting at byte [offset].
+  ///
+  /// If [bytes] is omitted, clears from [offset] to [GpuBuffer.sizeInBytes].
+  /// Throws a [GpuMemoryException] if [buffer] is disposed or the range is out of bounds.
+  void clearBuffer(GpuBuffer buffer, {int offset = 0, int? bytes}) {
+    if (buffer.isDisposed) {
+      throw const GpuMemoryException('Cannot clear a disposed GpuBuffer.');
+    }
+    final resolvedBytes = bytes ?? (buffer.sizeInBytes - offset);
+    if (offset < 0 ||
+        resolvedBytes < 0 ||
+        offset + resolvedBytes > buffer.allocatedBytes) {
+      throw GpuMemoryException(
+        'Clear bounds (offset: $offset, bytes: $resolvedBytes) exceed buffer size (${buffer.allocatedBytes}).',
+      );
+    }
+  }
 
   /// Copies [bytes] bytes from [src] into [dst] starting at byte [offset].
   ///
@@ -81,13 +83,6 @@ abstract class GpuBackend {
         'Copy bounds (offset: $offset, bytes: $bytes) exceed destination buffer size (${dst.sizeInBytes}).',
       );
     }
-    if (bytes == 0) return;
-    ensureHostSynced(dst);
-    final destinationPointer = dst.rawAddress + offset;
-    destinationPointer
-        .asTypedList(bytes)
-        .setRange(0, bytes, src.asTypedList(bytes));
-    markHostModified(dst);
   }
 
   /// Copies [bytes] bytes from [src] starting at byte [offset] into [dst].
@@ -108,10 +103,6 @@ abstract class GpuBackend {
         'Copy bounds (offset: $offset, bytes: $bytes) exceed source buffer size (${src.sizeInBytes}).',
       );
     }
-    if (bytes == 0) return;
-    ensureHostSynced(src);
-    final sourcePointer = src.rawAddress + offset;
-    dst.asTypedList(bytes).setRange(0, bytes, sourcePointer.asTypedList(bytes));
   }
 
   /// Copies [bytes] bytes from [src] (at [srcOffset]) to [dst] (at [dstOffset]).
@@ -140,17 +131,6 @@ abstract class GpuBackend {
         'exceed source (${src.sizeInBytes}) or destination (${dst.sizeInBytes}) size.',
       );
     }
-    if (bytes == 0) return;
-    ensureHostSynced(src);
-    if (dstOffset > 0 || bytes < dst.sizeInBytes) {
-      ensureHostSynced(dst);
-    }
-    final sourcePointer = src.rawAddress + srcOffset;
-    final destinationPointer = dst.rawAddress + dstOffset;
-    destinationPointer
-        .asTypedList(bytes)
-        .setRange(0, bytes, sourcePointer.asTypedList(bytes));
-    markHostModified(dst);
   }
 
   /// Dispatches a compiled [shaderModule] compute pipeline over [buffers] and
@@ -180,52 +160,8 @@ abstract class GpuBackend {
         );
       }
     }
-    final cpuKernel = shaderModule.metadata['cpu_kernel'];
-    if (cpuKernel is Function) {
-      cpuKernel(buffers, uniforms, workgroupsX, workgroupsY, workgroupsZ);
-    }
   }
 
   /// Releases any driver resources held by this backend.
   void dispose() {}
-}
-
-/// Host CPU vector execution backend backed by zero-initialized native C heap memory.
-final class CpuVectorBackend extends GpuBackend {
-  /// Creates a [CpuVectorBackend].
-  const CpuVectorBackend();
-
-  @override
-  GpuDeviceType get deviceType => GpuDeviceType.cpu;
-
-  @override
-  bool get usesNativeFinalizer => true;
-
-  @override
-  ffi.Pointer<ffi.Uint8> allocateBuffer(int sizeInBytes) {
-    if (sizeInBytes < 0) {
-      throw ArgumentError.value(
-        sizeInBytes,
-        'sizeInBytes',
-        'Must be non-negative.',
-      );
-    }
-    if (sizeInBytes == 0) {
-      return ffi.nullptr;
-    }
-    final pointer = calloc<ffi.Uint8>(sizeInBytes);
-    if (pointer == ffi.nullptr) {
-      throw GpuMemoryException(
-        'Failed to allocate $sizeInBytes bytes on host heap.',
-      );
-    }
-    return pointer;
-  }
-
-  @override
-  void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes) {
-    if (pointer != ffi.nullptr) {
-      calloc.free(pointer);
-    }
-  }
 }

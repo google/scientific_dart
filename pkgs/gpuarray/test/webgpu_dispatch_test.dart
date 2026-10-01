@@ -13,27 +13,13 @@
 // limitations under the License.
 
 import 'dart:ffi' as ffi;
+import 'dart:typed_data';
 import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/src/backend/compute_engine.dart';
 import 'package:gpuarray/src/backend/kernels.dart';
-
-WgslShaderModule _withCpuKernel(
-  WgslShaderModule shader,
-  void Function(List<GpuBuffer> bufs, List<int>? uniforms, int x, int y, int z)
-  kernel,
-) {
-  return WgslShaderModule(
-    name: shader.name,
-    code: shader.code,
-    entryPoint: shader.entryPoint,
-    workgroupSize: shader.workgroupSize,
-    bindings: shader.bindings,
-    metadata: {...shader.metadata, 'cpu_kernel': kernel},
-  );
-}
 
 void main() {
   group('WebGPU Cross-Platform Device Creation & Backend Selection', () {
@@ -66,14 +52,14 @@ void main() {
     );
 
     test(
-      'WgpuNativeBackend creates simulated backend when native WebGPU library is not loaded',
-      () async {
-        final backend = WgpuNativeBackend.mock();
+      'WgpuNativeBackend.createSync initializes real native WebGPU backend',
+      () {
+        final backend = WgpuNativeBackend.createSync();
 
         expect(backend.deviceType, equals(GpuDeviceType.webgpu));
-        expect(backend.isSimulated, isTrue);
         expect(backend.pipelineCacheSize, equals(0));
         expect(backend.dispatchLog, isEmpty);
+        backend.dispose();
       },
     );
   });
@@ -83,7 +69,7 @@ void main() {
     late GpuDevice device;
 
     setUp(() {
-      backend = WgpuNativeBackend(isSimulated: true);
+      backend = WgpuNativeBackend.createSync();
       device = GpuDevice.create(
         name: 'WebGPU Driver Test Device',
         type: GpuDeviceType.webgpu,
@@ -142,7 +128,7 @@ void main() {
     late GpuDevice device;
 
     setUp(() {
-      backend = WgpuNativeBackend(isSimulated: true);
+      backend = WgpuNativeBackend.createSync();
       device = GpuDevice.create(
         name: 'WebGPU Pipeline Test Device',
         type: GpuDeviceType.webgpu,
@@ -155,20 +141,11 @@ void main() {
     });
 
     test('Dispatches Elementwise Add Compute Shader', () {
-      final baseShader = WgslTemplates.elementwiseBinary(
+      final shader = WgslTemplates.elementwiseBinary(
         op: 'add',
         dtype: WgslDType.float32,
         strided: false,
       );
-      final shader = _withCpuKernel(baseShader, (bufs, uniforms, x, y, z) {
-        final aPtr = bufs[0].address.cast<ffi.Float>();
-        final bPtr = bufs[1].address.cast<ffi.Float>();
-        final outPtr = bufs[2].address.cast<ffi.Float>();
-        final n = uniforms != null && uniforms.isNotEmpty ? uniforms[0] : 1024;
-        for (var i = 0; i < n; i++) {
-          outPtr[i] = aPtr[i] + bPtr[i];
-        }
-      });
 
       final bufA = device.createBuffer(
         sizeInBytes: 1024 * 4,
@@ -220,33 +197,10 @@ void main() {
     test(
       'Dispatches Tiled GEMM Matrix Multiplication Shader (16x16 Shared Memory)',
       () {
-        final baseGemmShader = WgslTemplates.tiledMatmul(
+        final gemmShader = WgslTemplates.tiledMatmul(
           dtype: WgslDType.float32,
           tileSize: 16,
         );
-        final gemmShader = _withCpuKernel(baseGemmShader, (
-          bufs,
-          uniforms,
-          x,
-          y,
-          z,
-        ) {
-          final aPtr = bufs[0].address.cast<ffi.Float>();
-          final bPtr = bufs[1].address.cast<ffi.Float>();
-          final cPtr = bufs[2].address.cast<ffi.Float>();
-          final m = uniforms![0];
-          final k = uniforms[1];
-          final n = uniforms[2];
-          for (var r = 0; r < m; r++) {
-            for (var c = 0; c < n; c++) {
-              var sum = 0.0;
-              for (var ki = 0; ki < k; ki++) {
-                sum += aPtr[r * k + ki] * bPtr[ki * n + c];
-              }
-              cPtr[r * n + c] = sum;
-            }
-          }
-        });
 
         const M = 64;
         const K = 32;
@@ -277,11 +231,14 @@ void main() {
         bufA.copyFromHost(hostA.cast<ffi.Void>(), M * K * 4);
         bufB.copyFromHost(hostB.cast<ffi.Void>(), K * N * 4);
 
+        final bd = ByteData(4)..setFloat32(0, 1.0, Endian.host);
+        final alphaBits = bd.getUint32(0, Endian.host);
+
         final dispatch = gemmShader.calculateDispatch2D(N, M);
         backend.dispatchComputePipeline(
           shaderModule: gemmShader,
           buffers: [bufA, bufB, bufC],
-          uniforms: [M, K, N, 0],
+          uniforms: [M, N, K, K, 1, N, 1, N, 1, 0, 0, 0, alphaBits, 0, 0, 0],
           workgroupsX: dispatch.workgroupsX,
           workgroupsY: dispatch.workgroupsY,
         );
@@ -315,27 +272,11 @@ void main() {
     );
 
     test('Dispatches Tree Reduction WGSL Compute Shader', () {
-      final baseReduceShader = WgslTemplates.treeReduction(
+      final reduceShader = WgslTemplates.treeReduction(
         op: 'sum',
         dtype: WgslDType.float32,
       );
       const count = 1024;
-      final reduceShader = _withCpuKernel(baseReduceShader, (
-        bufs,
-        uniforms,
-        x,
-        y,
-        z,
-      ) {
-        final inPtr = bufs[0].address.cast<ffi.Float>();
-        final outPtr = bufs[1].address.cast<ffi.Float>();
-        final n = uniforms != null && uniforms.isNotEmpty ? uniforms[0] : count;
-        var sum = 0.0;
-        for (var i = 0; i < n; i++) {
-          sum += inPtr[i];
-        }
-        outPtr[0] = sum;
-      });
 
       final bufIn = device.createBuffer(
         sizeInBytes: count * 4,
@@ -354,15 +295,14 @@ void main() {
       }
       bufIn.copyFromHost(hostIn.cast<ffi.Void>(), count * 4);
 
-      final dispatch = reduceShader.calculateDispatch1D(count);
       backend.dispatchComputePipeline(
         shaderModule: reduceShader,
         buffers: [bufIn, bufOut],
-        uniforms: [count],
-        workgroupsX: dispatch.workgroupsX,
+        uniforms: [count, 0, 0, 0],
+        workgroupsX: 1,
       );
 
-      expect(backend.dispatchLog, contains('reduction_sum(4, 1, 1)'));
+      expect(backend.dispatchLog, contains('reduction_sum(1, 1, 1)'));
 
       // Validate reduction result computed by backend dispatch
       final resultSum = ComputeEngine.readValue(bufOut, DType.float32, 0);
@@ -531,7 +471,7 @@ void main() {
 
         expect(axisShader.code, contains('strides_a: array<vec4<i32>, 2>'));
         expect(whereShader.code, contains('offset_cond: u32'));
-        expect(tileShader.code, contains('get_shape_dim(meta, u32(d))'));
+        expect(tileShader.code, contains('get_shape_dim(metadata, u32(d))'));
       },
     );
 
@@ -679,22 +619,56 @@ void main() {
 }
 
 final class _RecordingWebGpuBackend extends GpuBackend {
-  static const CpuVectorBackend _cpuAllocator = CpuVectorBackend();
+  final WgpuNativeBackend _inner = WgpuNativeBackend.createSync();
   final List<String> shaderNames = <String>[];
 
   @override
   GpuDeviceType get deviceType => GpuDeviceType.webgpu;
 
   @override
-  bool get isSimulated => false;
+  ffi.Pointer<ffi.Void> allocateBuffer(
+    int sizeInBytes, {
+    GpuBufferUsage usage = GpuBufferUsage.defaultCompute,
+  }) => _inner.allocateBuffer(sizeInBytes, usage: usage);
 
   @override
-  ffi.Pointer<ffi.Uint8> allocateBuffer(int sizeInBytes) =>
-      _cpuAllocator.allocateBuffer(sizeInBytes);
+  void freeBuffer(ffi.Pointer<ffi.Void> handle, int sizeInBytes) =>
+      _inner.freeBuffer(handle, sizeInBytes);
 
   @override
-  void freeBuffer(ffi.Pointer<ffi.Uint8> pointer, int sizeInBytes) =>
-      _cpuAllocator.freeBuffer(pointer, sizeInBytes);
+  void copyHostToBuffer(
+    ffi.Pointer<ffi.Uint8> src,
+    GpuBuffer dst,
+    int bytes, {
+    int offset = 0,
+  }) => _inner.copyHostToBuffer(src, dst, bytes, offset: offset);
+
+  @override
+  void copyBufferToHost(
+    GpuBuffer src,
+    ffi.Pointer<ffi.Uint8> dst,
+    int bytes, {
+    int offset = 0,
+  }) => _inner.copyBufferToHost(src, dst, bytes, offset: offset);
+
+  @override
+  void copyBufferToBuffer(
+    GpuBuffer src,
+    GpuBuffer dst,
+    int bytes, {
+    int srcOffset = 0,
+    int dstOffset = 0,
+  }) => _inner.copyBufferToBuffer(
+    src,
+    dst,
+    bytes,
+    srcOffset: srcOffset,
+    dstOffset: dstOffset,
+  );
+
+  @override
+  void clearBuffer(GpuBuffer buffer, {int offset = 0, int? bytes}) =>
+      _inner.clearBuffer(buffer, offset: offset, bytes: bytes);
 
   @override
   void dispatchComputePipeline({
@@ -706,5 +680,16 @@ final class _RecordingWebGpuBackend extends GpuBackend {
     int workgroupsZ = 1,
   }) {
     shaderNames.add(shaderModule.name);
+    _inner.dispatchComputePipeline(
+      shaderModule: shaderModule,
+      buffers: buffers,
+      uniforms: uniforms,
+      workgroupsX: workgroupsX,
+      workgroupsY: workgroupsY,
+      workgroupsZ: workgroupsZ,
+    );
   }
+
+  @override
+  void dispose() => _inner.dispose();
 }

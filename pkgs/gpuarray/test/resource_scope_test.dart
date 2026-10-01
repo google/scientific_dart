@@ -163,7 +163,7 @@ void main() {
       expect(arr.isDisposed, isTrue);
       expect(buf.isDisposed, isTrue);
       expect(() => arr.toList(), throwsA(isA<StateError>()));
-      expect(() => buf.address, throwsA(isA<StateError>()));
+      expect(() => buf.readBytes(), throwsA(isA<StateError>()));
     });
 
     test(

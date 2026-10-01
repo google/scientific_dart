@@ -14,11 +14,15 @@
 
 import 'dart:math' as math;
 import 'dart:typed_data';
-import '../dtype.dart';
 import '../buffer.dart';
+import '../dtype.dart';
 import 'compute_engine.dart';
+import 'wgsl/wgsl_dtype_codec.dart';
+import 'wgsl/wgsl_indexing_kernels.dart';
+import 'wgsl/wgsl_manipulation_kernels.dart';
 import 'wgsl/wgsl_templates.dart';
 import 'wgsl/wgsl_types.dart';
+import 'wgsl/wgsl_universal_kernels.dart';
 
 /// Standard binary operation kernel types.
 enum BinaryOp {
@@ -142,6 +146,48 @@ extension type const GpuKernels._(Object? _) {
     return false;
   }
 
+  /// Runs [action] with a temporary buffer if [dst] aliases any buffer in [inputs].
+  static void _withAliasSafeDst({
+    required List<GpuBuffer> inputs,
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    required void Function(
+      GpuBuffer safeDst,
+      List<int> safeStrides,
+      int safeOffset,
+    )
+    action,
+  }) {
+    final aliases = inputs.any((b) => identical(b, dst));
+    if (!aliases) {
+      action(dst, outStrides, offsetDst);
+      return;
+    }
+    final totalElements = computeSize(outShape);
+    final tempBytes = math.max(totalElements * dtypeDst.byteWidth, 4);
+    final tempDst = dst.device.createBuffer(sizeInBytes: tempBytes);
+    final tempStrides = computeCStrides(outShape);
+    try {
+      action(tempDst, tempStrides, 0);
+      copyStrided(
+        src: tempDst,
+        shape: outShape,
+        strides: tempStrides,
+        offsetSrc: 0,
+        dtypeSrc: dtypeDst,
+        dst: dst,
+        outStrides: outStrides,
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
+      );
+    } finally {
+      tempDst.dispose();
+    }
+  }
+
   /// Packs 40 `u32` words matching WGSL `StridedMetadata`.
   static List<int> packStridedMetadata({
     required int rank,
@@ -231,151 +277,163 @@ extension type const GpuKernels._(Object? _) {
     final totalElements = computeSize(outShape);
     if (totalElements == 0) return;
 
-    if (!srcA.device.backend.isSimulated &&
-        dtypeA == dtypeB &&
-        dtypeB == dtypeDst &&
-        WgslDType.isNativelySupportedStorageDType(dtypeA) &&
-        !_isComparisonOp(op) &&
-        (op != BinaryOp.power || dtypeA == DType.float32) &&
-        dst.address != srcA.address &&
-        dst.address != srcB.address) {
-      final wgslDType = WgslDType.fromDType(dtypeA);
-      final isContiguous =
-          isContiguousLayout(shapeA, stridesA) &&
-          isContiguousLayout(shapeB, stridesB) &&
-          isContiguousLayout(outShape, outStrides) &&
-          offsetA == 0 &&
-          offsetB == 0 &&
-          offsetDst == 0 &&
-          areShapesEqual(shapeA, outShape) &&
-          areShapesEqual(shapeB, outShape);
+    _withAliasSafeDst(
+      inputs: [srcA, srcB],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        if (dtypeA == dtypeB &&
+            dtypeB == dtypeDst &&
+            WgslDType.isNativelySupportedStorageDType(dtypeA) &&
+            !_isComparisonOp(op) &&
+            (op != BinaryOp.power || dtypeA == DType.float32)) {
+          final wgslDType = WgslDType.fromDType(dtypeA);
+          final isContiguous =
+              isContiguousLayout(shapeA, stridesA) &&
+              isContiguousLayout(shapeB, stridesB) &&
+              isContiguousLayout(outShape, safeOutStrides) &&
+              offsetA == 0 &&
+              offsetB == 0 &&
+              safeOffsetDst == 0 &&
+              areShapesEqual(shapeA, outShape) &&
+              areShapesEqual(shapeB, outShape);
 
-      if (isContiguous) {
-        final shaderModule = WgslTemplates.elementwiseBinary(
-          op: op.name,
-          dtype: wgslDType,
-          strided: false,
-        );
-        final dispatch = shaderModule.calculateDispatch1D(totalElements);
-        srcA.device.backend.dispatchComputePipeline(
-          shaderModule: shaderModule,
-          buffers: [srcA, srcB, dst],
-          uniforms: [totalElements, 0, 0, 0],
-          workgroupsX: dispatch.workgroupsX,
-          workgroupsY: dispatch.workgroupsY,
-          workgroupsZ: dispatch.workgroupsZ,
-        );
-        return;
-      } else if (outShape.length <= 8) {
-        final shaderModule = WgslTemplates.elementwiseBinary(
-          op: op.name,
-          dtype: wgslDType,
-          strided: true,
-        );
-        final dispatch = shaderModule.calculateDispatch1D(totalElements);
-        final uniforms = _packStridedMetadata(
-          rank: outShape.length,
-          totalElements: totalElements,
-          offsetA: offsetA,
-          offsetB: offsetB,
-          offsetOut: offsetDst,
-          shape: outShape,
-          stridesA: bStridesA,
-          stridesB: bStridesB,
-          stridesOut: outStrides,
-        );
-        srcA.device.backend.dispatchComputePipeline(
-          shaderModule: shaderModule,
-          buffers: [srcA, srcB, dst],
-          uniforms: uniforms,
-          workgroupsX: dispatch.workgroupsX,
-          workgroupsY: dispatch.workgroupsY,
-          workgroupsZ: dispatch.workgroupsZ,
-        );
-        return;
-      }
-    }
-
-    final rank = outShape.length;
-    final coords = List<int>.filled(rank, 0);
-
-    final isComplex =
-        dtypeA == DType.complex64 ||
-        dtypeA == DType.complex128 ||
-        dtypeB == DType.complex64 ||
-        dtypeB == DType.complex128 ||
-        dtypeDst == DType.complex64 ||
-        dtypeDst == DType.complex128;
-
-    for (var i = 0; i < totalElements; i++) {
-      // Calculate source element offsets from multidimensional coordinates
-      var elemIndexA = 0;
-      var elemIndexB = 0;
-      var elemIndexDst = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexA += coords[d] * bStridesA[d];
-        elemIndexB += coords[d] * bStridesB[d];
-        elemIndexDst += coords[d] * outStrides[d];
-      }
-
-      if (isComplex) {
-        final valA = readBufferAny(
-          srcA,
-          dtypeA,
-          elemIndexA,
-          offsetElements: offsetA,
-        );
-        final valB = readBufferAny(
-          srcB,
-          dtypeB,
-          elemIndexB,
-          offsetElements: offsetB,
-        );
-
-        final result = _applyComplexBinary(op, valA, valB);
-
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          result,
-          offsetElements: offsetDst,
-        );
-      } else {
-        final valA = readBufferValue(
-          srcA,
-          dtypeA,
-          elemIndexA,
-          offsetElements: offsetA,
-        );
-        final valB = readBufferValue(
-          srcB,
-          dtypeB,
-          elemIndexB,
-          offsetElements: offsetB,
-        );
-
-        final result = _applyBinary(op, valA, valB);
-
-        writeBufferValue(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          result,
-          offsetElements: offsetDst,
-        );
-      }
-
-      // Increment multidimensional coordinate
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < outShape[d]) {
-          break;
+          if (isContiguous) {
+            final shaderModule = WgslTemplates.elementwiseBinary(
+              op: op.name,
+              dtype: wgslDType,
+              strided: false,
+            );
+            final dispatch = shaderModule.calculateDispatch1D(totalElements);
+            srcA.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [srcA, srcB, safeDst],
+              uniforms: [totalElements, 0, 0, 0],
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+            return;
+          } else if (outShape.length <= 8) {
+            final shaderModule = WgslTemplates.elementwiseBinary(
+              op: op.name,
+              dtype: wgslDType,
+              strided: true,
+            );
+            final dispatch = shaderModule.calculateDispatch1D(totalElements);
+            final uniforms = _packStridedMetadata(
+              rank: outShape.length,
+              totalElements: totalElements,
+              offsetA: offsetA,
+              offsetB: offsetB,
+              offsetOut: safeOffsetDst,
+              shape: outShape,
+              stridesA: bStridesA,
+              stridesB: bStridesB,
+              stridesOut: safeOutStrides,
+            );
+            srcA.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [srcA, srcB, safeDst],
+              uniforms: uniforms,
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+            return;
+          }
         }
-        coords[d] = 0;
-      }
-    }
+
+        final isComp = _isComparisonOp(op);
+        final opDType = isComp ? dtypeA : dtypeDst;
+        GpuBuffer? castA;
+        GpuBuffer? castB;
+        try {
+          var bufferA = srcA;
+          var sA = bStridesA;
+          var offA = offsetA;
+          if (dtypeA != opDType) {
+            castA = srcA.device.createBuffer(
+              sizeInBytes: math.max(totalElements * opDType.byteWidth, 4),
+            );
+            final cStrides = computeCStrides(outShape);
+            copyStrided(
+              src: srcA,
+              shape: outShape,
+              strides: bStridesA,
+              offsetSrc: offsetA,
+              dtypeSrc: dtypeA,
+              dst: castA,
+              outStrides: cStrides,
+              offsetDst: 0,
+              dtypeDst: opDType,
+            );
+            bufferA = castA;
+            sA = cStrides;
+            offA = 0;
+          }
+          var bufferB = srcB;
+          var sB = bStridesB;
+          var offB = offsetB;
+          if (dtypeB != opDType) {
+            castB = srcB.device.createBuffer(
+              sizeInBytes: math.max(totalElements * opDType.byteWidth, 4),
+            );
+            final cStrides = computeCStrides(outShape);
+            copyStrided(
+              src: srcB,
+              shape: outShape,
+              strides: bStridesB,
+              offsetSrc: offsetB,
+              dtypeSrc: dtypeB,
+              dst: castB,
+              outStrides: cStrides,
+              offsetDst: 0,
+              dtypeDst: opDType,
+            );
+            bufferB = castB;
+            sB = cStrides;
+            offB = 0;
+          }
+          final shaderModule = WgslUniversalKernels.binaryShader(
+            op: op.name,
+            dtype: opDType,
+            isComparison: isComp,
+          );
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = _packStridedMetadata(
+            rank: outShape.length,
+            totalElements: totalElements,
+            offsetA: offA,
+            offsetB: offB,
+            offsetOut: safeOffsetDst,
+            shape: outShape,
+            stridesA: sA,
+            stridesB: sB,
+            stridesOut: safeOutStrides,
+          );
+          if (isContiguousLayout(outShape, sA) &&
+              isContiguousLayout(outShape, sB) &&
+              isContiguousLayout(outShape, safeOutStrides)) {
+            uniforms[2] = 1;
+          }
+          srcA.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [bufferA, bufferB, safeDst],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+        } finally {
+          castA?.dispose();
+          castB?.dispose();
+        }
+      },
+    );
   }
 
   /// Executes an elementwise unary kernel on a tensor.
@@ -394,125 +452,133 @@ extension type const GpuKernels._(Object? _) {
     final totalElements = computeSize(shape);
     if (totalElements == 0) return;
 
-    if (!src.device.backend.isSimulated &&
-        dtypeSrc == dtypeDst &&
-        _isWgslUnarySupported(op, dtypeSrc) &&
-        dst.address != src.address) {
-      final wgslDType = WgslDType.fromDType(dtypeSrc);
-      if (isContiguousLayout(shape, strides) &&
-          isContiguousLayout(shape, outStrides) &&
-          offsetSrc == 0 &&
-          offsetDst == 0) {
-        final shaderModule = WgslTemplates.elementwiseUnary(
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: shape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        if (dtypeSrc == dtypeDst && _isWgslUnarySupported(op, dtypeSrc)) {
+          final wgslDType = WgslDType.fromDType(dtypeSrc);
+          if (isContiguousLayout(shape, strides) &&
+              isContiguousLayout(shape, safeOutStrides) &&
+              offsetSrc == 0 &&
+              safeOffsetDst == 0) {
+            final shaderModule = WgslTemplates.elementwiseUnary(
+              op: op.name,
+              dtype: wgslDType,
+              strided: false,
+            );
+            final dispatch = shaderModule.calculateDispatch1D(totalElements);
+            src.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [src, safeDst],
+              uniforms: [totalElements, 0, 0, 0],
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+            return;
+          } else if (shape.length <= 8) {
+            final shaderModule = WgslTemplates.elementwiseUnary(
+              op: op.name,
+              dtype: wgslDType,
+              strided: true,
+            );
+            final dispatch = shaderModule.calculateDispatch1D(totalElements);
+            final uniforms = _packStridedMetadata(
+              rank: shape.length,
+              totalElements: totalElements,
+              offsetA: offsetSrc,
+              offsetB: 0,
+              offsetOut: safeOffsetDst,
+              shape: shape,
+              stridesA: strides,
+              stridesB: const [],
+              stridesOut: safeOutStrides,
+            );
+            src.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [src, safeDst],
+              uniforms: uniforms,
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+            return;
+          }
+        }
+
+        final shaderModule = WgslUniversalKernels.unaryShader(
           op: op.name,
-          dtype: wgslDType,
-          strided: false,
+          dtype: dtypeSrc,
         );
         final dispatch = shaderModule.calculateDispatch1D(totalElements);
-        src.device.backend.dispatchComputePipeline(
-          shaderModule: shaderModule,
-          buffers: [src, dst],
-          uniforms: [totalElements, 0, 0, 0],
-          workgroupsX: dispatch.workgroupsX,
-          workgroupsY: dispatch.workgroupsY,
-          workgroupsZ: dispatch.workgroupsZ,
-        );
-        return;
-      } else if (shape.length <= 8) {
-        final shaderModule = WgslTemplates.elementwiseUnary(
-          op: op.name,
-          dtype: wgslDType,
-          strided: true,
-        );
-        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final effectiveOutStrides = dtypeSrc == dtypeDst
+            ? safeOutStrides
+            : computeCStrides(shape);
         final uniforms = _packStridedMetadata(
           rank: shape.length,
           totalElements: totalElements,
           offsetA: offsetSrc,
           offsetB: 0,
-          offsetOut: offsetDst,
+          offsetOut: dtypeSrc == dtypeDst ? safeOffsetDst : 0,
           shape: shape,
           stridesA: strides,
           stridesB: const [],
-          stridesOut: outStrides,
+          stridesOut: effectiveOutStrides,
         );
-        src.device.backend.dispatchComputePipeline(
-          shaderModule: shaderModule,
-          buffers: [src, dst],
-          uniforms: uniforms,
-          workgroupsX: dispatch.workgroupsX,
-          workgroupsY: dispatch.workgroupsY,
-          workgroupsZ: dispatch.workgroupsZ,
-        );
-        return;
-      }
-    }
-
-    final rank = shape.length;
-    final coords = List<int>.filled(rank, 0);
-
-    final isComplex =
-        dtypeSrc == DType.complex64 ||
-        dtypeSrc == DType.complex128 ||
-        dtypeDst == DType.complex64 ||
-        dtypeDst == DType.complex128;
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexSrc = 0;
-      var elemIndexDst = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexSrc += coords[d] * strides[d];
-        elemIndexDst += coords[d] * outStrides[d];
-      }
-
-      if (isComplex) {
-        final val = readBufferAny(
-          src,
-          dtypeSrc,
-          elemIndexSrc,
-          offsetElements: offsetSrc,
-        );
-        final result = _applyComplexUnary(op, val);
-
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          result,
-          offsetElements: offsetDst,
-        );
-      } else {
-        final val = readBufferValue(
-          src,
-          dtypeSrc,
-          elemIndexSrc,
-          offsetElements: offsetSrc,
-        );
-        final result = _applyUnary(op, val);
-
-        writeBufferValue(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          result,
-          offsetElements: offsetDst,
-        );
-      }
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < shape[d]) {
-          break;
+        if (isContiguousLayout(shape, strides) &&
+            isContiguousLayout(shape, effectiveOutStrides)) {
+          uniforms[2] = 1;
         }
-        coords[d] = 0;
-      }
-    }
+        if (dtypeSrc == dtypeDst) {
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, safeDst],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+        } else {
+          final tempOut = src.device.createBuffer(
+            sizeInBytes: math.max(totalElements * dtypeSrc.byteWidth, 4),
+          );
+          try {
+            src.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [src, tempOut],
+              uniforms: uniforms,
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+            copyStrided(
+              src: tempOut,
+              shape: shape,
+              strides: computeCStrides(shape),
+              offsetSrc: 0,
+              dtypeSrc: dtypeSrc,
+              dst: safeDst,
+              outStrides: safeOutStrides,
+              offsetDst: safeOffsetDst,
+              dtypeDst: dtypeDst,
+            );
+          } finally {
+            tempOut.dispose();
+          }
+        }
+      },
+    );
   }
 
   /// Executes a reduction kernel across specified axes or the entire tensor.
   static void executeReduction({
-    required String op, // 'sum', 'mean', 'prod', 'min', 'max'
+    required String
+    op, // 'sum', 'mean', 'prod', 'min', 'max', 'argmin', 'argmax', 'all', 'any'
     required GpuBuffer src,
     required List<int> shape,
     required List<int> strides,
@@ -525,293 +591,310 @@ extension type const GpuKernels._(Object? _) {
     required DType dtypeDst,
     int? axis,
   }) {
-    final isComplex =
-        dtypeSrc == DType.complex64 || dtypeSrc == DType.complex128;
-
     if (axis == null) {
-      // Full reduction to scalar
       final totalElements = computeSize(shape);
       if (totalElements == 0) {
-        if (isComplex) {
-          writeBufferAny(
-            dst,
-            dtypeDst,
-            0,
-            Complex(0.0, 0.0),
-            offsetElements: offsetDst,
-          );
-        } else {
-          writeBufferValue(dst, dtypeDst, 0, 0.0, offsetElements: offsetDst);
+        if (op == 'min' || op == 'max' || op == 'argmin' || op == 'argmax') {
+          throw StateError('Cannot compute $op of an empty array.');
         }
+        final Object emptyVal = switch (op) {
+          'prod' => 1,
+          'all' => true,
+          'any' => false,
+          _ => 0,
+        };
+        executeFill(
+          dst: dst,
+          outShape: const [],
+          outStrides: const [],
+          offsetDst: offsetDst,
+          dtypeDst: dtypeDst,
+          value: emptyVal,
+        );
         return;
       }
 
-      if (!src.device.backend.isSimulated &&
-          dtypeSrc == dtypeDst &&
-          WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
-          (op != 'mean' || dtypeSrc == DType.float32) &&
-          dst.address != src.address) {
-        final wgslDType = WgslDType.fromDType(dtypeSrc);
-        if (isContiguousLayout(shape, strides) &&
-            offsetSrc == 0 &&
-            offsetDst == 0) {
-          final shaderModule = WgslTemplates.treeReduction(
-            op: op,
-            dtype: wgslDType,
-            strided: false,
-          );
-          src.device.backend.dispatchComputePipeline(
-            shaderModule: shaderModule,
-            buffers: [src, dst],
-            uniforms: [totalElements, 0, 0, 0],
-            workgroupsX: 1,
-            workgroupsY: 1,
-            workgroupsZ: 1,
-          );
-          return;
-        } else if (shape.length <= 8) {
-          final shaderModule = WgslTemplates.treeReduction(
-            op: op,
-            dtype: wgslDType,
-            strided: true,
-          );
-          final uniforms = _packStridedMetadata(
-            rank: shape.length,
-            totalElements: totalElements,
-            offsetA: offsetSrc,
-            offsetB: 0,
-            offsetOut: offsetDst,
-            shape: shape,
-            stridesA: strides,
-            stridesB: const [],
-            stridesOut: const [],
-          );
-          src.device.backend.dispatchComputePipeline(
-            shaderModule: shaderModule,
-            buffers: [src, dst],
-            uniforms: uniforms,
-            workgroupsX: 1,
-            workgroupsY: 1,
-            workgroupsZ: 1,
-          );
-          return;
-        }
-      }
-
-      final rank = shape.length;
-      final coords = List<int>.filled(rank, 0);
-
-      if (isComplex) {
-        var accum = _initialComplexReductionValue(op);
-
-        for (var i = 0; i < totalElements; i++) {
-          var elemIndex = 0;
-          for (var d = 0; d < rank; d++) {
-            elemIndex += coords[d] * strides[d];
-          }
-
-          final rawVal = readBufferAny(
-            src,
-            dtypeSrc,
-            elemIndex,
-            offsetElements: offsetSrc,
-          );
-          accum = _combineComplexReduction(op, accum, _toComplex(rawVal));
-
-          for (var d = rank - 1; d >= 0; d--) {
-            coords[d]++;
-            if (coords[d] < shape[d]) {
-              break;
+      final isArgOp = op == 'argmin' || op == 'argmax';
+      final isBoolOp = op == 'all' || op == 'any';
+      _withAliasSafeDst(
+        inputs: [src],
+        dst: dst,
+        outShape: outShape,
+        outStrides: outStrides,
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
+        action: (safeDst, safeOutStrides, safeOffsetDst) {
+          if (dtypeSrc == dtypeDst &&
+              WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
+              (op == 'sum' ||
+                  op == 'prod' ||
+                  op == 'min' ||
+                  op == 'max' ||
+                  (op == 'mean' && dtypeSrc == DType.float32))) {
+            final wgslDType = WgslDType.fromDType(dtypeSrc);
+            if (isContiguousLayout(shape, strides) &&
+                offsetSrc == 0 &&
+                safeOffsetDst == 0) {
+              final shaderModule = WgslTemplates.treeReduction(
+                op: op,
+                dtype: wgslDType,
+                strided: false,
+              );
+              src.device.backend.dispatchComputePipeline(
+                shaderModule: shaderModule,
+                buffers: [src, safeDst],
+                uniforms: [totalElements, 0, 0, 0],
+                workgroupsX: 1,
+                workgroupsY: 1,
+                workgroupsZ: 1,
+              );
+              return;
+            } else if (shape.length <= 8) {
+              final shaderModule = WgslTemplates.treeReduction(
+                op: op,
+                dtype: wgslDType,
+                strided: true,
+              );
+              final uniforms = _packStridedMetadata(
+                rank: shape.length,
+                totalElements: totalElements,
+                offsetA: offsetSrc,
+                offsetB: 0,
+                offsetOut: safeOffsetDst,
+                shape: shape,
+                stridesA: strides,
+                stridesB: const [],
+                stridesOut: const [],
+              );
+              src.device.backend.dispatchComputePipeline(
+                shaderModule: shaderModule,
+                buffers: [src, safeDst],
+                uniforms: uniforms,
+                workgroupsX: 1,
+                workgroupsY: 1,
+                workgroupsZ: 1,
+              );
+              return;
             }
-            coords[d] = 0;
-          }
-        }
-
-        if (op == 'mean') {
-          accum = Complex(
-            accum.real / totalElements,
-            accum.imag / totalElements,
-          );
-        }
-
-        writeBufferAny(dst, dtypeDst, 0, accum, offsetElements: offsetDst);
-      } else {
-        var accum = _initialReductionValue(op);
-
-        for (var i = 0; i < totalElements; i++) {
-          var elemIndex = 0;
-          for (var d = 0; d < rank; d++) {
-            elemIndex += coords[d] * strides[d];
           }
 
-          final val = readBufferValue(
-            src,
-            dtypeSrc,
-            elemIndex,
-            offsetElements: offsetSrc,
-          );
-          accum = _combineReduction(op, accum, val, i);
-
-          for (var d = rank - 1; d >= 0; d--) {
-            coords[d]++;
-            if (coords[d] < shape[d]) {
-              break;
+          GpuBuffer? castSrc;
+          try {
+            var effSrc = src;
+            var effStrides = strides;
+            var effOffset = offsetSrc;
+            var effDType = dtypeSrc;
+            if (!isArgOp && !isBoolOp && dtypeSrc != dtypeDst) {
+              castSrc = src.device.createBuffer(
+                sizeInBytes: math.max(totalElements * dtypeDst.byteWidth, 4),
+              );
+              final cStrides = computeCStrides(shape);
+              copyStrided(
+                src: src,
+                shape: shape,
+                strides: strides,
+                offsetSrc: offsetSrc,
+                dtypeSrc: dtypeSrc,
+                dst: castSrc,
+                outStrides: cStrides,
+                offsetDst: 0,
+                dtypeDst: dtypeDst,
+              );
+              effSrc = castSrc;
+              effStrides = cStrides;
+              effOffset = 0;
+              effDType = dtypeDst;
             }
-            coords[d] = 0;
+            final shaderModule = WgslUniversalKernels.reductionShader(
+              op: op,
+              dtype: effDType,
+              targetDType: dtypeDst,
+            );
+            final uniforms = List<int>.filled(32, 0);
+            uniforms[0] = 1;
+            uniforms[1] = shape.length;
+            uniforms[2] = 99;
+            uniforms[3] = totalElements;
+            uniforms[4] = effOffset;
+            uniforms[5] = safeOffsetDst;
+            uniforms[6] = isContiguousLayout(shape, effStrides) ? 1 : 0;
+            for (var d = 0; d < 8; d++) {
+              uniforms[8 + d] = d < shape.length ? shape[d] : 1;
+              uniforms[16 + d] = d < effStrides.length
+                  ? (effStrides[d] & 0xFFFFFFFF)
+                  : 0;
+            }
+            src.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [effSrc, safeDst],
+              uniforms: uniforms,
+              workgroupsX: 1,
+              workgroupsY: 1,
+              workgroupsZ: 1,
+            );
+          } finally {
+            castSrc?.dispose();
           }
-        }
-
-        if (op == 'mean') {
-          accum = accum / totalElements;
-        }
-
-        writeBufferValue(dst, dtypeDst, 0, accum, offsetElements: offsetDst);
-      }
+        },
+      );
     } else {
-      // Reduction along a single axis
       final normAxis = axis < 0 ? axis + shape.length : axis;
       final axisSize = shape[normAxis];
       final totalOut = computeSize(outShape);
-      if (totalOut == 0) return;
-
-      if (!src.device.backend.isSimulated &&
-          dtypeSrc == dtypeDst &&
-          WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
-          (op != 'mean' || dtypeSrc == DType.float32) &&
-          outShape.length <= 8 &&
-          dst.address != src.address) {
-        final nonAxisStrides = <int>[];
-        if (outShape.length == shape.length) {
-          // keepDims == true: outShape has 1 at normAxis
-          for (var d = 0; d < shape.length; d++) {
-            nonAxisStrides.add(d == normAxis ? 0 : strides[d]);
-          }
-        } else {
-          for (var d = 0; d < shape.length; d++) {
-            if (d != normAxis) nonAxisStrides.add(strides[d]);
-          }
+      if (axisSize == 0) {
+        if (op == 'min' || op == 'max' || op == 'argmin' || op == 'argmax') {
+          throw StateError('Cannot compute $op along an empty axis (size 0).');
         }
-        final shaderModule = WgslTemplates.axisReduction(
-          op: op,
-          dtype: WgslDType.fromDType(dtypeSrc),
-        );
-        final dispatch = shaderModule.calculateDispatch1D(totalOut);
-        final uniforms = _packStridedMetadata(
-          rank: outShape.length,
-          totalElements: totalOut,
-          offsetA: offsetSrc,
-          offsetB: 0,
-          offsetOut: offsetDst,
-          shape: outShape,
-          stridesA: nonAxisStrides,
-          stridesB: [axisSize, strides[normAxis]],
-          stridesOut: outStrides,
-        );
-        src.device.backend.dispatchComputePipeline(
-          shaderModule: shaderModule,
-          buffers: [src, dst],
-          uniforms: uniforms,
-          workgroupsX: dispatch.workgroupsX,
-          workgroupsY: dispatch.workgroupsY,
-          workgroupsZ: dispatch.workgroupsZ,
+        if (totalOut == 0) return;
+        final Object emptyVal = switch (op) {
+          'prod' => 1,
+          'all' => true,
+          'any' => false,
+          _ => 0,
+        };
+        executeFill(
+          dst: dst,
+          outShape: outShape,
+          outStrides: outStrides,
+          offsetDst: offsetDst,
+          dtypeDst: dtypeDst,
+          value: emptyVal,
         );
         return;
       }
+      if (totalOut == 0) return;
 
-      final outRank = outShape.length;
-      final outCoords = List<int>.filled(outRank, 0);
-
-      for (var outIndex = 0; outIndex < totalOut; outIndex++) {
-        var dstElemIndex = 0;
-        for (var d = 0; d < outRank; d++) {
-          dstElemIndex += outCoords[d] * outStrides[d];
+      final nonAxisStrides = <int>[];
+      if (outShape.length == shape.length) {
+        for (var d = 0; d < shape.length; d++) {
+          nonAxisStrides.add(d == normAxis ? 0 : strides[d]);
         }
-
-        if (isComplex) {
-          var accum = _initialComplexReductionValue(op);
-
-          for (var a = 0; a < axisSize; a++) {
-            var srcElemIndex = 0;
-            var inDim = 0;
-            for (var d = 0; d < shape.length; d++) {
-              if (d == normAxis) {
-                srcElemIndex += a * strides[d];
-              } else {
-                srcElemIndex += outCoords[inDim] * strides[d];
-                inDim++;
-              }
-            }
-
-            final rawVal = readBufferAny(
-              src,
-              dtypeSrc,
-              srcElemIndex,
-              offsetElements: offsetSrc,
-            );
-            accum = _combineComplexReduction(op, accum, _toComplex(rawVal));
-          }
-
-          if (op == 'mean') {
-            accum = Complex(accum.real / axisSize, accum.imag / axisSize);
-          }
-
-          writeBufferAny(
-            dst,
-            dtypeDst,
-            dstElemIndex,
-            accum,
-            offsetElements: offsetDst,
-          );
-        } else {
-          var accum = _initialReductionValue(op);
-
-          for (var a = 0; a < axisSize; a++) {
-            // Reconstruct input coords from output coords + axis index
-            var srcElemIndex = 0;
-            var inDim = 0;
-            for (var d = 0; d < shape.length; d++) {
-              if (d == normAxis) {
-                srcElemIndex += a * strides[d];
-              } else {
-                srcElemIndex += outCoords[inDim] * strides[d];
-                inDim++;
-              }
-            }
-
-            final val = readBufferValue(
-              src,
-              dtypeSrc,
-              srcElemIndex,
-              offsetElements: offsetSrc,
-            );
-            accum = _combineReduction(op, accum, val, a);
-          }
-
-          if (op == 'mean') {
-            accum = accum / axisSize;
-          }
-
-          writeBufferValue(
-            dst,
-            dtypeDst,
-            dstElemIndex,
-            accum,
-            offsetElements: offsetDst,
-          );
-        }
-
-        for (var d = outRank - 1; d >= 0; d--) {
-          outCoords[d]++;
-          if (outCoords[d] < outShape[d]) {
-            break;
-          }
-          outCoords[d] = 0;
+      } else {
+        for (var d = 0; d < shape.length; d++) {
+          if (d != normAxis) nonAxisStrides.add(strides[d]);
         }
       }
+
+      final isArgOp = op == 'argmin' || op == 'argmax';
+      final isBoolOp = op == 'all' || op == 'any';
+      final totalElements = computeSize(shape);
+      _withAliasSafeDst(
+        inputs: [src],
+        dst: dst,
+        outShape: outShape,
+        outStrides: outStrides,
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
+        action: (safeDst, safeOutStrides, safeOffsetDst) {
+          if (dtypeSrc == dtypeDst &&
+              WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
+              (op == 'sum' ||
+                  op == 'prod' ||
+                  op == 'min' ||
+                  op == 'max' ||
+                  (op == 'mean' && dtypeSrc == DType.float32)) &&
+              outShape.length <= 8) {
+            final shaderModule = WgslTemplates.axisReduction(
+              op: op,
+              dtype: WgslDType.fromDType(dtypeSrc),
+            );
+            final dispatch = shaderModule.calculateDispatch1D(totalOut);
+            final uniforms = _packStridedMetadata(
+              rank: outShape.length,
+              totalElements: totalOut,
+              offsetA: offsetSrc,
+              offsetB: 0,
+              offsetOut: safeOffsetDst,
+              shape: outShape,
+              stridesA: nonAxisStrides,
+              stridesB: [axisSize, strides[normAxis]],
+              stridesOut: safeOutStrides,
+            );
+            src.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [src, safeDst],
+              uniforms: uniforms,
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+            return;
+          }
+
+          GpuBuffer? castSrc;
+          try {
+            var effSrc = src;
+            var effStrides = strides;
+            var effOffset = offsetSrc;
+            var effDType = dtypeSrc;
+            if (!isArgOp && !isBoolOp && dtypeSrc != dtypeDst) {
+              castSrc = src.device.createBuffer(
+                sizeInBytes: math.max(totalElements * dtypeDst.byteWidth, 4),
+              );
+              final cStrides = computeCStrides(shape);
+              copyStrided(
+                src: src,
+                shape: shape,
+                strides: strides,
+                offsetSrc: offsetSrc,
+                dtypeSrc: dtypeSrc,
+                dst: castSrc,
+                outStrides: cStrides,
+                offsetDst: 0,
+                dtypeDst: dtypeDst,
+              );
+              effSrc = castSrc;
+              effStrides = cStrides;
+              effOffset = 0;
+              effDType = dtypeDst;
+            }
+            final reducedOutStrides = <int>[];
+            if (safeOutStrides.length == shape.length) {
+              for (var d = 0; d < shape.length; d++) {
+                if (d != normAxis) reducedOutStrides.add(safeOutStrides[d]);
+              }
+            } else {
+              reducedOutStrides.addAll(safeOutStrides);
+            }
+            final shaderModule = WgslUniversalKernels.reductionShader(
+              op: op,
+              dtype: effDType,
+              targetDType: dtypeDst,
+            );
+            final dispatch = shaderModule.calculateDispatch1D(totalOut);
+            final uniforms = List<int>.filled(32, 0);
+            uniforms[0] = totalOut;
+            uniforms[1] = shape.length;
+            uniforms[2] = normAxis;
+            uniforms[3] = axisSize;
+            uniforms[4] = effOffset;
+            uniforms[5] = safeOffsetDst;
+            for (var d = 0; d < 8; d++) {
+              uniforms[8 + d] = d < shape.length ? shape[d] : 1;
+              uniforms[16 + d] = d < effStrides.length
+                  ? (effStrides[d] & 0xFFFFFFFF)
+                  : 0;
+              uniforms[24 + d] = d < reducedOutStrides.length
+                  ? (reducedOutStrides[d] & 0xFFFFFFFF)
+                  : 0;
+            }
+            src.device.backend.dispatchComputePipeline(
+              shaderModule: shaderModule,
+              buffers: [effSrc, safeDst],
+              uniforms: uniforms,
+              workgroupsX: dispatch.workgroupsX,
+              workgroupsY: dispatch.workgroupsY,
+              workgroupsZ: dispatch.workgroupsZ,
+            );
+          } finally {
+            castSrc?.dispose();
+          }
+        },
+      );
     }
   }
 
-  /// Executes tiled 2D or batched N-D matrix multiplication.
+  /// Executes tiled 2D, 1D dot, or batched N-D matrix multiplication on the GPU.
   static void executeMatmul({
     required GpuBuffer srcA,
     required List<int> shapeA,
@@ -831,296 +914,217 @@ extension type const GpuKernels._(Object? _) {
   }) {
     final rankA = shapeA.length;
     final rankB = shapeB.length;
-    final isComplex =
-        dtypeA == DType.complex64 ||
-        dtypeA == DType.complex128 ||
-        dtypeB == DType.complex64 ||
-        dtypeB == DType.complex128 ||
-        dtypeDst == DType.complex64 ||
-        dtypeDst == DType.complex128;
 
-    if (rankA == 2 && rankB == 2) {
-      final M = shapeA[0];
-      final K = shapeA[1];
-      final N = shapeB[1];
-      if (M == 0 || N == 0) return;
-
-      if (!srcA.device.backend.isSimulated &&
-          K > 0 &&
-          dtypeA == DType.float32 &&
-          dtypeB == DType.float32 &&
-          dtypeDst == DType.float32 &&
-          dst.address != srcA.address &&
-          dst.address != srcB.address &&
-          stridesA[0] >= 0 &&
-          stridesA[1] >= 0 &&
-          stridesB[0] >= 0 &&
-          stridesB[1] >= 0 &&
-          outStrides[0] >= 0 &&
-          outStrides[1] >= 0) {
-        final shaderModule = WgslTemplates.tiledMatmul(
-          tileSize: 16,
-          dtype: WgslDType.float32,
-        );
-
-        final alphaBits = ByteData(4)..setFloat32(0, 1.0, Endian.little);
-        final betaBits = ByteData(4)..setFloat32(0, 0.0, Endian.little);
-
-        final uniforms = <int>[
-          M,
-          N,
-          K,
-          stridesA[0],
-          stridesA[1],
-          stridesB[0],
-          stridesB[1],
-          outStrides[0],
-          outStrides[1],
-          offsetA,
-          offsetB,
-          offsetDst,
-          alphaBits.getUint32(0, Endian.little),
-          betaBits.getUint32(0, Endian.little),
-          0,
-          0,
-        ];
-
-        srcA.device.backend.dispatchComputePipeline(
-          shaderModule: shaderModule,
-          buffers: [srcA, srcB, dst],
-          uniforms: uniforms,
-          workgroupsX: (N + 15) ~/ 16,
-          workgroupsY: (M + 15) ~/ 16,
-          workgroupsZ: 1,
-        );
-        return;
-      }
-
-      for (var m = 0; m < M; m++) {
-        for (var n = 0; n < N; n++) {
-          final indexDst = m * outStrides[0] + n * outStrides[1];
-          if (isComplex) {
-            var sumReal = 0.0;
-            var sumImag = 0.0;
-            for (var k = 0; k < K; k++) {
-              final indexA = m * stridesA[0] + k * stridesA[1];
-              final indexB = k * stridesB[0] + n * stridesB[1];
-              final a = _toComplex(
-                readBufferAny(srcA, dtypeA, indexA, offsetElements: offsetA),
-              );
-              final b = _toComplex(
-                readBufferAny(srcB, dtypeB, indexB, offsetElements: offsetB),
-              );
-              sumReal += a.real * b.real - a.imag * b.imag;
-              sumImag += a.real * b.imag + a.imag * b.real;
-            }
-            writeBufferAny(
-              dst,
-              dtypeDst,
-              indexDst,
-              Complex(sumReal, sumImag),
-              offsetElements: offsetDst,
-            );
-          } else {
-            var sum = 0.0;
-            for (var k = 0; k < K; k++) {
-              final indexA = m * stridesA[0] + k * stridesA[1];
-              final indexB = k * stridesB[0] + n * stridesB[1];
-              final a = readBufferValue(
-                srcA,
-                dtypeA,
-                indexA,
-                offsetElements: offsetA,
-              );
-              final b = readBufferValue(
-                srcB,
-                dtypeB,
-                indexB,
-                offsetElements: offsetB,
-              );
-              sum += a * b;
-            }
-            writeBufferValue(
-              dst,
-              dtypeDst,
-              indexDst,
-              sum,
-              offsetElements: offsetDst,
-            );
-          }
-        }
-      }
-    } else if (rankA == 1 && rankB == 1) {
-      // 1D dot product
-      final K = shapeA[0];
-      if (isComplex) {
-        var sumReal = 0.0;
-        var sumImag = 0.0;
-        for (var k = 0; k < K; k++) {
-          final a = _toComplex(
-            readBufferAny(
-              srcA,
-              dtypeA,
-              k * stridesA[0],
-              offsetElements: offsetA,
-            ),
-          );
-          final b = _toComplex(
-            readBufferAny(
-              srcB,
-              dtypeB,
-              k * stridesB[0],
-              offsetElements: offsetB,
-            ),
-          );
-          sumReal += a.real * b.real - a.imag * b.imag;
-          sumImag += a.real * b.imag + a.imag * b.real;
-        }
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          0,
-          Complex(sumReal, sumImag),
-          offsetElements: offsetDst,
-        );
-      } else {
-        var sum = 0.0;
-        for (var k = 0; k < K; k++) {
-          final a = readBufferValue(
-            srcA,
-            dtypeA,
-            k * stridesA[0],
-            offsetElements: offsetA,
-          );
-          final b = readBufferValue(
-            srcB,
-            dtypeB,
-            k * stridesB[0],
-            offsetElements: offsetB,
-          );
-          sum += a * b;
-        }
-        writeBufferValue(dst, dtypeDst, 0, sum, offsetElements: offsetDst);
-      }
-    } else {
-      // Batched N-D matrix multiplication
-      final batchShapeA = shapeA.sublist(0, rankA - 2);
-      final batchShapeB = shapeB.sublist(0, rankB - 2);
-      final batchOutShape = broadcastShapes(batchShapeA, batchShapeB);
-
-      final M = shapeA[rankA - 2];
-      final K = shapeA[rankA - 1];
-      final N = shapeB[rankB - 1];
-
-      final batchSize = computeSize(batchOutShape);
-      final batchRank = batchOutShape.length;
-      final batchCoords = List<int>.filled(batchRank, 0);
-
-      final batchStridesA = broadcastStrides(
-        batchShapeA,
-        stridesA.sublist(0, rankA - 2),
-        batchOutShape,
+    if (rankA == 1 && rankB == 1) {
+      executeMatmul(
+        srcA: srcA,
+        shapeA: [1, shapeA[0]],
+        stridesA: [0, stridesA[0]],
+        offsetA: offsetA,
+        dtypeA: dtypeA,
+        srcB: srcB,
+        shapeB: [shapeB[0], 1],
+        stridesB: [stridesB[0], 0],
+        offsetB: offsetB,
+        dtypeB: dtypeB,
+        dst: dst,
+        outShape: const [1, 1],
+        outStrides: const [0, 0],
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
       );
-      final batchStridesB = broadcastStrides(
-        batchShapeB,
-        stridesB.sublist(0, rankB - 2),
-        batchOutShape,
-      );
-      final batchStridesDst = outStrides.sublist(0, outStrides.length - 2);
-
-      for (var b = 0; b < batchSize; b++) {
-        var baseIndexA = 0;
-        var baseIndexB = 0;
-        var baseIndexDst = 0;
-
-        for (var d = 0; d < batchRank; d++) {
-          baseIndexA += batchCoords[d] * batchStridesA[d];
-          baseIndexB += batchCoords[d] * batchStridesB[d];
-          baseIndexDst += batchCoords[d] * batchStridesDst[d];
-        }
-
-        for (var m = 0; m < M; m++) {
-          for (var n = 0; n < N; n++) {
-            final indexDst =
-                baseIndexDst +
-                m * outStrides[outStrides.length - 2] +
-                n * outStrides[outStrides.length - 1];
-            if (isComplex) {
-              var sumReal = 0.0;
-              var sumImag = 0.0;
-              for (var k = 0; k < K; k++) {
-                final indexA =
-                    baseIndexA +
-                    m * stridesA[rankA - 2] +
-                    k * stridesA[rankA - 1];
-                final indexB =
-                    baseIndexB +
-                    k * stridesB[rankB - 2] +
-                    n * stridesB[rankB - 1];
-                final a = _toComplex(
-                  readBufferAny(srcA, dtypeA, indexA, offsetElements: offsetA),
-                );
-                final b = _toComplex(
-                  readBufferAny(srcB, dtypeB, indexB, offsetElements: offsetB),
-                );
-                sumReal += a.real * b.real - a.imag * b.imag;
-                sumImag += a.real * b.imag + a.imag * b.real;
-              }
-              writeBufferAny(
-                dst,
-                dtypeDst,
-                indexDst,
-                Complex(sumReal, sumImag),
-                offsetElements: offsetDst,
-              );
-            } else {
-              var sum = 0.0;
-              for (var k = 0; k < K; k++) {
-                final indexA =
-                    baseIndexA +
-                    m * stridesA[rankA - 2] +
-                    k * stridesA[rankA - 1];
-                final indexB =
-                    baseIndexB +
-                    k * stridesB[rankB - 2] +
-                    n * stridesB[rankB - 1];
-                final a = readBufferValue(
-                  srcA,
-                  dtypeA,
-                  indexA,
-                  offsetElements: offsetA,
-                );
-                final b = readBufferValue(
-                  srcB,
-                  dtypeB,
-                  indexB,
-                  offsetElements: offsetB,
-                );
-                sum += a * b;
-              }
-              writeBufferValue(
-                dst,
-                dtypeDst,
-                indexDst,
-                sum,
-                offsetElements: offsetDst,
-              );
-            }
-          }
-        }
-
-        for (var d = batchRank - 1; d >= 0; d--) {
-          batchCoords[d]++;
-          if (batchCoords[d] < batchOutShape[d]) {
-            break;
-          }
-          batchCoords[d] = 0;
-        }
-      }
+      return;
     }
+
+    final batchShapeA = shapeA.sublist(0, rankA - 2);
+    final batchShapeB = shapeB.sublist(0, rankB - 2);
+    final batchOutShape = broadcastShapes(batchShapeA, batchShapeB);
+
+    final M = shapeA[rankA - 2];
+    final K = shapeA[rankA - 1];
+    final N = shapeB[rankB - 1];
+    final batchSize = computeSize(batchOutShape);
+    if (M == 0 || N == 0 || batchSize == 0) return;
+
+    if (K == 0) {
+      executeFill(
+        dst: dst,
+        outShape: outShape,
+        outStrides: outStrides,
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
+        value: 0,
+      );
+      return;
+    }
+
+    _withAliasSafeDst(
+      inputs: [srcA, srcB],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        if (rankA == 2 &&
+            rankB == 2 &&
+            dtypeA == DType.float32 &&
+            dtypeB == DType.float32 &&
+            dtypeDst == DType.float32 &&
+            stridesA[0] >= 0 &&
+            stridesA[1] >= 0 &&
+            stridesB[0] >= 0 &&
+            stridesB[1] >= 0 &&
+            safeOutStrides[0] >= 0 &&
+            safeOutStrides[1] >= 0) {
+          final shaderModule = WgslTemplates.tiledMatmul(
+            tileSize: 16,
+            dtype: WgslDType.float32,
+          );
+          final alphaBits = ByteData(4)..setFloat32(0, 1.0, Endian.little);
+          final betaBits = ByteData(4)..setFloat32(0, 0.0, Endian.little);
+          final uniforms = <int>[
+            M,
+            N,
+            K,
+            stridesA[0],
+            stridesA[1],
+            stridesB[0],
+            stridesB[1],
+            safeOutStrides[0],
+            safeOutStrides[1],
+            offsetA,
+            offsetB,
+            safeOffsetDst,
+            alphaBits.getUint32(0, Endian.little),
+            betaBits.getUint32(0, Endian.little),
+            0,
+            0,
+          ];
+          srcA.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [srcA, srcB, safeDst],
+            uniforms: uniforms,
+            workgroupsX: (N + 15) ~/ 16,
+            workgroupsY: (M + 15) ~/ 16,
+            workgroupsZ: 1,
+          );
+          return;
+        }
+
+        GpuBuffer? castA;
+        GpuBuffer? castB;
+        try {
+          var effA = srcA;
+          var effStridesA = stridesA;
+          var effOffsetA = offsetA;
+          if (dtypeA != dtypeDst) {
+            final sizeA = computeSize(shapeA);
+            castA = srcA.device.createBuffer(
+              sizeInBytes: math.max(sizeA * dtypeDst.byteWidth, 4),
+            );
+            final cStrides = computeCStrides(shapeA);
+            copyStrided(
+              src: srcA,
+              shape: shapeA,
+              strides: stridesA,
+              offsetSrc: offsetA,
+              dtypeSrc: dtypeA,
+              dst: castA,
+              outStrides: cStrides,
+              offsetDst: 0,
+              dtypeDst: dtypeDst,
+            );
+            effA = castA;
+            effStridesA = cStrides;
+            effOffsetA = 0;
+          }
+          var effB = srcB;
+          var effStridesB = stridesB;
+          var effOffsetB = offsetB;
+          if (dtypeB != dtypeDst) {
+            final sizeB = computeSize(shapeB);
+            castB = srcB.device.createBuffer(
+              sizeInBytes: math.max(sizeB * dtypeDst.byteWidth, 4),
+            );
+            final cStrides = computeCStrides(shapeB);
+            copyStrided(
+              src: srcB,
+              shape: shapeB,
+              strides: stridesB,
+              offsetSrc: offsetB,
+              dtypeSrc: dtypeB,
+              dst: castB,
+              outStrides: cStrides,
+              offsetDst: 0,
+              dtypeDst: dtypeDst,
+            );
+            effB = castB;
+            effStridesB = cStrides;
+            effOffsetB = 0;
+          }
+
+          final batchRank = batchOutShape.length;
+          final batchStridesA = broadcastStrides(
+            batchShapeA,
+            effStridesA.sublist(0, rankA - 2),
+            batchOutShape,
+          );
+          final batchStridesB = broadcastStrides(
+            batchShapeB,
+            effStridesB.sublist(0, rankB - 2),
+            batchOutShape,
+          );
+          final batchStridesDst = safeOutStrides.sublist(
+            0,
+            safeOutStrides.length - 2,
+          );
+
+          final shaderModule = WgslUniversalKernels.matmulShader(dtypeDst);
+          final uniforms = List<int>.filled(48, 0);
+          uniforms[0] = M;
+          uniforms[1] = N;
+          uniforms[2] = K;
+          uniforms[3] = batchSize;
+          uniforms[4] = batchRank;
+          uniforms[5] = effOffsetA;
+          uniforms[6] = effOffsetB;
+          uniforms[7] = safeOffsetDst;
+          uniforms[8] = effStridesA[rankA - 2] & 0xFFFFFFFF;
+          uniforms[9] = effStridesA[rankA - 1] & 0xFFFFFFFF;
+          uniforms[10] = effStridesB[rankB - 2] & 0xFFFFFFFF;
+          uniforms[11] = effStridesB[rankB - 1] & 0xFFFFFFFF;
+          uniforms[12] = safeOutStrides[safeOutStrides.length - 2] & 0xFFFFFFFF;
+          uniforms[13] = safeOutStrides[safeOutStrides.length - 1] & 0xFFFFFFFF;
+          for (var d = 0; d < 8; d++) {
+            uniforms[16 + d] = d < batchRank ? batchOutShape[d] : 1;
+            uniforms[24 + d] = d < batchRank
+                ? (batchStridesA[d] & 0xFFFFFFFF)
+                : 0;
+            uniforms[32 + d] = d < batchRank
+                ? (batchStridesB[d] & 0xFFFFFFFF)
+                : 0;
+            uniforms[40 + d] = d < batchRank && d < batchStridesDst.length
+                ? (batchStridesDst[d] & 0xFFFFFFFF)
+                : 0;
+          }
+          srcA.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [effA, effB, safeDst],
+            uniforms: uniforms,
+            workgroupsX: (N + 15) ~/ 16,
+            workgroupsY: (M + 15) ~/ 16,
+            workgroupsZ: batchSize,
+          );
+        } finally {
+          castA?.dispose();
+          castB?.dispose();
+        }
+      },
+    );
   }
 
-  /// Copies strided data from [src] to contiguous [dst].
+  /// Copies or casts strided data from [src] to [dst] on the GPU.
   static void copyStrided({
     required GpuBuffer src,
     required List<int> shape,
@@ -1135,287 +1139,194 @@ extension type const GpuKernels._(Object? _) {
     final totalElements = computeSize(shape);
     if (totalElements == 0) return;
 
-    if (!src.device.backend.isSimulated &&
-        dtypeSrc == dtypeDst &&
-        WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
-        shape.length <= 8 &&
-        dst.address != src.address) {
-      final shaderModule = WgslTemplates.tileKernel(
-        dtype: WgslDType.fromDType(dtypeSrc),
-      );
-      final dispatch = shaderModule.calculateDispatch1D(totalElements);
-      final uniforms = _packStridedMetadata(
-        rank: shape.length,
-        totalElements: totalElements,
-        offsetA: offsetSrc,
-        offsetB: 0,
-        offsetOut: offsetDst,
-        shape: shape,
-        stridesA: strides,
-        stridesB: shape,
-        stridesOut: outStrides,
-      );
-      src.device.backend.dispatchComputePipeline(
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: shape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        if (dtypeSrc == dtypeDst &&
+            WgslDType.isNativelySupportedStorageDType(dtypeSrc) &&
+            shape.length <= 8) {
+          final shaderModule = WgslTemplates.tileKernel(
+            dtype: WgslDType.fromDType(dtypeSrc),
+          );
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = _packStridedMetadata(
+            rank: shape.length,
+            totalElements: totalElements,
+            offsetA: offsetSrc,
+            offsetB: 0,
+            offsetOut: safeOffsetDst,
+            shape: shape,
+            stridesA: strides,
+            stridesB: shape,
+            stridesOut: safeOutStrides,
+          );
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, safeDst],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+          return;
+        }
+
+        final shaderModule = WgslUniversalKernels.castOrCopyShader(
+          sourceDType: dtypeSrc,
+          targetDType: dtypeDst,
+        );
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = _packStridedMetadata(
+          rank: shape.length,
+          totalElements: totalElements,
+          offsetA: offsetSrc,
+          offsetB: 0,
+          offsetOut: safeOffsetDst,
+          shape: shape,
+          stridesA: strides,
+          stridesB: const [],
+          stridesOut: safeOutStrides,
+        );
+        if (isContiguousLayout(shape, strides) &&
+            isContiguousLayout(shape, safeOutStrides)) {
+          uniforms[2] = 1;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+      },
+    );
+  }
+
+  /// Fills [dst] with [value] on the GPU.
+  static void executeFill({
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    required Object? value,
+  }) {
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
+    final shaderModule = WgslUniversalKernels.fillShader(dtypeDst);
+    final dispatch = shaderModule.calculateDispatch1D(totalElements);
+    final scalarWords = WgslDTypeCodec.packRawScalarWords(dtypeDst, value ?? 0);
+    final uniforms = List<int>.filled(24, 0);
+    uniforms[0] = totalElements;
+    uniforms[1] = outShape.length;
+    uniforms[2] = offsetDst;
+    uniforms[3] = isContiguousLayout(outShape, outStrides) ? 1 : 0;
+    for (var i = 0; i < 4; i++) {
+      uniforms[4 + i] = scalarWords[i];
+    }
+    for (var d = 0; d < 8; d++) {
+      uniforms[8 + d] = d < outShape.length ? outShape[d] : 1;
+      uniforms[16 + d] = d < outStrides.length
+          ? (outStrides[d] & 0xFFFFFFFF)
+          : 0;
+    }
+    dst.device.backend.dispatchComputePipeline(
+      shaderModule: shaderModule,
+      buffers: [dst],
+      uniforms: uniforms,
+      workgroupsX: dispatch.workgroupsX,
+      workgroupsY: dispatch.workgroupsY,
+      workgroupsZ: dispatch.workgroupsZ,
+    );
+  }
+
+  /// Generates sequence or matrix patterns (`arange`, `linspace`, `logspace`, `eye`, `tri`) on the GPU.
+  static void executeGenerator({
+    required String mode,
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required int offsetDst,
+    required DType dtypeDst,
+    double start = 0.0,
+    double step = 1.0,
+    double base = 10.0,
+    int cols = 0,
+    int k = 0,
+  }) {
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
+    final shaderModule = WgslUniversalKernels.generatorShader(dtypeDst);
+    final dispatch = shaderModule.calculateDispatch1D(totalElements);
+    final modeInt = switch (mode) {
+      'arange' || 'linspace' => 0,
+      'logspace' => 1,
+      'eye' => 2,
+      'tri' => 3,
+      _ => 0,
+    };
+    final rows = outShape.isNotEmpty ? outShape[0] : 1;
+    final startBits = ByteData(4)..setFloat32(0, start, Endian.little);
+    final stepBits = ByteData(4)..setFloat32(0, step, Endian.little);
+    final baseBits = ByteData(4)..setFloat32(0, base, Endian.little);
+    final uniforms = <int>[
+      totalElements,
+      modeInt,
+      rows,
+      cols,
+      k & 0xFFFFFFFF,
+      startBits.getUint32(0, Endian.little),
+      stepBits.getUint32(0, Endian.little),
+      baseBits.getUint32(0, Endian.little),
+    ];
+    if (offsetDst == 0) {
+      dst.device.backend.dispatchComputePipeline(
         shaderModule: shaderModule,
-        buffers: [src, dst],
+        buffers: [dst],
         uniforms: uniforms,
         workgroupsX: dispatch.workgroupsX,
         workgroupsY: dispatch.workgroupsY,
         workgroupsZ: dispatch.workgroupsZ,
       );
-      return;
-    }
-
-    final rank = shape.length;
-    final coords = List<int>.filled(rank, 0);
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexSrc = 0;
-      var elemIndexDst = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexSrc += coords[d] * strides[d];
-        elemIndexDst += coords[d] * outStrides[d];
-      }
-
-      final val = readBufferAny(
-        src,
-        dtypeSrc,
-        elemIndexSrc,
-        offsetElements: offsetSrc,
+    } else {
+      final tempDst = dst.device.createBuffer(
+        sizeInBytes: math.max(totalElements * dtypeDst.byteWidth, 4),
       );
-      writeBufferAny(
-        dst,
-        dtypeDst,
-        elemIndexDst,
-        val,
-        offsetElements: offsetDst,
-      );
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < shape[d]) {
-          break;
-        }
-        coords[d] = 0;
+      try {
+        dst.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [tempDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+        final cStrides = computeCStrides(outShape);
+        copyStrided(
+          src: tempDst,
+          shape: outShape,
+          strides: cStrides,
+          offsetSrc: 0,
+          dtypeSrc: dtypeDst,
+          dst: dst,
+          outStrides: cStrides,
+          offsetDst: offsetDst,
+          dtypeDst: dtypeDst,
+        );
+      } finally {
+        tempDst.dispose();
       }
     }
   }
 
-  static Complex _toComplex(Object? v) {
-    if (v is Complex) return v;
-    if (v is num) return Complex(v.toDouble(), 0.0);
-    if (v is bool) return Complex(v ? 1.0 : 0.0, 0.0);
-    return Complex(0.0, 0.0);
-  }
-
-  static Object _applyComplexBinary(BinaryOp op, Object? rawA, Object? rawB) {
-    final a = _toComplex(rawA);
-    final b = _toComplex(rawB);
-    switch (op) {
-      case BinaryOp.add:
-        return Complex(a.real + b.real, a.imag + b.imag);
-      case BinaryOp.subtract:
-        return Complex(a.real - b.real, a.imag - b.imag);
-      case BinaryOp.multiply:
-        return Complex(
-          a.real * b.real - a.imag * b.imag,
-          a.real * b.imag + a.imag * b.real,
-        );
-      case BinaryOp.divide:
-        final denom = b.real * b.real + b.imag * b.imag;
-        if (denom == 0) return Complex(double.nan, double.nan);
-        return Complex(
-          (a.real * b.real + a.imag * b.imag) / denom,
-          (a.imag * b.real - a.real * b.imag) / denom,
-        );
-      case BinaryOp.equal:
-        return (a.real == b.real && a.imag == b.imag) ? 1 : 0;
-      case BinaryOp.notEqual:
-        return (a.real != b.real || a.imag != b.imag) ? 1 : 0;
-      default:
-        return Complex(a.real, a.imag);
-    }
-  }
-
-  static Object _applyComplexUnary(UnaryOp op, Object? raw) {
-    final c = _toComplex(raw);
-    switch (op) {
-      case UnaryOp.negate:
-        return Complex(-c.real, -c.imag);
-      case UnaryOp.abs:
-        return math.sqrt(c.real * c.real + c.imag * c.imag);
-      case UnaryOp.exp:
-        final expR = math.exp(c.real);
-        return Complex(expR * math.cos(c.imag), expR * math.sin(c.imag));
-      default:
-        return c;
-    }
-  }
-
-  static Complex _initialComplexReductionValue(String op) {
-    switch (op) {
-      case 'sum':
-      case 'mean':
-        return Complex(0.0, 0.0);
-      case 'prod':
-        return Complex(1.0, 0.0);
-      case 'min':
-        return Complex(double.infinity, 0.0);
-      case 'max':
-        return Complex(double.negativeInfinity, 0.0);
-      default:
-        return Complex(0.0, 0.0);
-    }
-  }
-
-  static Complex _combineComplexReduction(
-    String op,
-    Complex current,
-    Complex value,
-  ) {
-    switch (op) {
-      case 'sum':
-      case 'mean':
-        return Complex(current.real + value.real, current.imag + value.imag);
-      case 'prod':
-        return Complex(
-          current.real * value.real - current.imag * value.imag,
-          current.real * value.imag + current.imag * value.real,
-        );
-      case 'min':
-        final absVal = math.sqrt(
-          value.real * value.real + value.imag * value.imag,
-        );
-        final absCur = math.sqrt(
-          current.real * current.real + current.imag * current.imag,
-        );
-        return absVal < absCur ? value : current;
-      case 'max':
-        final absVal = math.sqrt(
-          value.real * value.real + value.imag * value.imag,
-        );
-        final absCur = math.sqrt(
-          current.real * current.real + current.imag * current.imag,
-        );
-        return absVal > absCur ? value : current;
-      default:
-        return current;
-    }
-  }
-
-  static double _applyBinary(BinaryOp op, double a, double b) {
-    switch (op) {
-      case BinaryOp.add:
-        return a + b;
-      case BinaryOp.subtract:
-        return a - b;
-      case BinaryOp.multiply:
-        return a * b;
-      case BinaryOp.divide:
-        return a / b;
-      case BinaryOp.power:
-        return math.pow(a, b).toDouble();
-      case BinaryOp.remainder:
-        return a % b;
-      case BinaryOp.maximum:
-        return math.max(a, b);
-      case BinaryOp.minimum:
-        return math.min(a, b);
-      case BinaryOp.equal:
-        return (a == b) ? 1.0 : 0.0;
-      case BinaryOp.notEqual:
-        return (a != b) ? 1.0 : 0.0;
-      case BinaryOp.greater:
-        return (a > b) ? 1.0 : 0.0;
-      case BinaryOp.less:
-        return (a < b) ? 1.0 : 0.0;
-      case BinaryOp.greaterEqual:
-        return (a >= b) ? 1.0 : 0.0;
-      case BinaryOp.lessEqual:
-        return (a <= b) ? 1.0 : 0.0;
-    }
-  }
-
-  static double _applyUnary(UnaryOp op, double v) {
-    switch (op) {
-      case UnaryOp.negate:
-        return -v;
-      case UnaryOp.abs:
-        return v.abs();
-      case UnaryOp.sqrt:
-        return math.sqrt(v);
-      case UnaryOp.exp:
-        return math.exp(v);
-      case UnaryOp.log:
-        return math.log(v);
-      case UnaryOp.sin:
-        return math.sin(v);
-      case UnaryOp.cos:
-        return math.cos(v);
-      case UnaryOp.tan:
-        return math.tan(v);
-      case UnaryOp.asin:
-        return math.asin(v);
-      case UnaryOp.acos:
-        return math.acos(v);
-      case UnaryOp.atan:
-        return math.atan(v);
-      case UnaryOp.sinh:
-        return (math.exp(v) - math.exp(-v)) / 2.0;
-      case UnaryOp.cosh:
-        return (math.exp(v) + math.exp(-v)) / 2.0;
-      case UnaryOp.tanh:
-        final ep = math.exp(v);
-        final em = math.exp(-v);
-        return (ep - em) / (ep + em);
-      case UnaryOp.floor:
-        return v.floorToDouble();
-      case UnaryOp.ceil:
-        return v.ceilToDouble();
-      case UnaryOp.round:
-        return v.roundToDouble();
-    }
-  }
-
-  static double _initialReductionValue(String op) {
-    switch (op) {
-      case 'sum':
-      case 'mean':
-        return 0.0;
-      case 'prod':
-        return 1.0;
-      case 'min':
-        return double.infinity;
-      case 'max':
-        return double.negativeInfinity;
-      default:
-        return 0.0;
-    }
-  }
-
-  static double _combineReduction(
-    String op,
-    double current,
-    double value,
-    int index,
-  ) {
-    switch (op) {
-      case 'sum':
-      case 'mean':
-        return current + value;
-      case 'prod':
-        return current * value;
-      case 'min':
-        return math.min(current, value);
-      case 'max':
-        return math.max(current, value);
-      default:
-        return current;
-    }
-  }
-
-  /// Dispatches conditional ternary selection (where).
+  /// Dispatches conditional ternary selection (`where`) on the GPU.
   static void executeWhere({
     required GpuBuffer cond,
     required List<int> shapeCond,
@@ -1445,86 +1356,332 @@ extension type const GpuKernels._(Object? _) {
     final bStridesX = broadcastStrides(shapeX, stridesX, outShape);
     final bStridesY = broadcastStrides(shapeY, stridesY, outShape);
 
-    if (!srcX.device.backend.isSimulated &&
-        dtypeX == dtypeY &&
-        dtypeY == dtypeDst &&
-        WgslDType.isNativelySupportedStorageDType(dtypeDst) &&
-        rank <= 8 &&
-        dst.address != srcX.address &&
-        dst.address != srcY.address &&
-        dst.address != cond.address) {
-      final shaderModule = WgslTemplates.whereKernel(
-        dtype: WgslDType.fromDType(dtypeDst),
+    _withAliasSafeDst(
+      inputs: [cond, srcX, srcY],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        if (dtypeX == dtypeY &&
+            dtypeY == dtypeDst &&
+            WgslDType.isNativelySupportedStorageDType(dtypeDst) &&
+            rank <= 8) {
+          final shaderModule = WgslTemplates.whereKernel(
+            dtype: WgslDType.fromDType(dtypeDst),
+          );
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = _packWhereUniforms(
+            totalElements: totalElements,
+            rank: rank,
+            offsetCond: offsetCond,
+            offsetX: offsetX,
+            offsetY: offsetY,
+            offsetOut: safeOffsetDst,
+            shape: outShape,
+            stridesCond: bStridesCond,
+            stridesX: bStridesX,
+            stridesY: bStridesY,
+            stridesOut: safeOutStrides,
+          );
+          srcX.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [cond, srcX, srcY, safeDst],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+          return;
+        }
+
+        GpuBuffer? castX;
+        GpuBuffer? castY;
+        try {
+          var effX = srcX;
+          var sX = bStridesX;
+          var offX = offsetX;
+          if (dtypeX != dtypeDst) {
+            castX = srcX.device.createBuffer(
+              sizeInBytes: math.max(totalElements * dtypeDst.byteWidth, 4),
+            );
+            final cStrides = computeCStrides(outShape);
+            copyStrided(
+              src: srcX,
+              shape: outShape,
+              strides: bStridesX,
+              offsetSrc: offsetX,
+              dtypeSrc: dtypeX,
+              dst: castX,
+              outStrides: cStrides,
+              offsetDst: 0,
+              dtypeDst: dtypeDst,
+            );
+            effX = castX;
+            sX = cStrides;
+            offX = 0;
+          }
+          var effY = srcY;
+          var sY = bStridesY;
+          var offY = offsetY;
+          if (dtypeY != dtypeDst) {
+            castY = srcY.device.createBuffer(
+              sizeInBytes: math.max(totalElements * dtypeDst.byteWidth, 4),
+            );
+            final cStrides = computeCStrides(outShape);
+            copyStrided(
+              src: srcY,
+              shape: outShape,
+              strides: bStridesY,
+              offsetSrc: offsetY,
+              dtypeSrc: dtypeY,
+              dst: castY,
+              outStrides: cStrides,
+              offsetDst: 0,
+              dtypeDst: dtypeDst,
+            );
+            effY = castY;
+            sY = cStrides;
+            offY = 0;
+          }
+          final shaderModule = WgslIndexingKernels.whereShader(dtypeDst);
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = _packWhereUniforms(
+            totalElements: totalElements,
+            rank: rank,
+            offsetCond: offsetCond,
+            offsetX: offX,
+            offsetY: offY,
+            offsetOut: safeOffsetDst,
+            shape: outShape,
+            stridesCond: bStridesCond,
+            stridesX: sX,
+            stridesY: sY,
+            stridesOut: safeOutStrides,
+          );
+          srcX.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [cond, effX, effY, safeDst],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+        } finally {
+          castX?.dispose();
+          castY?.dispose();
+        }
+      },
+    );
+  }
+
+  /// Gathers elements from [src] using [indices] (flattened or along [axis]) on the GPU.
+  static void executeTake({
+    required GpuBuffer src,
+    required List<int> shapeSrc,
+    required List<int> stridesSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+    required GpuBuffer indices,
+    required List<int> shapeIndices,
+    required List<int> stridesIndices,
+    required int offsetIndices,
+    required DType dtypeIndices,
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    int? axis,
+  }) {
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
+    final rankSrc = shapeSrc.length;
+    final rankIndices = shapeIndices.length;
+    final rankOut = outShape.length;
+    final normAxis = axis == null ? 99 : (axis < 0 ? axis + rankSrc : axis);
+    final axisLength = axis == null
+        ? computeSize(shapeSrc)
+        : shapeSrc[normAxis];
+    final indicesSize = computeSize(shapeIndices);
+    var innerSize = 1;
+    if (axis != null) {
+      for (var d = normAxis + 1; d < rankSrc; d++) {
+        innerSize *= shapeSrc[d];
+      }
+    }
+
+    final statusBuffer = src.device.createBuffer(sizeInBytes: 8);
+    try {
+      writeBufferValue(statusBuffer, DType.uint32, 0, 0);
+      writeBufferValue(statusBuffer, DType.uint32, 1, 0);
+      _withAliasSafeDst(
+        inputs: [src, indices],
+        dst: dst,
+        outShape: outShape,
+        outStrides: outStrides,
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
+        action: (safeDst, safeOutStrides, safeOffsetDst) {
+          final shaderModule = WgslIndexingKernels.takeShader(
+            dtypeDst,
+            dtypeIndices,
+          );
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = List<int>.filled(60, 0);
+          uniforms[0] = totalElements;
+          uniforms[1] = rankSrc;
+          uniforms[2] = rankIndices;
+          uniforms[3] = rankOut;
+          uniforms[4] = normAxis;
+          uniforms[5] = axisLength;
+          uniforms[6] = indicesSize;
+          uniforms[7] = innerSize;
+          uniforms[8] = offsetSrc;
+          uniforms[9] = offsetIndices;
+          uniforms[10] = safeOffsetDst;
+          for (var d = 0; d < 8; d++) {
+            uniforms[12 + d] = d < rankSrc ? shapeSrc[d] : 1;
+            uniforms[20 + d] = d < rankSrc ? (stridesSrc[d] & 0xFFFFFFFF) : 0;
+            uniforms[28 + d] = d < rankIndices ? shapeIndices[d] : 1;
+            uniforms[36 + d] = d < rankIndices
+                ? (stridesIndices[d] & 0xFFFFFFFF)
+                : 0;
+            uniforms[44 + d] = d < rankOut ? outShape[d] : 1;
+            uniforms[52 + d] = d < rankOut
+                ? (safeOutStrides[d] & 0xFFFFFFFF)
+                : 0;
+          }
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, indices, safeDst, statusBuffer],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+        },
+      );
+      final err = readBufferAny(statusBuffer, DType.uint32, 0) as int;
+      if (err != 0) {
+        throw RangeError(
+          'Index out of bounds in take (axisLength=$axisLength).',
+        );
+      }
+    } finally {
+      statusBuffer.dispose();
+    }
+  }
+
+  /// Scatters [values] into flattened positions of [arr] specified by [indices] on the GPU.
+  static void executePut({
+    required GpuBuffer arr,
+    required List<int> shapeArr,
+    required List<int> stridesArr,
+    required int offsetArr,
+    required DType dtypeArr,
+    required GpuBuffer indices,
+    required List<int> shapeIndices,
+    required List<int> stridesIndices,
+    required int offsetIndices,
+    required DType dtypeIndices,
+    required GpuBuffer values,
+    required List<int> shapeVal,
+    required List<int> stridesVal,
+    required int offsetVal,
+    required DType dtypeVal,
+  }) {
+    final totalElements = computeSize(shapeIndices);
+    if (totalElements == 0) return;
+
+    final arrSize = computeSize(shapeArr);
+    final valSize = computeSize(shapeVal);
+    if (valSize == 0) {
+      throw ArgumentError.value(
+        shapeVal,
+        'values',
+        'Must not be empty when indices is non-empty.',
+      );
+    }
+
+    final statusBuffer = arr.device.createBuffer(sizeInBytes: 8);
+    GpuBuffer? castVal;
+    try {
+      var effValues = values;
+      var effStridesVal = stridesVal;
+      var effOffsetVal = offsetVal;
+      if (dtypeVal != dtypeArr) {
+        castVal = arr.device.createBuffer(
+          sizeInBytes: math.max(valSize * dtypeArr.byteWidth, 4),
+        );
+        final cStrides = computeCStrides(shapeVal);
+        copyStrided(
+          src: values,
+          shape: shapeVal,
+          strides: stridesVal,
+          offsetSrc: offsetVal,
+          dtypeSrc: dtypeVal,
+          dst: castVal,
+          outStrides: cStrides,
+          offsetDst: 0,
+          dtypeDst: dtypeArr,
+        );
+        effValues = castVal;
+        effStridesVal = cStrides;
+        effOffsetVal = 0;
+      }
+      writeBufferValue(statusBuffer, DType.uint32, 0, 0);
+      writeBufferValue(statusBuffer, DType.uint32, 1, 0);
+      final shaderModule = WgslIndexingKernels.putShader(
+        dtypeArr,
+        dtypeIndices,
       );
       final dispatch = shaderModule.calculateDispatch1D(totalElements);
-      final uniforms = _packWhereUniforms(
-        totalElements: totalElements,
-        rank: rank,
-        offsetCond: offsetCond,
-        offsetX: offsetX,
-        offsetY: offsetY,
-        offsetOut: offsetDst,
-        shape: outShape,
-        stridesCond: bStridesCond,
-        stridesX: bStridesX,
-        stridesY: bStridesY,
-        stridesOut: outStrides,
-      );
-      srcX.device.backend.dispatchComputePipeline(
+      final uniforms = List<int>.filled(60, 0);
+      uniforms[0] = totalElements;
+      uniforms[1] = arrSize;
+      uniforms[2] = valSize;
+      uniforms[3] = shapeArr.length;
+      uniforms[4] = shapeIndices.length;
+      uniforms[5] = shapeVal.length;
+      uniforms[6] = offsetArr;
+      uniforms[7] = offsetIndices;
+      uniforms[8] = effOffsetVal;
+      for (var d = 0; d < 8; d++) {
+        uniforms[12 + d] = d < shapeArr.length ? shapeArr[d] : 1;
+        uniforms[20 + d] = d < stridesArr.length
+            ? (stridesArr[d] & 0xFFFFFFFF)
+            : 0;
+        uniforms[28 + d] = d < shapeIndices.length ? shapeIndices[d] : 1;
+        uniforms[36 + d] = d < stridesIndices.length
+            ? (stridesIndices[d] & 0xFFFFFFFF)
+            : 0;
+        uniforms[44 + d] = d < shapeVal.length ? shapeVal[d] : 1;
+        uniforms[52 + d] = d < effStridesVal.length
+            ? (effStridesVal[d] & 0xFFFFFFFF)
+            : 0;
+      }
+      arr.device.backend.dispatchComputePipeline(
         shaderModule: shaderModule,
-        buffers: [cond, srcX, srcY, dst],
+        buffers: [indices, effValues, arr, statusBuffer],
         uniforms: uniforms,
         workgroupsX: dispatch.workgroupsX,
         workgroupsY: dispatch.workgroupsY,
         workgroupsZ: dispatch.workgroupsZ,
       );
-      return;
-    }
-
-    final coords = List<int>.filled(rank, 0);
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexCond = 0;
-      var elemIndexX = 0;
-      var elemIndexY = 0;
-      var elemIndexDst = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexCond += coords[d] * bStridesCond[d];
-        elemIndexX += coords[d] * bStridesX[d];
-        elemIndexY += coords[d] * bStridesY[d];
-        elemIndexDst += coords[d] * outStrides[d];
+      final err = readBufferAny(statusBuffer, DType.uint32, 0) as int;
+      if (err != 0) {
+        throw RangeError('Index out of bounds in put (size=$arrSize).');
       }
-
-      final cVal = readBufferValue(
-        cond,
-        DType.boolean,
-        elemIndexCond,
-        offsetElements: offsetCond,
-      );
-      final isTrue = cVal != 0.0;
-
-      final val = isTrue
-          ? readBufferAny(srcX, dtypeX, elemIndexX, offsetElements: offsetX)
-          : readBufferAny(srcY, dtypeY, elemIndexY, offsetElements: offsetY);
-
-      writeBufferAny(
-        dst,
-        dtypeDst,
-        elemIndexDst,
-        val,
-        offsetElements: offsetDst,
-      );
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < outShape[d]) break;
-        coords[d] = 0;
-      }
+    } finally {
+      castVal?.dispose();
+      statusBuffer.dispose();
     }
   }
 
-  /// Extracts elements along an axis according to coordinates in [indices].
+  /// Extracts elements along an axis according to coordinates in [indices] on the GPU.
   static void executeTakeAlongAxis({
     required GpuBuffer src,
     required List<int> shapeSrc,
@@ -1544,65 +1701,75 @@ extension type const GpuKernels._(Object? _) {
     required int axis,
   }) {
     final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
     final rank = outShape.length;
     final normAxis = axis < 0 ? axis + rank : axis;
-    final axisLen = shapeSrc[normAxis];
-    final coords = List<int>.filled(rank, 0);
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexIndices = 0;
-      var elemIndexDst = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexIndices += coords[d] * stridesIndices[d];
-        elemIndexDst += coords[d] * outStrides[d];
-      }
-
-      final indexValNum = readBufferValue(
-        indices,
-        dtypeIndices,
-        elemIndexIndices,
-        offsetElements: offsetIndices,
+    final axisLength = shapeSrc[normAxis];
+    if (axisLength == 0) {
+      throw IndexError.withLength(
+        0,
+        0,
+        name: 'take_along_axis index out of bounds',
       );
-      var k = indexValNum.toInt();
-      if (k < 0) k += axisLen;
-      if (k < 0 || k >= axisLen) {
+    }
+
+    final statusBuffer = src.device.createBuffer(sizeInBytes: 8);
+    try {
+      writeBufferValue(statusBuffer, DType.uint32, 0, 0);
+      writeBufferValue(statusBuffer, DType.uint32, 1, 0);
+      _withAliasSafeDst(
+        inputs: [src, indices],
+        dst: dst,
+        outShape: outShape,
+        outStrides: outStrides,
+        offsetDst: offsetDst,
+        dtypeDst: dtypeDst,
+        action: (safeDst, safeOutStrides, safeOffsetDst) {
+          final shaderModule = WgslIndexingKernels.alongAxisShader(
+            dtype: dtypeDst,
+            indexDType: dtypeIndices,
+            isPut: false,
+          );
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = List<int>.filled(40, 0);
+          uniforms[0] = totalElements;
+          uniforms[1] = rank;
+          uniforms[2] = normAxis;
+          uniforms[3] = axisLength;
+          uniforms[4] = offsetSrc;
+          uniforms[5] = offsetIndices;
+          uniforms[6] = safeOffsetDst;
+          for (var d = 0; d < 8; d++) {
+            uniforms[8 + d] = d < rank ? outShape[d] : 1;
+            uniforms[16 + d] = d < rank ? (stridesSrc[d] & 0xFFFFFFFF) : 0;
+            uniforms[24 + d] = d < rank ? (stridesIndices[d] & 0xFFFFFFFF) : 0;
+            uniforms[32 + d] = d < rank ? (safeOutStrides[d] & 0xFFFFFFFF) : 0;
+          }
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, indices, safeDst, statusBuffer],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+        },
+      );
+      final err = readBufferAny(statusBuffer, DType.uint32, 0) as int;
+      if (err != 0) {
         throw IndexError.withLength(
-          k,
-          axisLen,
+          axisLength,
+          axisLength,
           name: 'take_along_axis index out of bounds',
         );
       }
-
-      var elemIndexSrc = 0;
-      for (var d = 0; d < rank; d++) {
-        final c = (d == normAxis) ? k : coords[d];
-        elemIndexSrc += c * stridesSrc[d];
-      }
-
-      final val = readBufferAny(
-        src,
-        dtypeSrc,
-        elemIndexSrc,
-        offsetElements: offsetSrc,
-      );
-      writeBufferAny(
-        dst,
-        dtypeDst,
-        elemIndexDst,
-        val,
-        offsetElements: offsetDst,
-      );
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < outShape[d]) break;
-        coords[d] = 0;
-      }
+    } finally {
+      statusBuffer.dispose();
     }
   }
 
-  /// Inserts [values] into [arr] along an axis according to [indices].
+  /// Inserts [values] into [arr] along an axis according to [indices] on the GPU.
   static void executePutAlongAxis({
     required GpuBuffer arr,
     required List<int> shapeArr,
@@ -1622,66 +1789,96 @@ extension type const GpuKernels._(Object? _) {
     required int axis,
   }) {
     final totalElements = computeSize(shapeIndices);
+    if (totalElements == 0) return;
+
     final rank = shapeArr.length;
     final normAxis = axis < 0 ? axis + rank : axis;
-    final axisLen = shapeArr[normAxis];
-    final bStridesVal = broadcastStrides(shapeVal, stridesVal, shapeIndices);
-    final coords = List<int>.filled(rank, 0);
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexIndices = 0;
-      var elemIndexVal = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexIndices += coords[d] * stridesIndices[d];
-        elemIndexVal += coords[d] * bStridesVal[d];
-      }
-
-      final indexValNum = readBufferValue(
-        indices,
-        dtypeIndices,
-        elemIndexIndices,
-        offsetElements: offsetIndices,
+    final axisLength = shapeArr[normAxis];
+    if (axisLength == 0) {
+      throw IndexError.withLength(
+        0,
+        0,
+        name: 'put_along_axis index out of bounds',
       );
-      var k = indexValNum.toInt();
-      if (k < 0) k += axisLen;
-      if (k < 0 || k >= axisLen) {
+    }
+
+    final statusBuffer = arr.device.createBuffer(sizeInBytes: 8);
+    GpuBuffer? castVal;
+    try {
+      var effValues = values;
+      var effStridesVal = stridesVal;
+      var effOffsetVal = offsetVal;
+      if (dtypeVal != dtypeArr) {
+        final valSize = computeSize(shapeVal);
+        castVal = arr.device.createBuffer(
+          sizeInBytes: math.max(valSize * dtypeArr.byteWidth, 4),
+        );
+        final cStrides = computeCStrides(shapeVal);
+        copyStrided(
+          src: values,
+          shape: shapeVal,
+          strides: stridesVal,
+          offsetSrc: offsetVal,
+          dtypeSrc: dtypeVal,
+          dst: castVal,
+          outStrides: cStrides,
+          offsetDst: 0,
+          dtypeDst: dtypeArr,
+        );
+        effValues = castVal;
+        effStridesVal = cStrides;
+        effOffsetVal = 0;
+      }
+      final bStridesVal = broadcastStrides(
+        shapeVal,
+        effStridesVal,
+        shapeIndices,
+      );
+      writeBufferValue(statusBuffer, DType.uint32, 0, 0);
+      writeBufferValue(statusBuffer, DType.uint32, 1, 0);
+      final shaderModule = WgslIndexingKernels.alongAxisShader(
+        dtype: dtypeArr,
+        indexDType: dtypeIndices,
+        isPut: true,
+      );
+      final dispatch = shaderModule.calculateDispatch1D(totalElements);
+      final uniforms = List<int>.filled(40, 0);
+      uniforms[0] = totalElements;
+      uniforms[1] = rank;
+      uniforms[2] = normAxis;
+      uniforms[3] = axisLength;
+      uniforms[4] = offsetArr;
+      uniforms[5] = offsetIndices;
+      uniforms[6] = effOffsetVal;
+      for (var d = 0; d < 8; d++) {
+        uniforms[8 + d] = d < rank ? shapeIndices[d] : 1;
+        uniforms[16 + d] = d < rank ? (stridesArr[d] & 0xFFFFFFFF) : 0;
+        uniforms[24 + d] = d < rank ? (stridesIndices[d] & 0xFFFFFFFF) : 0;
+        uniforms[32 + d] = d < rank ? (bStridesVal[d] & 0xFFFFFFFF) : 0;
+      }
+      arr.device.backend.dispatchComputePipeline(
+        shaderModule: shaderModule,
+        buffers: [effValues, indices, arr, statusBuffer],
+        uniforms: uniforms,
+        workgroupsX: dispatch.workgroupsX,
+        workgroupsY: dispatch.workgroupsY,
+        workgroupsZ: dispatch.workgroupsZ,
+      );
+      final err = readBufferAny(statusBuffer, DType.uint32, 0) as int;
+      if (err != 0) {
         throw IndexError.withLength(
-          k,
-          axisLen,
+          axisLength,
+          axisLength,
           name: 'put_along_axis index out of bounds',
         );
       }
-
-      var elemIndexArr = 0;
-      for (var d = 0; d < rank; d++) {
-        final c = (d == normAxis) ? k : coords[d];
-        elemIndexArr += c * stridesArr[d];
-      }
-
-      final val = readBufferAny(
-        values,
-        dtypeVal,
-        elemIndexVal,
-        offsetElements: offsetVal,
-      );
-      writeBufferAny(
-        arr,
-        dtypeArr,
-        elemIndexArr,
-        val,
-        offsetElements: offsetArr,
-      );
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < shapeIndices[d]) break;
-        coords[d] = 0;
-      }
+    } finally {
+      castVal?.dispose();
+      statusBuffer.dispose();
     }
   }
 
-  /// Concatenates a list of tensors along [axis].
+  /// Concatenates a list of tensors along [axis] on the GPU.
   static void executeConcatenate({
     required List<GpuBuffer> srcBuffers,
     required List<List<int>> srcShapes,
@@ -1705,45 +1902,28 @@ extension type const GpuKernels._(Object? _) {
       final strides = srcStrides[arrayIndex];
       final offset = srcOffsets[arrayIndex];
       final dtype = srcDtypes[arrayIndex];
-      final total = computeSize(shape);
-      final coords = List<int>.filled(rank, 0);
+      final sliceOffsetDst = offsetDst + axisOffset * outStrides[normAxis];
 
-      for (var i = 0; i < total; i++) {
-        var elemIndexSrc = 0;
-        var elemIndexDst = 0;
-
-        for (var d = 0; d < rank; d++) {
-          elemIndexSrc += coords[d] * strides[d];
-          final outCoord = (d == normAxis) ? coords[d] + axisOffset : coords[d];
-          elemIndexDst += outCoord * outStrides[d];
-        }
-
-        final val = readBufferAny(
-          src,
-          dtype,
-          elemIndexSrc,
-          offsetElements: offset,
-        );
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          val,
-          offsetElements: offsetDst,
-        );
-
-        for (var d = rank - 1; d >= 0; d--) {
-          coords[d]++;
-          if (coords[d] < shape[d]) break;
-          coords[d] = 0;
-        }
-      }
+      copyStrided(
+        src: src,
+        shape: shape,
+        strides: strides,
+        offsetSrc: offset,
+        dtypeSrc: dtype,
+        dst: dst,
+        outStrides: outStrides,
+        offsetDst: sliceOffsetDst,
+        dtypeDst: dtypeDst,
+      );
 
       axisOffset += shape[normAxis];
     }
   }
 
-  /// Pads a tensor with specified padding widths.
+  /// Pads a tensor with specified padding widths and mode on the GPU.
+  ///
+  /// [padMode] is `0` for constant, `1` for edge, `2` for reflect,
+  /// `3` for symmetric, and `4` for wrap.
   static void executePad({
     required GpuBuffer src,
     required List<int> shapeSrc,
@@ -1757,59 +1937,56 @@ extension type const GpuKernels._(Object? _) {
     required DType dtypeDst,
     required List<List<int>> padWidth,
     required Object? constantValue,
+    int padMode = 0,
   }) {
     final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
     final rank = outShape.length;
-    final coords = List<int>.filled(rank, 0);
+    final constWords = WgslDTypeCodec.packRawScalarWords(
+      dtypeDst,
+      constantValue ?? 0,
+    );
 
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexDst = 0;
-      var inBounds = true;
-      var elemIndexSrc = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexDst += coords[d] * outStrides[d];
-        final srcCoord = coords[d] - padWidth[d][0];
-        if (srcCoord < 0 || srcCoord >= shapeSrc[d]) {
-          inBounds = false;
-        } else {
-          elemIndexSrc += srcCoord * stridesSrc[d];
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        final shaderModule = WgslIndexingKernels.padShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = List<int>.filled(52, 0);
+        uniforms[0] = totalElements;
+        uniforms[1] = rank;
+        uniforms[2] = offsetSrc;
+        uniforms[3] = safeOffsetDst;
+        uniforms[4] = padMode;
+        for (var i = 0; i < 4; i++) {
+          uniforms[8 + i] = constWords[i];
         }
-      }
-
-      if (inBounds) {
-        final val = readBufferAny(
-          src,
-          dtypeSrc,
-          elemIndexSrc,
-          offsetElements: offsetSrc,
+        for (var d = 0; d < 8; d++) {
+          uniforms[12 + d] = d < rank ? shapeSrc[d] : 1;
+          uniforms[20 + d] = d < rank ? outShape[d] : 1;
+          uniforms[28 + d] = d < padWidth.length ? padWidth[d][0] : 0;
+          uniforms[36 + d] = d < rank ? (stridesSrc[d] & 0xFFFFFFFF) : 0;
+          uniforms[44 + d] = d < rank ? (safeOutStrides[d] & 0xFFFFFFFF) : 0;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
         );
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          val,
-          offsetElements: offsetDst,
-        );
-      } else {
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          constantValue,
-          offsetElements: offsetDst,
-        );
-      }
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < outShape[d]) break;
-        coords[d] = 0;
-      }
-    }
+      },
+    );
   }
 
-  /// Repeatedly tiles a tensor along all dimensions.
+  /// Repeatedly tiles a tensor along all dimensions on the GPU.
   static void executeTile({
     required GpuBuffer src,
     required List<int> shapeSrc,
@@ -1832,72 +2009,69 @@ extension type const GpuKernels._(Object? _) {
     final paddedStridesSrc = List<int>.filled(padRank, 0, growable: true)
       ..addAll(stridesSrc);
 
-    if (!src.device.backend.isSimulated &&
-        dtypeSrc == dtypeDst &&
-        WgslDType.isNativelySupportedStorageDType(dtypeDst) &&
-        rank <= 8 &&
-        dst.address != src.address) {
-      final shaderModule = WgslTemplates.tileKernel(
-        dtype: WgslDType.fromDType(dtypeDst),
-      );
-      final dispatch = shaderModule.calculateDispatch1D(totalElements);
-      final uniforms = _packStridedMetadata(
-        rank: rank,
-        totalElements: totalElements,
-        offsetA: offsetSrc,
-        offsetB: 0,
-        offsetOut: offsetDst,
-        shape: outShape,
-        stridesA: paddedStridesSrc,
-        stridesB: paddedShapeSrc,
-        stridesOut: outStrides,
-      );
-      src.device.backend.dispatchComputePipeline(
-        shaderModule: shaderModule,
-        buffers: [src, dst],
-        uniforms: uniforms,
-        workgroupsX: dispatch.workgroupsX,
-        workgroupsY: dispatch.workgroupsY,
-        workgroupsZ: dispatch.workgroupsZ,
-      );
-      return;
-    }
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        if (dtypeSrc == dtypeDst &&
+            WgslDType.isNativelySupportedStorageDType(dtypeDst) &&
+            rank <= 8) {
+          final shaderModule = WgslTemplates.tileKernel(
+            dtype: WgslDType.fromDType(dtypeDst),
+          );
+          final dispatch = shaderModule.calculateDispatch1D(totalElements);
+          final uniforms = _packStridedMetadata(
+            rank: rank,
+            totalElements: totalElements,
+            offsetA: offsetSrc,
+            offsetB: 0,
+            offsetOut: safeOffsetDst,
+            shape: outShape,
+            stridesA: paddedStridesSrc,
+            stridesB: paddedShapeSrc,
+            stridesOut: safeOutStrides,
+          );
+          src.device.backend.dispatchComputePipeline(
+            shaderModule: shaderModule,
+            buffers: [src, safeDst],
+            uniforms: uniforms,
+            workgroupsX: dispatch.workgroupsX,
+            workgroupsY: dispatch.workgroupsY,
+            workgroupsZ: dispatch.workgroupsZ,
+          );
+          return;
+        }
 
-    final coords = List<int>.filled(rank, 0);
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexDst = 0;
-      var elemIndexSrc = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexDst += coords[d] * outStrides[d];
-        final srcCoord = coords[d] % paddedShapeSrc[d];
-        elemIndexSrc += srcCoord * paddedStridesSrc[d];
-      }
-
-      final val = readBufferAny(
-        src,
-        dtypeSrc,
-        elemIndexSrc,
-        offsetElements: offsetSrc,
-      );
-      writeBufferAny(
-        dst,
-        dtypeDst,
-        elemIndexDst,
-        val,
-        offsetElements: offsetDst,
-      );
-
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < outShape[d]) break;
-        coords[d] = 0;
-      }
-    }
+        final shaderModule = WgslIndexingKernels.tileShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = List<int>.filled(36, 0);
+        uniforms[0] = totalElements;
+        uniforms[1] = rank;
+        uniforms[2] = offsetSrc;
+        uniforms[3] = safeOffsetDst;
+        for (var d = 0; d < 8; d++) {
+          uniforms[4 + d] = d < rank ? paddedShapeSrc[d] : 1;
+          uniforms[12 + d] = d < rank ? outShape[d] : 1;
+          uniforms[20 + d] = d < rank ? (paddedStridesSrc[d] & 0xFFFFFFFF) : 0;
+          uniforms[28 + d] = d < rank ? (safeOutStrides[d] & 0xFFFFFFFF) : 0;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+      },
+    );
   }
 
-  /// Extracts upper or lower triangular portion of a 2D or batched 2D tensor.
+  /// Extracts upper or lower triangular portion of a 2D or batched 2D tensor on the GPU.
   static void executeTriangular({
     required GpuBuffer src,
     required List<int> shapeSrc,
@@ -1912,51 +2086,373 @@ extension type const GpuKernels._(Object? _) {
     required bool upper,
   }) {
     final totalElements = computeSize(shapeSrc);
+    if (totalElements == 0) return;
+
     final rank = shapeSrc.length;
-    final coords = List<int>.filled(rank, 0);
-
-    for (var i = 0; i < totalElements; i++) {
-      var elemIndexSrc = 0;
-      var elemIndexDst = 0;
-
-      for (var d = 0; d < rank; d++) {
-        elemIndexSrc += coords[d] * stridesSrc[d];
-        elemIndexDst += coords[d] * outStrides[d];
-      }
-
-      final row = coords[rank - 2];
-      final col = coords[rank - 1];
-      final keep = upper ? (col - row >= k) : (col - row <= k);
-
-      if (keep) {
-        final val = readBufferAny(
-          src,
-          dtypeSrc,
-          elemIndexSrc,
-          offsetElements: offsetSrc,
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: shapeSrc,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        final shaderModule = WgslManipulationKernels.triangularShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = List<int>.filled(32, 0);
+        uniforms[0] = totalElements;
+        uniforms[1] = rank;
+        uniforms[2] = k & 0xFFFFFFFF;
+        uniforms[3] = upper ? 1 : 0;
+        uniforms[4] = offsetSrc;
+        uniforms[5] = safeOffsetDst;
+        for (var d = 0; d < 8; d++) {
+          uniforms[8 + d] = d < rank ? shapeSrc[d] : 1;
+          uniforms[16 + d] = d < rank ? (stridesSrc[d] & 0xFFFFFFFF) : 0;
+          uniforms[24 + d] = d < rank ? (safeOutStrides[d] & 0xFFFFFFFF) : 0;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
         );
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          val,
-          offsetElements: offsetDst,
-        );
-      } else {
-        writeBufferAny(
-          dst,
-          dtypeDst,
-          elemIndexDst,
-          0.0,
-          offsetElements: offsetDst,
-        );
-      }
+      },
+    );
+  }
 
-      for (var d = rank - 1; d >= 0; d--) {
-        coords[d]++;
-        if (coords[d] < shapeSrc[d]) break;
-        coords[d] = 0;
+  /// Repeats elements of [src] `repeats` times (flattened or along [axis]) on the GPU.
+  static void executeRepeat({
+    required GpuBuffer src,
+    required List<int> shapeSrc,
+    required List<int> stridesSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    required int repeats,
+    int? axis,
+  }) {
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
+    final rank = shapeSrc.length;
+    final normAxis = axis == null ? 99 : (axis < 0 ? axis + rank : axis);
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        final shaderModule = WgslManipulationKernels.repeatShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = List<int>.filled(40, 0);
+        uniforms[0] = totalElements;
+        uniforms[1] = rank;
+        uniforms[2] = normAxis;
+        uniforms[3] = repeats;
+        uniforms[4] = offsetSrc;
+        uniforms[5] = safeOffsetDst;
+        for (var d = 0; d < 8; d++) {
+          uniforms[8 + d] = d < rank ? shapeSrc[d] : 1;
+          uniforms[16 + d] = d < outShape.length ? outShape[d] : 1;
+          uniforms[24 + d] = d < rank ? (stridesSrc[d] & 0xFFFFFFFF) : 0;
+          uniforms[32 + d] = d < safeOutStrides.length
+              ? (safeOutStrides[d] & 0xFFFFFFFF)
+              : 0;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+      },
+    );
+  }
+
+  /// Rolls elements of [src] by [shift] (flattened or along [axis]) on the GPU.
+  static void executeRoll({
+    required GpuBuffer src,
+    required List<int> shapeSrc,
+    required List<int> stridesSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    required int shift,
+    int? axis,
+  }) {
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
+    final rank = outShape.length;
+    final normAxis = axis == null ? 99 : (axis < 0 ? axis + rank : axis);
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        final shaderModule = WgslManipulationKernels.rollShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = List<int>.filled(32, 0);
+        uniforms[0] = totalElements;
+        uniforms[1] = rank;
+        uniforms[2] = normAxis;
+        uniforms[3] = shift & 0xFFFFFFFF;
+        uniforms[4] = offsetSrc;
+        uniforms[5] = safeOffsetDst;
+        for (var d = 0; d < 8; d++) {
+          uniforms[8 + d] = d < rank ? outShape[d] : 1;
+          uniforms[16 + d] = d < rank ? (stridesSrc[d] & 0xFFFFFFFF) : 0;
+          uniforms[24 + d] = d < rank ? (safeOutStrides[d] & 0xFFFFFFFF) : 0;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+      },
+    );
+  }
+
+  /// Constructs a 2D diagonal matrix in [dst] from 1D vector [src] on the GPU.
+  static void executeDiag1DTo2D({
+    required GpuBuffer src,
+    required int srcLength,
+    required int strideSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+    required GpuBuffer dst,
+    required int outSize,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    required int k,
+  }) {
+    final totalElements = outSize * outSize;
+    if (totalElements == 0) return;
+
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: [outSize, outSize],
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        final shaderModule = WgslManipulationKernels.diag1DTo2DShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = <int>[
+          outSize,
+          srcLength,
+          k & 0xFFFFFFFF,
+          offsetSrc,
+          strideSrc & 0xFFFFFFFF,
+          safeOffsetDst,
+          safeOutStrides[0] & 0xFFFFFFFF,
+          safeOutStrides[1] & 0xFFFFFFFF,
+        ];
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+      },
+    );
+  }
+
+  /// Extracts a diagonal along `(axis1, axis2)` with [offset] on the GPU.
+  static void executeDiagonal({
+    required GpuBuffer src,
+    required List<int> shapeSrc,
+    required List<int> stridesSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+    required GpuBuffer dst,
+    required List<int> outShape,
+    required List<int> outStrides,
+    required int offsetDst,
+    required DType dtypeDst,
+    required int offset,
+    required int axis1,
+    required int axis2,
+  }) {
+    final totalElements = computeSize(outShape);
+    if (totalElements == 0) return;
+
+    final outRank = outShape.length;
+    final rowStart = offset >= 0 ? 0 : -offset;
+    final colStart = offset >= 0 ? offset : 0;
+    final strideAxis1 = stridesSrc[axis1];
+    final strideAxis2 = stridesSrc[axis2];
+    final remStridesA = <int>[];
+    for (var d = 0; d < shapeSrc.length; d++) {
+      if (d != axis1 && d != axis2) {
+        remStridesA.add(stridesSrc[d]);
       }
     }
+
+    _withAliasSafeDst(
+      inputs: [src],
+      dst: dst,
+      outShape: outShape,
+      outStrides: outStrides,
+      offsetDst: offsetDst,
+      dtypeDst: dtypeDst,
+      action: (safeDst, safeOutStrides, safeOffsetDst) {
+        final shaderModule = WgslManipulationKernels.diagonalShader(dtypeDst);
+        final dispatch = shaderModule.calculateDispatch1D(totalElements);
+        final uniforms = List<int>.filled(32, 0);
+        uniforms[0] = totalElements;
+        uniforms[1] = outRank;
+        uniforms[2] = rowStart;
+        uniforms[3] = colStart;
+        uniforms[4] = strideAxis1 & 0xFFFFFFFF;
+        uniforms[5] = strideAxis2 & 0xFFFFFFFF;
+        uniforms[6] = offsetSrc;
+        uniforms[7] = safeOffsetDst;
+        for (var d = 0; d < 8; d++) {
+          uniforms[8 + d] = d < outRank ? outShape[d] : 1;
+          uniforms[16 + d] = d < remStridesA.length
+              ? (remStridesA[d] & 0xFFFFFFFF)
+              : 0;
+          uniforms[24 + d] = d < safeOutStrides.length
+              ? (safeOutStrides[d] & 0xFFFFFFFF)
+              : 0;
+        }
+        src.device.backend.dispatchComputePipeline(
+          shaderModule: shaderModule,
+          buffers: [src, safeDst],
+          uniforms: uniforms,
+          workgroupsX: dispatch.workgroupsX,
+          workgroupsY: dispatch.workgroupsY,
+          workgroupsZ: dispatch.workgroupsZ,
+        );
+      },
+    );
+  }
+
+  /// Computes prefix-sum indices of non-zero elements in [src] on the GPU,
+  /// returning `(prefixIndicesBuffer, nonZeroCount)`.
+  static (GpuBuffer, int) executeNonZeroScan({
+    required GpuBuffer src,
+    required List<int> shapeSrc,
+    required List<int> stridesSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+  }) {
+    final totalElements = computeSize(shapeSrc);
+    final prefixBuffer = src.device.createBuffer(
+      sizeInBytes: math.max(totalElements * 4, 4),
+    );
+    final countBuffer = src.device.createBuffer(sizeInBytes: 4);
+    try {
+      if (totalElements == 0) {
+        return (prefixBuffer, 0);
+      }
+      final shaderModule = WgslManipulationKernels.nonZeroScanShader(dtypeSrc);
+      final uniforms = List<int>.filled(20, 0);
+      uniforms[0] = totalElements;
+      uniforms[1] = shapeSrc.length;
+      uniforms[2] = offsetSrc;
+      for (var d = 0; d < 8; d++) {
+        uniforms[4 + d] = d < shapeSrc.length ? shapeSrc[d] : 1;
+        uniforms[12 + d] = d < stridesSrc.length
+            ? (stridesSrc[d] & 0xFFFFFFFF)
+            : 0;
+      }
+      src.device.backend.dispatchComputePipeline(
+        shaderModule: shaderModule,
+        buffers: [src, prefixBuffer, countBuffer],
+        uniforms: uniforms,
+        workgroupsX: 1,
+        workgroupsY: 1,
+        workgroupsZ: 1,
+      );
+      final count = readBufferAny(countBuffer, DType.uint32, 0) as int;
+      return (prefixBuffer, count);
+    } finally {
+      countBuffer.dispose();
+    }
+  }
+
+  /// Scatters non-zero indices or values using [prefixBuffer] on the GPU.
+  ///
+  /// [mode] is `'flatnonzero'`, `'argwhere'`, `'nonzero_axis'`, or `'extract'`.
+  static void executeNonZeroScatter({
+    required String mode,
+    required GpuBuffer cond,
+    required List<int> shapeCond,
+    required List<int> stridesCond,
+    required int offsetCond,
+    required DType dtypeCond,
+    required GpuBuffer prefixBuffer,
+    required GpuBuffer src,
+    required List<int> stridesSrc,
+    required int offsetSrc,
+    required DType dtypeSrc,
+    required GpuBuffer dst,
+    required int offsetDst,
+    required DType dtypeDst,
+    int targetAxis = 0,
+  }) {
+    final totalElements = computeSize(shapeCond);
+    if (totalElements == 0) return;
+
+    final modeInt = switch (mode) {
+      'flatnonzero' => 0,
+      'argwhere' => 1,
+      'nonzero_axis' => 2,
+      'extract' => 3,
+      _ => 0,
+    };
+    final shaderModule = WgslManipulationKernels.nonZeroScatterShader(
+      dtype: modeInt == 3 ? dtypeSrc : dtypeCond,
+      mode: modeInt,
+    );
+    final dispatch = shaderModule.calculateDispatch1D(totalElements);
+    final effStrides = modeInt == 3 ? stridesSrc : stridesCond;
+    final uniforms = List<int>.filled(24, 0);
+    uniforms[0] = totalElements;
+    uniforms[1] = shapeCond.length;
+    uniforms[2] = modeInt == 3 ? offsetSrc : offsetCond;
+    uniforms[3] = targetAxis;
+    uniforms[4] = offsetDst;
+    for (var d = 0; d < 8; d++) {
+      uniforms[8 + d] = d < shapeCond.length ? shapeCond[d] : 1;
+      uniforms[16 + d] = d < effStrides.length
+          ? (effStrides[d] & 0xFFFFFFFF)
+          : 0;
+    }
+    cond.device.backend.dispatchComputePipeline(
+      shaderModule: shaderModule,
+      buffers: [modeInt == 3 ? src : cond, prefixBuffer, dst],
+      uniforms: uniforms,
+      workgroupsX: dispatch.workgroupsX,
+      workgroupsY: dispatch.workgroupsY,
+      workgroupsZ: dispatch.workgroupsZ,
+    );
   }
 }

@@ -109,7 +109,7 @@ final class BenchmarkRunner {
       '===================================================================================',
     );
 
-    final sizes = [512, 1024, 2048];
+    final sizes = [128, 256, 512];
 
     for (final n in sizes) {
       final totalElements = n * n;
@@ -215,7 +215,7 @@ final class BenchmarkRunner {
       '===================================================================================',
     );
 
-    final elementCounts = [1000000, 5000000, 20000000];
+    final elementCounts = [100000, 500000, 1000000];
 
     // Compile JIT Fused Shader AST once (uses grid-stride loop for > 65535 workgroups)
     final xVariable = Expr.variable('x', bindingIndex: 0);
@@ -330,7 +330,7 @@ final class BenchmarkRunner {
       '===================================================================================',
     );
 
-    final elementCounts = [1000000, 5000000, 20000000];
+    final elementCounts = [100000, 500000, 1000000];
 
     for (final count in elementCounts) {
       final rawA = Float32List(count);

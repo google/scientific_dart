@@ -172,5 +172,37 @@ void main() {
         vector.dispose();
       }
     });
+
+    test('lstsq solves least-squares system and disposes record', () {
+      final coefficients = GpuArray.fromList(
+        <double>[1.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        [3, 2],
+        DType.float64,
+      );
+      final ordinates = GpuArray.fromList(
+        <double>[1.0, 2.0, 3.0],
+        [3],
+        DType.float64,
+      );
+      try {
+        final result = lstsq(coefficients, ordinates);
+        try {
+          expect(result.solution.shape, equals(<int>[2]));
+          expect(result.rank, equals(2));
+          expect(result.singularValues.shape, equals(<int>[2]));
+          final sol = result.solution.toList().cast<double>();
+          expect(sol[0], closeTo(1.0, 1e-6));
+          expect(sol[1], closeTo(2.0, 1e-6));
+        } finally {
+          result.dispose();
+        }
+        expect(result.solution.isDisposed, isTrue);
+        expect(result.residuals.isDisposed, isTrue);
+        expect(result.singularValues.isDisposed, isTrue);
+      } finally {
+        ordinates.dispose();
+        coefficients.dispose();
+      }
+    });
   });
 }

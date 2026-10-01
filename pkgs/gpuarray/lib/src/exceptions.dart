@@ -60,8 +60,10 @@ final class GpuShapeMismatchException extends ArgumentError
   GpuShapeMismatchException(this.operation, List<int> shapeA, List<int> shapeB)
     : shapeA = List<int>.unmodifiable(shapeA),
       shapeB = List<int>.unmodifiable(shapeB),
-      super(
-        'Cannot perform $operation on incompatible shapes: $shapeA and $shapeB',
+      super.value(
+        shapeB,
+        'shape',
+        'Must have compatible shapes for $operation: $shapeA and $shapeB',
       );
 
   @override

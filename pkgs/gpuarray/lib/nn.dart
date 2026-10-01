@@ -15,11 +15,13 @@
 /// Deep Learning & Neural Network Library for [package:gpuarray].
 ///
 /// Features PyTorch-style [Module], trainable [Linear], [Conv2d], [LayerNorm],
-/// [RMSNorm], [Embedding], [MultiheadAttention], [RotaryEmbedding], [SwiGLU],
-/// [GeGLU], [TransformerEncoderLayer], and [TransformerDecoderLayer],
-/// activations ([relu], [gelu], [silu], [softmax], [logSoftmax]), loss
-/// functions ([mseLoss], [crossEntropy], [LossReduction]), and optimizers
-/// ([SGD], [Adam], [AdamW]).
+/// [RMSNorm], [BatchNorm1d], [Embedding], [Dropout], [MultiheadAttention]
+/// ([MultiHeadAttention]), [RotaryEmbedding], [SwiGLU], [GeGLU],
+/// [TransformerEncoderLayer], and [TransformerDecoderLayer], activations
+/// ([relu], [gelu], [silu], [softmax], [logSoftmax]), loss functions and
+/// criteria ([mseLoss], [MSELoss], [l1Loss], [L1Loss], [binaryCrossEntropy],
+/// [BCELoss], [crossEntropy], [CrossEntropyLoss], [LossReduction]), and
+/// optimizers ([SGD], [Adam], [AdamW]).
 library;
 
 export 'src/nn/nn.dart';

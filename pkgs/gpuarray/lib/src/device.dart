@@ -19,15 +19,13 @@ import 'package:resource_scope/resource_scope.dart';
 
 import 'backend/backend.dart';
 import 'backend/memory_pool.dart';
+import 'backend/webgpu_backend.dart' show createDefaultGpuBackend;
 import 'backend/wgsl/jit_compiler.dart';
 import 'buffer.dart';
 import 'exceptions.dart';
 
 /// Hardware backend architecture for a [GpuDevice].
 enum GpuDeviceType {
-  /// Host CPU vector execution backend.
-  cpu('CPU'),
-
   /// Cross-platform WebGPU hardware compute backend (Metal, Vulkan, DX12, Dawn, wgpu-native).
   webgpu('WebGPU'),
 
@@ -85,12 +83,12 @@ final class GpuDevice implements ScopedResource {
   /// Creates a new [GpuDevice] with the given [name], [type], [backend], and
   /// [enableMemoryPool] configuration.
   factory GpuDevice.create({
-    String name = 'Default CPU Vector Device',
+    String name = 'Default WebGPU Device',
     GpuDeviceType? type,
     GpuBackend? backend,
     bool enableMemoryPool = false,
   }) {
-    final resolvedBackend = backend ?? const CpuVectorBackend();
+    final resolvedBackend = backend ?? createDefaultGpuBackend();
     final resolvedType = type ?? resolvedBackend.deviceType;
     return GpuDevice._(
       name: name,
@@ -101,29 +99,16 @@ final class GpuDevice implements ScopedResource {
     );
   }
 
-  /// Creates a CPU-backed [GpuDevice].
-  factory GpuDevice.cpu({
-    String name = 'CPU Vector Device',
-    bool enableMemoryPool = false,
-  }) {
-    return GpuDevice._(
-      name: name,
-      type: GpuDeviceType.cpu,
-      backend: const CpuVectorBackend(),
-      enableMemoryPool: enableMemoryPool,
-      trackInScope: true,
-    );
-  }
-
   /// The process-wide default [GpuDevice], lazily initialized if not yet set.
   static GpuDevice get defaultDevice {
     final current = _defaultDevice;
     if (current == null || current.isDisposed) {
+      final resolvedBackend = createDefaultGpuBackend();
       final created = ResourceScope.unmanaged(
         () => GpuDevice._(
           name: 'Default GPU Device',
-          type: GpuDeviceType.cpu,
-          backend: const CpuVectorBackend(),
+          type: resolvedBackend.deviceType,
+          backend: resolvedBackend,
           enableMemoryPool: false,
           trackInScope: false,
         ),

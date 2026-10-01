@@ -16,7 +16,7 @@ import 'package:gpuarray/gpuarray.dart';
 import 'package:test/test.dart';
 
 void main() {
-  group('Linear Algebra Tensor Contractions & Products (F8)', () {
+  group('Linear Algebra Tensor Contractions & Products (F16)', () {
     test('multiDot chains matrix multiplications with out: parameter', () {
       final first = GpuArray.fromList(
         <double>[1.0, 2.0, 3.0, 4.0],
@@ -47,6 +47,33 @@ void main() {
         third.dispose();
         second.dispose();
         first.dispose();
+      }
+    });
+
+    test('vdot conjugates complex first vector (F10.1)', () {
+      final vectorA = GpuArray.fromList(
+        <Complex>[Complex(1.0, 2.0), Complex(3.0, -4.0)],
+        [2],
+        DType.complex128,
+      );
+      final vectorB = GpuArray.fromList(
+        <Complex>[Complex(5.0, 6.0), Complex(7.0, 8.0)],
+        [2],
+        DType.complex128,
+      );
+      try {
+        final result = vdot(vectorA, vectorB);
+        try {
+          final scalar = result.scalar as Complex;
+          // conj(1 + 2i)*(5 + 6i) + conj(3 - 4i)*(7 + 8i) = 6 + 48i
+          expect(scalar.real, closeTo(6.0, 1e-10));
+          expect(scalar.imag, closeTo(48.0, 1e-10));
+        } finally {
+          result.dispose();
+        }
+      } finally {
+        vectorB.dispose();
+        vectorA.dispose();
       }
     });
 

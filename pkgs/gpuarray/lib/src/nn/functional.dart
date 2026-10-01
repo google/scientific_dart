@@ -16,12 +16,13 @@
 import 'dart:math' as math;
 
 import '../autograd/autograd.dart';
-import '../backend/compute_engine.dart';
-import '../dtype.dart';
+import '../autograd/autograd_wgsl.dart';
+import '../autograd/loss_wgsl.dart';
 import '../gpu_array.dart';
 import '../random/random.dart' as random_ops;
 
 export '../autograd/autograd.dart' show LossReduction;
+export 'functional_attention.dart';
 
 /// Copies [computed] into [out] if provided, validating shape, dtype, and disposal state.
 GpuArray<T> _finalizeOutput<T extends DTypeTag>(
@@ -43,7 +44,7 @@ GpuArray<T> _finalizeOutput<T extends DTypeTag>(
       'Must be writeable and not a broadcasted view.',
     );
   }
-  if (!ShapeUtils.areEqual(out.shape, computed.shape)) {
+  if (!areShapesIdentical(out.shape, computed.shape)) {
     final computedShape = computed.shape;
     computed.dispose();
     throw ArgumentError.value(
@@ -176,6 +177,29 @@ GpuArray<T> silu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) {
   return _finalizeOutput(computed, out);
 }
 
+/// Randomly zeroes elements of [input] with probability [p] during [training].
+GpuArray<T> dropout<T extends DTypeTag>(
+  GpuArray<T> input, {
+  double p = 0.5,
+  bool training = true,
+}) {
+  if (p < 0.0 || p >= 1.0 || p.isNaN) {
+    throw ArgumentError.value(
+      p,
+      'p',
+      'Must be in the half-open interval [0.0, 1.0).',
+    );
+  }
+  if (!training || p == 0.0) return input;
+  final randomValues = random_ops.rand(input.shape, input.device);
+  final keepBoolean = randomValues.greater(p);
+  final keepMask = keepBoolean.astype(input.dtype);
+  randomValues.dispose();
+  keepBoolean.dispose();
+  final scale = 1.0 / (1.0 - p);
+  return (input * keepMask * scale) as GpuArray<T>;
+}
+
 /// Applies the Softmax function to an N-dimensional tensor along [axis].
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
@@ -247,16 +271,20 @@ GpuArray<DTypeTag> mseLoss<T extends DTypeTag>(
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
 }) {
+  if (!areShapesIdentical(input.shape, target.shape)) {
+    throw ArgumentError.value(
+      target.shape,
+      'target',
+      'Must match input shape ${input.shape}.',
+    );
+  }
   final difference = input - target;
   final squared = difference * difference;
-  switch (reduction) {
-    case LossReduction.mean:
-      return squared.mean();
-    case LossReduction.sum:
-      return squared.sum();
-    case LossReduction.none:
-      return squared;
-  }
+  return switch (reduction) {
+    LossReduction.mean => squared.mean(),
+    LossReduction.sum => squared.sum(),
+    LossReduction.none => squared,
+  };
 }
 
 /// Measures the Mean Squared Error (squared L2 norm) between [input] and [target].
@@ -267,6 +295,113 @@ GpuArray<DTypeTag> mse_loss<T extends DTypeTag>(
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
 }) => mseLoss(input, target, reduction: reduction);
+
+/// Measures the Mean Absolute Error (L1 norm) between [input] and [target].
+GpuArray<DTypeTag> l1Loss<T extends DTypeTag>(
+  GpuArray<T> input,
+  GpuArray<T> target, {
+  LossReduction reduction = LossReduction.mean,
+}) {
+  if (!areShapesIdentical(input.shape, target.shape)) {
+    throw ArgumentError.value(
+      target.shape,
+      'target',
+      'Must match input shape ${input.shape}.',
+    );
+  }
+  final computed = noGrad(() {
+    final difference = input - target;
+    final absDifference = difference.abs();
+    difference.dispose();
+    return switch (reduction) {
+      LossReduction.mean => () {
+        final result = absDifference.mean();
+        absDifference.dispose();
+        return result;
+      }(),
+      LossReduction.sum => () {
+        final result = absDifference.sum();
+        absDifference.dispose();
+        return result;
+      }(),
+      LossReduction.none => absDifference,
+    };
+  });
+  if (isGradEnabled && (input.requiresGrad || target.requiresGrad)) {
+    computed.requiresGrad = true;
+    computed.gradFn = L1LossBackward(input, target, reduction: reduction);
+  }
+  return computed;
+}
+
+/// Measures the Mean Absolute Error (L1 norm) between [input] and [target].
+///
+/// Alias for [l1Loss] provided for PyTorch naming parity.
+GpuArray<DTypeTag> l1_loss<T extends DTypeTag>(
+  GpuArray<T> input,
+  GpuArray<T> target, {
+  LossReduction reduction = LossReduction.mean,
+}) => l1Loss(input, target, reduction: reduction);
+
+/// Measures the Binary Cross-Entropy loss between target probabilities [target] and
+/// predicted probabilities [input]:
+/// $$\ell(x, y) = -\left(y \ln(x) + (1 - y) \ln(1 - x)\right)$$
+GpuArray<DTypeTag> binaryCrossEntropy<T extends DTypeTag>(
+  GpuArray<T> input,
+  GpuArray<T> target, {
+  LossReduction reduction = LossReduction.mean,
+}) {
+  if (!areShapesIdentical(input.shape, target.shape)) {
+    throw ArgumentError.value(
+      target.shape,
+      'target',
+      'Must match input shape ${input.shape}.',
+    );
+  }
+  final computed = noGrad(() {
+    final elementLosses = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchBceForward(
+      input: input,
+      targetTensor: target,
+      output: elementLosses,
+    );
+    return switch (reduction) {
+      LossReduction.mean => () {
+        final result = elementLosses.mean();
+        elementLosses.dispose();
+        return result;
+      }(),
+      LossReduction.sum => () {
+        final result = elementLosses.sum();
+        elementLosses.dispose();
+        return result;
+      }(),
+      LossReduction.none => elementLosses,
+    };
+  });
+  if (isGradEnabled && input.requiresGrad) {
+    computed.requiresGrad = true;
+    computed.gradFn = BinaryCrossEntropyBackward(
+      input,
+      target,
+      reduction: reduction,
+    );
+  }
+  return computed;
+}
+
+/// Measures the Binary Cross-Entropy loss between [input] and [target].
+///
+/// Alias for [binaryCrossEntropy] provided for PyTorch naming parity.
+GpuArray<DTypeTag> binary_cross_entropy<T extends DTypeTag>(
+  GpuArray<T> input,
+  GpuArray<T> target, {
+  LossReduction reduction = LossReduction.mean,
+}) => binaryCrossEntropy(input, target, reduction: reduction);
 
 /// Computes the categorical cross-entropy loss between [logits] (`[N, C]`) and
 /// integer class [targets] (`[N]`).
@@ -302,73 +437,33 @@ GpuArray<T> crossEntropy<T extends DTypeTag>(
 
   final GpuArray<T> lossArray;
   try {
-    switch (reduction) {
-      case LossReduction.mean:
-      case LossReduction.sum:
-        var totalLoss = 0.0;
-        for (var i = 0; i < numSamples; i++) {
-          final targetClass = ComputeEngine.readValue(
-            targets.buffer,
-            targets.dtype,
-            i,
-            offsetElements: targets.offsetElements,
-          ).toInt();
-          RangeError.checkValueInInterval(
-            targetClass,
-            0,
-            numClasses - 1,
-            'targets',
-          );
-          final logProb = ComputeEngine.readValue(
-            logProbabilities.buffer,
-            logProbabilities.dtype,
-            i * numClasses + targetClass,
-            offsetElements: logProbabilities.offsetElements,
-          );
-          totalLoss -= logProb;
-        }
-        final reducedValue = reduction == LossReduction.mean
-            ? totalLoss / numSamples
-            : totalLoss;
-        lossArray = GpuArray.filled(
-          [],
-          reducedValue,
-          logits.dtype,
-          device: logits.device,
-        );
-      case LossReduction.none:
-        lossArray = GpuArray.empty(
-          [numSamples],
-          logits.dtype,
-          device: logits.device,
-        );
-        for (var i = 0; i < numSamples; i++) {
-          final targetClass = ComputeEngine.readValue(
-            targets.buffer,
-            targets.dtype,
-            i,
-            offsetElements: targets.offsetElements,
-          ).toInt();
-          RangeError.checkValueInInterval(
-            targetClass,
-            0,
-            numClasses - 1,
-            'targets',
-          );
-          final logProb = ComputeEngine.readValue(
-            logProbabilities.buffer,
-            logProbabilities.dtype,
-            i * numClasses + targetClass,
-            offsetElements: logProbabilities.offsetElements,
-          );
-          ComputeEngine.writeValue(
-            lossArray.buffer,
-            lossArray.dtype,
-            i,
-            -logProb,
-          );
-        }
-    }
+    lossArray = noGrad(() {
+      final sampleLosses = GpuArray.empty(
+        [numSamples],
+        logits.dtype,
+        device: logits.device,
+      );
+      dispatchCrossEntropyForward(
+        logProbabilities: logProbabilities,
+        targets: targets,
+        sampleLosses: sampleLosses,
+        numSamples: numSamples,
+        numClasses: numClasses,
+      );
+      return switch (reduction) {
+        LossReduction.mean => () {
+          final reduced = sampleLosses.mean().astype(logits.dtype);
+          sampleLosses.dispose();
+          return reduced;
+        }(),
+        LossReduction.sum => () {
+          final reduced = sampleLosses.sum().astype(logits.dtype);
+          sampleLosses.dispose();
+          return reduced;
+        }(),
+        LossReduction.none => sampleLosses,
+      };
+    });
   } finally {
     logProbabilities.dispose();
   }
@@ -394,121 +489,3 @@ GpuArray<T> cross_entropy<T extends DTypeTag>(
   GpuArray<DTypeTag> targets, {
   LossReduction reduction = LossReduction.mean,
 }) => crossEntropy(logits, targets, reduction: reduction);
-
-/// Computes Scaled Dot-Product Attention (SDPA):
-/// $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}} + M\right) V$$
-///
-/// Supports batched queries, keys, and values (e.g. `[B, H, N, D]` or `[N, D]`),
-/// causal upper-triangular masking when [isCausal] is `true`, custom boolean or
-/// additive float [attnMask], dropout probability [dropoutP], and custom [scale].
-GpuArray<T> scaledDotProductAttention<T extends DTypeTag>(
-  GpuArray<T> query,
-  GpuArray<T> key,
-  GpuArray<T> value, {
-  GpuArray<DTypeTag>? attnMask,
-  double dropoutP = 0.0,
-  bool isCausal = false,
-  double? scale,
-}) {
-  if (dropoutP < 0.0 || dropoutP >= 1.0) {
-    throw ArgumentError.value(
-      dropoutP,
-      'dropoutP',
-      'Must be in the half-open interval [0.0, 1.0).',
-    );
-  }
-  final keyDimension = query.shape[query.rank - 1];
-  final scaleFactor = scale ?? (1.0 / math.sqrt(keyDimension));
-
-  final keyTransposed = key.swapaxes(-1, -2);
-  var scores = (query.matmul(keyTransposed) * scaleFactor) as GpuArray<T>;
-
-  final querySeqLength = query.shape[query.rank - 2];
-  final keySeqLength = key.shape[key.rank - 2];
-
-  if (isCausal) {
-    final causalMask = GpuArray.empty(
-      [querySeqLength, keySeqLength],
-      scores.dtype,
-      device: scores.device,
-    );
-    for (var row = 0; row < querySeqLength; row++) {
-      for (var col = 0; col < keySeqLength; col++) {
-        ComputeEngine.writeValue(
-          causalMask.buffer,
-          causalMask.dtype,
-          row * keySeqLength + col,
-          col > row ? -1e9 : 0.0,
-        );
-      }
-    }
-    scores = (scores + causalMask) as GpuArray<T>;
-  }
-
-  if (attnMask != null) {
-    if (attnMask.dtype == DType.boolean) {
-      final additiveMask = GpuArray.empty(
-        attnMask.shape,
-        scores.dtype,
-        device: scores.device,
-      );
-      final totalMaskElements = attnMask.size;
-      for (var i = 0; i < totalMaskElements; i++) {
-        final rawValue = ComputeEngine.readAny(
-          attnMask.buffer,
-          attnMask.dtype,
-          i,
-          offsetElements: attnMask.offsetElements,
-        );
-        final keep = rawValue == true || (rawValue is num && rawValue != 0);
-        ComputeEngine.writeValue(
-          additiveMask.buffer,
-          additiveMask.dtype,
-          i,
-          keep ? 0.0 : -1e9,
-        );
-      }
-      scores = (scores + additiveMask) as GpuArray<T>;
-    } else {
-      scores = (scores + attnMask) as GpuArray<T>;
-    }
-  }
-
-  var attentionWeights = softmax(scores, axis: -1);
-
-  if (dropoutP > 0.0) {
-    final randomValues = random_ops.rand(
-      attentionWeights.shape,
-      attentionWeights.device,
-    );
-    final keepBoolean = randomValues.greater(dropoutP);
-    final keepMask = keepBoolean.astype(attentionWeights.dtype);
-    randomValues.dispose();
-    keepBoolean.dispose();
-    final keepScale = 1.0 / (1.0 - dropoutP);
-    attentionWeights = (attentionWeights * keepMask * keepScale) as GpuArray<T>;
-  }
-
-  return attentionWeights.matmul(value) as GpuArray<T>;
-}
-
-/// Computes Scaled Dot-Product Attention (SDPA).
-///
-/// Alias for [scaledDotProductAttention] provided for PyTorch naming parity.
-GpuArray<T> scaled_dot_product_attention<T extends DTypeTag>(
-  GpuArray<T> query,
-  GpuArray<T> key,
-  GpuArray<T> value, {
-  GpuArray<DTypeTag>? attnMask,
-  double dropoutP = 0.0,
-  bool isCausal = false,
-  double? scale,
-}) => scaledDotProductAttention(
-  query,
-  key,
-  value,
-  attnMask: attnMask,
-  dropoutP: dropoutP,
-  isCausal: isCausal,
-  scale: scale,
-);

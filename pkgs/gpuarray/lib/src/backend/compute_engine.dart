@@ -14,8 +14,8 @@
 
 import 'dart:ffi' as ffi;
 import 'dart:math' as math;
+import 'package:ffi/ffi.dart';
 import 'package:meta/meta.dart';
-import 'package:ndarray/ndarray.dart' show Float16Utils;
 import '../buffer.dart';
 import '../dtype.dart';
 import '../exceptions.dart';
@@ -127,65 +127,75 @@ List<int> broadcastStrides(
   return result;
 }
 
-/// Reads a single typed value at [elementIndex] from [buffer].
-Object readBufferAny(
-  GpuBuffer buffer,
+/// Reads a single typed value at [elementIndex] from [pointer].
+Object readPointerAny(
+  ffi.Pointer<ffi.Uint8> pointer,
   DType dtype,
   int elementIndex, {
   int offsetElements = 0,
 }) {
-  buffer.ensureHostSynced();
   final elementOffset = offsetElements + elementIndex;
-  final ptr = buffer.address;
   switch (dtype) {
     case DType.float64:
-      return ptr.cast<ffi.Double>()[elementOffset];
+      return pointer.cast<ffi.Double>()[elementOffset];
     case DType.float32:
-      return ptr.cast<ffi.Float>()[elementOffset];
+      return pointer.cast<ffi.Float>()[elementOffset];
     case DType.float16:
-      return Float16Utils.decodeFloat16(ptr.cast<ffi.Uint16>()[elementOffset]);
+      return Float16Utils.decodeFloat16(
+        pointer.cast<ffi.Uint16>()[elementOffset],
+      );
     case DType.bfloat16:
-      return Float16Utils.decodeBFloat16(ptr.cast<ffi.Uint16>()[elementOffset]);
+      return Float16Utils.decodeBFloat16(
+        pointer.cast<ffi.Uint16>()[elementOffset],
+      );
     case DType.int64:
-      return ptr.cast<ffi.Int64>()[elementOffset];
+      return pointer.cast<ffi.Int64>()[elementOffset];
     case DType.int32:
-      return ptr.cast<ffi.Int32>()[elementOffset];
+      return pointer.cast<ffi.Int32>()[elementOffset];
     case DType.int16:
-      return ptr.cast<ffi.Int16>()[elementOffset];
+      return pointer.cast<ffi.Int16>()[elementOffset];
     case DType.int8:
-      return ptr.cast<ffi.Int8>()[elementOffset];
+      return pointer.cast<ffi.Int8>()[elementOffset];
     case DType.uint64:
-      return ptr.cast<ffi.Uint64>()[elementOffset];
+      return pointer.cast<ffi.Uint64>()[elementOffset];
     case DType.uint32:
-      return ptr.cast<ffi.Uint32>()[elementOffset];
+      return pointer.cast<ffi.Uint32>()[elementOffset];
     case DType.uint16:
-      return ptr.cast<ffi.Uint16>()[elementOffset];
+      return pointer.cast<ffi.Uint16>()[elementOffset];
     case DType.uint8:
-      return ptr.cast<ffi.Uint8>()[elementOffset];
+      return pointer.cast<ffi.Uint8>()[elementOffset];
     case DType.boolean:
-      return ptr.cast<ffi.Uint8>()[elementOffset] != 0;
+      return pointer.cast<ffi.Uint8>()[elementOffset] != 0;
     case DType.complex64:
-      final real = ptr.cast<ffi.Float>()[elementOffset * 2];
-      final imag = ptr.cast<ffi.Float>()[elementOffset * 2 + 1];
+      final real = pointer.cast<ffi.Float>()[elementOffset * 2];
+      final imag = pointer.cast<ffi.Float>()[elementOffset * 2 + 1];
       return Complex(real, imag);
     case DType.complex128:
-      final real = ptr.cast<ffi.Double>()[elementOffset * 2];
-      final imag = ptr.cast<ffi.Double>()[elementOffset * 2 + 1];
+      final real = pointer.cast<ffi.Double>()[elementOffset * 2];
+      final imag = pointer.cast<ffi.Double>()[elementOffset * 2 + 1];
       return Complex(real, imag);
   }
 }
 
-/// Writes a single typed [value] at [elementIndex] to [buffer].
-void writeBufferAny(
-  GpuBuffer buffer,
+/// Writes a single typed [value] at [elementIndex] to [pointer].
+void writePointerAny(
+  ffi.Pointer<ffi.Uint8> pointer,
   DType dtype,
   int elementIndex,
   Object? value, {
   int offsetElements = 0,
 }) {
-  buffer.ensureHostSynced();
+  if (value is! num &&
+      value is! bool &&
+      value is! BigInt &&
+      value is! Complex) {
+    throw ArgumentError.value(
+      value,
+      'value',
+      'Must be a numeric, boolean, BigInt, or Complex value.',
+    );
+  }
   final elementOffset = offsetElements + elementIndex;
-  final ptr = buffer.address;
   double toDoubleVal(Object? v) {
     if (v is bool) return v ? 1.0 : 0.0;
     if (v is num) return v.toDouble();
@@ -202,56 +212,143 @@ void writeBufferAny(
 
   switch (dtype) {
     case DType.float64:
-      ptr.cast<ffi.Double>()[elementOffset] = toDoubleVal(value);
+      pointer.cast<ffi.Double>()[elementOffset] = toDoubleVal(value);
     case DType.float32:
-      ptr.cast<ffi.Float>()[elementOffset] = toDoubleVal(value);
+      pointer.cast<ffi.Float>()[elementOffset] = toDoubleVal(value);
     case DType.float16:
-      ptr.cast<ffi.Uint16>()[elementOffset] = Float16Utils.encodeFloat16(
+      pointer.cast<ffi.Uint16>()[elementOffset] = Float16Utils.encodeFloat16(
         toDoubleVal(value),
       );
     case DType.bfloat16:
-      ptr.cast<ffi.Uint16>()[elementOffset] = Float16Utils.encodeBFloat16(
+      pointer.cast<ffi.Uint16>()[elementOffset] = Float16Utils.encodeBFloat16(
         toDoubleVal(value),
       );
     case DType.int64:
-      ptr.cast<ffi.Int64>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Int64>()[elementOffset] = toIntVal(value);
     case DType.int32:
-      ptr.cast<ffi.Int32>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Int32>()[elementOffset] = toIntVal(value);
     case DType.int16:
-      ptr.cast<ffi.Int16>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Int16>()[elementOffset] = toIntVal(value);
     case DType.int8:
-      ptr.cast<ffi.Int8>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Int8>()[elementOffset] = toIntVal(value);
     case DType.uint64:
-      ptr.cast<ffi.Uint64>()[elementOffset] = (value is BigInt)
+      pointer.cast<ffi.Uint64>()[elementOffset] = (value is BigInt)
           ? value.toUnsigned(64).toInt()
           : toIntVal(value);
     case DType.uint32:
-      ptr.cast<ffi.Uint32>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Uint32>()[elementOffset] = toIntVal(value);
     case DType.uint16:
-      ptr.cast<ffi.Uint16>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Uint16>()[elementOffset] = toIntVal(value);
     case DType.uint8:
-      ptr.cast<ffi.Uint8>()[elementOffset] = toIntVal(value);
+      pointer.cast<ffi.Uint8>()[elementOffset] = toIntVal(value);
     case DType.boolean:
-      ptr.cast<ffi.Uint8>()[elementOffset] =
+      pointer.cast<ffi.Uint8>()[elementOffset] =
           (value == true || (value is num && value != 0)) ? 1 : 0;
     case DType.complex64:
       if (value is Complex) {
-        ptr.cast<ffi.Float>()[elementOffset * 2] = value.real;
-        ptr.cast<ffi.Float>()[elementOffset * 2 + 1] = value.imag;
+        pointer.cast<ffi.Float>()[elementOffset * 2] = value.real;
+        pointer.cast<ffi.Float>()[elementOffset * 2 + 1] = value.imag;
       } else {
-        ptr.cast<ffi.Float>()[elementOffset * 2] = toDoubleVal(value);
-        ptr.cast<ffi.Float>()[elementOffset * 2 + 1] = 0.0;
+        pointer.cast<ffi.Float>()[elementOffset * 2] = toDoubleVal(value);
+        pointer.cast<ffi.Float>()[elementOffset * 2 + 1] = 0.0;
       }
     case DType.complex128:
       if (value is Complex) {
-        ptr.cast<ffi.Double>()[elementOffset * 2] = value.real;
-        ptr.cast<ffi.Double>()[elementOffset * 2 + 1] = value.imag;
+        pointer.cast<ffi.Double>()[elementOffset * 2] = value.real;
+        pointer.cast<ffi.Double>()[elementOffset * 2 + 1] = value.imag;
       } else {
-        ptr.cast<ffi.Double>()[elementOffset * 2] = toDoubleVal(value);
-        ptr.cast<ffi.Double>()[elementOffset * 2 + 1] = 0.0;
+        pointer.cast<ffi.Double>()[elementOffset * 2] = toDoubleVal(value);
+        pointer.cast<ffi.Double>()[elementOffset * 2 + 1] = 0.0;
       }
   }
-  buffer.markHostModified();
+}
+
+/// Reads a single numerical value at [elementIndex] from [pointer].
+double readPointerValue(
+  ffi.Pointer<ffi.Uint8> pointer,
+  DType dtype,
+  int elementIndex, {
+  int offsetElements = 0,
+}) {
+  final elementOffset = offsetElements + elementIndex;
+  switch (dtype) {
+    case DType.float64:
+      return pointer.cast<ffi.Double>()[elementOffset];
+    case DType.float32:
+      return pointer.cast<ffi.Float>()[elementOffset];
+    case DType.float16:
+      return Float16Utils.decodeFloat16(
+        pointer.cast<ffi.Uint16>()[elementOffset],
+      );
+    case DType.bfloat16:
+      return Float16Utils.decodeBFloat16(
+        pointer.cast<ffi.Uint16>()[elementOffset],
+      );
+    case DType.int64:
+      return pointer.cast<ffi.Int64>()[elementOffset].toDouble();
+    case DType.int32:
+      return pointer.cast<ffi.Int32>()[elementOffset].toDouble();
+    case DType.int16:
+      return pointer.cast<ffi.Int16>()[elementOffset].toDouble();
+    case DType.int8:
+      return pointer.cast<ffi.Int8>()[elementOffset].toDouble();
+    case DType.uint64:
+      final raw = pointer.cast<ffi.Uint64>()[elementOffset];
+      return raw >= 0
+          ? raw.toDouble()
+          : BigInt.from(raw).toUnsigned(64).toDouble();
+    case DType.uint32:
+      return pointer.cast<ffi.Uint32>()[elementOffset].toDouble();
+    case DType.uint16:
+      return pointer.cast<ffi.Uint16>()[elementOffset].toDouble();
+    case DType.uint8:
+      return pointer.cast<ffi.Uint8>()[elementOffset].toDouble();
+    case DType.boolean:
+      return pointer.cast<ffi.Uint8>()[elementOffset] != 0 ? 1.0 : 0.0;
+    case DType.complex64:
+      return pointer.cast<ffi.Float>()[elementOffset * 2];
+    case DType.complex128:
+      return pointer.cast<ffi.Double>()[elementOffset * 2];
+  }
+}
+
+/// Reads a single typed value at [elementIndex] from [buffer].
+Object readBufferAny(
+  GpuBuffer buffer,
+  DType dtype,
+  int elementIndex, {
+  int offsetElements = 0,
+}) {
+  final elementOffset = offsetElements + elementIndex;
+  final byteWidth = dtype.byteWidth;
+  final byteOffset = elementOffset * byteWidth;
+  return using((arena) {
+    final staging = arena<ffi.Uint8>(byteWidth);
+    buffer.copyToHost(staging.cast<ffi.Void>(), byteWidth, offset: byteOffset);
+    return readPointerAny(staging, dtype, 0);
+  });
+}
+
+/// Writes a single typed [value] at [elementIndex] to [buffer].
+void writeBufferAny(
+  GpuBuffer buffer,
+  DType dtype,
+  int elementIndex,
+  Object? value, {
+  int offsetElements = 0,
+}) {
+  final elementOffset = offsetElements + elementIndex;
+  final byteWidth = dtype.byteWidth;
+  final byteOffset = elementOffset * byteWidth;
+  using((arena) {
+    final staging = arena<ffi.Uint8>(byteWidth);
+    writePointerAny(staging, dtype, 0, value);
+    buffer.copyFromHost(
+      staging.cast<ffi.Void>(),
+      byteWidth,
+      offset: byteOffset,
+    );
+  });
 }
 
 /// Reads a single numerical value at [elementIndex] from [buffer].
@@ -261,44 +358,14 @@ double readBufferValue(
   int elementIndex, {
   int offsetElements = 0,
 }) {
-  buffer.ensureHostSynced();
   final elementOffset = offsetElements + elementIndex;
-  final ptr = buffer.address;
-  switch (dtype) {
-    case DType.float64:
-      return ptr.cast<ffi.Double>()[elementOffset];
-    case DType.float32:
-      return ptr.cast<ffi.Float>()[elementOffset];
-    case DType.float16:
-      return Float16Utils.decodeFloat16(ptr.cast<ffi.Uint16>()[elementOffset]);
-    case DType.bfloat16:
-      return Float16Utils.decodeBFloat16(ptr.cast<ffi.Uint16>()[elementOffset]);
-    case DType.int64:
-      return ptr.cast<ffi.Int64>()[elementOffset].toDouble();
-    case DType.int32:
-      return ptr.cast<ffi.Int32>()[elementOffset].toDouble();
-    case DType.int16:
-      return ptr.cast<ffi.Int16>()[elementOffset].toDouble();
-    case DType.int8:
-      return ptr.cast<ffi.Int8>()[elementOffset].toDouble();
-    case DType.uint64:
-      final raw = ptr.cast<ffi.Uint64>()[elementOffset];
-      return raw >= 0
-          ? raw.toDouble()
-          : BigInt.from(raw).toUnsigned(64).toDouble();
-    case DType.uint32:
-      return ptr.cast<ffi.Uint32>()[elementOffset].toDouble();
-    case DType.uint16:
-      return ptr.cast<ffi.Uint16>()[elementOffset].toDouble();
-    case DType.uint8:
-      return ptr.cast<ffi.Uint8>()[elementOffset].toDouble();
-    case DType.boolean:
-      return ptr.cast<ffi.Uint8>()[elementOffset] != 0 ? 1.0 : 0.0;
-    case DType.complex64:
-      return ptr.cast<ffi.Float>()[elementOffset * 2];
-    case DType.complex128:
-      return ptr.cast<ffi.Double>()[elementOffset * 2];
-  }
+  final byteWidth = dtype.byteWidth;
+  final byteOffset = elementOffset * byteWidth;
+  return using((arena) {
+    final staging = arena<ffi.Uint8>(byteWidth);
+    buffer.copyToHost(staging.cast<ffi.Void>(), byteWidth, offset: byteOffset);
+    return readPointerValue(staging, dtype, 0);
+  });
 }
 
 /// Writes a single numerical [value] at [elementIndex] to [buffer].
@@ -411,4 +478,12 @@ extension type const ComputeEngine._(Object? _) {
     value,
     offsetElements: offsetElements,
   );
+
+  /// Encodes [value] as a 16-bit IEEE 754 float16 bit pattern.
+  static int doubleToFloat16Bits(double value) =>
+      Float16Utils.encodeFloat16(value);
+
+  /// Encodes [value] as a 16-bit bfloat16 bit pattern.
+  static int doubleToBfloat16Bits(double value) =>
+      Float16Utils.encodeBFloat16(value);
 }

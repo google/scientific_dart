@@ -73,52 +73,43 @@ void main() {
     test(
       'All 15 DTypes instantiate reified GpuArray<T> across factories and views',
       () {
-        final device = GpuDevice.cpu();
-        device.detachFromScope();
-        try {
-          final expectedTypes = <DType, bool Function(GpuArray<DTypeTag>)>{
-            DType.float64: (a) => a is GpuArray<Float64>,
-            DType.float32: (a) => a is GpuArray<Float32>,
-            DType.float16: (a) => a is GpuArray<Float16>,
-            DType.bfloat16: (a) => a is GpuArray<BFloat16>,
-            DType.int64: (a) => a is GpuArray<Int64>,
-            DType.int32: (a) => a is GpuArray<Int32>,
-            DType.int16: (a) => a is GpuArray<Int16>,
-            DType.int8: (a) => a is GpuArray<Int8>,
-            DType.uint64: (a) => a is GpuArray<Uint64>,
-            DType.uint32: (a) => a is GpuArray<Uint32>,
-            DType.uint16: (a) => a is GpuArray<Uint16>,
-            DType.uint8: (a) => a is GpuArray<Uint8>,
-            DType.boolean: (a) => a is GpuArray<Boolean>,
-            DType.complex64: (a) => a is GpuArray<Complex64>,
-            DType.complex128: (a) => a is GpuArray<Complex128>,
-          };
+        final device = GpuDevice.defaultDevice;
+        final expectedTypes = <DType, bool Function(GpuArray<DTypeTag>)>{
+          DType.float64: (a) => a is GpuArray<Float64>,
+          DType.float32: (a) => a is GpuArray<Float32>,
+          DType.float16: (a) => a is GpuArray<Float16>,
+          DType.bfloat16: (a) => a is GpuArray<BFloat16>,
+          DType.int64: (a) => a is GpuArray<Int64>,
+          DType.int32: (a) => a is GpuArray<Int32>,
+          DType.int16: (a) => a is GpuArray<Int16>,
+          DType.int8: (a) => a is GpuArray<Int8>,
+          DType.uint64: (a) => a is GpuArray<Uint64>,
+          DType.uint32: (a) => a is GpuArray<Uint32>,
+          DType.uint16: (a) => a is GpuArray<Uint16>,
+          DType.uint8: (a) => a is GpuArray<Uint8>,
+          DType.boolean: (a) => a is GpuArray<Boolean>,
+          DType.complex64: (a) => a is GpuArray<Complex64>,
+          DType.complex128: (a) => a is GpuArray<Complex128>,
+        };
 
-          for (final dtype in DType.values) {
-            ResourceScope.scope(() {
-              final check = expectedTypes[dtype]!;
-              final z = GpuArray.zeros([2, 3], dtype, device: device);
-              expect(check(z), isTrue, reason: 'zeros for $dtype');
-              expect(
-                check(z.transpose()),
-                isTrue,
-                reason: 'transpose for $dtype',
-              );
-              expect(
-                check(z.reshape([6])),
-                isTrue,
-                reason: 'reshape for $dtype',
-              );
-              expect(
-                check(z.slice([0, const Slice.all()])),
-                isTrue,
-                reason: 'slice for $dtype',
-              );
-              expect(check(z.copy()), isTrue, reason: 'copy for $dtype');
-            });
-          }
-        } finally {
-          device.dispose();
+        for (final dtype in DType.values) {
+          ResourceScope.scope(() {
+            final check = expectedTypes[dtype]!;
+            final z = GpuArray.zeros([2, 3], dtype, device: device);
+            expect(check(z), isTrue, reason: 'zeros for $dtype');
+            expect(
+              check(z.transpose()),
+              isTrue,
+              reason: 'transpose for $dtype',
+            );
+            expect(check(z.reshape([6])), isTrue, reason: 'reshape for $dtype');
+            expect(
+              check(z.slice([0, const Slice.all()])),
+              isTrue,
+              reason: 'slice for $dtype',
+            );
+            expect(check(z.copy()), isTrue, reason: 'copy for $dtype');
+          });
         }
       },
     );

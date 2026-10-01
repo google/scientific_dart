@@ -230,5 +230,28 @@ void main() {
         }
       },
     );
+
+    test('qrR and svdValues compute R factor and singular values', () {
+      final matrix = GpuArray.fromList(
+        <double>[3.0, 0.0, 0.0, 4.0],
+        [2, 2],
+        DType.float64,
+      );
+      try {
+        final rFactor = qrR(matrix);
+        final singularVals = svdValues(matrix);
+        try {
+          expect(rFactor.shape, equals(<int>[2, 2]));
+          final sList = singularVals.toList().cast<double>();
+          expect(sList[0], closeTo(4.0, 1e-10));
+          expect(sList[1], closeTo(3.0, 1e-10));
+        } finally {
+          rFactor.dispose();
+          singularVals.dispose();
+        }
+      } finally {
+        matrix.dispose();
+      }
+    });
   });
 }
