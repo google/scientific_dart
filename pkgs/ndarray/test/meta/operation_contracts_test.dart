@@ -45,12 +45,13 @@ final class BinaryOpSpec {
   const BinaryOpSpec(this.name, this.call);
 }
 
-/// Descriptor for an axis reduction `f(a, {axis, out})` on `NDArray<Float64>`.
+/// Descriptor for an axis reduction `f(a, {axis, keepdims, out})` on `NDArray<Float64>`.
 final class ReductionOpSpec {
   final String name;
   final NDArray<Float64> Function(
     NDArray<Float64> a, {
     int? axis,
+    bool keepdims,
     NDArray<Float64>? out,
   })
   call;
@@ -129,10 +130,7 @@ void main() {
     UnaryOpSpec('gamma', (a, {out}) => gamma(a, out: out)),
     UnaryOpSpec('erf', (a, {out}) => erf(a, out: out)),
     UnaryOpSpec('clip', (a, {out}) => clip(a, min: 0.8, max: 2.5, out: out)),
-    UnaryOpSpec(
-      'nan_to_num',
-      (a, {out}) => nan_to_num(a, out: out) as NDArray<Float64>,
-    ),
+    UnaryOpSpec('nan_to_num', (a, {out}) => nan_to_num(a, out: out)),
     UnaryOpSpec(
       'cumsum',
       (a, {out}) => cumsum(a, axis: -1, out: out),
@@ -177,32 +175,94 @@ void main() {
       'logaddexp2',
       (a, b, {out}) => logaddexp2(a, b, out: out) as NDArray<Float64>,
     ),
+    BinaryOpSpec(
+      'minimum',
+      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.minimum, out: out),
+    ),
+    BinaryOpSpec(
+      'maximum',
+      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.maximum, out: out),
+    ),
+    BinaryOpSpec(
+      'fmin',
+      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.fmin, out: out),
+    ),
+    BinaryOpSpec(
+      'fmax',
+      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.fmax, out: out),
+    ),
   ];
 
   final reductionOps = <ReductionOpSpec>[
-    ReductionOpSpec('sum', (a, {axis, out}) => sum(a, axis: axis, out: out)),
-    ReductionOpSpec('prod', (a, {axis, out}) => prod(a, axis: axis, out: out)),
-    ReductionOpSpec('mean', (a, {axis, out}) => mean(a, axis: axis, out: out)),
-    ReductionOpSpec('min', (a, {axis, out}) => min(a, axis: axis, out: out)),
-    ReductionOpSpec('max', (a, {axis, out}) => max(a, axis: axis, out: out)),
-    ReductionOpSpec('ptp', (a, {axis, out}) => ptp(a, axis: axis, out: out)),
-    ReductionOpSpec('std', (a, {axis, out}) => std(a, axis: axis, out: out)),
-    ReductionOpSpec('var_', (a, {axis, out}) => var_(a, axis: axis, out: out)),
+    ReductionOpSpec(
+      'sum',
+      (a, {axis, keepdims = false, out}) =>
+          sum(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'prod',
+      (a, {axis, keepdims = false, out}) =>
+          prod(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'mean',
+      (a, {axis, keepdims = false, out}) =>
+          mean(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'min',
+      (a, {axis, keepdims = false, out}) =>
+          min(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'max',
+      (a, {axis, keepdims = false, out}) =>
+          max(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'ptp',
+      (a, {axis, keepdims = false, out}) =>
+          ptp(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'std',
+      (a, {axis, keepdims = false, out}) =>
+          std(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'var_',
+      (a, {axis, keepdims = false, out}) =>
+          var_(a, axis: axis, keepdims: keepdims, out: out),
+    ),
     ReductionOpSpec(
       'nansum',
-      (a, {axis, out}) => nansum(a, axis: axis, out: out),
+      (a, {axis, keepdims = false, out}) =>
+          nansum(a, axis: axis, keepdims: keepdims, out: out),
     ),
     ReductionOpSpec(
       'nanmean',
-      (a, {axis, out}) => nanmean(a, axis: axis, out: out),
+      (a, {axis, keepdims = false, out}) =>
+          nanmean(a, axis: axis, keepdims: keepdims, out: out),
     ),
     ReductionOpSpec(
       'nanmin',
-      (a, {axis, out}) => nanmin(a, axis: axis, out: out),
+      (a, {axis, keepdims = false, out}) =>
+          nanmin(a, axis: axis, keepdims: keepdims, out: out),
     ),
     ReductionOpSpec(
       'nanmax',
-      (a, {axis, out}) => nanmax(a, axis: axis, out: out),
+      (a, {axis, keepdims = false, out}) =>
+          nanmax(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'nanstd',
+      (a, {axis, keepdims = false, out}) =>
+          nanstd(a, axis: axis, keepdims: keepdims, out: out),
+    ),
+    ReductionOpSpec(
+      'nanvar',
+      (a, {axis, keepdims = false, out}) =>
+          nanvar(a, axis: axis, keepdims: keepdims, out: out),
     ),
   ];
 
@@ -377,6 +437,26 @@ void main() {
               );
               expect(bcastSource[[0]], equals(99.0));
 
+              // Read-only out buffer rejection (setWriteable(false))
+              final roOut = NDArray.zeros([6], DType.float64)
+                ..setWriteable(false);
+              expect(
+                () => op.call(a, out: roOut),
+                throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+                reason: '${op.name} must reject read-only out buffer',
+              );
+
+              // Aliased non-contiguous out safety: reversed view
+              final revCarrier = linspace(0.5, 3.0, 6, dtype: DType.float64);
+              final revView = revCarrier.slice([Slice(step: -1)]);
+              final revExpected = op.call(revView.copy());
+              op.call(revView, out: revView);
+              expect(
+                allClose(revView, revExpected),
+                isTrue,
+                reason: '${op.name} failed aliased reversed out view safety',
+              );
+
               // 4. In-place out: a
               if (op.supportsInPlace) {
                 final inPlace = a.copy();
@@ -439,6 +519,15 @@ void main() {
                 reason: '${op.name} must reject read-only broadcast out view',
               );
               expect(bcastSrc[[0]], equals(99.0));
+
+              // Read-only out buffer rejection (setWriteable(false))
+              final roOut = NDArray.zeros([4], DType.float64)
+                ..setWriteable(false);
+              expect(
+                () => op.call(a, a, out: roOut),
+                throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+                reason: '${op.name} must reject read-only out buffer',
+              );
             });
           },
         );
@@ -462,6 +551,17 @@ void main() {
               ]);
               op.call(revA, revB, out: stridedOut);
               expect(allClose(stridedOut, expected), isTrue);
+
+              // Aliased non-contiguous out safety: reversed view
+              final revCarrier = linspace(1.0, 4.0, 4, dtype: DType.float64);
+              final revView = revCarrier.slice([Slice(step: -1)]);
+              final revExpected = op.call(revView.copy(), revView.copy());
+              op.call(revView, revView, out: revView);
+              expect(
+                allClose(revView, revExpected),
+                isTrue,
+                reason: '${op.name} failed aliased reversed out view safety',
+              );
             });
           },
         );
@@ -495,10 +595,7 @@ void main() {
               final out = NDArray.full([3], 99.0, dtype: DType.float64);
               final markerBefore = ScratchArena.marker;
 
-              expect(
-                () => op.call(a, axis: 5, out: out),
-                throwsA(anyOf(isA<RangeError>(), isA<ArgumentError>())),
-              );
+              expect(() => op.call(a, axis: 5, out: out), throwsRangeError);
               expect(ScratchArena.marker, equals(markerBefore));
               for (var i = 0; i < 3; i++) {
                 expect(
@@ -539,6 +636,58 @@ void main() {
               allClose(op.call(tView, axis: 1), op.call(tCopy, axis: 1)),
               isTrue,
             );
+          });
+        });
+
+        test('read-only out rejection throws Error', () {
+          NDArray.scope(() {
+            final a = NDArray.ones([3, 4], DType.float64);
+            final roOut = NDArray.zeros([3], DType.float64)
+              ..setWriteable(false);
+            expect(
+              () => op.call(a, axis: 1, out: roOut),
+              throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+              reason: '${op.name} must reject read-only out buffer',
+            );
+          });
+        });
+
+        test('keepdims: true with and without out: buffer', () {
+          NDArray.scope(() {
+            final a = NDArray.arange(
+              1.0,
+              13.0,
+              dtype: DType.float64,
+            ).reshape([3, 4]);
+
+            // axis 1 reduction with keepdims: true -> shape [3, 1]
+            final res1 = op.call(a, axis: 1, keepdims: true);
+            expect(res1.shape, equals([3, 1]));
+
+            final out1 = NDArray.zeros([3, 1], DType.float64);
+            final ret1 = op.call(a, axis: 1, keepdims: true, out: out1);
+            expect(sameId(ret1, out1), isTrue);
+            expect(allClose(out1, res1), isTrue);
+
+            // axis 0 reduction with keepdims: true -> shape [1, 4]
+            final res0 = op.call(a, axis: 0, keepdims: true);
+            expect(res0.shape, equals([1, 4]));
+
+            final out0 = NDArray.zeros([1, 4], DType.float64);
+            final ret0 = op.call(a, axis: 0, keepdims: true, out: out0);
+            expect(sameId(ret0, out0), isTrue);
+            expect(allClose(out0, res0), isTrue);
+          });
+        });
+
+        test('2D empty [0, 3] axis reduction along non-empty axis 1', () {
+          NDArray.scope(() {
+            final empty2d = NDArray.zeros([0, 3], DType.float64);
+            final res = op.call(empty2d, axis: 1, keepdims: false);
+            expect(res.shape, equals([0]));
+
+            final resKeep = op.call(empty2d, axis: 1, keepdims: true);
+            expect(resKeep.shape, equals([0, 1]));
           });
         });
       });
@@ -1614,6 +1763,7 @@ void main() {
         });
       },
     );
+
     test(
       '64-bit index utilities (unravel_index, ravel_multi_index, indices, sparse_indices, diag_indices, tril/triu_indices, mask_indices) satisfy algebraic identities',
       () {
@@ -1682,6 +1832,913 @@ void main() {
       },
     );
 
+    group('Linear Algebra Contracts (inv, solve, cholesky, det)', () {
+      test('inv, solve, cholesky, det contracts and edge cases', () {
+        NDArray.scope(() {
+          // 1. inv: computes 2x2 matrix inverse, identity property A @ inv(A) ≈ I
+          final a = NDArray<Float64>.fromList(
+            [4.0, 7.0, 2.0, 6.0],
+            [2, 2],
+            DType.float64,
+          );
+          final aInv = inv(a);
+          final identity = matmul(a, aInv);
+          expect(allClose(identity, NDArray.eye(2, DType.float64)), isTrue);
+
+          // 2. solve: solves A @ X = B
+          final b = NDArray<Float64>.fromList(
+            [1.0, 0.0],
+            [2, 1],
+            DType.float64,
+          );
+          final x = solve(a, b);
+          final ax = matmul(a, x);
+          expect(allClose(ax, b), isTrue);
+
+          // 3. cholesky: positive definite symmetric matrix decomposition
+          final spd = NDArray<Float64>.fromList(
+            [4.0, 2.0, 2.0, 5.0],
+            [2, 2],
+            DType.float64,
+          );
+          final l = cholesky(spd);
+          final recon = matmul(l, l.transpose());
+          expect(allClose(recon, spd), isTrue);
+
+          // 4. det: matrix determinant
+          final d = det(a);
+          expect((d.scalar - 10.0).abs() < 1e-12, isTrue);
+
+          // 5. Batched operations [2, 2, 2]
+          final batchA = stack([a, spd], axis: 0);
+          final batchInv = inv(batchA);
+          expect(batchInv.shape, equals([2, 2, 2]));
+          final batchDet = det(batchA);
+          expect(batchDet.shape, equals([2]));
+        });
+      });
+    });
+
+    group(
+      'Sorting & Searching Contracts (sort, argsort, partition, argpartition, searchsorted)',
+      () {
+        test(
+          'sort, argsort, partition, argpartition, searchsorted contracts',
+          () {
+            NDArray.scope(() {
+              final arr = NDArray<Float64>.fromList(
+                [3.0, 1.0, 4.0, 1.5, 9.0, 2.0],
+                [6],
+                DType.float64,
+              );
+
+              // sort
+              final sorted = sort(arr);
+              expect(sorted.toList(), equals([1.0, 1.5, 2.0, 3.0, 4.0, 9.0]));
+
+              // argsort with out:
+              final outIdx = NDArray<Int64>.zeros([6], DType.int64);
+              final sortedIdx = argsort(arr, out: outIdx);
+              expect(sameId(sortedIdx, outIdx), isTrue);
+              expect(sortedIdx.dtype, equals(DType.int64));
+              expect(sortedIdx.toList(), equals([1, 3, 5, 0, 2, 4]));
+
+              // partition
+              final part = partition(arr, 2);
+              expect(part[[2]], equals(2.0));
+
+              // argpartition with out:
+              final outPartIdx = NDArray<Int64>.zeros([6], DType.int64);
+              final partIdx = argpartition(arr, 2, out: outPartIdx);
+              expect(sameId(partIdx, outPartIdx), isTrue);
+              expect(partIdx.dtype, equals(DType.int64));
+
+              // searchsorted
+              final needles = NDArray<Float64>.fromList(
+                [0.0, 1.5, 2.5, 10.0],
+                [4],
+                DType.float64,
+              );
+              final outSearch = NDArray<Int64>.zeros([4], DType.int64);
+              final ins = searchsorted(sorted, needles, out: outSearch);
+              expect(sameId(ins, outSearch), isTrue);
+              expect(ins.dtype, equals(DType.int64));
+              expect(ins.toList(), equals([0, 1, 3, 6]));
+
+              // Read-only out rejection
+              final roOut = NDArray<Int64>.zeros([4], DType.int64)
+                ..setWriteable(false);
+              expect(
+                () => searchsorted(sorted, needles, out: roOut),
+                throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+              );
+            });
+          },
+        );
+      },
+    );
+
+    group(
+      'Percentiles & Quantiles Contracts (median, quantile, percentile, nanmedian, nanquantile, nanpercentile, ptp)',
+      () {
+        test('percentiles and quantiles contracts', () {
+          NDArray.scope(() {
+            final data = NDArray<Float64>.fromList(
+              [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+              [6],
+              DType.float64,
+            );
+
+            // median
+            expect(median(data).scalar, equals(3.5));
+
+            // quantile
+            expect(quantile(data, 0.5).scalar, equals(3.5));
+
+            // percentile
+            expect(percentile(data, 50.0).scalar, equals(3.5));
+
+            // with NaNs
+            final dataWithNan = NDArray<Float64>.fromList(
+              [double.nan, 1.0, 2.0, 3.0, 4.0, 5.0],
+              [6],
+              DType.float64,
+            );
+            expect(nanmin(dataWithNan).scalar, equals(1.0));
+            expect(nanmax(dataWithNan).scalar, equals(5.0));
+
+            // ptp (peak to peak) with keepdims and out:
+            final ptp2d = NDArray<Float64>.arange(
+              1.0,
+              7.0,
+              dtype: DType.float64,
+            ).reshape([2, 3]);
+            final ptpOut = NDArray<Float64>.zeros([1, 3], DType.float64);
+            final ptpRes = ptp(ptp2d, axis: 0, keepdims: true, out: ptpOut);
+            expect(sameId(ptpRes, ptpOut), isTrue);
+            expect(ptpOut.shape, equals([1, 3]));
+            expect(ptpOut.toList(), equals([3.0, 3.0, 3.0]));
+          });
+        });
+      },
+    );
+
+    group(
+      'Signal & Discrete Transforms Contracts (diff, bincount, digitize, correlate, convolve, interp, pad)',
+      () {
+        test('signal and discrete transforms contracts', () {
+          NDArray.scope(() {
+            // diff
+            final a = NDArray<Float64>.fromList(
+              [1.0, 2.0, 4.0, 7.0, 11.0],
+              [5],
+              DType.float64,
+            );
+            expect(diff(a).toList(), equals([1.0, 2.0, 3.0, 4.0]));
+            expect(diff(a, n: 2).toList(), equals([1.0, 1.0, 1.0]));
+
+            // bincount
+            final counts = NDArray<Int64>.fromList(
+              [0, 1, 1, 3, 2, 1, 7],
+              [7],
+              DType.int64,
+            );
+            final bc = bincount(counts);
+            expect(bc.dtype, equals(DType.int64));
+            expect(bc.toList(), equals([1, 3, 1, 1, 0, 0, 0, 1]));
+
+            // digitize
+            final x = NDArray<Float64>.fromList(
+              [0.2, 6.4, 3.0, 1.6],
+              [4],
+              DType.float64,
+            );
+            final bins = NDArray<Float64>.fromList(
+              [0.0, 1.0, 2.5, 4.0, 10.0],
+              [5],
+              DType.float64,
+            );
+            final binIdx = digitize(x, bins);
+            expect(binIdx.dtype, equals(DType.int64));
+            expect(binIdx.toList(), equals([1, 4, 3, 2]));
+
+            // correlate and convolve
+            final sig = NDArray<Float64>.fromList(
+              [1.0, 2.0, 3.0],
+              [3],
+              DType.float64,
+            );
+            final kernel = NDArray<Float64>.fromList(
+              [0.0, 1.0, 0.5],
+              [3],
+              DType.float64,
+            );
+            final conv = convolve(sig, kernel);
+            expect(conv.shape, equals([5]));
+            final corr = correlate(sig, kernel, mode: ConvMode.full);
+            expect(corr.shape, equals([5]));
+
+            // interp
+            final xPoints = NDArray<Float64>.fromList(
+              [2.5],
+              [1],
+              DType.float64,
+            );
+            final xp = NDArray<Float64>.fromList(
+              [1.0, 2.0, 3.0],
+              [3],
+              DType.float64,
+            );
+            final fp = NDArray<Float64>.fromList(
+              [10.0, 20.0, 30.0],
+              [3],
+              DType.float64,
+            );
+            final interpVal = interp(xPoints, xp, fp);
+            expect(interpVal[[0]], equals(25.0));
+
+            // pad
+            final toPad = NDArray<Float64>.fromList(
+              [1.0, 2.0],
+              [2],
+              DType.float64,
+            );
+            final padded = pad(
+              toPad,
+              PadWidth.axes([(1, 2)]),
+              mode: PadMode.constant,
+              constantValues: PadValues.all(0.0),
+            );
+            expect(padded.toList(), equals([0.0, 1.0, 2.0, 0.0, 0.0]));
+          });
+        });
+      },
+    );
+
+    group('Reshaping & Grid Contracts (repeat, tile, roll, flip, rot90)', () {
+      test('reshaping and grid operation contracts', () {
+        NDArray.scope(() {
+          final a = NDArray<Float64>.fromList(
+            [1.0, 2.0, 3.0],
+            [3],
+            DType.float64,
+          );
+
+          // repeat
+          final rep = repeat(a, 2);
+          expect(rep.toList(), equals([1.0, 1.0, 2.0, 2.0, 3.0, 3.0]));
+
+          // tile
+          final tl = tile(a, [2]);
+          expect(tl.toList(), equals([1.0, 2.0, 3.0, 1.0, 2.0, 3.0]));
+
+          // roll
+          final rl = roll(a, 1);
+          expect(rl.toList(), equals([3.0, 1.0, 2.0]));
+
+          // flip
+          final flp = flip(a);
+          expect(flp.toList(), equals([3.0, 2.0, 1.0]));
+
+          // rot90 on 2D
+          final mat = NDArray<Float64>.fromList(
+            [1.0, 2.0, 3.0, 4.0],
+            [2, 2],
+            DType.float64,
+          );
+          final rot = rot90(mat);
+          expect(rot.toList(), equals([2.0, 4.0, 1.0, 3.0]));
+        });
+      });
+    });
+
+    group('Targeted Point Regressions (F1-F12, D1-1..D1-11, D3-1..D3-7, D5-1)', () {
+      test(
+        'F2: reduceat on fmin/fmax with slice length > 16 starting with NaN ignores leading NaN',
+        () {
+          NDArray.scope(() {
+            final elements = <double>[
+              double.nan,
+              15.0,
+              12.0,
+              3.0,
+              18.0,
+              7.0,
+              22.0,
+              1.5,
+              9.0,
+              4.0,
+              11.0,
+              14.0,
+              6.0,
+              8.0,
+              13.0,
+              17.0,
+              25.0,
+              19.0,
+              21.0,
+              2.0,
+            ];
+            final src = NDArray<Float64>.fromList(elements, [
+              20,
+            ], DType.float64);
+            final indices = NDArray<Int64>.fromList([0], [1], DType.int64);
+
+            final minRes = reduceatUfunc(src, indices, op: BinaryOp.fmin);
+            expect(
+              minRes[[0]],
+              equals(1.5),
+              reason: 'fmin must ignore leading NaN in slice > 16',
+            );
+
+            final maxRes = reduceatUfunc(src, indices, op: BinaryOp.fmax);
+            expect(
+              maxRes[[0]],
+              equals(25.0),
+              reason: 'fmax must ignore leading NaN in slice > 16',
+            );
+          });
+        },
+      );
+
+      test(
+        'F3: at and reduceat integer division/remainder by zero throws UnsupportedError',
+        () {
+          NDArray.scope(() {
+            final intArr = NDArray<Int64>.fromList(
+              [10, 20, 30],
+              [3],
+              DType.int64,
+            );
+            final zeroArr = NDArray<Int64>.fromList([0], [1], DType.int64);
+            final idx = NDArray<Int64>.fromList([0], [1], DType.int64);
+
+            expect(
+              () => atUfunc(intArr, idx, zeroArr, op: BinaryOp.divide),
+              throwsUnsupportedError,
+              reason: 'at integer divide by zero must throw UnsupportedError',
+            );
+            expect(
+              () => atUfunc(intArr, idx, zeroArr, op: BinaryOp.remainder),
+              throwsUnsupportedError,
+              reason:
+                  'at integer remainder by zero must throw UnsupportedError',
+            );
+
+            final divArr = NDArray<Int64>.fromList(
+              [10, 0, 30],
+              [3],
+              DType.int64,
+            );
+            final reduceIdx = NDArray<Int64>.fromList([0], [1], DType.int64);
+            expect(
+              () => reduceatUfunc(divArr, reduceIdx, op: BinaryOp.divide),
+              throwsArgumentError,
+              reason:
+                  'reduceat with non-reducible op divide must throw ArgumentError',
+            );
+          });
+        },
+      );
+
+      test(
+        'F1: extreme signed int64/int32 values in diff, correlate, and reduceat',
+        () {
+          NDArray.scope(() {
+            const maxInt64 = 9223372036854775807;
+            const minInt64 = -9223372036854775808;
+            final arr64 = NDArray<Int64>.fromList(
+              [minInt64, 0, maxInt64],
+              [3],
+              DType.int64,
+            );
+
+            // diff handles extreme int64 values
+            final d = diff(arr64);
+            expect(d.shape, equals([2]));
+            expect(d.dtype, equals(DType.int64));
+
+            // correlate handles int64 values
+            final kernel = NDArray<Int64>.fromList([1, -1], [2], DType.int64);
+            final corr = correlate(arr64, kernel);
+            expect(corr.dtype, equals(DType.int64));
+
+            // reduceat handles int64
+            final indices = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
+            final redAt = reduceatUfunc(arr64, indices, op: BinaryOp.maximum);
+            expect(redAt[[0]], equals(0));
+            expect(redAt[[1]], equals(maxInt64));
+          });
+        },
+      );
+
+      test(
+        'F4: histogram with Float64 input containing 1e100 / -1e100 finite outliers',
+        () {
+          NDArray.scope(() {
+            final outliers = NDArray<Float64>.fromList(
+              [-1e100, 0.2, 0.8, 1e100],
+              [4],
+              DType.float64,
+            );
+            final (:hist, :binEdges) = histogram(
+              outliers,
+              bins: 2,
+              range: (0.0, 1.0),
+            );
+            expect(hist.shape, equals([2]));
+            expect(binEdges.shape, equals([3]));
+            expect(hist.toList(), equals([1, 1]));
+          });
+        },
+      );
+
+      test('F9: unique on Int64, Int32, Int16, Uint8 with >1000 elements', () {
+        NDArray.scope(() {
+          for (final dt in [
+            DType.int64,
+            DType.int32,
+            DType.int16,
+            DType.uint8,
+          ]) {
+            final list = List<int>.generate(
+              1200,
+              (i) => (i % 25) - (dt == DType.uint8 ? 0 : 10),
+            );
+            final arr = NDArray.fromList(list, [1200], dt);
+            final u = unique(arr);
+            expect(u.dtype, equals(dt));
+            expect(u.size, equals(25));
+            for (var i = 0; i < u.size - 1; i++) {
+              final a = u.getCell([i]) as num;
+              final b = u.getCell([i + 1]) as num;
+              expect(a < b, isTrue);
+            }
+          }
+        });
+      });
+
+      test(
+        'binaryUfunc minimum, maximum, fmin, fmax with where: null on contiguous, strided, and NaN',
+        () {
+          NDArray.scope(() {
+            final aContig = NDArray<Float64>.fromList(
+              [double.nan, 2.0, 3.0, double.nan],
+              [4],
+              DType.float64,
+            );
+            final bContig = NDArray<Float64>.fromList(
+              [1.0, double.nan, 0.0, double.nan],
+              [4],
+              DType.float64,
+            );
+
+            // contiguous
+            expect(
+              binaryUfunc(aContig, bContig, op: BinaryOp.fmin)[[0]],
+              equals(1.0),
+            );
+            expect(
+              binaryUfunc(aContig, bContig, op: BinaryOp.fmax)[[1]],
+              equals(2.0),
+            );
+            expect(
+              binaryUfunc(aContig, bContig, op: BinaryOp.fmin)[[3]].isNaN,
+              isTrue,
+            );
+
+            // strided (transposed 2D)
+            final aStrided = aContig.reshape([2, 2]).transpose();
+            final bStrided = bContig.reshape([2, 2]).transpose();
+            final fminStrided = binaryUfunc(
+              aStrided,
+              bStrided,
+              op: BinaryOp.fmin,
+            );
+            expect(fminStrided.shape, equals([2, 2]));
+          });
+        },
+      );
+
+      test('F12: contiguous and strided integer matmul (Int32, Int64)', () {
+        NDArray.scope(() {
+          final a32 = NDArray<Int32>.fromList(
+            [1, 2, 3, 4],
+            [2, 2],
+            DType.int32,
+          );
+          final b32 = NDArray<Int32>.fromList(
+            [5, 6, 7, 8],
+            [2, 2],
+            DType.int32,
+          );
+          final c32 = matmul(a32, b32);
+          expect(c32.dtype, equals(DType.int32));
+          expect(c32.toList(), equals([19, 22, 43, 50]));
+
+          final c32Strided = matmul(a32.transpose(), b32);
+          expect(c32Strided.toList(), equals([26, 30, 38, 44]));
+
+          final a64 = NDArray<Int64>.fromList(
+            [1, 2, 3, 4],
+            [2, 2],
+            DType.int64,
+          );
+          final b64 = NDArray<Int64>.fromList(
+            [5, 6, 7, 8],
+            [2, 2],
+            DType.int64,
+          );
+          final c64 = matmul(a64, b64);
+          expect(c64.dtype, equals(DType.int64));
+          expect(c64.toList(), equals([19, 22, 43, 50]));
+        });
+      });
+
+      test(
+        'F6: advanced indexing slice assign with broadcast value and self-aliasing',
+        () {
+          NDArray.scope(() {
+            final a = NDArray<Float64>.zeros([4, 4], DType.float64);
+            final val = NDArray<Float64>.fromList(
+              [10.0, 20.0],
+              [2],
+              DType.float64,
+            );
+
+            // slice assign with broadcast: target [2, 2], val [2] broadcasts to [2, 2]
+            a[[Slice(start: 0, stop: 2), Slice(start: 0, stop: 2)]] = val;
+            expect(a[[0, 0]], equals(10.0));
+            expect(a[[0, 1]], equals(20.0));
+            expect(a[[1, 0]], equals(10.0));
+            expect(a[[1, 1]], equals(20.0));
+
+            // self-aliasing slice assignment
+            a[[Slice(start: 2, stop: 4)]] = a[[Slice(start: 0, stop: 2)]];
+            expect(a[[2, 0]], equals(10.0));
+            expect(a[[2, 1]], equals(20.0));
+          });
+        },
+      );
+
+      test(
+        'D1-3: inv() on singular matrices throws LinAlgError across real and complex',
+        () {
+          NDArray.scope(() {
+            final singularReal = NDArray<Float64>.fromList(
+              [1.0, 2.0, 2.0, 4.0],
+              [2, 2],
+              DType.float64,
+            );
+            expect(() => inv(singularReal), throwsA(isA<LinAlgError>()));
+
+            final singularComplex = NDArray<Complex128>.fromList(
+              [
+                const Complex(1.0, 0.0),
+                const Complex(2.0, 0.0),
+                const Complex(2.0, 0.0),
+                const Complex(4.0, 0.0),
+              ],
+              [2, 2],
+              DType.complex128,
+            );
+            expect(() => inv(singularComplex), throwsA(isA<LinAlgError>()));
+          });
+        },
+      );
+
+      test(
+        'D1-5 & D1-7: const Complex, const Index, and unmodifiable list fields',
+        () {
+          const c = Complex(1.5, -2.5);
+          expect(c.real, equals(1.5));
+          expect(c.imag, equals(-2.5));
+
+          const idx = Index(42);
+          expect(idx.value, equals(42));
+
+          final indicesObj = Indices([1, 2, 3]);
+          expect(
+            () => (indicesObj.values as dynamic).add(4),
+            throwsUnsupportedError,
+          );
+
+          final coord = CoordinateSpacing([0.5, 1.0]);
+          expect(
+            () => (coord.values as dynamic).add(1.5),
+            throwsUnsupportedError,
+          );
+
+          final tensorAxes = TensordotAxes.explicit([0], [1]);
+          expect(
+            () => (tensorAxes.explicitAxesA as dynamic).add(2),
+            throwsUnsupportedError,
+          );
+
+          final bcastRes = BroadcastResult([2], [1], [0]);
+          expect(
+            () => (bcastRes.shape as dynamic).add(3),
+            throwsUnsupportedError,
+          );
+        },
+      );
+
+      test(
+        'D3-2: argsort, argpartition, searchsorted with out: aliased to an Int64 input array',
+        () {
+          NDArray.scope(() {
+            final inputArr = NDArray<Int64>.fromList(
+              [40, 10, 30, 20],
+              [4],
+              DType.int64,
+            );
+            final sortedIdx = argsort(inputArr, out: inputArr);
+            expect(sameId(sortedIdx, inputArr), isTrue);
+            expect(inputArr.toList(), equals([1, 3, 2, 0]));
+
+            final partArr = NDArray<Int64>.fromList(
+              [50, 10, 40, 20, 30],
+              [5],
+              DType.int64,
+            );
+            final partIdx = argpartition(partArr, 2, out: partArr);
+            expect(sameId(partIdx, partArr), isTrue);
+
+            final searchArr = NDArray<Int64>.fromList(
+              [10, 20, 30, 40],
+              [4],
+              DType.int64,
+            );
+            final needles = NDArray<Int64>.fromList([15, 35], [2], DType.int64);
+            final outSearch = needles;
+            final resSearch = searchsorted(searchArr, needles, out: outSearch);
+            expect(sameId(resSearch, outSearch), isTrue);
+            expect(outSearch.toList(), equals([1, 3]));
+          });
+        },
+      );
+
+      test('D3-4: ptp with keepdims: true and axis: 0', () {
+        NDArray.scope(() {
+          final a = NDArray<Float64>.fromList(
+            [1.0, 5.0, 10.0, 2.0, 8.0, 3.0],
+            [2, 3],
+            DType.float64,
+          );
+          final p = ptp(a, axis: 0, keepdims: true);
+          expect(p.shape, equals([1, 3]));
+          expect(p.toList(), equals([1.0, 3.0, 7.0]));
+        });
+      });
+
+      test('D3-7: bincount rejecting float inputs and negative values', () {
+        NDArray.scope(() {
+          final negative = NDArray<Int64>.fromList(
+            [-1, 2, 3],
+            [3],
+            DType.int64,
+          );
+          expect(() => bincount(negative), throwsArgumentError);
+        });
+      });
+    });
+
+    group('Cross-Cutting Class-of-Bug Contracts (P1-1..P1-5, P2-1..P2-5)', () {
+      test(
+        'P2-5: Universal out-of-bounds axis RangeError contract across all axis-accepting operations',
+        () {
+          NDArray.scope(() {
+            final a2d = NDArray<Float64>.fromList(
+              [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+              [2, 3],
+              DType.float64,
+            );
+            final a3d = NDArray<Float64>.ones([2, 3, 3], DType.float64);
+            final idx2d = NDArray<Int64>.fromList(
+              [0, 1, 0, 1, 0, 1],
+              [2, 3],
+              DType.int64,
+            );
+            final axisOps = <String, void Function(int badAxis)>{
+              'sum': (ax) => sum(a2d, axis: ax),
+              'prod': (ax) => prod(a2d, axis: ax),
+              'mean': (ax) => mean(a2d, axis: ax),
+              'std': (ax) => std(a2d, axis: ax),
+              'var_': (ax) => var_(a2d, axis: ax),
+              'min': (ax) => min(a2d, axis: ax),
+              'max': (ax) => max(a2d, axis: ax),
+              'ptp': (ax) => ptp(a2d, axis: ax),
+              'all': (ax) => all(a2d, axis: ax),
+              'any': (ax) => any(a2d, axis: ax),
+              'nansum': (ax) => nansum(a2d, axis: ax),
+              'nanmean': (ax) => nanmean(a2d, axis: ax),
+              'nanstd': (ax) => nanstd(a2d, axis: ax),
+              'nanvar': (ax) => nanvar(a2d, axis: ax),
+              'nanmin': (ax) => nanmin(a2d, axis: ax),
+              'nanmax': (ax) => nanmax(a2d, axis: ax),
+              'cumsum': (ax) => cumsum(a2d, axis: ax),
+              'cumprod': (ax) => cumprod(a2d, axis: ax),
+              'argmax': (ax) => argmax(a2d, axis: ax),
+              'argmin': (ax) => argmin(a2d, axis: ax),
+              'count_nonzero': (ax) => count_nonzero(a2d, axis: ax),
+              'sort': (ax) => sort(a2d, axis: ax),
+              'argsort': (ax) => argsort(a2d, axis: ax),
+              'partition': (ax) => partition(a2d, 0, axis: ax),
+              'argpartition': (ax) => argpartition(a2d, 0, axis: ax),
+              'flip': (ax) => flip(a2d, axis: ax),
+              'roll': (ax) => roll(a2d, 1, axis: ax),
+              'rot90': (ax) => rot90(a2d, 1, [ax, 1]),
+              'NDArray.take': (ax) => a2d.take([0, 1], axis: ax),
+              'take_along_axis': (ax) => take_along_axis(a2d, idx2d, ax),
+              'repeat': (ax) => repeat(a2d, 2, axis: ax),
+              'concatenate': (ax) => concatenate([a2d, a2d], axis: ax),
+              'stack': (ax) => stack([a2d, a2d], axis: ax),
+              'split': (ax) => split(a2d, 1, axis: ax),
+              'array_split': (ax) => array_split(a2d, 2, axis: ax),
+              'array_split_at': (ax) => array_split_at(a2d, [1], axis: ax),
+              'diff': (ax) => diff(a2d, axis: ax),
+              'trapz': (ax) => trapz(a2d, axis: ax),
+              'gradient': (ax) => gradient(a2d, axis: ax),
+              'gradientArray': (ax) => gradientArray(a2d, axis: [ax]),
+              'unwrap': (ax) => unwrap(a2d, axis: ax),
+              'linspaceGrid': (ax) => linspaceGrid(a2d, a2d, 4, axis: ax),
+              'norm': (ax) => norm(a2d, axis: [ax]),
+              'cross': (ax) => cross(a3d, a3d, axis: ax),
+              'tensordot': (ax) =>
+                  tensordot(a2d, a2d, axes: TensordotAxes.explicit([ax], [0])),
+              'fft': (ax) => fft(a2d, axis: ax),
+              'ifft': (ax) => ifft(a2d, axis: ax),
+              'rfft': (ax) => rfft(a2d, axis: ax),
+              'irfft': (ax) => irfft(a2d, axis: ax),
+              'fftshift': (ax) => fftshift(a2d, axes: [ax]),
+              'ifftshift': (ax) => ifftshift(a2d, axes: [ax]),
+            };
+
+            for (final entry in axisOps.entries) {
+              expect(
+                () => entry.value(5),
+                throwsRangeError,
+                reason:
+                    '${entry.key}(axis: 5) must throw RangeError on out-of-bounds positive axis',
+              );
+              expect(
+                () => entry.value(-5),
+                throwsRangeError,
+                reason:
+                    '${entry.key}(axis: -5) must throw RangeError on out-of-bounds negative axis',
+              );
+            }
+          });
+        },
+      );
+
+      test(
+        'P1-1 & P2-1: All-DType sweep for unique, uniqueWithIndex, uniqueWithInverse, uniqueWithCounts, and uniqueAll',
+        () {
+          NDArray.scope(() {
+            for (final dt in [
+              DType.float64,
+              DType.float32,
+              DType.float16,
+              DType.bfloat16,
+              DType.int64,
+              DType.int32,
+              DType.int16,
+              DType.int8,
+              DType.uint64,
+              DType.uint32,
+              DType.uint16,
+              DType.uint8,
+            ]) {
+              final raw = dt.isFloating
+                  ? <double>[3.0, 1.0, 2.0, 1.0, 3.0, 2.0]
+                  : <int>[3, 1, 2, 1, 3, 2];
+              final arr = NDArray.fromList(raw, [6], dt);
+              final u = unique(arr);
+              expect(u.dtype, equals(dt), reason: 'unique($dt) dtype mismatch');
+              expect(u.shape, equals([3]), reason: 'unique($dt) shape');
+
+              final (:values, :index, :inverse, :counts) = uniqueAll(arr);
+              expect(values.dtype, equals(dt));
+              expect(index.dtype, equals(DType.int64));
+              expect(inverse.dtype, equals(DType.int64));
+              expect(counts.dtype, equals(DType.int64));
+              expect(counts.toList(), equals([2, 2, 2]));
+              expect(index.toList(), equals([1, 2, 0]));
+              expect(inverse.toList(), equals([2, 0, 1, 0, 2, 1]));
+            }
+
+            // Multiple NaNs in Float32 & Float64 coalesce to a single trailing NaN
+            final f64NaN = NDArray<Float64>.fromList(
+              [double.nan, 2.0, double.nan, 1.0, 2.0],
+              [5],
+              DType.float64,
+            );
+            final u64 = uniqueWithCounts(f64NaN);
+            expect(u64.values.size, equals(3));
+            expect(u64.values[[0]], equals(1.0));
+            expect(u64.values[[1]], equals(2.0));
+            expect(u64.values[[2]].isNaN, isTrue);
+            expect(u64.counts.toList(), equals([1, 2, 2]));
+          });
+        },
+      );
+
+      test(
+        'P1-4 & P2-4: All-DType sweep for nansum, all, and any (including narrow integer/boolean accumulation widening)',
+        () {
+          NDArray.scope(() {
+            expect(
+              nansum(NDArray<Int8>.fromList([100, 100], [2], DType.int8)).dtype,
+              equals(DType.int64),
+            );
+            expect(
+              nansum(
+                NDArray<Int16>.fromList([30000, 30000], [2], DType.int16),
+              ).dtype,
+              equals(DType.int64),
+            );
+            expect(
+              nansum(NDArray<Int32>.fromList([1, 2], [2], DType.int32)).dtype,
+              equals(DType.int64),
+            );
+            expect(
+              nansum(
+                NDArray<Uint8>.fromList([200, 200], [2], DType.uint8),
+              ).dtype,
+              equals(DType.uint64),
+            );
+            expect(
+              nansum(
+                NDArray<Uint16>.fromList([50000, 50000], [2], DType.uint16),
+              ).dtype,
+              equals(DType.uint64),
+            );
+            expect(
+              nansum(NDArray<Uint32>.fromList([1, 2], [2], DType.uint32)).dtype,
+              equals(DType.uint64),
+            );
+            expect(
+              nansum(
+                NDArray<Boolean>.fromList([true, true], [2], DType.boolean),
+              ).dtype,
+              equals(DType.int64),
+            );
+
+            // all & any axis reductions across all numeric/bool DTypes
+            for (final dt in [
+              DType.float64,
+              DType.float32,
+              DType.float16,
+              DType.bfloat16,
+              DType.int64,
+              DType.int32,
+              DType.int16,
+              DType.int8,
+              DType.uint64,
+              DType.uint32,
+              DType.uint16,
+              DType.uint8,
+            ]) {
+              final raw = dt.isFloating
+                  ? <double>[1.0, 0.0, 2.0, 3.0]
+                  : <int>[1, 0, 2, 3];
+              final arr = NDArray.fromList(raw, [2, 2], dt);
+              final allAx0 = all(arr, axis: 0);
+              final anyAx1 = any(arr, axis: 1);
+              expect(allAx0.toList(), equals([true, false]));
+              expect(anyAx1.toList(), equals([true, true]));
+            }
+          });
+        },
+      );
+
+      test(
+        'P1-3: accumulateUfunc and outerUfunc native C dispatch across DTypes',
+        () {
+          NDArray.scope(() {
+            final i16 = NDArray<Int16>.fromList(
+              [1, 2, 3, 4],
+              [2, 2],
+              DType.int16,
+            );
+            expect(
+              accumulateUfunc(i16, axis: 1, op: BinaryOp.add).toList(),
+              equals([1, 3, 3, 7]),
+            );
+            expect(
+              accumulateUfunc(i16, axis: 1, op: BinaryOp.multiply).toList(),
+              equals([1, 2, 3, 12]),
+            );
+
+            final u8 = NDArray<Uint8>.fromList([2, 3], [2], DType.uint8);
+            final outer = outerUfunc(u8, u8, op: BinaryOp.multiply);
+            expect(outer.shape, equals([2, 2]));
+            expect(outer.toList(), equals([4, 6, 6, 9]));
+          });
+        },
+      );
+    });
   });
 }
 

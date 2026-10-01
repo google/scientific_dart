@@ -19,7 +19,6 @@ import '../scratch_arena.dart';
 
 // Standalone operational relative cross-imports
 import 'helpers.dart';
-import 'manipulation.dart';
 
 /// Represents the spacing between points for calculus operations along a single axis.
 ///
@@ -48,12 +47,16 @@ final class StepSpacing<V extends Object> extends Spacing<V> {
 
 /// Variable coordinate spacing implementation.
 final class CoordinateSpacing<V extends Object> extends Spacing<V> {
-  final List<V> values;
-  const CoordinateSpacing(this.values);
+  final List<V> _values;
+
+  /// The coordinate values along the axis.
+  List<V> get values => List<V>.unmodifiable(_values);
+
+  const CoordinateSpacing(this._values);
 }
 
 // Helper for list equality comparison
-bool _listEquals(List<dynamic> a, List<dynamic> b) {
+bool _listEquals(List<Object?> a, List<Object?> b) {
   if (a.length != b.length) return false;
   for (var i = 0; i < a.length; i++) {
     if (a[i] != b[i]) return false;
@@ -92,12 +95,9 @@ bool _listEquals(List<dynamic> a, List<dynamic> b) {
 /// - It is an error if [axis] is out of bounds or coordinate spacing length is mismatched.
 ///
 /// **Example:**
-/// ```dart
-/// final y = NDArray.fromList([1.0, 2.0, 4.0], [3], DType.float64);
-/// final res = trapz(y, spacing: Spacing.step(1.0)); // 4.5
-/// ```
+/// {@example /example/calculus_example.dart lang=dart}
 NDArray<T> trapz<T extends DTypeTag>(
-  NDArray y, {
+  NDArray<DTypeTag> y, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = -1,
   NDArray<T>? out,
@@ -105,8 +105,11 @@ NDArray<T> trapz<T extends DTypeTag>(
   if (y.isDisposed) {
     throw StateError('Cannot execute trapz() on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write trapz result to a disposed output array.');
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError('Cannot write trapz result to a disposed output array.');
+    }
+    validateOutBuffer(out);
   }
 
   if (y.dtype == DType.boolean) {
@@ -129,13 +132,16 @@ NDArray<T> trapz<T extends DTypeTag>(
     );
   }
 
-  var targetAxis = axis;
-  if (targetAxis < 0) {
-    targetAxis = y.shape.length + targetAxis;
+  if (axis < -y.rank || axis >= y.rank) {
+    throw RangeError.range(
+      axis,
+      -y.rank,
+      y.rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
-  if (targetAxis < 0 || targetAxis >= y.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${y.shape}');
-  }
+  final targetAxis = axis < 0 ? y.rank + axis : axis;
 
   final N = y.shape[targetAxis];
   if (spacing is CoordinateSpacing) {
@@ -195,7 +201,7 @@ NDArray<T> trapz<T extends DTypeTag>(
       return NDArray.scope(() {
         final doubleY = castNDArray<Float64>(y, DType.float64);
         final doubleRes = trapz<Float64>(doubleY, spacing: spacing, axis: axis);
-        final NDArray casted = switch (y.dtype) {
+        final NDArray<DTypeTag> casted = switch (y.dtype) {
           DType.float16 => castNDArray<Float16>(doubleRes, DType.float16),
           _ => castNDArray<BFloat16>(doubleRes, DType.bfloat16),
         };
@@ -597,12 +603,9 @@ NDArray<T> trapz<T extends DTypeTag>(
 /// - Allocates a new array on the unmanaged C heap. **The caller takes full ownership** of this memory and **must explicitly call [dispose]** to prevent native leaks, unless executing inside a managed [NDArray.scope()].
 ///
 /// **Example:**
-/// ```dart
-/// final f = NDArray.fromList([1.0, 2.0, 4.0, 7.0], [4], DType.float64);
-/// final res = gradient(f, spacing: Spacing.step(1.0)); // [1.0, 1.5, 2.5, 3.0]
-/// ```
+/// {@example /example/calculus_example.dart lang=dart}
 NDArray<T> gradient<T extends DTypeTag>(
-  NDArray f, {
+  NDArray<DTypeTag> f, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = 0,
   int edgeOrder = 1,
@@ -611,10 +614,13 @@ NDArray<T> gradient<T extends DTypeTag>(
   if (f.isDisposed) {
     throw StateError('Cannot execute gradient() on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write gradient result to a disposed output array.',
-    );
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError(
+        'Cannot write gradient result to a disposed output array.',
+      );
+    }
+    validateOutBuffer(out);
   }
   if (edgeOrder != 1 && edgeOrder != 2) {
     throw ArgumentError('edgeOrder must be 1 or 2 (was $edgeOrder).');
@@ -639,13 +645,16 @@ NDArray<T> gradient<T extends DTypeTag>(
     );
   }
 
-  var targetAxis = axis;
-  if (targetAxis < 0) {
-    targetAxis = f.shape.length + targetAxis;
+  if (axis < -f.rank || axis >= f.rank) {
+    throw RangeError.range(
+      axis,
+      -f.rank,
+      f.rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
-  if (targetAxis < 0 || targetAxis >= f.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${f.shape}');
-  }
+  final targetAxis = axis < 0 ? f.rank + axis : axis;
 
   final N = f.shape[targetAxis];
   final minSize = edgeOrder == 2 ? 3 : 2;
@@ -716,7 +725,7 @@ NDArray<T> gradient<T extends DTypeTag>(
         axis: axis,
         edgeOrder: edgeOrder,
       );
-      final NDArray casted = f.dtype == DType.float16
+      final NDArray<DTypeTag> casted = f.dtype == DType.float16
           ? castNDArray<Float16>(doubleRes, DType.float16)
           : castNDArray<BFloat16>(doubleRes, DType.bfloat16);
       if (out != null) {
@@ -1110,15 +1119,9 @@ NDArray<T> gradient<T extends DTypeTag>(
 /// - Allocates a list of new arrays on the unmanaged C heap. **The caller takes full ownership** of this memory and **must explicitly call [dispose]** on all returned arrays in the list to prevent native leaks, unless executing inside a managed [NDArray.scope()].
 ///
 /// **Example:**
-/// ```dart
-/// final f = NDArray.fromList([1.0, 2.0, 4.0, 8.0], [2, 2], DType.float64);
-/// // Shortcut for all axes:
-/// final grads = gradientArray(f, spacing: Spacing.step(1.0));
-/// // Specific per axis:
-/// final grads2 = gradientArray(f, spacings: [Spacing.step(1.0), Spacing.step(2.0)]);
-/// ```
+/// {@example /example/calculus_example.dart lang=dart}
 List<NDArray<T>> gradientArray<T extends DTypeTag>(
-  NDArray f, {
+  NDArray<DTypeTag> f, {
   Spacing? spacing,
   List<Spacing>? spacings,
   List<int>? axis,
@@ -1147,15 +1150,16 @@ List<NDArray<T>> gradientArray<T extends DTypeTag>(
   } else {
     targetAxes = [];
     for (final ax in axis) {
-      var resolvedAx = ax;
-      if (resolvedAx < 0) {
-        resolvedAx = f.shape.length + resolvedAx;
-      }
-      if (resolvedAx < 0 || resolvedAx >= f.shape.length) {
-        throw ArgumentError(
-          'axis index $ax out of bounds for shape ${f.shape}',
+      if (ax < -f.rank || ax >= f.rank) {
+        throw RangeError.range(
+          ax,
+          -f.rank,
+          f.rank - 1,
+          'axis',
+          'Must be within valid rank range',
         );
       }
+      final resolvedAx = ax < 0 ? f.rank + ax : ax;
       if (targetAxes.contains(resolvedAx)) {
         throw ArgumentError('axis index $ax specified multiple times.');
       }
@@ -1190,6 +1194,7 @@ List<NDArray<T>> gradientArray<T extends DTypeTag>(
           'Cannot write gradient result to a disposed output array at index $i.',
         );
       }
+      validateOutBuffer(out[i], 'out[$i]');
       if (!listEquals(out[i].shape, f.shape) ||
           (f.dtype.isInteger
               ? out[i].dtype == DType.boolean

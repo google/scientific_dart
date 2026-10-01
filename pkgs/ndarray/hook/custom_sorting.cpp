@@ -2675,6 +2675,54 @@ static int64_t unique_int16_fast(const int16_t *src, int16_t *dest, int64_t size
     return write_idx + 1;
 }
 
+static int64_t unique_uint16_fast(const uint16_t *src, uint16_t *dest, int64_t size) {
+    if (size <= 0) return 0;
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
+    if (size > 1) {
+        hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
+    }
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
+        if (dest[read_idx] != dest[write_idx]) {
+            write_idx++;
+            dest[write_idx] = dest[read_idx];
+        }
+    }
+    return write_idx + 1;
+}
+
+static int64_t unique_uint32_fast(const uint32_t *src, uint32_t *dest, int64_t size) {
+    if (size <= 0) return 0;
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint32_t));
+    if (size > 1) {
+        hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
+    }
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
+        if (dest[read_idx] != dest[write_idx]) {
+            write_idx++;
+            dest[write_idx] = dest[read_idx];
+        }
+    }
+    return write_idx + 1;
+}
+
+static int64_t unique_uint64_fast(const uint64_t *src, uint64_t *dest, int64_t size) {
+    if (size <= 0) return 0;
+    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint64_t));
+    if (size > 1) {
+        hwy::VQSort((uint64_t *)dest, static_cast<size_t>(size), hwy::SortAscending());
+    }
+    int64_t write_idx = 0;
+    for (int64_t read_idx = 1; read_idx < size; read_idx++) {
+        if (dest[read_idx] != dest[write_idx]) {
+            write_idx++;
+            dest[write_idx] = dest[read_idx];
+        }
+    }
+    return write_idx + 1;
+}
+
 static int64_t unique_uint8_fast(const uint8_t *src, uint8_t *dest, int64_t size) {
     if (size <= 0) return 0;
     bool present[256] = {false};
@@ -2685,6 +2733,21 @@ static int64_t unique_uint8_fast(const uint8_t *src, uint8_t *dest, int64_t size
     for (int v = 0; v < 256; v++) {
         if (present[v]) {
             dest[count++] = (uint8_t)v;
+        }
+    }
+    return count;
+}
+
+static int64_t unique_int8_fast(const int8_t *src, int8_t *dest, int64_t size) {
+    if (size <= 0) return 0;
+    bool present[256] = {false};
+    for (int64_t i = 0; i < size; i++) {
+        present[static_cast<uint8_t>(src[i] ^ 0x80)] = true;
+    }
+    int64_t count = 0;
+    for (int v = 0; v < 256; v++) {
+        if (present[v]) {
+            dest[count++] = static_cast<int8_t>(v ^ 0x80);
         }
     }
     return count;
@@ -2863,22 +2926,22 @@ int64_t ndarray_unique(const void *src, void *dest, int64_t size, int dtype,
             case DTYPE_FLOAT32:
                 return unique_float_fast((const float *)src, (float *)dest, size);
             case DTYPE_INT64:
-                return unique_scalar_fast<int64_t>((const int64_t *)src, (int64_t *)dest, size);
+                return unique_int64_fast((const int64_t *)src, (int64_t *)dest, size);
             case DTYPE_INT32:
-                return unique_scalar_fast<int32_t>((const int32_t *)src, (int32_t *)dest, size);
+                return unique_int32_fast((const int32_t *)src, (int32_t *)dest, size);
             case DTYPE_INT16:
-                return unique_scalar_fast<int16_t>((const int16_t *)src, (int16_t *)dest, size);
+                return unique_int16_fast((const int16_t *)src, (int16_t *)dest, size);
             case DTYPE_INT8:
-                return unique_scalar_fast<int8_t>((const int8_t *)src, (int8_t *)dest, size);
+                return unique_int8_fast((const int8_t *)src, (int8_t *)dest, size);
             case DTYPE_UINT64:
-                return unique_scalar_fast<uint64_t>((const uint64_t *)src, (uint64_t *)dest, size);
+                return unique_uint64_fast((const uint64_t *)src, (uint64_t *)dest, size);
             case DTYPE_UINT32:
-                return unique_scalar_fast<uint32_t>((const uint32_t *)src, (uint32_t *)dest, size);
+                return unique_uint32_fast((const uint32_t *)src, (uint32_t *)dest, size);
             case DTYPE_UINT16:
-                return unique_scalar_fast<uint16_t>((const uint16_t *)src, (uint16_t *)dest, size);
+                return unique_uint16_fast((const uint16_t *)src, (uint16_t *)dest, size);
             case DTYPE_UINT8:
             case DTYPE_BOOLEAN:
-                return unique_scalar_fast<uint8_t>((const uint8_t *)src, (uint8_t *)dest, size);
+                return unique_uint8_fast((const uint8_t *)src, (uint8_t *)dest, size);
             case DTYPE_FLOAT16:
                 return unique_fp16_fast((const uint16_t *)src, (uint16_t *)dest, size);
             case DTYPE_BFLOAT16:

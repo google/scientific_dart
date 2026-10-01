@@ -495,8 +495,14 @@ class _AsTypedListEscapeVisitor extends RecursiveAstVisitor<void> {
     final line = lineInfo.getLocation(node.offset).lineNumber;
     final normalizedPath = filePath.replaceAll('\\', '/');
 
-    // 1. Check if immediately chained with or passed as argument to a non-escaping consumer (.toList(), .setAll(), .setRange(), .fillRange())
-    const safeConsumers = {'toList', 'setAll', 'setRange', 'fillRange'};
+    // 1. Check if immediately chained with or passed as argument to a non-escaping consumer (.toList(), .fromList(), .setAll(), .setRange(), .fillRange())
+    const safeConsumers = {
+      'toList',
+      'fromList',
+      'setAll',
+      'setRange',
+      'fillRange',
+    };
     final parent = node.parent;
     if (parent is MethodInvocation && identical(parent.target, node)) {
       if (safeConsumers.contains(parent.methodName.name)) {
@@ -507,6 +513,10 @@ class _AsTypedListEscapeVisitor extends RecursiveAstVisitor<void> {
       final call = parent.parent;
       if (call is MethodInvocation &&
           safeConsumers.contains(call.methodName.name)) {
+        return;
+      }
+      if (call is InstanceCreationExpression &&
+          safeConsumers.contains(call.constructorName.name?.name)) {
         return;
       }
     }

@@ -254,8 +254,8 @@ final class TensordotAxes {
   /// It is an error if [axesA] and [axesB] have different lengths.
   TensordotAxes.explicit(List<int> axesA, List<int> axesB)
     : count = null,
-      explicitAxesA = axesA,
-      explicitAxesB = axesB {
+      explicitAxesA = List<int>.unmodifiable(axesA),
+      explicitAxesB = List<int>.unmodifiable(axesB) {
     if (axesA.length != axesB.length) {
       throw ArgumentError(
         "Axes length mismatch: ${axesA.length} vs ${axesB.length}.",
@@ -266,8 +266,8 @@ final class TensordotAxes {
   /// 3. Contracts a single axis pair [axisA] of array A with [axisB] of array B.
   TensordotAxes.pair(int axisA, int axisB)
     : count = null,
-      explicitAxesA = [axisA],
-      explicitAxesB = [axisB];
+      explicitAxesA = List<int>.unmodifiable([axisA]),
+      explicitAxesB = List<int>.unmodifiable([axisB]);
 
   /// Resolves contracted axis index lists for tensors of rank [rankA] and [rankB].
   (List<int>, List<int>) resolve(int rankA, int rankB) {
@@ -329,10 +329,13 @@ NDArray<T> tensordot<T extends DTypeTag>(
   if (a.isDisposed || b.isDisposed) {
     throw StateError("Cannot execute tensordot() on a disposed array.");
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      "Cannot write tensordot result to a disposed output array.",
-    );
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError(
+        "Cannot write tensordot result to a disposed output array.",
+      );
+    }
+    validateOutBuffer(out);
   }
   if (a.dtype != b.dtype) {
     throw ArgumentError.value(
@@ -721,8 +724,13 @@ NDArray<T> einsum<T extends DTypeTag>(
       );
     }
   }
-  if (out != null && out.isDisposed) {
-    throw StateError("Cannot write einsum result to a disposed output array.");
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError(
+        "Cannot write einsum result to a disposed output array.",
+      );
+    }
+    validateOutBuffer(out);
   }
 
   if (subscripts.operandIndices.length != operands.length) {
@@ -1315,8 +1323,11 @@ NDArray<T> inner<T extends DTypeTag>(
   if (a.isDisposed || b.isDisposed) {
     throw StateError("Cannot execute inner() on a disposed array.");
   }
-  if (out != null && out.isDisposed) {
-    throw StateError("Cannot write inner result to a disposed output array.");
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError("Cannot write inner result to a disposed output array.");
+    }
+    validateOutBuffer(out);
   }
   if (a.dtype != b.dtype) {
     throw ArgumentError.value(
@@ -1385,8 +1396,11 @@ NDArray<T> vdot<T extends DTypeTag>(
   if (a.isDisposed || b.isDisposed) {
     throw StateError("Cannot execute vdot() on a disposed array.");
   }
-  if (out != null && out.isDisposed) {
-    throw StateError("Cannot write vdot result to a disposed output array.");
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError("Cannot write vdot result to a disposed output array.");
+    }
+    validateOutBuffer(out);
   }
   if (a.dtype != b.dtype) {
     throw ArgumentError.value(
@@ -1447,6 +1461,9 @@ NDArray<T> kron<T extends DTypeTag>(
 }) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute kron() on a disposed array.');
+  }
+  if (out != null) {
+    validateOutBuffer(out);
   }
   if (a.dtype != b.dtype) {
     throw ArgumentError.value(

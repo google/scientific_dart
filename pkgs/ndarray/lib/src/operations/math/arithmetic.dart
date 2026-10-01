@@ -3542,6 +3542,10 @@ NDArray<T> mod<T extends DTypeTag>(
 
 /// Element-wise floor division and remainder simultaneously (`floor_divide(x1, x2)`, `remainder(x1, x2)`).
 ///
+/// Returns a named record containing:
+/// - `quotient`: The floor division result ([floorDivide]).
+/// - `remainder`: The remainder of division ([remainder]).
+///
 /// **Division by Zero:**
 /// - **Integer arrays**: Division by zero is an error.
 /// - **Floating-point arrays**: Follows IEEE 754 rules for floor division and returns `double.nan` for remainder.
@@ -3554,11 +3558,11 @@ NDArray<T> mod<T extends DTypeTag>(
 /// - [x1] or [x2] is disposed (throws [StateError]).
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
-(NDArray<T> div, NDArray<T> mod) divmod<T extends DTypeTag>(
+({NDArray<T> quotient, NDArray<T> remainder}) divmod<T extends DTypeTag>(
   NDArray<T> x1,
   NDArray<T> x2,
 ) {
-  return (floorDivide<T>(x1, x2), remainder<T>(x1, x2));
+  return (quotient: floorDivide<T>(x1, x2), remainder: remainder<T>(x1, x2));
 }
 
 /// Element-wise C-style modulo / remainder of division (`x1 % x2`).

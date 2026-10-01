@@ -326,13 +326,28 @@ int checkTotalSize(List<int> shape) => _computeCheckedTotalSize(shape);
 /// `DType` value to the static type of the arrays it can describe: a
 /// `DType<Float64>` can only be used to build an `NDArray<Float64>`.
 enum DType<T extends DTypeTag> {
+  /// IEEE 754 double-precision 64-bit float ('<f8', 8 bytes).
   float64<Float64>('float64', 8, '<f8'),
+
+  /// IEEE 754 single-precision 32-bit float ('<f4', 4 bytes).
   float32<Float32>('float32', 4, '<f4'),
+
+  /// IEEE 754 half-precision 16-bit float ('<f2', 2 bytes).
   float16<Float16>('float16', 2, '<f2'),
+
+  /// Brain Floating Point 16-bit format ('|V2', 2 bytes).
   bfloat16<BFloat16>('bfloat16', 2, '|V2'),
+
+  /// Signed 64-bit integer ('<i8', 8 bytes).
   int64<Int64>('int64', 8, '<i8'),
+
+  /// Signed 32-bit integer ('<i4', 4 bytes).
   int32<Int32>('int32', 4, '<i4'),
+
+  /// Signed 16-bit integer ('<i2', 2 bytes).
   int16<Int16>('int16', 2, '<i2'),
+
+  /// Signed 8-bit integer ('<i1', 1 byte).
   int8<Int8>('int8', 1, '<i1'),
 
   /// Unsigned 64-bit integer ('<u8', 8 bytes).
@@ -340,11 +355,23 @@ enum DType<T extends DTypeTag> {
   /// Note: Dart `int` is signed 64-bit. Bit patterns with MSB set (>= 2^63)
   /// represent negative ints in Dart. Use [uint64Compare] for unsigned comparisons.
   uint64<Uint64>('uint64', 8, '<u8'),
+
+  /// Unsigned 32-bit integer ('<u4', 4 bytes).
   uint32<Uint32>('uint32', 4, '<u4'),
+
+  /// Unsigned 16-bit integer ('<u2', 2 bytes).
   uint16<Uint16>('uint16', 2, '<u2'),
+
+  /// Unsigned 8-bit integer ('|u1', 1 byte).
   uint8<Uint8>('uint8', 1, '|u1'),
+
+  /// Complex 128-bit number consisting of two 64-bit doubles ('<c16', 16 bytes).
   complex128<Complex128>('complex128', 16, '<c16'),
+
+  /// Complex 64-bit number consisting of two 32-bit floats ('<c8', 8 bytes).
   complex64<Complex64>('complex64', 8, '<c8'),
+
+  /// Boolean stored as 1 byte ('|b1', 1 byte).
   boolean<Boolean>('boolean', 1, '|b1');
 
   /// All 15 [DType] values typed as [DType<AnySpec>].
@@ -735,12 +762,21 @@ sealed class NDArray<T extends DTypeTag>
   /// - Call [copy] to allocate a new contiguous array with the same elements.
   final bool isContiguous;
 
+  bool _writeable = true;
+
+  /// Sets whether this array buffer is writeable.
+  // ignore: use_setters_to_change_properties
+  void setWriteable(bool value) {
+    _writeable = value;
+  }
+
   /// Whether this array is writeable.
   ///
   /// Broadcast views created by `broadcast_to` (where any dimension `i` has
   /// `shape[i] > 1` and `strides[i] == 0`) alias multiple coordinates to the
   /// same memory address and are read-only (`isWriteable == false`).
   bool get isWriteable {
+    if (!_writeable) return false;
     for (var i = 0; i < shape.length; i++) {
       if (shape[i] > 1 && strides[i] == 0) return false;
     }
@@ -2125,7 +2161,7 @@ sealed class NDArray<T extends DTypeTag>
   /// final borrowed = a.toSendableBorrow();
   /// await Isolate.run(() {
   ///   final view = borrowed.materializeView();
-  ///   view.fill(42.0 as Float64);
+  ///   view.fill(42.0);
   /// });
   /// print(a[0]); // 42.0
   /// ```
@@ -3014,6 +3050,24 @@ sealed class NDArray<T extends DTypeTag>
     return value;
   }
 
+  static Int64List _extractInt64Indices(NDArray item) {
+    if (item.dtype == DType.int64 && item.isContiguous) {
+      return Int64List.fromList(
+        item.pointer.cast<ffi.Int64>().asTypedList(item.size),
+      );
+    }
+    final NDArray<Int64> casted = item.dtype == DType.int64
+        ? (item.copy() as NDArray<Int64>)
+        : helpers.castNDArray<Int64>(item, DType.int64);
+    try {
+      return Int64List.fromList(
+        casted.pointer.cast<ffi.Int64>().asTypedList(casted.size),
+      );
+    } finally {
+      casted.dispose();
+    }
+  }
+
   /// Normalizes heterogeneous selection items into standard [Selector] objects.
   Selector _toSelector(dynamic item, [List<NDArray>? tempAllocations]) {
     if (item is Selector) return item;
@@ -3042,11 +3096,7 @@ sealed class NDArray<T extends DTypeTag>
         return Mask(BooleanMask(item as NDArray<Boolean>));
       }
       if (item.dtype.isInteger) {
-        final intList = <int>[];
-        for (var i = 0; i < item.size; i++) {
-          intList.add((item.getCellFlat(i) as num).toInt());
-        }
-        return Indices(intList);
+        return Indices(_extractInt64Indices(item));
       }
     }
     if (item is BooleanMask) return Mask(item);
@@ -3124,7 +3174,7 @@ sealed class NDArray<T extends DTypeTag>
             mask.mask.strides[0],
             pIndices,
           );
-          indices = pIndices.asTypedList(count).toList();
+          indices = Int64List.fromList(pIndices.asTypedList(count));
         } finally {
           ScratchArena.reset(maskMarker);
         }
@@ -3259,83 +3309,97 @@ sealed class NDArray<T extends DTypeTag>
         }
       }
 
-      final NDArray? valArr;
-      if (value is NDArray) {
-        if (listEquals(value.shape, targetShape)) {
-          valArr = value;
+      NDArray? broadcastedVal;
+      NDArray? tempCopy;
+      try {
+        NDArray? valArr;
+        if (value is NDArray) {
+          if (listEquals(value.shape, targetShape)) {
+            valArr = value;
+          } else {
+            broadcastedVal = ops.broadcastTo(value, targetShape);
+            valArr = broadcastedVal;
+          }
+          if (helpers.sharesMemory(this, valArr)) {
+            tempCopy = valArr.copy();
+            valArr = tempCopy;
+          }
         } else {
-          valArr = ops.broadcastTo(value, targetShape);
-        }
-      } else {
-        valArr = null;
-      }
-
-      final currentCoords = List<int>.filled(shape.length, 0);
-      final valIndices = List<int>.filled(targetShape.length, 0);
-
-      void walk(int dim, int valDim) {
-        if (dim == shape.length) {
-          if (valArr != null) {
-            setCell(currentCoords, _coerceScalar(valArr.getCell(valIndices)));
-          } else {
-            setCell(currentCoords, _coerceScalar(value));
-          }
-          return;
+          valArr = null;
         }
 
-        final sel = dim < processedSelectors.length
-            ? processedSelectors[dim]
-            : Slice.all();
-        if (sel is Index) {
-          final idx = sel.value < 0 ? shape[dim] + sel.value : sel.value;
-          currentCoords[dim] = idx;
-          walk(dim + 1, valDim);
-        } else if (sel is Slice) {
-          final step = sel.step;
-          final int realStart;
-          final int realStop;
-          if (step > 0) {
-            final startIdx = sel.start == null
-                ? 0
-                : (sel.start! < 0 ? shape[dim] + sel.start! : sel.start!);
-            final stopIdx = sel.stop == null
-                ? shape[dim]
-                : (sel.stop! < 0 ? shape[dim] + sel.stop! : sel.stop!);
-            realStart = startIdx.clamp(0, shape[dim]);
-            realStop = stopIdx.clamp(0, shape[dim]);
-          } else {
-            final startIdx = sel.start == null
-                ? shape[dim] - 1
-                : (sel.start! < 0 ? shape[dim] + sel.start! : sel.start!);
-            final stopIdx = sel.stop == null
-                ? -1
-                : (sel.stop! < 0 ? shape[dim] + sel.stop! : sel.stop!);
-            realStart = startIdx.clamp(-1, shape[dim] - 1);
-            realStop = stopIdx.clamp(-1, shape[dim] - 1);
+        final currentCoords = List<int>.filled(shape.length, 0);
+        final valIndices = List<int>.filled(targetShape.length, 0);
+
+        void walk(int dim, int valDim) {
+          if (dim == shape.length) {
+            if (valArr != null) {
+              setCell(currentCoords, _coerceScalar(valArr.getCell(valIndices)));
+            } else {
+              setCell(currentCoords, _coerceScalar(value));
+            }
+            return;
           }
-          var stepIdx = 0;
-          for (
-            var idx = realStart;
-            step > 0 ? idx < realStop : idx > realStop;
-            idx += step
-          ) {
+
+          final sel = dim < processedSelectors.length
+              ? processedSelectors[dim]
+              : Slice.all();
+          if (sel is Index) {
+            final idx = sel.value < 0 ? shape[dim] + sel.value : sel.value;
             currentCoords[dim] = idx;
-            if (valDim < valIndices.length) valIndices[valDim] = stepIdx;
-            walk(dim + 1, valDim + 1);
-            stepIdx++;
-          }
-        } else if (sel is Indices) {
-          for (var i = 0; i < sel.values.length; i++) {
-            final idx = sel.values[i];
-            final realIdx = idx < 0 ? shape[dim] + idx : idx;
-            currentCoords[dim] = realIdx;
-            if (valDim < valIndices.length) valIndices[valDim] = i;
-            walk(dim + 1, valDim + 1);
+            walk(dim + 1, valDim);
+          } else if (sel is Slice) {
+            final step = sel.step;
+            final int realStart;
+            final int realStop;
+            if (step > 0) {
+              final startIdx = sel.start == null
+                  ? 0
+                  : (sel.start! < 0 ? shape[dim] + sel.start! : sel.start!);
+              final stopIdx = sel.stop == null
+                  ? shape[dim]
+                  : (sel.stop! < 0 ? shape[dim] + sel.stop! : sel.stop!);
+              realStart = startIdx.clamp(0, shape[dim]);
+              realStop = stopIdx.clamp(0, shape[dim]);
+            } else {
+              final startIdx = sel.start == null
+                  ? shape[dim] - 1
+                  : (sel.start! < 0 ? shape[dim] + sel.start! : sel.start!);
+              final stopIdx = sel.stop == null
+                  ? -1
+                  : (sel.stop! < 0 ? shape[dim] + sel.stop! : sel.stop!);
+              realStart = startIdx.clamp(-1, shape[dim] - 1);
+              realStop = stopIdx.clamp(-1, shape[dim] - 1);
+            }
+            var stepIdx = 0;
+            for (
+              var idx = realStart;
+              step > 0 ? idx < realStop : idx > realStop;
+              idx += step
+            ) {
+              currentCoords[dim] = idx;
+              if (valDim < valIndices.length) valIndices[valDim] = stepIdx;
+              walk(dim + 1, valDim + 1);
+              stepIdx++;
+            }
+          } else if (sel is Indices) {
+            for (var i = 0; i < sel.values.length; i++) {
+              final idx = sel.values[i];
+              final realIdx = idx < 0 ? shape[dim] + idx : idx;
+              currentCoords[dim] = realIdx;
+              if (valDim < valIndices.length) valIndices[valDim] = i;
+              walk(dim + 1, valDim + 1);
+            }
           }
         }
-      }
 
-      walk(0, 0);
+        walk(0, 0);
+      } finally {
+        if (broadcastedVal != null && !identical(broadcastedVal, value)) {
+          broadcastedVal.dispose();
+        }
+        tempCopy?.dispose();
+      }
     }
   }
 
@@ -3385,7 +3449,7 @@ sealed class NDArray<T extends DTypeTag>
       if (spec.isNotEmpty && spec.first is List) {
         final subList = spec.first as List;
         if (subList.every((e) => e is int)) {
-          final intIndices = subList.cast<int>().toList();
+          final intIndices = subList.cast<int>();
           return take(intIndices);
         }
       } else if (spec.every((e) => e is int)) {
@@ -3429,10 +3493,7 @@ sealed class NDArray<T extends DTypeTag>
       if (spec.isDisposed) {
         throw StateError('Cannot access a disposed NDArray.');
       }
-      final intList = <int>[];
-      for (var i = 0; i < spec.size; i++) {
-        intList.add((spec.getCellFlat(i) as num).toInt());
-      }
+      final intList = _extractInt64Indices(spec);
       final taken = take(intList);
       if (spec.shape.length == 1) {
         return taken;
@@ -3530,7 +3591,7 @@ sealed class NDArray<T extends DTypeTag>
       if (spec.isNotEmpty && spec.first is List) {
         final subList = spec.first as List;
         if (subList.every((e) => e is int)) {
-          final intIndices = subList.cast<int>().toList();
+          final intIndices = subList.cast<int>();
           final indices = NDArray<Int64>.fromList(intIndices, [
             intIndices.length,
           ], DType.int64);
@@ -3632,13 +3693,15 @@ sealed class NDArray<T extends DTypeTag>
       if (spec.isDisposed) {
         throw StateError('Cannot access a disposed NDArray.');
       }
-      final intList = <int>[];
-      for (var i = 0; i < spec.size; i++) {
-        intList.add((spec.getCellFlat(i) as num).toInt());
-      }
-      final indices = NDArray<Int64>.fromList(intList, [
-        intList.length,
-      ], DType.int64);
+      final NDArray<Int64> casted = spec.dtype == DType.int64
+          ? (spec.isContiguous
+                ? (spec as NDArray<Int64>)
+                : (spec.copy() as NDArray<Int64>))
+          : helpers.castNDArray<Int64>(spec, DType.int64);
+      final bool castedOwned = !identical(casted, spec);
+      final NDArray<Int64> indices = casted.shape.length == 1
+          ? casted
+          : casted.reshape([spec.size]);
       NDArray? broadcastedVal;
       try {
         if (value is NDArray) {
@@ -3655,7 +3718,12 @@ sealed class NDArray<T extends DTypeTag>
           setIndicesScalar(indices, _coerceScalar(value));
         }
       } finally {
-        indices.dispose();
+        if (!identical(indices, casted)) {
+          indices.dispose();
+        }
+        if (castedOwned) {
+          casted.dispose();
+        }
         if (broadcastedVal != null && !identical(broadcastedVal, value)) {
           broadcastedVal.dispose();
         }
@@ -4205,7 +4273,7 @@ sealed class NDArray<T extends DTypeTag>
             mask.mask.strides[0],
             pIndices,
           );
-          indices = pIndices.asTypedList(count).toList();
+          indices = Int64List.fromList(pIndices.asTypedList(count));
         } finally {
           ScratchArena.reset(maskMarker);
         }
@@ -4593,7 +4661,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/shape_examples.dart lang=dart}
-  NDArray<T> squeeze({dynamic axis}) {
+  NDArray<T> squeeze({Object? axis}) {
     if (isDisposed) throw StateError('Cannot access a disposed NDArray.');
     final rank = shape.length;
     final axesToRemove = <int>{};
@@ -4698,7 +4766,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/shape_examples.dart lang=dart}
-  NDArray<T> moveaxis(dynamic source, dynamic destination) {
+  NDArray<T> moveaxis(Object source, Object destination) {
     final rank = shape.length;
 
     List<int> srcList;
@@ -5551,7 +5619,7 @@ final class Complex {
   final double real;
   final double imag;
 
-  Complex(this.real, this.imag);
+  const Complex(this.real, this.imag);
 
   /// Adds [other] (a [Complex] or real [num]) to this complex number.
   Complex operator +(Object? other) {
@@ -5748,6 +5816,9 @@ sealed class Selector {
   const Selector();
 }
 
+/// Alias for [Selector] representing an indexing specification.
+typedef IndexSpec = Selector;
+
 /// Selects a single index along a dimension of an [NDArray], reducing the rank of the resulting array by 1.
 ///
 /// **Preconditions:**
@@ -5765,7 +5836,7 @@ final class Index extends Selector {
   final int value;
 
   /// Creates a single index selector with the specified [value].
-  Index(this.value);
+  const Index(this.value);
 }
 
 /// Represents a continuous or strided slice of an [NDArray] dimension.
@@ -5822,7 +5893,7 @@ final class Indices extends Selector {
   final List<int> values;
 
   /// Creates an indices selector with the specified coordinate [values].
-  Indices(this.values);
+  Indices(List<int> values) : values = List<int>.unmodifiable(values);
 }
 
 /// Selects elements of an [NDArray] matching a boolean mask array.
@@ -5920,11 +5991,11 @@ extension NDArrayElements<
   ///
   /// Negative coordinates index from the end of the corresponding axis.
   ///
-  /// It is an error if [coords] has a different length than [NDArray.ndim],
+  /// It is an error if [coords] has a different length than [NDArray.rank],
   /// or if any coordinate is out of range.
   ///
   /// **Performance considerations:**
-  /// - Time complexity: $O(\text{ndim})$.
+  /// - Time complexity: $O(\text{rank})$.
   E getCell(List<int> coords) => getCellUntyped(coords) as E;
 
   /// Writes [value] at the given multi-dimensional [coords].
@@ -5951,7 +6022,7 @@ extension NDArrayElements<
   /// correct for views and transposes.
   ///
   /// **Performance considerations:**
-  /// - Time complexity: $O(\text{ndim})$ for a strided array, $O(1)$ when the
+  /// - Time complexity: $O(\text{rank})$ for a strided array, $O(1)$ when the
   ///   array is C-contiguous.
   E getCellFlat(int flatIndex) => getCellFlatUntyped(flatIndex) as E;
 

@@ -155,7 +155,7 @@ final class SendableNDArray<T extends DTypeTag> {
   /// final sendable = SendableNDArray.unsafeBorrow(array);
   /// await Isolate.run(() {
   ///   final view = sendable.materializeView();
-  ///   view.fill(1.0 as Float64);
+  ///   view.fill(1.0);
   /// });
   /// print(array[0]); // 1.0
   /// ```

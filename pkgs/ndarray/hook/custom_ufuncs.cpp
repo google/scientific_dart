@@ -190,10 +190,12 @@ int get_binary_op_enum_val(int index) {
     return index;
 }
 
+#ifndef VECTORIZED_TARGETS
 #if (defined(__GNUC__) || defined(__clang__)) && !defined(__APPLE__) && (defined(__x86_64__) || defined(__i386__)) && !defined(_WIN32)
 #define VECTORIZED_TARGETS __attribute__((target_clones("avx512f", "avx2", "sse4.2", "default")))
 #else
 #define VECTORIZED_TARGETS
+#endif
 #endif
 // ============================================================================
 // C++ TEMPLATES FOR CASTING, SET OPERATIONS, AND STRIDED LOOPS
@@ -5724,11 +5726,13 @@ void FUNCNAME(const T *src, const int64_t *stridesSrc, \
 }
 
 #define SUB_REAL(x, y) ((x) - (y))
+#define SUB_INT64(x, y) ((int64_t)((uint64_t)(x) - (uint64_t)(y)))
+#define SUB_INT32(x, y) ((int32_t)((uint32_t)(x) - (uint32_t)(y)))
 
 DEFINE_STRIDED_DIFF_OP(s_diff_double, double, SUB_REAL)
 DEFINE_STRIDED_DIFF_OP(s_diff_float, float, SUB_REAL)
-DEFINE_STRIDED_DIFF_OP(s_diff_int64, int64_t, SUB_REAL)
-DEFINE_STRIDED_DIFF_OP(s_diff_int32, int32_t, SUB_REAL)
+DEFINE_STRIDED_DIFF_OP(s_diff_int64, int64_t, SUB_INT64)
+DEFINE_STRIDED_DIFF_OP(s_diff_int32, int32_t, SUB_INT32)
 DEFINE_STRIDED_DIFF_OP(s_diff_complex128, cpx_t, cpx_sub)
 DEFINE_STRIDED_DIFF_OP(s_diff_complex64, cpx_f_t, cpx_sub_f)
 
@@ -10045,6 +10049,21 @@ void name( \
         return; \
     } \
     using utype = typename std::conditional<sizeof(T) < 4, uint32_t, typename std::make_unsigned<T>::type>::type; \
+    if (strideACol == 1 && strideBCol == 1 && strideResCol == 1) { \
+        for (int64_t r = 0; r < m; r++) { \
+            T *resRow = res + r * strideResRow; \
+            std::memset(resRow, 0, static_cast<size_t>(n) * sizeof(T)); \
+            const T *aRow = a + r * strideARow; \
+            for (int64_t i = 0; i < k; i++) { \
+                utype aVal = static_cast<utype>(aRow[i]); \
+                const T *bRow = b + i * strideBRow; \
+                for (int64_t c = 0; c < n; c++) { \
+                    resRow[c] = static_cast<T>(static_cast<utype>(resRow[c]) + aVal * static_cast<utype>(bRow[c])); \
+                } \
+            } \
+        } \
+        return; \
+    } \
     for (int64_t r = 0; r < m; r++) { \
         for (int64_t c = 0; c < n; c++) { \
             utype sum = 0; \
@@ -10302,19 +10321,21 @@ void v_zero_upper_triangular(
  * ============================================================================
  */
 
-static inline int reflect_map(int64_t i, int64_t N) {
+static inline int64_t reflect_map(int64_t i, int64_t N) {
     if (N <= 1) return 0;
     int64_t P = 2 * N - 2;
-    int64_t i_mod = abs(i) % P;
+    uint64_t abs_i = (i < 0) ? (0ULL - static_cast<uint64_t>(i)) : static_cast<uint64_t>(i);
+    int64_t i_mod = static_cast<int64_t>(abs_i % static_cast<uint64_t>(P));
     return i_mod < N ? i_mod : P - i_mod;
 }
 
-static inline int symmetric_map(int64_t i, int64_t N) {
+static inline int64_t symmetric_map(int64_t i, int64_t N) {
     if (N <= 0) return 0;
     int64_t P = 2 * N;
     int64_t i_mod;
     if (i < 0) {
-        i_mod = (-i - 1) % P;
+        uint64_t neg_i_minus_1 = static_cast<uint64_t>(-(i + 1));
+        i_mod = static_cast<int64_t>(neg_i_minus_1 % static_cast<uint64_t>(P));
     } else {
         i_mod = i % P;
     }
@@ -11460,7 +11481,7 @@ static QuantileInterpolationSpecs get_quantile_specs(int64_t N, double p, int me
             }
             idx = (double)N * p + (alpha + p * (1.0 - alpha - beta)) - 1.0;
         }
-        int64_t j = (int)floor(idx);
+        int64_t j = (int64_t)floor(idx);
         specs.idx_low = j;
         specs.idx_high = j + 1;
         specs.weight = idx - (double)j;
@@ -11470,14 +11491,14 @@ static QuantileInterpolationSpecs get_quantile_specs(int64_t N, double p, int me
         double idx = p * N - 1.0;
         double prev = floor(idx);
         double gamma = idx - prev;
-        int64_t res_idx = (gamma == 0.0) ? (int)prev : (int)prev + 1;
+        int64_t res_idx = (gamma == 0.0) ? (int64_t)prev : (int64_t)prev + 1;
         specs.idx_low = res_idx;
         specs.idx_high = res_idx;
         specs.weight = 0.0;
     }
     else if (method == QUANTILE_AVERAGED_INVERTED_CDF) {
         double idx = p * N - 1.0;
-        int64_t j = (int)floor(idx);
+        int64_t j = (int64_t)floor(idx);
         double gamma = idx - (double)j;
         specs.idx_low = j;
         specs.idx_high = j + 1;
@@ -11487,7 +11508,7 @@ static QuantileInterpolationSpecs get_quantile_specs(int64_t N, double p, int me
         double idx = p * N - 1.5;
         double prev = floor(idx);
         double gamma = idx - prev;
-        int prev_int = (int)prev;
+        int64_t prev_int = (int64_t)prev;
         int is_odd = (prev_int % 2 != 0);
         int cond = (gamma == 0.0) && is_odd;
         int64_t res_idx = cond ? prev_int : prev_int + 1;
@@ -11498,27 +11519,27 @@ static QuantileInterpolationSpecs get_quantile_specs(int64_t N, double p, int me
     // Backward compatibility methods (10-13)
     else if (method == QUANTILE_LOWER) {
         double idx = p * (N - 1);
-        int64_t res_idx = (int)floor(idx);
+        int64_t res_idx = (int64_t)floor(idx);
         specs.idx_low = res_idx;
         specs.idx_high = res_idx;
         specs.weight = 0.0;
     }
     else if (method == QUANTILE_HIGHER) {
         double idx = p * (N - 1);
-        int64_t res_idx = (int)ceil(idx);
+        int64_t res_idx = (int64_t)ceil(idx);
         specs.idx_low = res_idx;
         specs.idx_high = res_idx;
         specs.weight = 0.0;
     }
     else if (method == QUANTILE_MIDPOINT) {
         double idx = p * (N - 1);
-        specs.idx_low = (int)floor(idx);
-        specs.idx_high = (int)ceil(idx);
+        specs.idx_low = (int64_t)floor(idx);
+        specs.idx_high = (int64_t)ceil(idx);
         specs.weight = 0.5;
     }
     else if (method == QUANTILE_NEAREST) {
         double idx = p * (N - 1);
-        int64_t res_idx = (int)rint(idx);
+        int64_t res_idx = (int64_t)rint(idx);
         specs.idx_low = res_idx;
         specs.idx_high = res_idx;
         specs.weight = 0.0;
@@ -11716,7 +11737,7 @@ static inline void fast_interp_vector(const T *x, int64_t x_size,
             // Binary search using std::upper_bound
             const T *search_start = (j + 2 < xp_size && xv >= xp[j + 2]) ? (xp + j + 2) : xp;
             const T *it = std::upper_bound(search_start, xp + xp_size, xv);
-            j = static_cast<int>(it - xp) - 1;
+            j = static_cast<int64_t>(it - xp) - 1;
             if (j < 0) j = 0;
             if (j >= xp_size - 1) j = xp_size - 2;
             x0 = xp[j];
@@ -13620,8 +13641,12 @@ DEFINE_STRIDED_UNARY_IMPL(s_erf_double, double, double, std::erf(x))
 
 inline void add_prod_corr(double& sum, double a, double b) { sum += a * b; }
 inline void add_prod_corr(float& sum, float a, float b) { sum += a * b; }
-inline void add_prod_corr(int64_t& sum, int64_t a, int64_t b) { sum += a * b; }
-inline void add_prod_corr(int32_t& sum, int32_t a, int32_t b) { sum += a * b; }
+inline void add_prod_corr(int64_t& sum, int64_t a, int64_t b) {
+    sum = (int64_t)((uint64_t)sum + (uint64_t)a * (uint64_t)b);
+}
+inline void add_prod_corr(int32_t& sum, int32_t a, int32_t b) {
+    sum = (int32_t)((uint32_t)sum + (uint32_t)a * (uint32_t)b);
+}
 inline void add_prod_corr(cpx_t& sum, cpx_t a, cpx_t b) {
     sum.r += a.r * b.r + a.i * b.i;
     sum.i += a.i * b.r - a.r * b.i;
@@ -13997,14 +14022,20 @@ DEFINE_STRIDED_CUM_OP(s_cumlogical_xor, uint8_t, OP_LXOR)
 // Unbuffered Scatter Update Kernels (s_at_*)
 template <typename T>
 static inline T fdiv_int(T a, T b) {
-    if (b == 0) return 0;
+    if (b == 0) {
+        division_error_flag = 1;
+        return 0;
+    }
     if (a == std::numeric_limits<T>::min() && b == -1) return std::numeric_limits<T>::min();
     return static_cast<T>(a / b);
 }
 
 template <typename T>
 static inline T floordiv_int(T a, T b) {
-    if (b == 0) return 0;
+    if (b == 0) {
+        division_error_flag = 1;
+        return 0;
+    }
     if (a == std::numeric_limits<T>::min() && b == -1) return std::numeric_limits<T>::min();
     T res = static_cast<T>(a / b);
     T rem = static_cast<T>(a % b);
@@ -14016,7 +14047,10 @@ static inline T floordiv_int(T a, T b) {
 
 template <typename T>
 static inline T rem_int(T a, T b) {
-    if (b == 0) return 0;
+    if (b == 0) {
+        division_error_flag = 1;
+        return 0;
+    }
     if (a == std::numeric_limits<T>::min() && b == -1) return 0;
     T rem = static_cast<T>(a % b);
     if (rem != 0 && ((rem < 0) != (b < 0))) {
@@ -14027,7 +14061,10 @@ static inline T rem_int(T a, T b) {
 
 template <typename T>
 static inline T fmod_int(T a, T b) {
-    if (b == 0) return 0;
+    if (b == 0) {
+        division_error_flag = 1;
+        return 0;
+    }
     if (a == std::numeric_limits<T>::min() && b == -1) return 0;
     return static_cast<T>(a % b);
 }
@@ -14037,10 +14074,50 @@ static inline T apply_at_op(T a, T b, int opCode) {
     switch (opCode) {
         case 0: return a + b;
         case 1: return a * b;
-        case 2: return (a < b) ? a : b;
-        case 3: return (a > b) ? a : b;
-        case 4: return (std::isnan((double)a) ? b : (std::isnan((double)b) ? a : ((a < b) ? a : b)));
-        case 5: return (std::isnan((double)a) ? b : (std::isnan((double)b) ? a : ((a > b) ? a : b)));
+        case 2: { // minimum
+            double da = (double)a, db = (double)b;
+            if (std::isnan(da) || std::isnan(db)) return static_cast<T>(std::numeric_limits<double>::quiet_NaN());
+            if constexpr (std::is_floating_point_v<T> || std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>) {
+                if (da == 0.0 && db == 0.0) {
+                    return (std::signbit(da) || std::signbit(db)) ? static_cast<T>(-0.0) : static_cast<T>(0.0);
+                }
+            }
+            return (a < b) ? a : b;
+        }
+        case 3: { // maximum
+            double da = (double)a, db = (double)b;
+            if (std::isnan(da) || std::isnan(db)) return static_cast<T>(std::numeric_limits<double>::quiet_NaN());
+            if constexpr (std::is_floating_point_v<T> || std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>) {
+                if (da == 0.0 && db == 0.0) {
+                    return (!std::signbit(da) || !std::signbit(db)) ? static_cast<T>(0.0) : static_cast<T>(-0.0);
+                }
+            }
+            return (a > b) ? a : b;
+        }
+        case 4: { // fmin
+            double da = (double)a, db = (double)b;
+            if (std::isnan(da) && std::isnan(db)) return a;
+            if (std::isnan(da)) return b;
+            if (std::isnan(db)) return a;
+            if constexpr (std::is_floating_point_v<T> || std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>) {
+                if (da == 0.0 && db == 0.0) {
+                    return (std::signbit(da) || std::signbit(db)) ? static_cast<T>(-0.0) : static_cast<T>(0.0);
+                }
+            }
+            return (a < b) ? a : b;
+        }
+        case 5: { // fmax
+            double da = (double)a, db = (double)b;
+            if (std::isnan(da) && std::isnan(db)) return a;
+            if (std::isnan(da)) return b;
+            if (std::isnan(db)) return a;
+            if constexpr (std::is_floating_point_v<T> || std::is_same_v<T, float16_t> || std::is_same_v<T, bfloat16_t>) {
+                if (da == 0.0 && db == 0.0) {
+                    return (!std::signbit(da) || !std::signbit(db)) ? static_cast<T>(0.0) : static_cast<T>(-0.0);
+                }
+            }
+            return (a > b) ? a : b;
+        }
         case 6: { double x = (double)a, y = (double)b; double mx = (x > y) ? x : y; return (T)(mx + std::log(std::exp(x - mx) + std::exp(y - mx))); }
         case 7: { double x = (double)a, y = (double)b; double mx = (x > y) ? x : y; return (T)(mx + std::log2(std::pow(2.0, x - mx) + std::pow(2.0, y - mx))); }
         case 16: return a - b;
@@ -14053,7 +14130,7 @@ static inline T apply_at_op(T a, T b, int opCode) {
         case 23: return (T)std::atan2((double)a, (double)b);
         case 24: return (T)std::hypot((double)a, (double)b);
         case 25: return (T)std::copysign((double)a, (double)b);
-        case 28: return (a < 0) ? (T)0 : (a == 0 ? b : (T)1);
+        case 28: return ((double)a < 0.0) ? (T)0 : ((double)a == 0.0 ? b : (T)1);
         default: return a + b;
     }
 }
@@ -14137,9 +14214,19 @@ inline uint8_t apply_at_op<uint8_t>(uint8_t a, uint8_t b, int opCode) {
         case 15: return ((a != 0) != (b != 0)) ? 1 : 0;
         case 16: return (uint8_t)(a - b);
         case 17:
-        case 18: return (b != 0) ? (uint8_t)(a / b) : 0;
+        case 18:
+            if (b == 0) {
+                division_error_flag = 1;
+                return 0;
+            }
+            return (uint8_t)(a / b);
         case 19:
-        case 20: return (b != 0) ? (uint8_t)(a % b) : 0;
+        case 20:
+            if (b == 0) {
+                division_error_flag = 1;
+                return 0;
+            }
+            return (uint8_t)(a % b);
         case 21:
         case 22: return ipow<uint8_t>(a, b);
         case 26: return safe_left_shift_uint8(a, b);
@@ -14203,6 +14290,40 @@ inline cpx_t apply_at_op<cpx_t>(cpx_t a, cpx_t b, int opCode) {
     switch (opCode) {
         case 0: return cpx_add(a, b);
         case 1: return cpx_mul(a, b);
+        case 2: { // minimum
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan) return a;
+            if (b_has_nan) return b;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? a : b;
+        }
+        case 3: { // maximum
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan) return a;
+            if (b_has_nan) return b;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? b : a;
+        }
+        case 4: { // fmin
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan && b_has_nan) return a;
+            if (a_has_nan) return b;
+            if (b_has_nan) return a;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? a : b;
+        }
+        case 5: { // fmax
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan && b_has_nan) return a;
+            if (a_has_nan) return b;
+            if (b_has_nan) return a;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? b : a;
+        }
         case 16: return cpx_sub(a, b);
         case 17: return cpx_div(a, b);
         default: return cpx_add(a, b);
@@ -14214,6 +14335,40 @@ inline cpx_f_t apply_at_op<cpx_f_t>(cpx_f_t a, cpx_f_t b, int opCode) {
     switch (opCode) {
         case 0: return cpx_add_f(a, b);
         case 1: return cpx_mul_f(a, b);
+        case 2: { // minimum
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan) return a;
+            if (b_has_nan) return b;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? a : b;
+        }
+        case 3: { // maximum
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan) return a;
+            if (b_has_nan) return b;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? b : a;
+        }
+        case 4: { // fmin
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan && b_has_nan) return a;
+            if (a_has_nan) return b;
+            if (b_has_nan) return a;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? a : b;
+        }
+        case 5: { // fmax
+            bool a_has_nan = std::isnan(a.r) || std::isnan(a.i);
+            bool b_has_nan = std::isnan(b.r) || std::isnan(b.i);
+            if (a_has_nan && b_has_nan) return a;
+            if (a_has_nan) return b;
+            if (b_has_nan) return a;
+            bool a_less = (a.r < b.r) || (a.r == b.r && a.i < b.i);
+            return a_less ? b : a;
+        }
         case 16: return (cpx_f_t){a.r - b.r, a.i - b.i};
         case 17: return cpx_div_f(a, b);
         default: return cpx_add_f(a, b);
@@ -14329,76 +14484,62 @@ struct v_reduceat_unroll_helper {
                 int64_t rem = (end - j) % 8;
                 int64_t vec_end = end - rem;
                 for (; j < vec_end; j += 8) {
-                    acc0 += src[j];
-                    acc1 += src[j + 1];
-                    acc2 += src[j + 2];
-                    acc3 += src[j + 3];
-                    acc4 += src[j + 4];
-                    acc5 += src[j + 5];
-                    acc6 += src[j + 6];
-                    acc7 += src[j + 7];
+                    acc0 = apply_at_op(acc0, src[j], 0);
+                    acc1 = apply_at_op(acc1, src[j + 1], 0);
+                    acc2 = apply_at_op(acc2, src[j + 2], 0);
+                    acc3 = apply_at_op(acc3, src[j + 3], 0);
+                    acc4 = apply_at_op(acc4, src[j + 4], 0);
+                    acc5 = apply_at_op(acc5, src[j + 5], 0);
+                    acc6 = apply_at_op(acc6, src[j + 6], 0);
+                    acc7 = apply_at_op(acc7, src[j + 7], 0);
                 }
-                acc = ((acc0 + acc1) + (acc2 + acc3)) + ((acc4 + acc5) + (acc6 + acc7));
+                T s1 = apply_at_op(acc0, acc1, 0);
+                T s2 = apply_at_op(acc2, acc3, 0);
+                T s3 = apply_at_op(acc4, acc5, 0);
+                T s4 = apply_at_op(acc6, acc7, 0);
+                acc = apply_at_op(apply_at_op(s1, s2, 0), apply_at_op(s3, s4, 0), 0);
             } else if (opCode == 1) { // multiply
                 T acc0 = acc, acc1 = 1, acc2 = 1, acc3 = 1;
                 T acc4 = 1, acc5 = 1, acc6 = 1, acc7 = 1;
                 int64_t rem = (end - j) % 8;
                 int64_t vec_end = end - rem;
                 for (; j < vec_end; j += 8) {
-                    acc0 *= src[j];
-                    acc1 *= src[j + 1];
-                    acc2 *= src[j + 2];
-                    acc3 *= src[j + 3];
-                    acc4 *= src[j + 4];
-                    acc5 *= src[j + 5];
-                    acc6 *= src[j + 6];
-                    acc7 *= src[j + 7];
+                    acc0 = apply_at_op(acc0, src[j], 1);
+                    acc1 = apply_at_op(acc1, src[j + 1], 1);
+                    acc2 = apply_at_op(acc2, src[j + 2], 1);
+                    acc3 = apply_at_op(acc3, src[j + 3], 1);
+                    acc4 = apply_at_op(acc4, src[j + 4], 1);
+                    acc5 = apply_at_op(acc5, src[j + 5], 1);
+                    acc6 = apply_at_op(acc6, src[j + 6], 1);
+                    acc7 = apply_at_op(acc7, src[j + 7], 1);
                 }
-                acc = ((acc0 * acc1) * (acc2 * acc3)) * ((acc4 * acc5) * (acc6 * acc7));
-            } else if (opCode == 4) { // min / fmin
+                T p1 = apply_at_op(acc0, acc1, 1);
+                T p2 = apply_at_op(acc2, acc3, 1);
+                T p3 = apply_at_op(acc4, acc5, 1);
+                T p4 = apply_at_op(acc6, acc7, 1);
+                acc = apply_at_op(apply_at_op(p1, p2, 1), apply_at_op(p3, p4, 1), 1);
+            } else if (opCode == 2 || opCode == 3 || opCode == 4 || opCode == 5) { // minimum, maximum, fmin, fmax
                 T acc0 = acc, acc1 = acc, acc2 = acc, acc3 = acc;
                 T acc4 = acc, acc5 = acc, acc6 = acc, acc7 = acc;
                 int64_t rem = (end - j) % 8;
                 int64_t vec_end = end - rem;
                 for (; j < vec_end; j += 8) {
-                    acc0 = (src[j] < acc0) ? src[j] : acc0;
-                    acc1 = (src[j + 1] < acc1) ? src[j + 1] : acc1;
-                    acc2 = (src[j + 2] < acc2) ? src[j + 2] : acc2;
-                    acc3 = (src[j + 3] < acc3) ? src[j + 3] : acc3;
-                    acc4 = (src[j + 4] < acc4) ? src[j + 4] : acc4;
-                    acc5 = (src[j + 5] < acc5) ? src[j + 5] : acc5;
-                    acc6 = (src[j + 6] < acc6) ? src[j + 6] : acc6;
-                    acc7 = (src[j + 7] < acc7) ? src[j + 7] : acc7;
+                    acc0 = apply_at_op(acc0, src[j], opCode);
+                    acc1 = apply_at_op(acc1, src[j + 1], opCode);
+                    acc2 = apply_at_op(acc2, src[j + 2], opCode);
+                    acc3 = apply_at_op(acc3, src[j + 3], opCode);
+                    acc4 = apply_at_op(acc4, src[j + 4], opCode);
+                    acc5 = apply_at_op(acc5, src[j + 5], opCode);
+                    acc6 = apply_at_op(acc6, src[j + 6], opCode);
+                    acc7 = apply_at_op(acc7, src[j + 7], opCode);
                 }
-                T m1 = (acc1 < acc0) ? acc1 : acc0;
-                T m2 = (acc3 < acc2) ? acc3 : acc2;
-                T m3 = (acc5 < acc4) ? acc5 : acc4;
-                T m4 = (acc7 < acc6) ? acc7 : acc6;
-                T m5 = (m2 < m1) ? m2 : m1;
-                T m6 = (m4 < m3) ? m4 : m3;
-                acc = (m6 < m5) ? m6 : m5;
-            } else if (opCode == 5) { // max / fmax
-                T acc0 = acc, acc1 = acc, acc2 = acc, acc3 = acc;
-                T acc4 = acc, acc5 = acc, acc6 = acc, acc7 = acc;
-                int64_t rem = (end - j) % 8;
-                int64_t vec_end = end - rem;
-                for (; j < vec_end; j += 8) {
-                    acc0 = (src[j] > acc0) ? src[j] : acc0;
-                    acc1 = (src[j + 1] > acc1) ? src[j + 1] : acc1;
-                    acc2 = (src[j + 2] > acc2) ? src[j + 2] : acc2;
-                    acc3 = (src[j + 3] > acc3) ? src[j + 3] : acc3;
-                    acc4 = (src[j + 4] > acc4) ? src[j + 4] : acc4;
-                    acc5 = (src[j + 5] > acc5) ? src[j + 5] : acc5;
-                    acc6 = (src[j + 6] > acc6) ? src[j + 6] : acc6;
-                    acc7 = (src[j + 7] > acc7) ? src[j + 7] : acc7;
-                }
-                T m1 = (acc1 > acc0) ? acc1 : acc0;
-                T m2 = (acc3 > acc2) ? acc3 : acc2;
-                T m3 = (acc5 > acc4) ? acc5 : acc4;
-                T m4 = (acc7 > acc6) ? acc7 : acc6;
-                T m5 = (m2 > m1) ? m2 : m1;
-                T m6 = (m4 > m3) ? m4 : m3;
-                acc = (m6 > m5) ? m6 : m5;
+                T m1 = apply_at_op(acc0, acc1, opCode);
+                T m2 = apply_at_op(acc2, acc3, opCode);
+                T m3 = apply_at_op(acc4, acc5, opCode);
+                T m4 = apply_at_op(acc6, acc7, opCode);
+                T m5 = apply_at_op(m1, m2, opCode);
+                T m6 = apply_at_op(m3, m4, opCode);
+                acc = apply_at_op(m5, m6, opCode);
             }
         }
         #pragma omp simd
@@ -14551,7 +14692,7 @@ static inline void s_reduceat_op_impl(
                                 src_in_off += idx * stridesSrc[d];
                                 dest_in_off += idx * stridesDest[d];
                             }
-                            int d_idx = dest_base + dest_in_off;
+                            int64_t d_idx = dest_base + dest_in_off;
                             dest[d_idx] = op(dest[d_idx], src[src_j_off + src_in_off]);
                         }
                     }
@@ -15948,9 +16089,14 @@ static void v_histogram_uniform_kernel(
         if (val == max_val) {
             bin = nbins - 1;
         } else {
-            bin = (int)((val - min_val) * norm);
-            if (bin < 0) bin = 0;
-            if (bin >= nbins) bin = nbins - 1;
+            double scaled = std::floor((val - min_val) * norm);
+            if (std::isnan(scaled) || scaled < 0.0) {
+                bin = 0;
+            } else if (scaled >= (double)nbins) {
+                bin = nbins - 1;
+            } else {
+                bin = (int64_t)scaled;
+            }
             if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
                 bin++;
             } else if (bin > 0 && val < min_val + (double)bin * step) {
@@ -15984,9 +16130,14 @@ static void s_histogram_uniform_kernel(
         if (val == max_val) {
             bin = nbins - 1;
         } else {
-            bin = (int)((val - min_val) * norm);
-            if (bin < 0) bin = 0;
-            if (bin >= nbins) bin = nbins - 1;
+            double scaled = std::floor((val - min_val) * norm);
+            if (std::isnan(scaled) || scaled < 0.0) {
+                bin = 0;
+            } else if (scaled >= (double)nbins) {
+                bin = nbins - 1;
+            } else {
+                bin = (int64_t)scaled;
+            }
             if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
                 bin++;
             } else if (bin > 0 && val < min_val + (double)bin * step) {
@@ -16021,7 +16172,7 @@ static void v_histogram_binsearch_kernel(
             bin = nbins - 1;
         } else {
             const double *p = std::upper_bound(bin_edges, bin_edges + num_edges, val);
-            bin = (int)(p - bin_edges) - 1;
+            bin = (int64_t)(p - bin_edges) - 1;
             if (bin < 0 || bin >= nbins) continue;
         }
         if (weights != nullptr) {
@@ -16052,7 +16203,7 @@ static void s_histogram_binsearch_kernel(
             bin = nbins - 1;
         } else {
             const double *p = std::upper_bound(bin_edges, bin_edges + num_edges, val);
-            bin = (int)(p - bin_edges) - 1;
+            bin = (int64_t)(p - bin_edges) - 1;
             if (bin < 0 || bin >= nbins) continue;
         }
         if (weights != nullptr) {
@@ -17650,6 +17801,274 @@ void native_copy_strided(
         case 16:
             copy_strided_impl<Item16>((const Item16*)src, stridesSrc, (Item16*)dest, stridesDest, shape, rank);
             break;
+        default:
+            abort();
+    }
+}
+
+}
+
+// ============================================================================
+// SECTION: VECTORIZED & STRIDED BINARY MIN/MAX/FMIN/FMAX (P1-2)
+// ============================================================================
+
+template <typename T>
+VECTORIZED_TARGETS static void vectorized_minmax_impl(
+    int op_code,
+    const T* RESTRICT a,
+    const T* RESTRICT b,
+    T* RESTRICT out,
+    intptr_t n
+) {
+    if constexpr (!std::is_floating_point_v<T>) {
+        if (op_code == 2 || op_code == 4) {
+            for (intptr_t i = 0; i < n; i++) {
+                out[i] = a[i] < b[i] ? a[i] : b[i];
+            }
+        } else {
+            for (intptr_t i = 0; i < n; i++) {
+                out[i] = a[i] > b[i] ? a[i] : b[i];
+            }
+        }
+    } else {
+        for (intptr_t i = 0; i < n; i++) {
+            out[i] = apply_at_op(a[i], b[i], op_code);
+        }
+    }
+}
+
+template <typename T>
+static void strided_binary_minmax_impl(
+    int op_code,
+    int ndim,
+    const intptr_t* shape,
+    const void* a_data,
+    const intptr_t* a_strides,
+    const void* b_data,
+    const intptr_t* b_strides,
+    void* out_data,
+    const intptr_t* out_strides
+) {
+    const T* a = static_cast<const T*>(a_data);
+    const T* b = static_cast<const T*>(b_data);
+    T* out = static_cast<T*>(out_data);
+
+    if (ndim <= 0) {
+        out[0] = apply_at_op(a[0], b[0], op_code);
+        return;
+    }
+
+    intptr_t total_elements = 1;
+    for (int d = 0; d < ndim; d++) {
+        if (shape[d] <= 0) return;
+        total_elements *= shape[d];
+    }
+
+    if (ndim == 1) {
+        intptr_t sa = a_strides[0];
+        intptr_t sb = b_strides[0];
+        intptr_t so = out_strides[0];
+        intptr_t len = shape[0];
+        for (intptr_t i = 0; i < len; i++) {
+            out[i * so] = apply_at_op(a[i * sa], b[i * sb], op_code);
+        }
+        return;
+    }
+
+    DECLARE_RANK_BUFFER(int64_t, coord, ndim);
+    intptr_t offA = 0, offB = 0, offOut = 0;
+    for (intptr_t el = 0; el < total_elements; el++) {
+        out[offOut] = apply_at_op(a[offA], b[offB], op_code);
+        for (int d = ndim - 1; d >= 0; d--) {
+            coord[d]++;
+            if (coord[d] < shape[d]) {
+                offA += a_strides[d];
+                offB += b_strides[d];
+                offOut += out_strides[d];
+                break;
+            }
+            coord[d] = 0;
+            offA -= (shape[d] - 1) * a_strides[d];
+            offB -= (shape[d] - 1) * b_strides[d];
+            offOut -= (shape[d] - 1) * out_strides[d];
+        }
+    }
+}
+
+extern "C" {
+
+void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void* out, intptr_t n) {
+    if (a == nullptr || b == nullptr || out == nullptr || n <= 0) return;
+    switch (dtype) {
+        case 0: // float64
+            vectorized_minmax_impl<double>(op_code, static_cast<const double*>(a), static_cast<const double*>(b), static_cast<double*>(out), n);
+            break;
+        case 1: // float32
+            vectorized_minmax_impl<float>(op_code, static_cast<const float*>(a), static_cast<const float*>(b), static_cast<float*>(out), n);
+            break;
+        case 2: { // float16
+            const float16_t* fa = static_cast<const float16_t*>(a);
+            const float16_t* fb = static_cast<const float16_t*>(b);
+            float16_t* fo = static_cast<float16_t*>(out);
+            for (intptr_t i = 0; i < n; i++) fo[i] = apply_at_op(fa[i], fb[i], op_code);
+            break;
+        }
+        case 3: { // bfloat16
+            const bfloat16_t* ba = static_cast<const bfloat16_t*>(a);
+            const bfloat16_t* bb = static_cast<const bfloat16_t*>(b);
+            bfloat16_t* bo = static_cast<bfloat16_t*>(out);
+            for (intptr_t i = 0; i < n; i++) bo[i] = apply_at_op(ba[i], bb[i], op_code);
+            break;
+        }
+        case 4: // int64
+            vectorized_minmax_impl<int64_t>(op_code, static_cast<const int64_t*>(a), static_cast<const int64_t*>(b), static_cast<int64_t*>(out), n);
+            break;
+        case 5: // int32
+            vectorized_minmax_impl<int32_t>(op_code, static_cast<const int32_t*>(a), static_cast<const int32_t*>(b), static_cast<int32_t*>(out), n);
+            break;
+        case 6: // int16
+            vectorized_minmax_impl<int16_t>(op_code, static_cast<const int16_t*>(a), static_cast<const int16_t*>(b), static_cast<int16_t*>(out), n);
+            break;
+        case 7: // int8
+            vectorized_minmax_impl<int8_t>(op_code, static_cast<const int8_t*>(a), static_cast<const int8_t*>(b), static_cast<int8_t*>(out), n);
+            break;
+        case 8: // uint64
+            vectorized_minmax_impl<uint64_t>(op_code, static_cast<const uint64_t*>(a), static_cast<const uint64_t*>(b), static_cast<uint64_t*>(out), n);
+            break;
+        case 9: // uint32
+            vectorized_minmax_impl<uint32_t>(op_code, static_cast<const uint32_t*>(a), static_cast<const uint32_t*>(b), static_cast<uint32_t*>(out), n);
+            break;
+        case 10: // uint16
+            vectorized_minmax_impl<uint16_t>(op_code, static_cast<const uint16_t*>(a), static_cast<const uint16_t*>(b), static_cast<uint16_t*>(out), n);
+            break;
+        case 11: // uint8
+            vectorized_minmax_impl<uint8_t>(op_code, static_cast<const uint8_t*>(a), static_cast<const uint8_t*>(b), static_cast<uint8_t*>(out), n);
+            break;
+        case 12: { // complex128
+            const cpx_t* ca = static_cast<const cpx_t*>(a);
+            const cpx_t* cb = static_cast<const cpx_t*>(b);
+            cpx_t* co = static_cast<cpx_t*>(out);
+            for (intptr_t i = 0; i < n; i++) co[i] = apply_at_op(ca[i], cb[i], op_code);
+            break;
+        }
+        case 13: { // complex64
+            const cpx_f_t* ca = static_cast<const cpx_f_t*>(a);
+            const cpx_f_t* cb = static_cast<const cpx_f_t*>(b);
+            cpx_f_t* co = static_cast<cpx_f_t*>(out);
+            for (intptr_t i = 0; i < n; i++) co[i] = apply_at_op(ca[i], cb[i], op_code);
+            break;
+        }
+        case 14: { // boolean
+            const uint8_t* ba = static_cast<const uint8_t*>(a);
+            const uint8_t* bb = static_cast<const uint8_t*>(b);
+            uint8_t* bo = static_cast<uint8_t*>(out);
+            for (intptr_t i = 0; i < n; i++) bo[i] = apply_at_op_boolean(ba[i], bb[i], op_code);
+            break;
+        }
+        default:
+            abort();
+    }
+}
+
+void s_binary_minmax(
+    int op_code,
+    int dtype,
+    int ndim,
+    const intptr_t* shape,
+    const void* a_data,
+    const intptr_t* a_strides,
+    const void* b_data,
+    const intptr_t* b_strides,
+    void* out_data,
+    const intptr_t* out_strides
+) {
+    if (a_data == nullptr || b_data == nullptr || out_data == nullptr || (ndim > 0 && (shape == nullptr || a_strides == nullptr || b_strides == nullptr || out_strides == nullptr))) return;
+    switch (dtype) {
+        case 0:
+            strided_binary_minmax_impl<double>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 1:
+            strided_binary_minmax_impl<float>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 2:
+            strided_binary_minmax_impl<float16_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 3:
+            strided_binary_minmax_impl<bfloat16_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 4:
+            strided_binary_minmax_impl<int64_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 5:
+            strided_binary_minmax_impl<int32_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 6:
+            strided_binary_minmax_impl<int16_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 7:
+            strided_binary_minmax_impl<int8_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 8:
+            strided_binary_minmax_impl<uint64_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 9:
+            strided_binary_minmax_impl<uint32_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 10:
+            strided_binary_minmax_impl<uint16_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 11:
+            strided_binary_minmax_impl<uint8_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 12:
+            strided_binary_minmax_impl<cpx_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 13:
+            strided_binary_minmax_impl<cpx_f_t>(op_code, ndim, shape, a_data, a_strides, b_data, b_strides, out_data, out_strides);
+            break;
+        case 14: {
+            const uint8_t* a = static_cast<const uint8_t*>(a_data);
+            const uint8_t* b = static_cast<const uint8_t*>(b_data);
+            uint8_t* out = static_cast<uint8_t*>(out_data);
+            if (ndim <= 0) {
+                out[0] = apply_at_op_boolean(a[0], b[0], op_code);
+                return;
+            }
+            intptr_t total_elements = 1;
+            for (int d = 0; d < ndim; d++) {
+                if (shape[d] <= 0) return;
+                total_elements *= shape[d];
+            }
+            if (ndim == 1) {
+                intptr_t sa = a_strides[0];
+                intptr_t sb = b_strides[0];
+                intptr_t so = out_strides[0];
+                intptr_t len = shape[0];
+                for (intptr_t i = 0; i < len; i++) {
+                    out[i * so] = apply_at_op_boolean(a[i * sa], b[i * sb], op_code);
+                }
+                return;
+            }
+            DECLARE_RANK_BUFFER(int64_t, coord, ndim);
+            intptr_t offA = 0, offB = 0, offOut = 0;
+            for (intptr_t el = 0; el < total_elements; el++) {
+                out[offOut] = apply_at_op_boolean(a[offA], b[offB], op_code);
+                for (int d = ndim - 1; d >= 0; d--) {
+                    coord[d]++;
+                    if (coord[d] < shape[d]) {
+                        offA += a_strides[d];
+                        offB += b_strides[d];
+                        offOut += out_strides[d];
+                        break;
+                    }
+                    coord[d] = 0;
+                    offA -= (shape[d] - 1) * a_strides[d];
+                    offB -= (shape[d] - 1) * b_strides[d];
+                    offOut -= (shape[d] - 1) * out_strides[d];
+                }
+            }
+            break;
+        }
         default:
             abort();
     }

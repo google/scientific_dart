@@ -22,14 +22,130 @@ import 'sorting.dart';
 
 /// Finds the unique elements of an array.
 ///
-/// Returns the sorted unique elements of an array.
+/// Returns the sorted unique elements of [ar].
 ///
-/// If [ar] is not 1D, it is flattened first.
+/// If [ar] is not 1-D, it is flattened first.
 ///
-/// It is an error if [ar] has an unsupported dtype.
+/// If [out] is provided, the result is written into it and returned.
 ///
-/// It is an error if [ar] is disposed.
-dynamic unique<T extends DTypeTag>(
+/// The [ar] must not be disposed.
+/// If provided, [out] must not be disposed and must have compatible dtype and shape.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
+NDArray<T> unique<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) =>
+    _uniqueImpl(ar, out: out).values;
+
+/// Finds the unique elements of an array and the indices of their first occurrences.
+///
+/// Returns a record `(values: ..., index: ...)` containing:
+/// - `values`: The sorted unique elements of [ar].
+/// - `index`: The indices of the first occurrences of the unique values in the
+///   (flattened) original array [ar].
+///
+/// If [ar] is not 1-D, it is flattened first.
+///
+/// If [out] is provided, the unique values are written into it.
+///
+/// The [ar] must not be disposed.
+/// If provided, [out] must not be disposed and must have compatible dtype and shape.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
+({NDArray<T> values, NDArray<Int64> index}) uniqueWithIndex<T extends DTypeTag>(
+  NDArray<T> ar, {
+  NDArray<T>? out,
+}) {
+  final res = _uniqueImpl(ar, returnIndex: true, out: out);
+  return (values: res.values, index: res.index!);
+}
+
+/// Finds the unique elements of an array and the indices to reconstruct the original array.
+///
+/// Returns a record `(values: ..., inverse: ...)` containing:
+/// - `values`: The sorted unique elements of [ar].
+/// - `inverse`: The indices to reconstruct the (flattened) original array [ar]
+///   from the unique values.
+///
+/// If [ar] is not 1-D, it is flattened first.
+///
+/// If [out] is provided, the unique values are written into it.
+///
+/// The [ar] must not be disposed.
+/// If provided, [out] must not be disposed and must have compatible dtype and shape.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
+({NDArray<T> values, NDArray<Int64> inverse})
+uniqueWithInverse<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
+  final res = _uniqueImpl(ar, returnInverse: true, out: out);
+  return (values: res.values, inverse: res.inverse!);
+}
+
+/// Finds the unique elements of an array and the number of times each element appears.
+///
+/// Returns a record `(values: ..., counts: ...)` containing:
+/// - `values`: The sorted unique elements of [ar].
+/// - `counts`: The number of times each of the unique values comes up in [ar].
+///
+/// If [ar] is not 1-D, it is flattened first.
+///
+/// If [out] is provided, the unique values are written into it.
+///
+/// The [ar] must not be disposed.
+/// If provided, [out] must not be disposed and must have compatible dtype and shape.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
+({NDArray<T> values, NDArray<Int64> counts})
+uniqueWithCounts<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
+  final res = _uniqueImpl(ar, returnCounts: true, out: out);
+  return (values: res.values, counts: res.counts!);
+}
+
+/// Finds the unique elements of an array along with indices, inverse indices, and counts.
+///
+/// Returns a record `(values: ..., index: ..., inverse: ..., counts: ...)` containing:
+/// - `values`: The sorted unique elements of [ar].
+/// - `index`: The indices of the first occurrences of the unique values in the
+///   (flattened) original array [ar].
+/// - `inverse`: The indices to reconstruct the (flattened) original array [ar]
+///   from the unique values.
+/// - `counts`: The number of times each of the unique values comes up in [ar].
+///
+/// If [ar] is not 1-D, it is flattened first.
+///
+/// If [out] is provided, the unique values are written into it.
+///
+/// The [ar] must not be disposed.
+/// If provided, [out] must not be disposed and must have compatible dtype and shape.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
+({
+  NDArray<T> values,
+  NDArray<Int64> index,
+  NDArray<Int64> inverse,
+  NDArray<Int64> counts,
+})
+uniqueAll<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
+  final res = _uniqueImpl(
+    ar,
+    returnIndex: true,
+    returnInverse: true,
+    returnCounts: true,
+    out: out,
+  );
+  return (
+    values: res.values,
+    index: res.index!,
+    inverse: res.inverse!,
+    counts: res.counts!,
+  );
+}
+
+({
+  NDArray<T> values,
+  NDArray<Int64>? index,
+  NDArray<Int64>? inverse,
+  NDArray<Int64>? counts,
+})
+_uniqueImpl<T extends DTypeTag>(
   NDArray<T> ar, {
   bool returnIndex = false,
   bool returnInverse = false,
@@ -43,7 +159,11 @@ dynamic unique<T extends DTypeTag>(
     throw StateError('Cannot write unique result to a disposed output array.');
   }
   if (out != null && out.dtype != ar.dtype) {
-    throw ArgumentError('Incompatible out buffer dtype.');
+    throw ArgumentError.value(
+      out.dtype,
+      'out',
+      'Must have the same dtype as ar (${ar.dtype})',
+    );
   }
 
   return NDArray.scope(() {
@@ -60,27 +180,24 @@ dynamic unique<T extends DTypeTag>(
         out: out,
       );
       if (tableRes != null) {
-        if (returnCounts) {
-          return (
-            values: tableRes.values,
-            index: null,
-            inverse: null,
-            counts: tableRes.counts,
-          );
-        }
-        return tableRes.values;
+        return (
+          values: tableRes.values,
+          index: null,
+          inverse: null,
+          counts: tableRes.counts,
+        );
       }
     }
 
     final dest = NDArray<T>.create(flat.shape, flat.dtype);
     final outIndex = returnIndex
-        ? NDArray<DTypeTag>.create([flat.size], DType.int64)
+        ? NDArray<Int64>.create([flat.size], DType.int64)
         : null;
     final outInverse = returnInverse
-        ? NDArray<DTypeTag>.create([flat.size], DType.int64)
+        ? NDArray<Int64>.create([flat.size], DType.int64)
         : null;
     final outCounts = returnCounts
-        ? NDArray<DTypeTag>.create([flat.size], DType.int64)
+        ? NDArray<Int64>.create([flat.size], DType.int64)
         : null;
 
     final pIndex = outIndex != null
@@ -109,33 +226,35 @@ dynamic unique<T extends DTypeTag>(
 
     if (uniqueCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(
+          out.shape,
+          'out',
+          'Must have shape [0] for empty unique result',
+        );
       }
       final empty =
           out ?? (NDArray<T>.create([0], flat.dtype)..detachToParentScope());
 
-      if (returnIndex || returnInverse || returnCounts) {
-        return (
-          values: empty,
-          index: returnIndex
-              ? (NDArray<DTypeTag>.create([0], DType.int64)
-                  ..detachToParentScope())
-              : null,
-          inverse: returnInverse
-              ? (NDArray<DTypeTag>.create([0], DType.int64)
-                  ..detachToParentScope())
-              : null,
-          counts: returnCounts
-              ? (NDArray<DTypeTag>.create([0], DType.int64)
-                  ..detachToParentScope())
-              : null,
-        );
-      }
-      return empty;
+      return (
+        values: empty,
+        index: returnIndex
+            ? (NDArray<Int64>.create([0], DType.int64)..detachToParentScope())
+            : null,
+        inverse: returnInverse
+            ? (NDArray<Int64>.create([0], DType.int64)..detachToParentScope())
+            : null,
+        counts: returnCounts
+            ? (NDArray<Int64>.create([0], DType.int64)..detachToParentScope())
+            : null,
+      );
     }
 
     if (out != null && !listEquals(out.shape, [uniqueCount])) {
-      throw ArgumentError('Incompatible out buffer shape.');
+      throw ArgumentError.value(
+        out.shape,
+        'out',
+        'Must have shape [$uniqueCount] to match unique result',
+      );
     }
 
     final validView = dest.slice([Slice(start: 0, stop: uniqueCount)]);
@@ -147,34 +266,30 @@ dynamic unique<T extends DTypeTag>(
       result = validView.copy()..detachToParentScope();
     }
 
-    NDArray<DTypeTag>? indexResult;
+    NDArray<Int64>? indexResult;
     if (outIndex != null) {
       indexResult = outIndex.slice([Slice(start: 0, stop: uniqueCount)]).copy()
         ..detachToParentScope();
     }
 
-    NDArray<DTypeTag>? inverseResult;
+    NDArray<Int64>? inverseResult;
     if (outInverse != null) {
       inverseResult = outInverse.copy()..detachToParentScope();
     }
 
-    NDArray<DTypeTag>? countsResult;
+    NDArray<Int64>? countsResult;
     if (outCounts != null) {
       countsResult = outCounts.slice([
         Slice(start: 0, stop: uniqueCount),
       ]).copy()..detachToParentScope();
     }
 
-    if (returnIndex || returnInverse || returnCounts) {
-      return (
-        values: result,
-        index: indexResult,
-        inverse: inverseResult,
-        counts: countsResult,
-      );
-    }
-
-    return result;
+    return (
+      values: result,
+      index: indexResult,
+      inverse: inverseResult,
+      counts: countsResult,
+    );
   });
 }
 
@@ -183,6 +298,8 @@ dynamic unique<T extends DTypeTag>(
 /// Returns the sorted, unique values that are in both of the input arrays.
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
 NDArray<T> intersect1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
@@ -218,8 +335,8 @@ NDArray<T> intersect1d<T extends DTypeTag>(
         ? c2
         : c2.flatten();
 
-    final NDArray u1 = assumeUnique ? sort(flat1) : unique(flat1) as NDArray;
-    final NDArray u2 = assumeUnique ? sort(flat2) : unique(flat2) as NDArray;
+    final NDArray<T> u1 = assumeUnique ? sort(flat1) : unique(flat1);
+    final NDArray<T> u2 = assumeUnique ? sort(flat2) : unique(flat2);
 
     final maxDstSize = u1.size < u2.size ? u1.size : u2.size;
 
@@ -269,6 +386,8 @@ NDArray<T> intersect1d<T extends DTypeTag>(
 /// Returns the unique values in [ar1] that are not in [ar2].
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
 NDArray<T> setdiff1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
@@ -304,8 +423,8 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
         ? c2
         : c2.flatten();
 
-    final NDArray u1 = assumeUnique ? sort(flat1) : unique(flat1) as NDArray;
-    final NDArray u2 = assumeUnique ? sort(flat2) : unique(flat2) as NDArray;
+    final NDArray<T> u1 = assumeUnique ? sort(flat1) : unique(flat1);
+    final NDArray<T> u2 = assumeUnique ? sort(flat2) : unique(flat2);
 
     final maxDstSize = u1.size;
 
@@ -355,6 +474,8 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
 /// Returns the sorted, unique values that are in only one (not both) of the input arrays.
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
 NDArray<T> setxor1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
@@ -390,8 +511,8 @@ NDArray<T> setxor1d<T extends DTypeTag>(
         ? c2
         : c2.flatten();
 
-    final NDArray u1 = assumeUnique ? sort(flat1) : unique(flat1) as NDArray;
-    final NDArray u2 = assumeUnique ? sort(flat2) : unique(flat2) as NDArray;
+    final NDArray<T> u1 = assumeUnique ? sort(flat1) : unique(flat1);
+    final NDArray<T> u2 = assumeUnique ? sort(flat2) : unique(flat2);
 
     final maxDstSize = u1.size + u2.size;
 
@@ -441,6 +562,8 @@ NDArray<T> setxor1d<T extends DTypeTag>(
 /// Returns the unique, sorted array of values that are in either of the two input arrays.
 ///
 /// It is an error if [ar1] or [ar2] is disposed.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
 NDArray<T> union1d<T extends DTypeTag>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
@@ -473,8 +596,8 @@ NDArray<T> union1d<T extends DTypeTag>(
         ? c2
         : c2.flatten();
 
-    final NDArray u1 = unique(flat1) as NDArray;
-    final NDArray u2 = unique(flat2) as NDArray;
+    final NDArray<T> u1 = unique(flat1);
+    final NDArray<T> u2 = unique(flat2);
 
     final maxDstSize = u1.size + u2.size;
 
@@ -524,6 +647,8 @@ NDArray<T> union1d<T extends DTypeTag>(
 /// Returns a boolean array of the same shape as [element] that is `true` where an element of [element] is in [testElements] and `false` otherwise.
 ///
 /// It is an error if [element] or [testElements] is disposed.
+///
+/// {@example /example/set_operations_example.dart lang=dart}
 NDArray<Boolean> isin<T extends DTypeTag>(
   NDArray<T> element,
   NDArray<T> testElements, {
@@ -586,9 +711,9 @@ NDArray<Boolean> isin<T extends DTypeTag>(
         commonDType,
         invert,
       )) {
-        final NDArray uTest = assumeUnique
+        final NDArray<T> uTest = assumeUnique
             ? sort(flatTest)
-            : unique(flatTest) as NDArray;
+            : unique(flatTest);
 
         ndarray_isin(
           contigElement.pointer.cast(),
@@ -981,7 +1106,7 @@ bool _tryIsinTable<T extends DTypeTag>(
   }
 }
 
-({NDArray<T> values, NDArray<DTypeTag>? counts})? _tryUniqueTable<
+({NDArray<T> values, NDArray<Int64>? counts})? _tryUniqueTable<
   T extends DTypeTag
 >(NDArray<T> values, {required bool returnCounts, NDArray<T>? out}) {
   final mm = _minMaxInt(values);
@@ -1254,7 +1379,7 @@ bool _tryIsinTable<T extends DTypeTag>(
       final NDArray<T> res = (out != null && !useTempOut)
           ? out
           : NDArray<T>.create([uniqueCount], values.dtype);
-      final counts = NDArray<DTypeTag>.create([uniqueCount], DType.int64);
+      final counts = NDArray<Int64>.create([uniqueCount], DType.int64);
 
       final resPtr = res.pointer;
       final pCounts = counts.pointer.cast<ffi.Int64>();

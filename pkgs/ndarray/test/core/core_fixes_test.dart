@@ -250,7 +250,7 @@ void main() {
 
           // ndenumerate helper function
           final entries = ndenumerate(view).toList();
-          expect(entries.map((e) => e.$2).toList(), [50, 60, 80, 90]);
+          expect(entries.map((e) => e.value).toList(), [50, 60, 80, 90]);
         }),
       );
 

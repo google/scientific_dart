@@ -658,8 +658,8 @@ void main() {
               dt,
             );
             try {
-              final u = unique(arr) as NDArray<AnySpec>;
-              final uWithCounts = unique(arr, returnCounts: true);
+              final u = unique(arr);
+              final uWithCounts = uniqueWithCounts(arr);
               try {
                 expect(u.size, equals(5));
                 final list = u.toList();
@@ -671,7 +671,7 @@ void main() {
               } finally {
                 u.dispose();
                 uWithCounts.values.dispose();
-                uWithCounts.counts?.dispose();
+                uWithCounts.counts.dispose();
               }
             } finally {
               arr.dispose();

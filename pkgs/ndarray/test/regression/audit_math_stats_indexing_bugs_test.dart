@@ -162,8 +162,8 @@ void main() {
 
         final items = ndenumerate(scalarView).toList();
         expect(items.length, equals(1));
-        expect(items.first.$1, isEmpty);
-        expect(items.first.$2, equals(300));
+        expect(items.first.coordinate, isEmpty);
+        expect(items.first.value, equals(300));
 
         base.dispose();
       },
@@ -748,7 +748,8 @@ void main() {
             DType.boolean,
           );
           final sb = nansum(b);
-          expect(sb.scalar, isTrue);
+          expect(sb.dtype, equals(DType.int64));
+          expect(sb.scalar, equals(2));
 
           final u = NDArray.fromList([10, 20, 30], [3], DType.uint64);
           final su = nansum(u);

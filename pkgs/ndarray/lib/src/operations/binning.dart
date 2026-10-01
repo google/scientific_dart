@@ -36,7 +36,7 @@ bool _listEquals<T>(List<T>? a, List<T>? b) {
 }
 
 // Fast copy and cast between NDArrays
-void _fastCopyAndCast(NDArray src, NDArray dest) {
+void _fastCopyAndCast(NDArray<DTypeTag> src, NDArray<DTypeTag> dest) {
   assert(src.size == dest.size);
   if (src.dtype == dest.dtype) {
     src.copy(out: dest);
@@ -64,10 +64,7 @@ void _fastCopyAndCast(NDArray src, NDArray dest) {
 /// - It is an error if [out] has incompatible shape or dtype.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<DTypeTag>.fromList([0, 1, 1, 3, 2, 1, 7], [7], DType.int32);
-/// final counts = bincount(a);
-/// ```
+/// {@example /example/binning_example.dart lang=dart}
 ///
 /// Refer to the [NumPy bincount reference](https://numpy.org/doc/stable/reference/generated/numpy.bincount.html)
 /// for details.
@@ -80,21 +77,36 @@ NDArray<T> bincount<T extends DTypeTag>(
   if (x.isDisposed) {
     throw StateError('Cannot compute bincount of a disposed array.');
   }
+  if (weights != null && weights.isDisposed) {
+    throw StateError('Weights array is disposed.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError('Output array is disposed.');
+  }
+  if (!x.dtype.isInteger) {
+    throw ArgumentError.value(x.dtype, 'x', 'Must be an integer DType.');
+  }
   if (x.shape.length != 1) {
     throw ArgumentError('Input array x must be 1D.');
   }
   if (minlength != null && minlength < 0) {
     throw ArgumentError('minlength must be non-negative.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Output array is disposed.');
+  if (weights != null && !_listEquals(weights.shape, x.shape)) {
+    throw ArgumentError('Weights must have the same shape as x.');
+  }
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.shape.length != 1) {
+      throw ArgumentError('Output array must be 1D.');
+    }
   }
 
   return NDArray.scope(() {
     if (x.size == 0) {
       final outSize = minlength ?? 0;
       if (out != null) {
-        if (out.shape.length != 1 || out.shape[0] < outSize) {
+        if (out.shape[0] < outSize) {
           throw ArgumentError(
             'Output array must be 1D and have size at least $outSize.',
           );
@@ -108,30 +120,25 @@ NDArray<T> bincount<T extends DTypeTag>(
       return result.detachToParentScope();
     }
 
-    // Validate non-negative
+    // Validate non-negative and uint64 bounds
     final minVal = min(x).scalar as int;
-    if (minVal < 0) {
+    final maxVal = max(x).scalar as int;
+    if (x.dtype == DType.uint64) {
+      if (minVal < 0 || maxVal < 0) {
+        throw RangeError('uint64 bin value exceeds maximum supported size.');
+      }
+    } else if (minVal < 0) {
       throw ArgumentError('Input array x must be non-negative.');
     }
 
-    final maxVal = max(x).scalar as int;
     final minRequiredSize = math.max(maxVal + 1, minlength ?? 0);
-
-    if (weights != null) {
-      if (weights.isDisposed) {
-        throw StateError('Weights array is disposed.');
-      }
-      if (!_listEquals(weights.shape, x.shape)) {
-        throw ArgumentError('Weights must have the same shape as x.');
-      }
-    }
 
     // Determine target DType for the result
     final DType<T> targetDType =
         (out?.dtype ?? weights?.dtype ?? DType.int64) as DType<T>;
 
     if (out != null) {
-      if (out.shape.length != 1 || out.shape[0] < minRequiredSize) {
+      if (out.shape[0] < minRequiredSize) {
         throw ArgumentError(
           'Output array must be 1D and have size at least $minRequiredSize.',
         );
@@ -392,11 +399,7 @@ NDArray<T> bincount<T extends DTypeTag>(
 /// - It is an error if [out] has incompatible shape or dtype.
 ///
 /// **Example:**
-/// ```dart
-/// final x = NDArray<Float64>.fromList([0.2, 6.4, 3.0, 1.6], [4], DType.float64);
-/// final bins = NDArray<Float64>.fromList([0.0, 1.0, 2.5, 4.0, 10.0], [5], DType.float64);
-/// final inds = digitize(x, bins);
-/// ```
+/// {@example /example/binning_example.dart lang=dart}
 ///
 /// Refer to the [NumPy digitize reference](https://numpy.org/doc/stable/reference/generated/numpy.digitize.html)
 /// for details.
@@ -439,47 +442,65 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   if (x.dtype.isComplex || bins.dtype.isComplex) {
     throw ArgumentError('Complex arrays are not supported in digitize.');
   }
+  if (out != null) {
+    validateOutBuffer(out);
+  }
 
   return NDArray.scope(() {
     // Check monotonicity
     bool increasing = true;
     bool decreasing = true;
     final len = bins.size;
-    if (bins.dtype == DType.uint64) {
-      var prev = bins.getCell([0]) as int;
-      for (var i = 1; i < len; i++) {
-        final curr = bins.getCell([i]) as int;
-        final cmp = uint64Compare(curr, prev);
-        if (cmp < 0) increasing = false;
-        if (cmp > 0) decreasing = false;
-        prev = curr;
-      }
-    } else if (bins.dtype.isInteger) {
-      var prev = (bins.getCell([0]) as num).toInt();
-      for (var i = 1; i < len; i++) {
-        final curr = (bins.getCell([i]) as num).toInt();
-        if (curr < prev) increasing = false;
-        if (curr > prev) decreasing = false;
-        prev = curr;
-      }
-    } else {
-      double toDoubleVal(dynamic v) =>
-          v is num ? v.toDouble() : (v as dynamic).value as double;
-      var prev = toDoubleVal(bins.getCell([0]));
-      if (prev.isNaN) {
-        throw ArgumentError('bins must be monotonic and must not contain NaN.');
-      }
-      for (var i = 1; i < len; i++) {
-        final curr = toDoubleVal(bins.getCell([i]));
-        if (curr.isNaN) {
+    switch (bins.dtype) {
+      case DType.uint64:
+        var prev = bins.getCell([0]) as int;
+        for (var i = 1; i < len; i++) {
+          final curr = bins.getCell([i]) as int;
+          final cmp = uint64Compare(curr, prev);
+          if (cmp < 0) increasing = false;
+          if (cmp > 0) decreasing = false;
+          prev = curr;
+        }
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+        var prev = (bins.getCell([0]) as num).toInt();
+        for (var i = 1; i < len; i++) {
+          final curr = (bins.getCell([i]) as num).toInt();
+          if (curr < prev) increasing = false;
+          if (curr > prev) decreasing = false;
+          prev = curr;
+        }
+      case DType.float64:
+      case DType.float32:
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.boolean:
+      case DType.complex128:
+      case DType.complex64:
+        double toDoubleVal(dynamic v) =>
+            v is num ? v.toDouble() : (v as dynamic).value as double;
+        var prev = toDoubleVal(bins.getCell([0]));
+        if (prev.isNaN) {
           throw ArgumentError(
             'bins must be monotonic and must not contain NaN.',
           );
         }
-        if (curr < prev) increasing = false;
-        if (curr > prev) decreasing = false;
-        prev = curr;
-      }
+        for (var i = 1; i < len; i++) {
+          final curr = toDoubleVal(bins.getCell([i]));
+          if (curr.isNaN) {
+            throw ArgumentError(
+              'bins must be monotonic and must not contain NaN.',
+            );
+          }
+          if (curr < prev) increasing = false;
+          if (curr > prev) decreasing = false;
+          prev = curr;
+        }
     }
     if (!increasing && !decreasing) {
       throw ArgumentError('bins must be monotonic.');
@@ -541,16 +562,13 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - For non-uniform bins, uses a native C binary search kernel with $O(N \log M)$ time complexity.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<Float64>.fromList([1, 2, 1], [3], DType.float64);
-/// final (:hist, :binEdges) = histogram(a, bins: 2, range: (0.0, 2.0));
-/// ```
+/// {@example /example/binning_example.dart lang=dart}
 ///
 /// Refer to the [NumPy histogram reference](https://numpy.org/doc/stable/reference/generated/numpy.histogram.html)
 /// for details.
 ({NDArray<AnySpec> hist, NDArray<Float64> binEdges}) histogram(
   NDArray<DTypeTag> x, {
-  dynamic bins = 10,
+  Object bins = 10,
   (double, double)? range,
   bool density = false,
   NDArray<DTypeTag>? weights,
@@ -641,7 +659,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         dtype: DType.float64,
       );
       norm = nbins / (maxX - minX);
-    } else if (bins is NDArray) {
+    } else if (bins is NDArray<DTypeTag>) {
       if (bins.isDisposed) {
         throw StateError('bins array is disposed.');
       }

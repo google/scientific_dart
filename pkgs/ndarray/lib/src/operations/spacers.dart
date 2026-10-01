@@ -127,7 +127,7 @@ NDArray<T> linspace<T extends DTypeTag>(
 ///
 /// **Memory Ownership & Lifetime:**
 /// - Allocates a new array on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
-({NDArray<T> samples, dynamic step}) linspaceWithStep<T extends DTypeTag>(
+({NDArray<T> samples, Object step}) linspaceWithStep<T extends DTypeTag>(
   Object? start,
   Object? stop,
   int numSamples, {
@@ -135,7 +135,7 @@ NDArray<T> linspace<T extends DTypeTag>(
   required DType<T> dtype,
   NDArray<T>? out,
 }) {
-  return linspaceInternal<T>(
+  final res = linspaceInternal<T>(
     start,
     stop,
     numSamples,
@@ -143,6 +143,7 @@ NDArray<T> linspace<T extends DTypeTag>(
     dtype: dtype,
     out: out,
   );
+  return (samples: res.samples, step: res.step as Object);
 }
 
 /// Generalized [linspace] that supports broadcasting when [start] or [stop] are [NDArray]s.
@@ -270,10 +271,15 @@ _linspaceGridInternal<T extends DTypeTag>(
     final stopArr = toNDArray(stop, resolvedDType);
 
     final commonShape = broadcastShapes(startArr.shape, stopArr.shape);
-    final actualAxis = axis < 0 ? commonShape.length + 1 + axis : axis;
-    if (actualAxis < 0 || actualAxis > commonShape.length) {
-      throw ArgumentError(
-        'Axis $axis out of bounds for rank ${commonShape.length}',
+    final outRank = commonShape.length + 1;
+    final actualAxis = axis < 0 ? outRank + axis : axis;
+    if (actualAxis < 0 || actualAxis >= outRank) {
+      throw RangeError.range(
+        axis,
+        -outRank,
+        outRank - 1,
+        'axis',
+        'Must be within valid rank range',
       );
     }
 
@@ -656,10 +662,15 @@ NDArray<T> logspaceGrid<T extends DTypeTag>(
       broadcastShapes(startArr.shape, stopArr.shape),
       actualBase.shape,
     );
-    final actualAxis = axis < 0 ? commonShape.length + 1 + axis : axis;
-    if (actualAxis < 0 || actualAxis > commonShape.length) {
-      throw ArgumentError(
-        'Axis $axis out of bounds for rank ${commonShape.length}',
+    final outRank = commonShape.length + 1;
+    final actualAxis = axis < 0 ? outRank + axis : axis;
+    if (actualAxis < 0 || actualAxis >= outRank) {
+      throw RangeError.range(
+        axis,
+        -outRank,
+        outRank - 1,
+        'axis',
+        'Must be within valid rank range',
       );
     }
 
@@ -918,10 +929,15 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
     }
 
     final commonShape = broadcastShapes(startArr.shape, stopArr.shape);
-    final actualAxis = axis < 0 ? commonShape.length + 1 + axis : axis;
-    if (actualAxis < 0 || actualAxis > commonShape.length) {
-      throw ArgumentError(
-        'Axis $axis out of bounds for rank ${commonShape.length}',
+    final outRank = commonShape.length + 1;
+    final actualAxis = axis < 0 ? outRank + axis : axis;
+    if (actualAxis < 0 || actualAxis >= outRank) {
+      throw RangeError.range(
+        axis,
+        -outRank,
+        outRank - 1,
+        'axis',
+        'Must be within valid rank range',
       );
     }
     final startBroad = broadcastTo(startArr, commonShape);

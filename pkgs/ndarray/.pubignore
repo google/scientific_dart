@@ -1,7 +1,13 @@
-# Exclude local build artifacts and caches
+# Exclude local build artifacts, caches, and internal tracking docs
 .dart_tool/
 build/
+pubspec.lock
+coverage/
+scratch/
+PRODUCTION_READINESS_REVIEW.md
+TODO.md
 third_party/highway/hwy_build/
+third_party/highway/build/
 
 # Exclude non-build Highway documentation, tests, benchmarks, and CI configs
 # while keeping CMakeLists.txt, cmake/, and hwy/ library sources required for source builds.

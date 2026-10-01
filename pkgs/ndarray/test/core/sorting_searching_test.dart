@@ -516,8 +516,8 @@ void main() {
             expect(() => argmax(a, axis: 1), throwsArgumentError);
 
             // Reducing along non-zero-sized axis (axis 0), but overall size is 0
-            expect(() => argmin(a, axis: 0), throwsArgumentError);
-            expect(() => argmax(a, axis: 0), throwsArgumentError);
+            expect(argmin(a, axis: 0).shape, equals([0]));
+            expect(argmax(a, axis: 0).shape, equals([0]));
           }),
         );
       });
@@ -1364,7 +1364,7 @@ void main() {
 
           // unique
           final outU = NDArray.zeros([4], DType.int64);
-          final resU = unique(a, out: outU) as NDArray<AnySpec>;
+          final resU = unique(a, out: outU);
           expect(identical(resU, outU), isTrue);
           expect(outU.toList(), [1, 2, 3, 4]);
 
@@ -1399,6 +1399,236 @@ void main() {
           expect(outIsin.toList(), [false, true, true, false, true]);
         }),
       );
+
+      group('unique family across all DTypes', () {
+        test(
+          'int8 counting sort specialization and optional returns',
+          () => NDArray.scope(() {
+            final a = NDArray<Int8>.fromList(
+              [-50, 10, -50, 120, -128, 127, 10],
+              [7],
+              DType.int8,
+            );
+            final u = unique(a);
+            expect(u.toList(), equals([-128, -50, 10, 120, 127]));
+
+            final withIdx = uniqueWithIndex(a);
+            expect(withIdx.values.toList(), equals([-128, -50, 10, 120, 127]));
+            expect(withIdx.index.toList(), equals([4, 0, 1, 3, 5]));
+
+            final withInv = uniqueWithInverse(a);
+            expect(withInv.values.toList(), equals([-128, -50, 10, 120, 127]));
+            expect(withInv.inverse.toList(), equals([1, 2, 1, 3, 0, 4, 2]));
+
+            final withCnt = uniqueWithCounts(a);
+            expect(withCnt.values.toList(), equals([-128, -50, 10, 120, 127]));
+            expect(withCnt.counts.toList(), equals([1, 2, 2, 1, 1]));
+
+            final all = uniqueAll(a);
+            expect(all.values.toList(), equals([-128, -50, 10, 120, 127]));
+            expect(all.index.toList(), equals([4, 0, 1, 3, 5]));
+            expect(all.inverse.toList(), equals([1, 2, 1, 3, 0, 4, 2]));
+            expect(all.counts.toList(), equals([1, 2, 2, 1, 1]));
+          }),
+        );
+
+        test(
+          'uint16 Highway VQSort and optional returns',
+          () => NDArray.scope(() {
+            final a = NDArray<Uint16>.fromList(
+              [1000, 50, 1000, 65535, 0, 50],
+              [6],
+              DType.uint16,
+            );
+            expect(unique(a).toList(), equals([0, 50, 1000, 65535]));
+
+            final all = uniqueAll(a);
+            expect(all.values.toList(), equals([0, 50, 1000, 65535]));
+            expect(all.index.toList(), equals([4, 1, 0, 3]));
+            expect(all.inverse.toList(), equals([2, 1, 2, 3, 0, 1]));
+            expect(all.counts.toList(), equals([1, 2, 2, 1]));
+          }),
+        );
+
+        test(
+          'uint32 Highway VQSort and optional returns',
+          () => NDArray.scope(() {
+            final a = NDArray<Uint32>.fromList(
+              [100000, 50, 100000, 4000000000, 0, 50],
+              [6],
+              DType.uint32,
+            );
+            expect(unique(a).toList(), equals([0, 50, 100000, 4000000000]));
+
+            final all = uniqueAll(a);
+            expect(all.values.toList(), equals([0, 50, 100000, 4000000000]));
+            expect(all.index.toList(), equals([4, 1, 0, 3]));
+            expect(all.inverse.toList(), equals([2, 1, 2, 3, 0, 1]));
+            expect(all.counts.toList(), equals([1, 2, 2, 1]));
+          }),
+        );
+
+        test(
+          'uint64 Highway VQSort and optional returns',
+          () => NDArray.scope(() {
+            final a = NDArray<Uint64>.fromList(
+              [100000, 50, 100000, 9000000000, 0, 50],
+              [6],
+              DType.uint64,
+            );
+            expect(unique(a).toList(), equals([0, 50, 100000, 9000000000]));
+
+            final all = uniqueAll(a);
+            expect(all.values.toList(), equals([0, 50, 100000, 9000000000]));
+            expect(all.index.toList(), equals([4, 1, 0, 3]));
+            expect(all.inverse.toList(), equals([2, 1, 2, 3, 0, 1]));
+            expect(all.counts.toList(), equals([1, 2, 2, 1]));
+          }),
+        );
+
+        test(
+          'float32 with multiple NaNs deduplication',
+          () => NDArray.scope(() {
+            final a = NDArray<Float32>.fromList(
+              [3.0, 1.0, double.nan, 2.0, double.nan, 1.0],
+              [6],
+              DType.float32,
+            );
+            final u = unique(a);
+            expect(u.size, equals(4));
+            final listU = u.toList();
+            expect(listU[0], equals(1.0));
+            expect(listU[1], equals(2.0));
+            expect(listU[2], equals(3.0));
+            expect(listU[3].isNaN, isTrue);
+
+            final all = uniqueAll(a);
+            expect(all.values.size, equals(4));
+            expect(all.index.toList(), equals([1, 3, 0, 2]));
+            expect(all.inverse.toList(), equals([2, 0, 3, 1, 3, 0]));
+            expect(all.counts.toList(), equals([2, 1, 1, 2]));
+          }),
+        );
+
+        test(
+          'float64 with multiple NaNs deduplication',
+          () => NDArray.scope(() {
+            final a = NDArray<Float64>.fromList(
+              [3.0, 1.0, double.nan, 2.0, double.nan, 1.0],
+              [6],
+              DType.float64,
+            );
+            final u = unique(a);
+            expect(u.size, equals(4));
+            final listU = u.toList();
+            expect(listU[0], equals(1.0));
+            expect(listU[1], equals(2.0));
+            expect(listU[2], equals(3.0));
+            expect(listU[3].isNaN, isTrue);
+
+            final all = uniqueAll(a);
+            expect(all.values.size, equals(4));
+            expect(all.index.toList(), equals([1, 3, 0, 2]));
+            expect(all.inverse.toList(), equals([2, 0, 3, 1, 3, 0]));
+            expect(all.counts.toList(), equals([2, 1, 1, 2]));
+          }),
+        );
+
+        test(
+          'int16, int32, int64, uint8, boolean, float16, bfloat16, complex64, complex128',
+          () => NDArray.scope(() {
+            // int16
+            final aI16 = NDArray<Int16>.fromList(
+              [300, -100, 300, 0],
+              [4],
+              DType.int16,
+            );
+            expect(unique(aI16).toList(), equals([-100, 0, 300]));
+            expect(uniqueWithCounts(aI16).counts.toList(), equals([1, 1, 2]));
+
+            // int32
+            final aI32 = NDArray<Int32>.fromList(
+              [5, 2, 5, 1],
+              [4],
+              DType.int32,
+            );
+            expect(unique(aI32).toList(), equals([1, 2, 5]));
+            expect(uniqueWithIndex(aI32).index.toList(), equals([3, 1, 0]));
+
+            // int64
+            final aI64 = NDArray<Int64>.fromList(
+              [50, 20, 50, 10],
+              [4],
+              DType.int64,
+            );
+            expect(unique(aI64).toList(), equals([10, 20, 50]));
+            expect(
+              uniqueWithInverse(aI64).inverse.toList(),
+              equals([2, 1, 2, 0]),
+            );
+
+            // uint8
+            final aU8 = NDArray<Uint8>.fromList(
+              [255, 0, 128, 0, 255],
+              [5],
+              DType.uint8,
+            );
+            expect(unique(aU8).toList(), equals([0, 128, 255]));
+            expect(uniqueWithCounts(aU8).counts.toList(), equals([2, 1, 2]));
+
+            // boolean
+            final aBool = NDArray<Boolean>.fromList(
+              [true, false, true, false],
+              [4],
+              DType.boolean,
+            );
+            expect(unique(aBool).toList(), equals([false, true]));
+            expect(uniqueWithCounts(aBool).counts.toList(), equals([2, 2]));
+
+            // float16
+            final aF16 = NDArray<Float16>.fromList(
+              [2.0, -1.0, 2.0, 0.0],
+              [4],
+              DType.float16,
+            );
+            expect(unique(aF16).toList(), equals([-1.0, 0.0, 2.0]));
+            expect(uniqueWithCounts(aF16).counts.toList(), equals([1, 1, 2]));
+
+            // bfloat16
+            final aBf16 = NDArray<BFloat16>.fromList(
+              [2.0, -1.0, 2.0, 0.0],
+              [4],
+              DType.bfloat16,
+            );
+            expect(unique(aBf16).toList(), equals([-1.0, 0.0, 2.0]));
+            expect(uniqueWithCounts(aBf16).counts.toList(), equals([1, 1, 2]));
+
+            // complex64
+            final aC64 = NDArray<Complex64>.fromList(
+              [Complex(1, 2), Complex(3, 4), Complex(1, 2)],
+              [3],
+              DType.complex64,
+            );
+            expect(
+              unique(aC64).toList(),
+              equals([Complex(1, 2), Complex(3, 4)]),
+            );
+            expect(uniqueWithCounts(aC64).counts.toList(), equals([2, 1]));
+
+            // complex128
+            final aC128 = NDArray<Complex128>.fromList(
+              [Complex(1, 2), Complex(3, 4), Complex(1, 2)],
+              [3],
+              DType.complex128,
+            );
+            expect(
+              unique(aC128).toList(),
+              equals([Complex(1, 2), Complex(3, 4)]),
+            );
+            expect(uniqueWithCounts(aC128).counts.toList(), equals([2, 1]));
+          }),
+        );
+      });
     });
   });
 }

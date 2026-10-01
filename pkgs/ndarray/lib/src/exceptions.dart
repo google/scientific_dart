@@ -33,6 +33,9 @@ final class LinAlgException extends NdArrayException {
   String toString() => 'LinAlgException: $message';
 }
 
+/// Alias for [LinAlgException] matching the NumPy `numpy.linalg.LinAlgError` name.
+typedef LinAlgError = LinAlgException;
+
 /// Exception thrown when a matrix is singular and cannot be inverted or solved.
 final class SingularMatrixException extends LinAlgException {
   /// Creates a new [SingularMatrixException] with the given [message].

@@ -115,11 +115,7 @@ void _mapCoordInPlace(
 /// - It is an error if [axis] or an index value in [indices] is out of bounds.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<Float64>.fromList([10, 20, 30, 40, 50, 60], [2, 3], DType.float64);
-/// final indices = NDArray<DTypeTag>.fromList([2, 0, 1, 1], [2, 2], DType.int32);
-/// final result = take_along_axis(a, indices, 1);
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 NDArray<T> take_along_axis<T extends DTypeTag>(
   NDArray<T> arr,
   NDArray<DTypeTag> indices,
@@ -284,12 +280,7 @@ NDArray<T> take_along_axis<T extends DTypeTag>(
 /// - It is an error if [axis] or index values in [indices] are out of bounds.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<Float64>.fromList([10, 20, 30, 40, 50, 60], [2, 3], DType.float64);
-/// final indices = NDArray<DTypeTag>.fromList([2, 0, 1, 1], [2, 2], DType.int32);
-/// final values = NDArray<Float64>.fromList([99, 88, 77, 66], [2, 2], DType.float64);
-/// put_along_axis(a, indices, values, 1);
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 NDArray<T> put_along_axis<T extends DTypeTag>(
   NDArray<T> arr,
   NDArray<DTypeTag> indices,
@@ -501,14 +492,7 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
 /// - It is an error if index values in [a] are out of bounds and [mode] is [ChooseMode.raise].
 ///
 /// **Example:**
-/// ```dart
-/// final choices = [
-///   NDArray<Float64>.fromList([0, 1, 2, 3], [2, 2], DType.float64),
-///   NDArray<Float64>.fromList([10, 11, 12, 13], [2, 2], DType.float64),
-/// ];
-/// final a = NDArray<DTypeTag>.fromList([0, 1, 1, 0], [2, 2], DType.int32);
-/// final result = choose(a, choices);
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 NDArray<T> choose<T extends DTypeTag>(
   NDArray<DTypeTag> a,
   List<Object> choices, {
@@ -992,12 +976,7 @@ NDArray<T> choose<T extends DTypeTag>(
 /// - It is an error if list lengths don't match, lists are empty, or shapes/dtypes are incompatible.
 ///
 /// **Example:**
-/// ```dart
-/// final x = NDArray<Float64>.fromList([1, 2, 3, 4, 5], [5], DType.float64);
-/// final conds = [x < 2, x > 3];
-/// final choices = [x * 10, x * 100];
-/// final result = select(conds, choices, defaultValue: -1.0);
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 NDArray<T> select<T extends DTypeTag>(
   List<NDArray<Boolean>> condlist,
   List<Object> choicelist, {
@@ -1192,11 +1171,7 @@ NDArray<T> select<T extends DTypeTag>(
 /// array contains the coordinates along axis `i`.
 ///
 /// Example:
-/// ```dart
-/// final idx = NDArray.fromList([22, 41, 37], [3], DType.int64);
-/// final coords = unravel_index(idx, [7, 6]);
-/// // coords[0] is [3, 6, 6], coords[1] is [4, 5, 1]
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
   NDArray<T> indices,
   List<int> shape, {
@@ -1400,12 +1375,7 @@ List<NDArray<Int64>> unravelIndex<T extends DTypeTag>(
 /// Returns an [NDArray] of dtype [DType.int64] containing the flat indices.
 ///
 /// Example:
-/// ```dart
-/// final rows = NDArray.fromList([3, 6, 6], [3], DType.int64);
-/// final cols = NDArray.fromList([4, 5, 1], [3], DType.int64);
-/// final flat = ravel_multi_index([rows, cols], [7, 6]);
-/// // flat is [22, 41, 37]
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 NDArray<Int64> ravel_multi_index(
   List<NDArray<DTypeTag>> multi_index,
   List<int> dims, {
@@ -1650,12 +1620,7 @@ NDArray<Int64> ravelMultiIndex(
 /// `[dimensions.length, ...dimensions]`.
 ///
 /// Example:
-/// ```dart
-/// final grid = indices([2, 3]);
-/// // grid.shape is [2, 2, 3]
-/// // grid[[0]] contains row indices [[0, 0, 0], [1, 1, 1]]
-/// // grid[[1]] contains col indices [[0, 1, 2], [0, 1, 2]]
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 NDArray<T> indices<T extends DTypeTag>(
   List<int> dimensions, {
   DType<T>? dtype,
@@ -1766,10 +1731,7 @@ NDArray<T> indices<T extends DTypeTag>(
 /// Returns a `List<NDArray<T>>` of length `dimensions.length`.
 ///
 /// Example:
-/// ```dart
-/// final grid = sparse_indices([2, 3]);
-/// // grid[0].shape is [2, 1], grid[1].shape is [1, 3]
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 List<NDArray<T>> sparse_indices<T extends DTypeTag>(
   List<int> dimensions, {
   DType<T>? dtype,
@@ -1823,10 +1785,7 @@ List<NDArray<T>> sparseIndices<T extends DTypeTag>(
 /// Returns a `List<NDArray<Int64>>` of length [ndim], each of shape `[n]`.
 ///
 /// Example:
-/// ```dart
-/// final di = diag_indices(4);
-/// // di is a list of 2 arrays, each [0, 1, 2, 3] of dtype int64
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 List<NDArray<Int64>> diag_indices(int n, {int ndim = 2}) {
   if (n < 0) {
     throw ArgumentError.value(n, 'n', 'Must be non-negative');
@@ -1856,10 +1815,7 @@ List<NDArray<Int64>> diagIndices(int n, {int ndim = 2}) =>
 /// Returns a `List<NDArray<Int64>>` of length `arr.shape.length`.
 ///
 /// Example:
-/// ```dart
-/// final a = NDArray.zeros([3, 3], dtype: DType.float64);
-/// final di = diag_indices_from(a);
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 List<NDArray<Int64>> diag_indices_from<T extends DTypeTag>(NDArray<T> arr) {
   if (arr.isDisposed) {
     throw StateError('Cannot execute diag_indices_from on a disposed array.');
@@ -1918,10 +1874,7 @@ int _trilCount(int n, int m, int k) {
 /// in row-major order.
 ///
 /// Example:
-/// ```dart
-/// final (rows, cols) = tril_indices(3);
-/// // rows is [0, 1, 1, 2, 2, 2], cols is [0, 0, 1, 0, 1, 2]
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 ({NDArray<Int64> row, NDArray<Int64> col}) tril_indices(
   int n, {
   int k = 0,
@@ -2005,10 +1958,7 @@ tril_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
 /// in row-major order.
 ///
 /// Example:
-/// ```dart
-/// final (rows, cols) = triu_indices(3);
-/// // rows is [0, 0, 0, 1, 1, 2], cols is [0, 1, 2, 1, 2, 2]
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 ({NDArray<Int64> row, NDArray<Int64> col}) triu_indices(
   int n, {
   int k = 0,
@@ -2096,10 +2046,7 @@ triu_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
 /// corresponding to the non-zero positions of `mask_func(ones([n, n]), k: k)`.
 ///
 /// Example:
-/// ```dart
-/// final (rows, cols) = mask_indices(3, triu);
-/// // Equivalent to triu_indices(3)
-/// ```
+/// {@example /example/indexing_example.dart lang=dart}
 ({NDArray<Int64> row, NDArray<Int64> col}) mask_indices<T extends DTypeTag>(
   int n,
   NDArray<T> Function(NDArray<Int64> m, {int k}) mask_func, {

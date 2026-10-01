@@ -526,6 +526,53 @@ void main() {
     );
 
     test(
+      'pkgs/ndarray/.pubignore supersets pkgs/ndarray/.gitignore active rules and excludes build artifacts',
+      () {
+        final pubignoreFile = File('${repoRoot.path}/pkgs/ndarray/.pubignore');
+        final gitignoreFile = File('${repoRoot.path}/pkgs/ndarray/.gitignore');
+        expect(
+          pubignoreFile.existsSync(),
+          isTrue,
+          reason: '.pubignore must exist',
+        );
+        expect(
+          gitignoreFile.existsSync(),
+          isTrue,
+          reason: '.gitignore must exist',
+        );
+
+        final pubignoreContent = pubignoreFile.readAsStringSync();
+        final pubignoreLines = pubignoreContent
+            .split('\n')
+            .map((l) => l.trim())
+            .where((l) => l.isNotEmpty && !l.startsWith('#'))
+            .toSet();
+
+        final gitignoreActiveLines = gitignoreFile
+            .readAsStringSync()
+            .split('\n')
+            .map((l) => l.trim())
+            .where((l) => l.isNotEmpty && !l.startsWith('#'))
+            .toList();
+
+        for (final rule in gitignoreActiveLines) {
+          expect(
+            pubignoreLines.contains(rule),
+            isTrue,
+            reason: '.pubignore must contain active .gitignore rule: "$rule"',
+          );
+        }
+
+        // Specifically assert critical artifacts are ignored
+        expect(pubignoreContent, contains('coverage/'));
+        expect(pubignoreContent, contains('scratch/'));
+        expect(pubignoreContent, contains('pubspec.lock'));
+        expect(pubignoreContent, contains('third_party/highway/build/'));
+        expect(pubignoreContent, contains('third_party/highway/hwy_build/'));
+      },
+    );
+
+    test(
       'pkgs/ndarray/.pubignore excludes Highway docs, tests, and build artifacts',
       () {
         final pubignoreFile = File('${repoRoot.path}/pkgs/ndarray/.pubignore');
@@ -535,6 +582,42 @@ void main() {
         expect(content, contains('third_party/highway/docs/'));
         expect(content, contains('third_party/highway/hwy/tests/'));
         expect(content, contains('third_party/highway/hwy_build/'));
+      },
+    );
+
+    test(
+      'C++ macro and OOM flag invariants: NoThrowBuffer sets OOM flag and VECTORIZED_TARGETS is guarded',
+      () {
+        final indexingFile = File(
+          '${repoRoot.path}/pkgs/ndarray/hook/custom_indexing.cpp',
+        );
+        expect(indexingFile.existsSync(), isTrue);
+        final indexingContent = indexingFile.readAsStringSync();
+
+        // NoThrowBuffer calls ndarray_set_oom_flag() on allocation failure
+        expect(
+          indexingContent,
+          contains('ndarray_set_oom_flag()'),
+          reason:
+              'custom_indexing.cpp NoThrowBuffer must call ndarray_set_oom_flag() on OOM',
+        );
+
+        final ufuncsFile = File(
+          '${repoRoot.path}/pkgs/ndarray/hook/custom_ufuncs.cpp',
+        );
+        expect(ufuncsFile.existsSync(), isTrue);
+        final ufuncsContent = ufuncsFile.readAsStringSync();
+
+        // #define VECTORIZED_TARGETS guarded by #ifndef VECTORIZED_TARGETS
+        final guardedRegex = RegExp(
+          r'#ifndef\s+VECTORIZED_TARGETS\s+[\s\S]*?#define\s+VECTORIZED_TARGETS',
+        );
+        expect(
+          guardedRegex.hasMatch(ufuncsContent),
+          isTrue,
+          reason:
+              'custom_ufuncs.cpp #define VECTORIZED_TARGETS must be guarded by #ifndef VECTORIZED_TARGETS',
+        );
       },
     );
   });

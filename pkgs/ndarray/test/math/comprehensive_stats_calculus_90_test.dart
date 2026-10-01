@@ -836,8 +836,8 @@ void main() {
                   DType.complex128,
                 );
                 final meanRes = nanmean(cpx);
-                expect((meanRes.scalar as Complex).real, closeTo(2.0, 1e-9));
-                expect((meanRes.scalar as Complex).imag, closeTo(3.0, 1e-9));
+                expect(meanRes.scalar.real, closeTo(2.0, 1e-9));
+                expect(meanRes.scalar.imag, closeTo(3.0, 1e-9));
 
                 final sumRes = nansum(cpx);
                 expect((sumRes.scalar).real, closeTo(4.0, 1e-9));
@@ -1901,20 +1901,15 @@ void main() {
                 );
 
                 // Simple unique
-                final u = unique(a) as NDArray<AnySpec>;
+                final u = unique(a);
                 expect(u.toList(), equals([1, 2, 3, 4]));
 
                 // With all 3 flags
-                final res = unique(
-                  a,
-                  returnIndex: true,
-                  returnInverse: true,
-                  returnCounts: true,
-                );
+                final res = uniqueAll(a);
                 expect(res.values.toList(), equals([1, 2, 3, 4]));
-                expect(res.index!.toList(), equals([1, 2, 0, 5]));
-                expect(res.inverse!.toList(), equals([2, 0, 1, 2, 0, 3]));
-                expect(res.counts!.toList(), equals([2, 1, 2, 1]));
+                expect(res.index.toList(), equals([1, 2, 0, 5]));
+                expect(res.inverse.toList(), equals([2, 0, 1, 2, 0, 3]));
+                expect(res.counts.toList(), equals([2, 1, 2, 1]));
               });
             },
           );
@@ -1922,19 +1917,14 @@ void main() {
           test('unique on empty arrays and already unique arrays', () {
             NDArray.scope(() {
               final empty = NDArray.create([0], DType.float64);
-              final uEmpty = unique(empty) as NDArray<Float64>;
+              final uEmpty = unique(empty);
               expect(uEmpty.shape, [0]);
 
-              final uEmptyAll = unique(
-                empty,
-                returnIndex: true,
-                returnInverse: true,
-                returnCounts: true,
-              );
+              final uEmptyAll = uniqueAll(empty);
               expect(uEmptyAll.values.shape, [0]);
-              expect(uEmptyAll.index!.shape, [0]);
-              expect(uEmptyAll.inverse!.shape, [0]);
-              expect(uEmptyAll.counts!.shape, [0]);
+              expect(uEmptyAll.index.shape, [0]);
+              expect(uEmptyAll.inverse.shape, [0]);
+              expect(uEmptyAll.counts.shape, [0]);
 
               // Multi-dimensional array (flattened)
               final a2d = NDArray.fromList(
@@ -1942,7 +1932,7 @@ void main() {
                 [2, 2],
                 DType.float64,
               );
-              final u2d = unique(a2d) as NDArray<Float64>;
+              final u2d = unique(a2d);
               expect(u2d.toList(), equals([1.0, 2.0, 3.0]));
             });
           });
@@ -1956,40 +1946,28 @@ void main() {
                   [4],
                   DType.int64,
                 );
-                expect(
-                  (unique(aI64) as NDArray<AnySpec>).toList(),
-                  equals([10, 20, 30]),
-                );
+                expect(unique(aI64).toList(), equals([10, 20, 30]));
 
                 final aF32 = NDArray.fromList(
                   [3.0, 1.0, 2.0, 1.0],
                   [4],
                   DType.float32,
                 );
-                expect(
-                  (unique(aF32) as NDArray<AnySpec>).toList(),
-                  equals([1.0, 2.0, 3.0]),
-                );
+                expect(unique(aF32).toList(), equals([1.0, 2.0, 3.0]));
 
                 final aU8 = NDArray.fromList(
                   [255, 0, 128, 0],
                   [4],
                   DType.uint8,
                 );
-                expect(
-                  (unique(aU8) as NDArray<AnySpec>).toList(),
-                  equals([0, 128, 255]),
-                );
+                expect(unique(aU8).toList(), equals([0, 128, 255]));
 
                 final aBool = NDArray.fromList(
                   [true, false, true],
                   [3],
                   DType.boolean,
                 );
-                expect(
-                  (unique(aBool) as NDArray<Boolean>).toList(),
-                  equals([false, true]),
-                );
+                expect(unique(aBool).toList(), equals([false, true]));
               });
             },
           );

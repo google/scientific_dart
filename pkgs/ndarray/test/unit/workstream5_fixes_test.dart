@@ -164,7 +164,7 @@ void main() {
         dtype: DType.float64,
       );
       expect(lsStepArr.shape, equals([0]));
-      expect(step.isNaN, isTrue);
+      expect((step as double).isNaN, isTrue);
 
       final start = NDArray.fromList([0.0, 1.0], [2], DType.float64);
       final stop = NDArray.fromList([10.0, 11.0], [2], DType.float64);

@@ -412,11 +412,17 @@ void main() {
               final bTrans = bBase.transpose();
 
               // divmod
-              final (divRes1, modRes1) = divmod(aContig, bContig);
+              final (quotient: divRes1, remainder: modRes1) = divmod(
+                aContig,
+                bContig,
+              );
               expect(divRes1.shape, [2, 3]);
               expect(modRes1.shape, [2, 3]);
 
-              final (divRes2, modRes2) = divmod(aTrans, bTrans);
+              final (quotient: divRes2, remainder: modRes2) = divmod(
+                aTrans,
+                bTrans,
+              );
               expect(divRes2.shape, [2, 3]);
               expect(modRes2.shape, [2, 3]);
 

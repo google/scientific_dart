@@ -26,25 +26,26 @@ import 'broadcasting.dart';
 import 'math.dart';
 import 'helpers.dart';
 
-NDArray _createZeros(List<int> shape, DType dtype) => switch (dtype) {
-  DType.float64 => NDArray<Float64>.zeros(shape, DType.float64),
-  DType.float32 => NDArray<Float32>.zeros(shape, DType.float32),
-  DType.float16 => NDArray<Float16>.zeros(shape, DType.float16),
-  DType.bfloat16 => NDArray<BFloat16>.zeros(shape, DType.bfloat16),
-  DType.int64 => NDArray<Int64>.zeros(shape, DType.int64),
-  DType.int32 => NDArray<Int32>.zeros(shape, DType.int32),
-  DType.int16 => NDArray<Int16>.zeros(shape, DType.int16),
-  DType.int8 => NDArray<Int8>.zeros(shape, DType.int8),
-  DType.uint64 => NDArray<Uint64>.zeros(shape, DType.uint64),
-  DType.uint32 => NDArray<Uint32>.zeros(shape, DType.uint32),
-  DType.uint16 => NDArray<Uint16>.zeros(shape, DType.uint16),
-  DType.uint8 => NDArray<Uint8>.zeros(shape, DType.uint8),
-  DType.complex128 => NDArray<Complex128>.zeros(shape, DType.complex128),
-  DType.complex64 => NDArray<Complex64>.zeros(shape, DType.complex64),
-  DType.boolean => NDArray<Boolean>.zeros(shape, DType.boolean),
-};
+NDArray<DTypeTag> _createZeros(List<int> shape, DType<DTypeTag> dtype) =>
+    switch (dtype) {
+      DType.float64 => NDArray<Float64>.zeros(shape, DType.float64),
+      DType.float32 => NDArray<Float32>.zeros(shape, DType.float32),
+      DType.float16 => NDArray<Float16>.zeros(shape, DType.float16),
+      DType.bfloat16 => NDArray<BFloat16>.zeros(shape, DType.bfloat16),
+      DType.int64 => NDArray<Int64>.zeros(shape, DType.int64),
+      DType.int32 => NDArray<Int32>.zeros(shape, DType.int32),
+      DType.int16 => NDArray<Int16>.zeros(shape, DType.int16),
+      DType.int8 => NDArray<Int8>.zeros(shape, DType.int8),
+      DType.uint64 => NDArray<Uint64>.zeros(shape, DType.uint64),
+      DType.uint32 => NDArray<Uint32>.zeros(shape, DType.uint32),
+      DType.uint16 => NDArray<Uint16>.zeros(shape, DType.uint16),
+      DType.uint8 => NDArray<Uint8>.zeros(shape, DType.uint8),
+      DType.complex128 => NDArray<Complex128>.zeros(shape, DType.complex128),
+      DType.complex64 => NDArray<Complex64>.zeros(shape, DType.complex64),
+      DType.boolean => NDArray<Boolean>.zeros(shape, DType.boolean),
+    };
 
-(int, int) _physicalByteSpan(NDArray x) {
+(int, int) _physicalByteSpan(NDArray<DTypeTag> x) {
   if (x.size == 0) {
     return (x.pointer.address, x.pointer.address);
   }
@@ -65,7 +66,7 @@ NDArray _createZeros(List<int> shape, DType dtype) => switch (dtype) {
   return (startAddr, endAddr);
 }
 
-bool _isMemoryAliased(NDArray out, NDArray other) {
+bool _isMemoryAliased(NDArray<DTypeTag> out, NDArray<DTypeTag> other) {
   if (identical(out, other) || out.pointer.address == other.pointer.address) {
     return true;
   }
@@ -135,7 +136,7 @@ bool _isMemoryAliased(NDArray out, NDArray other) {
   return (hasNaN: hasNaN, hasInf: hasInf);
 }
 
-({bool hasNaN, bool hasInf}) _analyzeNonFinite(NDArray arr) {
+({bool hasNaN, bool hasInf}) _analyzeNonFinite(NDArray<DTypeTag> arr) {
   if (!arr.dtype.isFloating && !arr.dtype.isComplex) {
     return (hasNaN: false, hasInf: false);
   }
@@ -255,7 +256,54 @@ void _checkLapackInfo(
   }
 }
 
-/// Matrix multiplication using OpenBLAS, supporting high-dimensional stack broadcasting and 1D vector promotions.
+/// Matrix product of two arrays.
+///
+/// Behavior depends on the ranks of [a] and [b] in the same manner as NumPy's
+/// `matmul`:
+/// - If both arguments are 2-D, they are multiplied like conventional matrices.
+/// - If either argument is N-D ($N > 2$), it is treated as a stack of matrices
+///   residing in the last two indexes and broadcast accordingly.
+/// - If the first argument is 1-D, it is promoted to a matrix by prepending a 1
+///   to its dimensions; after matrix multiplication the prepended 1 is removed.
+/// - If the second argument is 1-D, it is promoted to a matrix by appending a 1
+///   to its dimensions; after matrix multiplication the appended 1 is removed.
+/// - If both arguments are 1-D of length $K$, their inner product is returned
+///   as a 0-D scalar array.
+///
+/// **Preconditions:**
+/// - Neither [a], [b], nor [out] (if provided) may be disposed.
+/// - Both [a] and [b] must have rank $\ge 1$ (0-D scalars are not allowed; use
+///   `multiply` instead).
+/// - Both [a] and [b] must have the same [DType].
+/// - The last dimension of [a] must match the second-to-last dimension of [b]
+///   (or the only dimension of [b] if [b] is 1-D).
+/// - Leading batch dimensions of [a] and [b] must be broadcast-compatible.
+/// - If [out] is provided, it must be writeable and match the output shape and
+///   [DType].
+///
+/// **Throws:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - It is an error if [a] or [b] is 0-dimensional, if their [DType]s differ,
+///   or if their inner or batch dimensions are incompatible.
+/// - It is an error if [out] is read-only or has an incompatible shape or
+///   [DType].
+///
+/// **Performance considerations:**
+/// - Dispatches 2-D and batched floating-point and complex matrix products to
+///   OpenBLAS (`cblas_dgemm`, `cblas_sgemm`, `cblas_zgemm`, `cblas_cgemm`,
+///   `cblas_dgemv`, etc.) with $O(M \cdot K \cdot N)$ complexity per matrix
+///   slice.
+/// - Uses vectorized C kernels (`native_matmul_2d` / `native_matmul_batched`)
+///   for integer and boolean arrays.
+///
+/// **Example:**
+/// ```dart
+/// final a = NDArray.fromList([1.0, 0.0, 0.0, 1.0], [2, 2], DType.float64);
+/// final b = NDArray.fromList([4.0, 1.0, 2.0, 2.0], [2, 2], DType.float64);
+/// final c = matmul(a, b);
+/// ```
+///
+/// Reference: [NumPy matmul](https://numpy.org/doc/stable/reference/generated/numpy.matmul.html)
 NDArray<T> matmul<T extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
@@ -6031,7 +6079,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   });
 }
 
-NDArray _createTyped2D(int rows, int cols, DType dtype) {
+NDArray<DTypeTag> _createTyped2D(int rows, int cols, DType<DTypeTag> dtype) {
   switch (dtype) {
     case DType.float64:
       return NDArray<Float64>.create([rows, cols], DType.float64);
@@ -6046,7 +6094,7 @@ NDArray _createTyped2D(int rows, int cols, DType dtype) {
   }
 }
 
-NDArray _zerosTyped(List<int> shape, DType dtype) {
+NDArray<DTypeTag> _zerosTyped(List<int> shape, DType<DTypeTag> dtype) {
   switch (dtype) {
     case DType.float64:
       return NDArray<Float64>.zeros(shape, DType.float64);
@@ -6300,18 +6348,32 @@ NDArray<T> cross<T extends DTypeTag>(
     );
   }
 
-  var axisA = axis ?? axisa ?? -1;
-  var axisB = axis ?? axisb ?? -1;
+  final origAxisA = axis ?? axisa ?? -1;
+  final origAxisB = axis ?? axisb ?? -1;
+  var axisA = origAxisA;
+  var axisB = origAxisB;
   var axisC = axis ?? axisc ?? -1;
 
   if (axisA < 0) axisA = a.rank + axisA;
   if (axisB < 0) axisB = b.rank + axisB;
 
   if (axisA < 0 || axisA >= a.rank) {
-    throw ArgumentError('axisa $axisA out of bounds for shape ${a.shape}');
+    throw RangeError.range(
+      origAxisA,
+      -a.rank,
+      a.rank - 1,
+      axis != null ? 'axis' : 'axisa',
+      'Must be within valid rank range',
+    );
   }
   if (axisB < 0 || axisB >= b.rank) {
-    throw ArgumentError('axisb $axisB out of bounds for shape ${b.shape}');
+    throw RangeError.range(
+      origAxisB,
+      -b.rank,
+      b.rank - 1,
+      axis != null ? 'axis' : 'axisb',
+      'Must be within valid rank range',
+    );
   }
 
   final lenA = a.shape[axisA];
@@ -6652,13 +6714,28 @@ enum SchurForm {
 
 /// Supported norm orders and calculation modes for vector and matrix norm computations.
 enum NormKind {
+  /// Frobenius norm (square root of sum of absolute squares).
   frobenius,
+
+  /// Nuclear norm (sum of singular values).
   nuclear,
+
+  /// 1-norm (maximum absolute column sum for matrices, sum of absolute values for vectors).
   l1,
+
+  /// Negative 1-norm (minimum absolute column sum for matrices).
   negL1,
+
+  /// 2-norm (largest singular value for matrices, Euclidean norm for vectors).
   l2,
+
+  /// Negative 2-norm (smallest singular value for matrices).
   negL2,
+
+  /// Infinity norm (maximum absolute row sum for matrices, max absolute value for vectors).
   infinity,
+
+  /// Negative infinity norm (minimum absolute row sum for matrices, min absolute value for vectors).
   negInfinity,
 }
 
@@ -6684,8 +6761,8 @@ NDArray<R> norm<R extends DTypeTag>(
     DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
-  dynamic ord,
-  dynamic axis,
+  Object? ord,
+  Object? axis,
   bool keepdims = false,
   NDArray<R>? out,
 }) {
@@ -6706,7 +6783,13 @@ NDArray<R> norm<R extends DTypeTag>(
     var normAx = axis;
     if (normAx < 0) normAx = rank + normAx;
     if (normAx < 0 || normAx >= rank) {
-      throw ArgumentError('axis $axis is out of bounds.');
+      throw RangeError.range(
+        axis,
+        -rank,
+        rank - 1,
+        'axis',
+        'Must be within valid rank range',
+      );
     }
     targetAxes = [normAx];
   } else if (axis is List<int>) {
@@ -6717,11 +6800,17 @@ NDArray<R> norm<R extends DTypeTag>(
     for (var i = 0; i < normAxes.length; i++) {
       if (normAxes[i] < 0) normAxes[i] = rank + normAxes[i];
       if (normAxes[i] < 0 || normAxes[i] >= rank) {
-        throw ArgumentError('axis ${axis[i]} is out of bounds.');
+        throw RangeError.range(
+          axis[i],
+          -rank,
+          rank - 1,
+          'axis',
+          'Must be within valid rank range',
+        );
       }
     }
     if (normAxes.length == 2 && normAxes[0] == normAxes[1]) {
-      throw ArgumentError('axes must be distinct.');
+      throw ArgumentError.value(axis, 'axis', 'axes must be distinct.');
     }
     targetAxes = normAxes;
   } else {
@@ -6894,8 +6983,8 @@ NDArray<R> norm<R extends DTypeTag>(
 
 double _vectorNorm<T extends DTypeTag>(
   NDArray<T> a,
-  dynamic ord,
-  DType targetDType,
+  Object? ord,
+  DType<DTypeTag> targetDType,
 ) {
   if (ord is NormKind) {
     ord = switch (ord) {
@@ -7021,8 +7110,8 @@ double _vectorNorm<T extends DTypeTag>(
 
 double _matrixNorm<T extends DTypeTag>(
   NDArray<T> a,
-  dynamic ord,
-  DType targetDType,
+  Object? ord,
+  DType<DTypeTag> targetDType,
 ) {
   if (ord is String) {
     if (ord == 'fro' || ord == 'frobenius') {
@@ -7582,7 +7671,7 @@ NDArray<R> cond<R extends DTypeTag>(
     DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
-  dynamic p,
+  Object? p,
   NDArray<R>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {

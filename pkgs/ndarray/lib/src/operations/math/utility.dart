@@ -40,9 +40,9 @@ void setNumThreads(int numThreads) {
   openblas_set_num_threads(numThreads);
 }
 
-/// Enumerates elements of a multidimensional array yielding coordinates and values.
+/// Multidimensional index iterator.
 ///
-/// Yields records containing the coordinate list and the element value at that coordinate
+/// Yields records of `({List<int> coordinate, Object value})` containing the coordinate list and the element value at that coordinate
 /// in standard C-contiguous order.
 ///
 /// **Preconditions:**
@@ -54,7 +54,7 @@ void setNumThreads(int numThreads) {
 /// ```dart
 /// final a = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
 /// for (final entry in ndenumerate(a)) {
-///   print('coord: ${entry.$1}, value: ${entry.$2}');
+///   print('coord: ${entry.coordinate}, value: ${entry.value}');
 /// }
 /// // Yields:
 /// // ([0, 0], 10)
@@ -62,9 +62,8 @@ void setNumThreads(int numThreads) {
 /// // ([1, 0], 30)
 /// // ([1, 1], 40)
 /// ```
-Iterable<(List<int> coordinate, dynamic value)> ndenumerate<T extends DTypeTag>(
-  NDArray<T> a,
-) sync* {
+Iterable<({List<int> coordinate, Object value})>
+ndenumerate<T extends DTypeTag>(NDArray<T> a) sync* {
   if (a.isDisposed) {
     throw StateError('Cannot execute ndenumerate() on a disposed array.');
   }
@@ -74,7 +73,7 @@ Iterable<(List<int> coordinate, dynamic value)> ndenumerate<T extends DTypeTag>(
   final totalSize = shape.isEmpty ? 1 : shape.reduce((x, y) => x * y);
 
   if (shape.isEmpty) {
-    yield ([], a.getCellFlat(0));
+    yield (coordinate: const <int>[], value: a.scalar!);
     return;
   }
 
@@ -82,8 +81,11 @@ Iterable<(List<int> coordinate, dynamic value)> ndenumerate<T extends DTypeTag>(
   int offset = a.offsetElements;
 
   for (int el = 0; el < totalSize; el++) {
-    // Yield a copy of the coordinate list so that users don't receive the same mutated buffer!
-    yield (List<int>.from(coord), a.getCellRaw(offset));
+    // Yield an unmodifiable copy of the coordinate list so that users don't receive the same mutated buffer!
+    yield (
+      coordinate: List<int>.unmodifiable(coord),
+      value: a.getCellRaw(offset)!,
+    );
 
     // Advance odometer multidimensional coordinate odometer walk!
     for (int d = shape.length - 1; d >= 0; d--) {
@@ -113,13 +115,13 @@ Iterable<(List<int> coordinate, dynamic value)> ndenumerate<T extends DTypeTag>(
 /// {@example /example/nan_to_num_example.dart lang=dart}
 ///
 /// Reference: [Replace NaN and Infinities](https://numpy.org/doc/stable/reference/generated/numpy.nan_to_num.html)
-NDArray nan_to_num(
-  NDArray a, {
+NDArray<T> nan_to_num<T extends DTypeTag>(
+  NDArray<T> a, {
   double nan = 0.0,
   double? posinf,
   double? neginf,
   NDArray<DTypeTag>? where,
-  NDArray? out,
+  NDArray<T>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -143,8 +145,8 @@ NDArray nan_to_num(
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()
-            : NDArray.create(a.shape, a.dtype);
-        nan_to_num(
+            : NDArray<T>.create(a.shape, a.dtype);
+        nan_to_num<T>(
           a,
           nan: nan,
           posinf: posinf,
@@ -170,7 +172,7 @@ NDArray nan_to_num(
   final maskHolder = prepareMask(where, a.shape);
   try {
     final resultCopy =
-        out ?? NDArray.create(a.shape, a.dtype, zeroInit: where != null);
+        out ?? NDArray<T>.create(a.shape, a.dtype, zeroInit: where != null);
     final resDType = resultCopy.dtype;
     final iter = NDIter.broadcast2(resultCopy, a);
     final maskPtr = maskHolder.pointer;

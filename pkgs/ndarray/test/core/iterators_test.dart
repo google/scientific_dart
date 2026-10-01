@@ -236,23 +236,23 @@ void main() {
 
           expect(entries.length, 6);
 
-          expect(entries[0].$1, [0, 0]);
-          expect(entries[0].$2, 10);
+          expect(entries[0].coordinate, [0, 0]);
+          expect(entries[0].value, 10);
 
-          expect(entries[1].$1, [0, 1]);
-          expect(entries[1].$2, 20);
+          expect(entries[1].coordinate, [0, 1]);
+          expect(entries[1].value, 20);
 
-          expect(entries[2].$1, [0, 2]);
-          expect(entries[2].$2, 30);
+          expect(entries[2].coordinate, [0, 2]);
+          expect(entries[2].value, 30);
 
-          expect(entries[3].$1, [1, 0]);
-          expect(entries[3].$2, 40);
+          expect(entries[3].coordinate, [1, 0]);
+          expect(entries[3].value, 40);
 
-          expect(entries[4].$1, [1, 1]);
-          expect(entries[4].$2, 50);
+          expect(entries[4].coordinate, [1, 1]);
+          expect(entries[4].value, 50);
 
-          expect(entries[5].$1, [1, 2]);
-          expect(entries[5].$2, 60);
+          expect(entries[5].coordinate, [1, 2]);
+          expect(entries[5].value, 60);
         }),
       );
 
@@ -262,14 +262,14 @@ void main() {
           final a = NDArray.fromList([9.0, 8.0], [2], DType.float64);
           final entries1D = ndenumerate(a).toList();
           expect(entries1D.length, 2);
-          expect(entries1D[0].$1, [0]);
-          expect(entries1D[0].$2, 9.0);
+          expect(entries1D[0].coordinate, [0]);
+          expect(entries1D[0].value, 9.0);
 
           final scalar = NDArray.scalar(99, dtype: DType.int32);
           final entries0D = ndenumerate(scalar).toList();
           expect(entries0D.length, 1);
-          expect(entries0D[0].$1, []);
-          expect(entries0D[0].$2, 99);
+          expect(entries0D[0].coordinate, []);
+          expect(entries0D[0].value, 99);
         }),
       );
 
@@ -287,17 +287,17 @@ void main() {
           // Transposed grid layout is:
           // [1, 3]
           // [2, 4]
-          expect(entries[0].$1, [0, 0]);
-          expect(entries[0].$2, 1);
+          expect(entries[0].coordinate, [0, 0]);
+          expect(entries[0].value, 1);
 
-          expect(entries[1].$1, [0, 1]);
-          expect(entries[1].$2, 3);
+          expect(entries[1].coordinate, [0, 1]);
+          expect(entries[1].value, 3);
 
-          expect(entries[2].$1, [1, 0]);
-          expect(entries[2].$2, 2);
+          expect(entries[2].coordinate, [1, 0]);
+          expect(entries[2].value, 2);
 
-          expect(entries[3].$1, [1, 1]);
-          expect(entries[3].$2, 4);
+          expect(entries[3].coordinate, [1, 1]);
+          expect(entries[3].value, 4);
         }),
       );
 

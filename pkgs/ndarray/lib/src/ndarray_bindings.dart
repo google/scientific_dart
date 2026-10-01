@@ -30319,3 +30319,49 @@ const int CMP_OP_LE = 3;
 const int CMP_OP_GT = 4;
 
 const int CMP_OP_GE = 5;
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Int,
+    ffi.Int,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Void>,
+    ffi.IntPtr,
+  )
+>()
+external void v_binary_minmax(
+  int opCode,
+  int dtype,
+  ffi.Pointer<ffi.Void> a,
+  ffi.Pointer<ffi.Void> b,
+  ffi.Pointer<ffi.Void> out,
+  int n,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Int,
+    ffi.Int,
+    ffi.Int,
+    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.IntPtr>,
+  )
+>()
+external void s_binary_minmax(
+  int opCode,
+  int dtype,
+  int ndim,
+  ffi.Pointer<ffi.IntPtr> shape,
+  ffi.Pointer<ffi.Void> aData,
+  ffi.Pointer<ffi.IntPtr> aStrides,
+  ffi.Pointer<ffi.Void> bData,
+  ffi.Pointer<ffi.IntPtr> bStrides,
+  ffi.Pointer<ffi.Void> outData,
+  ffi.Pointer<ffi.IntPtr> outStrides,
+);

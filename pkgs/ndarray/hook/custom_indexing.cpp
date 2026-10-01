@@ -28,6 +28,8 @@
 #include <algorithm>
 #include <type_traits>
 
+extern "C" void ndarray_set_oom_flag(void);
+
 template <typename T>
 struct NoThrowBuffer {
     T *ptr_ = nullptr;
@@ -59,11 +61,13 @@ struct NoThrowBuffer {
         }
         if (n > static_cast<size_t>(-1) / sizeof(T)) {
             ok_ = false;
+            ndarray_set_oom_flag();
             return false;
         }
         ptr_ = static_cast<T *>(std::calloc(n, sizeof(T)));
         if (!ptr_) {
             ok_ = false;
+            ndarray_set_oom_flag();
             return false;
         }
         size_ = n;
@@ -2094,6 +2098,7 @@ static inline size_t get_roll_dtype_itemsize(int dtype) {
             return 16;
         default:
             abort();
+            return 0;
     }
 }
 

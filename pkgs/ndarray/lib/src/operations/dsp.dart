@@ -21,9 +21,6 @@ import 'padding.dart';
 import '../scratch_arena.dart';
 import 'helpers.dart';
 
-/// Scalar double type alias used by DSP phase unwrap operations.
-typedef Float = double;
-
 /// Computes the element-wise phase/argument of complex or real numbers.
 ///
 /// Returns an array of float or double with values in $[-\pi, \pi]$.
@@ -42,11 +39,7 @@ typedef Float = double;
 /// - Uses native vectorized C `v_angle` for contiguous arrays and `s_angle` for strided layouts.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([Complex(1.0, 1.0)], [1], DType.complex128);
-/// final p = angle(a);
-/// print(p.toList()); // [0.7853981633974483]
-/// ```
+/// {@example /example/dsp_example.dart lang=dart}
 ///
 /// Reference: [NumPy angle](https://numpy.org/doc/stable/reference/generated/numpy.angle.html)
 NDArray<R> angle<R extends DTypeTag>(
@@ -232,10 +225,7 @@ NDArray<R> angle<R extends DTypeTag>(
 /// - Uses native C strided routines (`s_unwrap_double` / `s_unwrap_float`) to efficiently unwrap along any axis.
 ///
 /// **Example:**
-/// ```dart
-/// final phase = NDArray.fromList([0.0, math.pi + 0.1, -(math.pi + 0.1)], [3], DType.float64);
-/// final unwrapped = unwrap(phase);
-/// ```
+/// {@example /example/dsp_example.dart lang=dart}
 ///
 /// Reference: [NumPy unwrap](https://numpy.org/doc/stable/reference/generated/numpy.unwrap.html)
 NDArray<T> unwrap<
@@ -265,10 +255,16 @@ NDArray<T> unwrap<
   }
 
   final rank = a.shape.length;
-  final resolvedAxis = axis < 0 ? rank + axis : axis;
-  if (resolvedAxis < 0 || resolvedAxis >= rank) {
-    throw ArgumentError('Invalid axis $axis for shape ${a.shape}');
+  if (axis < -rank || axis >= rank) {
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
+  final resolvedAxis = axis < 0 ? rank + axis : axis;
 
   final DType targetDType =
       out?.dtype ?? (a.dtype.isInteger ? DType.float64 : a.dtype);
@@ -628,13 +624,19 @@ NDArray<T> correlate<T extends DTypeTag>(
   if (in1.rank != in2.rank || in1.rank == 0) {
     throw ArgumentError('in1 and in2 must have the same non-zero rank.');
   }
+  if (in1.size == 0 || in2.size == 0) {
+    throw ArgumentError('in1 and in2 must not be empty.');
+  }
   if (in1.dtype != in2.dtype) {
     throw ArgumentError('in1 and in2 must have matching DType.');
   }
-  if (out != null && out.dtype != in1.dtype) {
-    throw ArgumentError(
-      'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
-    );
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.dtype != in1.dtype) {
+      throw ArgumentError(
+        'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
+      );
+    }
   }
 
   final rank = in1.rank;
@@ -750,6 +752,20 @@ NDArray<T> convolve<T extends DTypeTag>(
   if (in1.rank != in2.rank || in1.rank == 0) {
     throw ArgumentError('in1 and in2 must have the same non-zero rank.');
   }
+  if (in1.size == 0 || in2.size == 0) {
+    throw ArgumentError('in1 and in2 must not be empty.');
+  }
+  if (in1.dtype != in2.dtype) {
+    throw ArgumentError('in1 and in2 must have matching DType.');
+  }
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.dtype != in1.dtype) {
+      throw ArgumentError(
+        'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
+      );
+    }
+  }
   if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
     return NDArray.scope(() {
       final temp = convolve<T>(in1, in2, mode: mode);
@@ -773,20 +789,35 @@ NDArray<T> convolve<T extends DTypeTag>(
         (flippedKernel.isContiguous && !in2.dtype.isComplex)
         ? flippedKernel
         : flippedKernel.copy();
-    if (in2.dtype == DType.complex128) {
-      bindings.v_conj_complex128(
-        contiguousKernel.pointer.cast(),
-        contiguousKernel.pointer.cast(),
-        contiguousKernel.size,
-        ffi.nullptr,
-      );
-    } else if (in2.dtype == DType.complex64) {
-      bindings.v_conj_complex64(
-        contiguousKernel.pointer.cast(),
-        contiguousKernel.pointer.cast(),
-        contiguousKernel.size,
-        ffi.nullptr,
-      );
+    switch (in2.dtype) {
+      case DType.complex128:
+        bindings.v_conj_complex128(
+          contiguousKernel.pointer.cast(),
+          contiguousKernel.pointer.cast(),
+          contiguousKernel.size,
+          ffi.nullptr,
+        );
+      case DType.complex64:
+        bindings.v_conj_complex64(
+          contiguousKernel.pointer.cast(),
+          contiguousKernel.pointer.cast(),
+          contiguousKernel.size,
+          ffi.nullptr,
+        );
+      case DType.float64:
+      case DType.float32:
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+      case DType.boolean:
+        break;
     }
     final res = correlate<T>(in1, contiguousKernel, mode: mode, out: out);
     if (out != null) return out;

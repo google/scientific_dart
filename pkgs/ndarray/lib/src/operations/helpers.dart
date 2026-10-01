@@ -29,6 +29,43 @@ void checkNativeOom() {
   }
 }
 
+/// Validates that an output array [buffer] is writeable and not a 0-stride broadcast view.
+void validateOutBuffer(NDArray buffer, [String paramName = 'out']) {
+  if (!buffer.isWriteable) {
+    if (buffer.size > 1 && buffer.strides.contains(0)) {
+      throw ArgumentError.value(
+        buffer,
+        paramName,
+        'Must be writeable and not a broadcast view',
+      );
+    }
+    throw StateError('Cannot write to read-only NDArray');
+  }
+}
+
+/// Validates that an output array [outArray] is not disposed, is writeable,
+/// is not a broadcast view, and matches the [expectedShape] and [expectedDType].
+void validateOutArray(
+  NDArray? outArray,
+  List<int> expectedShape,
+  DType expectedDType, {
+  String name = 'out',
+}) {
+  if (outArray == null) return;
+  if (outArray.isDisposed) {
+    throw StateError('Cannot write result to a disposed output array.');
+  }
+  validateOutBuffer(outArray, name);
+  if (!listEquals(outArray.shape, expectedShape) ||
+      outArray.dtype != expectedDType) {
+    throw ArgumentError.value(
+      outArray,
+      name,
+      'Incompatible out buffer shape or dtype.',
+    );
+  }
+}
+
 /// Checks if two arrays share the same underlying memory buffer.
 bool sharesMemory(NDArray x, NDArray y) {
   if (identical(x, y)) return true;
@@ -323,6 +360,7 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
 
   if (out != null) {
     if (out.isDisposed) throw StateError('Cannot write to disposed out array');
+    validateOutBuffer(out);
     if (!listEquals(out.shape, [numSamples]) || out.dtype != resolvedDType) {
       throw ArgumentError('Incompatible out array shape or dtype');
     }

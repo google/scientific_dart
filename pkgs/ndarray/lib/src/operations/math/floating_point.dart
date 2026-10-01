@@ -1662,7 +1662,11 @@ extension FrexpRecordExtension<R extends DTypeTag>
 /// Returns `true` if two arrays have the same shape and elements, `false` otherwise.
 ///
 /// Reference: [numpy.array_equal](https://numpy.org/doc/stable/reference/generated/numpy.array_equal.html)
-bool arrayEqual(NDArray a, NDArray b, {bool equalNan = false}) {
+bool arrayEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b, {
+  bool equalNan = false,
+}) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot execute arrayEqual() on a disposed array.');
   }

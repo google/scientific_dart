@@ -32,6 +32,9 @@ List<int> _reductionTargetShape(List<int> shape, int? axis, bool keepdims) {
     return keepdims ? List<int>.filled(shape.length, 1) : <int>[];
   }
   final normAxis = axis < 0 ? shape.length + axis : axis;
+  if (normAxis < 0 || normAxis >= shape.length) {
+    throw RangeError.range(axis, -shape.length, shape.length - 1, 'axis');
+  }
   if (keepdims) {
     return List<int>.from(shape)..[normAxis] = 1;
   } else {
@@ -85,7 +88,7 @@ double _r_stat_scalar_double_fallback<T extends DTypeTag>(
   }
 }
 
-dynamic _r_stat_scalar_fallback<T extends DTypeTag>(
+Object? _r_stat_scalar_fallback<T extends DTypeTag>(
   NDArray<T> arr,
   int size,
   double Function(ffi.Pointer<ffi.Double>, int) rDoubleFunc,
@@ -160,7 +163,7 @@ void _s_stat_strided_fallback<T extends DTypeTag>(
   }
 }
 
-int _r_uint64_min(NDArray arr, int size) {
+int _r_uint64_min(NDArray<Uint64> arr, int size) {
   final ptr = arr.pointer.cast<ffi.Uint64>();
   var minVal = ptr[0];
   for (var i = 1; i < size; i++) {
@@ -172,7 +175,7 @@ int _r_uint64_min(NDArray arr, int size) {
   return minVal;
 }
 
-int _r_uint64_max(NDArray arr, int size) {
+int _r_uint64_max(NDArray<Uint64> arr, int size) {
   final ptr = arr.pointer.cast<ffi.Uint64>();
   var maxVal = ptr[0];
   for (var i = 1; i < size; i++) {
@@ -185,14 +188,14 @@ int _r_uint64_max(NDArray arr, int size) {
 }
 
 void _s_uint64_reduce(
-  NDArray a,
-  NDArray result,
+  NDArray<Uint64> a,
+  NDArray<Uint64> result,
   int targetAxis,
   List<int> squeezedDestStrides,
   int? initialValue,
   int Function(int acc, int val) op,
 ) {
-  _s_generic_reduce<int>(
+  _s_generic_reduce<int, Uint64>(
     a,
     result,
     targetAxis,
@@ -202,9 +205,9 @@ void _s_uint64_reduce(
   );
 }
 
-void _s_generic_reduce<T>(
-  NDArray a,
-  NDArray result,
+void _s_generic_reduce<T, D extends DTypeTag>(
+  NDArray<D> a,
+  NDArray<D> result,
   int targetAxis,
   List<int> squeezedDestStrides,
   T? initialValue,
@@ -267,36 +270,446 @@ void _s_generic_reduce<T>(
   }
 }
 
-Complex _complexMin(Complex a, Complex b) {
-  if (a.real.isNaN || a.imag.isNaN) return a;
-  if (b.real.isNaN || b.imag.isNaN) return b;
-  if (a.real < b.real) return a;
-  if (a.real > b.real) return b;
-  return a.imag <= b.imag ? a : b;
-}
-
-Complex _complexMax(Complex a, Complex b) {
-  if (a.real.isNaN || a.imag.isNaN) return a;
-  if (b.real.isNaN || b.imag.isNaN) return b;
-  if (a.real > b.real) return a;
-  if (a.real < b.real) return b;
-  return a.imag >= b.imag ? a : b;
-}
-
-Complex _r_complex_min(NDArray a, int size) {
-  var acc = a.getCellFlat(0) as Complex;
+Complex _r_complex128_min(NDArray<Complex128> a, int size) {
+  final ptr = a.pointer.cast<ffi.Double>();
+  var accR = ptr[0];
+  var accI = ptr[1];
   for (var i = 1; i < size; i++) {
-    acc = _complexMin(acc, a.getCellFlat(i) as Complex);
+    final r = ptr[2 * i];
+    final im = ptr[2 * i + 1];
+    if (accR.isNaN || accI.isNaN) {
+      // keep
+    } else if (r.isNaN || im.isNaN) {
+      accR = r;
+      accI = im;
+    } else if (r < accR || (r == accR && im < accI)) {
+      accR = r;
+      accI = im;
+    }
   }
-  return acc;
+  return Complex(accR, accI);
 }
 
-Complex _r_complex_max(NDArray a, int size) {
-  var acc = a.getCellFlat(0) as Complex;
+Complex _r_complex64_min(NDArray<Complex64> a, int size) {
+  final ptr = a.pointer.cast<ffi.Float>();
+  var accR = ptr[0];
+  var accI = ptr[1];
   for (var i = 1; i < size; i++) {
-    acc = _complexMax(acc, a.getCellFlat(i) as Complex);
+    final r = ptr[2 * i];
+    final im = ptr[2 * i + 1];
+    if (accR.isNaN || accI.isNaN) {
+      // keep
+    } else if (r.isNaN || im.isNaN) {
+      accR = r;
+      accI = im;
+    } else if (r < accR || (r == accR && im < accI)) {
+      accR = r;
+      accI = im;
+    }
   }
-  return acc;
+  return Complex(accR, accI);
+}
+
+Complex _r_complex128_max(NDArray<Complex128> a, int size) {
+  final ptr = a.pointer.cast<ffi.Double>();
+  var accR = ptr[0];
+  var accI = ptr[1];
+  for (var i = 1; i < size; i++) {
+    final r = ptr[2 * i];
+    final im = ptr[2 * i + 1];
+    if (accR.isNaN || accI.isNaN) {
+      // keep
+    } else if (r.isNaN || im.isNaN) {
+      accR = r;
+      accI = im;
+    } else if (r > accR || (r == accR && im > accI)) {
+      accR = r;
+      accI = im;
+    }
+  }
+  return Complex(accR, accI);
+}
+
+Complex _r_complex64_max(NDArray<Complex64> a, int size) {
+  final ptr = a.pointer.cast<ffi.Float>();
+  var accR = ptr[0];
+  var accI = ptr[1];
+  for (var i = 1; i < size; i++) {
+    final r = ptr[2 * i];
+    final im = ptr[2 * i + 1];
+    if (accR.isNaN || accI.isNaN) {
+      // keep
+    } else if (r.isNaN || im.isNaN) {
+      accR = r;
+      accI = im;
+    } else if (r > accR || (r == accR && im > accI)) {
+      accR = r;
+      accI = im;
+    }
+  }
+  return Complex(accR, accI);
+}
+
+void _s_complex128_min_max(
+  NDArray<Complex128> a,
+  NDArray<Complex128> result,
+  int normAxis,
+  List<int> squeezedDestStrides, {
+  required bool isMin,
+}) {
+  final rank = a.shape.length;
+  final axisLen = a.shape[normAxis];
+  final axisStride = a.strides[normAxis];
+  final outShape = List<int>.from(a.shape)..removeAt(normAxis);
+  final outRank = outShape.length;
+  final outSize = result.size;
+  final aStrides = a.strides;
+
+  final aPtr = a.pointer.cast<ffi.Double>();
+  final resPtr = result.pointer.cast<ffi.Double>();
+
+  if (outRank == 0) {
+    if (axisLen == 0) return;
+    var accR = aPtr[0];
+    var accI = aPtr[1];
+    for (var i = 1; i < axisLen; i++) {
+      final off = 2 * (i * axisStride);
+      final r = aPtr[off];
+      final im = aPtr[off + 1];
+      if (isMin) {
+        if (accR.isNaN || accI.isNaN) {
+          // keep
+        } else if (r.isNaN || im.isNaN) {
+          accR = r;
+          accI = im;
+        } else if (r < accR || (r == accR && im < accI)) {
+          accR = r;
+          accI = im;
+        }
+      } else {
+        if (accR.isNaN || accI.isNaN) {
+          // keep
+        } else if (r.isNaN || im.isNaN) {
+          accR = r;
+          accI = im;
+        } else if (r > accR || (r == accR && im > accI)) {
+          accR = r;
+          accI = im;
+        }
+      }
+    }
+    resPtr[0] = accR;
+    resPtr[1] = accI;
+    return;
+  }
+
+  final outCoords = List<int>.filled(outRank, 0);
+
+  for (var outIdx = 0; outIdx < outSize; outIdx++) {
+    var c = 0;
+    var aBaseOffset = 0;
+    for (var d = 0; d < rank; d++) {
+      if (d == normAxis) continue;
+      aBaseOffset += outCoords[c++] * aStrides[d];
+    }
+
+    var destOffset = 0;
+    for (var d = 0; d < outRank; d++) {
+      destOffset += outCoords[d] * squeezedDestStrides[d];
+    }
+
+    if (axisLen > 0) {
+      final firstOff = 2 * aBaseOffset;
+      var accR = aPtr[firstOff];
+      var accI = aPtr[firstOff + 1];
+      for (var i = 1; i < axisLen; i++) {
+        final off = 2 * (aBaseOffset + i * axisStride);
+        final r = aPtr[off];
+        final im = aPtr[off + 1];
+        if (isMin) {
+          if (accR.isNaN || accI.isNaN) {
+            // keep
+          } else if (r.isNaN || im.isNaN) {
+            accR = r;
+            accI = im;
+          } else if (r < accR || (r == accR && im < accI)) {
+            accR = r;
+            accI = im;
+          }
+        } else {
+          if (accR.isNaN || accI.isNaN) {
+            // keep
+          } else if (r.isNaN || im.isNaN) {
+            accR = r;
+            accI = im;
+          } else if (r > accR || (r == accR && im > accI)) {
+            accR = r;
+            accI = im;
+          }
+        }
+      }
+      final destOff = 2 * destOffset;
+      resPtr[destOff] = accR;
+      resPtr[destOff + 1] = accI;
+    }
+
+    for (var d = outRank - 1; d >= 0; d--) {
+      outCoords[d]++;
+      if (outCoords[d] < outShape[d]) break;
+      outCoords[d] = 0;
+    }
+  }
+}
+
+void _s_complex64_min_max(
+  NDArray<Complex64> a,
+  NDArray<Complex64> result,
+  int normAxis,
+  List<int> squeezedDestStrides, {
+  required bool isMin,
+}) {
+  final rank = a.shape.length;
+  final axisLen = a.shape[normAxis];
+  final axisStride = a.strides[normAxis];
+  final outShape = List<int>.from(a.shape)..removeAt(normAxis);
+  final outRank = outShape.length;
+  final outSize = result.size;
+  final aStrides = a.strides;
+
+  final aPtr = a.pointer.cast<ffi.Float>();
+  final resPtr = result.pointer.cast<ffi.Float>();
+
+  if (outRank == 0) {
+    if (axisLen == 0) return;
+    var accR = aPtr[0];
+    var accI = aPtr[1];
+    for (var i = 1; i < axisLen; i++) {
+      final off = 2 * (i * axisStride);
+      final r = aPtr[off];
+      final im = aPtr[off + 1];
+      if (isMin) {
+        if (accR.isNaN || accI.isNaN) {
+          // keep
+        } else if (r.isNaN || im.isNaN) {
+          accR = r;
+          accI = im;
+        } else if (r < accR || (r == accR && im < accI)) {
+          accR = r;
+          accI = im;
+        }
+      } else {
+        if (accR.isNaN || accI.isNaN) {
+          // keep
+        } else if (r.isNaN || im.isNaN) {
+          accR = r;
+          accI = im;
+        } else if (r > accR || (r == accR && im > accI)) {
+          accR = r;
+          accI = im;
+        }
+      }
+    }
+    resPtr[0] = accR;
+    resPtr[1] = accI;
+    return;
+  }
+
+  final outCoords = List<int>.filled(outRank, 0);
+
+  for (var outIdx = 0; outIdx < outSize; outIdx++) {
+    var c = 0;
+    var aBaseOffset = 0;
+    for (var d = 0; d < rank; d++) {
+      if (d == normAxis) continue;
+      aBaseOffset += outCoords[c++] * aStrides[d];
+    }
+
+    var destOffset = 0;
+    for (var d = 0; d < outRank; d++) {
+      destOffset += outCoords[d] * squeezedDestStrides[d];
+    }
+
+    if (axisLen > 0) {
+      final firstOff = 2 * aBaseOffset;
+      var accR = aPtr[firstOff];
+      var accI = aPtr[firstOff + 1];
+      for (var i = 1; i < axisLen; i++) {
+        final off = 2 * (aBaseOffset + i * axisStride);
+        final r = aPtr[off];
+        final im = aPtr[off + 1];
+        if (isMin) {
+          if (accR.isNaN || accI.isNaN) {
+            // keep
+          } else if (r.isNaN || im.isNaN) {
+            accR = r;
+            accI = im;
+          } else if (r < accR || (r == accR && im < accI)) {
+            accR = r;
+            accI = im;
+          }
+        } else {
+          if (accR.isNaN || accI.isNaN) {
+            // keep
+          } else if (r.isNaN || im.isNaN) {
+            accR = r;
+            accI = im;
+          } else if (r > accR || (r == accR && im > accI)) {
+            accR = r;
+            accI = im;
+          }
+        }
+      }
+      final destOff = 2 * destOffset;
+      resPtr[destOff] = accR;
+      resPtr[destOff + 1] = accI;
+    }
+
+    for (var d = outRank - 1; d >= 0; d--) {
+      outCoords[d]++;
+      if (outCoords[d] < outShape[d]) break;
+      outCoords[d] = 0;
+    }
+  }
+}
+
+void _s_complex128_nansum(
+  NDArray<Complex128> a,
+  NDArray<Complex128> result,
+  int normAxis,
+  List<int> squeezedDestStrides,
+) {
+  final rank = a.shape.length;
+  final axisLen = a.shape[normAxis];
+  final axisStride = a.strides[normAxis];
+  final outShape = List<int>.from(a.shape)..removeAt(normAxis);
+  final outRank = outShape.length;
+  final outSize = result.size;
+  final aStrides = a.strides;
+
+  final aPtr = a.pointer.cast<ffi.Double>();
+  final resPtr = result.pointer.cast<ffi.Double>();
+
+  if (outRank == 0) {
+    var sumR = 0.0;
+    var sumI = 0.0;
+    for (var i = 0; i < axisLen; i++) {
+      final off = 2 * (i * axisStride);
+      final r = aPtr[off];
+      final im = aPtr[off + 1];
+      if (r.isNaN || im.isNaN) continue;
+      sumR += r;
+      sumI += im;
+    }
+    resPtr[0] = sumR;
+    resPtr[1] = sumI;
+    return;
+  }
+
+  final outCoords = List<int>.filled(outRank, 0);
+
+  for (var outIdx = 0; outIdx < outSize; outIdx++) {
+    var c = 0;
+    var aBaseOffset = 0;
+    for (var d = 0; d < rank; d++) {
+      if (d == normAxis) continue;
+      aBaseOffset += outCoords[c++] * aStrides[d];
+    }
+
+    var destOffset = 0;
+    for (var d = 0; d < outRank; d++) {
+      destOffset += outCoords[d] * squeezedDestStrides[d];
+    }
+
+    var sumR = 0.0;
+    var sumI = 0.0;
+    for (var i = 0; i < axisLen; i++) {
+      final off = 2 * (aBaseOffset + i * axisStride);
+      final r = aPtr[off];
+      final im = aPtr[off + 1];
+      if (r.isNaN || im.isNaN) continue;
+      sumR += r;
+      sumI += im;
+    }
+    final destOff = 2 * destOffset;
+    resPtr[destOff] = sumR;
+    resPtr[destOff + 1] = sumI;
+
+    for (var d = outRank - 1; d >= 0; d--) {
+      outCoords[d]++;
+      if (outCoords[d] < outShape[d]) break;
+      outCoords[d] = 0;
+    }
+  }
+}
+
+void _s_complex64_nansum(
+  NDArray<Complex64> a,
+  NDArray<Complex64> result,
+  int normAxis,
+  List<int> squeezedDestStrides,
+) {
+  final rank = a.shape.length;
+  final axisLen = a.shape[normAxis];
+  final axisStride = a.strides[normAxis];
+  final outShape = List<int>.from(a.shape)..removeAt(normAxis);
+  final outRank = outShape.length;
+  final outSize = result.size;
+  final aStrides = a.strides;
+
+  final aPtr = a.pointer.cast<ffi.Float>();
+  final resPtr = result.pointer.cast<ffi.Float>();
+
+  if (outRank == 0) {
+    var sumR = 0.0;
+    var sumI = 0.0;
+    for (var i = 0; i < axisLen; i++) {
+      final off = 2 * (i * axisStride);
+      final r = aPtr[off];
+      final im = aPtr[off + 1];
+      if (r.isNaN || im.isNaN) continue;
+      sumR += r;
+      sumI += im;
+    }
+    resPtr[0] = sumR;
+    resPtr[1] = sumI;
+    return;
+  }
+
+  final outCoords = List<int>.filled(outRank, 0);
+
+  for (var outIdx = 0; outIdx < outSize; outIdx++) {
+    var c = 0;
+    var aBaseOffset = 0;
+    for (var d = 0; d < rank; d++) {
+      if (d == normAxis) continue;
+      aBaseOffset += outCoords[c++] * aStrides[d];
+    }
+
+    var destOffset = 0;
+    for (var d = 0; d < outRank; d++) {
+      destOffset += outCoords[d] * squeezedDestStrides[d];
+    }
+
+    var sumR = 0.0;
+    var sumI = 0.0;
+    for (var i = 0; i < axisLen; i++) {
+      final off = 2 * (aBaseOffset + i * axisStride);
+      final r = aPtr[off];
+      final im = aPtr[off + 1];
+      if (r.isNaN || im.isNaN) continue;
+      sumR += r;
+      sumI += im;
+    }
+    final destOff = 2 * destOffset;
+    resPtr[destOff] = sumR;
+    resPtr[destOff + 1] = sumI;
+
+    for (var d = outRank - 1; d >= 0; d--) {
+      outCoords[d]++;
+      if (outCoords[d] < outShape[d]) break;
+      outCoords[d] = 0;
+    }
+  }
 }
 
 /// Methods for estimating quantiles/percentiles.
@@ -452,18 +865,10 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot compute sum of a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write sum to a disposed output array.');
-  }
-
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   final DType<R> effectiveDType = dtype;
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != effectiveDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, effectiveDType, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
@@ -473,7 +878,7 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
     }
   }
 
-  final NDArray workA;
+  final NDArray<DTypeTag> workA;
   final bool needsDispose;
   if (a.dtype != effectiveDType) {
     workA = castNDArray(a, effectiveDType);
@@ -504,7 +909,7 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
 
       final ptr = workA.isContiguous ? workA.pointer : null;
       if (ptr != null) {
-        dynamic acc;
+        Object? acc;
         switch (workA.dtype) {
           case DType.float64:
             acc = r_sum_double(ptr.cast(), size);
@@ -539,7 +944,7 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
       }
 
       final copyA = workA.copy();
-      dynamic acc;
+      Object? acc;
       try {
         switch (copyA.dtype) {
           case DType.float64:
@@ -777,18 +1182,10 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot calculate product of disposed array');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write product result to disposed out array');
-  }
-
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   final DType<R> effectiveDType = dtype;
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != effectiveDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, effectiveDType, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
@@ -798,7 +1195,7 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
     }
   }
 
-  final NDArray workA;
+  final NDArray<DTypeTag> workA;
   final bool needsDispose;
   if (a.dtype != effectiveDType) {
     workA = castNDArray(a, effectiveDType);
@@ -827,7 +1224,7 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
 
       final ptr = workA.isContiguous ? workA.pointer : null;
       if (ptr != null) {
-        dynamic acc;
+        Object? acc;
         switch (workA.dtype) {
           case DType.float64:
             acc = r_prod_double(ptr.cast(), size);
@@ -862,7 +1259,7 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
       }
 
       final copyA = workA.copy();
-      dynamic acc;
+      Object? acc;
       try {
         switch (copyA.dtype) {
           case DType.float64:
@@ -1046,6 +1443,173 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
   }
 }
 
+NDArray<Boolean> _toBooleanNDArray<T extends DTypeTag>(NDArray<T> a) {
+  if (a.dtype == DType.boolean) {
+    return a as NDArray<Boolean>;
+  }
+  final boolArr = NDArray<Boolean>.create(a.shape, DType.boolean);
+  final destPtr = boolArr.pointer.cast<ffi.Uint8>();
+  if (a.isContiguous) {
+    switch (a.dtype) {
+      case DType.float64:
+        v_to_bool_double(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.float32:
+        v_to_bool_float(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.int64:
+      case DType.uint64:
+        v_to_bool_int64(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.int32:
+      case DType.uint32:
+        v_to_bool_int32(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.uint8:
+      case DType.int8:
+        v_to_bool_uint8(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.int16:
+      case DType.uint16:
+        v_to_bool_int16(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.complex128:
+        v_to_bool_complex128(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.complex64:
+        v_to_bool_complex64(a.pointer.cast(), destPtr, a.size, ffi.nullptr);
+      case DType.float16:
+      case DType.bfloat16:
+        final f32 = castNDArray<Float32>(a, DType.float32);
+        try {
+          v_to_bool_float(f32.pointer.cast(), destPtr, a.size, ffi.nullptr);
+        } finally {
+          f32.dispose();
+        }
+      case DType.boolean:
+        throw StateError('Unreachable');
+    }
+  } else {
+    final ndim = a.shape.length;
+    final marker = ScratchArena.marker;
+    try {
+      final cBuffer = ScratchArena.getStridedBuffer(ndim);
+      final cShape = cBuffer;
+      final cStridesA = cBuffer + ndim;
+      final cStridesDest = cBuffer + (ndim * 2);
+      for (var i = 0; i < ndim; i++) {
+        cShape[i] = a.shape[i];
+        cStridesA[i] = a.strides[i];
+        cStridesDest[i] = boolArr.strides[i];
+      }
+      switch (a.dtype) {
+        case DType.float64:
+          s_to_bool_double(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.float32:
+          s_to_bool_float(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.int64:
+        case DType.uint64:
+          s_to_bool_int64(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.int32:
+        case DType.uint32:
+          s_to_bool_int32(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.uint8:
+        case DType.int8:
+          s_to_bool_uint8(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.int16:
+        case DType.uint16:
+          s_to_bool_int16(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.complex128:
+          s_to_bool_complex128(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.complex64:
+          s_to_bool_complex64(
+            a.pointer.cast(),
+            cStridesA,
+            destPtr,
+            cStridesDest,
+            cShape,
+            ndim,
+            ffi.nullptr,
+          );
+        case DType.float16:
+        case DType.bfloat16:
+          final f32 = castNDArray<Float32>(a, DType.float32);
+          try {
+            final f32Strides = f32.strides;
+            for (var i = 0; i < ndim; i++) {
+              cStridesA[i] = f32Strides[i];
+            }
+            s_to_bool_float(
+              f32.pointer.cast(),
+              cStridesA,
+              destPtr,
+              cStridesDest,
+              cShape,
+              ndim,
+              ffi.nullptr,
+            );
+          } finally {
+            f32.dispose();
+          }
+        case DType.boolean:
+          throw StateError('Unreachable');
+      }
+    } finally {
+      ScratchArena.reset(marker);
+    }
+  }
+  return boolArr;
+}
+
 /// Returns true if all elements along a given [axis] evaluate to True.
 ///
 /// If [axis] is omitted/null, performs a global reduction and returns a single Dart [bool].
@@ -1077,11 +1641,7 @@ NDArray<Boolean> all<T extends DTypeTag>(
 
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, DType.boolean, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Boolean>.create(out.shape, out.dtype);
@@ -1092,44 +1652,82 @@ NDArray<Boolean> all<T extends DTypeTag>(
   }
 
   if (axis == null) {
-    var allTrue = true;
-    final iter = NDIter(a);
-    while (iter.moveNext()) {
-      if (!isTrueHelper(a.getCellRaw(iter.index))) {
-        allTrue = false;
-        break;
+    final result = out ?? NDArray<Boolean>.create(targetShape, DType.boolean);
+    if (a.size == 0) {
+      result.setCellFlat(0, true);
+      return result;
+    }
+    final boolArr = _toBooleanNDArray(a);
+    try {
+      final bool allTrue;
+      if (boolArr.isContiguous) {
+        allTrue = r_logical_and(boolArr.pointer.cast(), boolArr.size) != 0;
+      } else {
+        final temp = boolArr.copy();
+        try {
+          allTrue = r_logical_and(temp.pointer.cast(), temp.size) != 0;
+        } finally {
+          temp.dispose();
+        }
+      }
+      result.setCellFlat(0, allTrue);
+      return result;
+    } finally {
+      if (!identical(boolArr, a)) {
+        boolArr.dispose();
       }
     }
-    final result = out ?? NDArray<Boolean>.create(targetShape, DType.boolean);
-    result.setCellFlat(0, allTrue);
-    return result;
   }
 
   final rank = a.shape.length;
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -rank, rank - 1, 'axis');
   }
 
   final result = out ?? NDArray<Boolean>.create(targetShape, DType.boolean);
-  result.fill(true); // Initialize to true everywhere
+  if (a.shape[normAxis] == 0) {
+    result.fill(true);
+    return result;
+  }
 
   final squeezedDestStrides = keepdims
       ? (List<int>.from(result.strides)..removeAt(normAxis))
       : result.strides;
 
-  reduceRecursive<T, Boolean>(
-    a,
-    result,
-    List<int>.filled(rank, 0),
-    List<int>.filled(rank - 1, 0),
-    normAxis,
-    0,
-    (current, val) => (current as bool) && isTrueHelper(val),
-    destStrides: squeezedDestStrides,
-  );
-
-  return result;
+  final boolArr = _toBooleanNDArray(a);
+  try {
+    final marker = ScratchArena.marker;
+    try {
+      final cBuffer = ScratchArena.getStridedBuffer(rank);
+      final cShape = cBuffer;
+      final cStridesA = cBuffer + rank;
+      final cStridesRes = cBuffer + (rank * 2);
+      for (var i = 0; i < rank; i++) {
+        cShape[i] = boolArr.shape[i];
+        cStridesA[i] = boolArr.strides[i];
+      }
+      for (var i = 0; i < squeezedDestStrides.length; i++) {
+        cStridesRes[i] = squeezedDestStrides[i];
+      }
+      s_logical_and_red(
+        boolArr.pointer.cast(),
+        cStridesA,
+        result.pointer.cast(),
+        cStridesRes,
+        cShape,
+        rank,
+        normAxis,
+      );
+    } finally {
+      ScratchArena.reset(marker);
+    }
+    return result;
+  } finally {
+    if (!identical(boolArr, a)) {
+      boolArr.dispose();
+    }
+  }
 }
 
 /// Returns true if any element along a given [axis] evaluates to True.
@@ -1163,11 +1761,7 @@ NDArray<Boolean> any<T extends DTypeTag>(
 
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, DType.boolean, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Boolean>.create(out.shape, out.dtype);
@@ -1178,51 +1772,82 @@ NDArray<Boolean> any<T extends DTypeTag>(
   }
 
   if (axis == null) {
-    var anyTrue = false;
-    final iter = NDIter(a);
-    while (iter.moveNext()) {
-      if (isTrueHelper(a.getCellRaw(iter.index))) {
-        anyTrue = true;
-        break;
+    final result = out ?? NDArray<Boolean>.create(targetShape, DType.boolean);
+    if (a.size == 0) {
+      result.setCellFlat(0, false);
+      return result;
+    }
+    final boolArr = _toBooleanNDArray(a);
+    try {
+      final bool anyTrue;
+      if (boolArr.isContiguous) {
+        anyTrue = r_logical_or(boolArr.pointer.cast(), boolArr.size) != 0;
+      } else {
+        final temp = boolArr.copy();
+        try {
+          anyTrue = r_logical_or(temp.pointer.cast(), temp.size) != 0;
+        } finally {
+          temp.dispose();
+        }
+      }
+      result.setCellFlat(0, anyTrue);
+      return result;
+    } finally {
+      if (!identical(boolArr, a)) {
+        boolArr.dispose();
       }
     }
-    final result = out ?? NDArray<Boolean>.create(targetShape, DType.boolean);
-    result.setCellFlat(0, anyTrue);
-    return result;
   }
 
   final rank = a.shape.length;
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -rank, rank - 1, 'axis');
   }
 
-  final result =
-      out ??
-      NDArray<Boolean>.zeros(
-        targetShape,
-        DType.boolean,
-      ); // Pre-initialized to false
-  if (out != null) {
+  final result = out ?? NDArray<Boolean>.create(targetShape, DType.boolean);
+  if (a.shape[normAxis] == 0) {
     result.fill(false);
+    return result;
   }
 
   final squeezedDestStrides = keepdims
       ? (List<int>.from(result.strides)..removeAt(normAxis))
       : result.strides;
 
-  reduceRecursive<T, Boolean>(
-    a,
-    result,
-    List<int>.filled(rank, 0),
-    List<int>.filled(rank - 1, 0),
-    normAxis,
-    0,
-    (current, val) => (current as bool) || isTrueHelper(val),
-    destStrides: squeezedDestStrides,
-  );
-
-  return result;
+  final boolArr = _toBooleanNDArray(a);
+  try {
+    final marker = ScratchArena.marker;
+    try {
+      final cBuffer = ScratchArena.getStridedBuffer(rank);
+      final cShape = cBuffer;
+      final cStridesA = cBuffer + rank;
+      final cStridesRes = cBuffer + (rank * 2);
+      for (var i = 0; i < rank; i++) {
+        cShape[i] = boolArr.shape[i];
+        cStridesA[i] = boolArr.strides[i];
+      }
+      for (var i = 0; i < squeezedDestStrides.length; i++) {
+        cStridesRes[i] = squeezedDestStrides[i];
+      }
+      s_logical_or_red(
+        boolArr.pointer.cast(),
+        cStridesA,
+        result.pointer.cast(),
+        cStridesRes,
+        cShape,
+        rank,
+        normAxis,
+      );
+    } finally {
+      ScratchArena.reset(marker);
+    }
+    return result;
+  } finally {
+    if (!identical(boolArr, a)) {
+      boolArr.dispose();
+    }
+  }
 }
 
 /// Computes the arithmetic mean of array elements along a specified axis.
@@ -1305,7 +1930,7 @@ NDArray<R> mean<R extends DTypeTag, T extends DTypeTag>(
 
     final ptr = a.isContiguous ? a.pointer : null;
     if (ptr != null) {
-      dynamic acc;
+      Object? acc;
       switch (a.dtype) {
         case DType.float64:
           acc = r_mean_double(ptr.cast(), size);
@@ -1340,7 +1965,7 @@ NDArray<R> mean<R extends DTypeTag, T extends DTypeTag>(
     }
 
     final copyA = a.copy();
-    dynamic acc;
+    Object? acc;
     switch (copyA.dtype) {
       case DType.float64:
         acc = r_mean_double(copyA.pointer.cast(), size);
@@ -1840,66 +2465,112 @@ NDArray<Float64> _computeNanvarGeneral<T extends DTypeTag>(
       return result;
     }
     if (isComplex) {
-      var sumR = 0.0;
-      var sumI = 0.0;
-      var count = 0;
-      final iter1 = NDIter(a);
-      while (iter1.moveNext()) {
-        final c = a.getCellRaw(iter1.index) as Complex;
-        if (c.real.isNaN || c.imag.isNaN) continue;
-        sumR += c.real;
-        sumI += c.imag;
-        count++;
+      final temp = a.isContiguous ? a : a.copy();
+      try {
+        var sumR = 0.0;
+        var sumI = 0.0;
+        var count = 0;
+        if (a.dtype == DType.complex128) {
+          final ptr = temp.pointer.cast<ffi.Double>();
+          for (var i = 0; i < size; i++) {
+            final r = ptr[2 * i];
+            final im = ptr[2 * i + 1];
+            if (r.isNaN || im.isNaN) continue;
+            sumR += r;
+            sumI += im;
+            count++;
+          }
+          if (count == 0 || count <= ddof) {
+            result.setCellFlat(0, double.nan);
+            return result;
+          }
+          final meanR = sumR / count;
+          final meanI = sumI / count;
+          var ssd = 0.0;
+          for (var i = 0; i < size; i++) {
+            final r = ptr[2 * i];
+            final im = ptr[2 * i + 1];
+            if (r.isNaN || im.isNaN) continue;
+            final dr = r - meanR;
+            final di = im - meanI;
+            ssd += dr * dr + di * di;
+          }
+          result.setCellFlat(0, ssd / (count - ddof));
+          return result;
+        } else {
+          final ptr = temp.pointer.cast<ffi.Float>();
+          for (var i = 0; i < size; i++) {
+            final r = ptr[2 * i];
+            final im = ptr[2 * i + 1];
+            if (r.isNaN || im.isNaN) continue;
+            sumR += r;
+            sumI += im;
+            count++;
+          }
+          if (count == 0 || count <= ddof) {
+            result.setCellFlat(0, double.nan);
+            return result;
+          }
+          final meanR = sumR / count;
+          final meanI = sumI / count;
+          var ssd = 0.0;
+          for (var i = 0; i < size; i++) {
+            final r = ptr[2 * i];
+            final im = ptr[2 * i + 1];
+            if (r.isNaN || im.isNaN) continue;
+            final dr = r - meanR;
+            final di = im - meanI;
+            ssd += dr * dr + di * di;
+          }
+          result.setCellFlat(0, ssd / (count - ddof));
+          return result;
+        }
+      } finally {
+        if (!identical(temp, a)) temp.dispose();
       }
-      if (count == 0 || count <= ddof) {
-        result.setCellFlat(0, double.nan);
-        return result;
-      }
-      final meanR = sumR / count;
-      final meanI = sumI / count;
-      var ssd = 0.0;
-      final iter2 = NDIter(a);
-      while (iter2.moveNext()) {
-        final c = a.getCellRaw(iter2.index) as Complex;
-        if (c.real.isNaN || c.imag.isNaN) continue;
-        final dr = c.real - meanR;
-        final di = c.imag - meanI;
-        ssd += dr * dr + di * di;
-      }
-      result.setCellFlat(0, ssd / (count - ddof));
-      return result;
     } else {
-      var sumV = 0.0;
-      var count = 0;
-      final iter1 = NDIter(a);
-      while (iter1.moveNext()) {
-        final v = (a.getCellRaw(iter1.index) as num).toDouble();
-        if (v.isNaN) continue;
-        sumV += v;
-        count++;
+      final workA = a.dtype == DType.float64
+          ? a
+          : castNDArray<Float64>(a, DType.float64);
+      try {
+        final temp = workA.isContiguous ? workA : workA.copy();
+        try {
+          final ptr = temp.pointer.cast<ffi.Double>();
+          var sumV = 0.0;
+          var count = 0;
+          for (var i = 0; i < size; i++) {
+            final v = ptr[i];
+            if (v.isNaN) continue;
+            sumV += v;
+            count++;
+          }
+          if (count == 0 || count <= ddof) {
+            result.setCellFlat(0, double.nan);
+            return result;
+          }
+          final meanV = sumV / count;
+          var ssd = 0.0;
+          for (var i = 0; i < size; i++) {
+            final v = ptr[i];
+            if (v.isNaN) continue;
+            final dv = v - meanV;
+            ssd += dv * dv;
+          }
+          result.setCellFlat(0, ssd / (count - ddof));
+          return result;
+        } finally {
+          if (!identical(temp, workA)) temp.dispose();
+        }
+      } finally {
+        if (!identical(workA, a)) workA.dispose();
       }
-      if (count == 0 || count <= ddof) {
-        result.setCellFlat(0, double.nan);
-        return result;
-      }
-      final meanV = sumV / count;
-      var ssd = 0.0;
-      final iter2 = NDIter(a);
-      while (iter2.moveNext()) {
-        final v = (a.getCellRaw(iter2.index) as num).toDouble();
-        if (v.isNaN) continue;
-        final dv = v - meanV;
-        ssd += dv * dv;
-      }
-      result.setCellFlat(0, ssd / (count - ddof));
-      return result;
     }
   }
 
   final rank = a.shape.length;
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -rank, rank - 1, 'axis');
   }
 
   final result =
@@ -1920,80 +2591,169 @@ NDArray<Float64> _computeNanvarGeneral<T extends DTypeTag>(
   final outShape = List<int>.from(a.shape)..removeAt(normAxis);
   final outRank = outShape.length;
   final outCoords = List<int>.filled(outRank, 0);
-  final aCoords = List<int>.filled(rank, 0);
 
-  for (var outIdx = 0; outIdx < outSize; outIdx++) {
-    var cIdx = 0;
-    for (var d = 0; d < rank; d++) {
-      if (d == normAxis) continue;
-      aCoords[d] = outCoords[cIdx++];
-    }
+  if (isComplex) {
+    if (a.dtype == DType.complex128) {
+      final aPtr = a.pointer.cast<ffi.Double>();
+      final resPtr = result.pointer.cast<ffi.Double>();
+      final axisStride = a.strides[normAxis];
+      final aStrides = a.strides;
 
-    double sliceVar;
-    if (isComplex) {
-      var sumR = 0.0;
-      var sumI = 0.0;
-      var count = 0;
-      for (var i = 0; i < axisLen; i++) {
-        aCoords[normAxis] = i;
-        final c = a.getCell(aCoords) as Complex;
-        if (c.real.isNaN || c.imag.isNaN) continue;
-        sumR += c.real;
-        sumI += c.imag;
-        count++;
-      }
-      if (count == 0 || count <= ddof) {
-        sliceVar = double.nan;
-      } else {
-        final meanR = sumR / count;
-        final meanI = sumI / count;
-        var ssd = 0.0;
-        for (var i = 0; i < axisLen; i++) {
-          aCoords[normAxis] = i;
-          final c = a.getCell(aCoords) as Complex;
-          if (c.real.isNaN || c.imag.isNaN) continue;
-          final dr = c.real - meanR;
-          final di = c.imag - meanI;
-          ssd += dr * dr + di * di;
+      for (var outIdx = 0; outIdx < outSize; outIdx++) {
+        var cIdx = 0;
+        var aBaseOffset = 0;
+        for (var d = 0; d < rank; d++) {
+          if (d == normAxis) continue;
+          aBaseOffset += outCoords[cIdx++] * aStrides[d];
         }
-        sliceVar = ssd / (count - ddof);
+        var destOffset = 0;
+        for (var d = 0; d < outRank; d++) {
+          destOffset += outCoords[d] * squeezedDestStrides[d];
+        }
+
+        var sumR = 0.0;
+        var sumI = 0.0;
+        var count = 0;
+        for (var i = 0; i < axisLen; i++) {
+          final off = 2 * (aBaseOffset + i * axisStride);
+          final r = aPtr[off];
+          final im = aPtr[off + 1];
+          if (r.isNaN || im.isNaN) continue;
+          sumR += r;
+          sumI += im;
+          count++;
+        }
+        if (count == 0 || count <= ddof) {
+          resPtr[destOffset] = double.nan;
+        } else {
+          final meanR = sumR / count;
+          final meanI = sumI / count;
+          var ssd = 0.0;
+          for (var i = 0; i < axisLen; i++) {
+            final off = 2 * (aBaseOffset + i * axisStride);
+            final r = aPtr[off];
+            final im = aPtr[off + 1];
+            if (r.isNaN || im.isNaN) continue;
+            final dr = r - meanR;
+            final di = im - meanI;
+            ssd += dr * dr + di * di;
+          }
+          resPtr[destOffset] = ssd / (count - ddof);
+        }
+
+        for (var d = outRank - 1; d >= 0; d--) {
+          outCoords[d]++;
+          if (outCoords[d] < outShape[d]) break;
+          outCoords[d] = 0;
+        }
       }
     } else {
-      var sumV = 0.0;
-      var count = 0;
-      for (var i = 0; i < axisLen; i++) {
-        aCoords[normAxis] = i;
-        final v = (a.getCell(aCoords) as num).toDouble();
-        if (v.isNaN) continue;
-        sumV += v;
-        count++;
-      }
-      if (count == 0 || count <= ddof) {
-        sliceVar = double.nan;
-      } else {
-        final meanV = sumV / count;
-        var ssd = 0.0;
-        for (var i = 0; i < axisLen; i++) {
-          aCoords[normAxis] = i;
-          final v = (a.getCell(aCoords) as num).toDouble();
-          if (v.isNaN) continue;
-          final dv = v - meanV;
-          ssd += dv * dv;
+      final aPtr = a.pointer.cast<ffi.Float>();
+      final resPtr = result.pointer.cast<ffi.Double>();
+      final axisStride = a.strides[normAxis];
+      final aStrides = a.strides;
+
+      for (var outIdx = 0; outIdx < outSize; outIdx++) {
+        var cIdx = 0;
+        var aBaseOffset = 0;
+        for (var d = 0; d < rank; d++) {
+          if (d == normAxis) continue;
+          aBaseOffset += outCoords[cIdx++] * aStrides[d];
         }
-        sliceVar = ssd / (count - ddof);
+        var destOffset = 0;
+        for (var d = 0; d < outRank; d++) {
+          destOffset += outCoords[d] * squeezedDestStrides[d];
+        }
+
+        var sumR = 0.0;
+        var sumI = 0.0;
+        var count = 0;
+        for (var i = 0; i < axisLen; i++) {
+          final off = 2 * (aBaseOffset + i * axisStride);
+          final r = aPtr[off];
+          final im = aPtr[off + 1];
+          if (r.isNaN || im.isNaN) continue;
+          sumR += r;
+          sumI += im;
+          count++;
+        }
+        if (count == 0 || count <= ddof) {
+          resPtr[destOffset] = double.nan;
+        } else {
+          final meanR = sumR / count;
+          final meanI = sumI / count;
+          var ssd = 0.0;
+          for (var i = 0; i < axisLen; i++) {
+            final off = 2 * (aBaseOffset + i * axisStride);
+            final r = aPtr[off];
+            final im = aPtr[off + 1];
+            if (r.isNaN || im.isNaN) continue;
+            final dr = r - meanR;
+            final di = im - meanI;
+            ssd += dr * dr + di * di;
+          }
+          resPtr[destOffset] = ssd / (count - ddof);
+        }
+
+        for (var d = outRank - 1; d >= 0; d--) {
+          outCoords[d]++;
+          if (outCoords[d] < outShape[d]) break;
+          outCoords[d] = 0;
+        }
       }
     }
+  } else {
+    final workA = a.dtype == DType.float64
+        ? a
+        : castNDArray<Float64>(a, DType.float64);
+    try {
+      final aPtr = workA.pointer.cast<ffi.Double>();
+      final resPtr = result.pointer.cast<ffi.Double>();
+      final axisStride = workA.strides[normAxis];
+      final aStrides = workA.strides;
 
-    var destOffset = result.offsetElements;
-    for (var d = 0; d < outRank; d++) {
-      destOffset += outCoords[d] * squeezedDestStrides[d];
-    }
-    result.setCellRaw(destOffset, sliceVar);
+      for (var outIdx = 0; outIdx < outSize; outIdx++) {
+        var cIdx = 0;
+        var aBaseOffset = 0;
+        for (var d = 0; d < rank; d++) {
+          if (d == normAxis) continue;
+          aBaseOffset += outCoords[cIdx++] * aStrides[d];
+        }
+        var destOffset = 0;
+        for (var d = 0; d < outRank; d++) {
+          destOffset += outCoords[d] * squeezedDestStrides[d];
+        }
 
-    for (var d = outRank - 1; d >= 0; d--) {
-      outCoords[d]++;
-      if (outCoords[d] < outShape[d]) break;
-      outCoords[d] = 0;
+        var sumV = 0.0;
+        var count = 0;
+        for (var i = 0; i < axisLen; i++) {
+          final v = aPtr[aBaseOffset + i * axisStride];
+          if (v.isNaN) continue;
+          sumV += v;
+          count++;
+        }
+        if (count == 0 || count <= ddof) {
+          resPtr[destOffset] = double.nan;
+        } else {
+          final meanV = sumV / count;
+          var ssd = 0.0;
+          for (var i = 0; i < axisLen; i++) {
+            final v = aPtr[aBaseOffset + i * axisStride];
+            if (v.isNaN) continue;
+            final dv = v - meanV;
+            ssd += dv * dv;
+          }
+          resPtr[destOffset] = ssd / (count - ddof);
+        }
+
+        for (var d = outRank - 1; d >= 0; d--) {
+          outCoords[d]++;
+          if (outCoords[d] < outShape[d]) break;
+          outCoords[d] = 0;
+        }
+      }
+    } finally {
+      if (!identical(workA, a)) workA.dispose();
     }
   }
 
@@ -2031,11 +2791,7 @@ NDArray<Float64> nanvar<T extends DTypeTag>(
   }
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.float64) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, DType.float64, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Float64>.create(out.shape, out.dtype);
@@ -2063,7 +2819,7 @@ NDArray<Float64> nanvar<T extends DTypeTag>(
       final rank = a.shape.length;
       final normAxis = axis < 0 ? rank + axis : axis;
       if (normAxis < 0 || normAxis >= rank) {
-        throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+        throw RangeError.range(axis, -rank, rank - 1, 'axis');
       }
       if (a.shape[normAxis] == 0 || a.shape[normAxis] <= ddof) {
         final result =
@@ -2127,7 +2883,7 @@ NDArray<Float64> nanvar<T extends DTypeTag>(
   final rank = a.shape.length;
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -rank, rank - 1, 'axis');
   }
 
   final result =
@@ -2277,16 +3033,13 @@ NDArray<T> min<T extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot compute min of a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write min to a disposed output array.');
-  }
   if (axis == null && a.size == 0) {
     throw ArgumentError('Cannot compute min of an empty array.');
   }
   if (axis != null) {
     final normAxis = axis < 0 ? a.shape.length + axis : axis;
     if (normAxis < 0 || normAxis >= a.shape.length) {
-      throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+      throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
     }
     if (a.shape[normAxis] == 0) {
       throw ArgumentError('Cannot compute min along axis $axis of size 0.');
@@ -2295,13 +3048,7 @@ NDArray<T> min<T extends DTypeTag>(
 
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
-      );
-    }
+    validateOutArray(out, targetShape, a.dtype, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
@@ -2311,11 +3058,16 @@ NDArray<T> min<T extends DTypeTag>(
     }
   }
 
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<T>.create(targetShape, a.dtype);
+  }
+
   if (axis == null) {
     final temp = a.isContiguous ? a : a.copy();
     final size = temp.size;
     final ptr = temp.pointer;
-    dynamic minVal;
+    Object? minVal;
     switch (temp.dtype) {
       case DType.float64:
         minVal = _fastContiguousMinDouble(ptr.cast(), size);
@@ -2330,7 +3082,7 @@ NDArray<T> min<T extends DTypeTag>(
       case DType.int16:
         minVal = r_min_int16_t(ptr.cast(), size);
       case DType.uint64:
-        minVal = _r_uint64_min(temp, size);
+        minVal = _r_uint64_min(temp as NDArray<Uint64>, size);
       case DType.float16:
       case DType.bfloat16:
       case DType.int8:
@@ -2338,8 +3090,9 @@ NDArray<T> min<T extends DTypeTag>(
       case DType.uint16:
         minVal = _r_stat_scalar_fallback(temp, size, _fastContiguousMinDouble);
       case DType.complex128:
+        minVal = _r_complex128_min(temp as NDArray<Complex128>, size);
       case DType.complex64:
-        minVal = _r_complex_min(temp, size);
+        minVal = _r_complex64_min(temp as NDArray<Complex64>, size);
       case DType.boolean:
         minVal = r_min_uint8_t(ptr.cast(), size) != 0;
     }
@@ -2436,8 +3189,8 @@ NDArray<T> min<T extends DTypeTag>(
         );
       case DType.uint64:
         _s_uint64_reduce(
-          a,
-          result,
+          a as NDArray<Uint64>,
+          result as NDArray<Uint64>,
           normAxis,
           squeezedDestStrides,
           null,
@@ -2457,14 +3210,20 @@ NDArray<T> min<T extends DTypeTag>(
           s_min_double,
         );
       case DType.complex128:
-      case DType.complex64:
-        _s_generic_reduce<Complex>(
-          a,
-          result,
+        _s_complex128_min_max(
+          a as NDArray<Complex128>,
+          result as NDArray<Complex128>,
           normAxis,
           squeezedDestStrides,
-          null,
-          _complexMin,
+          isMin: true,
+        );
+      case DType.complex64:
+        _s_complex64_min_max(
+          a as NDArray<Complex64>,
+          result as NDArray<Complex64>,
+          normAxis,
+          squeezedDestStrides,
+          isMin: true,
         );
       case DType.boolean:
         s_min_uint8_t(
@@ -2526,7 +3285,7 @@ NDArray<T> nanmin<T extends DTypeTag>(
   if (axis != null) {
     final normAxis = axis < 0 ? a.shape.length + axis : axis;
     if (normAxis < 0 || normAxis >= a.shape.length) {
-      throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+      throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
     }
     if (a.shape[normAxis] == 0) {
       throw ArgumentError('Cannot compute nanmin along axis $axis of size 0.');
@@ -2535,13 +3294,7 @@ NDArray<T> nanmin<T extends DTypeTag>(
 
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
-      );
-    }
+    validateOutArray(out, targetShape, a.dtype, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
@@ -2551,11 +3304,16 @@ NDArray<T> nanmin<T extends DTypeTag>(
     }
   }
 
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<T>.create(targetShape, a.dtype);
+  }
+
   if (axis == null) {
     final temp = a.isContiguous ? a : a.copy();
     final size = temp.size;
     final ptr = temp.pointer;
-    dynamic minVal;
+    Object? minVal;
     switch (temp.dtype) {
       case DType.float64:
         minVal = _fastContiguousNanminDouble(ptr.cast(), size);
@@ -2572,7 +3330,7 @@ NDArray<T> nanmin<T extends DTypeTag>(
       case DType.boolean:
         minVal = r_min_uint8_t(ptr.cast(), size) != 0;
       case DType.uint64:
-        minVal = _r_uint64_min(temp, size);
+        minVal = _r_uint64_min(temp as NDArray<Uint64>, size);
       case DType.float16:
       case DType.bfloat16:
       case DType.int8:
@@ -2690,8 +3448,8 @@ NDArray<T> nanmin<T extends DTypeTag>(
         );
       case DType.uint64:
         _s_uint64_reduce(
-          a,
-          result,
+          a as NDArray<Uint64>,
+          result as NDArray<Uint64>,
           normAxis,
           squeezedDestStrides,
           null,
@@ -2735,16 +3493,13 @@ NDArray<T> max<T extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot compute max of a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write max to a disposed output array.');
-  }
   if (axis == null && a.size == 0) {
     throw ArgumentError('Cannot compute max of an empty array.');
   }
   if (axis != null) {
     final normAxis = axis < 0 ? a.shape.length + axis : axis;
     if (normAxis < 0 || normAxis >= a.shape.length) {
-      throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+      throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
     }
     if (a.shape[normAxis] == 0) {
       throw ArgumentError('Cannot compute max along axis $axis of size 0.');
@@ -2753,13 +3508,7 @@ NDArray<T> max<T extends DTypeTag>(
 
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
-      );
-    }
+    validateOutArray(out, targetShape, a.dtype, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
@@ -2769,11 +3518,16 @@ NDArray<T> max<T extends DTypeTag>(
     }
   }
 
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<T>.create(targetShape, a.dtype);
+  }
+
   if (axis == null) {
     final temp = a.isContiguous ? a : a.copy();
     final size = temp.size;
     final ptr = temp.pointer;
-    dynamic maxVal;
+    Object? maxVal;
     switch (temp.dtype) {
       case DType.float64:
         maxVal = _fastContiguousMaxDouble(ptr.cast(), size);
@@ -2788,7 +3542,7 @@ NDArray<T> max<T extends DTypeTag>(
       case DType.int16:
         maxVal = r_max_int16_t(ptr.cast(), size);
       case DType.uint64:
-        maxVal = _r_uint64_max(temp, size);
+        maxVal = _r_uint64_max(temp as NDArray<Uint64>, size);
       case DType.float16:
       case DType.bfloat16:
       case DType.int8:
@@ -2796,8 +3550,9 @@ NDArray<T> max<T extends DTypeTag>(
       case DType.uint16:
         maxVal = _r_stat_scalar_fallback(temp, size, _fastContiguousMaxDouble);
       case DType.complex128:
+        maxVal = _r_complex128_max(temp as NDArray<Complex128>, size);
       case DType.complex64:
-        maxVal = _r_complex_max(temp, size);
+        maxVal = _r_complex64_max(temp as NDArray<Complex64>, size);
       case DType.boolean:
         maxVal = r_max_uint8_t(ptr.cast(), size) != 0;
     }
@@ -2894,8 +3649,8 @@ NDArray<T> max<T extends DTypeTag>(
         );
       case DType.uint64:
         _s_uint64_reduce(
-          a,
-          result,
+          a as NDArray<Uint64>,
+          result as NDArray<Uint64>,
           normAxis,
           squeezedDestStrides,
           null,
@@ -2915,14 +3670,20 @@ NDArray<T> max<T extends DTypeTag>(
           s_max_double,
         );
       case DType.complex128:
-      case DType.complex64:
-        _s_generic_reduce<Complex>(
-          a,
-          result,
+        _s_complex128_min_max(
+          a as NDArray<Complex128>,
+          result as NDArray<Complex128>,
           normAxis,
           squeezedDestStrides,
-          null,
-          _complexMax,
+          isMin: false,
+        );
+      case DType.complex64:
+        _s_complex64_min_max(
+          a as NDArray<Complex64>,
+          result as NDArray<Complex64>,
+          normAxis,
+          squeezedDestStrides,
+          isMin: false,
         );
       case DType.boolean:
         s_max_uint8_t(
@@ -2984,7 +3745,7 @@ NDArray<T> nanmax<T extends DTypeTag>(
   if (axis != null) {
     final normAxis = axis < 0 ? a.shape.length + axis : axis;
     if (normAxis < 0 || normAxis >= a.shape.length) {
-      throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+      throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
     }
     if (a.shape[normAxis] == 0) {
       throw ArgumentError('Cannot compute nanmax along axis $axis of size 0.');
@@ -2993,13 +3754,7 @@ NDArray<T> nanmax<T extends DTypeTag>(
 
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
-      );
-    }
+    validateOutArray(out, targetShape, a.dtype, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
@@ -3009,11 +3764,16 @@ NDArray<T> nanmax<T extends DTypeTag>(
     }
   }
 
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<T>.create(targetShape, a.dtype);
+  }
+
   if (axis == null) {
     final temp = a.isContiguous ? a : a.copy();
     final size = temp.size;
     final ptr = temp.pointer;
-    dynamic maxVal;
+    Object? maxVal;
     switch (temp.dtype) {
       case DType.float64:
         maxVal = _fastContiguousNanmaxDouble(ptr.cast(), size);
@@ -3030,7 +3790,7 @@ NDArray<T> nanmax<T extends DTypeTag>(
       case DType.boolean:
         maxVal = r_max_uint8_t(ptr.cast(), size) != 0;
       case DType.uint64:
-        maxVal = _r_uint64_max(temp, size);
+        maxVal = _r_uint64_max(temp as NDArray<Uint64>, size);
       case DType.float16:
       case DType.bfloat16:
       case DType.int8:
@@ -3148,8 +3908,8 @@ NDArray<T> nanmax<T extends DTypeTag>(
         );
       case DType.uint64:
         _s_uint64_reduce(
-          a,
-          result,
+          a as NDArray<Uint64>,
+          result as NDArray<Uint64>,
           normAxis,
           squeezedDestStrides,
           null,
@@ -3257,7 +4017,7 @@ NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
     targetAxis = a.shape.length + targetAxis;
   }
   if (targetAxis < 0 || targetAxis >= a.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
   }
 
   result = out ?? NDArray<R>.create(a.shape, targetDType);
@@ -3359,7 +4119,7 @@ NDArray<R> cumprodAs<T extends DTypeTag, R extends DTypeTag>(
     targetAxis = a.shape.length + targetAxis;
   }
   if (targetAxis < 0 || targetAxis >= a.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
   }
 
   result = out ?? NDArray<R>.create(a.shape, targetDType);
@@ -3439,7 +4199,7 @@ NDArray<T> cummin<T extends DTypeTag>(
     targetAxis = a.shape.length + targetAxis;
   }
   if (targetAxis < 0 || targetAxis >= a.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
   }
 
   result = out ?? NDArray<T>.create(a.shape, a.dtype);
@@ -3519,7 +4279,7 @@ NDArray<T> cummax<T extends DTypeTag>(
     targetAxis = a.shape.length + targetAxis;
   }
   if (targetAxis < 0 || targetAxis >= a.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -a.shape.length, a.shape.length - 1, 'axis');
   }
 
   result = out ?? NDArray<T>.create(a.shape, a.dtype);
@@ -3944,7 +4704,10 @@ NDArray<Float64> var_<T extends DTypeTag>(
 /// final m = nanmean(a); // returns 0-D array containing 2.6666666666666665
 /// ```
 NDArray<R> nanmean<R extends DTypeTag>(
-  NDArray a, {
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -4010,7 +4773,7 @@ NDArray<R> nanmean<R extends DTypeTag>(
       return result;
     }
 
-    NDArray promotedA;
+    final NDArray<DTypeTag> promotedA;
     if (a.dtype.isComplex || a.dtype.isFloating) {
       promotedA = a;
     } else {
@@ -4018,14 +4781,21 @@ NDArray<R> nanmean<R extends DTypeTag>(
     }
 
     final iter = NDIter(promotedA);
-    var sumVal = (targetDType.isComplex ? Complex(0, 0) : 0.0) as dynamic;
+    var sumR = 0.0;
+    var sumI = 0.0;
     var count = 0;
     while (iter.moveNext()) {
       final val = promotedA.getCellRaw(iter.index);
-      if (val is double && val.isNaN) continue;
-      if (val is Complex && (val.real.isNaN || val.imag.isNaN)) continue;
-      sumVal += val;
-      count++;
+      if (val is double) {
+        if (val.isNaN) continue;
+        sumR += val;
+        count++;
+      } else if (val is Complex) {
+        if (val.real.isNaN || val.imag.isNaN) continue;
+        sumR += val.real;
+        sumI += val.imag;
+        count++;
+      }
     }
     if (promotedA != a) {
       promotedA.dispose();
@@ -4050,7 +4820,11 @@ NDArray<R> nanmean<R extends DTypeTag>(
         (targetDType.isComplex ? Complex(double.nan, double.nan) : double.nan),
       );
     } else {
-      result.setCellFlat(0, (sumVal / count));
+      if (targetDType.isComplex) {
+        result.setCellFlat(0, Complex(sumR / count, sumI / count));
+      } else {
+        result.setCellFlat(0, sumR / count);
+      }
     }
     return result;
   }
@@ -4058,7 +4832,7 @@ NDArray<R> nanmean<R extends DTypeTag>(
   final rank = a.shape.length;
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -rank, rank - 1, 'axis');
   }
 
   if (!targetDType.isComplex) {
@@ -4148,7 +4922,7 @@ NDArray<R> nanmean<R extends DTypeTag>(
     result =
         NDArray<DTypeTag>.zeros(targetShape, DType.complex128) as NDArray<R>;
   }
-  final counts = NDArray<DTypeTag>.zeros(targetShape, DType.int32);
+  final counts = NDArray<Int32>.zeros(targetShape, DType.int32);
 
   final promotedA = a.dtype.isComplex ? a : promoteToComplex(a);
   nanReduceRecursive<DTypeTag>(
@@ -4170,7 +4944,8 @@ NDArray<R> nanmean<R extends DTypeTag>(
     if (c == 0) {
       result.setCell(coords, Complex(double.nan, double.nan));
     } else {
-      result.setCell(coords, ((result.getCell(coords) as dynamic) / c));
+      final cell = result.getCell(coords) as Complex;
+      result.setCell(coords, Complex(cell.real / c, cell.imag / c));
     }
   }
   counts.dispose();
@@ -4202,12 +4977,6 @@ NDArray<Float64> quantile<T extends DTypeTag>(
   if (a.dtype.isComplex) {
     throw UnsupportedError('Quantiles are not supported for complex arrays.');
   }
-  if (a.size == 0) {
-    throw ArgumentError('Cannot compute quantile of an empty array.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write quantile to a disposed output array.');
-  }
   if (q.isNaN || q < 0.0 || q > 1.0) {
     throw ArgumentError('Quantile q must be between 0.0 and 1.0. Got $q');
   }
@@ -4216,14 +4985,17 @@ NDArray<Float64> quantile<T extends DTypeTag>(
   if (targetAxis != null && targetAxis < 0) {
     targetAxis = a.shape.length + targetAxis;
   }
+  if (targetAxis != null && (targetAxis < 0 || targetAxis >= a.shape.length)) {
+    throw RangeError.range(axis!, -a.shape.length, a.shape.length - 1, 'axis');
+  }
+
+  if (targetAxis == null ? a.size == 0 : a.shape[targetAxis] == 0) {
+    throw ArgumentError('Cannot compute quantile of an empty array.');
+  }
 
   final targetShape = _reductionTargetShape(a.shape, targetAxis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.float64) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, DType.float64, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Float64>.create(out.shape, out.dtype);
@@ -4238,6 +5010,11 @@ NDArray<Float64> quantile<T extends DTypeTag>(
         return temp.copy(out: out);
       });
     }
+  }
+
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<Float64>.create(targetShape, DType.float64);
   }
 
   if (targetAxis == null) {
@@ -4301,7 +5078,7 @@ NDArray<Float64> quantile<T extends DTypeTag>(
   }
 
   if (targetAxis < 0 || targetAxis >= a.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis!, -a.shape.length, a.shape.length - 1, 'axis');
   }
 
   final result = out ?? NDArray<Float64>.zeros(targetShape, DType.float64);
@@ -4412,7 +5189,12 @@ NDArray<Float64> quantile<T extends DTypeTag>(
   return result;
 }
 
-double r_quantile_helper(NDArray a, int size, double q, int method) {
+double r_quantile_helper<T extends DTypeTag>(
+  NDArray<T> a,
+  int size,
+  double q,
+  int method,
+) {
   switch (a.dtype) {
     case DType.float64:
       return r_quantile_double(a.pointer.cast(), size, q, method);
@@ -4530,29 +5312,23 @@ NDArray<R> median<R extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot compute median of a disposed array.');
   }
-  if (a.size == 0) {
-    throw ArgumentError('Cannot compute median of an empty array.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write median to a disposed output array.');
-  }
 
   var targetAxis = axis;
   if (targetAxis != null && targetAxis < 0) {
     targetAxis = a.shape.length + targetAxis;
   }
   if (targetAxis != null && (targetAxis < 0 || targetAxis >= a.shape.length)) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis!, -a.shape.length, a.shape.length - 1, 'axis');
+  }
+
+  if (targetAxis == null ? a.size == 0 : a.shape[targetAxis] == 0) {
+    throw ArgumentError('Cannot compute median of an empty array.');
   }
 
   final targetDType = _medianDType<R>(a.dtype);
   final targetShape = _reductionTargetShape(a.shape, targetAxis, keepdims);
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, targetDType, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
@@ -4560,6 +5336,11 @@ NDArray<R> median<R extends DTypeTag>(
         return temp.copy(out: out);
       });
     }
+  }
+
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<R>.create(targetShape, targetDType);
   }
 
   if (a.dtype != targetDType) {
@@ -4710,7 +5491,7 @@ NDArray<R> median<R extends DTypeTag>(
   return result;
 }
 
-Object r_median_helper(NDArray a, int size) {
+Object r_median_helper<T extends DTypeTag>(NDArray<T> a, int size) {
   switch (a.dtype) {
     case DType.float64:
       return r_median_double(a.pointer.cast(), size);
@@ -4756,46 +5537,48 @@ Object r_median_helper(NDArray a, int size) {
 /// final p = ptp(a); // returns 0-D array containing 5.0
 /// final p0 = ptp(a, axis: 0); // returns NDArray [5.0, 2.0]
 /// ```
-NDArray<T> ptp<T extends DTypeTag>(NDArray<T> a, {int? axis, NDArray<T>? out}) {
+NDArray<T> ptp<T extends DTypeTag>(
+  NDArray<T> a, {
+  int? axis,
+  bool keepdims = false,
+  NDArray<T>? out,
+}) {
   if (a.isDisposed) {
     throw StateError('Cannot compute ptp of a disposed array.');
-  }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write ptp to a disposed output array.');
-  }
-  if (a.size == 0) {
-    throw ArgumentError('Cannot compute ptp of an empty array.');
   }
 
   final resolvedAxis = axis != null && axis < 0 ? a.rank + axis : axis;
   if (resolvedAxis != null && (resolvedAxis < 0 || resolvedAxis >= a.rank)) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis!, -a.rank, a.rank - 1, 'axis');
   }
 
-  final targetShape = resolvedAxis == null
-      ? <int>[]
-      : (List<int>.from(a.shape)..removeAt(resolvedAxis));
+  if (resolvedAxis == null ? a.size == 0 : a.shape[resolvedAxis] == 0) {
+    throw ArgumentError('Cannot compute ptp of an empty array.');
+  }
+
+  final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, a.dtype, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        ptp<T>(a, axis: axis, out: temp);
+        ptp<T>(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
+  }
+
+  if (a.size == 0) {
+    if (out != null) return out;
+    return NDArray<T>.create(targetShape, a.dtype);
   }
 
   if (resolvedAxis == null) {
     final temp = a.isContiguous ? a : a.copy();
     final size = temp.size;
     final ptr = temp.pointer;
-    dynamic ptpVal;
+    Object? ptpVal;
     switch (temp.dtype) {
       case DType.float64:
         ptpVal = _fastContiguousPtpDouble(ptr.cast(), size);
@@ -4820,8 +5603,8 @@ NDArray<T> ptp<T extends DTypeTag>(NDArray<T> a, {int? axis, NDArray<T>? out}) {
         final mx = r_max_int16_t(ptr.cast(), size);
         ptpVal = mx - mn;
       case DType.uint64:
-        final mn = _r_uint64_min(temp, size);
-        final mx = _r_uint64_max(temp, size);
+        final mn = _r_uint64_min(temp as NDArray<Uint64>, size);
+        final mx = _r_uint64_max(temp as NDArray<Uint64>, size);
         ptpVal = mx - mn;
       case DType.float16:
       case DType.bfloat16:
@@ -4846,8 +5629,8 @@ NDArray<T> ptp<T extends DTypeTag>(NDArray<T> a, {int? axis, NDArray<T>? out}) {
   }
 
   return NDArray.scope(() {
-    final mx = max(a, axis: resolvedAxis);
-    final mn = min(a, axis: resolvedAxis);
+    final mx = max(a, axis: resolvedAxis, keepdims: keepdims);
+    final mn = min(a, axis: resolvedAxis, keepdims: keepdims);
     final res = subtract<T>(mx, mn, out: out);
     if (out == null) {
       res.detachToParentScope();
@@ -4857,13 +5640,16 @@ NDArray<T> ptp<T extends DTypeTag>(NDArray<T> a, {int? axis, NDArray<T>? out}) {
 }
 
 /// Helper to cast an NDArray to a target DType using s_cast_generic.
-NDArray<R> _castTo<R extends DTypeTag>(NDArray a, DType<R> targetDType) {
+NDArray<R> _castTo<R extends DTypeTag>(
+  NDArray<DTypeTag> a,
+  DType<R> targetDType,
+) {
   if (a.isDisposed) {
     throw StateError('Cannot execute _castTo on a disposed array.');
   }
   if (a.dtype == targetDType) {
     final res = NDArray<R>.create(a.shape, targetDType);
-    a.copy(out: res);
+    (a as NDArray<R>).copy(out: res);
     return res;
   }
 
@@ -4932,16 +5718,13 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot compute average of a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write average to a disposed output array.');
-  }
   if (weights != null && weights.isDisposed) {
     throw StateError('Cannot compute average with disposed weights.');
   }
 
   final resolvedAxis = axis != null && axis < 0 ? a.rank + axis : axis;
   if (resolvedAxis != null && (resolvedAxis < 0 || resolvedAxis >= a.rank)) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis!, -a.rank, a.rank - 1, 'axis');
   }
 
   final targetShape = resolvedAxis == null
@@ -4959,11 +5742,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
       }
       expectedDType = resolved;
     }
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != expectedDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, expectedDType, name: 'out');
     if (sharesMemory(a, out) ||
         (weights != null && sharesMemory(weights, out))) {
       return NDArray.scope(() {
@@ -5349,29 +6128,34 @@ NDArray<Float64> corrcoef<T extends DTypeTag>(
 /// final a = NDArray.fromList([1.0, double.nan, 3.0, double.nan], [2, 2], DType.float64);
 /// final s = nansum(a); // returns 4.0
 /// ```
-NDArray<T> nansum<T extends DTypeTag>(
-  NDArray<T> a, {
+NDArray<R> nansum<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, R, DTypeTag>
+  >
+  a, {
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<R>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute nansum() on a disposed array.');
   }
-  if (a.dtype.isInteger || a.dtype == DType.boolean) {
-    return sumAs<T, T>(a, a.dtype, axis: axis, keepdims: keepdims, out: out);
+  final DType<DTypeTag> aDType = a.dtype;
+  if (aDType.isInteger || aDType == DType.boolean) {
+    return sum<R>(a, axis: axis, keepdims: keepdims, out: out);
   }
+  final DType<R> targetDType = aDType as DType<R>;
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
   if (out != null) {
     if (!out.isWriteable ||
         !listEquals(out.shape, targetShape) ||
-        out.dtype != a.dtype) {
+        out.dtype != targetDType) {
       throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = NDArray<T>.create(out.shape, out.dtype);
-        nansum<T>(a, axis: axis, keepdims: keepdims, out: temp);
+        final temp = NDArray<R>.create(out.shape, out.dtype);
+        nansum<R>(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -5379,13 +6163,13 @@ NDArray<T> nansum<T extends DTypeTag>(
 
   if (axis == null) {
     final size = a.size;
-    final result = out ?? NDArray<T>.create(targetShape, a.dtype);
+    final result = out ?? NDArray<R>.create(targetShape, targetDType);
     if (size == 0) {
-      result.setCellFlat(0, normalizeScalar(0, a.dtype));
+      result.setCellFlat(0, normalizeScalar(0, targetDType));
       return result;
     }
     Object? acc;
-    switch (a.dtype) {
+    switch (aDType) {
       case DType.float64:
         final temp = a.isContiguous ? a : a.copy();
         final s = _fastContiguousNansumDouble(temp.pointer.cast(), size);
@@ -5399,21 +6183,39 @@ NDArray<T> nansum<T extends DTypeTag>(
       case DType.int32:
       case DType.int64:
         var sumVal = 0;
-        final en = NDEnumerate<T>(a);
+        final en = NDEnumerate<DTypeTag>(a);
         while (en.moveNext()) {
           sumVal += en.value as int;
         }
         acc = sumVal;
       case DType.complex64:
-      case DType.complex128:
-        var sumVal = Complex(0.0, 0.0);
-        final en = NDEnumerate<T>(a);
-        while (en.moveNext()) {
-          final val = en.value as Complex;
-          if (val.real.isNaN || val.imag.isNaN) continue;
-          sumVal += val;
+        final temp = a.isContiguous ? a : a.copy();
+        final ptr = temp.pointer.cast<ffi.Float>();
+        var sumR = 0.0;
+        var sumI = 0.0;
+        for (var i = 0; i < size; i++) {
+          final r = ptr[2 * i];
+          final im = ptr[2 * i + 1];
+          if (r.isNaN || im.isNaN) continue;
+          sumR += r;
+          sumI += im;
         }
-        acc = sumVal;
+        if (!identical(temp, a)) temp.dispose();
+        acc = Complex(sumR, sumI);
+      case DType.complex128:
+        final temp = a.isContiguous ? a : a.copy();
+        final ptr = temp.pointer.cast<ffi.Double>();
+        var sumR = 0.0;
+        var sumI = 0.0;
+        for (var i = 0; i < size; i++) {
+          final r = ptr[2 * i];
+          final im = ptr[2 * i + 1];
+          if (r.isNaN || im.isNaN) continue;
+          sumR += r;
+          sumI += im;
+        }
+        if (!identical(temp, a)) temp.dispose();
+        acc = Complex(sumR, sumI);
       case DType.float16:
       case DType.bfloat16:
       case DType.int16:
@@ -5423,14 +6225,12 @@ NDArray<T> nansum<T extends DTypeTag>(
       case DType.uint16:
       case DType.uint8:
       case DType.boolean:
-        var sumVal = 0.0;
-        final en = NDEnumerate<T>(a);
-        while (en.moveNext()) {
-          final val = en.value as double;
-          if (val.isNaN) continue;
-          sumVal += val;
+        final d = castNDArray(a, DType.float64);
+        try {
+          acc = _fastContiguousNansumDouble(d.pointer.cast(), size);
+        } finally {
+          d.dispose();
         }
-        acc = sumVal;
     }
     result.setCellFlat(0, acc);
     return result;
@@ -5439,98 +6239,100 @@ NDArray<T> nansum<T extends DTypeTag>(
   final rank = a.shape.length;
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+    throw RangeError.range(axis, -rank, rank - 1, 'axis');
   }
 
-  final result = out ?? NDArray<T>.zeros(targetShape, a.dtype);
+  final result = out ?? NDArray<R>.zeros(targetShape, targetDType);
   if (out != null) {
-    result.fill(normalizeScalar(0, a.dtype));
+    result.fill(normalizeScalar(0, targetDType));
   }
 
   final squeezedDestStrides = keepdims
       ? (List<int>.from(result.strides)..removeAt(normAxis))
       : result.strides;
 
-  if (!a.dtype.isComplex) {
-    if (a.shape[normAxis] == 0) {
-      return result;
-    }
-    final marker = ScratchArena.marker;
-    try {
-      final cBuffer = ScratchArena.getStridedBuffer(rank);
-      final cShape = cBuffer;
-      final cStridesA = cBuffer + rank;
-      final cStridesRes = cBuffer + (rank * 2);
-      for (var i = 0; i < rank; i++) {
-        cShape[i] = a.shape[i];
-        cStridesA[i] = a.strides[i];
-      }
-      for (var i = 0; i < squeezedDestStrides.length; i++) {
-        cStridesRes[i] = squeezedDestStrides[i];
-      }
-
-      switch (a.dtype) {
-        case DType.float64:
-          s_nansum_double(
-            a.pointer.cast(),
-            cStridesA,
-            result.pointer.cast(),
-            cStridesRes,
-            cShape,
-            rank,
-            normAxis,
-          );
-        case DType.float32:
-          s_nansum_float(
-            a.pointer.cast(),
-            cStridesA,
-            result.pointer.cast(),
-            cStridesRes,
-            cShape,
-            rank,
-            normAxis,
-          );
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int64:
-        case DType.int32:
-        case DType.int16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
-        case DType.uint8:
-        case DType.boolean:
-        case DType.complex128:
-        case DType.complex64:
-          _s_stat_strided_fallback(
-            a,
-            result,
-            rank,
-            normAxis,
-            squeezedDestStrides,
-            s_nansum_double,
-          );
-      }
-      return result;
-    } finally {
-      ScratchArena.reset(marker);
-    }
+  if (a.shape[normAxis] == 0) {
+    return result;
   }
 
-  reduceRecursive<T, T>(
-    a,
-    result,
-    List<int>.filled(rank, 0),
-    List<int>.filled(rank - 1, 0),
-    normAxis,
-    0,
-    (current, val) {
-      if (val is double && val.isNaN) return current;
-      if (val is Complex && (val.real.isNaN || val.imag.isNaN)) return current;
-      return ((current as dynamic) + val);
-    },
-    destStrides: squeezedDestStrides,
-  );
-  return result;
+  if (aDType == DType.complex128) {
+    _s_complex128_nansum(
+      a as NDArray<Complex128>,
+      result as NDArray<Complex128>,
+      normAxis,
+      squeezedDestStrides,
+    );
+    return result;
+  }
+  if (aDType == DType.complex64) {
+    _s_complex64_nansum(
+      a as NDArray<Complex64>,
+      result as NDArray<Complex64>,
+      normAxis,
+      squeezedDestStrides,
+    );
+    return result;
+  }
+
+  final marker = ScratchArena.marker;
+  try {
+    final cBuffer = ScratchArena.getStridedBuffer(rank);
+    final cShape = cBuffer;
+    final cStridesA = cBuffer + rank;
+    final cStridesRes = cBuffer + (rank * 2);
+    for (var i = 0; i < rank; i++) {
+      cShape[i] = a.shape[i];
+      cStridesA[i] = a.strides[i];
+    }
+    for (var i = 0; i < squeezedDestStrides.length; i++) {
+      cStridesRes[i] = squeezedDestStrides[i];
+    }
+
+    switch (a.dtype) {
+      case DType.float64:
+        s_nansum_double(
+          a.pointer.cast(),
+          cStridesA,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          rank,
+          normAxis,
+        );
+      case DType.float32:
+        s_nansum_float(
+          a.pointer.cast(),
+          cStridesA,
+          result.pointer.cast(),
+          cStridesRes,
+          cShape,
+          rank,
+          normAxis,
+        );
+      case DType.float16:
+      case DType.bfloat16:
+      case DType.int64:
+      case DType.int32:
+      case DType.int16:
+      case DType.int8:
+      case DType.uint64:
+      case DType.uint32:
+      case DType.uint16:
+      case DType.uint8:
+      case DType.boolean:
+      case DType.complex128:
+      case DType.complex64:
+        _s_stat_strided_fallback(
+          a,
+          result,
+          rank,
+          normAxis,
+          squeezedDestStrides,
+          s_nansum_double,
+        );
+    }
+    return result;
+  } finally {
+    ScratchArena.reset(marker);
+  }
 }

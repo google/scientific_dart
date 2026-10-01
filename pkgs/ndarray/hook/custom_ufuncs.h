@@ -2166,6 +2166,21 @@ void native_choice_weighted_without_replacement(
     unsigned long long seed
 );
 
+void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void* out, intptr_t n);
+
+void s_binary_minmax(
+    int op_code,
+    int dtype,
+    int ndim,
+    const intptr_t* shape,
+    const void* a_data,
+    const intptr_t* a_strides,
+    const void* b_data,
+    const intptr_t* b_strides,
+    void* out_data,
+    const intptr_t* out_strides
+);
+
 #ifdef __cplusplus
 }
 #endif

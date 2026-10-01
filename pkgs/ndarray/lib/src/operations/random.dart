@@ -654,7 +654,7 @@ NDArray<T> _exponentialImpl<T extends DTypeTag>(
 /// for details on continuous uniform distributions.
 ///
 /// By default, uses Dart's standard [Random] class, which is not cryptographically secure.
-/// You can pass a secure random object via the [random] parameter if needed.
+/// You can request cryptographically secure generation via the [secure] parameter if needed.
 NDArray<T> uniform<T extends DTypeTag>(
   List<int> shape, {
   DType<T>? dtype,

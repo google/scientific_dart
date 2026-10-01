@@ -990,11 +990,44 @@ void main() {
         final violations = <String>[];
 
         void checkNoRawNdarray(DartType type, String context) {
-          if (type is InterfaceType && type.element.name == 'NDArray') {
-            if (type.typeArguments.first is DynamicType) {
+          if (type is InterfaceType) {
+            if (type.element.name == 'NDArray' &&
+                type.typeArguments.first is DynamicType) {
               violations.add(
                 '$context — uses raw `NDArray<dynamic>` (`${type.getDisplayString()}`); specify `<T extends DTypeTag>` or a concrete `DTypeTag`.',
               );
+            }
+            for (final arg in type.typeArguments) {
+              checkNoRawNdarray(arg, context);
+            }
+          } else if (type is RecordType) {
+            for (final f in type.positionalFields) {
+              checkNoRawNdarray(f.type, context);
+            }
+            for (final f in type.namedFields) {
+              checkNoRawNdarray(f.type, context);
+            }
+          } else if (type is FunctionType) {
+            checkNoRawNdarray(type.returnType, context);
+            for (final p in type.formalParameters) {
+              checkNoRawNdarray(p.type, context);
+            }
+          }
+        }
+
+        void checkNoPositionalRecordReturn(DartType type, String context) {
+          if (type is RecordType) {
+            if (type.positionalFields.isNotEmpty) {
+              violations.add(
+                '$context — returns a record with positional fields (`${type.getDisplayString()}`); use named record fields instead.',
+              );
+            }
+            for (final f in type.namedFields) {
+              checkNoPositionalRecordReturn(f.type, context);
+            }
+          } else if (type is InterfaceType) {
+            for (final arg in type.typeArguments) {
+              checkNoPositionalRecordReturn(arg, context);
             }
           }
         }
@@ -1011,15 +1044,22 @@ void main() {
           }
 
           if (el is ExecutableElement) {
-            if (el.returnType is DynamicType &&
-                name != 'where' &&
-                name != 'unique') {
+            if (el.returnType is DynamicType && name != 'where') {
               violations.add(
                 'Exported function `$name` returns untyped `dynamic`.',
               );
             }
             checkNoRawNdarray(el.returnType, 'Exported `$name` return type');
+            checkNoPositionalRecordReturn(
+              el.returnType,
+              'Exported `$name` return type',
+            );
             for (final p in el.formalParameters) {
+              if (p.type is DynamicType && name != 'where') {
+                violations.add(
+                  'Exported `$name` parameter `${p.name}` uses untyped `dynamic`; use a generic type parameter or `Object`/`Object?`.',
+                );
+              }
               checkNoRawNdarray(
                 p.type,
                 'Exported `$name` parameter `${p.name}`',
@@ -1047,7 +1087,18 @@ void main() {
                 m.returnType,
                 'Member `${el.name}.${m.name}` return type',
               );
+              if (el.name == 'NDArray') {
+                checkNoPositionalRecordReturn(
+                  m.returnType,
+                  'Member `${el.name}.${m.name}` return type',
+                );
+              }
               for (final p in m.formalParameters) {
+                if (p.type is DynamicType) {
+                  violations.add(
+                    'Member `${el.name}.${m.name}` parameter `${p.name}` uses untyped `dynamic`; use a generic type parameter or `Object`/`Object?`.',
+                  );
+                }
                 checkNoRawNdarray(
                   p.type,
                   'Member `${el.name}.${m.name}` parameter `${p.name}`',
@@ -1665,6 +1716,46 @@ void main() {
             ),
           ),
         );
+
+        final setOpsContent = File(
+          '${pkgRoot.path}/lib/src/operations/set_operations.dart',
+        ).readAsStringSync();
+        expect(
+          setOpsContent,
+          matches(RegExp(r'NDArray<T>\s+unique<T\s+extends\s+DTypeTag>')),
+        );
+        expect(
+          setOpsContent,
+          matches(
+            RegExp(
+              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+index\}\)\s+uniqueWithIndex<T\s+extends\s+DTypeTag>',
+            ),
+          ),
+        );
+        expect(
+          setOpsContent,
+          matches(
+            RegExp(
+              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+inverse\}\)\s+uniqueWithInverse<T\s+extends\s+DTypeTag>',
+            ),
+          ),
+        );
+        expect(
+          setOpsContent,
+          matches(
+            RegExp(
+              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+counts\}\)\s+uniqueWithCounts<T\s+extends\s+DTypeTag>',
+            ),
+          ),
+        );
+        expect(
+          setOpsContent,
+          matches(
+            RegExp(
+              r'\(\{\s*NDArray<T>\s+values,\s*NDArray<Int64>\s+index,\s*NDArray<Int64>\s+inverse,\s*NDArray<Int64>\s+counts,?\s*\}\)\s+uniqueAll<T\s+extends\s+DTypeTag>',
+            ),
+          ),
+        );
       },
     );
 
@@ -1709,6 +1800,343 @@ void main() {
         expect(violations, isEmpty, reason: violations.join('\n'));
       },
     );
+
+    test('No public typedef in lib/ shadows dart:ffi type names', () {
+      final bannedNames = {
+        'Float',
+        'Double',
+        'Int8',
+        'Int16',
+        'Int32',
+        'Int64',
+        'Uint8',
+        'Uint16',
+        'Uint32',
+        'Uint64',
+        'Size',
+        'IntPtr',
+        'UintPtr',
+      };
+
+      final violations = <String>[];
+      for (final file in libFiles) {
+        final parsed = parseFile(
+          path: _native(file.path),
+          featureSet: featureSet,
+          throwIfDiagnostics: false,
+        );
+        for (final decl in parsed.unit.declarations) {
+          if (decl is GenericTypeAlias) {
+            final name = decl.name.lexeme;
+            if (bannedNames.contains(name) && !name.startsWith('_')) {
+              final line = parsed.lineInfo.getLocation(decl.offset).lineNumber;
+              violations.add(
+                '${_posix(file.path)}:$line — public typedef `$name` shadows dart:ffi type.',
+              );
+            }
+          } else if (decl is FunctionTypeAlias) {
+            final name = decl.name.lexeme;
+            if (bannedNames.contains(name) && !name.startsWith('_')) {
+              final line = parsed.lineInfo.getLocation(decl.offset).lineNumber;
+              violations.add(
+                '${_posix(file.path)}:$line — public typedef `$name` shadows dart:ffi type.',
+              );
+            }
+          }
+        }
+      }
+
+      expect(
+        violations,
+        isEmpty,
+        reason:
+            'Public typedefs in lib/ must not shadow dart:ffi type names:\n${violations.join('\n')}',
+      );
+    });
+
+    test(
+      'Complex, IndexSpec, and Index value/spec types have const generative constructors',
+      () {
+        final targetClasses = {'Complex', 'Index', 'Selector'};
+        final found = <String>{};
+        final violations = <String>[];
+
+        for (final file in libFiles) {
+          final parsed = parseFile(
+            path: _native(file.path),
+            featureSet: featureSet,
+            throwIfDiagnostics: false,
+          );
+          for (final decl in parsed.unit.declarations) {
+            if (decl is ClassDeclaration &&
+                targetClasses.contains(decl.namePart.typeName.lexeme)) {
+              final className = decl.namePart.typeName.lexeme;
+              found.add(className);
+              final constConstructors = decl.body.members
+                  .whereType<ConstructorDeclaration>()
+                  .where(
+                    (c) => c.constKeyword != null && c.factoryKeyword == null,
+                  )
+                  .toList();
+              if (constConstructors.isEmpty) {
+                violations.add(
+                  '$className is missing a const generative constructor.',
+                );
+              }
+            }
+          }
+        }
+
+        expect(found, containsAll(targetClasses));
+        expect(violations, isEmpty, reason: violations.join('\n'));
+      },
+    );
+
+    test(
+      'Defensive collection copying: Indices, CoordinateSpacing, TensordotAxes, and BroadcastResult wrap list fields with List.unmodifiable',
+      () {
+        final targetClasses = {
+          'Indices': 'values',
+          'CoordinateSpacing': 'values',
+          'TensordotAxes': 'explicitAxesA',
+          'BroadcastResult': 'shape',
+        };
+        final foundClasses = <String>{};
+
+        for (final file in libFiles) {
+          final content = file.readAsStringSync();
+          for (final entry in targetClasses.entries) {
+            final cls = entry.key;
+            if (content.contains('class $cls')) {
+              foundClasses.add(cls);
+              expect(
+                content.contains('List') && content.contains('.unmodifiable('),
+                isTrue,
+                reason:
+                    '$cls in ${file.path} must defensively wrap its list fields using List.unmodifiable',
+              );
+            }
+          }
+        }
+
+        expect(foundClasses, containsAll(targetClasses.keys));
+      },
+    );
+
+    test('Enum value documentation & {@example} tag hygiene across lib/', () {
+      final violations = <String>[];
+      final exampleDir = Directory('${pkgRoot.path}/example');
+      expect(exampleDir.existsSync(), isTrue);
+
+      // 1. Assert all public enum values in transitively exported public enums have /// comments
+      final entrypoint = File('${libDir.path}/ndarray.dart');
+      final visited = <String>{};
+      final exportedFiles = <(File, Set<String>?, Set<String>?)>[];
+
+      void collectExports(
+        File file, {
+        Set<String>? showNames,
+        Set<String>? hideNames,
+      }) {
+        final canonical = file.resolveSymbolicLinksSync();
+        if (!visited.add('$canonical|$showNames|$hideNames')) return;
+        exportedFiles.add((file, showNames, hideNames));
+
+        final parsed = parseFile(
+          path: _native(file.path),
+          featureSet: featureSet,
+          throwIfDiagnostics: false,
+        );
+        for (final directive in parsed.unit.directives) {
+          if (directive is ExportDirective) {
+            final uriStr = directive.uri.stringValue;
+            if (uriStr == null || uriStr.startsWith('package:')) continue;
+            final resolved = File('${file.parent.path}/$uriStr');
+            if (!resolved.existsSync()) continue;
+
+            Set<String>? childShow = showNames;
+            final childHide = <String>{...?hideNames};
+            for (final combinator in directive.combinators) {
+              if (combinator is ShowCombinator) {
+                final names = combinator.shownNames.map((n) => n.name).toSet();
+                childShow = childShow == null
+                    ? names
+                    : childShow.intersection(names);
+              } else if (combinator is HideCombinator) {
+                childHide.addAll(combinator.hiddenNames.map((n) => n.name));
+              }
+            }
+            collectExports(
+              resolved,
+              showNames: childShow,
+              hideNames: childHide,
+            );
+          }
+        }
+      }
+
+      collectExports(entrypoint);
+
+      for (final (file, showNames, hideNames) in exportedFiles) {
+        final parsed = parseFile(
+          path: _native(file.path),
+          featureSet: featureSet,
+          throwIfDiagnostics: false,
+        );
+        for (final decl in parsed.unit.declarations) {
+          if (decl is EnumDeclaration) {
+            final enumName = decl.namePart.typeName.lexeme;
+            if (enumName.startsWith('_')) continue;
+            if (showNames != null && !showNames.contains(enumName)) continue;
+            if (hideNames != null && hideNames.contains(enumName)) continue;
+
+            for (final constDecl in decl.body.constants) {
+              final constName = constDecl.name.lexeme;
+              if (constDecl.documentationComment == null) {
+                final line = parsed.lineInfo
+                    .getLocation(constDecl.offset)
+                    .lineNumber;
+                violations.add(
+                  '${_posix(file.path)}:$line — enum value `$enumName.$constName` is missing /// dartdoc',
+                );
+              }
+            }
+          }
+        }
+      }
+
+      // 2. Assert {@example ...} tag hygiene across lib/ and zero inline ```dart blocks in P2-6 modules
+      const p26Modules = <String>{
+        'binning.dart',
+        'broadcasting.dart',
+        'calculus.dart',
+        'dsp.dart',
+        'indexing.dart',
+        'repeating_tiling.dart',
+        'set_operations.dart',
+      };
+      for (final file in libFiles) {
+        final posixPath = _posix(file.path);
+        final baseName = file.uri.pathSegments.last;
+        final isTopLevelOpModule =
+            RegExp(r'/src/operations/[^/]+\.dart$').hasMatch(posixPath) &&
+            !const {
+              'helpers.dart',
+              'math.dart',
+              'polynomial.dart',
+              'custom_checks.dart',
+              'native_pointer.dart',
+            }.contains(baseName);
+        final lines = file.readAsLinesSync();
+        var hasExampleTag = false;
+        for (var i = 0; i < lines.length; i++) {
+          final line = lines[i];
+          if (p26Modules.contains(baseName) &&
+              RegExp(r'^\s*///\s*```dart\b').hasMatch(line)) {
+            violations.add(
+              '$posixPath:${i + 1} — inline ```` ```dart ```` code block in dartdoc; use `{@example /example/... lang=dart}` instead.',
+            );
+          }
+          if (line.contains('{@example')) {
+            hasExampleTag = true;
+            // Must be on its own line
+            if (!RegExp(
+              r'^\s*///\s*\{@example\s+[^\n]+?\}\s*$',
+            ).hasMatch(line)) {
+              violations.add(
+                '$posixPath:${i + 1} — `{@example}` tag must appear on its own line: `$line`',
+              );
+            }
+            // Extract target path
+            final m = RegExp(r'\{@example\s+([^\s}]+)').firstMatch(line);
+            if (m != null) {
+              final rawPath = m.group(1)!;
+              if (rawPath.contains('pkgs/ndarray/example/')) {
+                violations.add(
+                  '$posixPath:${i + 1} — `{@example}` must not contain `pkgs/ndarray/example/`: `$rawPath`',
+                );
+              }
+              final cleanedPath = rawPath
+                  .replaceFirst(RegExp(r'^/+'), '')
+                  .split('#')
+                  .first;
+              final resolved = File('${pkgRoot.path}/$cleanedPath');
+              if (!resolved.existsSync()) {
+                violations.add(
+                  '$posixPath:${i + 1} — `{@example}` references non-existent file: `$rawPath` -> `$cleanedPath`',
+                );
+              }
+            }
+          }
+        }
+        if (isTopLevelOpModule && !hasExampleTag) {
+          violations.add(
+            '$posixPath — operations module is missing `{@example /example/... lang=dart}` tags.',
+          );
+        }
+      }
+
+      expect(
+        violations,
+        isEmpty,
+        reason:
+            'Enum value documentation & {@example} tag hygiene violations:\n${violations.join('\n')}',
+      );
+    });
+
+    test('Native C++ SIMD & ufunc dispatch invariants (P1-1, P1-2, P1-3)', () {
+      // P1-1: ndarray_unique in custom_sorting.cpp dispatches all 10 integer/float DTypes to unique_*_fast
+      final sortingCpp = File(
+        '${pkgRoot.path}/hook/custom_sorting.cpp',
+      ).readAsStringSync();
+      final uniqueIdx = sortingCpp.indexOf('int64_t ndarray_unique(');
+      expect(uniqueIdx, greaterThan(0));
+      final uniqueBody = sortingCpp.substring(uniqueIdx);
+      for (final fastFn in [
+        'unique_double_fast',
+        'unique_float_fast',
+        'unique_int64_fast',
+        'unique_int32_fast',
+        'unique_int16_fast',
+        'unique_int8_fast',
+        'unique_uint64_fast',
+        'unique_uint32_fast',
+        'unique_uint16_fast',
+        'unique_uint8_fast',
+      ]) {
+        expect(
+          uniqueBody,
+          contains(fastFn),
+          reason: 'ndarray_unique must dispatch to $fastFn',
+        );
+      }
+      expect(
+        uniqueBody,
+        isNot(contains('unique_scalar_fast<')),
+        reason:
+            'ndarray_unique must not fall back directly to unique_scalar_fast<T> for integer/float DTypes',
+      );
+
+      // P1-2 & P1-3: ufunc_methods.dart dispatches minimum/maximum/fmin/fmax to v_binary_minmax / s_binary_minmax
+      final ufuncMethods = File(
+        '${pkgRoot.path}/lib/src/operations/math/ufunc_methods.dart',
+      ).readAsStringSync();
+      expect(ufuncMethods, contains('v_binary_minmax('));
+      expect(ufuncMethods, contains('s_binary_minmax('));
+
+      // P1-3: outerUfunc delegates directly to binaryUfunc without manual ffi.Pointer loops
+      final outerStart = ufuncMethods.indexOf('NDArray<T> outerUfunc<');
+      final atStart = ufuncMethods.indexOf('void atUfunc<');
+      expect(outerStart, greaterThan(0));
+      expect(atStart, greaterThan(outerStart));
+      final outerBody = ufuncMethods.substring(outerStart, atStart);
+      expect(
+        outerBody,
+        isNot(contains('.pointer.cast<')),
+        reason:
+            'outerUfunc must delegate to binaryUfunc (native C strided kernels) rather than manual Dart pointer loops',
+      );
+    });
   });
 }
 

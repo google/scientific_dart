@@ -22,15 +22,36 @@ import 'helpers.dart';
 
 /// Supported padding modes.
 enum PadMode {
+  /// Pads with a constant value.
   constant,
+
+  /// Pads with the edge values of the array.
   edge,
+
+  /// Pads with the reflection of the vector mirrored on the first and last
+  /// values of the vector along each axis.
   reflect,
+
+  /// Pads with the reflection of the vector mirrored along the edge of the
+  /// array.
   symmetric,
+
+  /// Pads with the wrap of the vector along the axis.
   wrap,
+
+  /// Pads with the linear ramp between end value and the array edge value.
   linearRamp,
+
+  /// Pads with the mean value of all or part of the vector along each axis.
   mean,
+
+  /// Pads with the median value of all or part of the vector along each axis.
   median,
+
+  /// Pads with the minimum value of all or part of the vector along each axis.
   min,
+
+  /// Pads with the maximum value of all or part of the vector along each axis.
   max;
 
   /// Alias for [min].
@@ -279,7 +300,7 @@ Object _getDefaultValue(DType dtype) {
 ///   element.
 ///
 /// **Example:**
-/// {@example /example/padding_example.dart}
+/// {@example /example/padding_example.dart lang=dart}
 NDArray<T> pad<T extends DTypeTag>(
   NDArray<T> array,
   PadWidth padWidth, {
@@ -611,6 +632,9 @@ NDArray<T> _padNativeFast<T extends DTypeTag>(
           caPtr,
           isUniform,
         );
+        if (res == -4) {
+          throw OutOfMemoryError();
+        }
         if (res < 0) {
           throw StateError('native_pad_2d failed with code $res');
         }
@@ -642,6 +666,9 @@ NDArray<T> _padNativeFast<T extends DTypeTag>(
           caPtr,
           isUniform,
         );
+        if (res == -4) {
+          throw OutOfMemoryError();
+        }
         if (res < 0) {
           throw StateError('native_pad_nd failed with code $res');
         }

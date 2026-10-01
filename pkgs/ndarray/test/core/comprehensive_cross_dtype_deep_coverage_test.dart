@@ -232,7 +232,11 @@ void main() {
       'Deep NaN-ignoring statistics across Float and Integer DTypes along all axes',
       () {
         NDArray.scope(() {
-          for (final dt in [DType.float64, DType.float32, DType.int32]) {
+          for (final dt in <DType<AnySpec>>[
+            DType.float64,
+            DType.float32,
+            DType.int32,
+          ]) {
             final raw = (dt == DType.float64 || dt == DType.float32)
                 ? [
                     1.0,

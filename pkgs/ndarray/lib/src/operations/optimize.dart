@@ -175,7 +175,7 @@ typedef OptimizeResult = ({
 /// - [NumPy / SciPy brentq Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.brentq.html)
 /// - [Wikipedia: Brent's method](https://en.wikipedia.org/wiki/Brent%27s_method)
 ///
-/// {@example /example/optimize_example.dart}
+/// {@example /example/optimize_example.dart lang=dart}
 RootScalarResult brentq(
   double Function(double) f,
   double a,
@@ -335,7 +335,7 @@ RootScalarResult brentq(
 /// - [SciPy newton Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.newton.html)
 /// - [Wikipedia: Newton's method](https://en.wikipedia.org/wiki/Newton%27s_method)
 ///
-/// {@example /example/optimize_example.dart}
+/// {@example /example/optimize_example.dart lang=dart}
 RootScalarResult newton(
   double Function(double) f,
   double x0, {
@@ -450,7 +450,7 @@ RootScalarResult newton(
 /// ### References & Further Reading
 /// - [SciPy root_scalar Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.root_scalar.html)
 ///
-/// {@example /example/optimize_example.dart}
+/// {@example /example/optimize_example.dart lang=dart}
 RootScalarResult root_scalar(
   double Function(double) f, {
   RootMethod method = RootMethod.brentq,
@@ -507,7 +507,7 @@ RootScalarResult root_scalar(
 /// - [SciPy minimize(method='Nelder-Mead') Documentation](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-neldermead.html)
 /// - [Wikipedia: Nelder-Mead method](https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method)
 ///
-/// {@example /example/optimize_example.dart}
+/// {@example /example/optimize_example.dart lang=dart}
 OptimizeResult nelder_mead(
   double Function(NDArray<Float64>) fun,
   NDArray<Float64> x0, {
@@ -765,7 +765,7 @@ OptimizeResult nelderMead(
 /// - [SciPy minimize(method='L-BFGS-B') Documentation](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html)
 /// - [Wikipedia: Limited-memory BFGS](https://en.wikipedia.org/wiki/Limited-memory_BFGS)
 ///
-/// {@example /example/optimize_example.dart}
+/// {@example /example/optimize_example.dart lang=dart}
 OptimizeResult lbfgs(
   double Function(NDArray<Float64>) fun,
   NDArray<Float64> x0, {
@@ -1067,7 +1067,7 @@ OptimizeResult lbfgs(
 /// ### References & Further Reading
 /// - [SciPy minimize Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.minimize.html)
 ///
-/// {@example /example/optimize_example.dart}
+/// {@example /example/optimize_example.dart lang=dart}
 OptimizeResult minimize(
   double Function(NDArray<Float64>) fun,
   NDArray<Float64> x0, {

@@ -198,7 +198,7 @@ void runEnumerateAndComplexComponentsExample() {
     print('\n--- Multidimensional Enumerator (ndenumerate) ---');
     final a = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
     for (final entry in ndenumerate(a)) {
-      print('  Coordinate: ${entry.$1}, Value: ${entry.$2}');
+      print('  Coordinate: ${entry.coordinate}, Value: ${entry.value}');
     }
 
     print('\n--- Complex Components Extractors (real, imag) ---');

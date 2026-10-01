@@ -49,11 +49,7 @@ import 'helpers.dart';
 /// - Space Complexity: $O(N)$ for the output array (unless [out] is provided).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2], [2], DType.int32);
-/// final r = repeat(a, [3]);
-/// print(r.toList()); // [1, 1, 1, 2, 2, 2]
-/// ```
+/// {@example /example/repeating_tiling_example.dart lang=dart}
 NDArray<T> repeat<T extends DTypeTag>(
   NDArray<T> a,
   Object repeats, {
@@ -359,11 +355,7 @@ NDArray<T> repeat<T extends DTypeTag>(
 /// - Space Complexity: $O(N)$ for the output array (unless [out] is provided).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2], [2], DType.int32);
-/// final t = tile(a, [2]);
-/// print(t.toList()); // [1, 2, 1, 2]
-/// ```
+/// {@example /example/repeating_tiling_example.dart lang=dart}
 ///
 /// Refer to the [NumPy tile reference](https://numpy.org/doc/stable/reference/generated/numpy.tile.html)
 /// for details.
@@ -449,6 +441,9 @@ NDArray<T> tile<T extends DTypeTag>(
           cOutShape,
           0,
         );
+        if (rc == -4) {
+          throw OutOfMemoryError();
+        }
         if (rc != 0) {
           throw StateError('Native tile operation failed with code $rc');
         }
@@ -506,6 +501,9 @@ NDArray<T> tile<T extends DTypeTag>(
           cOutStrides,
           rank,
         );
+      }
+      if (rc == -4) {
+        throw OutOfMemoryError();
       }
       if (rc != 0) {
         throw StateError('Native tile operation failed with code $rc');

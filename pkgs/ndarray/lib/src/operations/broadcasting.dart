@@ -34,7 +34,10 @@ final class BroadcastResult {
   final List<int> stridesB;
 
   /// Creates a new [BroadcastResult] representing aligned shape and strides.
-  BroadcastResult(this.shape, this.stridesA, this.stridesB);
+  BroadcastResult(List<int> shape, List<int> stridesA, List<int> stridesB)
+    : shape = List<int>.unmodifiable(shape),
+      stridesA = List<int>.unmodifiable(stridesA),
+      stridesB = List<int>.unmodifiable(stridesB);
 }
 
 /// Computes the broadcasted shape and strides given shapes and strides directly.
@@ -116,13 +119,8 @@ BroadcastResult broadcastBinaryStrides(
 ///   in zero unmanaged heap allocations.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0], [2, 1], DType.float64);
-/// final b = NDArray.fromList([10.0, 20.0, 30.0], [1, 3], DType.float64);
-/// final result = broadcast(a, b);
-/// print(result.shape); // [2, 3]
-/// ```
-BroadcastResult broadcast(NDArray a, NDArray b) {
+/// {@example /example/broadcasting_example.dart lang=dart}
+BroadcastResult broadcast(NDArray<DTypeTag> a, NDArray<DTypeTag> b) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot execute broadcast() on a disposed array.');
   }
@@ -159,12 +157,7 @@ BroadcastResult broadcast(NDArray a, NDArray b) {
 /// - Maps directly to NumPy's `np.broadcast_to`.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-/// final b = broadcastTo(a, [2, 2]);
-/// print(b.shape); // [2, 2]
-/// print(b.toList()); // [1.0, 2.0, 1.0, 2.0]
-/// ```
+/// {@example /example/broadcasting_example.dart lang=dart}
 ///
 /// Refer to the [NumPy broadcast_to reference](https://numpy.org/doc/stable/reference/generated/numpy.broadcast_to.html)
 /// for additional details.

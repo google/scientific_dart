@@ -2442,7 +2442,7 @@ void main() {
         expect(aExpNeg.shape, [3, 1]);
 
         // expand_dims out of bounds exception
-        expect(() => expand_dims(a, 3), throwsArgumentError);
+        expect(() => expand_dims(a, 3), throwsRangeError);
 
         // 2. squeeze() verification
         final b = NDArray.zeros([1, 3, 1], DType.float64);

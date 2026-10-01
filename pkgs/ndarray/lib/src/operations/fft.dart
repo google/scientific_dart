@@ -21,6 +21,7 @@ import '../scratch_arena.dart';
 import 'padding.dart';
 
 // Standalone operational relative cross-imports
+import 'helpers.dart';
 import 'manipulation.dart';
 
 NDArray _createZeros(List<int> shape, DType dtype) => switch (dtype) {
@@ -814,7 +815,7 @@ NDArray<R> ifft<R extends DTypeTag>(
 /// Reference: [NumPy fftshift](https://numpy.org/doc/stable/reference/generated/numpy.fft.fftshift.html)
 NDArray<T> fftshift<T extends DTypeTag>(
   NDArray<T> a, {
-  dynamic axes,
+  Object? axes,
   NDArray<T>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
@@ -891,7 +892,7 @@ NDArray<T> fftshift<T extends DTypeTag>(
 /// Reference: [NumPy ifftshift](https://numpy.org/doc/stable/reference/generated/numpy.fft.ifftshift.html)
 NDArray<T> ifftshift<T extends DTypeTag>(
   NDArray<T> a, {
-  dynamic axes,
+  Object? axes,
   NDArray<T>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
@@ -1245,33 +1246,43 @@ NDArray<R> _padOrTruncate<T extends DTypeTag, R extends DTypeTag>(
 /// - $O(n)$ time complexity and space complexity.
 ///
 /// Reference: [DFT sample frequencies](https://numpy.org/doc/stable/reference/generated/numpy.fft.fftfreq.html)
-NDArray<Float64> fftfreq(int n, {double d = 1.0}) {
+NDArray<Float64> fftfreq(int n, {double d = 1.0, NDArray<Float64>? out}) {
+  if (out != null && out.isDisposed) {
+    throw StateError('Cannot write fftfreq result to a disposed output array.');
+  }
   if (n <= 0) {
     throw ArgumentError('n must be strictly positive (was $n)');
   }
   if (d == 0.0) {
     throw ArgumentError('sample spacing d must be non-zero');
   }
-  final val = 1.0 / (d * n);
-  final list = List<double>.filled(n, 0.0);
-  if (n.isEven) {
-    final half = n ~/ 2;
-    for (var i = 0; i < half; i++) {
-      list[i] = i * val;
-    }
-    for (var i = half; i < n; i++) {
-      list[i] = (i - n) * val;
-    }
-  } else {
-    final half = (n - 1) ~/ 2;
-    for (var i = 0; i <= half; i++) {
-      list[i] = i * val;
-    }
-    for (var i = half + 1; i < n; i++) {
-      list[i] = (i - n) * val;
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, [n]) || out.dtype != DType.float64) {
+      throw ArgumentError('Incompatible out buffer shape or dtype.');
     }
   }
-  return NDArray<Float64>.fromList(list, [n], DType.float64);
+  final val = 1.0 / (d * n);
+  final result =
+      out ?? NDArray<Float64>.create([n], DType.float64, zeroInit: false);
+  final half = n.isEven ? (n ~/ 2) : ((n - 1) ~/ 2 + 1);
+  if (result.isContiguous) {
+    final ptr = result.pointer.cast<ffi.Double>();
+    for (var i = 0; i < half; i++) {
+      ptr[i] = i * val;
+    }
+    for (var i = half; i < n; i++) {
+      ptr[i] = (i - n) * val;
+    }
+  } else {
+    for (var i = 0; i < half; i++) {
+      result.setCell([i], i * val);
+    }
+    for (var i = half; i < n; i++) {
+      result.setCell([i], (i - n) * val);
+    }
+  }
+  return result;
 }
 
 /// Returns the Discrete Fourier Transform sample frequencies for real inputs.
@@ -1293,7 +1304,12 @@ NDArray<Float64> fftfreq(int n, {double d = 1.0}) {
 /// - $O(n)$ time complexity and space complexity.
 ///
 /// Reference: [Real DFT sample frequencies](https://numpy.org/doc/stable/reference/generated/numpy.fft.rfftfreq.html)
-NDArray<Float64> rfftfreq(int n, {double d = 1.0}) {
+NDArray<Float64> rfftfreq(int n, {double d = 1.0, NDArray<Float64>? out}) {
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write rfftfreq result to a disposed output array.',
+    );
+  }
   if (n <= 0) {
     throw ArgumentError('n must be strictly positive (was $n)');
   }
@@ -1302,8 +1318,25 @@ NDArray<Float64> rfftfreq(int n, {double d = 1.0}) {
   }
   final val = 1.0 / (d * n);
   final limit = n ~/ 2 + 1;
-  final list = List<double>.generate(limit, (i) => i * val);
-  return NDArray<Float64>.fromList(list, [limit], DType.float64);
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, [limit]) || out.dtype != DType.float64) {
+      throw ArgumentError('Incompatible out buffer shape or dtype.');
+    }
+  }
+  final result =
+      out ?? NDArray<Float64>.create([limit], DType.float64, zeroInit: false);
+  if (result.isContiguous) {
+    final ptr = result.pointer.cast<ffi.Double>();
+    for (var i = 0; i < limit; i++) {
+      ptr[i] = i * val;
+    }
+  } else {
+    for (var i = 0; i < limit; i++) {
+      result.setCell([i], i * val);
+    }
+  }
+  return result;
 }
 
 /// Computes the 1D discrete Fourier Transform for real input along the specified [axis].

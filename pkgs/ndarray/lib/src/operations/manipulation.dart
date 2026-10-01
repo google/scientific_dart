@@ -351,8 +351,12 @@ NDArray<T> expand_dims<T extends DTypeTag>(NDArray<T> a, int axis) {
   final targetAxis = axis < 0 ? rank + 1 + axis : axis;
 
   if (targetAxis < 0 || targetAxis > rank) {
-    throw ArgumentError(
-      'Axis $axis is out of bounds for array of rank $rank (valid bounds: [${-rank - 1}, $rank])',
+    throw RangeError.range(
+      axis,
+      -rank - 1,
+      rank,
+      'axis',
+      'Must be within valid rank range',
     );
   }
 
@@ -409,7 +413,13 @@ NDArray<T> squeeze<T extends DTypeTag>(NDArray<T> a, {List<int>? axis}) {
     for (final ax in axis) {
       final targetAx = ax < 0 ? rank + ax : ax;
       if (targetAx < 0 || targetAx >= rank) {
-        throw ArgumentError('Axis $ax is out of bounds for rank $rank');
+        throw RangeError.range(
+          ax,
+          -rank,
+          rank - 1,
+          'axis',
+          'Must be within valid rank range',
+        );
       }
       if (shape[targetAx] != 1) {
         throw ArgumentError(
@@ -491,7 +501,13 @@ NDArray<T> slidingWindowView<T extends DTypeTag>(
     for (final ax in axis) {
       final resolved = ax < 0 ? rank + ax : ax;
       if (resolved < 0 || resolved >= rank) {
-        throw RangeError.range(resolved, 0, rank - 1, 'axis');
+        throw RangeError.range(
+          ax,
+          -rank,
+          rank - 1,
+          'axis',
+          'Must be within valid rank range',
+        );
       }
       if (targetAxes.contains(resolved)) {
         throw ArgumentError(
@@ -569,7 +585,7 @@ NDArray<T> slidingWindowView<T extends DTypeTag>(
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
 /// > This operation returns a **zero-copy metadata view** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned view will **silently mutate the original array**. Disposing of the parent array [a] will invalidate the returned view. Calling [dispose] on the returned view does nothing.
-NDArray<T> flip<T extends DTypeTag>(NDArray<T> a, {dynamic axis}) {
+NDArray<T> flip<T extends DTypeTag>(NDArray<T> a, {Object? axis}) {
   if (a.isDisposed) {
     throw StateError('Cannot flip a disposed array.');
   }
@@ -585,7 +601,13 @@ NDArray<T> flip<T extends DTypeTag>(NDArray<T> a, {dynamic axis}) {
   } else if (axis is int) {
     final normAx = axis < 0 ? rank + axis : axis;
     if (normAx < 0 || normAx >= rank) {
-      throw RangeError.range(normAx, 0, rank - 1, 'axis');
+      throw RangeError.range(
+        axis,
+        -rank,
+        rank - 1,
+        'axis',
+        'Must be within valid rank range',
+      );
     }
     axesToFlip = [normAx];
   } else if (axis is List<int>) {
@@ -593,7 +615,13 @@ NDArray<T> flip<T extends DTypeTag>(NDArray<T> a, {dynamic axis}) {
     for (final ax in axis) {
       final normAx = ax < 0 ? rank + ax : ax;
       if (normAx < 0 || normAx >= rank) {
-        throw RangeError.range(normAx, 0, rank - 1, 'axis');
+        throw RangeError.range(
+          ax,
+          -rank,
+          rank - 1,
+          'axis',
+          'Must be within valid rank range',
+        );
       }
       if (!uniqueAxes.add(normAx)) {
         throw ArgumentError('axes must be unique');
@@ -1206,12 +1234,16 @@ NDArray<T> diff<T extends DTypeTag>(
     return a.copy(out: out);
   }
 
-  var targetAxis = axis;
-  if (targetAxis < 0) {
-    targetAxis = a.shape.length + targetAxis;
-  }
-  if (targetAxis < 0 || targetAxis >= a.shape.length) {
-    throw ArgumentError('axis $axis out of bounds for shape ${a.shape}');
+  final rank = a.shape.length;
+  final targetAxis = axis < 0 ? rank + axis : axis;
+  if (targetAxis < 0 || targetAxis >= rank) {
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
 
   if (n >= a.shape[targetAxis]) {
@@ -1389,8 +1421,8 @@ NDArray<T> diff<T extends DTypeTag>(
 /// {@example /example/rearranging_example.dart lang=dart}
 NDArray<T> roll<T extends DTypeTag>(
   NDArray<T> a,
-  dynamic shift, {
-  dynamic axis,
+  Object shift, {
+  Object? axis,
   NDArray<T>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
@@ -1460,7 +1492,13 @@ NDArray<T> roll<T extends DTypeTag>(
     for (final ax in axes) {
       final normAx = ax < 0 ? a.rank + ax : ax;
       if (normAx < 0 || normAx >= a.rank) {
-        throw RangeError.range(normAx, 0, a.rank - 1, 'axis');
+        throw RangeError.range(
+          ax,
+          -a.rank,
+          a.rank - 1,
+          'axis',
+          'Must be within valid rank range',
+        );
       }
     }
   }
@@ -1495,6 +1533,7 @@ NDArray<T> roll<T extends DTypeTag>(
         );
         if (rc != 0) {
           if (out == null) targetResult.dispose();
+          if (rc == -4) throw OutOfMemoryError();
           throw StateError('Native roll operation failed with code $rc');
         }
         return targetResult;
@@ -1510,6 +1549,7 @@ NDArray<T> roll<T extends DTypeTag>(
           );
           if (rc != 0) {
             if (out == null) targetResult.dispose();
+            if (rc == -4) throw OutOfMemoryError();
             throw StateError('Native roll operation failed with code $rc');
           }
           contigRes.copy(out: targetResult);
@@ -1532,6 +1572,7 @@ NDArray<T> roll<T extends DTypeTag>(
           );
           if (rc != 0) {
             if (out == null) targetResult.dispose();
+            if (rc == -4) throw OutOfMemoryError();
             throw StateError('Native roll operation failed with code $rc');
           }
         } else {
@@ -1546,6 +1587,7 @@ NDArray<T> roll<T extends DTypeTag>(
             );
             if (rc != 0) {
               if (out == null) targetResult.dispose();
+              if (rc == -4) throw OutOfMemoryError();
               throw StateError('Native roll operation failed with code $rc');
             }
             contigRes.copy(out: targetResult);
@@ -1631,6 +1673,7 @@ NDArray<T> _roll1D<T extends DTypeTag>(
     );
     if (rc != 0) {
       if (out == null) targetResult.dispose();
+      if (rc == -4) throw OutOfMemoryError();
       throw StateError('Native roll operation failed with code $rc');
     }
     return targetResult;
@@ -1654,6 +1697,7 @@ NDArray<T> _roll1D<T extends DTypeTag>(
     );
     if (rc != 0) {
       if (out == null) targetResult.dispose();
+      if (rc == -4) throw OutOfMemoryError();
       throw StateError('Native roll operation failed with code $rc');
     }
   } finally {
@@ -1674,7 +1718,13 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
   final rank = a.rank;
   final normAx = axis < 0 ? rank + axis : axis;
   if (normAx < 0 || normAx >= rank) {
-    throw RangeError.range(normAx, 0, rank - 1, 'axis');
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
 
   final dimSize = a.shape[normAx];
@@ -1700,6 +1750,7 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
     );
     if (rc != 0) {
       if (out == null) targetResult.dispose();
+      if (rc == -4) throw OutOfMemoryError();
       throw StateError('Native roll operation failed with code $rc');
     }
     return targetResult;
@@ -1738,6 +1789,7 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
     }
     if (rc != 0) {
       if (out == null) targetResult.dispose();
+      if (rc == -4) throw OutOfMemoryError();
       throw StateError('Native roll operation failed with code $rc');
     }
   } finally {
@@ -1770,7 +1822,7 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
 /// print(b.dtype); // DType.float64
 /// ```
 NDArray<R> astype<R extends DTypeTag>(
-  NDArray a,
+  NDArray<DTypeTag> a,
   DType<R> targetDType, {
   bool copy = true,
 }) {

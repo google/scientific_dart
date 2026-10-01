@@ -1074,7 +1074,7 @@ void main() {
         expect(cleaned.getCell([1, 1]), -100.0);
 
         final coords = <List<int>>[];
-        for (final (coord, _) in ndenumerate(a)) {
+        for (final (coordinate: coord, value: _) in ndenumerate(a)) {
           coords.add(coord);
         }
         expect(coords, [

@@ -1909,17 +1909,12 @@ void main() {
           DType.int32,
         );
 
-        final (values: u, index: idx, inverse: inv, counts: cnt) = unique(
-          a,
-          returnIndex: true,
-          returnInverse: true,
-          returnCounts: true,
-        );
+        final (values: u, index: idx, inverse: inv, counts: cnt) = uniqueAll(a);
 
         expect(u.toList(), [1, 2, 3, 4]);
-        expect(idx!.toList(), [0, 1, 3, 5]);
-        expect(inv!.toList(), [0, 1, 1, 2, 0, 3]);
-        expect(cnt!.toList(), [2, 2, 1, 1]);
+        expect(idx.toList(), [0, 1, 3, 5]);
+        expect(inv.toList(), [0, 1, 1, 2, 0, 3]);
+        expect(cnt.toList(), [2, 2, 1, 1]);
 
         a.dispose();
         u.dispose();
@@ -1943,17 +1938,12 @@ void main() {
           DType.float64,
         );
 
-        final (values: u, index: idx, inverse: inv, counts: cnt) = unique(
-          a,
-          returnIndex: true,
-          returnInverse: true,
-          returnCounts: true,
-        );
+        final (values: u, index: idx, inverse: inv, counts: cnt) = uniqueAll(a);
 
         expectListEqualsWithNaNs(u.toList(), [1.0, 2.0, 3.0, double.nan]);
-        expect(idx!.toList(), [1, 2, 0, 4]);
-        expect(inv!.toList(), [2, 0, 1, 0, 3, 1, 3]);
-        expect(cnt!.toList(), [2, 2, 1, 2]);
+        expect(idx.toList(), [1, 2, 0, 4]);
+        expect(inv.toList(), [2, 0, 1, 0, 3, 1, 3]);
+        expect(cnt.toList(), [2, 2, 1, 2]);
 
         a.dispose();
         u.dispose();
@@ -1983,16 +1973,11 @@ void main() {
 
       test('empty 1D array with optional returns', () {
         final a = NDArray.create([0], DType.int32);
-        final (values: u, index: idx, inverse: inv, counts: cnt) = unique(
-          a,
-          returnIndex: true,
-          returnInverse: true,
-          returnCounts: true,
-        );
+        final (values: u, index: idx, inverse: inv, counts: cnt) = uniqueAll(a);
         expect(u.shape, [0]);
-        expect(idx!.shape, [0]);
-        expect(inv!.shape, [0]);
-        expect(cnt!.shape, [0]);
+        expect(idx.shape, [0]);
+        expect(inv.shape, [0]);
+        expect(cnt.shape, [0]);
         a.dispose();
         u.dispose();
         idx.dispose();

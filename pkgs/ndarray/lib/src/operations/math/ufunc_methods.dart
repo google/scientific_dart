@@ -361,6 +361,9 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _asView<R>(res);
     case BinaryOp.minimum:
+      if (where == null) {
+        return _nativeMinMax(a, b, opCode: 2, out: out);
+      }
       return _elementwiseMinMax(
         a,
         b,
@@ -370,6 +373,9 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         out: out,
       );
     case BinaryOp.fmin:
+      if (where == null) {
+        return _nativeMinMax(a, b, opCode: 4, out: out);
+      }
       return _elementwiseMinMax(
         a,
         b,
@@ -379,6 +385,9 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         out: out,
       );
     case BinaryOp.maximum:
+      if (where == null) {
+        return _nativeMinMax(a, b, opCode: 3, out: out);
+      }
       return _elementwiseMinMax(
         a,
         b,
@@ -388,6 +397,9 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         out: out,
       );
     case BinaryOp.fmax:
+      if (where == null) {
+        return _nativeMinMax(a, b, opCode: 5, out: out);
+      }
       return _elementwiseMinMax(
         a,
         b,
@@ -427,6 +439,123 @@ int _compareValues(dynamic a, dynamic b, DType dtype) {
     return ca.imag.compareTo(cb.imag);
   }
   return (a as num).compareTo(b as num);
+}
+
+NDArray<R> _nativeMinMax<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
+  required int opCode,
+  NDArray<R>? out,
+}) {
+  final targetShape = broadcastShapes(a.shape, b.shape);
+  final targetDType = out?.dtype ?? a.dtype;
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, targetShape)) {
+      throw ArgumentError(
+        'Output array shape ${out.shape} does not match broadcast shape $targetShape',
+      );
+    }
+  }
+  if (targetDType != a.dtype) {
+    // If output dtype differs, fall back to casted elementwise
+    return _elementwiseMinMax(
+      a,
+      b,
+      isMax: opCode == 3 || opCode == 5,
+      ignoreNaN: opCode == 4 || opCode == 5,
+      out: out,
+    );
+  }
+  if (out != null && (sharesMemory(a, out) || sharesMemory(b, out))) {
+    return NDArray.scope(() {
+      final temp = _createTyped<R>(targetShape, targetDType);
+      _nativeMinMax<T, R>(a, b, opCode: opCode, out: temp);
+      temp.copy(out: out);
+      return out;
+    });
+  }
+
+  final result = out ?? _createTyped<R>(targetShape, targetDType);
+  if (result.size == 0) return result;
+
+  final dtypeCode = switch (a.dtype) {
+    DType.float64 => 0,
+    DType.float32 => 1,
+    DType.float16 => 2,
+    DType.bfloat16 => 3,
+    DType.int64 => 4,
+    DType.int32 => 5,
+    DType.int16 => 6,
+    DType.int8 => 7,
+    DType.uint64 => 8,
+    DType.uint32 => 9,
+    DType.uint16 => 10,
+    DType.uint8 => 11,
+    DType.complex128 => 12,
+    DType.complex64 => 13,
+    DType.boolean => 14,
+  };
+
+  // Contiguous same-shape fast path
+  if (a.isContiguous &&
+      b.isContiguous &&
+      result.isContiguous &&
+      listEquals(a.shape, targetShape) &&
+      listEquals(b.shape, targetShape)) {
+    v_binary_minmax(
+      opCode,
+      dtypeCode,
+      a.pointer.cast(),
+      b.pointer.cast(),
+      result.pointer.cast(),
+      result.size,
+    );
+    return result;
+  }
+
+  // Strided N-D broadcast path
+  final aBroadcast = listEquals(a.shape, targetShape)
+      ? a
+      : broadcastTo(a, targetShape);
+  final bBroadcast = listEquals(b.shape, targetShape)
+      ? b
+      : broadcastTo(b, targetShape);
+  try {
+    final rank = targetShape.length;
+    final marker = ScratchArena.marker;
+    try {
+      final cBuffer = ScratchArena.getStridedBuffer(rank, 4);
+      final cShape = cBuffer;
+      final cStridesA = cBuffer + rank;
+      final cStridesB = cBuffer + (rank * 2);
+      final cStridesOut = cBuffer + (rank * 3);
+      for (var i = 0; i < rank; i++) {
+        cShape[i] = targetShape[i];
+        cStridesA[i] = aBroadcast.strides[i];
+        cStridesB[i] = bBroadcast.strides[i];
+        cStridesOut[i] = result.strides[i];
+      }
+      s_binary_minmax(
+        opCode,
+        dtypeCode,
+        rank,
+        cShape.cast(),
+        aBroadcast.pointer.cast(),
+        cStridesA.cast(),
+        bBroadcast.pointer.cast(),
+        cStridesB.cast(),
+        result.pointer.cast(),
+        cStridesOut.cast(),
+      );
+    } finally {
+      ScratchArena.reset(marker);
+    }
+    return result;
+  } finally {
+    if (!identical(aBroadcast, a)) aBroadcast.dispose();
+    if (!identical(bBroadcast, b)) bBroadcast.dispose();
+  }
 }
 
 NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
@@ -1624,309 +1753,6 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
     result = _createTyped<T>(a.shape, a.dtype);
   }
 
-  if (a.isContiguous &&
-      result.isContiguous &&
-      (op == BinaryOp.add || op == BinaryOp.multiply)) {
-    if (a.size == 0) return result;
-
-    if (a.rank == 1 && normAxis == 0) {
-      final n = a.shape[0];
-      switch (a.dtype) {
-        case DType.float64:
-          final aPtr = a.pointer.cast<ffi.Double>();
-          final resPtr = result.pointer.cast<ffi.Double>();
-          resPtr[0] = aPtr[0];
-          if (op == BinaryOp.add) {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] + aPtr[i];
-            }
-          } else {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] * aPtr[i];
-            }
-          }
-          return result;
-        case DType.float32:
-          final aPtr = a.pointer.cast<ffi.Float>();
-          final resPtr = result.pointer.cast<ffi.Float>();
-          resPtr[0] = aPtr[0];
-          if (op == BinaryOp.add) {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] + aPtr[i];
-            }
-          } else {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] * aPtr[i];
-            }
-          }
-          return result;
-        case DType.int64:
-          final aPtr = a.pointer.cast<ffi.Int64>();
-          final resPtr = result.pointer.cast<ffi.Int64>();
-          resPtr[0] = aPtr[0];
-          if (op == BinaryOp.add) {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] + aPtr[i];
-            }
-          } else {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] * aPtr[i];
-            }
-          }
-          return result;
-        case DType.int32:
-          final aPtr = a.pointer.cast<ffi.Int32>();
-          final resPtr = result.pointer.cast<ffi.Int32>();
-          resPtr[0] = aPtr[0];
-          if (op == BinaryOp.add) {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] + aPtr[i];
-            }
-          } else {
-            for (var i = 1; i < n; i++) {
-              resPtr[i] = resPtr[i - 1] * aPtr[i];
-            }
-          }
-          return result;
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
-        case DType.uint8:
-        case DType.boolean:
-        case DType.complex128:
-        case DType.complex64:
-          break;
-      }
-    } else if (a.rank == 2 && (normAxis == 0 || normAxis == 1)) {
-      final rows = a.shape[0];
-      final cols = a.shape[1];
-      if (normAxis == 1) {
-        switch (a.dtype) {
-          case DType.float64:
-            final aPtr = a.pointer.cast<ffi.Double>();
-            final resPtr = result.pointer.cast<ffi.Double>();
-            if (op == BinaryOp.add) {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] + aPtr[base + c];
-                }
-              }
-            } else {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] * aPtr[base + c];
-                }
-              }
-            }
-            return result;
-          case DType.float32:
-            final aPtr = a.pointer.cast<ffi.Float>();
-            final resPtr = result.pointer.cast<ffi.Float>();
-            if (op == BinaryOp.add) {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] + aPtr[base + c];
-                }
-              }
-            } else {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] * aPtr[base + c];
-                }
-              }
-            }
-            return result;
-          case DType.int64:
-            final aPtr = a.pointer.cast<ffi.Int64>();
-            final resPtr = result.pointer.cast<ffi.Int64>();
-            if (op == BinaryOp.add) {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] + aPtr[base + c];
-                }
-              }
-            } else {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] * aPtr[base + c];
-                }
-              }
-            }
-            return result;
-          case DType.int32:
-            final aPtr = a.pointer.cast<ffi.Int32>();
-            final resPtr = result.pointer.cast<ffi.Int32>();
-            if (op == BinaryOp.add) {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] + aPtr[base + c];
-                }
-              }
-            } else {
-              for (var r = 0; r < rows; r++) {
-                final base = r * cols;
-                resPtr[base] = aPtr[base];
-                for (var c = 1; c < cols; c++) {
-                  resPtr[base + c] = resPtr[base + c - 1] * aPtr[base + c];
-                }
-              }
-            }
-            return result;
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-          case DType.uint8:
-          case DType.boolean:
-          case DType.complex128:
-          case DType.complex64:
-            break;
-        }
-      } else {
-        // normAxis == 0
-        switch (a.dtype) {
-          case DType.float64:
-            final aPtr = a.pointer.cast<ffi.Double>();
-            final resPtr = result.pointer.cast<ffi.Double>();
-            for (var c = 0; c < cols; c++) {
-              resPtr[c] = aPtr[c];
-            }
-            if (op == BinaryOp.add) {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] + aPtr[currBase + c];
-                }
-              }
-            } else {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] * aPtr[currBase + c];
-                }
-              }
-            }
-            return result;
-          case DType.float32:
-            final aPtr = a.pointer.cast<ffi.Float>();
-            final resPtr = result.pointer.cast<ffi.Float>();
-            for (var c = 0; c < cols; c++) {
-              resPtr[c] = aPtr[c];
-            }
-            if (op == BinaryOp.add) {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] + aPtr[currBase + c];
-                }
-              }
-            } else {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] * aPtr[currBase + c];
-                }
-              }
-            }
-            return result;
-          case DType.int64:
-            final aPtr = a.pointer.cast<ffi.Int64>();
-            final resPtr = result.pointer.cast<ffi.Int64>();
-            for (var c = 0; c < cols; c++) {
-              resPtr[c] = aPtr[c];
-            }
-            if (op == BinaryOp.add) {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] + aPtr[currBase + c];
-                }
-              }
-            } else {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] * aPtr[currBase + c];
-                }
-              }
-            }
-            return result;
-          case DType.int32:
-            final aPtr = a.pointer.cast<ffi.Int32>();
-            final resPtr = result.pointer.cast<ffi.Int32>();
-            for (var c = 0; c < cols; c++) {
-              resPtr[c] = aPtr[c];
-            }
-            if (op == BinaryOp.add) {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] + aPtr[currBase + c];
-                }
-              }
-            } else {
-              for (var r = 1; r < rows; r++) {
-                final prevBase = (r - 1) * cols;
-                final currBase = r * cols;
-                for (var c = 0; c < cols; c++) {
-                  resPtr[currBase + c] =
-                      resPtr[prevBase + c] * aPtr[currBase + c];
-                }
-              }
-            }
-            return result;
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-          case DType.uint8:
-          case DType.boolean:
-          case DType.complex128:
-          case DType.complex64:
-            break;
-        }
-      }
-    }
-  }
-
   bool handled = false;
   final marker = ScratchArena.marker;
   try {
@@ -1988,6 +1814,28 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
               normAxis,
             );
             handled = true;
+          case DType.int16:
+            s_cumsum_int16(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              normAxis,
+            );
+            handled = true;
+          case DType.uint8:
+            s_cumsum_uint8(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              normAxis,
+            );
+            handled = true;
           case DType.complex128:
             s_cumsum_complex128(
               a.pointer.cast(),
@@ -2012,12 +1860,10 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
             handled = true;
           case DType.float16:
           case DType.bfloat16:
-          case DType.int16:
           case DType.int8:
           case DType.uint64:
           case DType.uint32:
           case DType.uint16:
-          case DType.uint8:
           case DType.boolean:
             break;
         }
@@ -2067,6 +1913,28 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
               normAxis,
             );
             handled = true;
+          case DType.int16:
+            s_cumprod_int16(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              normAxis,
+            );
+            handled = true;
+          case DType.uint8:
+            s_cumprod_uint8(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              normAxis,
+            );
+            handled = true;
           case DType.complex128:
             s_cumprod_complex128(
               a.pointer.cast(),
@@ -2091,12 +1959,10 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
             handled = true;
           case DType.float16:
           case DType.bfloat16:
-          case DType.int16:
           case DType.int8:
           case DType.uint64:
           case DType.uint32:
           case DType.uint16:
-          case DType.uint8:
           case DType.boolean:
             break;
         }
@@ -2763,6 +2629,9 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           numIndices,
           opCode,
         );
+        if (get_and_reset_division_error() == 1) {
+          throw UnsupportedError('Integer division by zero');
+        }
         return result;
       case DType.int32:
       case DType.uint32 when isBitwiseOrWrapCompatible:
@@ -2778,6 +2647,9 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           numIndices,
           opCode,
         );
+        if (get_and_reset_division_error() == 1) {
+          throw UnsupportedError('Integer division by zero');
+        }
         return result;
       case DType.int16:
       case DType.uint16 when isBitwiseOrWrapCompatible:
@@ -2793,6 +2665,9 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           numIndices,
           opCode,
         );
+        if (get_and_reset_division_error() == 1) {
+          throw UnsupportedError('Integer division by zero');
+        }
         return result;
       case DType.uint8:
       case DType.int8 when isBitwiseOrWrapCompatible:
@@ -2808,6 +2683,9 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
           numIndices,
           opCode,
         );
+        if (get_and_reset_division_error() == 1) {
+          throw UnsupportedError('Integer division by zero');
+        }
         return result;
       case DType.boolean:
         s_reduceat_boolean(
@@ -2957,133 +2835,6 @@ NDArray<T> outerUfunc<T extends DTypeTag>(
       temp.copy(out: out);
       return out;
     });
-  }
-
-  if (where == null &&
-      a.isContiguous &&
-      b.isContiguous &&
-      a.dtype == b.dtype &&
-      (out == null || out.isContiguous) &&
-      (op == BinaryOp.add || op == BinaryOp.multiply) &&
-      (a.dtype == DType.float64 ||
-          a.dtype == DType.float32 ||
-          a.dtype == DType.int64 ||
-          a.dtype == DType.int32)) {
-    final expectedShape = [...a.shape, ...b.shape];
-    if (out != null) {
-      if (!listEquals(out.shape, expectedShape) || out.dtype != a.dtype) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype for outer.',
-        );
-      }
-    }
-    final result = out ?? _createTyped<T>(expectedShape, a.dtype);
-    final M = a.size;
-    final N = b.size;
-    if (M == 0 || N == 0) return result;
-
-    switch (a.dtype) {
-      case DType.float64:
-        final aPtr = a.pointer.cast<ffi.Double>();
-        final bPtr = b.pointer.cast<ffi.Double>();
-        final resPtr = result.pointer.cast<ffi.Double>();
-        if (op == BinaryOp.multiply) {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal * bPtr[j];
-            }
-          }
-        } else {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal + bPtr[j];
-            }
-          }
-        }
-        return result;
-      case DType.float32:
-        final aPtr = a.pointer.cast<ffi.Float>();
-        final bPtr = b.pointer.cast<ffi.Float>();
-        final resPtr = result.pointer.cast<ffi.Float>();
-        if (op == BinaryOp.multiply) {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal * bPtr[j];
-            }
-          }
-        } else {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal + bPtr[j];
-            }
-          }
-        }
-        return result;
-      case DType.int64:
-        final aPtr = a.pointer.cast<ffi.Int64>();
-        final bPtr = b.pointer.cast<ffi.Int64>();
-        final resPtr = result.pointer.cast<ffi.Int64>();
-        if (op == BinaryOp.multiply) {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal * bPtr[j];
-            }
-          }
-        } else {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal + bPtr[j];
-            }
-          }
-        }
-        return result;
-      case DType.int32:
-        final aPtr = a.pointer.cast<ffi.Int32>();
-        final bPtr = b.pointer.cast<ffi.Int32>();
-        final resPtr = result.pointer.cast<ffi.Int32>();
-        if (op == BinaryOp.multiply) {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal * bPtr[j];
-            }
-          }
-        } else {
-          for (var i = 0; i < M; i++) {
-            final aVal = aPtr[i];
-            final rowOffset = i * N;
-            for (var j = 0; j < N; j++) {
-              resPtr[rowOffset + j] = aVal + bPtr[j];
-            }
-          }
-        }
-        return result;
-      case DType.float16:
-      case DType.bfloat16:
-      case DType.int16:
-      case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
-      case DType.uint8:
-      case DType.boolean:
-      case DType.complex128:
-      case DType.complex64:
-        break;
-    }
   }
 
   final aReshaped = a.reshape([...a.shape, ...List.filled(b.rank, 1)]);
@@ -3407,6 +3158,11 @@ void atUfunc<T extends DTypeTag>(
       }
     } finally {
       ScratchArena.reset(marker);
+    }
+    if (a.dtype.isInteger) {
+      if (get_and_reset_division_error() == 1) {
+        throw UnsupportedError('Integer division by zero');
+      }
     }
   });
 }

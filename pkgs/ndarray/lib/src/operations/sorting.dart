@@ -23,7 +23,7 @@ import '../float16_utils.dart';
 import 'spacers.dart';
 import 'helpers.dart';
 
-NDArray _createNDArrayTyped(List<int> shape, DType dtype) {
+NDArray<DTypeTag> _createNDArrayTyped(List<int> shape, DType<DTypeTag> dtype) {
   switch (dtype) {
     case DType.float64:
       return NDArray<Float64>.create(shape, DType.float64);
@@ -83,15 +83,8 @@ NDArray<T> sort<T extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot sort a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write sort result to a disposed output array.');
-  }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, a.shape, a.dtype, name: 'out');
   }
   if (a.size == 0) {
     return out ?? NDArray<T>.create(a.shape, a.dtype);
@@ -107,7 +100,13 @@ NDArray<T> sort<T extends DTypeTag>(
 
   final targetAxis = axis < 0 ? rank + axis : axis;
   if (targetAxis < 0 || targetAxis >= rank) {
-    throw RangeError.range(targetAxis, 0, rank - 1, 'axis');
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
 
   if (targetAxis != rank - 1) {
@@ -263,20 +262,13 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot execute argsort() on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write argsort result to a disposed output array.');
-  }
   if (dtype != DType.int32 && dtype != DType.int64) {
     throw ArgumentError(
       'dtype must be DType.int32 or DType.int64, got $dtype.',
     );
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, a.shape, dtype, name: 'out');
   }
   final rank = a.shape.length;
   if (rank == 0) {
@@ -288,7 +280,13 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
   }
   final targetAxis = axis < 0 ? rank + axis : axis;
   if (targetAxis < 0 || targetAxis >= rank) {
-    throw RangeError.range(targetAxis, 0, rank - 1, 'axis');
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
   if (a.size == 0) {
     return out ?? NDArray<R>.create(a.shape, dtype);
@@ -315,7 +313,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final NDArray src = a.isContiguous ? a : a.copy();
+    final NDArray<T> src = a.isContiguous ? a : a.copy();
 
     final bool needsTempOut =
         out != null && (!out.isContiguous || sharesMemory(a, out));
@@ -557,24 +555,15 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/sorting_searching_example.dart lang=dart}
 NDArray<T> partition<T extends DTypeTag>(
   NDArray<T> a,
-  dynamic kth, {
+  Object kth, {
   int axis = -1,
   NDArray<T>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot partition a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write partition result to a disposed output array.',
-    );
-  }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, a.shape, a.dtype, name: 'out');
   }
   final rank = a.shape.length;
   if (rank == 0) {
@@ -587,7 +576,13 @@ NDArray<T> partition<T extends DTypeTag>(
 
   final targetAxis = axis < 0 ? rank + axis : axis;
   if (targetAxis < 0 || targetAxis >= rank) {
-    throw RangeError.range(targetAxis, 0, rank - 1, 'axis');
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
 
   final n = a.shape[targetAxis];
@@ -811,7 +806,7 @@ NDArray<T> partition<T extends DTypeTag>(
 /// {@example /example/sorting_searching_example.dart lang=dart}
 NDArray<Int64> argpartition<T extends DTypeTag>(
   NDArray<T> a,
-  dynamic kth, {
+  Object kth, {
   int axis = -1,
   NDArray<Int64>? out,
 }) => argpartitionAs<T, Int64>(a, kth, DType.int64, axis: axis, out: out);
@@ -822,7 +817,7 @@ NDArray<Int64> argpartition<T extends DTypeTag>(
 /// Refer to [argpartition] for full details.
 NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> a,
-  dynamic kth,
+  Object kth,
   DType<R> dtype, {
   int axis = -1,
   NDArray<R>? out,
@@ -830,22 +825,13 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot execute argpartition() on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write argpartition result to a disposed output array.',
-    );
-  }
   if (dtype != DType.int32 && dtype != DType.int64) {
     throw ArgumentError(
       'dtype must be DType.int32 or DType.int64, got $dtype.',
     );
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, a.shape, dtype, name: 'out');
   }
   final rank = a.shape.length;
   if (rank == 0) {
@@ -858,7 +844,13 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
 
   final targetAxis = axis < 0 ? rank + axis : axis;
   if (targetAxis < 0 || targetAxis >= rank) {
-    throw RangeError.range(targetAxis, 0, rank - 1, 'axis');
+    throw RangeError.range(
+      axis,
+      -rank,
+      rank - 1,
+      'axis',
+      'Must be within valid rank range',
+    );
   }
 
   final n = a.shape[targetAxis];
@@ -909,7 +901,7 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final NDArray src = a.isContiguous ? a : a.copy();
+    final NDArray<T> src = a.isContiguous ? a : a.copy();
     final totalSize = src.shape.isEmpty ? 1 : src.shape.reduce((x, y) => x * y);
     final numRows = totalSize ~/ n;
 
@@ -1209,11 +1201,6 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
   if (sorter != null && sorter.isDisposed) {
     throw StateError('Cannot use a disposed sorter array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write searchsorted result to a disposed output array.',
-    );
-  }
   if (dtype != DType.int32 && dtype != DType.int64) {
     throw ArgumentError(
       'dtype must be DType.int32 or DType.int64, got $dtype.',
@@ -1240,11 +1227,7 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, v.shape) ||
-        out.dtype != dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, v.shape, dtype, name: 'out');
     if (!out.isContiguous ||
         sharesMemory(a, out) ||
         sharesMemory(v, out) ||
@@ -1294,8 +1277,8 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
       return result;
     }
 
-    final NDArray srcA = a.isContiguous ? a : a.copy();
-    final NDArray srcV = v.isContiguous ? v : v.copy();
+    final NDArray<T> srcA = a.isContiguous ? a : a.copy();
+    final NDArray<T> srcV = v.isContiguous ? v : v.copy();
 
     final size = srcA.shape[0];
     final numValues = srcV.size;
@@ -1612,7 +1595,7 @@ dynamic where<T extends DTypeTag>(
         sharesMemory(x, out) ||
         sharesMemory(y, out)) {
       return NDArray.scope(() {
-        final temp = where<T>(condition, x, y) as NDArray;
+        final temp = where<T>(condition, x, y) as NDArray<T>;
         temp.copy(out: out);
         return out;
       });
@@ -1628,7 +1611,8 @@ dynamic where<T extends DTypeTag>(
     final stridesX = broadcastStrides(xCast, commonShape);
     final stridesY = broadcastStrides(yCast, commonShape);
 
-    final NDArray result = out ?? _createNDArrayTyped(commonShape, targetDType);
+    final NDArray<DTypeTag> result =
+        out ?? _createNDArrayTyped(commonShape, targetDType);
     final resultStrides = result.strides;
 
     final marker = ScratchArena.marker;
@@ -2350,7 +2334,13 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
   if (axis != null) {
     normAxis = axis < 0 ? rank + axis : axis;
     if (normAxis < 0 || normAxis >= rank) {
-      throw RangeError.range(normAxis, 0, rank - 1, 'axis');
+      throw RangeError.range(
+        axis,
+        -rank,
+        rank - 1,
+        'axis',
+        'Must be within valid rank range',
+      );
     }
   } else {
     normAxis = null;
@@ -2585,7 +2575,7 @@ void _dispatchArgMinMaxFFI(
 }
 
 NDArray<Int64> _uint64ArgMinMax(
-  NDArray a,
+  NDArray<DTypeTag> a,
   int? normAxis,
   bool isMax, {
   bool keepdims = false,
@@ -2691,14 +2681,6 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   if (a.isDisposed) {
     throw StateError('Cannot calculate reduction on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write argmin/argmax result to a disposed output array.',
-    );
-  }
-  if (a.size == 0) {
-    throw ArgumentError('Cannot compute reduction on an empty array.');
-  }
   if (a.dtype == DType.complex128 || a.dtype == DType.complex64) {
     throw UnsupportedError('Complex numbers are not supported.');
   }
@@ -2710,10 +2692,14 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   if (axis != null) {
     normAxis = axis < 0 ? rank + axis : axis;
     if (normAxis < 0 || normAxis >= rank) {
-      throw RangeError.range(normAxis, 0, rank - 1, 'axis');
+      throw RangeError.range(axis, -rank, rank - 1, 'axis');
     }
   } else {
     normAxis = null;
+  }
+
+  if (normAxis == null ? a.size == 0 : a.shape[normAxis] == 0) {
+    throw ArgumentError('Cannot compute reduction on an empty array.');
   }
 
   final targetShape = normAxis == null
@@ -2723,11 +2709,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
             : (List<int>.from(a.shape)..removeAt(normAxis)));
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != DType.int64) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
-    }
+    validateOutArray(out, targetShape, DType.int64, name: 'out');
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Int64>.create(out.shape, DType.int64);
@@ -2735,6 +2717,11 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
         return temp.copy(out: out as NDArray<Int64>);
       });
     }
+  }
+
+  if (a.size == 0) {
+    if (out != null) return out as NDArray<Int64>;
+    return NDArray<Int64>.create(targetShape, DType.int64);
   }
 
   if (a.dtype == DType.float16 ||
@@ -2948,7 +2935,7 @@ enum CompareOp {
 List<int>? findIndex<T extends DTypeTag>(
   NDArray<T> a,
   CompareOp op,
-  Object? target, {
+  Object target, {
   List<int>? startCoords,
   List<int>? directions,
 }) {
@@ -3078,7 +3065,7 @@ int _mapCompareOp(CompareOp op) {
   }
 }
 
-ffi.Pointer<ffi.Void> _allocateTarget(dynamic value, DType dtype) {
+ffi.Pointer<ffi.Void> _allocateTarget(Object value, DType<DTypeTag> dtype) {
   switch (dtype) {
     case DType.float64:
       final ptr = ScratchArena.allocate<ffi.Double>(ffi.sizeOf<ffi.Double>());

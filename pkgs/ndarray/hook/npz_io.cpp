@@ -199,7 +199,9 @@ static int npz_save_stored(
         size_t hlen = header_lens[i];
         size_t dlen = data_lens[i];
         size_t uncomp_sz = hlen + dlen;
-        if (uncomp_sz > 0xFFFFFFFF || nlen > 0xFFFF) {
+        uint64_t entry_total = 30ULL + (uint64_t)nlen + (uint64_t)uncomp_sz;
+        if (uncomp_sz > 0xFFFFFFFFULL || nlen > 0xFFFFULL ||
+            (uint64_t)current_offset + entry_total > 0xFFFFFFFFULL) {
             free(meta);
             fclose(fp);
             return -7;
@@ -376,7 +378,13 @@ static int npz_save_deflate(
         state.data = (const uint8_t*)data_ptrs[i];
         state.data_len = data_lens[i];
 
+        size_t nlen = strlen(entry_names[i]);
         size_t total_len = state.header_len + state.data_len;
+        if (total_len > 0xFFFFFFFFULL || nlen > 0xFFFFULL ||
+            (uint64_t)zip.m_archive_size + 30ULL + (uint64_t)nlen > 0xFFFFFFFFULL) {
+            mz_zip_writer_end(&zip);
+            return -7;
+        }
         mz_uint flags = (compress_level > 0) ? (mz_uint)compress_level : 0;
 
         mz_bool ok = mz_zip_writer_add_read_buf_callback(
@@ -394,9 +402,9 @@ static int npz_save_deflate(
             NULL,
             0);
 
-        if (!ok) {
+        if (!ok || (uint64_t)zip.m_archive_size > 0xFFFFFFFFULL) {
             mz_zip_writer_end(&zip);
-            return -3;
+            return !ok ? -3 : -7;
         }
     }
 

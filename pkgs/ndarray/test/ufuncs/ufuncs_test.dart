@@ -389,8 +389,8 @@ void main() {
         ], DType.int32);
 
         final res = divmod(x, y);
-        final q = res.$1;
-        final r = res.$2;
+        final q = res.quotient;
+        final r = res.remainder;
 
         expect(q.toList(), [-3, 2]);
         expect(r.toList(), [-1, -1]);

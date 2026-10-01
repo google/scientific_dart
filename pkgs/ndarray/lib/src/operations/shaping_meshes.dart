@@ -68,7 +68,7 @@ final class GridRange {
   /// where [stop] is inclusive (matching NumPy's complex step behavior).
   /// Otherwise, if [step] is a real [num], it is treated as the step size
   /// where [stop] is exclusive.
-  factory GridRange.numpy(double start, double stop, dynamic step) {
+  factory GridRange.numpy(double start, double stop, Object step) {
     if (step is Complex) {
       return GridRange(start, stop, numPoints: step.abs.toInt());
     } else if (step is num) {
