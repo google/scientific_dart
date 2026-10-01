@@ -737,7 +737,7 @@ NDArray<DTypeTag> promoteToComplex(NDArray a) {
 void nanReduceRecursive<T extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> result,
-  NDArray<DTypeTag> counts,
+  NDArray<Int64> counts,
   List<int> coordA,
   List<int> coordRes,
   int axis,

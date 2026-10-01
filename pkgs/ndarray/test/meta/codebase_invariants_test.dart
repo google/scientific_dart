@@ -1797,6 +1797,28 @@ void main() {
           reason:
               'NDArray._computeCheckedTotalSize must check 64-bit signed multiplication overflow.',
         );
+        final npzIoCpp = File(
+          '${pkgRoot.path}/hook/npz_io.cpp',
+        ).readAsStringSync();
+        expect(
+          npzIoCpp,
+          contains('0x06064b50'),
+          reason: 'npz_io.cpp must support ZIP64 EOCD Record (0x06064b50).',
+        );
+        expect(
+          npzIoCpp,
+          contains('0x07064b50'),
+          reason: 'npz_io.cpp must support ZIP64 EOCD Locator (0x07064b50).',
+        );
+        final helpersContent = File(
+          '${pkgRoot.path}/lib/src/operations/helpers.dart',
+        ).readAsStringSync();
+        expect(
+          helpersContent,
+          contains('NDArray<Int64> counts'),
+          reason:
+              'nanReduceRecursive must use 64-bit NDArray<Int64> for reduction element counts.',
+        );
         expect(violations, isEmpty, reason: violations.join('\n'));
       },
     );

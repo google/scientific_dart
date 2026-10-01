@@ -64,12 +64,21 @@ static inline void write_u32_le(uint8_t* p, uint32_t val) {
     p[3] = (uint8_t)((val >> 24) & 0xFF);
 }
 
+static inline void write_u64_le(uint8_t* p, uint64_t val) {
+    write_u32_le(p, (uint32_t)(val & 0xFFFFFFFFULL));
+    write_u32_le(p + 4, (uint32_t)(val >> 32));
+}
+
 static inline uint16_t read_u16_le(const uint8_t* p) {
     return (uint16_t)p[0] | ((uint16_t)p[1] << 8);
 }
 
 static inline uint32_t read_u32_le(const uint8_t* p) {
     return (uint32_t)p[0] | ((uint32_t)p[1] << 8) | ((uint32_t)p[2] << 16) | ((uint32_t)p[3] << 24);
+}
+
+static inline uint64_t read_u64_le(const uint8_t* p) {
+    return (uint64_t)read_u32_le(p) | ((uint64_t)read_u32_le(p + 4) << 32);
 }
 
 // ---------------------------------------------------------------------------
@@ -162,13 +171,14 @@ static void* npz_realloc(void* opaque, void* address, size_t items, size_t size)
 }
 
 // ---------------------------------------------------------------------------
-// npz_save STORED (Uncompressed) Implementation
+// npz_save STORED (Uncompressed) Implementation (ZIP32 + ZIP64)
 // ---------------------------------------------------------------------------
 struct ZipEntryMeta {
-    uint32_t offset;
+    uint64_t offset;
+    uint64_t uncomp_size;
     uint32_t crc32;
-    uint32_t uncomp_size;
     uint16_t name_len;
+    bool is_zip64;
     const char* name;
 };
 
@@ -179,7 +189,8 @@ static int npz_save_stored(
     const uint8_t** header_bytes,
     const size_t* header_lens,
     const void** data_ptrs,
-    const size_t* data_lens) {
+    const size_t* data_lens,
+    bool force_zip64) {
     FILE* fp = fopen(filepath, "wb");
     if (!fp) return -2;
 
@@ -189,34 +200,40 @@ static int npz_save_stored(
         return -6;
     }
 
-    uint32_t current_offset = 0;
+    uint64_t current_offset = 0;
+    bool any_entry_zip64 = false;
 
-    // Buffer for assembling local file header + filename + npy header
+    // Buffer for assembling local file header + filename + extra + npy header
     uint8_t lfh_buf[1024];
 
     for (size_t i = 0; i < num_arrays; i++) {
         size_t nlen = strlen(entry_names[i]);
-        size_t hlen = header_lens[i];
-        size_t dlen = data_lens[i];
-        size_t uncomp_sz = hlen + dlen;
-        uint64_t entry_total = 30ULL + (uint64_t)nlen + (uint64_t)uncomp_sz;
-        if (uncomp_sz > 0xFFFFFFFFULL || nlen > 0xFFFFULL ||
-            (uint64_t)current_offset + entry_total > 0xFFFFFFFFULL) {
+        if (nlen > 0xFFFFULL) {
             free(meta);
             fclose(fp);
             return -7;
         }
+        size_t hlen = header_lens[i];
+        size_t dlen = data_lens[i];
+        uint64_t uncomp_sz = (uint64_t)hlen + (uint64_t)dlen;
+        bool entry_zip64 =
+            force_zip64 ||
+            (uncomp_sz >= 0xFFFFFFFFULL) ||
+            (current_offset >= 0xFFFFFFFFULL);
+        if (entry_zip64) any_entry_zip64 = true;
+        uint16_t lfh_extra_len = entry_zip64 ? 20 : 0;
 
         uint32_t crc = npz_fast_crc32(0, header_bytes[i], hlen);
         crc = npz_fast_crc32(crc, data_ptrs[i], dlen);
 
         meta[i].offset = current_offset;
         meta[i].crc32 = crc;
-        meta[i].uncomp_size = (uint32_t)uncomp_sz;
+        meta[i].uncomp_size = uncomp_sz;
         meta[i].name_len = (uint16_t)nlen;
+        meta[i].is_zip64 = entry_zip64;
         meta[i].name = entry_names[i];
 
-        size_t prefix_len = 30 + nlen + hlen;
+        size_t prefix_len = 30 + nlen + lfh_extra_len + hlen;
         uint8_t* p_buf = lfh_buf;
         uint8_t* p_heap = NULL;
         if (prefix_len > sizeof(lfh_buf)) {
@@ -230,18 +247,25 @@ static int npz_save_stored(
         }
 
         write_u32_le(p_buf + 0, 0x04034b50);
-        write_u16_le(p_buf + 4, 20);
+        write_u16_le(p_buf + 4, entry_zip64 ? 45 : 20);
         write_u16_le(p_buf + 6, 0);
         write_u16_le(p_buf + 8, 0);
         write_u16_le(p_buf + 10, 0);
         write_u16_le(p_buf + 12, 0);
         write_u32_le(p_buf + 14, crc);
-        write_u32_le(p_buf + 18, (uint32_t)uncomp_sz);
-        write_u32_le(p_buf + 22, (uint32_t)uncomp_sz);
+        write_u32_le(p_buf + 18, entry_zip64 ? 0xFFFFFFFFU : (uint32_t)uncomp_sz);
+        write_u32_le(p_buf + 22, entry_zip64 ? 0xFFFFFFFFU : (uint32_t)uncomp_sz);
         write_u16_le(p_buf + 26, (uint16_t)nlen);
-        write_u16_le(p_buf + 28, 0);
+        write_u16_le(p_buf + 28, lfh_extra_len);
         memcpy(p_buf + 30, entry_names[i], nlen);
-        memcpy(p_buf + 30 + nlen, header_bytes[i], hlen);
+        if (entry_zip64) {
+            uint8_t* extra = p_buf + 30 + nlen;
+            write_u16_le(extra + 0, 0x0001);
+            write_u16_le(extra + 2, 16);
+            write_u64_le(extra + 4, uncomp_sz);
+            write_u64_le(extra + 12, uncomp_sz);
+        }
+        memcpy(p_buf + 30 + nlen + lfh_extra_len, header_bytes[i], hlen);
 
         size_t written_prefix = fwrite(p_buf, 1, prefix_len, fp);
         if (p_heap) free(p_heap);
@@ -253,16 +277,24 @@ static int npz_save_stored(
             return -3;
         }
 
-        current_offset += (uint32_t)prefix_len + (uint32_t)dlen;
+        current_offset += (uint64_t)prefix_len + (uint64_t)dlen;
     }
 
-    uint32_t cd_offset = current_offset;
-    uint32_t cd_size = 0;
+    uint64_t cd_offset = current_offset;
+    uint64_t cd_size = 0;
     for (size_t i = 0; i < num_arrays; i++) {
-        cd_size += 46 + meta[i].name_len;
+        uint16_t cdh_extra_len = meta[i].is_zip64 ? 28 : 0;
+        cd_size += 46 + meta[i].name_len + cdh_extra_len;
     }
 
-    size_t total_tail_size = cd_size + 22;
+    bool archive_zip64 =
+        force_zip64 ||
+        any_entry_zip64 ||
+        (num_arrays >= 0xFFFFULL) ||
+        (cd_size >= 0xFFFFFFFFULL) ||
+        (cd_offset >= 0xFFFFFFFFULL);
+
+    size_t total_tail_size = (size_t)cd_size + (archive_zip64 ? (56 + 20) : 0) + 22;
     uint8_t* tail_buf = (uint8_t*)malloc(total_tail_size);
     if (!tail_buf) {
         free(meta);
@@ -272,34 +304,67 @@ static int npz_save_stored(
 
     uint8_t* p_cd = tail_buf;
     for (size_t i = 0; i < num_arrays; i++) {
+        bool ez64 = meta[i].is_zip64;
+        uint16_t cdh_extra_len = ez64 ? 28 : 0;
         write_u32_le(p_cd + 0, 0x02014b50);
-        write_u16_le(p_cd + 4, 20);
-        write_u16_le(p_cd + 6, 20);
+        write_u16_le(p_cd + 4, ez64 ? 45 : 20);
+        write_u16_le(p_cd + 6, ez64 ? 45 : 20);
         write_u16_le(p_cd + 8, 0);
         write_u16_le(p_cd + 10, 0);
         write_u16_le(p_cd + 12, 0);
         write_u16_le(p_cd + 14, 0);
         write_u32_le(p_cd + 16, meta[i].crc32);
-        write_u32_le(p_cd + 20, meta[i].uncomp_size);
-        write_u32_le(p_cd + 24, meta[i].uncomp_size);
+        write_u32_le(p_cd + 20, ez64 ? 0xFFFFFFFFU : (uint32_t)meta[i].uncomp_size);
+        write_u32_le(p_cd + 24, ez64 ? 0xFFFFFFFFU : (uint32_t)meta[i].uncomp_size);
         write_u16_le(p_cd + 28, meta[i].name_len);
-        write_u16_le(p_cd + 30, 0);
+        write_u16_le(p_cd + 30, cdh_extra_len);
         write_u16_le(p_cd + 32, 0);
         write_u16_le(p_cd + 34, 0);
         write_u16_le(p_cd + 36, 0);
         write_u32_le(p_cd + 38, 0);
-        write_u32_le(p_cd + 42, meta[i].offset);
+        write_u32_le(p_cd + 42, ez64 ? 0xFFFFFFFFU : (uint32_t)meta[i].offset);
         memcpy(p_cd + 46, meta[i].name, meta[i].name_len);
-        p_cd += 46 + meta[i].name_len;
+        if (ez64) {
+            uint8_t* extra = p_cd + 46 + meta[i].name_len;
+            write_u16_le(extra + 0, 0x0001);
+            write_u16_le(extra + 2, 24);
+            write_u64_le(extra + 4, meta[i].uncomp_size);
+            write_u64_le(extra + 12, meta[i].uncomp_size);
+            write_u64_le(extra + 20, meta[i].offset);
+        }
+        p_cd += 46 + meta[i].name_len + cdh_extra_len;
+    }
+
+    if (archive_zip64) {
+        uint64_t zip64_eocd_offset = cd_offset + cd_size;
+        // ZIP64 End of Central Directory Record (56 bytes)
+        write_u32_le(p_cd + 0, 0x06064b50);
+        write_u64_le(p_cd + 4, 44);
+        write_u16_le(p_cd + 12, 45);
+        write_u16_le(p_cd + 14, 45);
+        write_u32_le(p_cd + 16, 0);
+        write_u32_le(p_cd + 20, 0);
+        write_u64_le(p_cd + 24, (uint64_t)num_arrays);
+        write_u64_le(p_cd + 32, (uint64_t)num_arrays);
+        write_u64_le(p_cd + 40, cd_size);
+        write_u64_le(p_cd + 48, cd_offset);
+        p_cd += 56;
+
+        // ZIP64 End of Central Directory Locator (20 bytes)
+        write_u32_le(p_cd + 0, 0x07064b50);
+        write_u32_le(p_cd + 4, 0);
+        write_u64_le(p_cd + 8, zip64_eocd_offset);
+        write_u32_le(p_cd + 16, 1);
+        p_cd += 20;
     }
 
     write_u32_le(p_cd + 0, 0x06054b50);
     write_u16_le(p_cd + 4, 0);
     write_u16_le(p_cd + 6, 0);
-    write_u16_le(p_cd + 8, (uint16_t)num_arrays);
-    write_u16_le(p_cd + 10, (uint16_t)num_arrays);
-    write_u32_le(p_cd + 12, cd_size);
-    write_u32_le(p_cd + 16, cd_offset);
+    write_u16_le(p_cd + 8, (archive_zip64 || num_arrays >= 0xFFFFULL) ? 0xFFFFU : (uint16_t)num_arrays);
+    write_u16_le(p_cd + 10, (archive_zip64 || num_arrays >= 0xFFFFULL) ? 0xFFFFU : (uint16_t)num_arrays);
+    write_u32_le(p_cd + 12, (archive_zip64 || cd_size >= 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)cd_size);
+    write_u32_le(p_cd + 16, (archive_zip64 || cd_offset >= 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)cd_offset);
     write_u16_le(p_cd + 20, 0);
 
     if (fwrite(tail_buf, 1, total_tail_size, fp) != total_tail_size) {
@@ -319,7 +384,7 @@ static int npz_save_stored(
 }
 
 // ---------------------------------------------------------------------------
-// npz_save DEFLATE (Compressed) Fallback Implementation
+// npz_save DEFLATE (Compressed) Fallback Implementation (ZIP32 + ZIP64)
 // ---------------------------------------------------------------------------
 struct NpzReadEntryState {
     const uint8_t* header;
@@ -360,14 +425,33 @@ static int npz_save_deflate(
     const size_t* header_lens,
     const void** data_ptrs,
     const size_t* data_lens,
-    int compress_level) {
+    int compress_level,
+    bool force_zip64) {
+    bool need_zip64 = force_zip64 || (num_arrays >= 0xFFFFULL);
+    uint64_t total_uncomp_estimate = 0;
+    for (size_t i = 0; i < num_arrays; i++) {
+        size_t nlen = strlen(entry_names[i]);
+        if (nlen > 0xFFFFULL) {
+            return -7;
+        }
+        uint64_t entry_len = (uint64_t)header_lens[i] + (uint64_t)data_lens[i];
+        if (entry_len >= 0xFFFFFFFFULL) {
+            need_zip64 = true;
+        }
+        total_uncomp_estimate += 30ULL + (uint64_t)nlen + entry_len + 46ULL + (uint64_t)nlen;
+        if (total_uncomp_estimate >= 0xFFFFFFFFULL) {
+            need_zip64 = true;
+        }
+    }
+
     mz_zip_archive zip;
     mz_zip_zero_struct(&zip);
     zip.m_pAlloc = npz_alloc;
     zip.m_pFree = npz_free;
     zip.m_pRealloc = npz_realloc;
 
-    if (!mz_zip_writer_init_file(&zip, filepath, 0)) {
+    mz_uint init_flags = need_zip64 ? MZ_ZIP_FLAG_WRITE_ZIP64 : 0;
+    if (!mz_zip_writer_init_file_v2(&zip, filepath, 0, init_flags)) {
         return -2;
     }
 
@@ -378,13 +462,7 @@ static int npz_save_deflate(
         state.data = (const uint8_t*)data_ptrs[i];
         state.data_len = data_lens[i];
 
-        size_t nlen = strlen(entry_names[i]);
         size_t total_len = state.header_len + state.data_len;
-        if (total_len > 0xFFFFFFFFULL || nlen > 0xFFFFULL ||
-            (uint64_t)zip.m_archive_size + 30ULL + (uint64_t)nlen > 0xFFFFFFFFULL) {
-            mz_zip_writer_end(&zip);
-            return -7;
-        }
         mz_uint flags = (compress_level > 0) ? (mz_uint)compress_level : 0;
 
         mz_bool ok = mz_zip_writer_add_read_buf_callback(
@@ -402,9 +480,9 @@ static int npz_save_deflate(
             NULL,
             0);
 
-        if (!ok || (uint64_t)zip.m_archive_size > 0xFFFFFFFFULL) {
+        if (!ok) {
             mz_zip_writer_end(&zip);
-            return !ok ? -3 : -7;
+            return -3;
         }
     }
 
@@ -433,7 +511,10 @@ NDARRAY_EXPORT int npz_save(
         return -1;
     }
 
-    if (compress_level == 0) {
+    bool force_zip64 = (compress_level & 0x100) != 0;
+    int level = compress_level & 0xFF;
+
+    if (level == 0) {
         return npz_save_stored(
             filepath,
             num_arrays,
@@ -441,7 +522,8 @@ NDARRAY_EXPORT int npz_save(
             header_bytes,
             header_lens,
             data_ptrs,
-            data_lens);
+            data_lens,
+            force_zip64);
     } else {
         return npz_save_deflate(
             filepath,
@@ -451,7 +533,8 @@ NDARRAY_EXPORT int npz_save(
             header_lens,
             data_ptrs,
             data_lens,
-            compress_level);
+            level,
+            force_zip64);
     }
 }
 
@@ -602,25 +685,48 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
     }
 
     const uint8_t* eocd = mmap_data + eocd_pos;
-    uint16_t total_entries = read_u16_le(eocd + 10);
+    uint64_t total_entries = read_u16_le(eocd + 10);
     uint64_t cd_size = read_u32_le(eocd + 12);
     uint64_t cd_offset = read_u32_le(eocd + 16);
 
-    if (cd_offset + cd_size > file_size) {
+    // Check for ZIP64 End of Central Directory Locator (20 bytes before EOCD)
+    if (eocd_pos >= 20 && read_u32_le(mmap_data + eocd_pos - 20) == 0x07064b50) {
+        const uint8_t* z64_loc = mmap_data + eocd_pos - 20;
+        uint32_t total_disks = read_u32_le(z64_loc + 16);
+        if (total_disks != 1) {
+            npz_close_reader(reader);
+            return NULL;
+        }
+        uint64_t z64_eocd_off = read_u64_le(z64_loc + 8);
+        if (z64_eocd_off > file_size || file_size - z64_eocd_off < 56) {
+            npz_close_reader(reader);
+            return NULL;
+        }
+        const uint8_t* z64_eocd = mmap_data + z64_eocd_off;
+        if (read_u32_le(z64_eocd) != 0x06064b50) {
+            npz_close_reader(reader);
+            return NULL;
+        }
+        total_entries = read_u64_le(z64_eocd + 32);
+        cd_size = read_u64_le(z64_eocd + 40);
+        cd_offset = read_u64_le(z64_eocd + 48);
+    }
+
+    if (cd_offset > file_size || cd_size > file_size - cd_offset) {
         npz_close_reader(reader);
         return NULL;
     }
 
-    reader->num_files = total_entries;
-    reader->entries = (NpzEntryInfo*)calloc(total_entries, sizeof(NpzEntryInfo));
+    reader->num_files = (size_t)total_entries;
+    reader->entries = (NpzEntryInfo*)calloc((size_t)total_entries, sizeof(NpzEntryInfo));
     if (!reader->entries && total_entries > 0) {
         npz_close_reader(reader);
         return NULL;
     }
 
     uint64_t cur_cd = cd_offset;
-    for (size_t i = 0; i < total_entries; i++) {
-        if (cur_cd + 46 > file_size) {
+    for (size_t i = 0; i < (size_t)total_entries; i++) {
+        if (cur_cd > file_size || file_size - cur_cd < 46) {
             npz_close_reader(reader);
             return NULL;
         }
@@ -640,16 +746,81 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
         uint16_t clen = read_u16_le(cdh + 32);
         e->local_header_offset = read_u32_le(cdh + 42);
 
-        if (cur_cd + 46 + nlen + elen + clen > file_size) {
+        uint64_t cdh_total = 46ULL + (uint64_t)nlen + (uint64_t)elen + (uint64_t)clen;
+        if (cdh_total > file_size - cur_cd) {
             npz_close_reader(reader);
             return NULL;
+        }
+
+        if (e->uncomp_size == 0xFFFFFFFFULL ||
+            e->comp_size == 0xFFFFFFFFULL ||
+            e->local_header_offset == 0xFFFFFFFFULL) {
+            const uint8_t* extra = cdh + 46 + nlen;
+            uint16_t extra_rem = elen;
+            bool found_z64 = false;
+            while (extra_rem >= 4) {
+                uint16_t field_id = read_u16_le(extra);
+                uint16_t field_sz = read_u16_le(extra + 2);
+                if (4 + (uint32_t)field_sz > (uint32_t)extra_rem) {
+                    npz_close_reader(reader);
+                    return NULL;
+                }
+                if (field_id == 0x0001) {
+                    const uint8_t* fdata = extra + 4;
+                    uint16_t frem = field_sz;
+                    bool need_uncomp = (e->uncomp_size == 0xFFFFFFFFULL);
+                    bool need_comp = (e->comp_size == 0xFFFFFFFFULL);
+                    bool need_ofs = (e->local_header_offset == 0xFFFFFFFFULL);
+                    // Compatibility with writers that include 8-byte comp_size whenever
+                    // uncomp_size == 0xFFFFFFFF even if comp_size < 0xFFFFFFFF.
+                    if (need_uncomp && !need_comp &&
+                        field_sz == (uint16_t)((1 + 1 + (need_ofs ? 1 : 0)) * 8)) {
+                        need_comp = true;
+                    }
+                    if (need_uncomp) {
+                        if (frem < 8) {
+                            npz_close_reader(reader);
+                            return NULL;
+                        }
+                        e->uncomp_size = read_u64_le(fdata);
+                        fdata += 8;
+                        frem -= 8;
+                    }
+                    if (need_comp) {
+                        if (frem < 8) {
+                            npz_close_reader(reader);
+                            return NULL;
+                        }
+                        e->comp_size = read_u64_le(fdata);
+                        fdata += 8;
+                        frem -= 8;
+                    }
+                    if (need_ofs) {
+                        if (frem < 8) {
+                            npz_close_reader(reader);
+                            return NULL;
+                        }
+                        e->local_header_offset = read_u64_le(fdata);
+                        fdata += 8;
+                        frem -= 8;
+                    }
+                    found_z64 = true;
+                    break;
+                }
+                extra += 4 + field_sz;
+                extra_rem -= (uint16_t)(4 + field_sz);
+            }
+            if (!found_z64) {
+                npz_close_reader(reader);
+                return NULL;
+            }
         }
 
         size_t copy_nlen = (nlen < sizeof(e->name) - 1) ? nlen : (sizeof(e->name) - 1);
         memcpy(e->name, cdh + 46, copy_nlen);
         e->name[copy_nlen] = '\0';
 
-        cur_cd += 46 + nlen + elen + clen;
+        cur_cd += cdh_total;
 
         if (copy_nlen > 0 && (e->name[copy_nlen - 1] == '/' || e->name[copy_nlen - 1] == '\\')) {
             e->is_directory = true;
@@ -665,7 +836,7 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
         e->is_npy = true;
 
         uint64_t lfh_off = e->local_header_offset;
-        if (lfh_off + 30 > file_size) {
+        if (lfh_off > file_size || file_size - lfh_off < 30) {
             e->header_status = -2;
             continue;
         }
@@ -682,11 +853,12 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
         }
         uint16_t lfh_nlen = read_u16_le(lfh + 26);
         uint16_t lfh_elen = read_u16_le(lfh + 28);
-        if (lfh_off + 30 + lfh_nlen + lfh_elen > file_size) {
+        uint64_t lfh_total = 30ULL + (uint64_t)lfh_nlen + (uint64_t)lfh_elen;
+        if (lfh_total > file_size - lfh_off) {
             e->header_status = -2;
             continue;
         }
-        e->data_offset = lfh_off + 30 + lfh_nlen + lfh_elen;
+        e->data_offset = lfh_off + lfh_total;
 
         if (e->comp_size > file_size - e->data_offset) {
             e->header_status = -2;
@@ -768,14 +940,15 @@ NDARRAY_EXPORT int npz_reader_get_entry_info(
             return -9;
         }
         if (reader->mmap_data) {
-            if (e->data_offset + e->uncomp_size > reader->file_size) {
+            if (e->data_offset > reader->file_size ||
+                e->uncomp_size > reader->file_size - e->data_offset) {
                 return -2;
             }
-            mz_ulong computed_crc = mz_crc32(
-                MZ_CRC32_INIT,
+            uint32_t computed_crc = npz_fast_crc32(
+                0,
                 reader->mmap_data + e->data_offset,
                 (size_t)e->uncomp_size);
-            if ((uint32_t)computed_crc != e->crc32) {
+            if (computed_crc != e->crc32) {
                 return -6;
             }
             memcpy(header_buf, reader->mmap_data + e->data_offset, total_header_len);
@@ -895,21 +1068,21 @@ NDARRAY_EXPORT int npz_reader_extract_data(
             return -4;
         }
         size_t src_offset = (size_t)e->data_offset + header_len;
-        if (src_offset + data_len > reader->file_size) {
+        if (data_len > reader->file_size - src_offset) {
             return -4;
         }
         if (reader->mmap_data) {
-            mz_ulong computed_crc = mz_crc32(
-                MZ_CRC32_INIT,
+            uint32_t computed_crc = npz_fast_crc32(
+                0,
                 reader->mmap_data + e->data_offset,
                 (size_t)e->uncomp_size);
-            if ((uint32_t)computed_crc != e->crc32) {
+            if (computed_crc != e->crc32) {
                 return -6;
             }
             memcpy(dest_ptr, reader->mmap_data + src_offset, data_len);
         } else {
             npz_fseek64(reader->fp, (int64_t)e->data_offset, SEEK_SET);
-            mz_ulong computed_crc = MZ_CRC32_INIT;
+            uint32_t computed_crc = 0;
             size_t skip_remaining = header_len;
             uint8_t skip_buf[512];
             while (skip_remaining > 0) {
@@ -917,14 +1090,14 @@ NDARRAY_EXPORT int npz_reader_extract_data(
                 if (fread(skip_buf, 1, to_read, reader->fp) != to_read) {
                     return -4;
                 }
-                computed_crc = mz_crc32(computed_crc, skip_buf, to_read);
+                computed_crc = npz_fast_crc32(computed_crc, skip_buf, to_read);
                 skip_remaining -= to_read;
             }
             if (fread(dest_ptr, 1, data_len, reader->fp) != data_len) {
                 return -4;
             }
-            computed_crc = mz_crc32(computed_crc, (const mz_uint8*)dest_ptr, data_len);
-            if ((uint32_t)computed_crc != e->crc32) {
+            computed_crc = npz_fast_crc32(computed_crc, dest_ptr, data_len);
+            if (computed_crc != e->crc32) {
                 return -6;
             }
         }
@@ -950,7 +1123,7 @@ NDARRAY_EXPORT int npz_reader_extract_data(
         mz_zip_reader_extract_iter_state* iter = mz_zip_reader_extract_iter_new(&reader->zip, (mz_uint)index, 0);
         if (!iter) return -2;
 
-        mz_ulong computed_crc = MZ_CRC32_INIT;
+        uint32_t computed_crc = 0;
         size_t skip_remaining = header_len;
         uint8_t skip_buf[512];
         while (skip_remaining > 0) {
@@ -960,17 +1133,17 @@ NDARRAY_EXPORT int npz_reader_extract_data(
                 mz_zip_reader_extract_iter_free(iter);
                 return -3;
             }
-            computed_crc = mz_crc32(computed_crc, skip_buf, to_read);
+            computed_crc = npz_fast_crc32(computed_crc, skip_buf, to_read);
             skip_remaining -= to_read;
         }
 
         size_t n = mz_zip_reader_extract_iter_read(iter, dest_ptr, data_len);
         if (n == data_len) {
-            computed_crc = mz_crc32(computed_crc, (const mz_uint8*)dest_ptr, data_len);
+            computed_crc = npz_fast_crc32(computed_crc, dest_ptr, data_len);
         }
         mz_bool iter_ok = mz_zip_reader_extract_iter_free(iter);
         if (n != data_len) return -4;
-        if (!iter_ok || (uint32_t)computed_crc != e->crc32) {
+        if (!iter_ok || computed_crc != e->crc32) {
             return -6;
         }
 

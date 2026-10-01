@@ -4922,7 +4922,7 @@ NDArray<R> nanmean<R extends DTypeTag>(
     result =
         NDArray<DTypeTag>.zeros(targetShape, DType.complex128) as NDArray<R>;
   }
-  final counts = NDArray<Int32>.zeros(targetShape, DType.int32);
+  final counts = NDArray<Int64>.zeros(targetShape, DType.int64);
 
   final promotedA = a.dtype.isComplex ? a : promoteToComplex(a);
   nanReduceRecursive<DTypeTag>(

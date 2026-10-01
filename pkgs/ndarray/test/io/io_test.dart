@@ -12,11 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'dart:convert';
+import 'dart:ffi' as ffi;
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
+import 'package:ndarray/ndarray.dart';
+import 'package:ndarray/src/ndarray_extensions_bindings.dart';
+import 'package:test/test.dart';
 
 void main() {
   late Directory tempDir;
@@ -914,7 +917,177 @@ void main() {
         },
       );
     });
+
+    group('ZIP64 .npz Archive Support (> 4 GiB Format)', () {
+      test(
+        'ZIP64 STORED (uncompressed) .npz writes 0x0001 extra fields, ZIP64 EOCD (0x06064b50), and round-trips via loadz',
+        () => NDArray.scope(() {
+          final a = NDArray.fromList(
+            [10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
+            [2, 3],
+            DType.float64,
+          );
+          final b = NDArray.fromList([-1, 2, -3, 4], [4], DType.int64);
+          final path = '${tempDir.path}/zip64_stored.npz';
+          _saveNpzWithFlags(path, {'alpha': a, 'beta': b}, 0x100);
+
+          final rawBytes = File(path).readAsBytesSync();
+          // Verify ZIP64 End of Central Directory Record (0x06064b50) and
+          // ZIP64 End of Central Directory Locator (0x07064b50) signatures exist.
+          expect(_containsU32Le(rawBytes, 0x06064b50), isTrue);
+          expect(_containsU32Le(rawBytes, 0x07064b50), isTrue);
+
+          final loaded = loadz(path);
+          expect(loaded.keys.toSet(), {'alpha', 'beta'});
+          expect(loaded['alpha']!.shape, [2, 3]);
+          expect(loaded['alpha']!.dtype, DType.float64);
+          expect(loaded['alpha']!.toList(), [
+            10.0,
+            20.0,
+            30.0,
+            40.0,
+            50.0,
+            60.0,
+          ]);
+          expect(loaded['beta']!.shape, [4]);
+          expect(loaded['beta']!.dtype, DType.int64);
+          expect(loaded['beta']!.toList(), [-1, 2, -3, 4]);
+        }),
+      );
+
+      test(
+        'ZIP64 DEFLATE (compressed) .npz writes ZIP64 EOCD and round-trips via loadz',
+        () => NDArray.scope(() {
+          final a = NDArray.fromList(
+            List<double>.generate(128, (i) => i * 1.25),
+            [16, 8],
+            DType.float64,
+          );
+          final path = '${tempDir.path}/zip64_deflate.npz';
+          _saveNpzWithFlags(path, {'matrix': a}, 0x106);
+
+          final rawBytes = File(path).readAsBytesSync();
+          expect(_containsU32Le(rawBytes, 0x06064b50), isTrue);
+          expect(_containsU32Le(rawBytes, 0x07064b50), isTrue);
+
+          final loaded = loadz(path);
+          expect(loaded.keys.toSet(), {'matrix'});
+          expect(loaded['matrix']!.shape, [16, 8]);
+          expect(loaded['matrix']!.dtype, DType.float64);
+          expect(
+            loaded['matrix']!.toList(),
+            List<double>.generate(128, (i) => i * 1.25),
+          );
+        }),
+      );
+    });
   });
+}
+
+bool _containsU32Le(Uint8List bytes, int target) {
+  final b0 = target & 0xFF;
+  final b1 = (target >> 8) & 0xFF;
+  final b2 = (target >> 16) & 0xFF;
+  final b3 = (target >> 24) & 0xFF;
+  for (var i = 0; i + 4 <= bytes.length; i++) {
+    if (bytes[i] == b0 &&
+        bytes[i + 1] == b1 &&
+        bytes[i + 2] == b2 &&
+        bytes[i + 3] == b3) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void _saveNpzWithFlags(
+  String filepath,
+  Map<String, NDArray<DTypeTag>> arrays,
+  int compressFlags,
+) {
+  final numArrays = arrays.length;
+  final marker = ScratchArena.marker;
+  try {
+    final cNames = ScratchArena.allocate<ffi.Pointer<ffi.Char>>(
+      numArrays * ffi.sizeOf<ffi.Pointer<ffi.Char>>(),
+    );
+    final cHeaderBytes = ScratchArena.allocate<ffi.Pointer<ffi.Uint8>>(
+      numArrays * ffi.sizeOf<ffi.Pointer<ffi.Uint8>>(),
+    );
+    final cHeaderLens = ScratchArena.allocate<ffi.Size>(
+      numArrays * ffi.sizeOf<ffi.Size>(),
+    );
+    final cDataPtrs = ScratchArena.allocate<ffi.Pointer<ffi.Void>>(
+      numArrays * ffi.sizeOf<ffi.Pointer<ffi.Void>>(),
+    );
+    final cDataLens = ScratchArena.allocate<ffi.Size>(
+      numArrays * ffi.sizeOf<ffi.Size>(),
+    );
+
+    ffi.Pointer<ffi.Char> allocUtf8(String s) {
+      final units = utf8.encode(s);
+      final ptr = ScratchArena.allocate<ffi.Uint8>(units.length + 1);
+      for (var i = 0; i < units.length; i++) {
+        ptr[i] = units[i];
+      }
+      ptr[units.length] = 0;
+      return ptr.cast<ffi.Char>();
+    }
+
+    var idx = 0;
+    for (final entry in arrays.entries) {
+      final arr = entry.value;
+      cNames[idx] = allocUtf8('${entry.key}.npy');
+      final descr = arr.dtype.npyDescriptor;
+      final shapeStr = arr.shape.length == 1
+          ? '${arr.shape[0]},'
+          : arr.shape.join(', ');
+      final headerStr =
+          "{'descr': '$descr', 'fortran_order': False, 'shape': ($shapeStr)}";
+      const prefixLen = 10;
+      final paddedHeaderLen =
+          ((prefixLen + headerStr.length + 1) + 63) ~/ 64 * 64 - prefixLen;
+      final padCount = paddedHeaderLen - headerStr.length - 1;
+      final paddedHeader = "$headerStr${' ' * padCount}\n";
+      final headerCodeUnits = paddedHeader.codeUnits;
+      final hLen = headerCodeUnits.length;
+      final totalHeaderBytes = prefixLen + hLen;
+      final hBuf = ScratchArena.allocate<ffi.Uint8>(totalHeaderBytes);
+      hBuf[0] = 0x93;
+      hBuf[1] = 0x4e;
+      hBuf[2] = 0x55;
+      hBuf[3] = 0x4d;
+      hBuf[4] = 0x50;
+      hBuf[5] = 0x59;
+      hBuf[6] = 0x01;
+      hBuf[7] = 0x00;
+      hBuf[8] = hLen & 0xFF;
+      hBuf[9] = (hLen >> 8) & 0xFF;
+      for (var j = 0; j < hLen; j++) {
+        hBuf[10 + j] = headerCodeUnits[j];
+      }
+      cHeaderBytes[idx] = hBuf;
+      cHeaderLens[idx] = totalHeaderBytes;
+      cDataPtrs[idx] = arr.pointer.cast<ffi.Void>();
+      cDataLens[idx] = arr.size * arr.dtype.byteWidth;
+      idx++;
+    }
+
+    final cFilepath = allocUtf8(filepath);
+    final status = npz_save(
+      cFilepath,
+      numArrays,
+      cNames,
+      cHeaderBytes,
+      cHeaderLens,
+      cDataPtrs,
+      cDataLens,
+      compressFlags,
+    );
+    expect(status, 0);
+  } finally {
+    ScratchArena.reset(marker);
+  }
 }
 
 Uint8List _buildFakeNpyBytes(
