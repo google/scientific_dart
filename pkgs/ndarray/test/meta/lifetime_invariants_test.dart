@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -98,12 +99,23 @@ void _createFromPointerAndDrop(
 
 final List<Object?> _gcRing = List<Object?>.filled(4096, null);
 
+/// Holds large typed-data buffers; the VM allocates objects above the
+/// new-space limit directly in old space, so churning these provokes
+/// mark-sweep collections, which are the only ones that finalize objects
+/// that were promoted out of new space before being dropped.
+final List<Object?> _oldSpaceRing = List<Object?>.filled(8, null);
+
 Future<void> _churnGcAndNativeHeap({int rounds = 8}) async {
   for (var round = 0; round < rounds; round++) {
     for (var i = 0; i < _gcRing.length; i++) {
       _gcRing[i] = List<int>.filled(256, i + round);
     }
     _gcRing.fillRange(0, _gcRing.length, null);
+
+    for (var i = 0; i < _oldSpaceRing.length; i++) {
+      _oldSpaceRing[i] = Uint8List(4 << 20);
+    }
+    _oldSpaceRing.fillRange(0, _oldSpaceRing.length, null);
 
     final ptrs = <ffi.Pointer<ffi.Uint32>>[];
     for (var i = 0; i < 64; i++) {
