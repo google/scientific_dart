@@ -928,11 +928,25 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
           case DType.uint16:
             acc = r_sum_int16(ptr.cast(), size);
           case DType.complex128:
-            final c = r_sum_complex128(ptr.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+              r_sum_complex128(ptr.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.complex64:
-            final c = r_sum_complex64(ptr.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_f_t>(
+                ffi.sizeOf<cpx_f_t>(),
+              );
+              r_sum_complex64(ptr.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.boolean:
             acc = r_max_uint8_t(ptr.cast(), size) != 0;
           case DType.float16:
@@ -964,11 +978,25 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
           case DType.uint16:
             acc = r_sum_int16(copyA.pointer.cast(), size);
           case DType.complex128:
-            final c = r_sum_complex128(copyA.pointer.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+              r_sum_complex128(copyA.pointer.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.complex64:
-            final c = r_sum_complex64(copyA.pointer.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_f_t>(
+                ffi.sizeOf<cpx_f_t>(),
+              );
+              r_sum_complex64(copyA.pointer.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.boolean:
             acc = r_max_uint8_t(copyA.pointer.cast(), size) != 0;
           case DType.float16:
@@ -1243,11 +1271,25 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
           case DType.uint16:
             acc = r_prod_int16(ptr.cast(), size);
           case DType.complex128:
-            final c = r_prod_complex128(ptr.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+              r_prod_complex128(ptr.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.complex64:
-            final c = r_prod_complex64(ptr.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_f_t>(
+                ffi.sizeOf<cpx_f_t>(),
+              );
+              r_prod_complex64(ptr.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.boolean:
             acc = r_prod_uint8(ptr.cast(), size) != 0;
           case DType.float16:
@@ -1279,11 +1321,25 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
           case DType.uint16:
             acc = r_prod_int16(copyA.pointer.cast(), size);
           case DType.complex128:
-            final c = r_prod_complex128(copyA.pointer.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+              r_prod_complex128(copyA.pointer.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.complex64:
-            final c = r_prod_complex64(copyA.pointer.cast(), size);
-            acc = Complex(c.r, c.i);
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_f_t>(
+                ffi.sizeOf<cpx_f_t>(),
+              );
+              r_prod_complex64(copyA.pointer.cast(), size, outPtr);
+              acc = Complex(outPtr.ref.r, outPtr.ref.i);
+            } finally {
+              ScratchArena.reset(marker);
+            }
           case DType.boolean:
             acc = r_prod_uint8(copyA.pointer.cast(), size) != 0;
           case DType.float16:
@@ -1945,11 +2001,23 @@ NDArray<R> mean<R extends DTypeTag, T extends DTypeTag>(
         case DType.int16:
           acc = r_mean_int16_to_double(ptr.cast(), size);
         case DType.complex128:
-          final c = r_mean_complex128(ptr.cast(), size);
-          acc = Complex(c.r, c.i);
+          final marker = ScratchArena.marker;
+          try {
+            final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+            r_mean_complex128(ptr.cast(), size, outPtr);
+            acc = Complex(outPtr.ref.r, outPtr.ref.i);
+          } finally {
+            ScratchArena.reset(marker);
+          }
         case DType.complex64:
-          final c = r_mean_complex64_to_complex128(ptr.cast(), size);
-          acc = Complex(c.r, c.i);
+          final marker = ScratchArena.marker;
+          try {
+            final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+            r_mean_complex64_to_complex128(ptr.cast(), size, outPtr);
+            acc = Complex(outPtr.ref.r, outPtr.ref.i);
+          } finally {
+            ScratchArena.reset(marker);
+          }
         case DType.boolean:
           acc = r_mean_uint8_to_double(ptr.cast(), size);
         case DType.float16:
@@ -1980,11 +2048,23 @@ NDArray<R> mean<R extends DTypeTag, T extends DTypeTag>(
       case DType.int16:
         acc = r_mean_int16_to_double(copyA.pointer.cast(), size);
       case DType.complex128:
-        final c = r_mean_complex128(copyA.pointer.cast(), size);
-        acc = Complex(c.r, c.i);
+        final marker = ScratchArena.marker;
+        try {
+          final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+          r_mean_complex128(copyA.pointer.cast(), size, outPtr);
+          acc = Complex(outPtr.ref.r, outPtr.ref.i);
+        } finally {
+          ScratchArena.reset(marker);
+        }
       case DType.complex64:
-        final c = r_mean_complex64_to_complex128(copyA.pointer.cast(), size);
-        acc = Complex(c.r, c.i);
+        final marker = ScratchArena.marker;
+        try {
+          final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+          r_mean_complex64_to_complex128(copyA.pointer.cast(), size, outPtr);
+          acc = Complex(outPtr.ref.r, outPtr.ref.i);
+        } finally {
+          ScratchArena.reset(marker);
+        }
       case DType.boolean:
         acc = r_mean_uint8_to_double(copyA.pointer.cast(), size);
       case DType.float16:
@@ -5370,12 +5450,26 @@ NDArray<R> median<R extends DTypeTag>(
           result.setCellFlat(0, r_median_float(a.pointer.cast(), size));
           return result;
         case DType.complex128:
-          final res = r_median_complex128(a.pointer.cast(), size);
-          result.setCellFlat(0, Complex(res.r, res.i));
+          final marker = ScratchArena.marker;
+          try {
+            final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+            r_median_complex128(a.pointer.cast(), size, outPtr);
+            result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
+          } finally {
+            ScratchArena.reset(marker);
+          }
           return result;
         case DType.complex64:
-          final res = r_median_complex64(a.pointer.cast(), size);
-          result.setCellFlat(0, Complex(res.r, res.i));
+          final marker = ScratchArena.marker;
+          try {
+            final outPtr = ScratchArena.allocate<cpx_f_t>(
+              ffi.sizeOf<cpx_f_t>(),
+            );
+            r_median_complex64(a.pointer.cast(), size, outPtr);
+            result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
+          } finally {
+            ScratchArena.reset(marker);
+          }
           return result;
         case DType.int64:
         case DType.int32:
@@ -5498,11 +5592,23 @@ Object r_median_helper<T extends DTypeTag>(NDArray<T> a, int size) {
     case DType.float32:
       return r_median_float(a.pointer.cast(), size);
     case DType.complex128:
-      final res = r_median_complex128(a.pointer.cast(), size);
-      return Complex(res.r, res.i);
+      final marker = ScratchArena.marker;
+      try {
+        final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+        r_median_complex128(a.pointer.cast(), size, outPtr);
+        return Complex(outPtr.ref.r, outPtr.ref.i);
+      } finally {
+        ScratchArena.reset(marker);
+      }
     case DType.complex64:
-      final res = r_median_complex64(a.pointer.cast(), size);
-      return Complex(res.r, res.i);
+      final marker = ScratchArena.marker;
+      try {
+        final outPtr = ScratchArena.allocate<cpx_f_t>(ffi.sizeOf<cpx_f_t>());
+        r_median_complex64(a.pointer.cast(), size, outPtr);
+        return Complex(outPtr.ref.r, outPtr.ref.i);
+      } finally {
+        ScratchArena.reset(marker);
+      }
     case DType.int64:
     case DType.int32:
     case DType.uint8:

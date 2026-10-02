@@ -1092,47 +1092,56 @@ void main() {
     }
   });
 
-  group('Static source invariants for linalg LAPACK info and eigenvector bounds', () {
-    test('linalg.dart never throws ArgumentError or StateError on LAPACKE info', () {
-      final file = File('lib/src/operations/linalg.dart');
-      final content = file.readAsStringSync();
+  group(
+    'Static source invariants for linalg LAPACK info and eigenvector bounds',
+    () {
+      test(
+        'linalg.dart never throws ArgumentError or StateError on LAPACKE info',
+        () {
+          final file = File('lib/src/operations/linalg.dart');
+          final content = file.readAsStringSync();
 
-      expect(
-        content.contains('Illegal value in call to LAPACKE'),
-        isFalse,
-        reason:
-            'LAPACKE negative info codes must throw LinAlgException via _checkLapackInfo, never ArgumentError.',
+          expect(
+            content.contains('Illegal value in call to LAPACKE'),
+            isFalse,
+            reason:
+                'LAPACKE negative info codes must throw LinAlgException via _checkLapackInfo, never ArgumentError.',
+          );
+          final badThrowPattern = RegExp(
+            r'if\s*\(\s*info(?:Tri|Org)?\s*[<!=]+\s*0\s*\)\s*\{?\s*throw\s+(?:ArgumentError|StateError)',
+          );
+          expect(
+            badThrowPattern.hasMatch(content),
+            isFalse,
+            reason:
+                'All LAPACKE info checks in linalg.dart must route through _checkLapackInfo and throw LinAlgException subclasses.',
+          );
+        },
       );
-      final badThrowPattern = RegExp(
-        r'if\s*\(\s*info(?:Tri|Org)?\s*[<!=]+\s*0\s*\)\s*\{?\s*throw\s+(?:ArgumentError|StateError)',
-      );
-      expect(
-        badThrowPattern.hasMatch(content),
-        isFalse,
-        reason:
-            'All LAPACKE info checks in linalg.dart must route through _checkLapackInfo and throw LinAlgException subclasses.',
-      );
-    });
 
-    test(
-      'custom_ufuncs.cpp bounds-checks j + 1 < n in assemble_eigenvectors_*',
-      () {
-        final file = File('hook/custom_ufuncs.cpp');
-        final content = file.readAsStringSync();
+      test(
+        'custom_ufuncs.cpp bounds-checks j + 1 < n in assemble_eigenvectors_*',
+        () {
+          final file = File('hook/custom_ufuncs.cpp');
+          final content = file.readAsStringSync();
 
-        expect(
-          content.contains('if (j + 1 < n && wi[j] > 0.0)'),
-          isTrue,
-          reason:
-              'assemble_eigenvectors_double must check j + 1 < n && wi[j] > 0.0 before reading/writing column j + 1.',
-        );
-        expect(
-          content.contains('if (j + 1 < n && wi[j] > 0.0f)'),
-          isTrue,
-          reason:
-              'assemble_eigenvectors_float must check j + 1 < n && wi[j] > 0.0f before reading/writing column j + 1.',
-        );
-      },
-    );
-  });
+          expect(
+            content.contains('if (j + 1 < n && wi[j] > 0.0)'),
+            isTrue,
+            reason:
+                'assemble_eigenvectors_double must check j + 1 < n && wi[j] > 0.0 before reading/writing column j + 1.',
+          );
+          expect(
+            content.contains('if (j + 1 < n && wi[j] > 0.0f)'),
+            isTrue,
+            reason:
+                'assemble_eigenvectors_float must check j + 1 < n && wi[j] > 0.0f before reading/writing column j + 1.',
+          );
+        },
+      );
+    },
+    skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+        ? 'Host source file inspection is not supported on Wasm'
+        : false,
+  );
 }

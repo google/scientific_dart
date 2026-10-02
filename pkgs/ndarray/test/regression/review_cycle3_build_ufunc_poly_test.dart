@@ -45,6 +45,9 @@ void main() {
           );
         }
       },
+      skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+          ? 'Host source file inspection is not supported on Wasm'
+          : false,
     );
 
     test(

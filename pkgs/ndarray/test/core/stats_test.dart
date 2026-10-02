@@ -391,6 +391,13 @@ void main() {
           expect(sAxis0.shape, equals([2]));
           expect(
             sAxis0.toList(),
+            equals([Complex(4.0, 6.0), Complex(0.0, 0.0)]),
+          );
+
+          final sAxis1 = nansum(a, axis: 1);
+          expect(sAxis1.shape, equals([2]));
+          expect(
+            sAxis1.toList(),
             equals([Complex(1.0, 2.0), Complex(3.0, 4.0)]),
           );
         }),
@@ -417,6 +424,13 @@ void main() {
           expect(sAxis0.shape, equals([2]));
           expect(
             sAxis0.toList(),
+            equals([Complex(4.0, 6.0), Complex(0.0, 0.0)]),
+          );
+
+          final sAxis1 = nansum(a, axis: 1);
+          expect(sAxis1.shape, equals([2]));
+          expect(
+            sAxis1.toList(),
             equals([Complex(1.0, 2.0), Complex(3.0, 4.0)]),
           );
         }),

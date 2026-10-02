@@ -525,15 +525,6 @@ external int labs(int __x);
 @ffi.Native<ffi.LongLong Function(ffi.LongLong)>()
 external int llabs(int __x);
 
-@ffi.Native<div_t Function(ffi.Int, ffi.Int)>()
-external div_t div(int __numer, int __denom);
-
-@ffi.Native<ldiv_t Function(ffi.Long, ffi.Long)>()
-external ldiv_t ldiv(int __numer, int __denom);
-
-@ffi.Native<lldiv_t Function(ffi.LongLong, ffi.LongLong)>()
-external lldiv_t lldiv(int __numer, int __denom);
-
 @ffi.Native<
   ffi.Pointer<ffi.Char> Function(
     ffi.Double,
@@ -663,15 +654,6 @@ external int getsubopt(
 @ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Double>, ffi.Int)>()
 external int getloadavg(ffi.Pointer<ffi.Double> __loadavg, int __nelem);
 
-@ffi.Native<ffi.Pointer<FILE>>()
-external ffi.Pointer<FILE> stdin;
-
-@ffi.Native<ffi.Pointer<FILE>>()
-external ffi.Pointer<FILE> stdout;
-
-@ffi.Native<ffi.Pointer<FILE>>()
-external ffi.Pointer<FILE> stderr;
-
 @ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Char>)>()
 external int remove(ffi.Pointer<ffi.Char> __filename);
 
@@ -742,19 +724,6 @@ external ffi.Pointer<FILE> freopen(
 
 @ffi.Native<ffi.Pointer<FILE> Function(ffi.Int, ffi.Pointer<ffi.Char>)>()
 external ffi.Pointer<FILE> fdopen(int __fd, ffi.Pointer<ffi.Char> __modes);
-
-@ffi.Native<
-  ffi.Pointer<FILE> Function(
-    ffi.Pointer<ffi.Void>,
-    ffi.Pointer<ffi.Char>,
-    cookie_io_functions_t,
-  )
->()
-external ffi.Pointer<FILE> fopencookie(
-  ffi.Pointer<ffi.Void> __magic_cookie,
-  ffi.Pointer<ffi.Char> __modes,
-  cookie_io_functions_t __io_funcs,
-);
 
 @ffi.Native<
   ffi.Pointer<FILE> Function(
@@ -2018,9 +1987,6 @@ external double scalbf(double __x, double __n);
 
 @ffi.Native<ffi.Float Function(ffi.Float, ffi.Float)>()
 external double __scalbf(double __x, double __n);
-
-@ffi.Native<ffi.Int>()
-external int signgam;
 
 @ffi.Native<
   ffi.Pointer<ffi.Void> Function(

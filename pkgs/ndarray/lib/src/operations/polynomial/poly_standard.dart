@@ -574,7 +574,7 @@ NDArray<R> polyfit<
             n * ffi.sizeOf<lapack_int>(),
           );
           for (var k = 0; k < n; k++) {
-            jpvt[k] = 0;
+            jpvt.cast<ffi.Int32>()[k] = 0;
           }
           final rankPtr = ScratchArena.allocate<lapack_int>(
             ffi.sizeOf<lapack_int>(),
@@ -658,7 +658,7 @@ NDArray<R> polyfit<
           n * ffi.sizeOf<lapack_int>(),
         );
         for (var k = 0; k < n; k++) {
-          jpvt[k] = 0;
+          jpvt.cast<ffi.Int32>()[k] = 0;
         }
         final rankPtr = ScratchArena.allocate<lapack_int>(
           ffi.sizeOf<lapack_int>(),

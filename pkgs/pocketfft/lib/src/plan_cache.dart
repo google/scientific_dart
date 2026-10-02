@@ -244,9 +244,9 @@ final class PocketFFTPlanCache {
 
     final pLen = pkg_ffi.malloc<ffi.Size>();
     try {
-      pLen.value = 0;
+      _writeSize(pLen, 0);
       kiss_fft_alloc(length, isInverse ? 1 : 0, ffi.nullptr, pLen);
-      final needed = pLen.value;
+      final needed = _readSize(pLen);
       if (needed <= 0) {
         throw StateError(
           'Failed to query native kiss_fft_cfg plan size for length $length',
@@ -310,9 +310,9 @@ final class PocketFFTPlanCache {
 
     final pLen = pkg_ffi.malloc<ffi.Size>();
     try {
-      pLen.value = 0;
+      _writeSize(pLen, 0);
       kiss_fftr_alloc(length, isInverse ? 1 : 0, ffi.nullptr, pLen);
-      final needed = pLen.value;
+      final needed = _readSize(pLen);
       if (needed <= 0) {
         throw StateError(
           'Failed to query native kiss_fftr_cfg plan size for length $length',
@@ -390,9 +390,9 @@ final class PocketFFTPlanCache {
       for (var i = 0; i < ndims; i++) {
         pDims[i] = dimensions[i];
       }
-      pLen.value = 0;
+      _writeSize(pLen, 0);
       kiss_fftnd_alloc(pDims, ndims, isInverse ? 1 : 0, ffi.nullptr, pLen);
-      final needed = pLen.value;
+      final needed = _readSize(pLen);
       if (needed <= 0) {
         throw StateError(
           'Failed to query native kiss_fftnd_cfg plan size for dimensions $dimensions',
@@ -419,6 +419,18 @@ final class PocketFFTPlanCache {
       pkg_ffi.malloc.free(pLen);
     }
   }
+
+  static void _writeSize(ffi.Pointer<ffi.Size> ptr, int value) {
+    if (ffi.sizeOf<ffi.Size>() == 4) {
+      ptr.cast<ffi.Uint32>().value = value;
+    } else {
+      ptr.cast<ffi.Uint64>().value = value;
+    }
+  }
+
+  static int _readSize(ffi.Pointer<ffi.Size> ptr) => ffi.sizeOf<ffi.Size>() == 4
+      ? ptr.cast<ffi.Uint32>().value
+      : ptr.cast<ffi.Uint64>().value;
 
   void _insert(PocketFFTPlanKey key, ffi.Pointer<ffi.Void> ptr) {
     while (_cache.length >= _maxCapacity) {

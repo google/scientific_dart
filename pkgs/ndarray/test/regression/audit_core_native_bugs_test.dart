@@ -21,6 +21,8 @@ import 'package:ffi/ffi.dart';
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
+const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+
 void main() {
   group(
     'Bug 1: NDArray.transpose, reshape, & ravel preserve offsetElements',
@@ -191,11 +193,14 @@ void main() {
             [4],
             DType.int32,
             strides: [-1],
-            nativeFinalizer: malloc.nativeFree,
+            nativeFinalizer: _isWasm ? null : malloc.nativeFree,
           );
           expect(extNeg.offsetElements, equals(3));
           expect(extNeg.toList(), equals([400, 300, 200, 100]));
           extNeg.dispose();
+          if (_isWasm) {
+            malloc.free(rawPtr);
+          }
         },
       );
 
@@ -785,6 +790,9 @@ void main() {
           tempDir.deleteSync(recursive: true);
         }
       },
+      skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+          ? 'Uses dart:io File.writeAsBytesSync'
+          : false,
     );
   });
 }

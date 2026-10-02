@@ -21,16 +21,35 @@ import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/ndarray_extensions_bindings.dart';
 import 'package:test/test.dart';
 
+const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+
+/// Root for files written on dart2wasm, where `dart:io` is unavailable.
+///
+/// `tool/build_wasm.dart` passes a per-target directory and deletes it after
+/// the run; the default only applies when a test is run some other way.
+const String _wasmTempRoot = String.fromEnvironment(
+  'NDARRAY_TEST_TMPDIR',
+  defaultValue: '/tmp',
+);
+
 void main() {
-  late Directory tempDir;
+  Directory? tempDir;
+  late String tempDirPath;
   group('NDArray NumPy Binary Interoperability & I/O Tests', () {
     setUpAll(() {
-      tempDir = Directory.systemTemp.createTempSync('ndarray_io_test_');
+      if (_isWasm) {
+        // save()/savez() create missing parent directories natively.
+        tempDirPath =
+            '$_wasmTempRoot/ndarray_io_test_${DateTime.now().microsecondsSinceEpoch}';
+      } else {
+        tempDir = Directory.systemTemp.createTempSync('ndarray_io_test_');
+        tempDirPath = tempDir!.path;
+      }
     });
 
     tearDownAll(() {
-      if (tempDir.existsSync()) {
-        tempDir.deleteSync(recursive: true);
+      if (!_isWasm && tempDir != null && tempDir!.existsSync()) {
+        tempDir!.deleteSync(recursive: true);
       }
     });
 
@@ -44,7 +63,7 @@ void main() {
             DType.float64,
           );
 
-          final path = '${tempDir.path}/test_f64.npy';
+          final path = '$tempDirPath/test_f64.npy';
           save(path, a);
 
           final loaded = load(path);
@@ -62,7 +81,7 @@ void main() {
             [4],
             DType.float32,
           );
-          final path = '${tempDir.path}/test_f32.npy';
+          final path = '$tempDirPath/test_f32.npy';
           save(path, a);
 
           final loaded = load(path);
@@ -79,7 +98,7 @@ void main() {
             2,
             2,
           ], DType.int32);
-          final path = '${tempDir.path}/test_i32.npy';
+          final path = '$tempDirPath/test_i32.npy';
           save(path, a);
 
           final loaded = load(path);
@@ -96,7 +115,7 @@ void main() {
             [2],
             DType.int64,
           );
-          final path = '${tempDir.path}/test_i64.npy';
+          final path = '$tempDirPath/test_i64.npy';
           save(path, a);
 
           final loaded = load(path);
@@ -114,7 +133,7 @@ void main() {
             DType.complex128,
           );
 
-          final path = '${tempDir.path}/test_c16.npy';
+          final path = '$tempDirPath/test_c16.npy';
           save(path, a);
 
           final loaded = load(path);
@@ -135,7 +154,7 @@ void main() {
             DType.complex64,
           );
 
-          final path = '${tempDir.path}/test_c8.npy';
+          final path = '$tempDirPath/test_c8.npy';
           save(path, a);
 
           final loaded = load(path);
@@ -160,7 +179,7 @@ void main() {
           final view = parent.transpose();
           expect(view.isContiguous, false);
 
-          final path = '${tempDir.path}/test_view.npy';
+          final path = '$tempDirPath/test_view.npy';
           save(path, view); // should make contiguous copy in-flight
 
           final loaded = load(path);
@@ -185,7 +204,7 @@ void main() {
 
           final map = {'array_one': arr1, 'array_two': arr2};
 
-          final path = '${tempDir.path}/archive.npz';
+          final path = '$tempDirPath/archive.npz';
           savez(path, map, compressed: false);
 
           final loaded = loadz(path);
@@ -204,7 +223,7 @@ void main() {
           final arr1 = NDArray.fromList(Float32List.fromList([0.5, 1.5]), [
             2,
           ], DType.float32);
-          final path = '${tempDir.path}/archive_comp.npz';
+          final path = '$tempDirPath/archive_comp.npz';
           savez(path, {'x': arr1}, compressed: true);
 
           final loaded = loadz(path);
@@ -273,7 +292,7 @@ void main() {
             level: Deflate.NO_COMPRESSION,
           )!;
 
-          final path = '${tempDir.path}/archive_fortran_simulated.npz';
+          final path = '$tempDirPath/archive_fortran_simulated.npz';
           File(path).writeAsBytesSync(zipBytes, flush: true);
 
           // Load the archive
@@ -284,6 +303,7 @@ void main() {
           expect(loaded['f_arr']!.strides, [1, 2]);
           expect(loaded['f_arr']!.toList(), [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
     });
 
@@ -341,7 +361,7 @@ void main() {
           );
 
           // Write this fake file to disk
-          final path = '${tempDir.path}/fortran_simulated.npy';
+          final path = '$tempDirPath/fortran_simulated.npy';
           File(path).writeAsBytesSync(fullBuffer, flush: true);
 
           // Load it via ndarray load()!
@@ -362,6 +382,7 @@ void main() {
           expect(loaded.toList(), [1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
           // Success! Stride reindexing mapping loaded column-major binary files with absolute zero data copies!
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
     });
 
@@ -370,11 +391,11 @@ void main() {
         'Non-existent files throw FileSystemException in load and loadz',
         () {
           expect(
-            () => load('${tempDir.path}/non_existent_file.npy'),
+            () => load('$tempDirPath/non_existent_file.npy'),
             throwsA(isA<FileSystemException>()),
           );
           expect(
-            () => loadz('${tempDir.path}/non_existent_archive.npz'),
+            () => loadz('$tempDirPath/non_existent_archive.npz'),
             throwsA(isA<FileSystemException>()),
           );
         },
@@ -383,7 +404,7 @@ void main() {
       test(
         'Invalid Magic signature in load() throws FormatException',
         () => NDArray.scope(() {
-          final file = File('${tempDir.path}/corrupted.npy');
+          final file = File('$tempDirPath/corrupted.npy');
           file.writeAsBytesSync([
             0x00,
             0x01,
@@ -395,100 +416,109 @@ void main() {
             0x07,
           ]);
           expect(
-            () => load('${tempDir.path}/corrupted.npy'),
+            () => load('$tempDirPath/corrupted.npy'),
             throwsFormatException,
           );
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'Big-endian header descriptor throws UnsupportedError',
         () => NDArray.scope(() {
-          final path = '${tempDir.path}/big_endian_simulated.npy';
+          final path = '$tempDirPath/big_endian_simulated.npy';
           _writeFakeNpy(
             path,
             "{'descr': '>f8', 'fortran_order': False, 'shape': (2,)}",
           );
           expect(() => load(path), throwsUnsupportedError);
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'Unsupported NumPy descriptor throws UnsupportedError',
         () => NDArray.scope(() {
-          final path = '${tempDir.path}/bad_descr.npy';
+          final path = '$tempDirPath/bad_descr.npy';
           _writeFakeNpy(
             path,
             "{'descr': '<f16', 'fortran_order': False, 'shape': (2,)}",
           );
           expect(() => load(path), throwsUnsupportedError);
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'Missing descr in header throws FormatException',
         () => NDArray.scope(() {
-          final path = '${tempDir.path}/missing_descr.npy';
+          final path = '$tempDirPath/missing_descr.npy';
           _writeFakeNpy(path, "{'fortran_order': False, 'shape': (2,)}");
           expect(() => load(path), throwsFormatException);
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'Missing fortran_order in header throws FormatException',
         () => NDArray.scope(() {
-          final path = '${tempDir.path}/missing_fortran.npy';
+          final path = '$tempDirPath/missing_fortran.npy';
           _writeFakeNpy(path, "{'descr': '<f8', 'shape': (2,)}");
           expect(() => load(path), throwsFormatException);
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'Missing shape in header throws FormatException',
         () => NDArray.scope(() {
-          final path = '${tempDir.path}/missing_shape.npy';
+          final path = '$tempDirPath/missing_shape.npy';
           _writeFakeNpy(path, "{'descr': '<f8', 'fortran_order': False}");
           expect(() => load(path), throwsFormatException);
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'Short npy file lacking format version headers throws FormatException',
         () {
-          final file = File('${tempDir.path}/short_version.npy');
+          final file = File('$tempDirPath/short_version.npy');
           file.writeAsBytesSync([0x93, 0x4e, 0x55, 0x4d, 0x50, 0x59, 0x01]);
           expect(
-            () => load('${tempDir.path}/short_version.npy'),
+            () => load('$tempDirPath/short_version.npy'),
             throwsFormatException,
           );
         },
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
       test(
         'load() throws FormatException when header lacks "descr" parameter',
         () {
           _writeFakeNpy(
-            '${tempDir.path}/missing_descr.npy',
+            '$tempDirPath/missing_descr.npy',
             "{'fortran_order': False, 'shape': (2, 2)}",
           );
           expect(
-            () => load('${tempDir.path}/missing_descr.npy'),
+            () => load('$tempDirPath/missing_descr.npy'),
             throwsFormatException,
           );
         },
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'load() throws UnsupportedError when descriptor is unsupported',
         () => NDArray.scope(() {
           _writeFakeNpy(
-            '${tempDir.path}/unsupported_dtype.npy',
+            '$tempDirPath/unsupported_dtype.npy',
             "{'descr': '<f16', 'fortran_order': False, 'shape': (2, 2)}",
           );
           expect(
-            () => load('${tempDir.path}/unsupported_dtype.npy'),
+            () => load('$tempDirPath/unsupported_dtype.npy'),
             throwsUnsupportedError,
           );
         }),
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
@@ -517,18 +547,19 @@ void main() {
             level: Deflate.NO_COMPRESSION,
           )!;
 
-          final path = '${tempDir.path}/bad_archive_magic.npz';
+          final path = '$tempDirPath/bad_archive_magic.npz';
           File(path).writeAsBytesSync(zipBytes, flush: true);
 
           expect(() => loadz(path), throwsFormatException);
         },
+        skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test(
         'loadz() throws FormatException when NPZ entry fails CRC32 check',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
-          final path = '${tempDir.path}/corrupted_crc.npz';
+          final path = '$tempDirPath/corrupted_crc.npz';
           savez(path, {'a': a}, compressed: false);
 
           // Flip a byte inside the raw float64 payload (leaving ZIP headers and CRC32 intact)
@@ -551,6 +582,7 @@ void main() {
 
           expect(() => loadz(path), throwsFormatException);
         }),
+        skip: _isWasm ? 'Uses dart:io File.readAsBytesSync' : false,
       );
     });
 
@@ -559,8 +591,7 @@ void main() {
         'Save into brand new nested directory makes parent directory recursive',
         () => NDArray.scope(() {
           final a = NDArray.ones([2], DType.float64);
-          final path =
-              '${tempDir.path}/nested_non_existent/nested_level/arr.npy';
+          final path = '$tempDirPath/nested_non_existent/nested_level/arr.npy';
           save(path, a);
 
           final file = File(path);
@@ -570,9 +601,10 @@ void main() {
 
           file.deleteSync();
           Directory(
-            '${tempDir.path}/nested_non_existent',
+            '$tempDirPath/nested_non_existent',
           ).deleteSync(recursive: true);
         }),
+        skip: _isWasm ? 'Uses dart:io Directory.createSync' : false,
       );
 
       test(
@@ -586,14 +618,16 @@ void main() {
           final view = parent.transposed;
           expect(view.isContiguous, false);
 
-          final path = '${tempDir.path}/archive_with_view.npz';
+          final path = '$tempDirPath/archive_with_view.npz';
           savez(path, {'view_key': view}, compressed: false);
 
           final loaded = loadz(path);
           expect(loaded.containsKey('view_key'), true);
           expect(loaded['view_key']!.toList(), [1.0, 3.0, 2.0, 4.0]);
 
-          File(path).deleteSync();
+          if (!_isWasm) {
+            File(path).deleteSync();
+          }
         }),
       );
 
@@ -601,8 +635,7 @@ void main() {
         'Savez npz file into brand new nested directory makes parent directory recursive',
         () => NDArray.scope(() {
           final a = NDArray.ones([2], DType.float64);
-          final path =
-              '${tempDir.path}/nested_npz_dir/nested_level/archive.npz';
+          final path = '$tempDirPath/nested_npz_dir/nested_level/archive.npz';
           savez(path, {'arr': a}, compressed: false);
 
           final file = File(path);
@@ -611,10 +644,9 @@ void main() {
           expect(loaded['arr']!.toList(), [1.0, 1.0]);
 
           file.deleteSync();
-          Directory(
-            '${tempDir.path}/nested_npz_dir',
-          ).deleteSync(recursive: true);
+          Directory('$tempDirPath/nested_npz_dir').deleteSync(recursive: true);
         }),
+        skip: _isWasm ? 'Uses dart:io Directory.createSync' : false,
       );
     });
     test(
@@ -661,7 +693,7 @@ void main() {
         offset += headerBytes.length;
         fullBuffer.setRange(offset, offset + rawDataBytes.length, rawDataBytes);
 
-        final path = '${tempDir.path}/double_quotes_simulated.npy';
+        final path = '$tempDirPath/double_quotes_simulated.npy';
         File(path).writeAsBytesSync(fullBuffer, flush: true);
 
         // Load should parse successfully now
@@ -670,6 +702,7 @@ void main() {
         expect(loaded.dtype, DType.float64);
         expect(loaded.toList(), [1.0, 2.0, 3.0, 4.0]);
       }),
+      skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
     );
 
     test(
@@ -682,8 +715,8 @@ void main() {
           DType.float32,
         );
         final f32View = f32.transposed; // non-contiguous!
-        save('${tempDir.path}/f32_view.npy', f32View);
-        final f32Loaded = load('${tempDir.path}/f32_view.npy');
+        save('$tempDirPath/f32_view.npy', f32View);
+        final f32Loaded = load('$tempDirPath/f32_view.npy');
         expect(f32Loaded.shape, [2, 2]);
         expect(f32Loaded.dtype, DType.float32);
         expect(f32Loaded.toList(), [1.0, 3.0, 2.0, 4.0]);
@@ -691,15 +724,15 @@ void main() {
         // 2. int32
         final i32 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
         final i32View = i32.transposed;
-        save('${tempDir.path}/i32_view.npy', i32View);
-        final i32Loaded = load('${tempDir.path}/i32_view.npy');
+        save('$tempDirPath/i32_view.npy', i32View);
+        final i32Loaded = load('$tempDirPath/i32_view.npy');
         expect(i32Loaded.toList(), [1, 3, 2, 4]);
 
         // 3. int64
         final i64 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
         final i64View = i64.transposed;
-        save('${tempDir.path}/i64_view.npy', i64View);
-        final i64Loaded = load('${tempDir.path}/i64_view.npy');
+        save('$tempDirPath/i64_view.npy', i64View);
+        final i64Loaded = load('$tempDirPath/i64_view.npy');
         expect(i64Loaded.toList(), [1, 3, 2, 4]);
 
         // 4. boolean
@@ -709,8 +742,8 @@ void main() {
           DType.boolean,
         );
         final bView = b.transposed;
-        save('${tempDir.path}/b_view.npy', bView);
-        final bLoaded = load('${tempDir.path}/b_view.npy');
+        save('$tempDirPath/b_view.npy', bView);
+        final bLoaded = load('$tempDirPath/b_view.npy');
         expect(bLoaded.toList(), [true, true, false, false]);
 
         // 5. complex128
@@ -725,8 +758,8 @@ void main() {
           DType.complex128,
         );
         final c128View = c128.transposed;
-        save('${tempDir.path}/c128_view.npy', c128View);
-        final c128Loaded = load('${tempDir.path}/c128_view.npy');
+        save('$tempDirPath/c128_view.npy', c128View);
+        final c128Loaded = load('$tempDirPath/c128_view.npy');
         expect(c128Loaded.toList(), [
           Complex(1.0, 1.0),
           Complex(3.0, 3.0),
@@ -746,8 +779,8 @@ void main() {
           DType.complex64,
         );
         final c64View = c64.transposed;
-        save('${tempDir.path}/c64_view.npy', c64View);
-        final c64Loaded = load('${tempDir.path}/c64_view.npy');
+        save('$tempDirPath/c64_view.npy', c64View);
+        final c64Loaded = load('$tempDirPath/c64_view.npy');
         expect(c64Loaded.toList(), [
           Complex(1.0, 1.0),
           Complex(3.0, 3.0),
@@ -762,15 +795,15 @@ void main() {
       () => NDArray.scope(() {
         // 1. Uint8
         final u8 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.uint8);
-        save('${tempDir.path}/u8_array.npy', u8);
-        final u8Loaded = load('${tempDir.path}/u8_array.npy');
+        save('$tempDirPath/u8_array.npy', u8);
+        final u8Loaded = load('$tempDirPath/u8_array.npy');
         expect(u8Loaded.toList(), [1, 2, 3, 4]);
         expect(u8Loaded.dtype, DType.uint8);
 
         // 2. Int16
         final i16 = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int16);
-        save('${tempDir.path}/i16_array.npy', i16);
-        final i16Loaded = load('${tempDir.path}/i16_array.npy');
+        save('$tempDirPath/i16_array.npy', i16);
+        final i16Loaded = load('$tempDirPath/i16_array.npy');
         expect(i16Loaded.toList(), [10, 20, 30, 40]);
         expect(i16Loaded.dtype, DType.int16);
       }),
@@ -779,14 +812,14 @@ void main() {
       test(
         'Negative shape dimension in .npy throws FormatException',
         () => NDArray.scope(() {
-          final path1 = '${tempDir.path}/negative_dim_2d.npy';
+          final path1 = '$tempDirPath/negative_dim_2d.npy';
           _writeFakeNpy(
             path1,
             "{'descr': '<f8', 'fortran_order': False, 'shape': (-1, 4)}",
           );
           expect(() => load(path1), throwsFormatException);
 
-          final path2 = '${tempDir.path}/negative_dim_1d.npy';
+          final path2 = '$tempDirPath/negative_dim_1d.npy';
           _writeFakeNpy(
             path2,
             "{'descr': '<f8', 'fortran_order': False, 'shape': (-5,)}",
@@ -798,7 +831,7 @@ void main() {
       test(
         'Overflowing shape dimension (> 2^31 - 1 elements) in .npy throws cleanly',
         () => NDArray.scope(() {
-          final path = '${tempDir.path}/overflow_dim.npy';
+          final path = '$tempDirPath/overflow_dim.npy';
           _writeFakeNpy(
             path,
             "{'descr': '<f8', 'fortran_order': False, 'shape': (3000000000,)}",
@@ -819,7 +852,7 @@ void main() {
       test(
         'Overflowing shape 64-bit product in .npy throws cleanly',
         () => NDArray.scope(() {
-          final path1 = '${tempDir.path}/product_overflow_64.npy';
+          final path1 = '$tempDirPath/product_overflow_64.npy';
           _writeFakeNpy(
             path1,
             "{'descr': '<f8', 'fortran_order': False, 'shape': (3037000500, 3037000500)}",
@@ -835,7 +868,7 @@ void main() {
             ),
           );
 
-          final path2 = '${tempDir.path}/product_overflow_31.npy';
+          final path2 = '$tempDirPath/product_overflow_31.npy';
           _writeFakeNpy(
             path2,
             "{'descr': '<f8', 'fortran_order': False, 'shape': (50000, 50000)}",
@@ -854,7 +887,7 @@ void main() {
       );
 
       test('Truncated .npy payload throws FormatException', () {
-        final path = '${tempDir.path}/truncated_payload.npy';
+        final path = '$tempDirPath/truncated_payload.npy';
         _writeFakeNpy(
           path,
           "{'descr': '<f8', 'fortran_order': False, 'shape': (10,)}",
@@ -866,7 +899,7 @@ void main() {
       test(
         'Negative shape dimension in .npz archive entry throws FormatException',
         () {
-          final npzPath = '${tempDir.path}/corrupt_negative_dim.npz';
+          final npzPath = '$tempDirPath/corrupt_negative_dim.npz';
           final npyBytes = _buildFakeNpyBytes(
             "{'descr': '<f8', 'fortran_order': False, 'shape': (-1, 4)}",
             payloadBytes: Uint8List(32),
@@ -880,7 +913,7 @@ void main() {
       );
 
       test('Overflowing shape in .npz archive entry throws cleanly', () {
-        final npzPath = '${tempDir.path}/corrupt_overflow_dim.npz';
+        final npzPath = '$tempDirPath/corrupt_overflow_dim.npz';
         final npyBytes = _buildFakeNpyBytes(
           "{'descr': '<f8', 'fortran_order': False, 'shape': (3037000500, 3037000500)}",
           payloadBytes: Uint8List(16),
@@ -904,7 +937,7 @@ void main() {
       test(
         'Truncated payload in .npz archive entry throws FormatException',
         () {
-          final npzPath = '${tempDir.path}/corrupt_truncated_payload.npz';
+          final npzPath = '$tempDirPath/corrupt_truncated_payload.npz';
           final npyBytes = _buildFakeNpyBytes(
             "{'descr': '<f8', 'fortran_order': False, 'shape': (5,)}",
             payloadBytes: Uint8List(8),
@@ -916,7 +949,7 @@ void main() {
           expect(() => loadz(npzPath), throwsFormatException);
         },
       );
-    });
+    }, skip: _isWasm ? 'Uses dart:io File.writeAsBytesSync' : false);
 
     group('ZIP64 .npz Archive Support (> 4 GiB Format)', () {
       test(
@@ -928,14 +961,16 @@ void main() {
             DType.float64,
           );
           final b = NDArray.fromList([-1, 2, -3, 4], [4], DType.int64);
-          final path = '${tempDir.path}/zip64_stored.npz';
+          final path = '$tempDirPath/zip64_stored.npz';
           _saveNpzWithFlags(path, {'alpha': a, 'beta': b}, 0x100);
 
-          final rawBytes = File(path).readAsBytesSync();
-          // Verify ZIP64 End of Central Directory Record (0x06064b50) and
-          // ZIP64 End of Central Directory Locator (0x07064b50) signatures exist.
-          expect(_containsU32Le(rawBytes, 0x06064b50), isTrue);
-          expect(_containsU32Le(rawBytes, 0x07064b50), isTrue);
+          if (!_isWasm) {
+            final rawBytes = File(path).readAsBytesSync();
+            // Verify ZIP64 End of Central Directory Record (0x06064b50) and
+            // ZIP64 End of Central Directory Locator (0x07064b50) signatures exist.
+            expect(_containsU32Le(rawBytes, 0x06064b50), isTrue);
+            expect(_containsU32Le(rawBytes, 0x07064b50), isTrue);
+          }
 
           final loaded = loadz(path);
           expect(loaded.keys.toSet(), {'alpha', 'beta'});
@@ -963,12 +998,14 @@ void main() {
             [16, 8],
             DType.float64,
           );
-          final path = '${tempDir.path}/zip64_deflate.npz';
+          final path = '$tempDirPath/zip64_deflate.npz';
           _saveNpzWithFlags(path, {'matrix': a}, 0x106);
 
-          final rawBytes = File(path).readAsBytesSync();
-          expect(_containsU32Le(rawBytes, 0x06064b50), isTrue);
-          expect(_containsU32Le(rawBytes, 0x07064b50), isTrue);
+          if (!_isWasm) {
+            final rawBytes = File(path).readAsBytesSync();
+            expect(_containsU32Le(rawBytes, 0x06064b50), isTrue);
+            expect(_containsU32Le(rawBytes, 0x07064b50), isTrue);
+          }
 
           final loaded = loadz(path);
           expect(loaded.keys.toSet(), {'matrix'});
@@ -980,6 +1017,95 @@ void main() {
           );
         }),
       );
+    });
+
+    group('Edge-case arrays and error contracts', () {
+      test('.npy roundtrip preserves float16 and bfloat16 dtypes', () {
+        NDArray.scope(() {
+          final f16 = NDArray.fromList([0.5, -1.5, 2.25], [3], DType.float16);
+          final pathF16 = '$tempDirPath/half_f16.npy';
+          save(pathF16, f16);
+          final loadedF16 = load(pathF16);
+          expect(loadedF16.dtype, equals(DType.float16));
+          expect(loadedF16.toList(), equals(f16.toList()));
+
+          final bf16 = NDArray.fromList([1.0, -2.0, 4.0], [3], DType.bfloat16);
+          final pathBf16 = '$tempDirPath/half_bf16.npy';
+          save(pathBf16, bf16);
+          final loadedBf16 = load(pathBf16);
+          expect(loadedBf16.dtype, equals(DType.bfloat16));
+          expect(loadedBf16.toList(), equals(bf16.toList()));
+        });
+      });
+
+      test('0-D scalar and empty [0, 3] array .npy roundtrip', () {
+        NDArray.scope(() {
+          final scalar = NDArray.scalar(-42.5, dtype: DType.float64);
+          final pathScalar = '$tempDirPath/edge_scalar.npy';
+          save(pathScalar, scalar);
+          final loadedScalar = load(pathScalar) as NDArray<Float64>;
+          expect(loadedScalar.rank, equals(0));
+          expect(loadedScalar.scalar, equals(-42.5));
+
+          final empty = NDArray.zeros([0, 3], DType.int64);
+          final pathEmpty = '$tempDirPath/edge_empty.npy';
+          save(pathEmpty, empty);
+          final loadedEmpty = load(pathEmpty) as NDArray<Int64>;
+          expect(loadedEmpty.shape, equals([0, 3]));
+          expect(loadedEmpty.size, equals(0));
+        });
+      });
+
+      test(
+        'negative-stride flipped view .npy and compressed .npz roundtrip',
+        () {
+          NDArray.scope(() {
+            final base = NDArray.arange(
+              0,
+              6,
+              dtype: DType.float64,
+            ).reshape([2, 3]);
+            final flipped = flip(base);
+            expect(flipped.isContiguous, isFalse);
+
+            final npyPath = '$tempDirPath/edge_flipped.npy';
+            save(npyPath, flipped);
+            final loadedNpy = load(npyPath) as NDArray<Float64>;
+            expect(loadedNpy.shape, equals([2, 3]));
+            expect(loadedNpy.toList(), equals([5.0, 4.0, 3.0, 2.0, 1.0, 0.0]));
+
+            final npzPath = '$tempDirPath/edge_flipped.npz';
+            savez(npzPath, {'flipped': flipped}, compressed: true);
+            final loadedNpz = loadz(npzPath);
+            expect(
+              loadedNpz['flipped']!.toList(),
+              equals([5.0, 4.0, 3.0, 2.0, 1.0, 0.0]),
+            );
+          });
+        },
+      );
+
+      test('saving a disposed array throws StateError', () {
+        final a = NDArray.ones([2], DType.float64);
+        a.dispose();
+        expect(
+          () => save('$tempDirPath/edge_disposed.npy', a),
+          throwsStateError,
+        );
+        expect(
+          () => savez('$tempDirPath/edge_disposed.npz', {'a': a}),
+          throwsStateError,
+        );
+      });
+
+      test('loadz on a plain .npy file throws FormatException', () {
+        NDArray.scope(() {
+          final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+          final npyPath = '$tempDirPath/edge_not_a_zip.npy';
+          save(npyPath, a);
+          expect(() => loadz(npyPath), throwsFormatException);
+        });
+      });
     });
   });
 }
@@ -998,6 +1124,26 @@ bool _containsU32Le(Uint8List bytes, int target) {
     }
   }
   return false;
+}
+
+void _setPtrAt<T extends ffi.NativeType>(
+  ffi.Pointer<ffi.Pointer<T>> array,
+  int index,
+  ffi.Pointer<T> value,
+) {
+  if (ffi.sizeOf<ffi.IntPtr>() == 4) {
+    array.cast<ffi.Uint32>()[index] = value.address;
+  } else {
+    array.cast<ffi.Uint64>()[index] = value.address;
+  }
+}
+
+void _setSizeAt(ffi.Pointer<ffi.Size> array, int index, int value) {
+  if (ffi.sizeOf<ffi.Size>() == 4) {
+    array.cast<ffi.Uint32>()[index] = value;
+  } else {
+    array.cast<ffi.Uint64>()[index] = value;
+  }
 }
 
 void _saveNpzWithFlags(
@@ -1037,7 +1183,7 @@ void _saveNpzWithFlags(
     var idx = 0;
     for (final entry in arrays.entries) {
       final arr = entry.value;
-      cNames[idx] = allocUtf8('${entry.key}.npy');
+      _setPtrAt(cNames, idx, allocUtf8('${entry.key}.npy'));
       final descr = arr.dtype.npyDescriptor;
       final shapeStr = arr.shape.length == 1
           ? '${arr.shape[0]},'
@@ -1066,10 +1212,10 @@ void _saveNpzWithFlags(
       for (var j = 0; j < hLen; j++) {
         hBuf[10 + j] = headerCodeUnits[j];
       }
-      cHeaderBytes[idx] = hBuf;
-      cHeaderLens[idx] = totalHeaderBytes;
-      cDataPtrs[idx] = arr.pointer.cast<ffi.Void>();
-      cDataLens[idx] = arr.size * arr.dtype.byteWidth;
+      _setPtrAt(cHeaderBytes, idx, hBuf);
+      _setSizeAt(cHeaderLens, idx, totalHeaderBytes);
+      _setPtrAt(cDataPtrs, idx, arr.pointer.cast<ffi.Void>());
+      _setSizeAt(cDataLens, idx, arr.size * arr.dtype.byteWidth);
       idx++;
     }
 

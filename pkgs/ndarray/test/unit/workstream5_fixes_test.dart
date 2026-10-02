@@ -249,8 +249,17 @@ void main() {
     });
 
     test('11. loadz / savez roundtrip with Uint8List compatibility', () {
-      final tmpDir = Directory.systemTemp.createTempSync('loadz_test');
-      final filePath = '${tmpDir.path}/test_archive.npz';
+      const isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+      const wasmTempRoot = String.fromEnvironment(
+        'NDARRAY_TEST_TMPDIR',
+        defaultValue: '/tmp',
+      );
+      final Directory? tmpDir = isWasm
+          ? null
+          : Directory.systemTemp.createTempSync('loadz_test');
+      final filePath = isWasm
+          ? '$wasmTempRoot/loadz_test_${DateTime.now().microsecondsSinceEpoch}/test_archive.npz'
+          : '${tmpDir!.path}/test_archive.npz';
       try {
         final arr1 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final arr2 = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
@@ -262,7 +271,7 @@ void main() {
         expect(loaded['arr1']!.toList(), equals([1.0, 2.0, 3.0]));
         expect(loaded['arr2']!.toList(), equals([10, 20, 30, 40]));
       } finally {
-        tmpDir.deleteSync(recursive: true);
+        tmpDir?.deleteSync(recursive: true);
       }
     });
 

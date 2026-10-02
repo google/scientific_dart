@@ -495,6 +495,9 @@ void main() {
           tempDir.deleteSync(recursive: true);
         }
       },
+      skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+          ? 'Uses dart:io File.writeAsBytesSync'
+          : false,
     );
 
     test('H3: _wrapScalar preserves target dtype for float32 and int8', () {

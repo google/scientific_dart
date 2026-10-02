@@ -34,6 +34,7 @@ import 'operations/helpers.dart' as helpers;
 import 'cpu_check.dart';
 import 'float16_utils.dart';
 import 'sendable_ndarray.dart';
+import 'wasm_pointer_lists.dart';
 
 /// Root marker for all [NDArray] dtype tags.
 sealed class DTypeTag {
@@ -837,6 +838,9 @@ sealed class NDArray<T extends DTypeTag>
 
   static final _finalizer = ffi.NativeFinalizer(malloc.nativeFree);
 
+  static final Finalizer<ffi.Pointer<ffi.Void>> _wasmFinalizer =
+      Finalizer<ffi.Pointer<ffi.Void>>(malloc.free);
+
   /// Cache of custom [ffi.NativeFinalizer] instances keyed by native function
   /// pointer address. `dart:ffi` requires the [ffi.NativeFinalizer] object
   /// itself to remain reachable for finalizer callbacks to run on GC.
@@ -943,7 +947,8 @@ sealed class NDArray<T extends DTypeTag>
        _isExternallyOwned = isExternallyOwned,
        _customNativeFinalizer = customNativeFinalizer,
        _customFinalizerInstance =
-           (_parent == null &&
+           (!isWasmRuntime &&
+               _parent == null &&
                isExternallyOwned &&
                customNativeFinalizer != null)
            ? _finalizerFor(customNativeFinalizer)
@@ -962,7 +967,11 @@ sealed class NDArray<T extends DTypeTag>
       // manual `dispose()`) for deterministic native memory cleanup, with
       // `NativeFinalizer` acting strictly as a backstop safety net.
       if (!_isExternallyOwned) {
-        _finalizer.attach(this, ptrToFree, detach: this);
+        if (isWasmRuntime) {
+          _wasmFinalizer.attach(this, ptrToFree, detach: this);
+        } else {
+          _finalizer.attach(this, ptrToFree, detach: this);
+        }
       } else if (_customFinalizerInstance != null) {
         _customFinalizerInstance.attach(this, ptrToFree, detach: this);
       }
@@ -1105,6 +1114,12 @@ sealed class NDArray<T extends DTypeTag>
         'Must not result in byte size overflowing 64-bit integer',
       );
     }
+    // On wasm32 `size_t` is 32 bits wide; refuse allocations the native
+    // allocator cannot represent instead of letting the size wrap.
+    if (ffi.sizeOf<ffi.Size>() == 4 &&
+        allocSize > maxWasm32AllocationBytes ~/ dtype.byteWidth) {
+      throw OutOfMemoryError();
+    }
     final int initialOffsetElements = (strides == null || isEmpty)
         ? 0
         : -minRelativeOffset;
@@ -1113,70 +1128,75 @@ sealed class NDArray<T extends DTypeTag>
     ffi.Pointer<ffi.Void> pointer;
     List<Object?> data;
 
-    switch (dtype) {
-      case DType.float64:
-        final p = allocator<ffi.Double>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.float32:
-        final p = allocator<ffi.Float>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.float16:
-        final p = allocator<ffi.Uint16>(allocSize);
-        pointer = p.cast();
-        data = Float16List(p.asTypedList(allocSize));
-      case DType.bfloat16:
-        final p = allocator<ffi.Uint16>(allocSize);
-        pointer = p.cast();
-        data = BFloat16List(p.asTypedList(allocSize));
-      case DType.int64:
-        final p = allocator<ffi.Int64>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.int32:
-        final p = allocator<ffi.Int32>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.int16:
-        final p = allocator<ffi.Int16>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.int8:
-        final p = allocator<ffi.Int8>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.uint64:
-        final p = allocator<ffi.Uint64>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.uint32:
-        final p = allocator<ffi.Uint32>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.uint16:
-        final p = allocator<ffi.Uint16>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.uint8:
-        final p = allocator<ffi.Uint8>(allocSize);
-        pointer = p.cast();
-        data = p.asTypedList(allocSize);
-      case DType.complex128:
-        final p = allocator<ffi.Double>(allocSize * 2);
-        pointer = p.cast();
-        final doubleList = p.asTypedList(allocSize * 2);
-        data = ComplexList(doubleList);
-      case DType.complex64:
-        final p = allocator<ffi.Float>(allocSize * 2);
-        pointer = p.cast();
-        final floatList = p.asTypedList(allocSize * 2);
-        data = ComplexList(floatList);
-      case DType.boolean:
-        final p = allocator<ffi.Uint8>(allocSize);
-        pointer = p.cast();
-        final uint8List = p.asTypedList(allocSize);
-        data = BoolList(uint8List);
+    if (isWasmRuntime) {
+      pointer = allocator<ffi.Uint8>(allocSize * dtype.byteWidth).cast();
+      data = createWasmDataView(pointer, dtype, allocSize);
+    } else {
+      switch (dtype) {
+        case DType.float64:
+          final p = allocator<ffi.Double>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.float32:
+          final p = allocator<ffi.Float>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.float16:
+          final p = allocator<ffi.Uint16>(allocSize);
+          pointer = p.cast();
+          data = Float16List(p.asTypedList(allocSize));
+        case DType.bfloat16:
+          final p = allocator<ffi.Uint16>(allocSize);
+          pointer = p.cast();
+          data = BFloat16List(p.asTypedList(allocSize));
+        case DType.int64:
+          final p = allocator<ffi.Int64>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.int32:
+          final p = allocator<ffi.Int32>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.int16:
+          final p = allocator<ffi.Int16>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.int8:
+          final p = allocator<ffi.Int8>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.uint64:
+          final p = allocator<ffi.Uint64>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.uint32:
+          final p = allocator<ffi.Uint32>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.uint16:
+          final p = allocator<ffi.Uint16>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.uint8:
+          final p = allocator<ffi.Uint8>(allocSize);
+          pointer = p.cast();
+          data = p.asTypedList(allocSize);
+        case DType.complex128:
+          final p = allocator<ffi.Double>(allocSize * 2);
+          pointer = p.cast();
+          final doubleList = p.asTypedList(allocSize * 2);
+          data = ComplexList(doubleList);
+        case DType.complex64:
+          final p = allocator<ffi.Float>(allocSize * 2);
+          pointer = p.cast();
+          final floatList = p.asTypedList(allocSize * 2);
+          data = ComplexList(floatList);
+        case DType.boolean:
+          final p = allocator<ffi.Uint8>(allocSize);
+          pointer = p.cast();
+          final uint8List = p.asTypedList(allocSize);
+          data = BoolList(uint8List);
+      }
     }
 
     final logicalPointer = initialOffsetElements == 0
@@ -1588,55 +1608,59 @@ sealed class NDArray<T extends DTypeTag>
         : (maxPhysicalOffset - minPhysicalOffset + 1);
     final List<Object?> data;
 
-    switch (parent.dtype) {
-      case DType.float64:
-        data = physicalPointer.cast<ffi.Double>().asTypedList(viewSize);
-      case DType.float32:
-        data = physicalPointer.cast<ffi.Float>().asTypedList(viewSize);
-      case DType.float16:
-        data = Float16List(
-          physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize),
-        );
-      case DType.bfloat16:
-        data = BFloat16List(
-          physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize),
-        );
-      case DType.int64:
-        data = physicalPointer.cast<ffi.Int64>().asTypedList(viewSize);
-      case DType.int32:
-        data = physicalPointer.cast<ffi.Int32>().asTypedList(viewSize);
-      case DType.int16:
-        data = physicalPointer.cast<ffi.Int16>().asTypedList(viewSize);
-      case DType.int8:
-        data = physicalPointer.cast<ffi.Int8>().asTypedList(viewSize);
-      case DType.uint64:
-        data = physicalPointer.cast<ffi.Uint64>().asTypedList(viewSize);
-      case DType.uint32:
-        data = physicalPointer.cast<ffi.Uint32>().asTypedList(viewSize);
-      case DType.uint16:
-        data = physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize);
-      case DType.uint8:
-        data = physicalPointer.cast<ffi.Uint8>().asTypedList(viewSize);
-      case DType.complex128:
-        final p = _offsetPointer(
-          rootPhysicalStart,
-          minPhysicalOffset * 2,
-          DType.float64,
-        );
-        final doubleList = p.cast<ffi.Double>().asTypedList(viewSize * 2);
-        data = ComplexList(doubleList);
-      case DType.complex64:
-        final p = _offsetPointer(
-          rootPhysicalStart,
-          minPhysicalOffset * 2,
-          DType.float32,
-        );
-        final floatList = p.cast<ffi.Float>().asTypedList(viewSize * 2);
-        data = ComplexList(floatList);
-      case DType.boolean:
-        data = BoolList(
-          physicalPointer.cast<ffi.Uint8>().asTypedList(viewSize),
-        );
+    if (isWasmRuntime) {
+      data = createWasmDataView(physicalPointer, parent.dtype, viewSize);
+    } else {
+      switch (parent.dtype) {
+        case DType.float64:
+          data = physicalPointer.cast<ffi.Double>().asTypedList(viewSize);
+        case DType.float32:
+          data = physicalPointer.cast<ffi.Float>().asTypedList(viewSize);
+        case DType.float16:
+          data = Float16List(
+            physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize),
+          );
+        case DType.bfloat16:
+          data = BFloat16List(
+            physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize),
+          );
+        case DType.int64:
+          data = physicalPointer.cast<ffi.Int64>().asTypedList(viewSize);
+        case DType.int32:
+          data = physicalPointer.cast<ffi.Int32>().asTypedList(viewSize);
+        case DType.int16:
+          data = physicalPointer.cast<ffi.Int16>().asTypedList(viewSize);
+        case DType.int8:
+          data = physicalPointer.cast<ffi.Int8>().asTypedList(viewSize);
+        case DType.uint64:
+          data = physicalPointer.cast<ffi.Uint64>().asTypedList(viewSize);
+        case DType.uint32:
+          data = physicalPointer.cast<ffi.Uint32>().asTypedList(viewSize);
+        case DType.uint16:
+          data = physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize);
+        case DType.uint8:
+          data = physicalPointer.cast<ffi.Uint8>().asTypedList(viewSize);
+        case DType.complex128:
+          final p = _offsetPointer(
+            rootPhysicalStart,
+            minPhysicalOffset * 2,
+            DType.float64,
+          );
+          final doubleList = p.cast<ffi.Double>().asTypedList(viewSize * 2);
+          data = ComplexList(doubleList);
+        case DType.complex64:
+          final p = _offsetPointer(
+            rootPhysicalStart,
+            minPhysicalOffset * 2,
+            DType.float32,
+          );
+          final floatList = p.cast<ffi.Float>().asTypedList(viewSize * 2);
+          data = ComplexList(floatList);
+        case DType.boolean:
+          data = BoolList(
+            physicalPointer.cast<ffi.Uint8>().asTypedList(viewSize),
+          );
+      }
     }
 
     final viewOffsetElements = isEmpty ? 0 : -minRelativeOffset;
@@ -1671,6 +1695,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// It is an error if any dimension in [shape] is negative.
   ///
+  /// Throws an [UnsupportedError] if [nativeFinalizer] is non-null when
+  /// compiled to WebAssembly (`dart compile wasm`): dart2wasm cannot invoke a
+  /// native function through a [Pointer], so only externally managed memory
+  /// is supported there.
+  ///
   /// **Performance Considerations:**
   /// - This is an $O(1)$ operation that performs zero copies, constructing a direct list view over
   ///   the provided raw C memory address.
@@ -1685,6 +1714,12 @@ sealed class NDArray<T extends DTypeTag>
     nativeFinalizer,
     List<int>? strides,
   }) {
+    if (isWasmRuntime && nativeFinalizer != null) {
+      throw UnsupportedError(
+        'NDArray.fromPointer: a custom nativeFinalizer is not supported when '
+        'compiled to WebAssembly; pass null and free the memory manually.',
+      );
+    }
     final totalSize = _computeCheckedTotalSize(shape);
     final finalStrides = strides ?? computeCStrides(shape);
     final bool isEmpty = shape.contains(0);
@@ -1715,41 +1750,47 @@ sealed class NDArray<T extends DTypeTag>
         : -minRelativeOffset;
 
     List<Object?> data;
-    switch (dtype) {
-      case DType.float64:
-        data = pointer.cast<ffi.Double>().asTypedList(allocSize);
-      case DType.float32:
-        data = pointer.cast<ffi.Float>().asTypedList(allocSize);
-      case DType.float16:
-        data = Float16List(pointer.cast<ffi.Uint16>().asTypedList(allocSize));
-      case DType.bfloat16:
-        data = BFloat16List(pointer.cast<ffi.Uint16>().asTypedList(allocSize));
-      case DType.int64:
-        data = pointer.cast<ffi.Int64>().asTypedList(allocSize);
-      case DType.int32:
-        data = pointer.cast<ffi.Int32>().asTypedList(allocSize);
-      case DType.int16:
-        data = pointer.cast<ffi.Int16>().asTypedList(allocSize);
-      case DType.int8:
-        data = pointer.cast<ffi.Int8>().asTypedList(allocSize);
-      case DType.uint64:
-        data = pointer.cast<ffi.Uint64>().asTypedList(allocSize);
-      case DType.uint32:
-        data = pointer.cast<ffi.Uint32>().asTypedList(allocSize);
-      case DType.uint16:
-        data = pointer.cast<ffi.Uint16>().asTypedList(allocSize);
-      case DType.uint8:
-        data = pointer.cast<ffi.Uint8>().asTypedList(allocSize);
-      case DType.complex128:
-        data = ComplexList(
-          pointer.cast<ffi.Double>().asTypedList(allocSize * 2),
-        );
-      case DType.complex64:
-        data = ComplexList(
-          pointer.cast<ffi.Float>().asTypedList(allocSize * 2),
-        );
-      case DType.boolean:
-        data = BoolList(pointer.cast<ffi.Uint8>().asTypedList(allocSize));
+    if (isWasmRuntime) {
+      data = createWasmDataView(pointer, dtype, allocSize);
+    } else {
+      switch (dtype) {
+        case DType.float64:
+          data = pointer.cast<ffi.Double>().asTypedList(allocSize);
+        case DType.float32:
+          data = pointer.cast<ffi.Float>().asTypedList(allocSize);
+        case DType.float16:
+          data = Float16List(pointer.cast<ffi.Uint16>().asTypedList(allocSize));
+        case DType.bfloat16:
+          data = BFloat16List(
+            pointer.cast<ffi.Uint16>().asTypedList(allocSize),
+          );
+        case DType.int64:
+          data = pointer.cast<ffi.Int64>().asTypedList(allocSize);
+        case DType.int32:
+          data = pointer.cast<ffi.Int32>().asTypedList(allocSize);
+        case DType.int16:
+          data = pointer.cast<ffi.Int16>().asTypedList(allocSize);
+        case DType.int8:
+          data = pointer.cast<ffi.Int8>().asTypedList(allocSize);
+        case DType.uint64:
+          data = pointer.cast<ffi.Uint64>().asTypedList(allocSize);
+        case DType.uint32:
+          data = pointer.cast<ffi.Uint32>().asTypedList(allocSize);
+        case DType.uint16:
+          data = pointer.cast<ffi.Uint16>().asTypedList(allocSize);
+        case DType.uint8:
+          data = pointer.cast<ffi.Uint8>().asTypedList(allocSize);
+        case DType.complex128:
+          data = ComplexList(
+            pointer.cast<ffi.Double>().asTypedList(allocSize * 2),
+          );
+        case DType.complex64:
+          data = ComplexList(
+            pointer.cast<ffi.Float>().asTypedList(allocSize * 2),
+          );
+        case DType.boolean:
+          data = BoolList(pointer.cast<ffi.Uint8>().asTypedList(allocSize));
+      }
     }
 
     final logicalPointer = initialOffsetElements == 0
@@ -3052,16 +3093,15 @@ sealed class NDArray<T extends DTypeTag>
 
   static Int64List _extractInt64Indices(NDArray item) {
     if (item.dtype == DType.int64 && item.isContiguous) {
-      return Int64List.fromList(
-        item.pointer.cast<ffi.Int64>().asTypedList(item.size),
-      );
+      return copyInt64PointerToList(item.pointer.cast<ffi.Int64>(), item.size);
     }
     final NDArray<Int64> casted = item.dtype == DType.int64
         ? (item.copy() as NDArray<Int64>)
         : helpers.castNDArray<Int64>(item, DType.int64);
     try {
-      return Int64List.fromList(
-        casted.pointer.cast<ffi.Int64>().asTypedList(casted.size),
+      return copyInt64PointerToList(
+        casted.pointer.cast<ffi.Int64>(),
+        casted.size,
       );
     } finally {
       casted.dispose();
@@ -3174,7 +3214,7 @@ sealed class NDArray<T extends DTypeTag>
             mask.mask.strides[0],
             pIndices,
           );
-          indices = Int64List.fromList(pIndices.asTypedList(count));
+          indices = copyInt64PointerToList(pIndices, count);
         } finally {
           ScratchArena.reset(maskMarker);
         }
@@ -4273,7 +4313,7 @@ sealed class NDArray<T extends DTypeTag>
             mask.mask.strides[0],
             pIndices,
           );
-          indices = Int64List.fromList(pIndices.asTypedList(count));
+          indices = copyInt64PointerToList(pIndices, count);
         } finally {
           ScratchArena.reset(maskMarker);
         }
@@ -4399,7 +4439,7 @@ sealed class NDArray<T extends DTypeTag>
               : Slice.all();
 
           if (selector is Index) {
-            pTypes[i] = 0;
+            pTypes.cast<ffi.Int32>()[i] = 0;
             final idx = selector.value < 0
                 ? shape[i] + selector.value
                 : selector.value;
@@ -4407,10 +4447,10 @@ sealed class NDArray<T extends DTypeTag>
             pSliceStarts[i] = 0;
             pSliceStops[i] = 0;
             pSliceSteps[i] = 0;
-            pIndicesPtrs[i] = ffi.Pointer.fromAddress(0);
+            setPointerAt(pIndicesPtrs, i, ffi.Pointer.fromAddress(0));
             pIndicesLens[i] = 0;
           } else if (selector is Slice) {
-            pTypes[i] = 1;
+            pTypes.cast<ffi.Int32>()[i] = 1;
             pIndexVals[i] = 0;
 
             final step = selector.step;
@@ -4441,10 +4481,10 @@ sealed class NDArray<T extends DTypeTag>
               pSliceStops[i] = stopIdx.clamp(-1, shape[i] - 1);
             }
             pSliceSteps[i] = step;
-            pIndicesPtrs[i] = ffi.Pointer.fromAddress(0);
+            setPointerAt(pIndicesPtrs, i, ffi.Pointer.fromAddress(0));
             pIndicesLens[i] = 0;
           } else if (selector is Indices) {
-            pTypes[i] = 2;
+            pTypes.cast<ffi.Int32>()[i] = 2;
             pIndexVals[i] = 0;
             pSliceStarts[i] = 0;
             pSliceStops[i] = 0;
@@ -4466,7 +4506,7 @@ sealed class NDArray<T extends DTypeTag>
               }
               pIndices[j] = realIdx;
             }
-            pIndicesPtrs[i] = pIndices;
+            setPointerAt(pIndicesPtrs, i, pIndices);
             pIndicesLens[i] = values.length;
           }
         }
@@ -4859,17 +4899,19 @@ sealed class NDArray<T extends DTypeTag>
 
     final ptrToFree = _allocPointer ?? _pointer;
     if (!_isExternallyOwned) {
-      _finalizer.detach(this);
+      if (isWasmRuntime) {
+        _wasmFinalizer.detach(this);
+      } else {
+        _finalizer.detach(this);
+      }
       malloc.free(ptrToFree);
-    } else {
-      if (_customFinalizerInstance != null) {
-        _customFinalizerInstance.detach(this);
-      }
-      if (_customNativeFinalizer != null) {
-        final freeFunc = _customNativeFinalizer
-            .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
-        freeFunc(ptrToFree);
-      }
+    } else if (_customNativeFinalizer != null) {
+      // Never non-null on dart2wasm: `fromPointer` rejects custom finalizers
+      // there, because `asFunction` has no Wasm lowering.
+      _customFinalizerInstance?.detach(this);
+      final freeFunc = _customNativeFinalizer
+          .asFunction<void Function(ffi.Pointer<ffi.Void>)>();
+      freeFunc(ptrToFree);
     }
   }
 
@@ -5775,11 +5817,11 @@ final class ComplexList extends ListBase<Complex> {
 
 /// A list view of boolean values backed by a flat list of uint8 bytes on the FFI heap.
 final class BoolList extends ListBase<bool> {
-  final Uint8List _list;
+  final List<int> _list;
   BoolList(this._list);
 
   /// Returns the backing list of raw bytes.
-  Uint8List get backingList => _list;
+  List<int> get backingList => _list;
 
   @override
   int get length => _list.length;

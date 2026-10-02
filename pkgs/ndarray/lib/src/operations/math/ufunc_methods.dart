@@ -540,13 +540,13 @@ NDArray<R> _nativeMinMax<T extends DTypeTag, R extends DTypeTag>(
         opCode,
         dtypeCode,
         rank,
-        cShape.cast(),
+        cShape,
         aBroadcast.pointer.cast(),
-        cStridesA.cast(),
+        cStridesA,
         bBroadcast.pointer.cast(),
-        cStridesB.cast(),
+        cStridesB,
         result.pointer.cast(),
-        cStridesOut.cast(),
+        cStridesOut,
       );
     } finally {
       ScratchArena.reset(marker);

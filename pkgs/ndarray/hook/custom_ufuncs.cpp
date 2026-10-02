@@ -2681,42 +2681,50 @@ typedef struct { double r; double i; } cpx_add_t;
 static inline cpx_t cpx_add_red(cpx_t a, cpx_t b) { return cpx_t{a.r + b.r, a.i + b.i}; }
 static inline cpx_f_t cpx_add_f_red(cpx_f_t a, cpx_f_t b) { return cpx_f_t{a.r + b.r, a.i + b.i}; }
 
-cpx_t r_sum_complex128(const cpx_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return cpx_t{0.0, 0.0};
+void r_sum_complex128(const cpx_t *src, int64_t size, cpx_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) { *out = cpx_t{0.0, 0.0}; return; }
     double re = 0.0, im = 0.0;
     for (int64_t i = 0; i < size; i++) {
         re += src[i].r;
         im += src[i].i;
     }
-    return cpx_t{re, im};
+    *out = cpx_t{re, im};
 }
 
-cpx_f_t r_sum_complex64(const cpx_f_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return cpx_f_t{0.0f, 0.0f};
+void r_sum_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) { *out = cpx_f_t{0.0f, 0.0f}; return; }
     float re = 0.0f, im = 0.0f;
     for (int64_t i = 0; i < size; i++) {
         re += src[i].r;
         im += src[i].i;
     }
-    return cpx_f_t{re, im};
+    *out = cpx_f_t{re, im};
 }
 
-cpx_t r_mean_complex128(const cpx_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return cpx_t{NAN, NAN};
-    cpx_t s = r_sum_complex128(src, size);
-    return cpx_t{s.r / (double)size, s.i / (double)size};
+void r_mean_complex128(const cpx_t *src, int64_t size, cpx_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) { *out = cpx_t{NAN, NAN}; return; }
+    cpx_t s;
+    r_sum_complex128(src, size, &s);
+    *out = cpx_t{s.r / (double)size, s.i / (double)size};
 }
 
-cpx_f_t r_mean_complex64(const cpx_f_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return cpx_f_t{NAN, NAN};
-    cpx_f_t s = r_sum_complex64(src, size);
-    return cpx_f_t{s.r / (float)size, s.i / (float)size};
+void r_mean_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) { *out = cpx_f_t{NAN, NAN}; return; }
+    cpx_f_t s;
+    r_sum_complex64(src, size, &s);
+    *out = cpx_f_t{s.r / (float)size, s.i / (float)size};
 }
 
-cpx_t r_mean_complex64_to_complex128(const cpx_f_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return cpx_t{NAN, NAN};
-    cpx_f_t s = r_sum_complex64(src, size);
-    return cpx_t{(double)s.r / (double)size, (double)s.i / (double)size};
+void r_mean_complex64_to_complex128(const cpx_f_t *src, int64_t size, cpx_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) { *out = cpx_t{NAN, NAN}; return; }
+    cpx_f_t s;
+    r_sum_complex64(src, size, &s);
+    *out = cpx_t{(double)s.r / (double)size, (double)s.i / (double)size};
 }
 
 // ----------------------------------------------------------------------------
@@ -5526,6 +5534,8 @@ static void fill_secure_bytes_win(void *dest, size_t size) {
 static void fill_secure_bytes(void *dest, size_t size) {
 #ifdef _WIN32
     fill_secure_bytes_win(dest, size);
+#elif defined(__wasi__)
+    arc4random_buf(dest, size);
 #else
     int fd = open("/dev/urandom", O_RDONLY);
     if (fd >= 0) {
@@ -8739,10 +8749,11 @@ void s_trapz_complex64(const cpx_f_t *y, const int64_t *stridesY,
 }
 
 void s_trapz_complex128_all(const cpx_t *y, const int64_t *stridesY,
-                            const cpx_t *x, int64_t strideX, cpx_t dx,
+                            const cpx_t *x, int64_t strideX, const cpx_t *dx_ptr,
                             cpx_t *res, const int64_t *stridesRes,
                             const int64_t *shape, int rank, int axis) {
     if (y == nullptr || res == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
+    const cpx_t dx = dx_ptr != nullptr ? *dx_ptr : cpx_t{1.0, 0.0};
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
     int64_t outer_size = 1;
     for (int d = 0; d < rank; d++) {
@@ -9305,10 +9316,11 @@ static cpx_t c_div(cpx_t n, cpx_t d) {
 }
 
 void s_gradient_complex128_all(const cpx_t *src, const int64_t *stridesSrc,
-                               const cpx_t *x, int64_t strideX, cpx_t dx,
+                               const cpx_t *x, int64_t strideX, const cpx_t *dx_ptr,
                                cpx_t *res, const int64_t *stridesRes,
                                const int64_t *shape, int rank, int axis, int edge_order) {
     if (src == nullptr || res == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
+    const cpx_t dx = dx_ptr != nullptr ? *dx_ptr : cpx_t{1.0, 0.0};
     
     int64_t N = shape[axis];
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
@@ -9474,10 +9486,11 @@ void s_gradient_complex128_all(const cpx_t *src, const int64_t *stridesSrc,
 }
 
 void s_trapz_complex64_all(const cpx_f_t *y, const int64_t *stridesY,
-                           const cpx_f_t *x, int64_t strideX, cpx_f_t dx,
+                           const cpx_f_t *x, int64_t strideX, const cpx_f_t *dx_ptr,
                            cpx_f_t *res, const int64_t *stridesRes,
                            const int64_t *shape, int rank, int axis) {
     if (y == nullptr || res == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
+    const cpx_f_t dx = dx_ptr != nullptr ? *dx_ptr : cpx_f_t{1.0f, 0.0f};
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
     int64_t outer_size = 1;
     for (int d = 0; d < rank; d++) {
@@ -9544,10 +9557,11 @@ static cpx_f_t cf_div(cpx_f_t n, cpx_f_t d) {
 }
 
 void s_gradient_complex64_all(const cpx_f_t *src, const int64_t *stridesSrc,
-                              const cpx_f_t *x, int64_t strideX, cpx_f_t dx,
+                              const cpx_f_t *x, int64_t strideX, const cpx_f_t *dx_ptr,
                               cpx_f_t *res, const int64_t *stridesRes,
                               const int64_t *shape, int rank, int axis, int edge_order) {
     if (src == nullptr || res == nullptr || shape == nullptr || rank <= 0 || axis < 0 || axis >= rank) return;
+    const cpx_f_t dx = dx_ptr != nullptr ? *dx_ptr : cpx_f_t{1.0f, 0.0f};
     
     int64_t N = shape[axis];
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
@@ -10849,11 +10863,15 @@ void pad_axis_##TYPE_NAME( \
     int rank, int axis, \
     int64_t padBefore, int64_t padAfter, \
     int mode, \
-    T constantBefore, T constantAfter, \
-    T endBefore, T endAfter, \
+    const T *constantBeforePtr, const T *constantAfterPtr, \
+    const T *endBeforePtr, const T *endAfterPtr, \
     int64_t statLengthBefore, int64_t statLengthAfter \
 ) { \
     if (dest == nullptr || shapeSrc == nullptr || shapeDest == nullptr || stridesSrc == nullptr || rank <= 0 || axis < 0 || axis >= rank) return; \
+    const T constantBefore = constantBeforePtr != nullptr ? *constantBeforePtr : T{0, 0}; \
+    const T constantAfter = constantAfterPtr != nullptr ? *constantAfterPtr : T{0, 0}; \
+    const T endBefore = endBeforePtr != nullptr ? *endBeforePtr : T{0, 0}; \
+    const T endAfter = endAfterPtr != nullptr ? *endAfterPtr : T{0, 0}; \
     int64_t N = shapeSrc[axis]; \
     if (N <= 0 && mode != 0) return; \
     if (src == nullptr && N > 0) return; \
@@ -11441,8 +11459,8 @@ int64_t r_median_int64(const int64_t *src, int64_t size) { return stats_median_i
 int32_t r_median_int32(const int32_t *src, int64_t size) { return stats_median_int32(src, 1, size); }
 int16_t r_median_int16(const int16_t *src, int64_t size) { return stats_median_int16(src, 1, size); }
 uint8_t r_median_uint8(const uint8_t *src, int64_t size) { return stats_median_uint8(src, 1, size); }
-cpx_t r_median_complex128(const cpx_t *src, int64_t size) { return stats_median_complex128(src, 1, size); }
-cpx_f_t r_median_complex64(const cpx_f_t *src, int64_t size) { return stats_median_complex64(src, 1, size); }
+void r_median_complex128(const cpx_t *src, int64_t size, cpx_t *out) { if (out != nullptr) *out = stats_median_complex128(src, 1, size); }
+void r_median_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out) { if (out != nullptr) *out = stats_median_complex64(src, 1, size); }
 
 // Quantile helper definitions
 
@@ -13901,8 +13919,8 @@ int64_t r_prod_int64(const int64_t *src, int64_t size) { return r_reduce_op_impl
 int32_t r_prod_int32(const int32_t *src, int64_t size) { return r_reduce_op_impl(src, size, (int32_t)1, [](int32_t a, int32_t b) { return (int32_t)((uint32_t)a * (uint32_t)b); }); }
 uint8_t r_prod_uint8(const uint8_t *src, int64_t size) { return r_reduce_op_impl(src, size, (uint8_t)1, [](uint8_t a, uint8_t b) { return (uint8_t)(a * b); }); }
 int16_t r_prod_int16(const int16_t *src, int64_t size) { return r_reduce_op_impl(src, size, (int16_t)1, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a * (uint16_t)b); }); }
-cpx_t r_prod_complex128(const cpx_t *src, int64_t size) { return r_reduce_op_impl(src, size, cpx_t{1.0, 0.0}, cpx_mul); }
-cpx_f_t r_prod_complex64(const cpx_f_t *src, int64_t size) { return r_reduce_op_impl(src, size, cpx_f_t{1.0f, 0.0f}, cpx_mul_f); }
+void r_prod_complex128(const cpx_t *src, int64_t size, cpx_t *out) { if (out != nullptr) *out = r_reduce_op_impl(src, size, cpx_t{1.0, 0.0}, cpx_mul); }
+void r_prod_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out) { if (out != nullptr) *out = r_reduce_op_impl(src, size, cpx_f_t{1.0f, 0.0f}, cpx_mul_f); }
 
 void s_prod_double(const double *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis) {
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](double a, double b) { return a * b; });
@@ -17818,20 +17836,20 @@ VECTORIZED_TARGETS static void vectorized_minmax_impl(
     const T* RESTRICT a,
     const T* RESTRICT b,
     T* RESTRICT out,
-    intptr_t n
+    int64_t n
 ) {
     if constexpr (!std::is_floating_point_v<T>) {
         if (op_code == 2 || op_code == 4) {
-            for (intptr_t i = 0; i < n; i++) {
+            for (int64_t i = 0; i < n; i++) {
                 out[i] = a[i] < b[i] ? a[i] : b[i];
             }
         } else {
-            for (intptr_t i = 0; i < n; i++) {
+            for (int64_t i = 0; i < n; i++) {
                 out[i] = a[i] > b[i] ? a[i] : b[i];
             }
         }
     } else {
-        for (intptr_t i = 0; i < n; i++) {
+        for (int64_t i = 0; i < n; i++) {
             out[i] = apply_at_op(a[i], b[i], op_code);
         }
     }
@@ -17841,13 +17859,13 @@ template <typename T>
 static void strided_binary_minmax_impl(
     int op_code,
     int ndim,
-    const intptr_t* shape,
+    const int64_t* shape,
     const void* a_data,
-    const intptr_t* a_strides,
+    const int64_t* a_strides,
     const void* b_data,
-    const intptr_t* b_strides,
+    const int64_t* b_strides,
     void* out_data,
-    const intptr_t* out_strides
+    const int64_t* out_strides
 ) {
     const T* a = static_cast<const T*>(a_data);
     const T* b = static_cast<const T*>(b_data);
@@ -17858,26 +17876,26 @@ static void strided_binary_minmax_impl(
         return;
     }
 
-    intptr_t total_elements = 1;
+    int64_t total_elements = 1;
     for (int d = 0; d < ndim; d++) {
         if (shape[d] <= 0) return;
         total_elements *= shape[d];
     }
 
     if (ndim == 1) {
-        intptr_t sa = a_strides[0];
-        intptr_t sb = b_strides[0];
-        intptr_t so = out_strides[0];
-        intptr_t len = shape[0];
-        for (intptr_t i = 0; i < len; i++) {
+        int64_t sa = a_strides[0];
+        int64_t sb = b_strides[0];
+        int64_t so = out_strides[0];
+        int64_t len = shape[0];
+        for (int64_t i = 0; i < len; i++) {
             out[i * so] = apply_at_op(a[i * sa], b[i * sb], op_code);
         }
         return;
     }
 
     DECLARE_RANK_BUFFER(int64_t, coord, ndim);
-    intptr_t offA = 0, offB = 0, offOut = 0;
-    for (intptr_t el = 0; el < total_elements; el++) {
+    int64_t offA = 0, offB = 0, offOut = 0;
+    for (int64_t el = 0; el < total_elements; el++) {
         out[offOut] = apply_at_op(a[offA], b[offB], op_code);
         for (int d = ndim - 1; d >= 0; d--) {
             coord[d]++;
@@ -17897,7 +17915,7 @@ static void strided_binary_minmax_impl(
 
 extern "C" {
 
-void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void* out, intptr_t n) {
+void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void* out, int64_t n) {
     if (a == nullptr || b == nullptr || out == nullptr || n <= 0) return;
     switch (dtype) {
         case 0: // float64
@@ -17910,14 +17928,14 @@ void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void*
             const float16_t* fa = static_cast<const float16_t*>(a);
             const float16_t* fb = static_cast<const float16_t*>(b);
             float16_t* fo = static_cast<float16_t*>(out);
-            for (intptr_t i = 0; i < n; i++) fo[i] = apply_at_op(fa[i], fb[i], op_code);
+            for (int64_t i = 0; i < n; i++) fo[i] = apply_at_op(fa[i], fb[i], op_code);
             break;
         }
         case 3: { // bfloat16
             const bfloat16_t* ba = static_cast<const bfloat16_t*>(a);
             const bfloat16_t* bb = static_cast<const bfloat16_t*>(b);
             bfloat16_t* bo = static_cast<bfloat16_t*>(out);
-            for (intptr_t i = 0; i < n; i++) bo[i] = apply_at_op(ba[i], bb[i], op_code);
+            for (int64_t i = 0; i < n; i++) bo[i] = apply_at_op(ba[i], bb[i], op_code);
             break;
         }
         case 4: // int64
@@ -17948,21 +17966,21 @@ void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void*
             const cpx_t* ca = static_cast<const cpx_t*>(a);
             const cpx_t* cb = static_cast<const cpx_t*>(b);
             cpx_t* co = static_cast<cpx_t*>(out);
-            for (intptr_t i = 0; i < n; i++) co[i] = apply_at_op(ca[i], cb[i], op_code);
+            for (int64_t i = 0; i < n; i++) co[i] = apply_at_op(ca[i], cb[i], op_code);
             break;
         }
         case 13: { // complex64
             const cpx_f_t* ca = static_cast<const cpx_f_t*>(a);
             const cpx_f_t* cb = static_cast<const cpx_f_t*>(b);
             cpx_f_t* co = static_cast<cpx_f_t*>(out);
-            for (intptr_t i = 0; i < n; i++) co[i] = apply_at_op(ca[i], cb[i], op_code);
+            for (int64_t i = 0; i < n; i++) co[i] = apply_at_op(ca[i], cb[i], op_code);
             break;
         }
         case 14: { // boolean
             const uint8_t* ba = static_cast<const uint8_t*>(a);
             const uint8_t* bb = static_cast<const uint8_t*>(b);
             uint8_t* bo = static_cast<uint8_t*>(out);
-            for (intptr_t i = 0; i < n; i++) bo[i] = apply_at_op_boolean(ba[i], bb[i], op_code);
+            for (int64_t i = 0; i < n; i++) bo[i] = apply_at_op_boolean(ba[i], bb[i], op_code);
             break;
         }
         default:
@@ -17974,13 +17992,13 @@ void s_binary_minmax(
     int op_code,
     int dtype,
     int ndim,
-    const intptr_t* shape,
+    const int64_t* shape,
     const void* a_data,
-    const intptr_t* a_strides,
+    const int64_t* a_strides,
     const void* b_data,
-    const intptr_t* b_strides,
+    const int64_t* b_strides,
     void* out_data,
-    const intptr_t* out_strides
+    const int64_t* out_strides
 ) {
     if (a_data == nullptr || b_data == nullptr || out_data == nullptr || (ndim > 0 && (shape == nullptr || a_strides == nullptr || b_strides == nullptr || out_strides == nullptr))) return;
     switch (dtype) {
@@ -18034,24 +18052,24 @@ void s_binary_minmax(
                 out[0] = apply_at_op_boolean(a[0], b[0], op_code);
                 return;
             }
-            intptr_t total_elements = 1;
+            int64_t total_elements = 1;
             for (int d = 0; d < ndim; d++) {
                 if (shape[d] <= 0) return;
                 total_elements *= shape[d];
             }
             if (ndim == 1) {
-                intptr_t sa = a_strides[0];
-                intptr_t sb = b_strides[0];
-                intptr_t so = out_strides[0];
-                intptr_t len = shape[0];
-                for (intptr_t i = 0; i < len; i++) {
+                int64_t sa = a_strides[0];
+                int64_t sb = b_strides[0];
+                int64_t so = out_strides[0];
+                int64_t len = shape[0];
+                for (int64_t i = 0; i < len; i++) {
                     out[i * so] = apply_at_op_boolean(a[i * sa], b[i * sb], op_code);
                 }
                 return;
             }
             DECLARE_RANK_BUFFER(int64_t, coord, ndim);
-            intptr_t offA = 0, offB = 0, offOut = 0;
-            for (intptr_t el = 0; el < total_elements; el++) {
+            int64_t offA = 0, offB = 0, offOut = 0;
+            for (int64_t el = 0; el < total_elements; el++) {
                 out[offOut] = apply_at_op_boolean(a[offA], b[offB], op_code);
                 for (int d = ndim - 1; d >= 0; d--) {
                     coord[d]++;

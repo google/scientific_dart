@@ -1105,4 +1105,89 @@ void main() {
       }),
     );
   });
+
+  group('RandomGenerator', () {
+    test('seed determinism and stream reproducibility', () {
+      NDArray.scope(() {
+        final rng1 = RandomGenerator(12345);
+        final rng2 = RandomGenerator(12345);
+        final rng3 = RandomGenerator(54321);
+
+        final u1 = rng1.uniform([16]);
+        final u2 = rng2.uniform([16]);
+        final u3 = rng3.uniform([16]);
+
+        expect(u1.equals(u2), isTrue);
+        expect(u1.equals(u3), isFalse);
+      });
+    });
+
+    test('continuous distributions (normal, exponential) sample moments', () {
+      NDArray.scope(() {
+        final rng = RandomGenerator(42);
+        final normSamples = rng.normal([4000], loc: 5.0, scale: 2.0);
+        expect(mean(normSamples).scalar, closeTo(5.0, 0.15));
+        expect(std(normSamples).scalar, closeTo(2.0, 0.15));
+
+        final expSamples = rng.exponential([4000], scale: 3.0);
+        expect(mean(expSamples).scalar, closeTo(3.0, 0.2));
+      });
+    });
+
+    test('discrete distributions (randint, poisson, binomial)', () {
+      NDArray.scope(() {
+        final rng = RandomGenerator(99);
+        final ri = rng.randint([500], low: 10, high: 20);
+        expect(min(ri).scalar, greaterThanOrEqualTo(10));
+        expect(max(ri).scalar, lessThan(20));
+
+        final pois = poisson<Int64>([2000], lam: 4.0, seed: 99);
+        expect(mean(pois).scalar, closeTo(4.0, 0.2));
+
+        final binom = binomial<Int64>([2000], n: 20, p: 0.25, seed: 99);
+        expect(mean(binom).scalar, closeTo(5.0, 0.2));
+      });
+    });
+
+    test(
+      'degenerate distribution parameters (p == 0, one-hot multinomial)',
+      () {
+        NDArray.scope(() {
+          final bZeroProb = binomial<Int64>([5], n: 10, p: 0.0, seed: 101);
+          expect(bZeroProb.toList(), everyElement(equals(0)));
+
+          final oneHot = NDArray.fromList([0.0, 1.0, 0.0], [3], DType.float64);
+          final mDet = multinomial<Int64, Float64>(7, oneHot, seed: 101);
+          expect(mDet.toList(), equals([0, 7, 0]));
+        });
+      },
+    );
+
+    test('invalid distribution bounds throw ArgumentError', () {
+      NDArray.scope(() {
+        final rng = RandomGenerator(102);
+        expect(() => rng.randint([4], low: 10, high: 5), throwsArgumentError);
+        expect(() => rng.randint([4], low: 10, high: 10), throwsArgumentError);
+        expect(() => rng.normal([4], scale: 0.0), throwsArgumentError);
+        expect(() => rng.normal([4], scale: -1.0), throwsArgumentError);
+        expect(() => rng.exponential([4], scale: -0.5), throwsArgumentError);
+        expect(() => poisson([4], lam: 0.0), throwsArgumentError);
+        expect(() => poisson([4], lam: -2.0), throwsArgumentError);
+        expect(() => binomial([4], n: 5, p: 1.5), throwsArgumentError);
+      });
+    });
+
+    test('empty and 0-D shapes', () {
+      NDArray.scope(() {
+        final rng = RandomGenerator(104);
+        final emptyU = rng.uniform([0, 4]);
+        expect(emptyU.shape, equals([0, 4]));
+        expect(emptyU.size, equals(0));
+
+        final scalarN = rng.normal(const []);
+        expect(scalarN.rank, equals(0));
+        expect(scalarN.scalar.isFinite, isTrue);
+      });
+    });
+  });
 }

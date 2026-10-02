@@ -19,6 +19,7 @@ import '../ndarray.dart';
 import '../ndarray_extensions_bindings.dart';
 import '../nditer.dart';
 import '../scratch_arena.dart';
+import '../wasm_pointer_lists.dart';
 import 'helpers.dart';
 import 'sorting.dart';
 
@@ -1270,7 +1271,7 @@ List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
         ndims * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
       );
       for (var d = 0; d < ndims; d++) {
-        outPtrs[d] = workOut[d].pointer.cast<ffi.Int64>();
+        setPointerAt(outPtrs, d, workOut[d].pointer.cast<ffi.Int64>());
       }
 
       final inPtr = indices.pointer;
@@ -1505,7 +1506,7 @@ NDArray<Int64> ravel_multi_index(
         ndims * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
       );
       for (var d = 0; d < ndims; d++) {
-        coordsPtrs[d] = coordArrays[d].pointer.cast<ffi.Int64>();
+        setPointerAt(coordsPtrs, d, coordArrays[d].pointer.cast<ffi.Int64>());
       }
 
       final dimsPtr = ScratchArena.copyInts(dims);
@@ -1513,7 +1514,7 @@ NDArray<Int64> ravel_multi_index(
         ndims * ffi.sizeOf<ffi.Int>(),
       );
       for (var d = 0; d < ndims; d++) {
-        modesPtr[d] = switch (modesList[d]) {
+        modesPtr.cast<ffi.Int32>()[d] = switch (modesList[d]) {
           ChooseMode.raise => 0,
           ChooseMode.wrap => 1,
           ChooseMode.clip => 2,

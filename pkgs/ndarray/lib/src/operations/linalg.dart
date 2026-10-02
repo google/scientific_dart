@@ -7423,26 +7423,10 @@ LstsqResult<R> lstsq<
     // Copy b into bCopy
     final byteCount = bUse.size * targetDType.byteWidth;
     if (bUse.isContiguous) {
-      ffi.Pointer.fromAddress(bCopy.pointer.address)
-          .cast<ffi.Uint8>()
-          .asTypedList(byteCount)
-          .setAll(
-            0,
-            ffi.Pointer.fromAddress(
-              bUse.pointer.address,
-            ).cast<ffi.Uint8>().asTypedList(byteCount),
-          );
+      custom_memcpy(bCopy.pointer, bUse.pointer, byteCount);
     } else {
       final bContig = bUse.copy();
-      ffi.Pointer.fromAddress(bCopy.pointer.address)
-          .cast<ffi.Uint8>()
-          .asTypedList(byteCount)
-          .setAll(
-            0,
-            ffi.Pointer.fromAddress(
-              bContig.pointer.address,
-            ).cast<ffi.Uint8>().asTypedList(byteCount),
-          );
+      custom_memcpy(bCopy.pointer, bContig.pointer, byteCount);
       bContig.dispose();
     }
 
@@ -7545,7 +7529,7 @@ LstsqResult<R> lstsq<
             'The SVD algorithm in $routine failed to converge ($info).',
       );
 
-      final rank = rankPtr[0];
+      final rank = rankPtr.cast<ffi.Int32>()[0];
 
       // Extract solution x: first n rows of bCopy
       final xShape = bUse.shape.length > 1 ? [n, nrhs] : [n];

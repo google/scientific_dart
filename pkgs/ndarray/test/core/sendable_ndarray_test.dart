@@ -12,10 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:async';
 import 'dart:isolate';
 
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
+
+const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+
+Future<R> _runIsolate<R>(FutureOr<R> Function() computation) {
+  if (_isWasm) {
+    return Future<R>.sync(computation);
+  }
+  return Isolate.run(computation);
+}
 
 void main() {
   group('SendableNDArray', () {
@@ -35,7 +45,7 @@ void main() {
           expect(sendable.shape, equals([5]));
           expect(sendable.dtype, equals(DType.float64));
 
-          final workerResult = await Isolate.run(() {
+          final workerResult = await _runIsolate(() {
             return NDArray.scope(() {
               setNumThreads(1);
               final workerArr = sendable.materialize();
@@ -65,7 +75,7 @@ void main() {
           );
           final sendable = original.toSendable();
 
-          final returnedSendable = await Isolate.run(() {
+          final returnedSendable = await _runIsolate(() {
             return NDArray.scope(() {
               setNumThreads(1);
               final workerArr = sendable.materialize();
@@ -107,7 +117,7 @@ void main() {
             expect(slice.toList(), equals([1, 3, 9, 11]));
 
             final sendable = slice.toSendable();
-            final received = await Isolate.run(() {
+            final received = await _runIsolate(() {
               return NDArray.scope(() {
                 final workerArr = sendable.materialize();
                 return (
@@ -139,7 +149,7 @@ void main() {
             expect(transposed.isContiguous, isFalse);
             final transposedSendable = transposed.toSendable();
 
-            final transposedList = await Isolate.run(() {
+            final transposedList = await _runIsolate(() {
               return NDArray.scope(() {
                 final workerArr = transposedSendable.materialize();
                 return (
@@ -160,7 +170,7 @@ void main() {
           final empty = NDArray<Float64>.zeros([0, 5], DType.float64);
           final sendable = empty.toSendable();
 
-          final receivedShape = await Isolate.run(() {
+          final receivedShape = await _runIsolate(() {
             return NDArray.scope(() {
               final workerArr = sendable.materialize();
               return workerArr.shape;
@@ -175,7 +185,7 @@ void main() {
         await NDArray.scope(() async {
           final i64 = NDArray<Int64>.fromList([100, 200], [2], DType.int64);
           final s64 = i64.toSendable();
-          final r64 = await Isolate.run(() {
+          final r64 = await _runIsolate(() {
             return NDArray.scope(() => s64.materialize().toList());
           });
           expect(r64, equals([100, 200]));
@@ -186,7 +196,7 @@ void main() {
         await NDArray.scope(() async {
           final u8 = NDArray<Uint8>.fromList([0, 127, 255], [3], DType.uint8);
           final su8 = u8.toSendable();
-          final ru8 = await Isolate.run(() {
+          final ru8 = await _runIsolate(() {
             return NDArray.scope(() => su8.materialize().toList());
           });
           expect(ru8, equals([0, 127, 255]));
@@ -201,7 +211,7 @@ void main() {
             DType.boolean,
           );
           final sb = b.toSendable();
-          final rb = await Isolate.run(() {
+          final rb = await _runIsolate(() {
             return NDArray.scope(() => sb.materialize().toList());
           });
           expect(rb, equals([true, false, true]));
@@ -216,7 +226,7 @@ void main() {
             DType.complex128,
           );
           final sc = c.toSendable();
-          final rc = await Isolate.run(() {
+          final rc = await _runIsolate(() {
             return NDArray.scope(() {
               final arr = sc.materialize();
               final c0 = arr.getCell([0]);
@@ -282,7 +292,7 @@ void main() {
             expect(sendable.shape, equals([10]));
             expect(sendable.dtype, equals(DType.float64));
 
-            await Isolate.run(() {
+            await _runIsolate(() {
               return NDArray.scope(() {
                 setNumThreads(1);
                 final view = sendable.materializeView();
@@ -326,7 +336,7 @@ void main() {
 
           final sendableSlice = slice.toSendableBorrow();
 
-          await Isolate.run(() {
+          await _runIsolate(() {
             return NDArray.scope(() {
               setNumThreads(1);
               // Construct non-owning view over the borrowed slice
@@ -377,7 +387,7 @@ void main() {
 
           // Concurrently execute two isolate workers mutating their respective slices
           await Future.wait([
-            Isolate.run(() {
+            _runIsolate(() {
               NDArray.scope(() {
                 final view = sendableLeft.materializeView();
                 for (var i = 0; i < view.shape[0]; i++) {
@@ -385,7 +395,7 @@ void main() {
                 }
               });
             }),
-            Isolate.run(() {
+            _runIsolate(() {
               NDArray.scope(() {
                 final view = sendableRight.materializeView();
                 for (var i = 0; i < view.shape[0]; i++) {
@@ -409,7 +419,7 @@ void main() {
             final array = NDArray<Float64>.ones([4], DType.float64);
             final sendable = array.toSendableBorrow();
 
-            await Isolate.run(() {
+            await _runIsolate(() {
               return NDArray.scope(() {
                 final view = sendable.materialize();
                 view[0] = 99.0;
@@ -472,7 +482,7 @@ void main() {
             );
             final sendable = flipped.toSendableBorrow();
 
-            final valuesReadInIsolate = await Isolate.run(() {
+            final valuesReadInIsolate = await _runIsolate(() {
               return NDArray.scope(() {
                 final view = sendable.materializeView();
                 final read = [
@@ -492,6 +502,30 @@ void main() {
           });
         },
       );
+    });
+  });
+
+  group('SendableNDArray.fromCopy boundary cases', () {
+    test('copies a negative-stride view and an empty array', () {
+      NDArray.scope(() {
+        final base = NDArray.fromList(
+          [10.0, 20.0, 30.0, 40.0],
+          [4],
+          DType.float64,
+        );
+        final rev = base.slice([const Slice(step: -1)]);
+        final copySendable = SendableNDArray.fromCopy(rev);
+        expect(
+          copySendable.materialize().toList(),
+          equals([40.0, 30.0, 20.0, 10.0]),
+        );
+
+        final empty = NDArray.zeros([0, 3], DType.float64);
+        final emptySendable = SendableNDArray.fromCopy(empty);
+        final matEmpty = emptySendable.materialize();
+        expect(matEmpty.shape, equals([0, 3]));
+        expect(matEmpty.size, equals(0));
+      });
     });
   });
 }

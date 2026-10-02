@@ -108,6 +108,66 @@ NDARRAY_EXPORT int npz_reader_extract_data(
  */
 NDARRAY_EXPORT void npz_close_reader(void* handle);
 
+/**
+ * Returns the `errno` recorded by the most recent failed `native_file_*` or
+ * `npz_*` file operation on the calling thread, and copies the corresponding
+ * `strerror` text (NUL-terminated, truncated to [capacity] bytes) into
+ * [out_message] when it is non-NULL and [capacity] > 0.
+ *
+ * All paths passed to the functions below are UTF-8; on Windows they are
+ * converted to UTF-16 and opened with the wide-character CRT functions.
+ */
+NDARRAY_EXPORT int native_file_last_error(uint8_t* out_message, int64_t capacity);
+
+/**
+ * Writes [header_len] bytes from [header] followed by [data_len] bytes from
+ * [data] into [filepath] (creating parent directories if needed).
+ *
+ * @return 0 on success, -1 if the arguments are invalid or the file cannot be
+ *   opened, -2 if writing or closing fails. The error is recorded for
+ *   `native_file_last_error`.
+ */
+NDARRAY_EXPORT int native_file_write_all(
+    const char* filepath,
+    const uint8_t* header,
+    int64_t header_len,
+    const void* data,
+    int64_t data_len);
+
+/**
+ * Opens the regular file at [filepath] for reading and returns an opaque
+ * handle to be released with `native_file_close`, or NULL (with the error
+ * recorded for `native_file_last_error`) if the file does not exist, is a
+ * directory, or cannot be opened.
+ */
+NDARRAY_EXPORT void* native_file_open_read(const char* filepath);
+
+/**
+ * Returns the size in bytes of the file behind [handle], or -1 on failure.
+ * The read position of the handle is preserved.
+ */
+NDARRAY_EXPORT int64_t native_file_handle_size(void* handle);
+
+/**
+ * Reads up to [len] bytes starting at byte [offset] of the file behind
+ * [handle] into [out_data], storing the actual number of bytes read into
+ * [out_read]. A short read without an error indicates end of file.
+ *
+ * @return 0 on success (including short reads at EOF), -1 if the arguments
+ *   are invalid, -2 if seeking or reading fails.
+ */
+NDARRAY_EXPORT int native_file_handle_read(
+    void* handle,
+    int64_t offset,
+    int64_t len,
+    void* out_data,
+    int64_t* out_read);
+
+/**
+ * Closes a handle returned by `native_file_open_read`. NULL is ignored.
+ */
+NDARRAY_EXPORT void native_file_close(void* handle);
+
 #ifdef __cplusplus
 }
 #endif

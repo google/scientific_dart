@@ -982,7 +982,10 @@ bool _tryIsinTable<T extends DTypeTag>(
       final pElem = contigElement.pointer.cast<ffi.Uint8>();
       final pDest = dest.pointer.cast<ffi.Uint8>();
       if (hasZero && hasOne) {
-        pDest.asTypedList(elemSize).fillRange(0, elemSize, invert ? 0 : 1);
+        final fillVal = invert ? 0 : 1;
+        for (var i = 0; i < elemSize; i++) {
+          pDest[i] = fillVal;
+        }
       } else if (hasOne) {
         if (invert) {
           for (var i = 0; i < elemSize; i++) {
@@ -1004,7 +1007,10 @@ bool _tryIsinTable<T extends DTypeTag>(
           }
         }
       } else {
-        pDest.asTypedList(elemSize).fillRange(0, elemSize, invert ? 1 : 0);
+        final fillVal = invert ? 1 : 0;
+        for (var i = 0; i < elemSize; i++) {
+          pDest[i] = fillVal;
+        }
       }
       return true;
 
@@ -1127,7 +1133,9 @@ bool _tryIsinTable<T extends DTypeTag>(
   try {
     if (!returnCounts) {
       final tablePtr = ScratchArena.allocate<ffi.Uint8>(tableSize);
-      tablePtr.asTypedList(tableSize).fillRange(0, tableSize, 0);
+      for (var i = 0; i < tableSize; i++) {
+        tablePtr[i] = 0;
+      }
 
       var uniqueCount = 0;
       switch (values.dtype) {
@@ -1289,10 +1297,9 @@ bool _tryIsinTable<T extends DTypeTag>(
     } else {
       final tableBytes = tableSize * 4;
       final tablePtr = ScratchArena.allocate<ffi.Int32>(tableBytes);
-      tablePtr
-          .cast<ffi.Uint8>()
-          .asTypedList(tableBytes)
-          .fillRange(0, tableBytes, 0);
+      for (var i = 0; i < tableSize; i++) {
+        tablePtr[i] = 0;
+      }
 
       var uniqueCount = 0;
       switch (values.dtype) {

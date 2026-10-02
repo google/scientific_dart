@@ -2637,4 +2637,26 @@ void main() {
       }),
     );
   });
+
+  group('Rank-deficient rectangular matrices', () {
+    test('lstsq reports rank 1 and pinv satisfies A * A^+ * A == A', () {
+      NDArray.scope(() {
+        // Rank-1 3x2 matrix.
+        final a = NDArray.fromList(
+          [1.0, 2.0, 2.0, 4.0, 3.0, 6.0],
+          [3, 2],
+          DType.float64,
+        );
+        final ls = lstsq<Float64, Float64, Float64>(
+          a,
+          NDArray.zeros([3], DType.float64),
+        );
+        expect(ls.rank, equals(1));
+        final aPlus = pinv<Float64>(a);
+        // Moore-Penrose identity: A * A^+ * A == A.
+        final recon = matmul(matmul(a, aPlus), a);
+        expect(allClose(recon, a, atol: 1e-11), isTrue);
+      });
+    });
+  });
 }

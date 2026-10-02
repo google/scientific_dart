@@ -512,39 +512,45 @@ void main() {
         expect(parsed.fortranOrder, isFalse);
         expect(parsed.shape, [3, 4]);
 
-        final tmpDir = Directory.systemTemp.createTempSync('npy_parity_test_');
-        try {
-          NDArray.scope(() {
-            final badMagicPath = '${tmpDir.path}/bad_magic.npy';
-            File(badMagicPath).writeAsBytesSync([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-            expect(() => load(badMagicPath), throwsFormatException);
+        if (!const bool.fromEnvironment('dart.tool.dart2wasm')) {
+          final tmpDir = Directory.systemTemp.createTempSync(
+            'npy_parity_test_',
+          );
+          try {
+            NDArray.scope(() {
+              final badMagicPath = '${tmpDir.path}/bad_magic.npy';
+              File(
+                badMagicPath,
+              ).writeAsBytesSync([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+              expect(() => load(badMagicPath), throwsFormatException);
 
-            // Save valid array then corrupt version or truncate payload
-            final validPath = '${tmpDir.path}/valid.npy';
-            final valid = NDArray<Float64>.fromList(
-              [1.0, 2.0, 3.0],
-              [3],
-              DType.float64,
-            );
-            save(validPath, valid);
-            final bytes = File(validPath).readAsBytesSync();
+              // Save valid array then corrupt version or truncate payload
+              final validPath = '${tmpDir.path}/valid.npy';
+              final valid = NDArray<Float64>.fromList(
+                [1.0, 2.0, 3.0],
+                [3],
+                DType.float64,
+              );
+              save(validPath, valid);
+              final bytes = File(validPath).readAsBytesSync();
 
-            // Unsupported major version 99
-            final badVerBytes = Uint8List.fromList(bytes);
-            badVerBytes[6] = 99;
-            final badVerPath = '${tmpDir.path}/bad_ver.npy';
-            File(badVerPath).writeAsBytesSync(badVerBytes);
-            expect(() => load(badVerPath), throwsFormatException);
+              // Unsupported major version 99
+              final badVerBytes = Uint8List.fromList(bytes);
+              badVerBytes[6] = 99;
+              final badVerPath = '${tmpDir.path}/bad_ver.npy';
+              File(badVerPath).writeAsBytesSync(badVerBytes);
+              expect(() => load(badVerPath), throwsFormatException);
 
-            // Truncated payload
-            final truncPath = '${tmpDir.path}/trunc.npy';
-            File(
-              truncPath,
-            ).writeAsBytesSync(bytes.sublist(0, bytes.length - 4));
-            expect(() => load(truncPath), throwsFormatException);
-          });
-        } finally {
-          tmpDir.deleteSync(recursive: true);
+              // Truncated payload
+              final truncPath = '${tmpDir.path}/trunc.npy';
+              File(
+                truncPath,
+              ).writeAsBytesSync(bytes.sublist(0, bytes.length - 4));
+              expect(() => load(truncPath), throwsFormatException);
+            });
+          } finally {
+            tmpDir.deleteSync(recursive: true);
+          }
         }
       },
     );

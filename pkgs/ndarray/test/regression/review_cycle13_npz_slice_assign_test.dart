@@ -20,10 +20,34 @@ import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/ndarray_extensions_bindings.dart';
 import 'package:test/test.dart';
 
+const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+
+void _setPtrAt<T extends ffi.NativeType>(
+  ffi.Pointer<ffi.Pointer<T>> array,
+  int index,
+  ffi.Pointer<T> value,
+) {
+  if (ffi.sizeOf<ffi.IntPtr>() == 4) {
+    array.cast<ffi.Uint32>()[index] = value.address;
+  } else {
+    array.cast<ffi.Uint64>()[index] = value.address;
+  }
+}
+
+void _setSizeAt(ffi.Pointer<ffi.Size> array, int index, int value) {
+  if (ffi.sizeOf<ffi.Size>() == 4) {
+    array.cast<ffi.Uint32>()[index] = value;
+  } else {
+    array.cast<ffi.Uint64>()[index] = value;
+  }
+}
+
 ffi.Pointer<ffi.Char> _allocCString(String s) {
   final units = utf8.encode(s);
   final ptr = ScratchArena.allocate<ffi.Uint8>(units.length + 1);
-  ptr.asTypedList(units.length).setAll(0, units);
+  for (var i = 0; i < units.length; i++) {
+    ptr[i] = units[i];
+  }
   ptr[units.length] = 0;
   return ptr.cast<ffi.Char>();
 }
@@ -50,13 +74,15 @@ void _writeCustomNpz({
     );
     final cDataLens = ScratchArena.allocate<ffi.Size>(ffi.sizeOf<ffi.Size>());
 
-    cNames[0] = _allocCString(entryName);
+    _setPtrAt(cNames, 0, _allocCString(entryName));
     final hBuf = ScratchArena.allocate<ffi.Uint8>(headerBytes.length);
-    hBuf.asTypedList(headerBytes.length).setAll(0, headerBytes);
-    cHeaderBytes[0] = hBuf;
-    cHeaderLens[0] = headerBytes.length;
-    cDataPtrs[0] = dataPtr;
-    cDataLens[0] = dataByteLen;
+    for (var i = 0; i < headerBytes.length; i++) {
+      hBuf[i] = headerBytes[i];
+    }
+    _setPtrAt(cHeaderBytes, 0, hBuf);
+    _setSizeAt(cHeaderLens, 0, headerBytes.length);
+    _setPtrAt(cDataPtrs, 0, dataPtr);
+    _setSizeAt(cDataLens, 0, dataByteLen);
 
     final cFilepath = _allocCString(filepath);
     final status = npz_save(
@@ -109,15 +135,21 @@ List<int> _buildNpyV2Header({
 
 void main() {
   group('Issue #5: .npy v2.0 Header Support and Error Handling in loadz()', () {
-    late Directory tempDir;
+    Directory? tempDir;
+    late String tempDirPath;
 
     setUp(() {
-      tempDir = Directory.systemTemp.createTempSync('ndarray_cycle13_npz_');
+      if (_isWasm) {
+        tempDirPath = '/tmp';
+      } else {
+        tempDir = Directory.systemTemp.createTempSync('ndarray_cycle13_npz_');
+        tempDirPath = tempDir!.path;
+      }
     });
 
     tearDown(() {
-      if (tempDir.existsSync()) {
-        tempDir.deleteSync(recursive: true);
+      if (!_isWasm && tempDir != null && tempDir!.existsSync()) {
+        tempDir!.deleteSync(recursive: true);
       }
     });
 
@@ -139,7 +171,7 @@ void main() {
             expect(headerBytes.length, greaterThan(65536));
 
             final npzPath =
-                '${tempDir.path}/v2_large_${compressed ? "comp" : "uncomp"}.npz';
+                '$tempDirPath/v2_large_${compressed ? "comp" : "uncomp"}.npz';
             _writeCustomNpz(
               filepath: npzPath,
               entryName: 'weights.npy',
@@ -183,7 +215,7 @@ void main() {
             );
 
             final npzPath =
-                '${tempDir.path}/v2_compact_${compressed ? "comp" : "uncomp"}.npz';
+                '$tempDirPath/v2_compact_${compressed ? "comp" : "uncomp"}.npz';
             _writeCustomNpz(
               filepath: npzPath,
               entryName: 'vec.npy',
@@ -218,7 +250,7 @@ void main() {
 
             // 1. Entry truncated to < 10 bytes (status -7)
             final shortPath =
-                '${tempDir.path}/corrupt_short_${compressed ? "comp" : "uncomp"}.npz';
+                '$tempDirPath/corrupt_short_${compressed ? "comp" : "uncomp"}.npz';
             _writeCustomNpz(
               filepath: shortPath,
               entryName: 'broken.npy',
@@ -231,7 +263,7 @@ void main() {
 
             // 2. Entry whose header length exceeds uncompressed size (status -11)
             final overflowPath =
-                '${tempDir.path}/corrupt_hlen_${compressed ? "comp" : "uncomp"}.npz';
+                '$tempDirPath/corrupt_hlen_${compressed ? "comp" : "uncomp"}.npz';
             final badHeader = <int>[
               0x93,
               0x4e,

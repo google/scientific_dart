@@ -466,4 +466,31 @@ void main() {
       });
     });
   });
+
+  group('convolve operand order', () {
+    test(
+      'full mode is commutative; valid mode needs in1 at least as long as in2',
+      () {
+        NDArray.scope(() {
+          final shortSig = NDArray.fromList([2.0, -1.0], [2], DType.float64);
+          final longKer = NDArray.fromList(
+            [1.0, 3.0, 5.0, 7.0, 9.0],
+            [5],
+            DType.float64,
+          );
+          final c1 = convolve(shortSig, longKer, mode: ConvMode.full);
+          final c2 = convolve(longKer, shortSig, mode: ConvMode.full);
+          expect(allClose(c1, c2), isTrue);
+
+          // In valid mode, in1 length must be >= in2 length.
+          expect(
+            () => convolve(shortSig, longKer, mode: ConvMode.valid),
+            throwsArgumentError,
+          );
+          final v2 = convolve(longKer, shortSig, mode: ConvMode.valid);
+          expect(v2.shape, equals([4]));
+        });
+      },
+    );
+  });
 }

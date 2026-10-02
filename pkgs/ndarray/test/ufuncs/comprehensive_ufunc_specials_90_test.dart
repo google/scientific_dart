@@ -1614,4 +1614,15 @@ void main() {
       );
     });
   });
+
+  group('Negative window lengths', () {
+    test('hanning/hamming with M < 0 return an empty window', () {
+      NDArray.scope(() {
+        for (final fn in [hanning<Float64>, hamming<Float64>]) {
+          final wNeg = fn(-3, dtype: DType.float64);
+          expect(wNeg.shape, equals([0]));
+        }
+      });
+    });
+  });
 }

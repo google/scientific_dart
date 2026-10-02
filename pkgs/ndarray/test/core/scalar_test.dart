@@ -227,4 +227,24 @@ void main() {
       });
     });
   });
+
+  group('0-D scalar indexing and reshaping', () {
+    test('empty index list reads and writes, reshape to [1, 1] and back', () {
+      NDArray.scope(() {
+        final s = NDArray.scalar(42.5, dtype: DType.float64);
+        expect(s.rank, equals(0));
+        expect(s.shape, isEmpty);
+        expect(s.size, equals(1));
+        expect(s.scalar, equals(42.5));
+        expect(s[const []], equals(42.5));
+
+        s[const []] = -10.25;
+        expect(s.scalar, equals(-10.25));
+
+        final r1 = s.reshape([1, 1]);
+        expect(r1.shape, equals([1, 1]));
+        expect(r1.squeeze().shape, isEmpty);
+      });
+    });
+  });
 }
