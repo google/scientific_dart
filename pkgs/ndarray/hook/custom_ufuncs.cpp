@@ -11406,7 +11406,7 @@ extern "C" int64_t ndarray_intersect1d(const void *ar1, int64_t size1, const voi
         case DTYPE_BOOLEAN: return intersect1d_impl((const uint8_t *)ar1, size1, (const uint8_t *)ar2, size2, (uint8_t *)dest);
         case DTYPE_COMPLEX128: return intersect1d_impl((const cpx_t *)ar1, size1, (const cpx_t *)ar2, size2, (cpx_t *)dest);
         case DTYPE_COMPLEX64: return intersect1d_impl((const cpx_f_t *)ar1, size1, (const cpx_f_t *)ar2, size2, (cpx_f_t *)dest);
-        default: return 0;
+        default: return -2;
     }
 }
 
@@ -11428,7 +11428,7 @@ extern "C" int64_t ndarray_setdiff1d(const void *ar1, int64_t size1, const void 
         case DTYPE_BOOLEAN: return setdiff1d_impl((const uint8_t *)ar1, size1, (const uint8_t *)ar2, size2, (uint8_t *)dest);
         case DTYPE_COMPLEX128: return setdiff1d_impl((const cpx_t *)ar1, size1, (const cpx_t *)ar2, size2, (cpx_t *)dest);
         case DTYPE_COMPLEX64: return setdiff1d_impl((const cpx_f_t *)ar1, size1, (const cpx_f_t *)ar2, size2, (cpx_f_t *)dest);
-        default: return 0;
+        default: return -2;
     }
 }
 
@@ -11450,7 +11450,7 @@ extern "C" int64_t ndarray_setxor1d(const void *ar1, int64_t size1, const void *
         case DTYPE_BOOLEAN: return setxor1d_impl((const uint8_t *)ar1, size1, (const uint8_t *)ar2, size2, (uint8_t *)dest);
         case DTYPE_COMPLEX128: return setxor1d_impl((const cpx_t *)ar1, size1, (const cpx_t *)ar2, size2, (cpx_t *)dest);
         case DTYPE_COMPLEX64: return setxor1d_impl((const cpx_f_t *)ar1, size1, (const cpx_f_t *)ar2, size2, (cpx_f_t *)dest);
-        default: return 0;
+        default: return -2;
     }
 }
 
@@ -11472,7 +11472,7 @@ extern "C" int64_t ndarray_union1d(const void *ar1, int64_t size1, const void *a
         case DTYPE_BOOLEAN: return union1d_impl((const uint8_t *)ar1, size1, (const uint8_t *)ar2, size2, (uint8_t *)dest);
         case DTYPE_COMPLEX128: return union1d_impl((const cpx_t *)ar1, size1, (const cpx_t *)ar2, size2, (cpx_t *)dest);
         case DTYPE_COMPLEX64: return union1d_impl((const cpx_f_t *)ar1, size1, (const cpx_f_t *)ar2, size2, (cpx_f_t *)dest);
-        default: return 0;
+        default: return -2;
     }
 }
 
@@ -13236,7 +13236,7 @@ int ndarray_equals(
         case DTYPE_COMPLEX128: return s_equals_complex128((const cpx_t*)a, stridesA, (const cpx_t*)b, stridesB, shape, rank, nullptr);
         case DTYPE_COMPLEX64: return s_equals_complex64((const cpx_f_t*)a, stridesA, (const cpx_f_t*)b, stridesB, shape, rank, nullptr);
         case DTYPE_BOOLEAN: return s_equals_boolean((const uint8_t*)a, stridesA, (const uint8_t*)b, stridesB, shape, rank, nullptr);
-        default: return 0;
+        default: return -2;
     }
 }
 
@@ -13827,7 +13827,7 @@ int ndarray_find_index(
         case DTYPE_COMPLEX64:
             return s_find_index_complex64((const cpx_f_t*)a, stridesA, shape, rank, op, *(const cpx_f_t*)target, startCoords, directions, matchCoords);
         default:
-            return 0;
+            return -2;
     }
 }
 

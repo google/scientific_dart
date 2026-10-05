@@ -3072,6 +3072,9 @@ List<int>? findIndex<T extends DTypeTag>(
       cMatchCoords,
     );
 
+    if (success < 0) {
+      throw StateError('Native ndarray_find_index failed (code $success).');
+    }
     if (success == 1) {
       if (rank == 0) {
         return [];

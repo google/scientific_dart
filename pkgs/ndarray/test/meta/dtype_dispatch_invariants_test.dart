@@ -312,16 +312,17 @@ void main() {
               continue;
             }
             final afterDefault = defaultMatch.group(1)!;
-            final hasFailingAction = RegExp(
-              r'\b(abort\s*\(\s*\)|return\s+-\d+)',
+            final hasImmediateReturn = RegExp(
+              r'\b(abort\s*\(\s*\)|return\s+-\d+\s*;|return\s*;)',
             ).hasMatch(afterDefault);
-            final hasSilentBreak = RegExp(
-              r'^\s*break\s*;',
+            final hasSilentBreakOrZero = RegExp(
+              r'(^\s*break\s*;|\breturn\s+0\b)',
             ).hasMatch(afterDefault);
-            if (!hasFailingAction || hasSilentBreak) {
+            if (!hasImmediateReturn || hasSilentBreakOrZero) {
               violations.add(
                 '${_posix(file.path)}:$lineNum: C++ switch ($expr) `default:` '
-                'must fail loudly (`abort()` or negative error code), found: '
+                'must return immediately (`return -<code >;` or `return;` in '
+                'void functions, never `break;` or `return 0;`), found: '
                 '`${afterDefault.split('\n').first.trim()}`.',
               );
             }

@@ -93,7 +93,13 @@ jobs:
         working-directory: pkgs/openblas
 
       - name: Run Tests (ndarray)
+        if: matrix.os != 'ubuntu-latest'
         run: dart test
+        working-directory: pkgs/ndarray
+
+      - name: Run Tests & Verify Branch Coverage (ndarray)
+        if: matrix.os == 'ubuntu-latest'
+        run: dart run tool/check_branch_coverage.dart
         working-directory: pkgs/ndarray
 
       - name: Standalone Consumer Smoke Test (Default Hook Mode without user_defines)

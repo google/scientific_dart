@@ -367,6 +367,9 @@ NDArray<T> intersect1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (intersectionCount < 0) {
+      throw StateError('Native intersect1d failed (code $intersectionCount).');
+    }
 
     if (intersectionCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
@@ -458,6 +461,9 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (diffCount < 0) {
+      throw StateError('Native setdiff1d failed (code $diffCount).');
+    }
 
     if (diffCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
@@ -549,6 +555,9 @@ NDArray<T> setxor1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (xorCount < 0) {
+      throw StateError('Native setxor1d failed (code $xorCount).');
+    }
 
     if (xorCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
@@ -637,6 +646,9 @@ NDArray<T> union1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (unionCount < 0) {
+      throw StateError('Native union1d failed (code $unionCount).');
+    }
 
     if (unionCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {

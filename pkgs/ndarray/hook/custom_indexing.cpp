@@ -2103,7 +2103,7 @@ extern "C" int native_pad_nd(
 // ============================================================================
 // 4. ROLL KERNELS
 // ============================================================================
-static inline size_t get_roll_dtype_itemsize(int dtype) {
+static inline int get_roll_dtype_itemsize(int dtype) {
     switch (dtype) {
         case DTYPE_FLOAT64:
         case DTYPE_INT64:
@@ -2126,7 +2126,7 @@ static inline size_t get_roll_dtype_itemsize(int dtype) {
         case DTYPE_COMPLEX128:
             return 16;
         default:
-            return 0;
+            return -2;
     }
 }
 
@@ -2154,8 +2154,9 @@ extern "C" int native_roll_1d(
     }
     if (size <= 0) return 0;
 
-    size_t itemsize = get_roll_dtype_itemsize(dtype);
-    if (itemsize == 0) return -2;
+    int itemsize_raw = get_roll_dtype_itemsize(dtype);
+    if (itemsize_raw <= 0) return -2;
+    size_t itemsize = static_cast<size_t>(itemsize_raw);
 
     int64_t s = shift % size;
     if (s < 0) s += size;
@@ -2441,8 +2442,9 @@ extern "C" int native_roll_nd(
         return -1;
     }
 
-    size_t itemsize = get_roll_dtype_itemsize(dtype);
-    if (itemsize == 0) return -2;
+    int itemsize_raw = get_roll_dtype_itemsize(dtype);
+    if (itemsize_raw <= 0) return -2;
+    size_t itemsize = static_cast<size_t>(itemsize_raw);
 
     bool src_contig = is_c_contiguous(shape, src_strides, rank);
     bool dest_contig = is_c_contiguous(shape, dest_strides, rank);

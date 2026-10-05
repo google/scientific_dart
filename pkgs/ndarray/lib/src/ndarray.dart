@@ -5181,16 +5181,19 @@ sealed class NDArray<T extends DTypeTag>
       final cStridesB = other.strides.isEmpty
           ? ffi.nullptr
           : ScratchArena.copyInts(other.strides);
-      return ndarray_equals(
-            dtype.index,
-            pointer,
-            cStridesA,
-            other.pointer,
-            cStridesB,
-            cShape,
-            shape.length,
-          ) ==
-          1;
+      final eqRes = ndarray_equals(
+        dtype.index,
+        pointer,
+        cStridesA,
+        other.pointer,
+        cStridesB,
+        cShape,
+        shape.length,
+      );
+      if (eqRes < 0) {
+        throw StateError('Native ndarray_equals failed (code $eqRes).');
+      }
+      return eqRes == 1;
     } finally {
       ScratchArena.reset(marker);
     }
