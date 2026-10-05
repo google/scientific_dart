@@ -72,9 +72,24 @@ SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 #include <complex>
 #include <algorithm>
 #include <limits>
+// Exception support detection. GCC/Clang define `__EXCEPTIONS` (and, with
+// -std=c++17 or later, `__cpp_exceptions`); MSVC defines `_CPPUNWIND` when
+// compiled with /EHsc. The native hooks compile with exceptions enabled; the
+// Wasm32-WASI build compiles with -fno-exceptions, where allocation failures
+// abort instead of throwing.
+#if defined(__cpp_exceptions) || defined(__EXCEPTIONS) || defined(_CPPUNWIND)
+#define POCKETFFT_HAVE_EXCEPTIONS 1
+#define POCKETFFT_THROW(ex) throw (ex)
+#else
+#define POCKETFFT_HAVE_EXCEPTIONS 0
+#define POCKETFFT_THROW(ex) std::abort()
+#endif
+
 #if POCKETFFT_CACHE_SIZE!=0
 #include <array>
+#ifndef POCKETFFT_NO_MULTITHREADING
 #include <mutex>
+#endif
 #endif
 
 #ifndef POCKETFFT_NO_MULTITHREADING
@@ -178,7 +193,7 @@ inline void *aligned_alloc(size_t align, size_t size)
   align = std::max(align, sizeof(void*)); // posix_memalign requires align >= sizeof(void*)
   void *ptr = nullptr;
   if (posix_memalign(&ptr, align, size) != 0)
-    throw std::bad_alloc();
+    POCKETFFT_THROW(std::bad_alloc());
   return ptr;
   }
 inline void aligned_dealloc(void *ptr)
@@ -190,7 +205,7 @@ inline void *aligned_alloc(size_t align, size_t size)
   {
   // aligned_alloc() requires that the requested size is a multiple of "align"
   void *ptr = ::aligned_alloc(align,(size+align-1)&(~(align-1)));
-  if (!ptr) throw std::bad_alloc();
+  if (!ptr) POCKETFFT_THROW(std::bad_alloc());
   return ptr;
   }
 inline void aligned_dealloc(void *ptr)
@@ -200,7 +215,7 @@ inline void *aligned_alloc(size_t align, size_t size)
   {
   align = std::max(align, alignof(max_align_t));
   void *ptr = malloc(size+align);
-  if (!ptr) throw std::bad_alloc();
+  if (!ptr) POCKETFFT_THROW(std::bad_alloc());
   void *res = reinterpret_cast<void *>
     ((reinterpret_cast<uintptr_t>(ptr) & ~(uintptr_t(align-1))) + uintptr_t(align));
   (reinterpret_cast<void**>(res))[-1] = ptr;
@@ -222,7 +237,7 @@ template<typename T> class arr
       {
       if (num==0) return nullptr;
       void *res = malloc(num*sizeof(T));
-      if (!res) throw std::bad_alloc();
+      if (!res) POCKETFFT_THROW(std::bad_alloc());
       return reinterpret_cast<T *>(res);
       }
     static void dealloc(T *ptr)
@@ -449,7 +464,7 @@ struct util // hack to avoid duplicate symbols
           return static_cast<UIntT>(res);
         }
       // Otherwise, this size is ridiculously large, people shouldn't be computing FFTs this large.
-      throw std::runtime_error("FFT size is too large.");
+      POCKETFFT_THROW(std::runtime_error("FFT size is too large."));
       }
 
     UIntT bestfac=2*n;
@@ -486,7 +501,7 @@ struct util // hack to avoid duplicate symbols
     size_t required_factor)
     {
     if (required_factor<1)
-      throw std::runtime_error("required factor must not be 0");
+      POCKETFFT_THROW(std::runtime_error("required factor must not be 0"));
     return good_size_cmplx((n+required_factor-1)/required_factor) * required_factor;
     }
 
@@ -508,7 +523,7 @@ struct util // hack to avoid duplicate symbols
           return static_cast<UIntT>(res);
         }
       // Otherwise, this size is ridiculously large, people shouldn't be computing FFTs this large.
-      throw std::runtime_error("FFT size is too large.");
+      POCKETFFT_THROW(std::runtime_error("FFT size is too large."));
     }
 
     UIntT bestfac=2*n;
@@ -543,7 +558,7 @@ struct util // hack to avoid duplicate symbols
     size_t required_factor)
     {
     if (required_factor<1)
-      throw std::runtime_error("required factor must not be 0");
+      POCKETFFT_THROW(std::runtime_error("required factor must not be 0"));
     return good_size_real((n+required_factor-1)/required_factor) * required_factor;
     }
 
@@ -565,7 +580,7 @@ struct util // hack to avoid duplicate symbols
           return static_cast<UIntT>(res);
       }
       // Otherwise, this size is ridiculously large, people shouldn't be computing FFTs this large.
-      throw std::runtime_error("FFT size is too large.");
+      POCKETFFT_THROW(std::runtime_error("FFT size is too large."));
     }
 
     UIntT bestfound = 1;
@@ -611,7 +626,7 @@ struct util // hack to avoid duplicate symbols
           return static_cast<UIntT>(res);
       }
       // Otherwise, this size is ridiculously large, people shouldn't be computing FFTs this large.
-      throw std::runtime_error("FFT size is too large.");
+      POCKETFFT_THROW(std::runtime_error("FFT size is too large."));
     }
 
     UIntT bestfound = 1;
@@ -649,11 +664,11 @@ struct util // hack to avoid duplicate symbols
     const stride_t &stride_in, const stride_t &stride_out, bool inplace)
     {
     auto ndim = shape.size();
-    if (ndim<1) throw std::runtime_error("ndim must be >= 1");
+    if (ndim<1) POCKETFFT_THROW(std::runtime_error("ndim must be >= 1"));
     if ((stride_in.size()!=ndim) || (stride_out.size()!=ndim))
-      throw std::runtime_error("stride dimension mismatch");
+      POCKETFFT_THROW(std::runtime_error("stride dimension mismatch"));
     if (inplace && (stride_in!=stride_out))
-      throw std::runtime_error("stride mismatch");
+      POCKETFFT_THROW(std::runtime_error("stride mismatch"));
     }
 
   static POCKETFFT_NOINLINE void sanity_check(const shape_t &shape,
@@ -665,8 +680,8 @@ struct util // hack to avoid duplicate symbols
     shape_t tmp(ndim,0);
     for (auto ax : axes)
       {
-      if (ax>=ndim) throw std::invalid_argument("bad axis number");
-      if (++tmp[ax]>1) throw std::invalid_argument("axis specified repeatedly");
+      if (ax>=ndim) POCKETFFT_THROW(std::invalid_argument("bad axis number"));
+      if (++tmp[ax]>1) POCKETFFT_THROW(std::invalid_argument("axis specified repeatedly"));
       }
     }
 
@@ -675,7 +690,7 @@ struct util // hack to avoid duplicate symbols
     size_t axis)
     {
     sanity_check(shape, stride_in, stride_out, inplace);
-    if (axis>=shape.size()) throw std::invalid_argument("bad axis number");
+    if (axis>=shape.size()) POCKETFFT_THROW(std::invalid_argument("bad axis number"));
     }
 
 #ifdef POCKETFFT_NO_MULTITHREADING
@@ -884,7 +899,11 @@ class thread_pool
         catch (...)
           {
           shutdown_locked();
+#if POCKETFFT_HAVE_EXCEPTIONS
           throw;
+#else
+          std::abort();
+#endif
           }
         }
       }
@@ -913,7 +932,7 @@ class thread_pool
       {
       lock_t lock(mut_);
       if (shutdown_)
-        throw std::runtime_error("Work item submitted after shutdown");
+        POCKETFFT_THROW(std::runtime_error("Work item submitted after shutdown"));
 
       ++unscheduled_tasks_;
 
@@ -1721,7 +1740,7 @@ template<bool fwd, typename T> void pass_all(T c[], T0 fct) const
     POCKETFFT_NOINLINE explicit cfftp(size_t length_)
       : length(length_)
       {
-      if (length==0) throw std::runtime_error("zero-length FFT requested");
+      if (length==0) POCKETFFT_THROW(std::runtime_error("zero-length FFT requested"));
       if (length==1) return;
       factorize();
       mem.resize(twsize());
@@ -2530,7 +2549,7 @@ template<typename T> void radbg(size_t ido, size_t ip, size_t l1,
     POCKETFFT_NOINLINE explicit rfftp(size_t length_)
       : length(length_)
       {
-      if (length==0) throw std::runtime_error("zero-length FFT requested");
+      if (length==0) POCKETFFT_THROW(std::runtime_error("zero-length FFT requested"));
       if (length==1) return;
       factorize();
       mem.resize(twsize());
@@ -2655,7 +2674,7 @@ template<typename T0> class pocketfft_c
     POCKETFFT_NOINLINE explicit pocketfft_c(size_t length)
       : len(length)
       {
-      if (length==0) throw std::runtime_error("zero-length FFT requested");
+      if (length==0) POCKETFFT_THROW(std::runtime_error("zero-length FFT requested"));
       size_t tmp = (length<50) ? 0 : util::largest_prime_factor(length);
       if (tmp*tmp <= length)
         {
@@ -2692,7 +2711,7 @@ template<typename T0> class pocketfft_r
     POCKETFFT_NOINLINE explicit pocketfft_r(size_t length)
       : len(length)
       {
-      if (length==0) throw std::runtime_error("zero-length FFT requested");
+      if (length==0) POCKETFFT_THROW(std::runtime_error("zero-length FFT requested"));
       size_t tmp = (length<50) ? 0 : util::largest_prime_factor(length);
       if (tmp*tmp <= length)
         {
@@ -2961,7 +2980,9 @@ template<typename T> std::shared_ptr<T> get_plan(size_t length)
   static std::array<std::shared_ptr<T>, nmax> cache;
   static std::array<size_t, nmax> last_access{{0}};
   static size_t access_counter = 0;
+#ifndef POCKETFFT_NO_MULTITHREADING
   static std::mutex mut;
+#endif
 
   auto find_in_cache = [&]() -> std::shared_ptr<T>
     {
@@ -2983,13 +3004,17 @@ template<typename T> std::shared_ptr<T> get_plan(size_t length)
     };
 
   {
+#ifndef POCKETFFT_NO_MULTITHREADING
   std::lock_guard<std::mutex> lock(mut);
+#endif
   auto p = find_in_cache();
   if (p) return p;
   }
   auto plan = std::make_shared<T>(length);
   {
+#ifndef POCKETFFT_NO_MULTITHREADING
   std::lock_guard<std::mutex> lock(mut);
+#endif
   auto p = find_in_cache();
   if (p) return p;
 
@@ -3077,9 +3102,9 @@ template<size_t N> class multi_iter
       {
       auto nshares = threading::num_threads();
       if (nshares==1) return;
-      if (nshares==0) throw std::runtime_error("can't run with zero threads");
+      if (nshares==0) POCKETFFT_THROW(std::runtime_error("can't run with zero threads"));
       auto myshare = threading::thread_id();
-      if (myshare>=nshares) throw std::runtime_error("impossible share requested");
+      if (myshare>=nshares) POCKETFFT_THROW(std::runtime_error("impossible share requested"));
       size_t nbase = rem/nshares;
       size_t additional = rem%nshares;
       size_t lo = myshare*nbase + ((myshare<additional) ? myshare : additional);
@@ -3101,7 +3126,7 @@ template<size_t N> class multi_iter
       }
     void advance(size_t n)
       {
-      if (rem<n) throw std::runtime_error("underrun");
+      if (rem<n) POCKETFFT_THROW(std::runtime_error("underrun"));
       for (size_t i=0; i<n; ++i)
         {
         p_i[i] = p_ii;
@@ -3627,7 +3652,7 @@ template<typename T> void dct(const shape_t &shape,
   const stride_t &stride_in, const stride_t &stride_out, const shape_t &axes,
   int type, const T *data_in, T *data_out, T fct, bool ortho, size_t nthreads=1)
   {
-  if ((type<1) || (type>4)) throw std::invalid_argument("invalid DCT type");
+  if ((type<1) || (type>4)) POCKETFFT_THROW(std::invalid_argument("invalid DCT type"));
   if (util::prod(shape)==0) return;
   util::sanity_check(shape, stride_in, stride_out, data_in==data_out, axes);
   cndarr<T> ain(data_in, shape, stride_in);
@@ -3645,7 +3670,7 @@ template<typename T> void dst(const shape_t &shape,
   const stride_t &stride_in, const stride_t &stride_out, const shape_t &axes,
   int type, const T *data_in, T *data_out, T fct, bool ortho, size_t nthreads=1)
   {
-  if ((type<1) || (type>4)) throw std::invalid_argument("invalid DST type");
+  if ((type<1) || (type>4)) POCKETFFT_THROW(std::invalid_argument("invalid DST type"));
   if (util::prod(shape)==0) return;
   util::sanity_check(shape, stride_in, stride_out, data_in==data_out, axes);
   cndarr<T> ain(data_in, shape, stride_in);

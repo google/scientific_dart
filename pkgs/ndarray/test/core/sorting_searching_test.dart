@@ -1631,4 +1631,62 @@ void main() {
       });
     });
   });
+
+  group('Sorting and searching boundary cases', () {
+    test(
+      'uint64 high-bit values (> 2^63 - 1) use unsigned ordering',
+      () => NDArray.scope(() {
+        // 0xFFFFFFFFFFFFFFFF (max uint64, -1 in signed two's complement) vs 1
+        const maxU64 = -1;
+        final u = NDArray.fromList([1, maxU64, 0], [3], DType.uint64);
+        expect(uint64Compare(maxU64, 1), greaterThan(0));
+        expect(uint64Compare(0, maxU64), lessThan(0));
+
+        final sorted = sort(u);
+        expect(sorted.toList(), equals([0, 1, maxU64]));
+        expect(max(u).scalar, equals(maxU64));
+        expect(min(u).scalar, equals(0));
+        expect(argmax(u).scalar, equals(1));
+        expect(argmin(u).scalar, equals(2));
+      }),
+    );
+
+    test(
+      'NaNs sort to the end and stable argsort preserves tie order',
+      () => NDArray.scope(() {
+        final withNan = NDArray.fromList(
+          [3.0, double.nan, 1.0, -2.0, double.nan],
+          [5],
+          DType.float64,
+        );
+        final s = sort(withNan);
+        expect(s[[0]], equals(-2.0));
+        expect(s[[1]], equals(1.0));
+        expect(s[[2]], equals(3.0));
+        expect(s[[3]].isNaN, isTrue);
+        expect(s[[4]].isNaN, isTrue);
+
+        // Stable argsort preserves original order of equal elements
+        final ties = NDArray.fromList([5, 2, 5, 2, 5], [5], DType.int64);
+        final idx = argsort(ties, kind: SortKind.stable);
+        expect(idx.toList(), equals([1, 3, 0, 2, 4]));
+      }),
+    );
+
+    test(
+      'searchsorted left vs right across a duplicate run and extremes',
+      () => NDArray.scope(() {
+        final sorted = NDArray.fromList([10, 20, 20, 20, 30], [5], DType.int64);
+        final queries = NDArray.fromList([5, 20, 35], [3], DType.int64);
+        expect(
+          searchsorted(sorted, queries, side: SearchSide.left).toList(),
+          equals([0, 1, 5]),
+        );
+        expect(
+          searchsorted(sorted, queries, side: SearchSide.right).toList(),
+          equals([0, 4, 5]),
+        );
+      }),
+    );
+  });
 }

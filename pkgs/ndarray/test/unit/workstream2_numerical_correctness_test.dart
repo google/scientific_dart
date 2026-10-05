@@ -432,31 +432,37 @@ void main() {
     });
 
     group('M4: .npy Load Byte Verification', () {
-      test('corrupted/truncated .npy throws FormatException', () {
-        final tempDir = Directory.systemTemp.createTempSync('npy_test');
-        try {
-          final filePath = '${tempDir.path}/truncated.npy';
-          final file = File(filePath);
+      test(
+        'corrupted/truncated .npy throws FormatException',
+        () {
+          final tempDir = Directory.systemTemp.createTempSync('npy_test');
+          try {
+            final filePath = '${tempDir.path}/truncated.npy';
+            final file = File(filePath);
 
-          // Save a valid NPY array
-          final a = NDArray<Float64>.fromList(
-            [1.0, 2.0, 3.0, 4.0],
-            [4],
-            DType.float64,
-          );
-          save(filePath, a);
+            // Save a valid NPY array
+            final a = NDArray<Float64>.fromList(
+              [1.0, 2.0, 3.0, 4.0],
+              [4],
+              DType.float64,
+            );
+            save(filePath, a);
 
-          // Truncate the file by 8 bytes (incomplete data payload)
-          final bytes = file.readAsBytesSync();
-          final truncatedBytes = bytes.sublist(0, bytes.length - 8);
-          file.writeAsBytesSync(truncatedBytes);
+            // Truncate the file by 8 bytes (incomplete data payload)
+            final bytes = file.readAsBytesSync();
+            final truncatedBytes = bytes.sublist(0, bytes.length - 8);
+            file.writeAsBytesSync(truncatedBytes);
 
-          // Loading the truncated file must throw FormatException
-          expect(() => load(filePath), throwsA(isA<FormatException>()));
-        } finally {
-          tempDir.deleteSync(recursive: true);
-        }
-      });
+            // Loading the truncated file must throw FormatException
+            expect(() => load(filePath), throwsA(isA<FormatException>()));
+          } finally {
+            tempDir.deleteSync(recursive: true);
+          }
+        },
+        skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+            ? 'Uses dart:io File.readAsBytesSync/writeAsBytesSync'
+            : false,
+      );
     });
   });
 }

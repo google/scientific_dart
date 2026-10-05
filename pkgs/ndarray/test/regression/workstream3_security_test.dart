@@ -99,15 +99,22 @@ void main() {
     });
 
     group('C3: .npz Loader Security & Bounds Checks', () {
-      late Directory tempDir;
+      const isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+      Directory? tempDir;
+      late String tempDirPath;
 
       setUp(() {
-        tempDir = Directory.systemTemp.createTempSync('npz_security_test_');
+        if (isWasm) {
+          tempDirPath = '/tmp';
+        } else {
+          tempDir = Directory.systemTemp.createTempSync('npz_security_test_');
+          tempDirPath = tempDir!.path;
+        }
       });
 
       tearDown(() {
-        if (tempDir.existsSync()) {
-          tempDir.deleteSync(recursive: true);
+        if (!isWasm && tempDir != null && tempDir!.existsSync()) {
+          tempDir!.deleteSync(recursive: true);
         }
       });
 
@@ -145,7 +152,7 @@ void main() {
             level: Deflate.NO_COMPRESSION,
           )!;
 
-          final npzFile = File('${tempDir.path}/mismatched_size.npz');
+          final npzFile = File('$tempDirPath/mismatched_size.npz');
           npzFile.writeAsBytesSync(zipBytes, flush: true);
 
           expect(
@@ -161,6 +168,7 @@ void main() {
             ),
           );
         },
+        skip: isWasm ? 'Uses dart:io File.writeAsBytesSync' : false,
       );
 
       test('Normal valid .npz archive loads successfully', () {
@@ -170,7 +178,7 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          final path = '${tempDir.path}/valid.npz';
+          final path = '$tempDirPath/valid.npz';
           savez(path, {'arr': original}, compressed: false);
 
           final loaded = loadz(path);
@@ -180,16 +188,22 @@ void main() {
       });
     });
 
-    group('H13: Archive Checksums & Path Traversal Guards', () {
-      test('Path traversal detection rejects path escapes', () {
-        final baseDir = Directory('/safe/output/dir');
-        final maliciousRelativePath = '../../etc/passwd';
-        final resolved = baseDir.uri
-            .resolve(maliciousRelativePath)
-            .toFilePath();
-        expect(resolved.startsWith(baseDir.path), isFalse);
-      });
-    });
+    group(
+      'H13: Archive Checksums & Path Traversal Guards',
+      () {
+        test('Path traversal detection rejects path escapes', () {
+          final baseDir = Directory('/safe/output/dir');
+          final maliciousRelativePath = '../../etc/passwd';
+          final resolved = baseDir.uri
+              .resolve(maliciousRelativePath)
+              .toFilePath();
+          expect(resolved.startsWith(baseDir.path), isFalse);
+        });
+      },
+      skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+          ? 'Uses dart:io Directory.uri'
+          : false,
+    );
 
     group('H1: Portable Reductions Execution', () {
       test('sum and prod execute accurately on all CPU baselines', () {

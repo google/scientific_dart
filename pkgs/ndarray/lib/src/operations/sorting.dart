@@ -18,6 +18,7 @@ import 'dart:ffi' as ffi;
 import '../ndarray_bindings.dart';
 import '../scratch_arena.dart';
 import '../float16_utils.dart';
+import '../wasm_pointer_lists.dart';
 
 // Standalone operational relative cross-imports
 import 'spacers.dart';
@@ -1964,7 +1965,7 @@ List<NDArray<Int64>> nonzero<T extends DTypeTag>(NDArray<T> a) {
       rank * ffi.sizeOf<ffi.Pointer<ffi.Int64>>(),
     );
     for (var d = 0; d < rank; d++) {
-      outCoords[d] = results[d].pointer.cast<ffi.Int64>();
+      setPointerAt(outCoords, d, results[d].pointer.cast<ffi.Int64>());
     }
 
     native_collect_nonzero_coords(

@@ -216,4 +216,28 @@ void main() {
       });
     },
   );
+
+  group('Half-precision special values through NDArray', () {
+    test('Float16 and BFloat16 preserve signed zero, infinities, and NaN', () {
+      NDArray.scope(() {
+        final f16 = NDArray.fromList(
+          [0.0, -0.0, double.infinity, double.negativeInfinity, double.nan],
+          [5],
+          DType.float16,
+        );
+        expect(f16[[2]].isInfinite && f16[[2]] > 0, isTrue);
+        expect(f16[[3]].isInfinite && f16[[3]] < 0, isTrue);
+        expect(f16[[4]].isNaN, isTrue);
+
+        final bf16 = NDArray.fromList(
+          [1.0, double.infinity, double.nan],
+          [3],
+          DType.bfloat16,
+        );
+        expect(bf16[[0]], closeTo(1.0, 1e-2));
+        expect(bf16[[1]].isInfinite, isTrue);
+        expect(bf16[[2]].isNaN, isTrue);
+      });
+    });
+  });
 }

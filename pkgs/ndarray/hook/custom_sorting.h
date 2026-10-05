@@ -43,6 +43,12 @@ extern "C" {
 void ndarray_set_oom_flag(void);
 int ndarray_consume_oom_flag(void);
 
+/* Test support: counts calls in a process-global atomic (safe to use as a
+ * `NativeFinalizer` callback, which may run on a GC helper thread) and
+ * returns-and-resets the count. */
+void ndarray_test_finalizer_hit(void *token);
+int ndarray_test_consume_finalizer_hits(void);
+
 int64_t unpack_mask_c(const uint8_t *mask_ptr, int64_t size, int64_t stride, int64_t *out_indices);
 int64_t native_count_mask(const uint8_t *mask, int64_t size);
 void native_apply_mask(int dtype, const void *src, const uint8_t *mask, void *dest, int64_t size);

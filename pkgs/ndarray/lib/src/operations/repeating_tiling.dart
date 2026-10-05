@@ -169,72 +169,64 @@ NDArray<T> repeat<T extends DTypeTag>(
     if (inner == 1) {
       switch (src.dtype) {
         case DType.float64:
-          final srcList = src.pointer.cast<ffi.Double>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Double>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Double>();
+          final dstPtr = target.pointer.cast<ffi.Double>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
         case DType.float32:
-          final srcList = src.pointer.cast<ffi.Float>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Float>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Float>();
+          final dstPtr = target.pointer.cast<ffi.Float>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
         case DType.int64:
         case DType.uint64:
-          final srcList = src.pointer.cast<ffi.Int64>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Int64>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Int64>();
+          final dstPtr = target.pointer.cast<ffi.Int64>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
         case DType.int32:
         case DType.uint32:
-          final srcList = src.pointer.cast<ffi.Int32>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Int32>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Int32>();
+          final dstPtr = target.pointer.cast<ffi.Int32>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
@@ -242,76 +234,66 @@ NDArray<T> repeat<T extends DTypeTag>(
         case DType.uint16:
         case DType.float16:
         case DType.bfloat16:
-          final srcList = src.pointer.cast<ffi.Int16>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Int16>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Int16>();
+          final dstPtr = target.pointer.cast<ffi.Int16>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
         case DType.int8:
         case DType.uint8:
         case DType.boolean:
-          final srcList = src.pointer.cast<ffi.Int8>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Int8>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Int8>();
+          final dstPtr = target.pointer.cast<ffi.Int8>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
         case DType.complex64:
-          final srcList = src.pointer.cast<ffi.Int64>().asTypedList(src.size);
-          final dstList = target.pointer.cast<ffi.Int64>().asTypedList(
-            target.size,
-          );
+          final srcPtr = src.pointer.cast<ffi.Int64>();
+          final dstPtr = target.pointer.cast<ffi.Int64>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim;
             var destPos = o * destDim;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final val = srcList[srcBase + i];
+              final val = srcPtr[srcBase + i];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = val;
+                dstPtr[destPos++] = val;
               }
             }
           }
         case DType.complex128:
-          final srcList = src.pointer.cast<ffi.Double>().asTypedList(
-            src.size * 2,
-          );
-          final dstList = target.pointer.cast<ffi.Double>().asTypedList(
-            target.size * 2,
-          );
+          final srcPtr = src.pointer.cast<ffi.Double>();
+          final dstPtr = target.pointer.cast<ffi.Double>();
           for (var o = 0; o < outer; o++) {
             final srcBase = o * dim * 2;
             var destPos = o * destDim * 2;
             for (var i = 0; i < dim; i++) {
               final rep = repsList[i];
               if (rep == 0) continue;
-              final rVal = srcList[srcBase + i * 2];
-              final iVal = srcList[srcBase + i * 2 + 1];
+              final rVal = srcPtr[srcBase + i * 2];
+              final iVal = srcPtr[srcBase + i * 2 + 1];
               for (var r = 0; r < rep; r++) {
-                dstList[destPos++] = rVal;
-                dstList[destPos++] = iVal;
+                dstPtr[destPos++] = rVal;
+                dstPtr[destPos++] = iVal;
               }
             }
           }

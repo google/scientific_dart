@@ -404,12 +404,12 @@ void main() {
         () {
           final bools = [true, false, true, true, false];
           final ptr1 = ScratchArena.copyBools(bools);
-          final list1 = ptr1.asTypedList(bools.length);
+          final list1 = [for (var i = 0; i < bools.length; i++) ptr1[i]];
           expect(list1, [1, 0, 1, 1, 0]);
 
           final arr = NDArray.fromList(bools, [5], DType.boolean);
           final ptr2 = ScratchArena.copyBools(arr.data);
-          final list2 = ptr2.asTypedList(bools.length);
+          final list2 = [for (var i = 0; i < bools.length; i++) ptr2[i]];
           expect(list2, [1, 0, 1, 1, 0]);
         },
       );

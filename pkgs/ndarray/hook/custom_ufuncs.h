@@ -1235,15 +1235,15 @@ void s_trapz_double(const double *y, const int64_t *stridesY, const double *x, i
 void s_trapz_float(const float *y, const int64_t *stridesY, const float *x, int64_t strideX, float dx, float *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_trapz_complex128(const cpx_t *y, const int64_t *stridesY, const double *x, int64_t strideX, double dx, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_trapz_complex64(const cpx_f_t *y, const int64_t *stridesY, const float *x, int64_t strideX, float dx, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
-void s_trapz_complex128_all(const cpx_t *y, const int64_t *stridesY, const cpx_t *x, int64_t strideX, cpx_t dx, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
-void s_trapz_complex64_all(const cpx_f_t *y, const int64_t *stridesY, const cpx_f_t *x, int64_t strideX, cpx_f_t dx, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_trapz_complex128_all(const cpx_t *y, const int64_t *stridesY, const cpx_t *x, int64_t strideX, const cpx_t *dx, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_trapz_complex64_all(const cpx_f_t *y, const int64_t *stridesY, const cpx_f_t *x, int64_t strideX, const cpx_f_t *dx, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 
 void s_gradient_double(const double *src, const int64_t *stridesSrc, const double *x, int64_t strideX, double dx, double *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
 void s_gradient_float(const float *src, const int64_t *stridesSrc, const float *x, int64_t strideX, float dx, float *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
 void s_gradient_complex128(const cpx_t *src, const int64_t *stridesSrc, const double *x, int64_t strideX, double dx, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
 void s_gradient_complex64(const cpx_f_t *src, const int64_t *stridesSrc, const float *x, int64_t strideX, float dx, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
-void s_gradient_complex128_all(const cpx_t *src, const int64_t *stridesSrc, const cpx_t *x, int64_t strideX, cpx_t dx, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
-void s_gradient_complex64_all(const cpx_f_t *src, const int64_t *stridesSrc, const cpx_f_t *x, int64_t strideX, cpx_f_t dx, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
+void s_gradient_complex128_all(const cpx_t *src, const int64_t *stridesSrc, const cpx_t *x, int64_t strideX, const cpx_t *dx, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
+void s_gradient_complex64_all(const cpx_f_t *src, const int64_t *stridesSrc, const cpx_f_t *x, int64_t strideX, const cpx_f_t *dx, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, int edge_order);
 
 /* linspace Grid Intrinsic Kernels */
 void s_linspace_grid_double(const double *start, const int64_t *stridesStart, const double *stop, const int64_t *stridesStop, double *res, const int64_t *stridesRes, double *step, const int64_t *stridesStep, const int64_t *shape, int rank, int axis, int64_t numSamples, int endpoint);
@@ -1490,8 +1490,8 @@ void pad_axis_complex128(
     int rank, int axis,
     int64_t padBefore, int64_t padAfter,
     int mode,
-    cpx_t constantBefore, cpx_t constantAfter,
-    cpx_t endBefore, cpx_t endAfter,
+    const cpx_t *constantBefore, const cpx_t *constantAfter,
+    const cpx_t *endBefore, const cpx_t *endAfter,
     int64_t statLengthBefore, int64_t statLengthAfter
 );
 
@@ -1501,8 +1501,8 @@ void pad_axis_complex64(
     int rank, int axis,
     int64_t padBefore, int64_t padAfter,
     int mode,
-    cpx_f_t constantBefore, cpx_f_t constantAfter,
-    cpx_f_t endBefore, cpx_f_t endAfter,
+    const cpx_f_t *constantBefore, const cpx_f_t *constantAfter,
+    const cpx_f_t *endBefore, const cpx_f_t *endAfter,
     int64_t statLengthBefore, int64_t statLengthAfter
 );
 
@@ -1524,8 +1524,8 @@ int64_t r_median_int64(const int64_t *src, int64_t size);
 int32_t r_median_int32(const int32_t *src, int64_t size);
 int16_t r_median_int16(const int16_t *src, int64_t size);
 uint8_t r_median_uint8(const uint8_t *src, int64_t size);
-cpx_t r_median_complex128(const cpx_t *src, int64_t size);
-cpx_f_t r_median_complex64(const cpx_f_t *src, int64_t size);
+void r_median_complex128(const cpx_t *src, int64_t size, cpx_t *out);
+void r_median_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out);
 
 /* Median axis reductions (strided) */
 void s_median_double(const double *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);
@@ -1868,16 +1868,16 @@ int64_t r_sum_int64(const int64_t *src, int64_t size);
 int32_t r_sum_int32(const int32_t *src, int64_t size);
 uint8_t r_sum_uint8(const uint8_t *src, int64_t size);
 int16_t r_sum_int16(const int16_t *src, int64_t size);
-cpx_t r_sum_complex128(const cpx_t *src, int64_t size);
-cpx_f_t r_sum_complex64(const cpx_f_t *src, int64_t size);
+void r_sum_complex128(const cpx_t *src, int64_t size, cpx_t *out);
+void r_sum_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out);
 
 double r_mean_int64_to_double(const int64_t *src, int64_t size);
 double r_mean_int32_to_double(const int32_t *src, int64_t size);
 double r_mean_uint8_to_double(const uint8_t *src, int64_t size);
 double r_mean_int16_to_double(const int16_t *src, int64_t size);
-cpx_t r_mean_complex128(const cpx_t *src, int64_t size);
-cpx_f_t r_mean_complex64(const cpx_f_t *src, int64_t size);
-cpx_t r_mean_complex64_to_complex128(const cpx_f_t *src, int64_t size);
+void r_mean_complex128(const cpx_t *src, int64_t size, cpx_t *out);
+void r_mean_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out);
+void r_mean_complex64_to_complex128(const cpx_f_t *src, int64_t size, cpx_t *out);
 
 double r_var_int64_to_double(const int64_t *src, int64_t size, int ddof);
 double r_var_int32_to_double(const int32_t *src, int64_t size, int ddof);
@@ -1893,8 +1893,8 @@ int64_t r_prod_int64(const int64_t *src, int64_t size);
 int32_t r_prod_int32(const int32_t *src, int64_t size);
 uint8_t r_prod_uint8(const uint8_t *src, int64_t size);
 int16_t r_prod_int16(const int16_t *src, int64_t size);
-cpx_t r_prod_complex128(const cpx_t *src, int64_t size);
-cpx_f_t r_prod_complex64(const cpx_f_t *src, int64_t size);
+void r_prod_complex128(const cpx_t *src, int64_t size, cpx_t *out);
+void r_prod_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out);
 
 void s_prod_double(const double *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);
 void s_prod_float(const float *src, const int64_t *stridesSrc, float *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);

@@ -273,4 +273,28 @@ void main() {
       expect(res.toList(), [11.0, 22.0, 33.0, 44.0]);
     });
   });
+
+  group('Integer division by zero under where: masks', () {
+    test(
+      'floorDivide/mod by zero throw, but masked-out zero divisors do not',
+      () {
+        NDArray.scope(() {
+          final a = NDArray.fromList([10, 20, 30], [3], DType.int64);
+          final bZero = NDArray.fromList([2, 0, 5], [3], DType.int64);
+          expect(() => floorDivide(a, bZero), throwsUnsupportedError);
+          expect(() => mod(a, bZero), throwsUnsupportedError);
+
+          // When masked out by where:, a zero divisor does not throw.
+          final mask = NDArray.fromList(
+            [true, false, true],
+            [3],
+            DType.boolean,
+          );
+          final out = NDArray.zeros([3], DType.int64);
+          floorDivide(a, bZero, where: mask, out: out);
+          expect(out.toList(), equals([5, 0, 6]));
+        });
+      },
+    );
+  });
 }

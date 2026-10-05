@@ -69,6 +69,10 @@ bool _cpuChecked = false;
 @internal
 void ensureCpuSupported() {
   if (_cpuChecked) return;
+  if (const bool.fromEnvironment('dart.tool.dart2wasm')) {
+    _cpuChecked = true;
+    return;
+  }
   final int requiredFeatures;
   final int actualFeatures;
   try {

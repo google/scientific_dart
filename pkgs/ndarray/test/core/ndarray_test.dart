@@ -1722,4 +1722,25 @@ void main() {
       }),
     );
   });
+
+  group('Empty arrays', () {
+    test(
+      'shapes [0], [3, 0], [0, 4, 2]: properties, transpose, astype, NDIter',
+      () => NDArray.scope(() {
+        final e1 = NDArray.zeros([0], DType.float64);
+        final e2 = NDArray.zeros([3, 0], DType.int32);
+        final e3 = NDArray.ones([0, 4, 2], DType.complex128);
+
+        expect(e1.size, equals(0));
+        expect(e1.toList(), isEmpty);
+        expect(e2.size, equals(0));
+        expect(e2.transposed.shape, equals([0, 3]));
+        expect(e3.size, equals(0));
+        expect(e1.astype(DType.int64).shape, equals([0]));
+
+        final it = NDIter(e2);
+        expect(it.moveNext(), isFalse);
+      }),
+    );
+  });
 }

@@ -38,6 +38,13 @@
 #define POCKETFFT_EXPORT extern "C" __attribute__((visibility("default")))
 #endif
 
+#if defined(__wasi__)
+// wasi-libc has no `__cxa_thread_atexit`, which the `thread_local` plan
+// caches below would otherwise pull in. The WASI build is single-threaded and
+// the process-level teardown never runs destructors, so a no-op is correct.
+extern "C" int __cxa_thread_atexit(void (*)(void*), void*, void*) { return 0; }
+#endif
+
 typedef struct {
   double r;
   double i;
@@ -98,11 +105,15 @@ POCKETFFT_EXPORT kiss_fft_cfg kiss_fft_alloc(
   if (nfft <= 0) {
     return nullptr;
   }
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     (void)get_c_plan(static_cast<size_t>(nfft));
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
     return nullptr;
   }
+#endif
 
   const size_t memneeded = sizeof(struct kiss_fft_state);
   kiss_fft_cfg st = nullptr;
@@ -130,7 +141,9 @@ POCKETFFT_EXPORT void kiss_fft_stride(
       fin_stride <= 0) {
     return;
   }
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     const size_t n = static_cast<size_t>(cfg->nfft);
     const size_t stride = static_cast<size_t>(fin_stride);
     const auto& plan = get_c_plan(n);
@@ -161,8 +174,10 @@ POCKETFFT_EXPORT void kiss_fft_stride(
       plan.exec(tmp.data(), 1.0, forward);
       std::memcpy(fout, tmp.data(), n * sizeof(kiss_fft_cpx));
     }
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
   }
+#endif
 }
 
 POCKETFFT_EXPORT void kiss_fft(
@@ -190,11 +205,15 @@ POCKETFFT_EXPORT kiss_fftr_cfg kiss_fftr_alloc(
   if (nfft <= 0) {
     return nullptr;
   }
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     (void)get_r_plan(static_cast<size_t>(nfft));
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
     return nullptr;
   }
+#endif
 
   const size_t memneeded = sizeof(struct kiss_fftr_state);
   kiss_fftr_cfg st = nullptr;
@@ -221,7 +240,9 @@ POCKETFFT_EXPORT void kiss_fftr(
       cfg->nfft <= 0 || cfg->inverse != 0) {
     return;
   }
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     const size_t n = static_cast<size_t>(cfg->nfft);
     const auto& plan = get_r_plan(n);
 
@@ -245,8 +266,10 @@ POCKETFFT_EXPORT void kiss_fftr(
     }
     freqdata[0].r = buf[0];
     freqdata[0].i = 0.0;
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
   }
+#endif
 }
 
 POCKETFFT_EXPORT void kiss_fftri(
@@ -257,7 +280,9 @@ POCKETFFT_EXPORT void kiss_fftri(
       cfg->nfft <= 0 || cfg->inverse == 0) {
     return;
   }
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     const size_t n = static_cast<size_t>(cfg->nfft);
     const auto& plan = get_r_plan(n);
 
@@ -293,8 +318,10 @@ POCKETFFT_EXPORT void kiss_fftri(
       plan.exec(tmp.data(), 1.0, false);
       std::memcpy(timedata, tmp.data(), n * sizeof(double));
     }
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
   }
+#endif
 }
 
 POCKETFFT_EXPORT kiss_fftnd_cfg kiss_fftnd_alloc(
@@ -312,13 +339,17 @@ POCKETFFT_EXPORT kiss_fftnd_cfg kiss_fftnd_alloc(
     }
   }
 
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     for (int i = 0; i < ndims; ++i) {
       (void)get_c_plan(static_cast<size_t>(dims[i]));
     }
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
     return nullptr;
   }
+#endif
 
   const size_t memneeded = sizeof(struct kiss_fftnd_state) +
       static_cast<size_t>(ndims - 1) * sizeof(int64_t);
@@ -348,7 +379,9 @@ POCKETFFT_EXPORT void kiss_fftnd(
   if (cfg == nullptr || fin == nullptr || fout == nullptr || cfg->ndims <= 0) {
     return;
   }
+#if POCKETFFT_HAVE_EXCEPTIONS
   try {
+#endif
     const size_t ndims = static_cast<size_t>(cfg->ndims);
     pocketfft::shape_t shape(ndims);
     pocketfft::stride_t stride(ndims);
@@ -378,6 +411,8 @@ POCKETFFT_EXPORT void kiss_fftnd(
         reinterpret_cast<const std::complex<double>*>(fin),
         reinterpret_cast<std::complex<double>*>(fout),
         1.0);
+#if POCKETFFT_HAVE_EXCEPTIONS
   } catch (...) {
   }
+#endif
 }

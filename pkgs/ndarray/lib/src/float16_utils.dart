@@ -183,9 +183,9 @@ final class Float16Utils {
   }
 }
 
-/// A Dart [List] view wrapping a [Uint16List] containing IEEE 754 Float16 values.
+/// A Dart [List] view wrapping a 16-bit integer list containing IEEE 754 Float16 values.
 final class Float16List with ListMixin<double> implements List<double> {
-  final Uint16List _buffer;
+  final List<int> _buffer;
 
   /// Creates a [Float16List] view backed by [_buffer].
   Float16List(this._buffer);
@@ -206,9 +206,9 @@ final class Float16List with ListMixin<double> implements List<double> {
   }
 }
 
-/// A Dart [List] view wrapping a [Uint16List] containing BFloat16 values.
+/// A Dart [List] view wrapping a 16-bit integer list containing BFloat16 values.
 final class BFloat16List with ListMixin<double> implements List<double> {
-  final Uint16List _buffer;
+  final List<int> _buffer;
 
   /// Creates a [BFloat16List] view backed by [_buffer].
   BFloat16List(this._buffer);

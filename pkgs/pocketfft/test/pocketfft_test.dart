@@ -321,4 +321,156 @@ void main() {
       },
     );
   });
+
+  group('Raw transform spectra, ND execution, and plan keys', () {
+    test('1D complex forward and inverse kiss_fft roundtrip', () {
+      const n = 8;
+      final fwdCfg = kiss_fft_alloc(n, 0, ffi.nullptr, ffi.nullptr);
+      final invCfg = kiss_fft_alloc(n, 1, ffi.nullptr, ffi.nullptr);
+      final fin = calloc<kiss_fft_cpx>(n);
+      final fout = calloc<kiss_fft_cpx>(n);
+      final frec = calloc<kiss_fft_cpx>(n);
+      try {
+        expect(fwdCfg.address, isNot(0));
+        expect(invCfg.address, isNot(0));
+        for (var i = 0; i < n; i++) {
+          fin[i].r = math.cos(2.0 * math.pi * i / n);
+          fin[i].i = math.sin(2.0 * math.pi * i / n);
+        }
+        kiss_fft(fwdCfg, fin, fout);
+        // Pure complex exponential e^{i 2pi k / N} at k=1 has spike N at bin 1
+        expect(fout[1].r, closeTo(n.toDouble(), 1e-12));
+        expect(fout[1].i, closeTo(0.0, 1e-12));
+        for (var k = 0; k < n; k++) {
+          if (k != 1) {
+            expect(fout[k].r, closeTo(0.0, 1e-12));
+            expect(fout[k].i, closeTo(0.0, 1e-12));
+          }
+        }
+        kiss_fft(invCfg, fout, frec);
+        for (var i = 0; i < n; i++) {
+          expect(frec[i].r / n, closeTo(fin[i].r, 1e-12));
+          expect(frec[i].i / n, closeTo(fin[i].i, 1e-12));
+        }
+      } finally {
+        calloc.free(fwdCfg);
+        calloc.free(invCfg);
+        calloc.free(fin);
+        calloc.free(fout);
+        calloc.free(frec);
+      }
+    });
+
+    test('1D real kiss_fftr spectrum amplitudes and kiss_fftri roundtrip', () {
+      const n = 16;
+      const bins = n ~/ 2 + 1;
+      final fwdCfg = kiss_fftr_alloc(n, 0, ffi.nullptr, ffi.nullptr);
+      final invCfg = kiss_fftr_alloc(n, 1, ffi.nullptr, ffi.nullptr);
+      final timeIn = calloc<ffi.Double>(n);
+      final freqOut = calloc<kiss_fft_cpx>(bins);
+      final timeRec = calloc<ffi.Double>(n);
+      try {
+        for (var i = 0; i < n; i++) {
+          timeIn[i] = 2.0 + 3.0 * math.cos(2.0 * math.pi * 2 * i / n);
+        }
+        kiss_fftr(fwdCfg, timeIn, freqOut);
+        // DC bin = 2.0 * 16 = 32.0; bin 2 = 3.0 * 16 / 2 = 24.0
+        expect(freqOut[0].r, closeTo(32.0, 1e-11));
+        expect(freqOut[2].r, closeTo(24.0, 1e-11));
+        kiss_fftri(invCfg, freqOut, timeRec);
+        for (var i = 0; i < n; i++) {
+          expect(timeRec[i] / n, closeTo(timeIn[i], 1e-11));
+        }
+      } finally {
+        calloc.free(fwdCfg);
+        calloc.free(invCfg);
+        calloc.free(timeIn);
+        calloc.free(freqOut);
+        calloc.free(timeRec);
+      }
+    });
+
+    test('2D complex kiss_fftnd DC component and roundtrip', () {
+      const rows = 4;
+      const cols = 4;
+      const total = rows * cols;
+      final dims = calloc<ffi.Int64>(2);
+      dims[0] = rows;
+      dims[1] = cols;
+      final fwdCfg = kiss_fftnd_alloc(dims, 2, 0, ffi.nullptr, ffi.nullptr);
+      final invCfg = kiss_fftnd_alloc(dims, 2, 1, ffi.nullptr, ffi.nullptr);
+      final fin = calloc<kiss_fft_cpx>(total);
+      final fout = calloc<kiss_fft_cpx>(total);
+      final frec = calloc<kiss_fft_cpx>(total);
+      try {
+        for (var i = 0; i < total; i++) {
+          fin[i].r = (i + 1).toDouble();
+          fin[i].i = -0.5 * i;
+        }
+        kiss_fftnd(fwdCfg, fin, fout);
+        // DC component equals sum of inputs
+        expect(fout[0].r, closeTo(total * (total + 1) / 2.0, 1e-10));
+        kiss_fftnd(invCfg, fout, frec);
+        for (var i = 0; i < total; i++) {
+          expect(frec[i].r / total, closeTo(fin[i].r, 1e-10));
+          expect(frec[i].i / total, closeTo(fin[i].i, 1e-10));
+        }
+      } finally {
+        calloc.free(dims);
+        calloc.free(fwdCfg);
+        calloc.free(invCfg);
+        calloc.free(fin);
+        calloc.free(fout);
+        calloc.free(frec);
+      }
+    });
+
+    test('Length-1 trivial 1D complex and real transforms pass through', () {
+      final cPlan = getCachedKissFFTPlan(1);
+      final rPlan = getCachedKissFFTRPlan(1);
+      final cin = calloc<kiss_fft_cpx>(1);
+      final cout = calloc<kiss_fft_cpx>(1);
+      final rin = calloc<ffi.Double>(1);
+      final rout = calloc<kiss_fft_cpx>(1);
+      try {
+        cin[0].r = 7.5;
+        cin[0].i = -3.25;
+        kiss_fft(cPlan, cin, cout);
+        expect(cout[0].r, closeTo(7.5, 1e-12));
+        expect(cout[0].i, closeTo(-3.25, 1e-12));
+
+        rin[0] = -11.0;
+        kiss_fftr(rPlan, rin, rout);
+        expect(rout[0].r, closeTo(-11.0, 1e-12));
+        expect(rout[0].i, closeTo(0.0, 1e-12));
+      } finally {
+        calloc.free(cin);
+        calloc.free(cout);
+        calloc.free(rin);
+        calloc.free(rout);
+      }
+    });
+
+    test('ComplexNDPlanKey equality and hashCode, capacity shrink evicts', () {
+      final k1 = ComplexNDPlanKey([4, 8], isInverse: false);
+      final k2 = ComplexNDPlanKey([4, 8], isInverse: false);
+      final k3 = ComplexNDPlanKey([4, 8], isInverse: true);
+      expect(k1, equals(k2));
+      expect(k1.hashCode, equals(k2.hashCode));
+      expect(k1, isNot(equals(k3)));
+
+      final cache = PocketFFTPlanCache(maxCapacity: 4);
+      try {
+        cache.getPlan(4);
+        cache.getPlan(8);
+        cache.getPlan(16);
+        cache.getPlan(32);
+        expect(cache.size, equals(4));
+        cache.maxCapacity = 1;
+        expect(cache.size, equals(1));
+      } finally {
+        cache.dispose();
+      }
+    });
+  });
 }

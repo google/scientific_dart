@@ -15,8 +15,7 @@
 import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:io';
-import 'package:ffi/ffi.dart';
+import 'dart:io' show FileSystemException, OSError;
 import 'package:meta/meta.dart';
 import '../ndarray.dart';
 import '../ndarray_extensions_bindings.dart';
@@ -26,9 +25,98 @@ import 'dart:ffi' as ffi;
 ffi.Pointer<ffi.Char> _toNativeUtf8InScratchArena(String s) {
   final units = utf8.encode(s);
   final ptr = ScratchArena.allocate<ffi.Uint8>(units.length + 1);
-  ptr.asTypedList(units.length).setAll(0, units);
+  for (var i = 0; i < units.length; i++) {
+    ptr[i] = units[i];
+  }
   ptr[units.length] = 0;
   return ptr.cast<ffi.Char>();
+}
+
+String _fromNativeUtf8(ffi.Pointer<ffi.Char> ptr) {
+  final u8 = ptr.cast<ffi.Uint8>();
+  var len = 0;
+  while (u8[len] != 0) {
+    len++;
+  }
+  final units = Uint8List(len);
+  for (var i = 0; i < len; i++) {
+    units[i] = u8[i];
+  }
+  return utf8.decode(units, allowMalformed: true);
+}
+
+/// Builds a [FileSystemException] for [filepath] whose [OSError] carries the
+/// `errno` and message of the most recent failed native file operation.
+///
+/// Must be called synchronously after the failing native call, before any
+/// other file operation on this isolate.
+FileSystemException _nativeFileException(String message, String filepath) {
+  final marker = ScratchArena.marker;
+  try {
+    const capacity = 256;
+    final buffer = ScratchArena.allocate<ffi.Uint8>(capacity);
+    final errorCode = native_file_last_error(buffer, capacity);
+    final osMessage = _fromNativeUtf8(buffer.cast<ffi.Char>());
+    return FileSystemException(
+      message,
+      filepath,
+      OSError(osMessage, errorCode),
+    );
+  } finally {
+    ScratchArena.reset(marker);
+  }
+}
+
+/// Reads exactly [count] bytes at byte [offset] of the open file [handle]
+/// into [dest], using [pOutRead] as the native out-parameter.
+///
+/// Throws a [FormatException] if the file ends before [count] bytes were
+/// read, and a [FileSystemException] if the read itself fails.
+void _readExact(
+  ffi.Pointer<ffi.Void> handle,
+  String filepath,
+  int offset,
+  int count,
+  ffi.Pointer<ffi.Void> dest,
+  ffi.Pointer<ffi.Int64> pOutRead,
+) {
+  final status = native_file_handle_read(handle, offset, count, dest, pOutRead);
+  if (status != 0) {
+    throw _nativeFileException('Failed to read .npy file', filepath);
+  }
+  if (pOutRead.value != count) {
+    throw FormatException(
+      'Unexpected EOF while reading NPY stream: expected $count bytes, got ${pOutRead.value}',
+    );
+  }
+}
+
+void _writePointerAt<T extends ffi.NativeType>(
+  ffi.Pointer<ffi.Pointer<T>> array,
+  int index,
+  ffi.Pointer<T> value,
+) {
+  if (ffi.sizeOf<ffi.IntPtr>() == 4) {
+    array.cast<ffi.Uint32>()[index] = value.address;
+  } else {
+    array.cast<ffi.Uint64>()[index] = value.address;
+  }
+}
+
+void _writeSizeAt(ffi.Pointer<ffi.Size> array, int index, int value) {
+  if (ffi.sizeOf<ffi.Size>() == 4) {
+    array.cast<ffi.Uint32>()[index] = value;
+  } else {
+    array.cast<ffi.Uint64>()[index] = value;
+  }
+}
+
+int _readSize(ffi.Pointer<ffi.Size> ptr) {
+  if (ffi.sizeOf<ffi.Size>() == 4) {
+    return ptr.cast<ffi.Uint32>().value;
+  } else {
+    return ptr.cast<ffi.Uint64>().value;
+  }
 }
 
 final _descrRegex = RegExp(r'''['"]descr['"]:\s*['"]([^'"]+)['"]''');
@@ -103,10 +191,6 @@ void save<T extends DTypeTag>(String filepath, NDArray<T> a) {
   if (a.isDisposed) {
     throw StateError('Cannot save a disposed NDArray.');
   }
-  final file = File(filepath);
-  if (!file.parent.existsSync()) {
-    file.parent.createSync(recursive: true);
-  }
 
   // Re-orient to contiguous array if a is a strided view to ensure binary file sequentiality
   final effectiveArray = a.isContiguous ? a : a.copy();
@@ -137,75 +221,68 @@ void save<T extends DTypeTag>(String filepath, NDArray<T> a) {
     final padCount = paddedHeaderLen - headerStr.length - 1;
     final paddedHeader = '$headerStr${' ' * padCount}\n';
 
-    final raf = file.openSync(mode: FileMode.write);
-
+    final marker = ScratchArena.marker;
     try {
-      // 1. Magic string prefix
-      raf.writeFromSync(const [
-        0x93,
-        0x4e,
-        0x55,
-        0x4d,
-        0x50,
-        0x59,
-      ]); // \x93NUMPY
-      final headerBytes = Uint8List.fromList(paddedHeader.codeUnits);
-      if (headerBytes.length > 65535 || isVersion2) {
-        // Version 2.0 bytes
-        raf.writeFromSync(const [0x02, 0x00]);
-        // Little-endian 4-byte unsigned int header length
-        final headerLenBytes = Uint8List(4);
-        ByteData.view(
-          headerLenBytes.buffer,
-        ).setUint32(0, headerBytes.length, Endian.little);
-        raf.writeFromSync(headerLenBytes);
+      final headerCodeUnits = paddedHeader.codeUnits;
+      final hLen = headerCodeUnits.length;
+      final useV2 = hLen > 65535 || isVersion2;
+      final actualPrefixLen = useV2 ? 12 : 10;
+      final totalHeaderBytes = actualPrefixLen + hLen;
+      final hBuf = ScratchArena.allocate<ffi.Uint8>(totalHeaderBytes);
+      hBuf[0] = 0x93;
+      hBuf[1] = 0x4e;
+      hBuf[2] = 0x55;
+      hBuf[3] = 0x4d;
+      hBuf[4] = 0x50;
+      hBuf[5] = 0x59;
+      if (useV2) {
+        hBuf[6] = 0x02;
+        hBuf[7] = 0x00;
+        hBuf[8] = hLen & 0xFF;
+        hBuf[9] = (hLen >> 8) & 0xFF;
+        hBuf[10] = (hLen >> 16) & 0xFF;
+        hBuf[11] = (hLen >> 24) & 0xFF;
+        for (var j = 0; j < hLen; j++) {
+          hBuf[12 + j] = headerCodeUnits[j];
+        }
       } else {
-        // Version 1.0 bytes
-        raf.writeFromSync(const [0x01, 0x00]);
-        // Little-endian 2-byte unsigned short header length
-        final headerLenBytes = Uint8List(2);
-        ByteData.view(
-          headerLenBytes.buffer,
-        ).setUint16(0, headerBytes.length, Endian.little);
-        raf.writeFromSync(headerLenBytes);
+        hBuf[6] = 0x01;
+        hBuf[7] = 0x00;
+        hBuf[8] = hLen & 0xFF;
+        hBuf[9] = (hLen >> 8) & 0xFF;
+        for (var j = 0; j < hLen; j++) {
+          hBuf[10 + j] = headerCodeUnits[j];
+        }
       }
 
-      // 4. Write ASCII header dictionary
-      raf.writeFromSync(headerBytes);
-
-      // 5. Zero-Copy Raw C-Heap Bytes block dump!
       final elementCount = effectiveArray.shape.isEmpty
           ? 1
           : effectiveArray.shape.reduce((x, y) => x * y);
       final byteSize = elementCount * effectiveArray.dtype.byteWidth;
-      final byteView = effectiveArray.pointer.cast<ffi.Uint8>().asTypedList(
+      final cFilepath = _toNativeUtf8InScratchArena(filepath);
+      final status = native_file_write_all(
+        cFilepath,
+        hBuf,
+        totalHeaderBytes,
+        effectiveArray.pointer.cast<ffi.Void>(),
         byteSize,
       );
-      raf.writeFromSync(byteView);
+      if (status != 0) {
+        throw _nativeFileException(
+          status == -1
+              ? 'Cannot open .npy file for writing'
+              : 'Failed to write .npy file',
+          filepath,
+        );
+      }
     } finally {
-      raf.closeSync();
+      ScratchArena.reset(marker);
     }
   } finally {
     if (!identical(effectiveArray, a)) {
       effectiveArray.dispose();
     }
   }
-}
-
-Uint8List _readExactSync(RandomAccessFile raf, int count) {
-  final buffer = Uint8List(count);
-  var totalRead = 0;
-  while (totalRead < count) {
-    final n = raf.readIntoSync(buffer, totalRead, count);
-    if (n <= 0) break;
-    totalRead += n;
-  }
-  if (totalRead != count) {
-    throw FormatException(
-      'Unexpected EOF while reading NPY stream: expected $count bytes, got $totalRead',
-    );
-  }
-  return buffer;
 }
 
 /// Internal header information parsed from a NumPy `.npy` header dictionary.
@@ -289,120 +366,168 @@ Uint8List _readExactSync(RandomAccessFile raf, int count) {
 /// Refer to the [NumPy NPY Format Specification](https://numpy.org/doc/stable/reference/generated/numpy.lib.format.html)
 /// for details on the binary format.
 NDArray<DTypeTag> load(String filepath) {
-  final file = File(filepath);
-  if (!file.existsSync()) {
-    throw FileSystemException('File not found for load', filepath);
-  }
-
-  final raf = file.openSync(mode: FileMode.read);
-
+  final marker = ScratchArena.marker;
   try {
-    // 1. Check magic prefix
-    final magic = _readExactSync(raf, 6);
-    if (magic[0] != 0x93 ||
-        magic[1] != 0x4e ||
-        magic[2] != 0x55 ||
-        magic[3] != 0x4d ||
-        magic[4] != 0x50 ||
-        magic[5] != 0x59) {
-      throw FormatException('Invalid NumPy .npy binary file signature');
+    final cFilepath = _toNativeUtf8InScratchArena(filepath);
+    final handle = native_file_open_read(cFilepath);
+    if (handle.address == 0) {
+      throw _nativeFileException('Cannot open .npy file for reading', filepath);
     }
-
-    // 2. Read version
-    final version = _readExactSync(raf, 2);
-    final majorVersion = version[0];
-    final minorVersion = version[1];
-    if (majorVersion != 1 && majorVersion != 2 && majorVersion != 3) {
-      throw FormatException(
-        'Unsupported .npy format version: $majorVersion.$minorVersion',
-      );
-    }
-
-    // 3. Read header length
-    const maxNpyHeaderBytes = 1024 * 1024;
-    final int headerLen;
-    if (majorVersion >= 2) {
-      final lenBytes = _readExactSync(raf, 4);
-      headerLen = ByteData.sublistView(lenBytes).getUint32(0, Endian.little);
-    } else {
-      final lenBytes = _readExactSync(raf, 2);
-      headerLen = ByteData.sublistView(lenBytes).getUint16(0, Endian.little);
-    }
-    if (headerLen > maxNpyHeaderBytes) {
-      throw FormatException(
-        'NPY header length ($headerLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
-      );
-    }
-
-    // 4. Read ASCII/UTF-8 Header dictionary
-    final headerBytes = _readExactSync(raf, headerLen);
-    final headerStr = utf8.decode(headerBytes, allowMalformed: true);
-
-    final (:dtype, :fortranOrder, :shape) = parseNpyHeader(headerStr);
-
-    // 5. Allocate matching NDArray with target layout strategies
-    final elementCount = checkTotalSize(shape);
-    if (elementCount > 0x7fffffffffffffff ~/ dtype.byteWidth) {
-      throw ArgumentError.value(
-        shape,
-        'shape',
-        'Must not result in byte size overflowing 64-bit integer',
-      );
-    }
-    final byteSize = elementCount * dtype.byteWidth;
-    final remainingBytes = raf.lengthSync() - raf.positionSync();
-    if (remainingBytes < byteSize) {
-      throw FormatException(
-        'Unexpected EOF while reading NPY payload: expected $byteSize bytes, got $remainingBytes',
-      );
-    }
-
-    List<int>? strides;
-    // Wire Zero-Copy Column-Major Fortran strides if the file demands it!
-    if (fortranOrder && shape.length > 1) {
-      final fStrides = List<int>.filled(shape.length, 0);
-      var stride = 1;
-      for (var i = 0; i < shape.length; i++) {
-        fStrides[i] = stride;
-        final dim = shape[i];
-        if (stride != 0 && dim > 0 && stride > 0x7fffffffffffffff ~/ dim) {
-          throw ArgumentError.value(
-            shape,
-            'shape',
-            'Must not result in Fortran-contiguous stride overflowing 64-bit integer',
-          );
-        }
-        stride *= dim;
-      }
-      strides = fStrides;
-    }
-
-    final result = NDArray.create(shape, dtype, strides: strides);
-
-    // 6. Zero-Copy direct stream file read straight into C Heap pointers!
     try {
-      final byteView = result.pointer.cast<ffi.Uint8>().asTypedList(byteSize);
-      var totalRead = 0;
-      while (totalRead < byteSize) {
-        final bytesRead = raf.readIntoSync(byteView, totalRead, byteSize);
-        if (bytesRead <= 0) {
-          break;
-        }
-        totalRead += bytesRead;
-      }
-      if (totalRead != byteSize) {
-        throw FormatException(
-          'Unexpected EOF while reading NPY payload: expected $byteSize bytes, got $totalRead',
+      final fileSize = native_file_handle_size(handle);
+      if (fileSize < 0) {
+        throw _nativeFileException(
+          'Cannot determine size of .npy file',
+          filepath,
         );
       }
-    } catch (_) {
-      result.dispose();
-      rethrow;
-    }
+      final pOutRead = ScratchArena.allocate<ffi.Int64>(
+        ffi.sizeOf<ffi.Int64>(),
+      );
 
-    return result;
+      // 1. Fixed-size prefix: magic (6), version (2), header length (2 for
+      // format 1.0, 4 for 2.0 and 3.0). Read as much of it as the file has.
+      const maxPrefixLen = 12;
+      final prefixBuf = ScratchArena.allocate<ffi.Uint8>(maxPrefixLen);
+      final availablePrefix = math.min(maxPrefixLen, fileSize);
+      _readExact(
+        handle,
+        filepath,
+        0,
+        availablePrefix,
+        prefixBuf.cast<ffi.Void>(),
+        pOutRead,
+      );
+      void requirePrefix(int needed) {
+        if (availablePrefix < needed) {
+          throw FormatException(
+            'Unexpected EOF while reading NPY stream: expected $needed bytes, got $availablePrefix',
+          );
+        }
+      }
+
+      requirePrefix(6);
+      if (prefixBuf[0] != 0x93 ||
+          prefixBuf[1] != 0x4e ||
+          prefixBuf[2] != 0x55 ||
+          prefixBuf[3] != 0x4d ||
+          prefixBuf[4] != 0x50 ||
+          prefixBuf[5] != 0x59) {
+        throw FormatException('Invalid NumPy .npy binary file signature');
+      }
+
+      requirePrefix(8);
+      final majorVersion = prefixBuf[6];
+      final minorVersion = prefixBuf[7];
+      if (majorVersion != 1 && majorVersion != 2 && majorVersion != 3) {
+        throw FormatException(
+          'Unsupported .npy format version: $majorVersion.$minorVersion',
+        );
+      }
+
+      const maxNpyHeaderBytes = 1024 * 1024;
+      final int headerLen;
+      final int prefixLen;
+      if (majorVersion >= 2) {
+        prefixLen = 12;
+        requirePrefix(prefixLen);
+        headerLen =
+            prefixBuf[8] |
+            (prefixBuf[9] << 8) |
+            (prefixBuf[10] << 16) |
+            (prefixBuf[11] << 24);
+      } else {
+        prefixLen = 10;
+        requirePrefix(prefixLen);
+        headerLen = prefixBuf[8] | (prefixBuf[9] << 8);
+      }
+      if (headerLen < 0 || headerLen > maxNpyHeaderBytes) {
+        throw FormatException(
+          'NPY header length ($headerLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
+        );
+      }
+      final dataOffset = prefixLen + headerLen;
+
+      // 2. ASCII/UTF-8 header dictionary.
+      final headerBuf = ScratchArena.allocate<ffi.Uint8>(
+        math.max(1, headerLen),
+      );
+      _readExact(
+        handle,
+        filepath,
+        prefixLen,
+        headerLen,
+        headerBuf.cast<ffi.Void>(),
+        pOutRead,
+      );
+      final headerBytes = Uint8List(headerLen);
+      for (var i = 0; i < headerLen; i++) {
+        headerBytes[i] = headerBuf[i];
+      }
+      final headerStr = utf8.decode(headerBytes, allowMalformed: true);
+
+      final (:dtype, :fortranOrder, :shape) = parseNpyHeader(headerStr);
+
+      // 3. Allocate matching NDArray with target layout strategies
+      final elementCount = checkTotalSize(shape);
+      if (elementCount > 0x7fffffffffffffff ~/ dtype.byteWidth) {
+        throw ArgumentError.value(
+          shape,
+          'shape',
+          'Must not result in byte size overflowing 64-bit integer',
+        );
+      }
+      final byteSize = elementCount * dtype.byteWidth;
+      final remainingBytes = fileSize - dataOffset;
+      if (remainingBytes < byteSize) {
+        throw FormatException(
+          'Unexpected EOF while reading NPY payload: expected $byteSize bytes, got $remainingBytes',
+        );
+      }
+
+      List<int>? strides;
+      // Wire Zero-Copy Column-Major Fortran strides if the file demands it!
+      if (fortranOrder && shape.length > 1) {
+        final fStrides = List<int>.filled(shape.length, 0);
+        var stride = 1;
+        for (var i = 0; i < shape.length; i++) {
+          fStrides[i] = stride;
+          final dim = shape[i];
+          if (stride != 0 && dim > 0 && stride > 0x7fffffffffffffff ~/ dim) {
+            throw ArgumentError.value(
+              shape,
+              'shape',
+              'Must not result in Fortran-contiguous stride overflowing 64-bit integer',
+            );
+          }
+          stride *= dim;
+        }
+        strides = fStrides;
+      }
+
+      final result = NDArray.create(shape, dtype, strides: strides);
+
+      // 4. Payload straight into the array's native buffer.
+      try {
+        _readExact(
+          handle,
+          filepath,
+          dataOffset,
+          byteSize,
+          result.pointer.cast<ffi.Void>(),
+          pOutRead,
+        );
+      } catch (_) {
+        result.dispose();
+        rethrow;
+      }
+
+      return result;
+    } finally {
+      native_file_close(handle);
+    }
   } finally {
-    raf.closeSync();
+    ScratchArena.reset(marker);
   }
 }
 
@@ -447,11 +572,6 @@ void savez(
     }
   }
 
-  final file = File(filepath);
-  if (!file.parent.existsSync()) {
-    file.parent.createSync(recursive: true);
-  }
-
   final numArrays = arrays.length;
   final toDispose = <NDArray<DTypeTag>>[];
 
@@ -485,7 +605,7 @@ void savez(
       }
 
       final entryName = '${entry.key}.npy';
-      cNames[idx] = _toNativeUtf8InScratchArena(entryName);
+      _writePointerAt(cNames, idx, _toNativeUtf8InScratchArena(entryName));
 
       final descr = effectiveArray.dtype.npyDescriptor;
       final shapeStr = effectiveArray.shape.length == 1
@@ -544,16 +664,16 @@ void savez(
         }
       }
 
-      cHeaderBytes[idx] = hBuf;
-      cHeaderLens[idx] = totalHeaderBytes;
+      _writePointerAt(cHeaderBytes, idx, hBuf);
+      _writeSizeAt(cHeaderLens, idx, totalHeaderBytes);
 
       final elementCount = effectiveArray.shape.isEmpty
           ? 1
           : effectiveArray.shape.reduce((x, y) => x * y);
       final byteSize = elementCount * effectiveArray.dtype.byteWidth;
 
-      cDataPtrs[idx] = effectiveArray.pointer.cast<ffi.Void>();
-      cDataLens[idx] = byteSize;
+      _writePointerAt(cDataPtrs, idx, effectiveArray.pointer.cast<ffi.Void>());
+      _writeSizeAt(cDataLens, idx, byteSize);
       idx++;
     }
 
@@ -571,6 +691,9 @@ void savez(
       compressLevel,
     );
 
+    if (status == -2) {
+      throw _nativeFileException('Cannot open .npz file for writing', filepath);
+    }
     if (status != 0) {
       throw FormatException(
         'Failed to encode .npz zip archive format bytes (error code: $status)',
@@ -611,14 +734,16 @@ void savez(
 /// Refer to the [NumPy load reference](https://numpy.org/doc/stable/reference/generated/numpy.load.html)
 /// and [ZIP format details](https://en.wikipedia.org/wiki/ZIP_(file_format)) for additional information.
 Map<String, NDArray<DTypeTag>> loadz(String filepath) {
-  final file = File(filepath);
-  if (!file.existsSync()) {
-    throw FileSystemException('File not found for loadz npz', filepath);
-  }
-
   final marker = ScratchArena.marker;
   try {
     final cFilepath = _toNativeUtf8InScratchArena(filepath);
+    // Probe open so that "cannot open" is reported as a FileSystemException
+    // with the OS error, distinct from a FormatException for a corrupt archive.
+    final probe = native_file_open_read(cFilepath);
+    if (probe.address == 0) {
+      throw _nativeFileException('Cannot open .npz file for reading', filepath);
+    }
+    native_file_close(probe);
     final pNumEntries = ScratchArena.allocate<ffi.Int64>(
       ffi.sizeOf<ffi.Int64>(),
     );
@@ -663,8 +788,9 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
             }
             if (infoStatus == -9) {
               const maxNpyHeaderBytes = 1024 * 1024;
-              final requiredHeaderLen = pHeaderLen.value;
-              if (requiredHeaderLen > maxNpyHeaderBytes) {
+              final requiredHeaderLen = _readSize(pHeaderLen);
+              if (requiredHeaderLen < 0 ||
+                  requiredHeaderLen > maxNpyHeaderBytes) {
                 throw FormatException(
                   'NPY header length ($requiredHeaderLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
                 );
@@ -700,14 +826,14 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
             }
           }
 
-          final filename = nameBuf.cast<Utf8>().toDartString();
+          final filename = _fromNativeUtf8(nameBuf);
           if (!filename.endsWith('.npy')) {
             continue;
           }
           final key = filename.substring(0, filename.length - 4);
 
-          final realHeaderLen = pHeaderLen.value;
-          final realDataLen = pDataLen.value;
+          final realHeaderLen = _readSize(pHeaderLen);
+          final realDataLen = _readSize(pDataLen);
           final majorVersion = activeHeaderBuf[6];
           final minorVersion = activeHeaderBuf[7];
           if (majorVersion != 1 && majorVersion != 2 && majorVersion != 3) {
@@ -717,9 +843,10 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
           }
           final prefixLen = majorVersion >= 2 ? 12 : 10;
           final asciiLen = math.max(0, realHeaderLen - prefixLen);
-          final headerBytes = (activeHeaderBuf + prefixLen).asTypedList(
-            asciiLen,
-          );
+          final headerBytes = Uint8List(asciiLen);
+          for (var j = 0; j < asciiLen; j++) {
+            headerBytes[j] = activeHeaderBuf[prefixLen + j];
+          }
           final headerStr = utf8.decode(headerBytes, allowMalformed: true);
 
           final (:dtype, :fortranOrder, :shape) = parseNpyHeader(headerStr);

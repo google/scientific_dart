@@ -52,6 +52,8 @@ void _normalWorker(SendPort sendPort) {
   });
 }
 
+const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+
 void main() {
   group('Regression Tests for Native Bugs', () {
     test(
@@ -76,6 +78,7 @@ void main() {
           receivePorts[i].close();
         }
       },
+      skip: _isWasm ? 'Isolate.spawn is not supported on Wasm' : false,
     );
 
     test('Complex NaN sorting strict weak ordering', () {

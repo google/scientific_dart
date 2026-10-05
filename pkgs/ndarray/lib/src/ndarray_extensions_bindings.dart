@@ -101,6 +101,75 @@ external int npz_reader_extract_data(
 @ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
 external void npz_close_reader(ffi.Pointer<ffi.Void> handle);
 
+/// Returns the `errno` of the most recent failed native file operation on the
+/// calling thread and copies its `strerror` text (NUL-terminated, at most
+/// [capacity] bytes) into [out_message].
+@ffi.Native<ffi.Int Function(ffi.Pointer<ffi.Uint8>, ffi.Int64)>()
+external int native_file_last_error(
+  ffi.Pointer<ffi.Uint8> out_message,
+  int capacity,
+);
+
+/// Writes [header_len] header bytes and [data_len] payload bytes to [filepath],
+/// creating missing parent directories.
+///
+/// Returns 0 on success, -1 if the file cannot be opened, -2 if writing fails.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<ffi.Char>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+  )
+>()
+external int native_file_write_all(
+  ffi.Pointer<ffi.Char> filepath,
+  ffi.Pointer<ffi.Uint8> header,
+  int header_len,
+  ffi.Pointer<ffi.Void> data,
+  int data_len,
+);
+
+/// Opens the regular file at [filepath] for reading.
+///
+/// Returns a handle for [native_file_handle_size], [native_file_handle_read]
+/// and [native_file_close], or `nullptr` on failure.
+@ffi.Native<ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Char>)>()
+external ffi.Pointer<ffi.Void> native_file_open_read(
+  ffi.Pointer<ffi.Char> filepath,
+);
+
+/// Returns the size in bytes of the open file [handle], or -1 on failure.
+@ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Void>)>()
+external int native_file_handle_size(ffi.Pointer<ffi.Void> handle);
+
+/// Reads up to [len] bytes at [offset] from the open file [handle] into
+/// [out_data], storing the number of bytes actually read into [out_read].
+///
+/// Returns 0 on success (a short read means end of file), -1 for invalid
+/// arguments, -2 if seeking or reading fails.
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external int native_file_handle_read(
+  ffi.Pointer<ffi.Void> handle,
+  int offset,
+  int len,
+  ffi.Pointer<ffi.Void> out_data,
+  ffi.Pointer<ffi.Int64> out_read,
+);
+
+/// Closes a handle returned by [native_file_open_read].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void native_file_close(ffi.Pointer<ffi.Void> handle);
+
 /// Custom Indexing: take_along_axis
 @ffi.Native<
   ffi.Int Function(

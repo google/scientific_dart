@@ -30,6 +30,16 @@ external void ndarray_set_oom_flag();
 @ffi.Native<ffi.Int Function()>()
 external int ndarray_consume_oom_flag();
 
+/// Test support: increments a process-global atomic counter. Safe as a
+/// [ffi.NativeFinalizer] callback, which the VM may run on a GC helper thread.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void ndarray_test_finalizer_hit(ffi.Pointer<ffi.Void> token);
+
+/// Test support: returns the number of [ndarray_test_finalizer_hit] calls
+/// since the previous call and resets the counter.
+@ffi.Native<ffi.Int Function()>()
+external int ndarray_test_consume_finalizer_hits();
+
 @ffi.Native<
   ffi.Int64 Function(
     ffi.Pointer<ffi.Uint8>,
@@ -21978,7 +21988,7 @@ external void s_trapz_complex64(
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<cpx_t>,
     ffi.Int64,
-    cpx_t,
+    ffi.Pointer<cpx_t>,
     ffi.Pointer<cpx_t>,
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Int64>,
@@ -21991,7 +22001,7 @@ external void s_trapz_complex128_all(
   ffi.Pointer<ffi.Int64> stridesY,
   ffi.Pointer<cpx_t> x,
   int strideX,
-  cpx_t dx,
+  ffi.Pointer<cpx_t> dx,
   ffi.Pointer<cpx_t> res,
   ffi.Pointer<ffi.Int64> stridesRes,
   ffi.Pointer<ffi.Int64> shape,
@@ -22005,7 +22015,7 @@ external void s_trapz_complex128_all(
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<cpx_f_t>,
     ffi.Int64,
-    cpx_f_t,
+    ffi.Pointer<cpx_f_t>,
     ffi.Pointer<cpx_f_t>,
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Int64>,
@@ -22018,7 +22028,7 @@ external void s_trapz_complex64_all(
   ffi.Pointer<ffi.Int64> stridesY,
   ffi.Pointer<cpx_f_t> x,
   int strideX,
-  cpx_f_t dx,
+  ffi.Pointer<cpx_f_t> dx,
   ffi.Pointer<cpx_f_t> res,
   ffi.Pointer<ffi.Int64> stridesRes,
   ffi.Pointer<ffi.Int64> shape,
@@ -22148,7 +22158,7 @@ external void s_gradient_complex64(
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<cpx_t>,
     ffi.Int64,
-    cpx_t,
+    ffi.Pointer<cpx_t>,
     ffi.Pointer<cpx_t>,
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Int64>,
@@ -22162,7 +22172,7 @@ external void s_gradient_complex128_all(
   ffi.Pointer<ffi.Int64> stridesSrc,
   ffi.Pointer<cpx_t> x,
   int strideX,
-  cpx_t dx,
+  ffi.Pointer<cpx_t> dx,
   ffi.Pointer<cpx_t> res,
   ffi.Pointer<ffi.Int64> stridesRes,
   ffi.Pointer<ffi.Int64> shape,
@@ -22177,7 +22187,7 @@ external void s_gradient_complex128_all(
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<cpx_f_t>,
     ffi.Int64,
-    cpx_f_t,
+    ffi.Pointer<cpx_f_t>,
     ffi.Pointer<cpx_f_t>,
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Int64>,
@@ -22191,7 +22201,7 @@ external void s_gradient_complex64_all(
   ffi.Pointer<ffi.Int64> stridesSrc,
   ffi.Pointer<cpx_f_t> x,
   int strideX,
-  cpx_f_t dx,
+  ffi.Pointer<cpx_f_t> dx,
   ffi.Pointer<cpx_f_t> res,
   ffi.Pointer<ffi.Int64> stridesRes,
   ffi.Pointer<ffi.Int64> shape,
@@ -23194,10 +23204,10 @@ external void pad_axis_uint8(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    cpx_t,
-    cpx_t,
-    cpx_t,
-    cpx_t,
+    ffi.Pointer<cpx_t>,
+    ffi.Pointer<cpx_t>,
+    ffi.Pointer<cpx_t>,
+    ffi.Pointer<cpx_t>,
     ffi.Int64,
     ffi.Int64,
   )
@@ -23213,10 +23223,10 @@ external void pad_axis_complex128(
   int padBefore,
   int padAfter,
   int mode,
-  cpx_t constantBefore,
-  cpx_t constantAfter,
-  cpx_t endBefore,
-  cpx_t endAfter,
+  ffi.Pointer<cpx_t> constantBefore,
+  ffi.Pointer<cpx_t> constantAfter,
+  ffi.Pointer<cpx_t> endBefore,
+  ffi.Pointer<cpx_t> endAfter,
   int statLengthBefore,
   int statLengthAfter,
 );
@@ -23233,10 +23243,10 @@ external void pad_axis_complex128(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    cpx_f_t,
-    cpx_f_t,
-    cpx_f_t,
-    cpx_f_t,
+    ffi.Pointer<cpx_f_t>,
+    ffi.Pointer<cpx_f_t>,
+    ffi.Pointer<cpx_f_t>,
+    ffi.Pointer<cpx_f_t>,
     ffi.Int64,
     ffi.Int64,
   )
@@ -23252,10 +23262,10 @@ external void pad_axis_complex64(
   int padBefore,
   int padAfter,
   int mode,
-  cpx_f_t constantBefore,
-  cpx_f_t constantAfter,
-  cpx_f_t endBefore,
-  cpx_f_t endAfter,
+  ffi.Pointer<cpx_f_t> constantBefore,
+  ffi.Pointer<cpx_f_t> constantAfter,
+  ffi.Pointer<cpx_f_t> endBefore,
+  ffi.Pointer<cpx_f_t> endAfter,
   int statLengthBefore,
   int statLengthAfter,
 );
@@ -23376,11 +23386,23 @@ external int r_median_int16(ffi.Pointer<ffi.Int16> src, int size);
 @ffi.Native<ffi.Uint8 Function(ffi.Pointer<ffi.Uint8>, ffi.Int64)>()
 external int r_median_uint8(ffi.Pointer<ffi.Uint8> src, int size);
 
-@ffi.Native<cpx_t Function(ffi.Pointer<cpx_t>, ffi.Int64)>()
-external cpx_t r_median_complex128(ffi.Pointer<cpx_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_t>, ffi.Int64, ffi.Pointer<cpx_t>)
+>()
+external void r_median_complex128(
+  ffi.Pointer<cpx_t> src,
+  int size,
+  ffi.Pointer<cpx_t> out,
+);
 
-@ffi.Native<cpx_f_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
-external cpx_f_t r_median_complex64(ffi.Pointer<cpx_f_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_f_t>, ffi.Int64, ffi.Pointer<cpx_f_t>)
+>()
+external void r_median_complex64(
+  ffi.Pointer<cpx_f_t> src,
+  int size,
+  ffi.Pointer<cpx_f_t> out,
+);
 
 /// Median axis reductions (strided)
 @ffi.Native<
@@ -26499,11 +26521,23 @@ external int r_sum_uint8(ffi.Pointer<ffi.Uint8> src, int size);
 @ffi.Native<ffi.Int16 Function(ffi.Pointer<ffi.Int16>, ffi.Int64)>()
 external int r_sum_int16(ffi.Pointer<ffi.Int16> src, int size);
 
-@ffi.Native<cpx_t Function(ffi.Pointer<cpx_t>, ffi.Int64)>()
-external cpx_t r_sum_complex128(ffi.Pointer<cpx_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_t>, ffi.Int64, ffi.Pointer<cpx_t>)
+>()
+external void r_sum_complex128(
+  ffi.Pointer<cpx_t> src,
+  int size,
+  ffi.Pointer<cpx_t> out,
+);
 
-@ffi.Native<cpx_f_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
-external cpx_f_t r_sum_complex64(ffi.Pointer<cpx_f_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_f_t>, ffi.Int64, ffi.Pointer<cpx_f_t>)
+>()
+external void r_sum_complex64(
+  ffi.Pointer<cpx_f_t> src,
+  int size,
+  ffi.Pointer<cpx_f_t> out,
+);
 
 @ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Int64>, ffi.Int64)>()
 external double r_mean_int64_to_double(ffi.Pointer<ffi.Int64> src, int size);
@@ -26517,16 +26551,31 @@ external double r_mean_uint8_to_double(ffi.Pointer<ffi.Uint8> src, int size);
 @ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Int16>, ffi.Int64)>()
 external double r_mean_int16_to_double(ffi.Pointer<ffi.Int16> src, int size);
 
-@ffi.Native<cpx_t Function(ffi.Pointer<cpx_t>, ffi.Int64)>()
-external cpx_t r_mean_complex128(ffi.Pointer<cpx_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_t>, ffi.Int64, ffi.Pointer<cpx_t>)
+>()
+external void r_mean_complex128(
+  ffi.Pointer<cpx_t> src,
+  int size,
+  ffi.Pointer<cpx_t> out,
+);
 
-@ffi.Native<cpx_f_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
-external cpx_f_t r_mean_complex64(ffi.Pointer<cpx_f_t> src, int size);
-
-@ffi.Native<cpx_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
-external cpx_t r_mean_complex64_to_complex128(
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_f_t>, ffi.Int64, ffi.Pointer<cpx_f_t>)
+>()
+external void r_mean_complex64(
   ffi.Pointer<cpx_f_t> src,
   int size,
+  ffi.Pointer<cpx_f_t> out,
+);
+
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_f_t>, ffi.Int64, ffi.Pointer<cpx_t>)
+>()
+external void r_mean_complex64_to_complex128(
+  ffi.Pointer<cpx_f_t> src,
+  int size,
+  ffi.Pointer<cpx_t> out,
 );
 
 @ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Int64>, ffi.Int64, ffi.Int)>()
@@ -26597,11 +26646,23 @@ external int r_prod_uint8(ffi.Pointer<ffi.Uint8> src, int size);
 @ffi.Native<ffi.Int16 Function(ffi.Pointer<ffi.Int16>, ffi.Int64)>()
 external int r_prod_int16(ffi.Pointer<ffi.Int16> src, int size);
 
-@ffi.Native<cpx_t Function(ffi.Pointer<cpx_t>, ffi.Int64)>()
-external cpx_t r_prod_complex128(ffi.Pointer<cpx_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_t>, ffi.Int64, ffi.Pointer<cpx_t>)
+>()
+external void r_prod_complex128(
+  ffi.Pointer<cpx_t> src,
+  int size,
+  ffi.Pointer<cpx_t> out,
+);
 
-@ffi.Native<cpx_f_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
-external cpx_f_t r_prod_complex64(ffi.Pointer<cpx_f_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_f_t>, ffi.Int64, ffi.Pointer<cpx_f_t>)
+>()
+external void r_prod_complex64(
+  ffi.Pointer<cpx_f_t> src,
+  int size,
+  ffi.Pointer<cpx_f_t> out,
+);
 
 @ffi.Native<
   ffi.Void Function(

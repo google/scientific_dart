@@ -638,28 +638,57 @@ void main() {
         malloc.free(pointer);
       });
 
-      test('Wrap with Custom Native Finalizer and manually dispose', () {
-        final pointer = malloc<ffi.Double>(4);
-        for (var i = 0; i < 4; i++) {
-          pointer[i] = (i + 1) * 2.0;
-        }
+      test(
+        'Wrap with Custom Native Finalizer and manually dispose',
+        () {
+          final pointer = malloc<ffi.Double>(4);
+          for (var i = 0; i < 4; i++) {
+            pointer[i] = (i + 1) * 2.0;
+          }
 
-        final arr = NDArray<AnySpec>.fromPointer(
-          pointer.cast(),
-          [4],
-          DType.float64,
-          nativeFinalizer: malloc.nativeFree.cast(),
-        );
+          final arr = NDArray<AnySpec>.fromPointer(
+            pointer.cast(),
+            [4],
+            DType.float64,
+            nativeFinalizer: malloc.nativeFree.cast(),
+          );
 
-        expect(arr.data, [2.0, 4.0, 6.0, 8.0]);
-        expect(arr.isDisposed, false);
+          expect(arr.data, [2.0, 4.0, 6.0, 8.0]);
+          expect(arr.isDisposed, false);
 
-        // Manual dispose should invoke custom finalizer and free memory
-        arr.dispose();
-        expect(arr.isDisposed, true);
+          // Manual dispose should invoke custom finalizer and free memory
+          arr.dispose();
+          expect(arr.isDisposed, true);
 
-        // Note: The backing memory pointer is now freed, accessing it is undefined behavior.
-      });
+          // Note: The backing memory pointer is now freed, accessing it is undefined behavior.
+        },
+        skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+            ? 'NativeFinalizer / Native.addressOf is not supported on Wasm'
+            : false,
+      );
+
+      test(
+        'Custom native finalizers are rejected on Wasm',
+        () {
+          final pointer = malloc<ffi.Double>(4);
+          try {
+            expect(
+              () => NDArray<AnySpec>.fromPointer(
+                pointer.cast(),
+                [4],
+                DType.float64,
+                nativeFinalizer: ffi.Pointer.fromAddress(1).cast(),
+              ),
+              throwsUnsupportedError,
+            );
+          } finally {
+            malloc.free(pointer);
+          }
+        },
+        skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+            ? false
+            : 'Only dart2wasm rejects custom native finalizers',
+      );
 
       test('Integration with NDArray.scope', () {
         final pointer = malloc<ffi.Double>(2);
@@ -744,16 +773,18 @@ void main() {
       }),
     );
 
-    group('Allocation Tracking Integration Tests', () {
-      late File tempFile;
-      late String workingDir;
+    group(
+      'Allocation Tracking Integration Tests',
+      () {
+        late File tempFile;
+        late String workingDir;
 
-      setUp(() {
-        final inRoot = Directory('pkgs/ndarray').existsSync();
-        workingDir = inRoot ? 'pkgs/ndarray' : '.';
-        final dirPath = inRoot ? 'pkgs/ndarray/test/core' : 'test/core';
-        tempFile = File('$dirPath/temp_tracker_helper.dart');
-        tempFile.writeAsStringSync('''
+        setUp(() {
+          final inRoot = Directory('pkgs/ndarray').existsSync();
+          workingDir = inRoot ? 'pkgs/ndarray' : '.';
+          final dirPath = inRoot ? 'pkgs/ndarray/test/core' : 'test/core';
+          tempFile = File('$dirPath/temp_tracker_helper.dart');
+          tempFile.writeAsStringSync('''
 import 'package:ndarray/ndarray.dart';
 
 void main() {
@@ -785,43 +816,47 @@ void main() {
   }
 }
 ''');
-      });
+        });
 
-      tearDown(() {
-        if (tempFile.existsSync()) {
-          tempFile.deleteSync();
-        }
-      });
+        tearDown(() {
+          if (tempFile.existsSync()) {
+            tempFile.deleteSync();
+          }
+        });
 
-      test('Verifies tracking is disabled by default', () async {
-        final result = await Process.run(Platform.resolvedExecutable, [
-          tempFile.absolute.path,
-        ], workingDirectory: workingDir);
+        test('Verifies tracking is disabled by default', () async {
+          final result = await Process.run(Platform.resolvedExecutable, [
+            tempFile.absolute.path,
+          ], workingDirectory: workingDir);
 
-        expect(result.exitCode, 0);
-        expect(result.stdout, contains('trackAllocations: false'));
-        expect(result.stdout, contains('trackedCount: 0'));
-        expect(result.stdout, contains('trackedCountAfterView: 0'));
-        expect(result.stdout, contains('checkNoLeaks: OK'));
-        expect(result.stdout, contains('trackedCountAfterDispose: 0'));
-        expect(result.stdout, contains('checkNoLeaksAfterDispose: OK'));
-      });
+          expect(result.exitCode, 0);
+          expect(result.stdout, contains('trackAllocations: false'));
+          expect(result.stdout, contains('trackedCount: 0'));
+          expect(result.stdout, contains('trackedCountAfterView: 0'));
+          expect(result.stdout, contains('checkNoLeaks: OK'));
+          expect(result.stdout, contains('trackedCountAfterDispose: 0'));
+          expect(result.stdout, contains('checkNoLeaksAfterDispose: OK'));
+        });
 
-      test('Verifies tracking works when enabled via define', () async {
-        final result = await Process.run(Platform.resolvedExecutable, [
-          '--define=TRACK_NDARRAY_ALLOCATIONS=true',
-          tempFile.absolute.path,
-        ], workingDirectory: workingDir);
+        test('Verifies tracking works when enabled via define', () async {
+          final result = await Process.run(Platform.resolvedExecutable, [
+            '--define=TRACK_NDARRAY_ALLOCATIONS=true',
+            tempFile.absolute.path,
+          ], workingDirectory: workingDir);
 
-        expect(result.exitCode, 0);
-        expect(result.stdout, contains('trackAllocations: true'));
-        expect(result.stdout, contains('trackedCount: 1'));
-        expect(result.stdout, contains('trackedCountAfterView: 1'));
-        expect(result.stdout, contains('checkNoLeaks: FAILED'));
-        expect(result.stdout, contains('trackedCountAfterDispose: 0'));
-        expect(result.stdout, contains('checkNoLeaksAfterDispose: OK'));
-      });
-    });
+          expect(result.exitCode, 0);
+          expect(result.stdout, contains('trackAllocations: true'));
+          expect(result.stdout, contains('trackedCount: 1'));
+          expect(result.stdout, contains('trackedCountAfterView: 1'));
+          expect(result.stdout, contains('checkNoLeaks: FAILED'));
+          expect(result.stdout, contains('trackedCountAfterDispose: 0'));
+          expect(result.stdout, contains('checkNoLeaksAfterDispose: OK'));
+        });
+      },
+      skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+          ? 'Process.run is not supported on Wasm'
+          : false,
+    );
 
     group('Disposed Array Precondition Tests', () {
       test('distance operations throw StateError on disposed arrays', () {
@@ -885,5 +920,39 @@ void main() {
         expect(result.isDisposed, isTrue);
       });
     });
+  });
+
+  group('Lifecycle boundary cases', () {
+    test(
+      'double dispose is a no-op and use-after-dispose throws StateError',
+      () {
+        final a = NDArray.ones([3, 3], DType.float64);
+        a.dispose();
+        expect(a.isDisposed, isTrue);
+        // Double dispose is a safe no-op
+        a.dispose();
+        expect(() => a[[0, 0]], throwsStateError);
+        expect(() => a.toList(), throwsStateError);
+        expect(() => sum(a), throwsStateError);
+        expect(() => sin(a), throwsStateError);
+      },
+    );
+
+    test(
+      'ScratchArena rejects negative sizes and out-of-order marker resets',
+      () {
+        expect(() => ScratchArena.allocate<ffi.Uint8>(-1), throwsArgumentError);
+        expect(() => ScratchArena.getStridedBuffer(-1), throwsArgumentError);
+
+        final mOuter = ScratchArena.marker;
+        ScratchArena.allocate<ffi.Int64>(64);
+        final mInner = ScratchArena.marker;
+        ScratchArena.allocate<ffi.Int64>(64);
+
+        // Resetting to outer first makes inner marker stale (ahead of current offset)
+        ScratchArena.reset(mOuter);
+        expect(() => ScratchArena.reset(mInner), throwsStateError);
+      },
+    );
   });
 }

@@ -19,6 +19,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <atomic>
 
 #if defined(_WIN32)
@@ -30,6 +31,7 @@
 #endif
 #include <windows.h>
 #include <io.h>
+#include <direct.h>
 #else
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -51,6 +53,95 @@ static int64_t npz_ftell64(FILE* fp) {
 #else
   return static_cast<int64_t>(ftello(fp));
 #endif
+}
+
+// `errno` of the most recent failed file operation in this thread, exposed to
+// Dart via `native_file_last_error` so I/O failures carry the OS message.
+static thread_local int g_native_file_errno = 0;
+
+static void npz_record_errno(void) {
+    g_native_file_errno = errno;
+}
+
+#if defined(_WIN32)
+// Converts a UTF-8 path to a malloc'd UTF-16 string, or returns NULL (with
+// `errno` set) on failure. Dart strings arrive as UTF-8; the narrow CRT
+// functions interpret bytes in the ANSI code page and corrupt non-ASCII paths.
+static wchar_t* npz_utf8_to_wide(const char* utf8) {
+    int needed = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, NULL, 0);
+    if (needed <= 0) {
+        errno = EINVAL;
+        return NULL;
+    }
+    wchar_t* wide = (wchar_t*)malloc((size_t)needed * sizeof(wchar_t));
+    if (!wide) {
+        errno = ENOMEM;
+        return NULL;
+    }
+    if (MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, utf8, -1, wide, needed) <= 0) {
+        free(wide);
+        errno = EINVAL;
+        return NULL;
+    }
+    return wide;
+}
+#endif
+
+// `fopen` for a UTF-8 encoded path. Records `errno` on failure.
+static FILE* npz_fopen_utf8(const char* filepath, const char* mode) {
+    FILE* fp = NULL;
+#if defined(_WIN32)
+    wchar_t* wide_path = npz_utf8_to_wide(filepath);
+    if (!wide_path) {
+        npz_record_errno();
+        return NULL;
+    }
+    wchar_t wide_mode[8];
+    size_t mode_len = strlen(mode);
+    if (mode_len >= sizeof(wide_mode) / sizeof(wide_mode[0])) mode_len = 7;
+    for (size_t i = 0; i < mode_len; i++) wide_mode[i] = (wchar_t)mode[i];
+    wide_mode[mode_len] = L'\0';
+    fp = _wfopen(wide_path, wide_mode);
+    free(wide_path);
+#else
+    fp = fopen(filepath, mode);
+#endif
+    if (!fp) npz_record_errno();
+    return fp;
+}
+
+// `mkdir` for a UTF-8 encoded path; failures (including EEXIST) are ignored
+// by the caller, which only needs the final `fopen` to succeed or fail.
+static void npz_mkdir_utf8(const char* path) {
+#if defined(_WIN32)
+    wchar_t* wide_path = npz_utf8_to_wide(path);
+    if (!wide_path) return;
+    _wmkdir(wide_path);
+    free(wide_path);
+#else
+    mkdir(path, 0777);
+#endif
+}
+
+// Creates every missing directory on the path to `filepath` (like `mkdir -p`
+// on the parent). Best effort: any failure surfaces later as an `fopen` error
+// with a meaningful `errno`.
+static void npz_ensure_parent_dirs(const char* filepath) {
+    if (!filepath) return;
+    size_t len = strlen(filepath);
+    if (len == 0) return;
+    char* buf = (char*)malloc(len + 1);
+    if (!buf) return;
+    memcpy(buf, filepath, len + 1);
+    for (size_t i = 1; i < len; i++) {
+        if (buf[i] == '/' || buf[i] == '\\') {
+            char saved = buf[i];
+            buf[i] = '\0';
+            npz_mkdir_utf8(buf);
+            buf[i] = saved;
+        }
+    }
+    free(buf);
 }
 
 static inline void write_u16_le(uint8_t* p, uint16_t val) {
@@ -208,7 +299,7 @@ static int npz_save_stored(
     const void** data_ptrs,
     const size_t* data_lens,
     bool force_zip64) {
-    FILE* fp = fopen(filepath, "wb");
+    FILE* fp = npz_fopen_utf8(filepath, "wb");
     if (!fp) return -2;
 
     NoThrowBuffer<ZipEntryMeta> meta(num_arrays);
@@ -459,6 +550,8 @@ static int npz_save_deflate(
 
     mz_uint init_flags = need_zip64 ? MZ_ZIP_FLAG_WRITE_ZIP64 : 0;
     if (!mz_zip_writer_init_file_v2(&zip, filepath, 0, init_flags)) {
+        // miniz returns straight after its failed fopen, so errno is intact.
+        npz_record_errno();
         return -2;
     }
 
@@ -517,6 +610,7 @@ NDARRAY_EXPORT int npz_save(
     if (!filepath || num_arrays == 0 || !entry_names || !header_bytes || !header_lens || !data_ptrs || !data_lens) {
         return -1;
     }
+    npz_ensure_parent_dirs(filepath);
 
     bool force_zip64 = (compress_level & 0x100) != 0;
     int level = compress_level & 0xFF;
@@ -631,7 +725,7 @@ NDARRAY_EXPORT void npz_close_reader(void* handle) {
 NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entries) {
     if (!filepath || !out_num_entries) return NULL;
 
-    FILE* fp = fopen(filepath, "rb");
+    FILE* fp = npz_fopen_utf8(filepath, "rb");
     if (!fp) return NULL;
 
     npz_fseek64(fp, 0, SEEK_END);
@@ -1172,3 +1266,119 @@ NDARRAY_EXPORT int npz_reader_extract_data(
     }
 }
 
+
+NDARRAY_EXPORT int native_file_last_error(uint8_t* out_message, int64_t capacity) {
+    int code = g_native_file_errno;
+    if (out_message && capacity > 0) {
+        const char* message = strerror(code);
+        size_t len = message ? strlen(message) : 0;
+        if ((int64_t)len >= capacity) len = (size_t)(capacity - 1);
+        if (len > 0) memcpy(out_message, message, len);
+        out_message[len] = '\0';
+    }
+    return code;
+}
+
+NDARRAY_EXPORT int native_file_write_all(
+    const char* filepath,
+    const uint8_t* header,
+    int64_t header_len,
+    const void* data,
+    int64_t data_len) {
+    if (!filepath || header_len < 0 || data_len < 0) {
+        g_native_file_errno = EINVAL;
+        return -1;
+    }
+    npz_ensure_parent_dirs(filepath);
+    FILE* fp = npz_fopen_utf8(filepath, "wb");
+    if (!fp) return -1;
+    if (header_len > 0) {
+        if (!header || (int64_t)fwrite(header, 1, (size_t)header_len, fp) != header_len) {
+            npz_record_errno();
+            fclose(fp);
+            return -2;
+        }
+    }
+    if (data_len > 0) {
+        if (!data || (int64_t)fwrite(data, 1, (size_t)data_len, fp) != data_len) {
+            npz_record_errno();
+            fclose(fp);
+            return -2;
+        }
+    }
+    if (fclose(fp) != 0) {
+        npz_record_errno();
+        return -2;
+    }
+    return 0;
+}
+
+NDARRAY_EXPORT void* native_file_open_read(const char* filepath) {
+    if (!filepath) {
+        g_native_file_errno = EINVAL;
+        return NULL;
+    }
+#if !defined(_WIN32)
+    struct stat st;
+    if (stat(filepath, &st) != 0) {
+        npz_record_errno();
+        return NULL;
+    }
+    if (S_ISDIR(st.st_mode)) {
+        g_native_file_errno = EISDIR;
+        return NULL;
+    }
+#endif
+    return npz_fopen_utf8(filepath, "rb");
+}
+
+NDARRAY_EXPORT int64_t native_file_handle_size(void* handle) {
+    FILE* fp = (FILE*)handle;
+    if (!fp) {
+        g_native_file_errno = EINVAL;
+        return -1;
+    }
+    int64_t current = npz_ftell64(fp);
+    if (current < 0 || npz_fseek64(fp, 0, SEEK_END) != 0) {
+        npz_record_errno();
+        return -1;
+    }
+    int64_t sz = npz_ftell64(fp);
+    if (sz < 0) npz_record_errno();
+    if (npz_fseek64(fp, current, SEEK_SET) != 0) {
+        npz_record_errno();
+        return -1;
+    }
+    return sz;
+}
+
+NDARRAY_EXPORT int native_file_handle_read(
+    void* handle,
+    int64_t offset,
+    int64_t len,
+    void* out_data,
+    int64_t* out_read) {
+    FILE* fp = (FILE*)handle;
+    if (!fp || offset < 0 || len < 0 || !out_read || (len > 0 && !out_data)) {
+        g_native_file_errno = EINVAL;
+        return -1;
+    }
+    *out_read = 0;
+    if (npz_fseek64(fp, offset, SEEK_SET) != 0) {
+        npz_record_errno();
+        return -2;
+    }
+    if (len > 0) {
+        size_t n = fread(out_data, 1, (size_t)len, fp);
+        *out_read = (int64_t)n;
+        if ((int64_t)n != len && ferror(fp)) {
+            npz_record_errno();
+            return -2;
+        }
+    }
+    return 0;
+}
+
+NDARRAY_EXPORT void native_file_close(void* handle) {
+    if (handle) fclose((FILE*)handle);
+}

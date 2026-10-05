@@ -17,6 +17,7 @@ import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'ndarray.dart';
+import 'wasm_pointer_lists.dart' show isWasmRuntime;
 
 /// Transmission mode for a [SendableNDArray].
 enum _SendableMode { copy, borrow }
@@ -50,8 +51,11 @@ enum _SendableMode { copy, borrow }
 ///
 /// {@example /example/sendable_ndarray_example.dart lang=dart}
 final class SendableNDArray<T extends DTypeTag> {
+  static const bool _isWasm = isWasmRuntime;
+
   final _SendableMode _mode;
   final TransferableTypedData? _transferableData;
+  final Uint8List? _wasmBytes;
   final int? _address;
   final int? _physicalByteCapacity;
   final bool _isWriteable;
@@ -73,14 +77,32 @@ final class SendableNDArray<T extends DTypeTag> {
     required this.dtypeIndex,
     required bool isWriteable,
     TransferableTypedData? transferableData,
+    Uint8List? wasmBytes,
     int? address,
     this.strides,
     int? physicalByteCapacity,
   }) : _mode = mode,
        _isWriteable = isWriteable,
        _transferableData = transferableData,
+       _wasmBytes = wasmBytes,
        _address = address,
        _physicalByteCapacity = physicalByteCapacity;
+
+  /// Copies [totalBytes] bytes starting at [src] into a fresh [Uint8List] one
+  /// byte at a time.
+  ///
+  /// Only used on `dart2wasm`, where `Pointer.asTypedList` is unavailable; the
+  /// VM path copies the `asTypedList` view in bulk instead.
+  static Uint8List _copyPointerBytes(
+    ffi.Pointer<ffi.Uint8> src,
+    int totalBytes,
+  ) {
+    final bytes = Uint8List(totalBytes);
+    for (var i = 0; i < totalBytes; i++) {
+      bytes[i] = src[i];
+    }
+    return bytes;
+  }
 
   /// Creates a [SendableNDArray] by copying [array]'s memory into a [TransferableTypedData].
   ///
@@ -104,24 +126,37 @@ final class SendableNDArray<T extends DTypeTag> {
       throw StateError('Cannot create SendableNDArray from a disposed array.');
     }
     final totalBytes = array.size * array.dtype.byteWidth;
-    final TransferableTypedData transferable;
+    final TransferableTypedData? transferable;
+    final Uint8List? wasmBytes;
     if (totalBytes == 0) {
-      transferable = TransferableTypedData.fromList([Uint8List(0)]);
-    } else if (array.isContiguous) {
-      final bytes = array.pointer.cast<ffi.Uint8>().asTypedList(totalBytes);
-      transferable = TransferableTypedData.fromList([bytes]);
+      transferable = _isWasm
+          ? null
+          : TransferableTypedData.fromList([Uint8List(0)]);
+      wasmBytes = _isWasm ? Uint8List(0) : null;
     } else {
-      transferable = NDArray.scope(() {
-        final contiguous = array.copy();
-        final bytes = contiguous.pointer.cast<ffi.Uint8>().asTypedList(
-          totalBytes,
-        );
-        return TransferableTypedData.fromList([bytes]);
-      });
+      final contiguous = array.isContiguous ? array : array.copy();
+      try {
+        final src = contiguous.pointer.cast<ffi.Uint8>();
+        if (_isWasm) {
+          transferable = null;
+          wasmBytes = _copyPointerBytes(src, totalBytes);
+        } else {
+          // `TransferableTypedData.fromList` copies the view, so this is the
+          // only copy on the VM.
+          final bytes = src.asTypedList(totalBytes);
+          transferable = TransferableTypedData.fromList([bytes]);
+          wasmBytes = null;
+        }
+      } finally {
+        if (!identical(contiguous, array)) {
+          contiguous.dispose();
+        }
+      }
     }
     return SendableNDArray._(
       mode: _SendableMode.copy,
       transferableData: transferable,
+      wasmBytes: wasmBytes,
       shape: List<int>.unmodifiable(array.shape),
       dtypeIndex: array.dtype.index,
       isWriteable: array.isWriteable,
@@ -243,14 +278,23 @@ final class SendableNDArray<T extends DTypeTag> {
       );
     }
     _isMaterialized = true;
-    final buffer = _transferableData!.materialize();
-    final bytes = buffer.asUint8List();
+    final Uint8List bytes;
+    if (_isWasm) {
+      bytes = _wasmBytes!;
+    } else {
+      final buffer = _transferableData!.materialize();
+      bytes = buffer.asUint8List();
+    }
     final result = NDArray<T>.create(shape, dtype);
     if (bytes.isNotEmpty) {
-      result.pointer
-          .cast<ffi.Uint8>()
-          .asTypedList(bytes.length)
-          .setAll(0, bytes);
+      final dst = result.pointer.cast<ffi.Uint8>();
+      if (_isWasm) {
+        for (var i = 0; i < bytes.length; i++) {
+          dst[i] = bytes[i];
+        }
+      } else {
+        dst.asTypedList(bytes.length).setAll(0, bytes);
+      }
     }
     if (!_isWriteable) {
       result.isWriteable = false;

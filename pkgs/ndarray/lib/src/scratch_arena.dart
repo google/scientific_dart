@@ -16,6 +16,7 @@ import 'dart:ffi' as ffi;
 import 'dart:math' show min;
 import 'package:ffi/ffi.dart';
 import 'ndarray.dart' show Complex, ComplexList;
+import 'wasm_pointer_lists.dart' show isWasmRuntime, maxWasm32AllocationBytes;
 
 /// An Isolate-local scratch memory arena for transient FFI allocations.
 ///
@@ -67,7 +68,11 @@ final class ScratchArena {
     if (bytes < 0) {
       throw ArgumentError.value(bytes, 'bytes', 'Must be non-negative.');
     }
-    if (bytes > 0x7ffffffffffffff0) {
+    // Both bounds leave 16 bytes of headroom for the alignment rounding below;
+    // the wasm32 bound only applies where `size_t` is 32 bits wide.
+    if (bytes > 0x7ffffffffffffff0 ||
+        (ffi.sizeOf<ffi.Size>() == 4 &&
+            bytes > (maxWasm32AllocationBytes & ~0xF))) {
       throw OutOfMemoryError();
     }
     _init();
@@ -211,8 +216,13 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Double> copyDoubles(List<double> list) {
     final ptr = allocate<ffi.Double>(list.length * ffi.sizeOf<ffi.Double>());
-    final typedList = ptr.asTypedList(list.length);
-    typedList.setRange(0, list.length, list);
+    if (isWasmRuntime) {
+      for (var i = 0; i < list.length; i++) {
+        ptr[i] = list[i];
+      }
+    } else {
+      ptr.asTypedList(list.length).setRange(0, list.length, list);
+    }
     return ptr;
   }
 
@@ -229,8 +239,13 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Float> copyFloats(List<double> list) {
     final ptr = allocate<ffi.Float>(list.length * ffi.sizeOf<ffi.Float>());
-    final typedList = ptr.asTypedList(list.length);
-    typedList.setRange(0, list.length, list);
+    if (isWasmRuntime) {
+      for (var i = 0; i < list.length; i++) {
+        ptr[i] = list[i];
+      }
+    } else {
+      ptr.asTypedList(list.length).setRange(0, list.length, list);
+    }
     return ptr;
   }
 
@@ -252,9 +267,8 @@ final class ScratchArena {
       if (v < -0x80000000 || v > 0x7fffffff) {
         throw UnsupportedError('Value $v exceeds 32-bit native int limit.');
       }
+      ptr[i] = v;
     }
-    final typedList = ptr.asTypedList(list.length);
-    typedList.setRange(0, list.length, list);
     return ptr;
   }
 
@@ -271,8 +285,13 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Int64> copyInt64s(List<int> list) {
     final ptr = allocate<ffi.Int64>(list.length * ffi.sizeOf<ffi.Int64>());
-    final typedList = ptr.asTypedList(list.length);
-    typedList.setRange(0, list.length, list);
+    if (isWasmRuntime) {
+      for (var i = 0; i < list.length; i++) {
+        ptr[i] = list[i];
+      }
+    } else {
+      ptr.asTypedList(list.length).setRange(0, list.length, list);
+    }
     return ptr;
   }
 
@@ -293,13 +312,20 @@ final class ScratchArena {
     final ptr = allocate<ffi.Double>(
       list.length * 2 * ffi.sizeOf<ffi.Double>(),
     );
-    final typedList = ptr.asTypedList(list.length * 2);
     if (list is ComplexList) {
-      typedList.setRange(0, list.length * 2, list.backingList);
+      final backing = list.backingList;
+      final total = list.length * 2;
+      if (isWasmRuntime) {
+        for (var i = 0; i < total; i++) {
+          ptr[i] = backing[i];
+        }
+      } else {
+        ptr.asTypedList(total).setRange(0, total, backing);
+      }
     } else {
       for (var i = 0; i < list.length; i++) {
-        typedList[i * 2] = list[i].real;
-        typedList[i * 2 + 1] = list[i].imag;
+        ptr[i * 2] = list[i].real;
+        ptr[i * 2 + 1] = list[i].imag;
       }
     }
     return ptr;
@@ -320,13 +346,20 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Float> copyFloatComplexes(List<Complex> list) {
     final ptr = allocate<ffi.Float>(list.length * 2 * ffi.sizeOf<ffi.Float>());
-    final typedList = ptr.asTypedList(list.length * 2);
     if (list is ComplexList) {
-      typedList.setRange(0, list.length * 2, list.backingList);
+      final backing = list.backingList;
+      final total = list.length * 2;
+      if (isWasmRuntime) {
+        for (var i = 0; i < total; i++) {
+          ptr[i] = backing[i];
+        }
+      } else {
+        ptr.asTypedList(total).setRange(0, total, backing);
+      }
     } else {
       for (var i = 0; i < list.length; i++) {
-        typedList[i * 2] = list[i].real;
-        typedList[i * 2 + 1] = list[i].imag;
+        ptr[i * 2] = list[i].real;
+        ptr[i * 2 + 1] = list[i].imag;
       }
     }
     return ptr;
@@ -345,9 +378,8 @@ final class ScratchArena {
   /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Uint8> copyBools(List<bool> list) {
     final ptr = allocate<ffi.Uint8>(list.length * ffi.sizeOf<ffi.Uint8>());
-    final typedList = ptr.asTypedList(list.length);
     for (var i = 0; i < list.length; i++) {
-      typedList[i] = list[i] ? 1 : 0;
+      ptr[i] = list[i] ? 1 : 0;
     }
     return ptr;
   }

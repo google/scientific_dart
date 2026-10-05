@@ -1357,4 +1357,18 @@ void main() {
       );
     });
   });
+
+  group('Prime-length transforms', () {
+    test('fft/ifft and rfft/irfft roundtrip for n = 53', () {
+      NDArray.scope(() {
+        const n = 53;
+        final x = linspace<Float64>(-1.0, 2.0, n, dtype: DType.float64);
+        final cRec = real(ifft<Complex128>(fft<Complex128>(x)));
+        expect(allClose(cRec, x, atol: 1e-11), isTrue);
+
+        final rRec = irfft<Float64>(rfft<Complex128>(x), n: n);
+        expect(allClose(rRec, x, atol: 1e-11), isTrue);
+      });
+    });
+  });
 }

@@ -15,6 +15,7 @@
 import 'dart:async';
 import 'dart:ffi' as ffi;
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:analyzer/dart/analysis/features.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
@@ -23,7 +24,11 @@ import 'package:ffi/ffi.dart';
 import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/ndarray.dart' show BoolList, ComplexList;
 import 'package:ndarray/src/ndarray_bindings.dart'
-    show ndarray_consume_oom_flag, ndarray_set_oom_flag;
+    show
+        ndarray_consume_oom_flag,
+        ndarray_set_oom_flag,
+        ndarray_test_consume_finalizer_hits,
+        ndarray_test_finalizer_hit;
 import 'package:test/test.dart';
 
 @pragma('vm:never-inline')
@@ -98,12 +103,23 @@ void _createFromPointerAndDrop(
 
 final List<Object?> _gcRing = List<Object?>.filled(4096, null);
 
+/// Holds large typed-data buffers; the VM allocates objects above the
+/// new-space limit directly in old space, so churning these provokes
+/// mark-sweep collections, which are the only ones that finalize objects
+/// that were promoted out of new space before being dropped.
+final List<Object?> _oldSpaceRing = List<Object?>.filled(8, null);
+
 Future<void> _churnGcAndNativeHeap({int rounds = 8}) async {
   for (var round = 0; round < rounds; round++) {
     for (var i = 0; i < _gcRing.length; i++) {
       _gcRing[i] = List<int>.filled(256, i + round);
     }
     _gcRing.fillRange(0, _gcRing.length, null);
+
+    for (var i = 0; i < _oldSpaceRing.length; i++) {
+      _oldSpaceRing[i] = Uint8List(4 << 20);
+    }
+    _oldSpaceRing.fillRange(0, _oldSpaceRing.length, null);
 
     final ptrs = <ffi.Pointer<ffi.Uint32>>[];
     for (var i = 0; i < 64; i++) {
@@ -245,19 +261,18 @@ void main() {
   group('M8: NDArray.fromPointer custom nativeFinalizer lifecycle', () {
     test('Custom nativeFinalizer is retained statically, invoked on GC, and '
         'detached on explicit dispose()', () async {
-      // Use a real C symbol from libndarray (ndarray_set_oom_flag) as an
-      // observable native finalizer callback, plus malloc.nativeFree for
-      // actual deallocation. Dart's NativeFinalizer runs during GC safepoints
-      // where NativeCallable trampolines are not permitted.
-      final setOomPtr =
-          ffi.Native.addressOf<ffi.NativeFunction<ffi.Void Function()>>(
-                ndarray_set_oom_flag,
-              )
-              .cast<
-                ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>
-              >();
+      // Use a real C symbol from libndarray as the observable finalizer
+      // callback (Dart's NativeFinalizer runs during GC, where NativeCallable
+      // trampolines are not permitted), plus malloc.nativeFree for actual
+      // deallocation. The callback counts into a process-global atomic: the
+      // VM may run native finalizers on a GC helper thread, so a thread-local
+      // flag such as the OOM flag would not be visible here.
+      final finalizerHitPtr =
+          ffi.Native.addressOf<
+            ffi.NativeFunction<ffi.Void Function(ffi.Pointer<ffi.Void>)>
+          >(ndarray_test_finalizer_hit);
 
-      ndarray_consume_oom_flag();
+      ndarray_test_consume_finalizer_hits();
       final rawBuffers = <ffi.Pointer<ffi.Double>>[];
       try {
         // 1. Verify explicit dispose() invokes the custom finalizer once and
@@ -268,7 +283,7 @@ void main() {
             raw.cast(),
             [64],
             DType.float64,
-            nativeFinalizer: setOomPtr,
+            nativeFinalizer: finalizerHitPtr,
           );
           expect(a.getCell([0]), equals(123.0));
           a.dispose();
@@ -280,14 +295,14 @@ void main() {
         createAndDispose(disposedBuf);
 
         expect(
-          ndarray_consume_oom_flag(),
+          ndarray_test_consume_finalizer_hits(),
           equals(1),
           reason: 'dispose() must synchronously invoke custom nativeFinalizer',
         );
 
         await _churnGcAndNativeHeap(rounds: 6);
         expect(
-          ndarray_consume_oom_flag(),
+          ndarray_test_consume_finalizer_hits(),
           equals(0),
           reason: 'dispose() must detach custom nativeFinalizer from GC',
         );
@@ -299,7 +314,7 @@ void main() {
           final raw = malloc<ffi.Double>(64);
           raw[0] = 123.0;
           rawBuffers.add(raw);
-          _createFromPointerAndDrop(raw, setOomPtr);
+          _createFromPointerAndDrop(raw, finalizerHitPtr);
 
           final ownedByFree = malloc<ffi.Double>(64);
           ownedByFree[0] = 123.0;
@@ -309,7 +324,7 @@ void main() {
         var finalizerRan = false;
         for (var attempt = 0; attempt < 25 && !finalizerRan; attempt++) {
           await _churnGcAndNativeHeap(rounds: 4);
-          if (ndarray_consume_oom_flag() != 0) {
+          if (ndarray_test_consume_finalizer_hits() != 0) {
             finalizerRan = true;
           }
         }
@@ -321,7 +336,7 @@ void main() {
               'Custom nativeFinalizer passed to NDArray.fromPointer was never invoked by GC',
         );
       } finally {
-        ndarray_consume_oom_flag();
+        ndarray_test_consume_finalizer_hits();
         for (final p in rawBuffers) {
           malloc.free(p);
         }
