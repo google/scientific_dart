@@ -199,10 +199,17 @@ jobs:
 
       - name: Run ndarray Tests under ASan + UBSan
         working-directory: pkgs/ndarray
-        continue-on-error: true
         env:
           ASAN_OPTIONS: detect_leaks=0:verify_asan_link_order=0
         run: |
           ASAN_LIB=$(gcc -print-file-name=libasan.so)
           LD_PRELOAD="$ASAN_LIB" dart test
 
+      - name: Run Baseline Scalar x86-64 Tests (NDARRAY_X86_FLAGS=none)
+        working-directory: pkgs/ndarray
+        env:
+          ASAN_OPTIONS: detect_leaks=0:verify_asan_link_order=0
+          NDARRAY_X86_FLAGS: "none"
+        run: |
+          ASAN_LIB=$(gcc -print-file-name=libasan.so)
+          LD_PRELOAD="$ASAN_LIB" NDARRAY_X86_FLAGS="none" dart test test/core/math_ufunc_test.dart test/core/sorting_searching_test.dart
