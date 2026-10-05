@@ -64,12 +64,18 @@ List<NDArray<T>> array_split<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (out != null && out.length != sections) {
-    throw ArgumentError(
-      'Length of out (${out.length}) must match sections ($sections).',
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Length of out (${out.length}) must match sections ($sections)',
     );
   }
   if (sections <= 0) {
-    throw ArgumentError('Number of sections must be positive.');
+    throw ArgumentError.value(
+      sections,
+      'sections',
+      'Number of sections must be positive',
+    );
   }
 
   final rank = a.rank;
@@ -103,10 +109,13 @@ List<NDArray<T>> array_split<T extends DTypeTag>(
           if (outSub.isDisposed) {
             throw StateError('Cannot write to a disposed out array.');
           }
+          validateOutBuffer(outSub, 'out[$i]');
           if (!listEquals(outSub.shape, sub.shape) ||
               outSub.dtype != sub.dtype) {
-            throw ArgumentError(
-              'Incompatible out buffer shape or dtype for split item $i.',
+            throw ArgumentError.value(
+              outSub,
+              'out',
+              'Incompatible out buffer shape or dtype for split item $i',
             );
           }
           sub.copy(out: outSub);
@@ -169,8 +178,10 @@ List<NDArray<T>> array_split_at<T extends DTypeTag>(
   boundaries.add(L);
 
   if (out != null && out.length != boundaries.length - 1) {
-    throw ArgumentError(
-      'Length of out (${out.length}) must match split sections count (${boundaries.length - 1}).',
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Length of out (${out.length}) must match split sections count (${boundaries.length - 1})',
     );
   }
 
@@ -191,10 +202,13 @@ List<NDArray<T>> array_split_at<T extends DTypeTag>(
           if (outSub.isDisposed) {
             throw StateError('Cannot write to a disposed out array.');
           }
+          validateOutBuffer(outSub, 'out[$i]');
           if (!listEquals(outSub.shape, sub.shape) ||
               outSub.dtype != sub.dtype) {
-            throw ArgumentError(
-              'Incompatible out buffer shape or dtype for split item $i.',
+            throw ArgumentError.value(
+              outSub,
+              'out',
+              'Incompatible out buffer shape or dtype for split item $i',
             );
           }
           sub.copy(out: outSub);
@@ -258,12 +272,18 @@ List<NDArray<T>> split<T extends DTypeTag>(
   final L = a.shape[normAxis];
 
   if (sections <= 0) {
-    throw ArgumentError('Number of sections must be positive.');
+    throw ArgumentError.value(
+      sections,
+      'sections',
+      'Number of sections must be positive',
+    );
   }
   if (L % sections != 0) {
-    throw ArgumentError(
+    throw ArgumentError.value(
+      sections,
+      'sections',
       'array split does not result in an equal division: '
-      'dimension size along axis $normAxis is $L, which is not divisible by $sections.',
+          'dimension size along axis $normAxis is $L, which is not divisible by $sections',
     );
   }
 
@@ -326,7 +346,7 @@ List<NDArray<T>> hsplit<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (a.rank == 0) {
-    throw ArgumentError('Cannot hsplit a 0D array.');
+    throw ArgumentError.value(a, 'a', 'Cannot hsplit a 0D array');
   }
   final axis = a.rank == 1 ? 0 : 1;
   return split(a, sections, axis: axis, out: out);
@@ -361,7 +381,7 @@ List<NDArray<T>> hsplit_at<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (a.rank == 0) {
-    throw ArgumentError('Cannot hsplit a 0D array.');
+    throw ArgumentError.value(a, 'a', 'Cannot hsplit a 0D array');
   }
   final axis = a.rank == 1 ? 0 : 1;
   return split_at(a, indices, axis: axis, out: out);
@@ -396,7 +416,11 @@ List<NDArray<T>> vsplit<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('vsplit only supports arrays of rank >= 2.');
+    throw ArgumentError.value(
+      a,
+      'a',
+      'vsplit only supports arrays of rank >= 2',
+    );
   }
   return split(a, sections, axis: 0, out: out);
 }
@@ -430,7 +454,11 @@ List<NDArray<T>> vsplit_at<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('vsplit only supports arrays of rank >= 2.');
+    throw ArgumentError.value(
+      a,
+      'a',
+      'vsplit only supports arrays of rank >= 2',
+    );
   }
   return split_at(a, indices, axis: 0, out: out);
 }
@@ -468,7 +496,11 @@ List<NDArray<T>> dsplit<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (a.rank < 3) {
-    throw ArgumentError('dsplit only supports arrays of rank >= 3.');
+    throw ArgumentError.value(
+      a,
+      'a',
+      'dsplit only supports arrays of rank >= 3',
+    );
   }
   return split(a, sections, axis: 2, out: out);
 }
@@ -502,7 +534,11 @@ List<NDArray<T>> dsplit_at<T extends DTypeTag>(
     throw StateError('Cannot access a disposed NDArray.');
   }
   if (a.rank < 3) {
-    throw ArgumentError('dsplit_at only supports arrays of rank >= 3.');
+    throw ArgumentError.value(
+      a,
+      'a',
+      'dsplit_at only supports arrays of rank >= 3',
+    );
   }
   return split_at(a, indices, axis: 2, out: out);
 }

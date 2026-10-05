@@ -479,3 +479,680 @@ fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgr
     totalElements: totalPairs,
   );
 }
+
+String _activationForwardExpr(String op) => switch (op) {
+  'relu' => 'let y = max(x, 0.0);',
+  'sigmoid' => 'let y = 1.0 / (1.0 + exp(-x));',
+  'tanh' => 'let y = tanh(clamp(x, -15.0, 15.0));',
+  'gelu' =>
+    '''
+  let k0 = 0.7978845608028654;
+  let k1 = 0.044715;
+  let inner = clamp(k0 * (x + k1 * x * x * x), -15.0, 15.0);
+  let y = 0.5 * x * (1.0 + tanh(inner));''',
+  'silu' || 'swish' => 'let y = x / (1.0 + exp(-x));',
+  'leaky_relu' =>
+    '''
+  let slope = bitcast<f32>(uniforms.param0_bits);
+  let y = select(slope * x, x, x > 0.0);''',
+  'elu' =>
+    '''
+  let alpha = bitcast<f32>(uniforms.param0_bits);
+  let y = select(alpha * (exp(x) - 1.0), x, x > 0.0);''',
+  'softplus' =>
+    '''
+  let beta = bitcast<f32>(uniforms.param0_bits);
+  let thresh = bitcast<f32>(uniforms.param1_bits);
+  let bx = beta * x;
+  let y = select(log(1.0 + exp(bx)) / beta, x, bx > thresh);''',
+  _ => throw ArgumentError.value(op, 'op', 'Must be a supported activation.'),
+};
+
+String _activationBackwardExpr(String op) => switch (op) {
+  'relu' => 'let grad = select(0.0, go, s_val > 0.0);',
+  'sigmoid' =>
+    '''
+  let sig = 1.0 / (1.0 + exp(-s_val));
+  let grad = go * sig * (1.0 - sig);''',
+  'tanh' =>
+    '''
+  let t_val = tanh(clamp(s_val, -15.0, 15.0));
+  let grad = go * (1.0 - t_val * t_val);''',
+  'gelu' =>
+    '''
+  let k0 = 0.7978845608028654;
+  let k1 = 0.044715;
+  let x2 = s_val * s_val;
+  let x3 = x2 * s_val;
+  let inner = clamp(k0 * (s_val + k1 * x3), -15.0, 15.0);
+  let t_val = tanh(inner);
+  let sech2 = 1.0 - t_val * t_val;
+  let d_inner = k0 * (1.0 + 3.0 * k1 * x2);
+  let d_gelu = 0.5 * (1.0 + t_val) + 0.5 * s_val * sech2 * d_inner;
+  let grad = go * d_gelu;''',
+  'silu' || 'swish' =>
+    '''
+  let sig = 1.0 / (1.0 + exp(-s_val));
+  let d_silu = sig * (1.0 + s_val * (1.0 - sig));
+  let grad = go * d_silu;''',
+  'leaky_relu' =>
+    '''
+  let slope = bitcast<f32>(uniforms.param0_bits);
+  let grad = go * select(slope, 1.0, s_val > 0.0);''',
+  'elu' =>
+    '''
+  let alpha = bitcast<f32>(uniforms.param0_bits);
+  let grad = go * select(alpha * exp(s_val), 1.0, s_val > 0.0);''',
+  'softplus' =>
+    '''
+  let beta = bitcast<f32>(uniforms.param0_bits);
+  let thresh = bitcast<f32>(uniforms.param1_bits);
+  let bx = beta * s_val;
+  let d_sp = select(1.0 / (1.0 + exp(-bx)), 1.0, bx > thresh);
+  let grad = go * d_sp;''',
+  _ => throw ArgumentError.value(op, 'op', 'Must be a supported activation.'),
+};
+
+/// Dispatches a single-pass 1D elementwise activation forward kernel on the GPU.
+void dispatchUnaryActivationForward({
+  required GpuArray<DTypeTag> input,
+  required GpuArray<DTypeTag> output,
+  required String op,
+  double param0 = 0.0,
+  double param1 = 0.0,
+}) {
+  final totalElements = output.size;
+  if (totalElements == 0) return;
+
+  final contiguousInput = input.isContiguous ? input : input.copy();
+  try {
+    final exprWgsl = _activationForwardExpr(op);
+    final isInPlace =
+        identical(contiguousInput.buffer, output.buffer) &&
+        contiguousInput.dtype == output.dtype;
+
+    if (isInPlace) {
+      final bindings = [
+        storageBinding(0, 'io_buf', output.dtype, WgslBufferAccess.readWrite),
+        const WgslBinding(
+          group: 0,
+          binding: 1,
+          name: 'uniforms',
+          isUniform: true,
+          customTypeName: 'UnaryActivationUniforms',
+        ),
+      ];
+      final loadFn = wgslLoadFloat(output.dtype, 'io_buf', 'load_io');
+      final storeFn = wgslStoreFloat(output.dtype, 'io_buf', 'store_io');
+      final code =
+          '''
+$wgslF64ConversionHelpers
+struct UnaryActivationUniforms {
+  total_elements: u32, in_offset: u32, out_offset: u32, param0_bits: u32,
+  param1_bits: u32, pad0: u32, pad1: u32, pad2: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadFn
+$storeFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  let x = load_io(uniforms.in_offset + thread_index);
+  $exprWgsl
+  store_io(uniforms.out_offset + thread_index, y);
+}
+''';
+      dispatch1DKernel(
+        device: output.device,
+        name: 'nn_${op}_inplace_${output.dtype.name}',
+        code: code,
+        bindings: bindings,
+        buffers: [output.buffer],
+        uniforms: [
+          totalElements,
+          contiguousInput.offsetElements,
+          output.offsetElements,
+          float32ToBits(param0),
+          float32ToBits(param1),
+          0,
+          0,
+          0,
+        ],
+        totalElements: totalElements,
+      );
+      return;
+    }
+
+    final bindings = [
+      storageBinding(0, 'in_buf', contiguousInput.dtype, WgslBufferAccess.read),
+      storageBinding(1, 'out_buf', output.dtype, WgslBufferAccess.readWrite),
+      const WgslBinding(
+        group: 0,
+        binding: 2,
+        name: 'uniforms',
+        isUniform: true,
+        customTypeName: 'UnaryActivationUniforms',
+      ),
+    ];
+
+    final loadInFn = wgslLoadFloat(contiguousInput.dtype, 'in_buf', 'load_in');
+    final storeOutFn = wgslStoreFloat(output.dtype, 'out_buf', 'store_out');
+
+    final code =
+        '''
+$wgslF64ConversionHelpers
+struct UnaryActivationUniforms {
+  total_elements: u32, in_offset: u32, out_offset: u32, param0_bits: u32,
+  param1_bits: u32, pad0: u32, pad1: u32, pad2: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadInFn
+$storeOutFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  let x = load_in(uniforms.in_offset + thread_index);
+  $exprWgsl
+  store_out(uniforms.out_offset + thread_index, y);
+}
+''';
+
+    dispatch1DKernel(
+      device: output.device,
+      name: 'nn_${op}_forward_${output.dtype.name}',
+      code: code,
+      bindings: bindings,
+      buffers: [contiguousInput.buffer, output.buffer],
+      uniforms: [
+        totalElements,
+        contiguousInput.offsetElements,
+        output.offsetElements,
+        float32ToBits(param0),
+        float32ToBits(param1),
+        0,
+        0,
+        0,
+      ],
+      totalElements: totalElements,
+    );
+  } finally {
+    if (!identical(contiguousInput, input)) {
+      contiguousInput.dispose();
+    }
+  }
+}
+
+/// Dispatches a single-pass 1D elementwise activation backward kernel on the GPU.
+void dispatchUnaryActivationBackward({
+  required GpuArray<DTypeTag> gradOutput,
+  required GpuArray<DTypeTag> savedTensor,
+  required GpuArray<DTypeTag> gradInput,
+  required String op,
+  double param0 = 0.0,
+  double param1 = 0.0,
+}) {
+  final totalElements = gradInput.size;
+  if (totalElements == 0) return;
+
+  final contiguousGradOut = gradOutput.isContiguous
+      ? gradOutput
+      : gradOutput.copy();
+  final contiguousSaved = savedTensor.isContiguous
+      ? savedTensor
+      : savedTensor.copy();
+
+  try {
+    final exprWgsl = _activationBackwardExpr(op);
+    final bindings = [
+      storageBinding(
+        0,
+        'grad_out_buf',
+        contiguousGradOut.dtype,
+        WgslBufferAccess.read,
+      ),
+      storageBinding(
+        1,
+        'saved_buf',
+        contiguousSaved.dtype,
+        WgslBufferAccess.read,
+      ),
+      storageBinding(
+        2,
+        'grad_in_buf',
+        gradInput.dtype,
+        WgslBufferAccess.readWrite,
+      ),
+      const WgslBinding(
+        group: 0,
+        binding: 3,
+        name: 'uniforms',
+        isUniform: true,
+        customTypeName: 'UnaryActivationBackwardUniforms',
+      ),
+    ];
+
+    final loadGradOutFn = wgslLoadFloat(
+      contiguousGradOut.dtype,
+      'grad_out_buf',
+      'load_grad_out',
+    );
+    final loadSavedFn = wgslLoadFloat(
+      contiguousSaved.dtype,
+      'saved_buf',
+      'load_saved',
+    );
+    final storeGradInFn = wgslStoreFloat(
+      gradInput.dtype,
+      'grad_in_buf',
+      'store_grad_in',
+    );
+
+    final code =
+        '''
+$wgslF64ConversionHelpers
+struct UnaryActivationBackwardUniforms {
+  total_elements: u32, grad_out_offset: u32, saved_offset: u32, grad_in_offset: u32,
+  param0_bits: u32, param1_bits: u32, pad0: u32, pad1: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadGradOutFn
+$loadSavedFn
+$storeGradInFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  let go = load_grad_out(uniforms.grad_out_offset + thread_index);
+  let s_val = load_saved(uniforms.saved_offset + thread_index);
+  $exprWgsl
+  store_grad_in(uniforms.grad_in_offset + thread_index, grad);
+}
+''';
+
+    dispatch1DKernel(
+      device: gradInput.device,
+      name: 'autograd_${op}_backward_${gradInput.dtype.name}',
+      code: code,
+      bindings: bindings,
+      buffers: [
+        contiguousGradOut.buffer,
+        contiguousSaved.buffer,
+        gradInput.buffer,
+      ],
+      uniforms: [
+        totalElements,
+        contiguousGradOut.offsetElements,
+        contiguousSaved.offsetElements,
+        gradInput.offsetElements,
+        float32ToBits(param0),
+        float32ToBits(param1),
+        0,
+        0,
+      ],
+      totalElements: totalElements,
+    );
+  } finally {
+    if (!identical(contiguousGradOut, gradOutput)) {
+      contiguousGradOut.dispose();
+    }
+    if (!identical(contiguousSaved, savedTensor)) {
+      contiguousSaved.dispose();
+    }
+  }
+}
+
+/// Dispatches an in-place fused `SGD.step` update kernel on the GPU.
+void dispatchSgdStep({
+  required GpuArray<DTypeTag> parameter,
+  required GpuArray<DTypeTag> grad,
+  GpuArray<DTypeTag>? velocity,
+  required double lr,
+  required double momentum,
+  required double weightDecay,
+  required bool nesterov,
+}) {
+  final totalElements = parameter.size;
+  if (totalElements == 0) return;
+
+  final contiguousGrad = grad.isContiguous ? grad : grad.copy();
+  try {
+    if (velocity == null) {
+      final bindings = [
+        storageBinding(
+          0,
+          'param_buf',
+          parameter.dtype,
+          WgslBufferAccess.readWrite,
+        ),
+        storageBinding(
+          1,
+          'grad_buf',
+          contiguousGrad.dtype,
+          WgslBufferAccess.read,
+        ),
+        const WgslBinding(
+          group: 0,
+          binding: 2,
+          name: 'uniforms',
+          isUniform: true,
+          customTypeName: 'SgdSimpleUniforms',
+        ),
+      ];
+      final loadParamFn = wgslLoadFloat(
+        parameter.dtype,
+        'param_buf',
+        'load_param',
+      );
+      final storeParamFn = wgslStoreFloat(
+        parameter.dtype,
+        'param_buf',
+        'store_param',
+      );
+      final loadGradFn = wgslLoadFloat(
+        contiguousGrad.dtype,
+        'grad_buf',
+        'load_grad',
+      );
+
+      final code =
+          '''
+$wgslF64ConversionHelpers
+struct SgdSimpleUniforms {
+  total_elements: u32, param_offset: u32, grad_offset: u32, lr_bits: u32,
+  weight_decay_bits: u32, pad0: u32, pad1: u32, pad2: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadParamFn
+$storeParamFn
+$loadGradFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  let p = load_param(uniforms.param_offset + thread_index);
+  var g = load_grad(uniforms.grad_offset + thread_index);
+  let wd = bitcast<f32>(uniforms.weight_decay_bits);
+  if (wd != 0.0) {
+    g = g + wd * p;
+  }
+  let lr_val = bitcast<f32>(uniforms.lr_bits);
+  store_param(uniforms.param_offset + thread_index, p - lr_val * g);
+}
+''';
+
+      dispatch1DKernel(
+        device: parameter.device,
+        name:
+            'nn_sgd_simple_${parameter.dtype.name}_${contiguousGrad.dtype.name}',
+        code: code,
+        bindings: bindings,
+        buffers: [parameter.buffer, contiguousGrad.buffer],
+        uniforms: [
+          totalElements,
+          parameter.offsetElements,
+          contiguousGrad.offsetElements,
+          float32ToBits(lr),
+          float32ToBits(weightDecay),
+          0,
+          0,
+          0,
+        ],
+        totalElements: totalElements,
+      );
+    } else {
+      final bindings = [
+        storageBinding(
+          0,
+          'param_buf',
+          parameter.dtype,
+          WgslBufferAccess.readWrite,
+        ),
+        storageBinding(
+          1,
+          'grad_buf',
+          contiguousGrad.dtype,
+          WgslBufferAccess.read,
+        ),
+        storageBinding(
+          2,
+          'vel_buf',
+          velocity.dtype,
+          WgslBufferAccess.readWrite,
+        ),
+        const WgslBinding(
+          group: 0,
+          binding: 3,
+          name: 'uniforms',
+          isUniform: true,
+          customTypeName: 'SgdMomentumUniforms',
+        ),
+      ];
+      final loadParamFn = wgslLoadFloat(
+        parameter.dtype,
+        'param_buf',
+        'load_param',
+      );
+      final storeParamFn = wgslStoreFloat(
+        parameter.dtype,
+        'param_buf',
+        'store_param',
+      );
+      final loadGradFn = wgslLoadFloat(
+        contiguousGrad.dtype,
+        'grad_buf',
+        'load_grad',
+      );
+      final loadVelFn = wgslLoadFloat(velocity.dtype, 'vel_buf', 'load_vel');
+      final storeVelFn = wgslStoreFloat(velocity.dtype, 'vel_buf', 'store_vel');
+
+      final code =
+          '''
+$wgslF64ConversionHelpers
+struct SgdMomentumUniforms {
+  total_elements: u32, param_offset: u32, grad_offset: u32, lr_bits: u32,
+  momentum_bits: u32, weight_decay_bits: u32, nesterov: u32, pad0: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadParamFn
+$storeParamFn
+$loadGradFn
+$loadVelFn
+$storeVelFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  let p = load_param(uniforms.param_offset + thread_index);
+  var g = load_grad(uniforms.grad_offset + thread_index);
+  let wd = bitcast<f32>(uniforms.weight_decay_bits);
+  if (wd != 0.0) {
+    g = g + wd * p;
+  }
+  let mom = bitcast<f32>(uniforms.momentum_bits);
+  let v_prev = load_vel(thread_index);
+  let v_next = mom * v_prev + g;
+  store_vel(thread_index, v_next);
+  let step_g = select(v_next, g + mom * v_next, uniforms.nesterov != 0u);
+  let lr_val = bitcast<f32>(uniforms.lr_bits);
+  store_param(uniforms.param_offset + thread_index, p - lr_val * step_g);
+}
+''';
+
+      dispatch1DKernel(
+        device: parameter.device,
+        name:
+            'nn_sgd_momentum_${parameter.dtype.name}_${contiguousGrad.dtype.name}',
+        code: code,
+        bindings: bindings,
+        buffers: [parameter.buffer, contiguousGrad.buffer, velocity.buffer],
+        uniforms: [
+          totalElements,
+          parameter.offsetElements,
+          contiguousGrad.offsetElements,
+          float32ToBits(lr),
+          float32ToBits(momentum),
+          float32ToBits(weightDecay),
+          nesterov ? 1 : 0,
+          0,
+        ],
+        totalElements: totalElements,
+      );
+    }
+  } finally {
+    if (!identical(contiguousGrad, grad)) {
+      contiguousGrad.dispose();
+    }
+  }
+}
+
+/// Dispatches an in-place fused `Adam.step` / `AdamW.step` update kernel on the GPU.
+void dispatchAdamStep({
+  required GpuArray<DTypeTag> parameter,
+  required GpuArray<DTypeTag> grad,
+  required GpuArray<DTypeTag> firstMoment,
+  required GpuArray<DTypeTag> secondMoment,
+  required double lr,
+  required double beta1,
+  required double beta2,
+  required double eps,
+  required double weightDecay,
+  required double invBiasCorrection1,
+  required double invBiasCorrection2,
+  required bool decoupledWeightDecay,
+}) {
+  final totalElements = parameter.size;
+  if (totalElements == 0) return;
+
+  final contiguousGrad = grad.isContiguous ? grad : grad.copy();
+  try {
+    final bindings = [
+      storageBinding(
+        0,
+        'param_buf',
+        parameter.dtype,
+        WgslBufferAccess.readWrite,
+      ),
+      storageBinding(
+        1,
+        'grad_buf',
+        contiguousGrad.dtype,
+        WgslBufferAccess.read,
+      ),
+      storageBinding(2, 'm_buf', firstMoment.dtype, WgslBufferAccess.readWrite),
+      storageBinding(
+        3,
+        'v_buf',
+        secondMoment.dtype,
+        WgslBufferAccess.readWrite,
+      ),
+      const WgslBinding(
+        group: 0,
+        binding: 4,
+        name: 'uniforms',
+        isUniform: true,
+        customTypeName: 'AdamStepUniforms',
+      ),
+    ];
+
+    final loadParamFn = wgslLoadFloat(
+      parameter.dtype,
+      'param_buf',
+      'load_param',
+    );
+    final storeParamFn = wgslStoreFloat(
+      parameter.dtype,
+      'param_buf',
+      'store_param',
+    );
+    final loadGradFn = wgslLoadFloat(
+      contiguousGrad.dtype,
+      'grad_buf',
+      'load_grad',
+    );
+    final loadMFn = wgslLoadFloat(firstMoment.dtype, 'm_buf', 'load_m');
+    final storeMFn = wgslStoreFloat(firstMoment.dtype, 'm_buf', 'store_m');
+    final loadVFn = wgslLoadFloat(secondMoment.dtype, 'v_buf', 'load_v');
+    final storeVFn = wgslStoreFloat(secondMoment.dtype, 'v_buf', 'store_v');
+
+    final code =
+        '''
+$wgslF64ConversionHelpers
+struct AdamStepUniforms {
+  total_elements: u32, param_offset: u32, grad_offset: u32, lr_bits: u32,
+  beta1_bits: u32, beta2_bits: u32, eps_bits: u32, weight_decay_bits: u32,
+  inv_bc1_bits: u32, inv_bc2_bits: u32, decoupled_wd: u32, pad0: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadParamFn
+$storeParamFn
+$loadGradFn
+$loadMFn
+$storeMFn
+$loadVFn
+$storeVFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  var p = load_param(uniforms.param_offset + thread_index);
+  var g = load_grad(uniforms.grad_offset + thread_index);
+  let lr_val = bitcast<f32>(uniforms.lr_bits);
+  let wd = bitcast<f32>(uniforms.weight_decay_bits);
+  if (wd != 0.0) {
+    if (uniforms.decoupled_wd != 0u) {
+      p = p * (1.0 - lr_val * wd);
+    } else {
+      g = g + wd * p;
+    }
+  }
+  let b1 = bitcast<f32>(uniforms.beta1_bits);
+  let b2 = bitcast<f32>(uniforms.beta2_bits);
+  let m_prev = load_m(thread_index);
+  let v_prev = load_v(thread_index);
+  let m_next = b1 * m_prev + (1.0 - b1) * g;
+  let v_next = b2 * v_prev + (1.0 - b2) * (g * g);
+  store_m(thread_index, m_next);
+  store_v(thread_index, v_next);
+  let m_hat = m_next * bitcast<f32>(uniforms.inv_bc1_bits);
+  let v_hat = v_next * bitcast<f32>(uniforms.inv_bc2_bits);
+  let eps_val = bitcast<f32>(uniforms.eps_bits);
+  let p_next = p - lr_val * (m_hat / (sqrt(v_hat) + eps_val));
+  store_param(uniforms.param_offset + thread_index, p_next);
+}
+''';
+
+    dispatch1DKernel(
+      device: parameter.device,
+      name: 'nn_adam_step_${parameter.dtype.name}_${contiguousGrad.dtype.name}',
+      code: code,
+      bindings: bindings,
+      buffers: [
+        parameter.buffer,
+        contiguousGrad.buffer,
+        firstMoment.buffer,
+        secondMoment.buffer,
+      ],
+      uniforms: [
+        totalElements,
+        parameter.offsetElements,
+        contiguousGrad.offsetElements,
+        float32ToBits(lr),
+        float32ToBits(beta1),
+        float32ToBits(beta2),
+        float32ToBits(eps),
+        float32ToBits(weightDecay),
+        float32ToBits(invBiasCorrection1),
+        float32ToBits(invBiasCorrection2),
+        decoupledWeightDecay ? 1 : 0,
+        0,
+      ],
+      totalElements: totalElements,
+    );
+  } finally {
+    if (!identical(contiguousGrad, grad)) {
+      contiguousGrad.dispose();
+    }
+  }
+}

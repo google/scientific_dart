@@ -477,23 +477,437 @@ fn main() {
 }
 ''';
 
+const String _choleskyF32Shader = '''
+struct CholParams {
+  n: u32,
+  upper: u32,
+  pad0: u32,
+  pad1: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out_factor: array<f32>;
+@group(0) @binding(2) var<uniform> params: CholParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let n = params.n;
+  for (var idx = 0u; idx < n * n; idx = idx + 1u) {
+    out_factor[idx] = 0.0;
+  }
+  for (var i = 0u; i < n; i = i + 1u) {
+    for (var j = 0u; j <= i; j = j + 1u) {
+      var sum = in_a[i * n + j];
+      for (var k = 0u; k < j; k = k + 1u) {
+        sum = sum - out_factor[i * n + k] * out_factor[j * n + k];
+      }
+      if (i == j) {
+        out_factor[i * n + i] = sqrt(max(0.0, sum));
+      } else {
+        out_factor[i * n + j] = sum / out_factor[j * n + j];
+      }
+    }
+  }
+  if (params.upper != 0u) {
+    for (var i = 0u; i < n; i = i + 1u) {
+      for (var j = i + 1u; j < n; j = j + 1u) {
+        out_factor[i * n + j] = out_factor[j * n + i];
+        out_factor[j * n + i] = 0.0;
+      }
+    }
+  }
+}
+''';
+
+const String _qrF32Shader = '''
+struct QrParams {
+  m: u32,
+  n: u32,
+  q_cols: u32,
+  r_rows: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> work_q: array<f32>;
+@group(0) @binding(2) var<storage, read_write> work_r: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_q: array<f32>;
+@group(0) @binding(4) var<storage, read_write> out_r: array<f32>;
+@group(0) @binding(5) var<uniform> params: QrParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let m = params.m;
+  let n = params.n;
+  let k_min = min(m, n);
+
+  for (var i = 0u; i < m * n; i = i + 1u) {
+    work_r[i] = in_a[i];
+  }
+  for (var r = 0u; r < m; r = r + 1u) {
+    for (var c = 0u; c < m; c = c + 1u) {
+      work_q[r * m + c] = select(0.0, 1.0, r == c);
+    }
+  }
+
+  for (var k = 0u; k < k_min; k = k + 1u) {
+    var norm_sq = 0.0;
+    for (var i = k; i < m; i = i + 1u) {
+      let val = work_r[i * n + k];
+      norm_sq = norm_sq + val * val;
+    }
+    let norm_x = sqrt(norm_sq);
+    if (norm_x > 0.0) {
+      let x0 = work_r[k * n + k];
+      let alpha = select(norm_x, -norm_x, x0 >= 0.0);
+      let v0 = x0 - alpha;
+      var tail_sq = 0.0;
+      for (var i = k + 1u; i < m; i = i + 1u) {
+        let vi = work_r[i * n + k];
+        tail_sq = tail_sq + vi * vi;
+      }
+      let v_norm_sq = v0 * v0 + tail_sq;
+      if (v_norm_sq > 0.0) {
+        work_r[k * n + k] = v0;
+        for (var c = k + 1u; c < n; c = c + 1u) {
+          var dot_rc = 0.0;
+          for (var i = k; i < m; i = i + 1u) {
+            dot_rc = dot_rc + work_r[i * n + k] * work_r[i * n + c];
+          }
+          let scale = (2.0 * dot_rc) / v_norm_sq;
+          for (var i = k; i < m; i = i + 1u) {
+            work_r[i * n + c] = work_r[i * n + c] - scale * work_r[i * n + k];
+          }
+        }
+        for (var r = 0u; r < m; r = r + 1u) {
+          var dot_qr = 0.0;
+          for (var i = k; i < m; i = i + 1u) {
+            dot_qr = dot_qr + work_q[r * m + i] * work_r[i * n + k];
+          }
+          let scale_q = (2.0 * dot_qr) / v_norm_sq;
+          for (var i = k; i < m; i = i + 1u) {
+            work_q[r * m + i] = work_q[r * m + i] - scale_q * work_r[i * n + k];
+          }
+        }
+        work_r[k * n + k] = alpha;
+        for (var i = k + 1u; i < m; i = i + 1u) {
+          work_r[i * n + k] = 0.0;
+        }
+      }
+    }
+  }
+
+  let q_cols = params.q_cols;
+  for (var r = 0u; r < m; r = r + 1u) {
+    for (var c = 0u; c < q_cols; c = c + 1u) {
+      out_q[r * q_cols + c] = work_q[r * m + c];
+    }
+  }
+  let r_rows = params.r_rows;
+  for (var r = 0u; r < r_rows; r = r + 1u) {
+    for (var c = 0u; c < n; c = c + 1u) {
+      out_r[r * n + c] = work_r[r * n + c];
+    }
+  }
+}
+''';
+
+const String _luDecomposeF32Shader = '''
+struct LuParams {
+  m: u32,
+  n: u32,
+  k_min: u32,
+  pad: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> work_lu: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_p: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_l: array<f32>;
+@group(0) @binding(4) var<storage, read_write> out_u: array<f32>;
+@group(0) @binding(5) var<storage, read_write> out_pivots: array<f32>;
+@group(0) @binding(6) var<uniform> params: LuParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let m = params.m;
+  let n = params.n;
+  let k_min = params.k_min;
+
+  for (var i = 0u; i < m * n; i = i + 1u) {
+    work_lu[i] = in_a[i];
+  }
+  for (var r = 0u; r < m; r = r + 1u) {
+    for (var c = 0u; c < m; c = c + 1u) {
+      out_p[r * m + c] = select(0.0, 1.0, r == c);
+    }
+  }
+
+  for (var k = 0u; k < k_min; k = k + 1u) {
+    var pivot_row = k;
+    var max_val = abs(work_lu[k * n + k]);
+    for (var r = k + 1u; r < m; r = r + 1u) {
+      let cand = abs(work_lu[r * n + k]);
+      if (cand > max_val) {
+        max_val = cand;
+        pivot_row = r;
+      }
+    }
+    out_pivots[k] = f32(pivot_row);
+
+    if (pivot_row != k) {
+      for (var c = 0u; c < n; c = c + 1u) {
+        let tmp_lu = work_lu[k * n + c];
+        work_lu[k * n + c] = work_lu[pivot_row * n + c];
+        work_lu[pivot_row * n + c] = tmp_lu;
+      }
+      for (var r = 0u; r < m; r = r + 1u) {
+        let tmp_p = out_p[r * m + k];
+        out_p[r * m + k] = out_p[r * m + pivot_row];
+        out_p[r * m + pivot_row] = tmp_p;
+      }
+    }
+
+    let piv = work_lu[k * n + k];
+    if (piv != 0.0) {
+      for (var i = k + 1u; i < m; i = i + 1u) {
+        let mult = work_lu[i * n + k] / piv;
+        work_lu[i * n + k] = mult;
+        for (var j = k + 1u; j < n; j = j + 1u) {
+          work_lu[i * n + j] = work_lu[i * n + j] - mult * work_lu[k * n + j];
+        }
+      }
+    }
+  }
+
+  for (var i = 0u; i < m; i = i + 1u) {
+    for (var j = 0u; j < k_min; j = j + 1u) {
+      if (i > j) {
+        out_l[i * k_min + j] = work_lu[i * n + j];
+      } else if (i == j) {
+        out_l[i * k_min + j] = 1.0;
+      } else {
+        out_l[i * k_min + j] = 0.0;
+      }
+    }
+  }
+  for (var i = 0u; i < k_min; i = i + 1u) {
+    for (var j = 0u; j < n; j = j + 1u) {
+      if (j >= i) {
+        out_u[i * n + j] = work_lu[i * n + j];
+      } else {
+        out_u[i * n + j] = 0.0;
+      }
+    }
+  }
+}
+''';
+
+const String _luSolveF32Shader = '''
+struct LuSolveParams {
+  n: u32,
+  nrhs: u32,
+  pad0: u32,
+  pad1: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_lu: array<f32>;
+@group(0) @binding(1) var<storage, read> in_pivots: array<f32>;
+@group(0) @binding(2) var<storage, read> in_b: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_x: array<f32>;
+@group(0) @binding(4) var<uniform> params: LuSolveParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let n = params.n;
+  let nrhs = params.nrhs;
+
+  for (var i = 0u; i < n * nrhs; i = i + 1u) {
+    out_x[i] = in_b[i];
+  }
+
+  for (var k = 0u; k < n; k = k + 1u) {
+    let piv = u32(max(0.0, round(in_pivots[k])));
+    if (piv != k && piv < n) {
+      for (var c = 0u; c < nrhs; c = c + 1u) {
+        let tmp = out_x[k * nrhs + c];
+        out_x[k * nrhs + c] = out_x[piv * nrhs + c];
+        out_x[piv * nrhs + c] = tmp;
+      }
+    }
+  }
+
+  for (var c = 0u; c < nrhs; c = c + 1u) {
+    for (var i = 0u; i < n; i = i + 1u) {
+      var sum = out_x[i * nrhs + c];
+      for (var j = 0u; j < i; j = j + 1u) {
+        sum = sum - in_lu[i * n + j] * out_x[j * nrhs + c];
+      }
+      out_x[i * nrhs + c] = sum;
+    }
+
+    if (n > 0u) {
+      var i = i32(n) - 1;
+      loop {
+        if (i < 0) { break; }
+        let ui = u32(i);
+        var sum = out_x[ui * nrhs + c];
+        for (var j = ui + 1u; j < n; j = j + 1u) {
+          sum = sum - in_lu[ui * n + j] * out_x[j * nrhs + c];
+        }
+        out_x[ui * nrhs + c] = sum / in_lu[ui * n + ui];
+        i = i - 1;
+      }
+    }
+  }
+}
+''';
+
+const String _eighF32Shader = '''
+struct EighParams {
+  n: u32,
+  use_upper: u32,
+  pad0: u32,
+  pad1: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> work_s: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_w: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_v: array<f32>;
+@group(0) @binding(4) var<uniform> params: EighParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let n = params.n;
+  for (var i = 0u; i < n; i = i + 1u) {
+    for (var j = 0u; j < n; j = j + 1u) {
+      out_v[i * n + j] = select(0.0, 1.0, i == j);
+      if (i == j) {
+        work_s[i * n + j] = in_a[i * n + j];
+      } else if (params.use_upper != 0u) {
+        let r = min(i, j);
+        let c = max(i, j);
+        work_s[i * n + j] = in_a[r * n + c];
+      } else {
+        let r = max(i, j);
+        let c = min(i, j);
+        work_s[i * n + j] = in_a[r * n + c];
+      }
+    }
+  }
+
+  for (var sweep = 0u; sweep < 30u; sweep = sweep + 1u) {
+    var max_off = 0.0;
+    for (var p = 0u; p < n; p = p + 1u) {
+      for (var q = p + 1u; q < n; q = q + 1u) {
+        let spq = work_s[p * n + q];
+        let abs_spq = abs(spq);
+        let spp = work_s[p * n + p];
+        let sqq = work_s[q * n + q];
+        let diag_scale = abs(spp) + abs(sqq);
+        if (abs_spq <= 1e-7 * diag_scale) {
+          work_s[p * n + q] = 0.0;
+          work_s[q * n + p] = 0.0;
+        } else if (abs_spq > 0.0) {
+          if (abs_spq > max_off) {
+            max_off = abs_spq;
+          }
+          let diff = sqq - spp;
+          let tau = diff / (2.0 * spq);
+          let abs_tau = abs(tau);
+          var t_mag = 0.0;
+          if (abs_tau > 1e4) {
+            t_mag = 1.0 / (2.0 * abs_tau);
+          } else {
+            t_mag = 1.0 / (abs_tau + sqrt(1.0 + tau * tau));
+          }
+          let t = select(-t_mag, t_mag, tau >= 0.0);
+          let c = 1.0 / sqrt(1.0 + t * t);
+          let s = t * c;
+
+          work_s[p * n + p] = spp - t * spq;
+          work_s[q * n + q] = sqq + t * spq;
+          work_s[p * n + q] = 0.0;
+          work_s[q * n + p] = 0.0;
+
+          for (var r = 0u; r < n; r = r + 1u) {
+            if (r != p && r != q) {
+              let srp = work_s[r * n + p];
+              let srq = work_s[r * n + q];
+              let new_rp = c * srp - s * srq;
+              let new_rq = s * srp + c * srq;
+              work_s[r * n + p] = new_rp;
+              work_s[p * n + r] = new_rp;
+              work_s[r * n + q] = new_rq;
+              work_s[q * n + r] = new_rq;
+            }
+          }
+
+          for (var r = 0u; r < n; r = r + 1u) {
+            let vrp = out_v[r * n + p];
+            let vrq = out_v[r * n + q];
+            out_v[r * n + p] = c * vrp - s * vrq;
+            out_v[r * n + q] = s * vrp + c * vrq;
+          }
+        }
+      }
+    }
+    if (max_off == 0.0) {
+      break;
+    }
+  }
+
+  for (var i = 0u; i < n; i = i + 1u) {
+    out_w[i] = work_s[i * n + i];
+  }
+
+  for (var i = 0u; i < n; i = i + 1u) {
+    var min_idx = i;
+    var min_val = out_w[i];
+    for (var j = i + 1u; j < n; j = j + 1u) {
+      let wj = out_w[j];
+      if (wj < min_val) {
+        min_val = wj;
+        min_idx = j;
+      }
+    }
+    if (min_idx != i) {
+      let tmp_w = out_w[i];
+      out_w[i] = out_w[min_idx];
+      out_w[min_idx] = tmp_w;
+      for (var r = 0u; r < n; r = r + 1u) {
+        let tmp_v = out_v[r * n + i];
+        out_v[r * n + i] = out_v[r * n + min_idx];
+        out_v[r * n + min_idx] = tmp_v;
+      }
+    }
+  }
+}
+''';
+
 /// Dispatches the Cholesky decomposition kernel on [device].
 GpuBuffer dispatchCholeskyGpu(
   GpuDevice device,
-  GpuBuffer inputF64,
+  GpuBuffer inputBuffer,
   int n, {
   required bool upper,
+  bool singlePrecision = false,
 }) {
-  final outputBuffer = device.createBuffer(sizeInBytes: math.max(1, n * n) * 8);
+  final elemBytes = singlePrecision ? 4 : 8;
+  final outputBuffer = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * elemBytes,
+  );
   if (n == 0) return outputBuffer;
 
-  final module = getOrCreateLinalgShader(
-    'linalg_cholesky_f64',
-    () => _choleskyRealShader,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader('linalg_cholesky_f32', () => _choleskyF32Shader)
+      : getOrCreateLinalgShader(
+          'linalg_cholesky_f64',
+          () => _choleskyRealShader,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, outputBuffer],
+    buffers: [inputBuffer, outputBuffer],
     uniforms: [n, upper ? 1 : 0, 0, 0],
     workgroupsX: 1,
   );
@@ -503,22 +917,34 @@ GpuBuffer dispatchCholeskyGpu(
 /// Dispatches the Householder QR decomposition kernel on [device].
 ({GpuBuffer q, GpuBuffer r}) dispatchQrGpu(
   GpuDevice device,
-  GpuBuffer inputF64,
+  GpuBuffer inputBuffer,
   int m,
   int n, {
   required int qCols,
   required int rRows,
+  bool singlePrecision = false,
 }) {
-  final workQ = device.createBuffer(sizeInBytes: math.max(1, m * m) * 8);
-  final workR = device.createBuffer(sizeInBytes: math.max(1, m * n) * 8);
-  final outQ = device.createBuffer(sizeInBytes: math.max(1, m * qCols) * 8);
-  final outR = device.createBuffer(sizeInBytes: math.max(1, rRows * n) * 8);
+  final elemBytes = singlePrecision ? 4 : 8;
+  final workQ = device.createBuffer(
+    sizeInBytes: math.max(1, m * m) * elemBytes,
+  );
+  final workR = device.createBuffer(
+    sizeInBytes: math.max(1, m * n) * elemBytes,
+  );
+  final outQ = device.createBuffer(
+    sizeInBytes: math.max(1, m * qCols) * elemBytes,
+  );
+  final outR = device.createBuffer(
+    sizeInBytes: math.max(1, rRows * n) * elemBytes,
+  );
   if (m == 0 || n == 0) return (q: outQ, r: outR);
 
-  final module = getOrCreateLinalgShader('linalg_qr_f64', () => _qrRealShader);
+  final module = singlePrecision
+      ? getOrCreateLinalgShader('linalg_qr_f32', () => _qrF32Shader)
+      : getOrCreateLinalgShader('linalg_qr_f64', () => _qrRealShader);
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, workQ, workR, outQ, outR],
+    buffers: [inputBuffer, workQ, workR, outQ, outR],
     uniforms: [m, n, qCols, rRows],
     workgroupsX: 1,
   );
@@ -527,24 +953,44 @@ GpuBuffer dispatchCholeskyGpu(
 
 /// Dispatches the LU decomposition kernel on [device].
 ({GpuBuffer lu, GpuBuffer p, GpuBuffer l, GpuBuffer u, GpuBuffer pivots})
-dispatchLuGpu(GpuDevice device, GpuBuffer inputF64, int m, int n) {
+dispatchLuGpu(
+  GpuDevice device,
+  GpuBuffer inputBuffer,
+  int m,
+  int n, {
+  bool singlePrecision = false,
+}) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final kMin = math.min(m, n);
-  final workLu = device.createBuffer(sizeInBytes: math.max(1, m * n) * 8);
-  final outP = device.createBuffer(sizeInBytes: math.max(1, m * m) * 8);
-  final outL = device.createBuffer(sizeInBytes: math.max(1, m * kMin) * 8);
-  final outU = device.createBuffer(sizeInBytes: math.max(1, kMin * n) * 8);
-  final outPivots = device.createBuffer(sizeInBytes: math.max(1, kMin) * 8);
+  final workLu = device.createBuffer(
+    sizeInBytes: math.max(1, m * n) * elemBytes,
+  );
+  final outP = device.createBuffer(sizeInBytes: math.max(1, m * m) * elemBytes);
+  final outL = device.createBuffer(
+    sizeInBytes: math.max(1, m * kMin) * elemBytes,
+  );
+  final outU = device.createBuffer(
+    sizeInBytes: math.max(1, kMin * n) * elemBytes,
+  );
+  final outPivots = device.createBuffer(
+    sizeInBytes: math.max(1, kMin) * elemBytes,
+  );
   if (m == 0 || n == 0) {
     return (lu: workLu, p: outP, l: outL, u: outU, pivots: outPivots);
   }
 
-  final module = getOrCreateLinalgShader(
-    'linalg_lu_decompose_f64',
-    () => _luDecomposeShader,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_lu_decompose_f32',
+          () => _luDecomposeF32Shader,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_lu_decompose_f64',
+          () => _luDecomposeShader,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, workLu, outP, outL, outU, outPivots],
+    buffers: [inputBuffer, workLu, outP, outL, outU, outPivots],
     uniforms: [m, n, kMin, 0],
     workgroupsX: 1,
   );
@@ -554,22 +1000,25 @@ dispatchLuGpu(GpuDevice device, GpuBuffer inputF64, int m, int n) {
 /// Dispatches the LU linear system solver kernel on [device].
 GpuBuffer dispatchLuSolveGpu(
   GpuDevice device,
-  GpuBuffer luF64,
-  GpuBuffer pivotsF64,
-  GpuBuffer bF64,
+  GpuBuffer luBuffer,
+  GpuBuffer pivotsBuffer,
+  GpuBuffer bBuffer,
   int n,
-  int nrhs,
-) {
-  final outX = device.createBuffer(sizeInBytes: math.max(1, n * nrhs) * 8);
+  int nrhs, {
+  bool singlePrecision = false,
+}) {
+  final elemBytes = singlePrecision ? 4 : 8;
+  final outX = device.createBuffer(
+    sizeInBytes: math.max(1, n * nrhs) * elemBytes,
+  );
   if (n == 0 || nrhs == 0) return outX;
 
-  final module = getOrCreateLinalgShader(
-    'linalg_lu_solve_f64',
-    () => _luSolveShader,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader('linalg_lu_solve_f32', () => _luSolveF32Shader)
+      : getOrCreateLinalgShader('linalg_lu_solve_f64', () => _luSolveShader);
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [luF64, pivotsF64, bF64, outX],
+    buffers: [luBuffer, pivotsBuffer, bBuffer, outX],
     uniforms: [n, nrhs, 0, 0],
     workgroupsX: 1,
   );
@@ -579,22 +1028,25 @@ GpuBuffer dispatchLuSolveGpu(
 /// Dispatches the symmetric Jacobi eigendecomposition kernel on [device].
 ({GpuBuffer eigenvalues, GpuBuffer eigenvectors}) dispatchEighGpu(
   GpuDevice device,
-  GpuBuffer inputF64,
+  GpuBuffer inputBuffer,
   int n, {
   required bool useUpper,
+  bool singlePrecision = false,
 }) {
-  final workS = device.createBuffer(sizeInBytes: math.max(1, n * n) * 8);
-  final outW = device.createBuffer(sizeInBytes: math.max(1, n) * 8);
-  final outV = device.createBuffer(sizeInBytes: math.max(1, n * n) * 8);
+  final elemBytes = singlePrecision ? 4 : 8;
+  final workS = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * elemBytes,
+  );
+  final outW = device.createBuffer(sizeInBytes: math.max(1, n) * elemBytes);
+  final outV = device.createBuffer(sizeInBytes: math.max(1, n * n) * elemBytes);
   if (n == 0) return (eigenvalues: outW, eigenvectors: outV);
 
-  final module = getOrCreateLinalgShader(
-    'linalg_eigh_f64',
-    () => _eighRealShader,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader('linalg_eigh_f32', () => _eighF32Shader)
+      : getOrCreateLinalgShader('linalg_eigh_f64', () => _eighRealShader);
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, workS, outW, outV],
+    buffers: [inputBuffer, workS, outW, outV],
     uniforms: [n, useUpper ? 1 : 0, 0, 0],
     workgroupsX: 1,
   );

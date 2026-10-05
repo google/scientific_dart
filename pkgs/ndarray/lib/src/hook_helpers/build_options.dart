@@ -92,6 +92,7 @@ final class BuildOptions {
       '-fsanitize=$eff',
       '-fno-sanitize-recover=all',
       '-fno-omit-frame-pointer',
+      '-fno-strict-aliasing',
       '-g',
     ];
   }

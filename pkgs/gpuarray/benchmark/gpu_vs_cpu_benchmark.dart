@@ -17,6 +17,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 
 /// Performance metrics recorded for a single CPU vs. GPU benchmark workload.

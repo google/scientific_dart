@@ -35,9 +35,7 @@ import '../helpers.dart';
 /// - It is an error if [out] has incompatible shape or [DType] (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final window = hanning(512);
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> hanning<T extends DTypeTag>(
   int M, {
   DType<T>? dtype,
@@ -50,9 +48,12 @@ NDArray<T> hanning<T extends DTypeTag>(
   final targetShape = [M < 1 ? 0 : M];
   final NDArray<T> result;
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, targetShape) || out.dtype != resolvedDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for hanning.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for hanning',
       );
     }
     result = out;
@@ -142,9 +143,7 @@ NDArray<T> hanning<T extends DTypeTag>(
 /// - It is an error if [out] has incompatible shape or [DType] (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final window = hamming(512);
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> hamming<T extends DTypeTag>(
   int M, {
   DType<T>? dtype,
@@ -157,9 +156,12 @@ NDArray<T> hamming<T extends DTypeTag>(
   final targetShape = [M < 1 ? 0 : M];
   final NDArray<T> result;
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, targetShape) || out.dtype != resolvedDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for hamming.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for hamming',
       );
     }
     result = out;

@@ -60,14 +60,19 @@ NDArray<T> clip<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for clip');
   }
   if (out != null) {
-    if (!out.isWriteable || !listEquals(out.shape, a.shape)) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape for clip.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape)) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape for clip',
       );
     }
     if (out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible DType for clip.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible DType for clip',
       );
     }
     if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
@@ -231,12 +236,7 @@ NDArray<T> clip<T extends DTypeTag>(
 /// - Performs element-wise strided iteration in Dart using a ternary walker, requiring zero heap allocations for view creation.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 5.0, 10.0], [3], DType.float64);
-/// final minBounds = NDArray.fromList([2.0, 2.0, 2.0], [3], DType.float64);
-/// final maxBounds = NDArray.fromList([8.0, 8.0, 8.0], [3], DType.float64);
-/// final clipped = clipArray(a, min: minBounds, max: maxBounds); // [2.0, 5.0, 8.0]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy clip](https://numpy.org/doc/stable/reference/generated/numpy.clip.html)
 NDArray<T> clipArray<T extends DTypeTag>(
@@ -257,13 +257,17 @@ NDArray<T> clipArray<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for clipArray');
   }
   if (min != null && (min.dtype.isComplex || min.dtype == DType.boolean)) {
-    throw ArgumentError(
-      'Complex/Boolean bounds are not supported for clipArray',
+    throw ArgumentError.value(
+      min,
+      'min',
+      'Must not have complex or boolean bounds for clipArray',
     );
   }
   if (max != null && (max.dtype.isComplex || max.dtype == DType.boolean)) {
-    throw ArgumentError(
-      'Complex/Boolean bounds are not supported for clipArray',
+    throw ArgumentError.value(
+      max,
+      'max',
+      'Must not have complex or boolean bounds for clipArray',
     );
   }
 
@@ -272,14 +276,19 @@ NDArray<T> clipArray<T extends DTypeTag>(
   if (max != null) commonShape = broadcastShapes(commonShape, max.shape);
 
   if (out != null) {
-    if (!out.isWriteable || !listEquals(out.shape, commonShape)) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape for clipArray.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape)) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape for clipArray',
       );
     }
     if (out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible DType for clipArray.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible DType for clipArray',
       );
     }
     if (sharesMemory(a, out) ||
@@ -501,8 +510,36 @@ NDArray<T> clipArray<T extends DTypeTag>(
             broadcastMin.offsetElements,
             broadcastMax.offsetElements,
             result.offsetElements,
-            (x, mn, mx) =>
-                castValue((x as num).clamp(mn as num, mx as num), a.dtype),
+            (x, mn, mx) {
+              if (a.dtype.isFloating) {
+                final val = (x as num).toDouble();
+                final minVal = (mn as num).toDouble();
+                final maxVal = (mx as num).toDouble();
+                if (val.isNaN || minVal.isNaN || maxVal.isNaN) {
+                  return castValue(double.nan, a.dtype);
+                }
+                return castValue(
+                  val > maxVal ? maxVal : (val < minVal ? minVal : val),
+                  a.dtype,
+                );
+              }
+              if (a.dtype == DType.boolean) {
+                final val = (x as bool) ? 1 : 0;
+                final minVal = (mn as bool) ? 1 : 0;
+                final maxVal = (mx as bool) ? 1 : 0;
+                final res = val > maxVal
+                    ? maxVal
+                    : (val < minVal ? minVal : val);
+                return res != 0;
+              }
+              final val = (x as num).toInt();
+              final minVal = (mn as num).toInt();
+              final maxVal = (mx as num).toInt();
+              return castValue(
+                val > maxVal ? maxVal : (val < minVal ? minVal : val),
+                a.dtype,
+              );
+            },
             maskHolder.pointer,
           );
       }

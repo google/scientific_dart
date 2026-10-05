@@ -32,10 +32,16 @@ A web-based interactive notebook and REPL interface for **Dart** and **`package:
 
 ### 1. Launching the Notebook Server
 
-Run the server executable specifying the port (default `8080`):
+Run the server executable specifying the port (default `8080`) and an optional `.ipynb` notebook file:
 
 ```bash
 dart bin/notebook_server.dart 8080
+```
+
+Or launch directly with the interactive **"Hearing the Shape of a Drum"** math tutorial notebook:
+
+```bash
+dart bin/notebook_server.dart example/hearing_the_shape_of_a_drum.ipynb
 ```
 
 Open **`http://localhost:8080`** in your browser.

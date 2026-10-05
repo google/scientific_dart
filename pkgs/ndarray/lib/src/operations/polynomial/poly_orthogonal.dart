@@ -89,112 +89,96 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 
 /// Evaluates a Chebyshev series at points [x] with coefficients [c].
 ///
-/// Uses backward Clenshaw recurrence to evaluate p(x) = sum(c[i] * T_i(x)).
-/// Supports flexible argument order (c, x) or (x, c).
+/// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i T_i(x)$.
 ///
 /// **Preconditions:**
-/// - Input arrays must not be disposed.
-/// - Coefficient array must be 1-dimensional and non-empty.
+/// - [x] and [c] must not be disposed.
+/// - [c] must be 1-dimensional and non-empty.
 /// - It is an error if any input or [out] buffer is disposed.
-/// - It is an error if coefficient array is invalid or [out] buffer mismatches.
+/// - It is an error if [c] is invalid or [out] buffer mismatches.
 ///
 /// Reference: [NumPy chebval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html)
-NDArray<R> chebval<
-  T1 extends DTypeTag,
-  T2 extends DTypeTag,
-  R extends DTypeTag
->(NDArray<T1> arg1, NDArray<T2> arg2, {NDArray<R>? out}) {
-  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+NDArray<R> chebval<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  c, {
+  NDArray<R>? out,
+}) {
+  if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
-  NDArray cArr;
-  NDArray xArr;
-  if (arg1.shape.length != 1 && arg2.shape.length == 1) {
-    xArr = arg1;
-    cArr = arg2;
-  } else {
-    cArr = arg1;
-    xArr = arg2;
-  }
-  return _evalClenshaw(cArr, xArr, _OrthoKind.chebyshev, out: out);
+  return _evalClenshaw(c, x, _OrthoKind.chebyshev, out: out);
 }
 
 /// Evaluates a Legendre series at points [x] with coefficients [c].
 ///
-/// Uses backward Clenshaw recurrence to evaluate p(x) = sum(c[i] * P_i(x)).
-/// Supports flexible argument order (c, x) or (x, c).
+/// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i P_i(x)$.
 ///
 /// Reference: [NumPy legval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.legendre.legval.html)
-NDArray<R> legval<T1 extends DTypeTag, T2 extends DTypeTag, R extends DTypeTag>(
-  NDArray<T1> arg1,
-  NDArray<T2> arg2, {
+NDArray<R> legval<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  c, {
   NDArray<R>? out,
 }) {
-  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+  if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
-  NDArray cArr;
-  NDArray xArr;
-  if (arg1.shape.length != 1 && arg2.shape.length == 1) {
-    xArr = arg1;
-    cArr = arg2;
-  } else {
-    cArr = arg1;
-    xArr = arg2;
-  }
-  return _evalClenshaw(cArr, xArr, _OrthoKind.legendre, out: out);
+  return _evalClenshaw(c, x, _OrthoKind.legendre, out: out);
 }
 
 /// Evaluates a Hermite series at points [x] with coefficients [c].
 ///
-/// Uses backward Clenshaw recurrence to evaluate p(x) = sum(c[i] * H_i(x)).
-/// Supports flexible argument order (c, x) or (x, c).
+/// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i H_i(x)$.
 ///
 /// Reference: [NumPy hermval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.hermite.hermval.html)
-NDArray<R> hermval<
-  T1 extends DTypeTag,
-  T2 extends DTypeTag,
-  R extends DTypeTag
->(NDArray<T1> arg1, NDArray<T2> arg2, {NDArray<R>? out}) {
-  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+NDArray<R> hermval<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  c, {
+  NDArray<R>? out,
+}) {
+  if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
-  NDArray cArr;
-  NDArray xArr;
-  if (arg1.shape.length != 1 && arg2.shape.length == 1) {
-    xArr = arg1;
-    cArr = arg2;
-  } else {
-    cArr = arg1;
-    xArr = arg2;
-  }
-  return _evalClenshaw(cArr, xArr, _OrthoKind.hermite, out: out);
+  return _evalClenshaw(c, x, _OrthoKind.hermite, out: out);
 }
 
 /// Evaluates a Laguerre series at points [x] with coefficients [c].
 ///
-/// Uses backward Clenshaw recurrence to evaluate p(x) = sum(c[i] * L_i(x)).
-/// Supports flexible argument order (c, x) or (x, c).
+/// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i L_i(x)$.
 ///
 /// Reference: [NumPy lagval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.laguerre.lagval.html)
-NDArray<R> lagval<T1 extends DTypeTag, T2 extends DTypeTag, R extends DTypeTag>(
-  NDArray<T1> arg1,
-  NDArray<T2> arg2, {
+NDArray<R> lagval<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  c, {
   NDArray<R>? out,
 }) {
-  if (arg1.isDisposed || arg2.isDisposed || (out != null && out.isDisposed)) {
+  if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
-  NDArray cArr;
-  NDArray xArr;
-  if (arg1.shape.length != 1 && arg2.shape.length == 1) {
-    xArr = arg1;
-    cArr = arg2;
-  } else {
-    cArr = arg1;
-    xArr = arg2;
-  }
-  return _evalClenshaw(cArr, xArr, _OrthoKind.laguerre, out: out);
+  return _evalClenshaw(c, x, _OrthoKind.laguerre, out: out);
 }
 
 NDArray<R> _evalClenshaw<
@@ -206,21 +190,30 @@ NDArray<R> _evalClenshaw<
     throw StateError("Cannot execute series evaluation on a disposed array.");
   }
   if (c.shape.length != 1) {
-    throw ArgumentError("Coefficient array c must be 1-dimensional.");
+    throw ArgumentError.value(
+      c.shape,
+      'c',
+      'Must be 1-dimensional (got shape ${c.shape})',
+    );
   }
   if (c.shape[0] == 0) {
-    throw ArgumentError("Coefficient array c must not be empty.");
+    throw ArgumentError.value(c.shape[0], 'c', 'Must not be empty');
   }
 
   var resolved = resolveDType(c.dtype, x.dtype);
-  if (!resolved.isFloating && !resolved.isComplex) {
+  if ((!resolved.isFloating && !resolved.isComplex) ||
+      resolved == DType.float16 ||
+      resolved == DType.bfloat16) {
     resolved = DType.float64;
   }
   final targetDType = resolved as DType<R>;
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, x.shape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        "Incompatible out buffer shape or dtype for series evaluation.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for series evaluation (expected shape ${x.shape} and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype})',
       );
     }
   }
@@ -649,6 +642,7 @@ NDArray<R> _evalClenshaw<
               "Unsupported dtype $targetDType for orthogonal series evaluation.",
             );
         }
+        checkNativeOom();
       }
     } finally {
       ScratchArena.reset(marker);
@@ -665,52 +659,74 @@ NDArray<R> _evalClenshaw<
 }
 
 /// Finds roots of a Chebyshev series.
-NDArray<DTypeTag> chebroots<T extends DTypeTag>(
-  NDArray<T> c, {
-  NDArray<DTypeTag>? out,
+NDArray<C> chebroots<C extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+  >
+  c, {
+  NDArray<C>? out,
 }) {
-  return _orthoRoots(c, _OrthoKind.chebyshev, out: out);
+  return _orthoRoots<C>(c, _OrthoKind.chebyshev, out: out);
 }
 
 /// Finds roots of a Legendre series.
-NDArray<DTypeTag> legroots<T extends DTypeTag>(
-  NDArray<T> c, {
-  NDArray<DTypeTag>? out,
+NDArray<C> legroots<C extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+  >
+  c, {
+  NDArray<C>? out,
 }) {
-  return _orthoRoots(c, _OrthoKind.legendre, out: out);
+  return _orthoRoots<C>(c, _OrthoKind.legendre, out: out);
 }
 
 /// Finds roots of a Hermite series.
-NDArray<DTypeTag> hermroots<T extends DTypeTag>(
-  NDArray<T> c, {
-  NDArray<DTypeTag>? out,
+NDArray<C> hermroots<C extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+  >
+  c, {
+  NDArray<C>? out,
 }) {
-  return _orthoRoots(c, _OrthoKind.hermite, out: out);
+  return _orthoRoots<C>(c, _OrthoKind.hermite, out: out);
 }
 
 /// Finds roots of a Laguerre series.
-NDArray<DTypeTag> lagroots<T extends DTypeTag>(
-  NDArray<T> c, {
-  NDArray<DTypeTag>? out,
+NDArray<C> lagroots<C extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+  >
+  c, {
+  NDArray<C>? out,
 }) {
-  return _orthoRoots(c, _OrthoKind.laguerre, out: out);
+  return _orthoRoots<C>(c, _OrthoKind.laguerre, out: out);
 }
 
-NDArray<DTypeTag> _orthoRoots<T extends DTypeTag>(
-  NDArray<T> c,
+NDArray<C> _orthoRoots<C extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+  >
+  c,
   _OrthoKind kind, {
-  NDArray<DTypeTag>? out,
+  NDArray<C>? out,
 }) {
   if (c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute root finding on a disposed array.");
   }
   if (c.shape.length != 1) {
-    throw ArgumentError("Coefficient array c must be 1-dimensional.");
+    throw ArgumentError.value(
+      c.shape,
+      'c',
+      'Must be 1-dimensional (got shape ${c.shape})',
+    );
   }
 
-  final DType<DTypeTag> targetComplexDType = c.dtype == DType.complex64
-      ? DType.complex64
-      : DType.complex128;
+  final DType<DTypeTag> cDType = c.dtype;
+  final DType<C> targetComplexDType =
+      ((cDType == DType.complex64 || cDType == DType.float32)
+              ? DType.complex64
+              : DType.complex128)
+          as DType<C>;
 
   return NDArray.scope(() {
     var n = c.shape[0] - 1;
@@ -720,20 +736,23 @@ NDArray<DTypeTag> _orthoRoots<T extends DTypeTag>(
     }
     final deg = n <= 0 ? 0 : n;
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, [deg]) || out.dtype != targetComplexDType) {
-        throw ArgumentError(
-          "Incompatible out buffer shape or dtype for roots result (expected shape [$deg] and dtype $targetComplexDType, got shape ${out.shape} and dtype ${out.dtype}).",
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape or dtype for roots result (expected shape [$deg] and dtype $targetComplexDType, got shape ${out.shape} and dtype ${out.dtype})',
         );
       }
       if (!out.isContiguous || sharesMemory(c, out)) {
-        final temp = _orthoRoots<T>(c, kind);
+        final temp = _orthoRoots<C>(c, kind);
         _copyInto(temp, out);
         return out;
       }
     }
 
     if (n <= 0) {
-      final res = NDArray<DTypeTag>.zeros([0], targetComplexDType);
+      final res = NDArray<C>.zeros([0], targetComplexDType);
       if (out != null) {
         _copyInto(res, out);
         return out;
@@ -760,11 +779,7 @@ NDArray<DTypeTag> _orthoRoots<T extends DTypeTag>(
       final complexRoot = rootVal is Complex
           ? rootVal
           : Complex((rootVal as num).toDouble(), 0.0);
-      final res = NDArray<DTypeTag>.fromList(
-        [complexRoot],
-        [1],
-        targetComplexDType,
-      );
+      final res = NDArray<C>.fromList([complexRoot], [1], targetComplexDType);
       if (out != null) {
         _copyInto(res, out);
         return out;
@@ -772,16 +787,15 @@ NDArray<DTypeTag> _orthoRoots<T extends DTypeTag>(
       return res.detachToParentScope();
     }
 
-    final bool isComp =
-        c.dtype == DType.complex64 || c.dtype == DType.complex128;
+    final bool isComp = cDType == DType.complex64 || cDType == DType.complex128;
     final NDArray cMat;
-    switch (c.dtype) {
+    switch (cDType) {
       case DType.complex64:
       case DType.complex128:
-        cMat = NDArray<DTypeTag>.zeros([n, n], c.dtype as DType<DTypeTag>);
+      case DType.float32:
+        cMat = NDArray<DTypeTag>.zeros([n, n], cDType);
         break;
       case DType.float64:
-      case DType.float32:
       case DType.float16:
       case DType.bfloat16:
       case DType.int64:
@@ -912,7 +926,21 @@ NDArray<DTypeTag> _orthoRoots<T extends DTypeTag>(
         }
         break;
     }
-    final res = eigvals(cMat as NDArray<AnySpec>, out: out);
+    final res = eigvals<C>(
+      cMat
+          as NDArray<
+            DTypeSpec<
+              DTypeTag,
+              Object?,
+              DTypeTag,
+              C,
+              DTypeTag,
+              DTypeTag,
+              DTypeTag
+            >
+          >,
+      out: out,
+    );
     if (out != null) return out;
     return res.detachToParentScope();
   });

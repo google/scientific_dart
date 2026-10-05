@@ -350,9 +350,9 @@ void main() {
                       : NDArray.zeros([1], dt));
 
             void checkType<N extends ffi.NativeType>(
-              ffi.Pointer<N> Function() getter,
-              bool expectedValid,
-            ) {
+              ffi.Pointer<N> Function() getter, {
+              required bool expectedValid,
+            }) {
               if (expectedValid) {
                 expect(getter().address, isNonZero);
               } else {
@@ -362,59 +362,62 @@ void main() {
 
             checkType<ffi.Double>(
               () => arr.typedPointer<ffi.Double>(),
-              dt == DType.float64,
+              expectedValid: dt == DType.float64,
             );
             checkType<ffi.Float>(
               () => arr.typedPointer<ffi.Float>(),
-              dt == DType.float32,
+              expectedValid: dt == DType.float32,
             );
             checkType<ffi.Int64>(
               () => arr.typedPointer<ffi.Int64>(),
-              dt == DType.int64,
+              expectedValid: dt == DType.int64,
             );
             checkType<ffi.Uint64>(
               () => arr.typedPointer<ffi.Uint64>(),
-              dt == DType.uint64,
+              expectedValid: dt == DType.uint64,
             );
             checkType<ffi.Int32>(
               () => arr.typedPointer<ffi.Int32>(),
-              dt == DType.int32,
+              expectedValid: dt == DType.int32,
             );
             checkType<ffi.Uint32>(
               () => arr.typedPointer<ffi.Uint32>(),
-              dt == DType.uint32,
+              expectedValid: dt == DType.uint32,
             );
             checkType<ffi.Int16>(
               () => arr.typedPointer<ffi.Int16>(),
-              dt == DType.int16,
+              expectedValid: dt == DType.int16,
             );
             checkType<ffi.Uint16>(
               () => arr.typedPointer<ffi.Uint16>(),
-              dt == DType.uint16 || dt == DType.float16 || dt == DType.bfloat16,
+              expectedValid:
+                  dt == DType.uint16 ||
+                  dt == DType.float16 ||
+                  dt == DType.bfloat16,
             );
             checkType<ffi.Int8>(
               () => arr.typedPointer<ffi.Int8>(),
-              dt == DType.int8,
+              expectedValid: dt == DType.int8,
             );
             checkType<ffi.Uint8>(
               () => arr.typedPointer<ffi.Uint8>(),
-              dt == DType.uint8 || dt == DType.boolean,
+              expectedValid: dt == DType.uint8 || dt == DType.boolean,
             );
             checkType<cpx_t>(
               () => arr.typedPointer<cpx_t>(),
-              dt == DType.complex128,
+              expectedValid: dt == DType.complex128,
             );
             checkType<cpx_f_t>(
               () => arr.typedPointer<cpx_f_t>(),
-              dt == DType.complex64,
+              expectedValid: dt == DType.complex64,
             );
             checkType<ffi.Double>(
               () => arr.complexComponentPointer<ffi.Double>(),
-              dt == DType.complex128,
+              expectedValid: dt == DType.complex128,
             );
             checkType<ffi.Float>(
               () => arr.complexComponentPointer<ffi.Float>(),
-              dt == DType.complex64,
+              expectedValid: dt == DType.complex64,
             );
           }
         });

@@ -62,7 +62,7 @@ final class ScratchArena {
   ///   has $O(1)$ to $O(N)$ complexity depending on the system allocator.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<T> allocate<T extends ffi.NativeType>(int bytes) {
     if (bytes < 0) {
       throw ArgumentError.value(bytes, 'bytes', 'Must be non-negative.');
@@ -138,7 +138,7 @@ final class ScratchArena {
   ///   many pages were allocated.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static void reset(ScratchMarker marker) {
     final pageIndex = marker.pageIndex;
     final offset = marker.offset;
@@ -195,7 +195,7 @@ final class ScratchArena {
   /// - Transient allocation in the pre-allocated C stack.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Int64> copyInts(List<int> list) => copyInt64s(list);
 
   /// Allocates transient memory from the arena and copies the elements of [list] into it as native [ffi.Double]s.
@@ -208,7 +208,7 @@ final class ScratchArena {
   /// - Uses fast typed list views to copy contiguous memory blocks.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Double> copyDoubles(List<double> list) {
     final ptr = allocate<ffi.Double>(list.length * ffi.sizeOf<ffi.Double>());
     final typedList = ptr.asTypedList(list.length);
@@ -226,7 +226,7 @@ final class ScratchArena {
   /// - Uses fast typed list views to copy contiguous memory blocks.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Float> copyFloats(List<double> list) {
     final ptr = allocate<ffi.Float>(list.length * ffi.sizeOf<ffi.Float>());
     final typedList = ptr.asTypedList(list.length);
@@ -244,7 +244,7 @@ final class ScratchArena {
   /// - Uses fast typed list views to copy contiguous memory blocks.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Int32> copyInt32s(List<int> list) {
     final ptr = allocate<ffi.Int32>(list.length * ffi.sizeOf<ffi.Int32>());
     for (var i = 0; i < list.length; i++) {
@@ -268,7 +268,7 @@ final class ScratchArena {
   /// - Uses fast typed list views to copy contiguous memory blocks.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Int64> copyInt64s(List<int> list) {
     final ptr = allocate<ffi.Int64>(list.length * ffi.sizeOf<ffi.Int64>());
     final typedList = ptr.asTypedList(list.length);
@@ -288,7 +288,7 @@ final class ScratchArena {
   /// - Specially optimized for [ComplexList] to perform a direct contiguous memory copy.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Double> copyComplexes(List<Complex> list) {
     final ptr = allocate<ffi.Double>(
       list.length * 2 * ffi.sizeOf<ffi.Double>(),
@@ -317,7 +317,7 @@ final class ScratchArena {
   /// - Specially optimized for [ComplexList] to perform a direct contiguous memory copy.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Float> copyFloatComplexes(List<Complex> list) {
     final ptr = allocate<ffi.Float>(list.length * 2 * ffi.sizeOf<ffi.Float>());
     final typedList = ptr.asTypedList(list.length * 2);
@@ -342,7 +342,7 @@ final class ScratchArena {
   /// - Fast element-wise iteration to map boolean states to native byte flags.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Uint8> copyBools(List<bool> list) {
     final ptr = allocate<ffi.Uint8>(list.length * ffi.sizeOf<ffi.Uint8>());
     final typedList = ptr.asTypedList(list.length);
@@ -371,7 +371,7 @@ final class ScratchArena {
   /// - Time complexity is $O(1)$ amortized allocation on the bump stack.
   ///
   /// **Example:**
-  /// {@example /example/scratch_arena_example.dart}
+  /// {@example /example/scratch_arena_example.dart lang=dart}
   static ffi.Pointer<ffi.Int64> getStridedBuffer(int ndim, [int segments = 4]) {
     if (ndim < 0) {
       throw ArgumentError.value(ndim, 'ndim', 'Must be non-negative.');
@@ -416,7 +416,7 @@ final class ScratchArena {
 /// effectively freeing all allocations made after the marker was recorded.
 ///
 /// **Example:**
-/// {@example /example/scratch_arena_example.dart}
+/// {@example /example/scratch_arena_example.dart lang=dart}
 final class ScratchMarker {
   /// The page index inside the ScratchArena page pool when the marker was recorded.
   final int pageIndex;

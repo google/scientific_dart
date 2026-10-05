@@ -18,4 +18,5 @@
 /// dynamic computation graphs, Vector-Jacobian Products (VJPs), and gradient tracking.
 library;
 
-export 'src/autograd/autograd.dart';
+export 'src/autograd/autograd_core.dart'
+    show GradFn, LossReduction, enableGrad, isGradEnabled, noGrad, runBackward;

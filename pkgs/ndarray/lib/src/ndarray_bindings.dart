@@ -7313,6 +7313,153 @@ external void s_diff_int32(
 
 @ffi.Native<
   ffi.Void Function(
+    ffi.Pointer<ffi.Int16>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int16>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_int16(
+  ffi.Pointer<ffi.Int16> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Int16> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Int8>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int8>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_int8(
+  ffi.Pointer<ffi.Int8> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Int8> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Uint64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_uint64(
+  ffi.Pointer<ffi.Uint64> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Uint64> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Uint32>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint32>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_uint32(
+  ffi.Pointer<ffi.Uint32> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Uint32> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Uint16>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint16>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_uint16(
+  ffi.Pointer<ffi.Uint16> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Uint16> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_uint8(
+  ffi.Pointer<ffi.Uint8> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Uint8> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_diff_boolean(
+  ffi.Pointer<ffi.Uint8> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Uint8> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+@ffi.Native<
+  ffi.Void Function(
     ffi.Pointer<cpx_t>,
     ffi.Pointer<ffi.Int64>,
     ffi.Pointer<cpx_t>,
@@ -10721,7 +10868,7 @@ external int s_hash_boolean(
     ffi.Int64,
     ffi.Double,
     ffi.Double,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_normal_double(
@@ -10738,7 +10885,7 @@ external void v_normal_double(
     ffi.Int64,
     ffi.Float,
     ffi.Float,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_normal_float(
@@ -10749,14 +10896,10 @@ external void v_normal_float(
   int seed,
 );
 
-@ffi.Native<
-  ffi.Void Function(ffi.Pointer<ffi.Double>, ffi.Int64, ffi.UnsignedLongLong)
->()
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Double>, ffi.Int64, ffi.Uint64)>()
 external void v_uniform_double(ffi.Pointer<ffi.Double> res, int size, int seed);
 
-@ffi.Native<
-  ffi.Void Function(ffi.Pointer<ffi.Float>, ffi.Int64, ffi.UnsignedLongLong)
->()
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Float>, ffi.Int64, ffi.Uint64)>()
 external void v_uniform_float(ffi.Pointer<ffi.Float> res, int size, int seed);
 
 @ffi.Native<
@@ -10765,7 +10908,7 @@ external void v_uniform_float(ffi.Pointer<ffi.Float> res, int size, int seed);
     ffi.Int64,
     ffi.Int64,
     ffi.Int64,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_randint_int64(
@@ -10782,7 +10925,7 @@ external void v_randint_int64(
     ffi.Int64,
     ffi.Int32,
     ffi.Int32,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_randint_int32(
@@ -10799,7 +10942,7 @@ external void v_randint_int32(
     ffi.Int64,
     ffi.Int,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_randint_int16(
@@ -10816,7 +10959,7 @@ external void v_randint_int16(
     ffi.Int64,
     ffi.Int,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_randint_uint8(
@@ -11346,12 +11489,7 @@ external void v_secure_normal_float(
 );
 
 @ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Int64>,
-    ffi.Int64,
-    ffi.Double,
-    ffi.UnsignedLongLong,
-  )
+  ffi.Void Function(ffi.Pointer<ffi.Int64>, ffi.Int64, ffi.Double, ffi.Uint64)
 >()
 external void v_poisson_int64(
   ffi.Pointer<ffi.Int64> res,
@@ -11361,12 +11499,7 @@ external void v_poisson_int64(
 );
 
 @ffi.Native<
-  ffi.Void Function(
-    ffi.Pointer<ffi.Int32>,
-    ffi.Int64,
-    ffi.Double,
-    ffi.UnsignedLongLong,
-  )
+  ffi.Void Function(ffi.Pointer<ffi.Int32>, ffi.Int64, ffi.Double, ffi.Uint64)
 >()
 external void v_poisson_int32(
   ffi.Pointer<ffi.Int32> res,
@@ -11381,7 +11514,7 @@ external void v_poisson_int32(
     ffi.Int64,
     ffi.Int,
     ffi.Double,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_binomial_int64(
@@ -11398,7 +11531,7 @@ external void v_binomial_int64(
     ffi.Int64,
     ffi.Int,
     ffi.Double,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void v_binomial_int32(
@@ -11407,6 +11540,40 @@ external void v_binomial_int32(
   int n,
   double p,
   int seed,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Int64>, ffi.Int64, ffi.Double)>()
+external void v_secure_poisson_int64(
+  ffi.Pointer<ffi.Int64> res,
+  int size,
+  double lam,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Int32>, ffi.Int64, ffi.Double)>()
+external void v_secure_poisson_int32(
+  ffi.Pointer<ffi.Int32> res,
+  int size,
+  double lam,
+);
+
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<ffi.Int64>, ffi.Int64, ffi.Int, ffi.Double)
+>()
+external void v_secure_binomial_int64(
+  ffi.Pointer<ffi.Int64> res,
+  int size,
+  int n,
+  double p,
+);
+
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<ffi.Int32>, ffi.Int64, ffi.Int, ffi.Double)
+>()
+external void v_secure_binomial_int32(
+  ffi.Pointer<ffi.Int32> res,
+  int size,
+  int n,
+  double p,
 );
 
 /// ============================================================================
@@ -26295,6 +26462,31 @@ external void s_correlate_valid_int32(
   int rank,
 );
 
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Uint64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Uint64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+  )
+>()
+external void s_correlate_valid_uint64(
+  ffi.Pointer<ffi.Uint64> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Uint64> kernel,
+  ffi.Pointer<ffi.Int64> stridesKernel,
+  ffi.Pointer<ffi.Uint64> res,
+  ffi.Pointer<ffi.Int64> stridesRes,
+  ffi.Pointer<ffi.Int64> resShape,
+  ffi.Pointer<ffi.Int64> kernelShape,
+  int rank,
+);
+
 @ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Int64>, ffi.Int64)>()
 external int r_sum_int64(ffi.Pointer<ffi.Int64> src, int size);
 
@@ -29605,7 +29797,7 @@ external void s_vander_fit_complex64(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void native_shuffle_1d(
@@ -29623,7 +29815,7 @@ external void native_shuffle_1d(
     ffi.Pointer<ffi.Int64>,
     ffi.Int,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void native_shuffle_nd(
@@ -29644,7 +29836,7 @@ external void native_shuffle_nd(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void native_choice_uniform(
@@ -29668,7 +29860,7 @@ external void native_choice_uniform(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void native_choice_weighted(
@@ -29692,7 +29884,7 @@ external void native_choice_weighted(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void native_choice_without_replacement(
@@ -29716,7 +29908,7 @@ external void native_choice_without_replacement(
     ffi.Int64,
     ffi.Int64,
     ffi.Int,
-    ffi.UnsignedLongLong,
+    ffi.Uint64,
   )
 >()
 external void native_choice_weighted_without_replacement(
@@ -29729,6 +29921,121 @@ external void native_choice_weighted_without_replacement(
   int sample_count,
   int item_size,
   int seed,
+);
+
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<ffi.Void>, ffi.Int64, ffi.Int64, ffi.Int)
+>()
+external void native_secure_shuffle_1d(
+  ffi.Pointer<ffi.Void> data,
+  int size,
+  int stride,
+  int item_size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void native_secure_shuffle_nd(
+  ffi.Pointer<ffi.Void> data,
+  ffi.Pointer<ffi.Int64> shape,
+  ffi.Pointer<ffi.Int64> strides,
+  int rank,
+  int item_size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int,
+  )
+>()
+external void native_secure_choice_uniform(
+  ffi.Pointer<ffi.Void> src,
+  int src_stride,
+  ffi.Pointer<ffi.Void> dest,
+  int dest_stride,
+  int src_size,
+  int sample_count,
+  int item_size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int,
+  )
+>()
+external void native_secure_choice_weighted(
+  ffi.Pointer<ffi.Void> src,
+  int src_stride,
+  ffi.Pointer<ffi.Void> dest,
+  int dest_stride,
+  ffi.Pointer<ffi.Double> cdf,
+  int src_size,
+  int sample_count,
+  int item_size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int,
+  )
+>()
+external void native_secure_choice_without_replacement(
+  ffi.Pointer<ffi.Void> src,
+  int src_stride,
+  ffi.Pointer<ffi.Void> dest,
+  int dest_stride,
+  int src_size,
+  int sample_count,
+  int item_size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Void>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Int64,
+    ffi.Int,
+  )
+>()
+external void native_secure_choice_weighted_without_replacement(
+  ffi.Pointer<ffi.Void> src,
+  int src_stride,
+  ffi.Pointer<ffi.Void> dest,
+  int dest_stride,
+  ffi.Pointer<ffi.Double> probs,
+  int src_size,
+  int sample_count,
+  int item_size,
 );
 
 typedef ptrdiff_t = ffi.Long;
@@ -29914,7 +30221,11 @@ enum QuantileMethod {
     10 => QUANTILE_HIGHER,
     11 => QUANTILE_MIDPOINT,
     12 => QUANTILE_NEAREST,
-    _ => throw ArgumentError('Unknown value for QuantileMethod: $value'),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'Must be a valid QuantileMethod value',
+    ),
   };
 }
 
@@ -29996,7 +30307,11 @@ enum BinaryOpCode {
     33 => OP_LESS,
     34 => OP_LESS_EQUAL,
     35 => OP_COUNT,
-    _ => throw ArgumentError('Unknown value for BinaryOpCode: $value'),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'Must be a valid BinaryOpCode value',
+    ),
   };
 }
 
@@ -30038,7 +30353,11 @@ enum DistanceMetric {
     1 => METRIC_COSINE,
     2 => METRIC_HAMMING,
     3 => METRIC_CHEBYSHEV,
-    _ => throw ArgumentError('Unknown value for DistanceMetric: $value'),
+    _ => throw ArgumentError.value(
+      value,
+      'value',
+      'Must be a valid DistanceMetric value',
+    ),
   };
 }
 
@@ -30327,7 +30646,7 @@ const int CMP_OP_GE = 5;
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Void>,
     ffi.Pointer<ffi.Void>,
-    ffi.IntPtr,
+    ffi.Int64,
   )
 >()
 external void v_binary_minmax(
@@ -30344,24 +30663,24 @@ external void v_binary_minmax(
     ffi.Int,
     ffi.Int,
     ffi.Int,
-    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Void>,
-    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Void>,
-    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Int64>,
     ffi.Pointer<ffi.Void>,
-    ffi.Pointer<ffi.IntPtr>,
+    ffi.Pointer<ffi.Int64>,
   )
 >()
 external void s_binary_minmax(
   int opCode,
   int dtype,
   int ndim,
-  ffi.Pointer<ffi.IntPtr> shape,
+  ffi.Pointer<ffi.Int64> shape,
   ffi.Pointer<ffi.Void> aData,
-  ffi.Pointer<ffi.IntPtr> aStrides,
+  ffi.Pointer<ffi.Int64> aStrides,
   ffi.Pointer<ffi.Void> bData,
-  ffi.Pointer<ffi.IntPtr> bStrides,
+  ffi.Pointer<ffi.Int64> bStrides,
   ffi.Pointer<ffi.Void> outData,
-  ffi.Pointer<ffi.IntPtr> outStrides,
+  ffi.Pointer<ffi.Int64> outStrides,
 );

@@ -187,6 +187,7 @@ final class Float16Utils {
 final class Float16List with ListMixin<double> implements List<double> {
   final Uint16List _buffer;
 
+  /// Creates a [Float16List] view backed by [_buffer].
   Float16List(this._buffer);
 
   @override
@@ -209,6 +210,7 @@ final class Float16List with ListMixin<double> implements List<double> {
 final class BFloat16List with ListMixin<double> implements List<double> {
   final Uint16List _buffer;
 
+  /// Creates a [BFloat16List] view backed by [_buffer].
   BFloat16List(this._buffer);
 
   @override

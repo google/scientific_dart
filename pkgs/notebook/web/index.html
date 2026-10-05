@@ -572,6 +572,8 @@
     let hoverTimeout = null;
     let selectedIndex = 0;
 
+    let isInitializingSession = false;
+
     function initWebSocket() {
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
@@ -620,17 +622,22 @@
             pendingCompletions.delete(msg.id);
           }
         } else if (msg.type === 'init_session') {
-          if (msg.cells && msg.cells.length > 0) {
-            const notebook = document.getElementById('notebook');
-            notebook.innerHTML = '';
-            cellCount = 0;
-            msg.cells.forEach(c => {
-              addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
-            });
-          } else if (document.querySelectorAll('.cell').length === 0) {
-            addCellWithState("# Dart NDArray & Symbolic Notebook\nInteractive scientific computing in Dart with native acceleration.", "", false, false, null, 'markdown');
-            addCell("// Welcome to Dart NDArray Notebook!\n// Type 'Ctrl+Space' or '.' to test autocompletion.\nvar a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)");
-            addCell("// Multiply by scalar or matrix:\na * 2");
+          isInitializingSession = true;
+          try {
+            if (msg.cells && msg.cells.length > 0) {
+              const notebook = document.getElementById('notebook');
+              notebook.innerHTML = '';
+              cellCount = 0;
+              msg.cells.forEach(c => {
+                addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
+              });
+            } else if (document.querySelectorAll('.cell').length === 0) {
+              addCellWithState("# Dart NDArray & Symbolic Notebook\nInteractive scientific computing in Dart with native acceleration.", "", false, false, null, 'markdown');
+              addCell("// Welcome to Dart NDArray Notebook!\n// Type 'Ctrl+Space' or '.' to test autocompletion.\nvar a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)");
+              addCell("// Multiply by scalar or matrix:\na * 2");
+            }
+          } finally {
+            isInitializingSession = false;
           }
         } else if (msg.type === 'hover') {
           const callback = pendingHovers.get(msg.id);
@@ -643,7 +650,7 @@
     }
 
     function autoSaveSession() {
-      if (!ws || ws.readyState !== WebSocket.OPEN) return;
+      if (isInitializingSession || !ws || ws.readyState !== WebSocket.OPEN) return;
       const cellsData = [];
       document.querySelectorAll('.cell').forEach(cell => {
         const code = cell._cm ? cell._cm.getValue() : (cell.querySelector('textarea') ? cell.querySelector('textarea').value : '');
@@ -809,6 +816,13 @@
       activeHoverPopup = popup;
     }
 
+    const pendingKaTeXElements = [];
+    window.addEventListener('load', () => {
+      while (pendingKaTeXElements.length > 0) {
+        tryRenderKaTeX(pendingKaTeXElements.shift());
+      }
+    });
+
     function tryRenderKaTeX(element) {
       if (window.renderMathInElement) {
         try {
@@ -824,6 +838,8 @@
         } catch (e) {
           console.warn('KaTeX render warning:', e);
         }
+      } else if (element) {
+        pendingKaTeXElements.push(element);
       }
     }
 
@@ -988,7 +1004,19 @@
       const renderedView = document.getElementById(`rendered-${cellId}`);
       if (renderedView) {
         if (window.marked && typeof window.marked.parse === 'function') {
-          renderedView.innerHTML = marked.parse(text);
+          const mathBlocks = [];
+          const protectedText = text
+            .replace(/\$\$[\s\S]+?\$\$/g, (m) => {
+              mathBlocks.push(m);
+              return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+            })
+            .replace(/\$(?!\$)([^\$\n]+?)\$/g, (m) => {
+              mathBlocks.push(m);
+              return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+            });
+          let html = marked.parse(protectedText);
+          html = html.replace(/@@MATH_BLOCK_(\d+)@@/g, (_, idx) => mathBlocks[Number(idx)]);
+          renderedView.innerHTML = html;
         } else {
           renderedView.innerText = text;
         }
@@ -1215,7 +1243,7 @@
       }
     }
 
-    function runCell(cellId, onComplete) {
+    function runCell(cellId, onComplete, appendIfLast = true) {
       const cell = document.getElementById(cellId);
       if (!cell) {
         if (onComplete) onComplete();
@@ -1237,7 +1265,7 @@
       }
 
       const allCells = document.querySelectorAll('.cell');
-      const isLastCell = allCells.length > 0 && allCells[allCells.length - 1].id === cellId;
+      const isLastCell = appendIfLast && allCells.length > 0 && allCells[allCells.length - 1].id === cellId;
 
       updateStatus('busy', 'Executing...');
       output.className = 'output-container';
@@ -1292,14 +1320,18 @@
       for (let i = 0; i <= targetIndex; i++) {
         const cellId = cells[i].id;
         await new Promise((resolve) => {
-          runCell(cellId, resolve);
+          runCell(cellId, resolve, false);
         });
       }
     }
 
-    function runAllCells() {
-      const cells = document.querySelectorAll('.cell');
-      cells.forEach(cell => runCell(cell.id));
+    async function runAllCells() {
+      const cells = Array.from(document.querySelectorAll('.cell'));
+      for (const cell of cells) {
+        await new Promise((resolve) => {
+          runCell(cell.id, resolve, false);
+        });
+      }
     }
 
     function clearAllOutputs() {

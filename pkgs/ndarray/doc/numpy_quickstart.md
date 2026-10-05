@@ -152,10 +152,10 @@ final quotI32 = i32 / i32;     // inferred static type: NDArray<Float64>
 final sinI32  = sin(i32);      // inferred static type: NDArray<Float64>
 final meanI32 = mean(i32);     // inferred static type: NDArray<Float64>
 
-// Float32 arrays preserve NDArray<Float32>:
+// Float32 arrays preserve NDArray<Float32> for element-wise ops (mean promotes to Float64):
 final quotF32 = f32 / f32;     // inferred static type: NDArray<Float32>
 final sinF32  = sin(f32);      // inferred static type: NDArray<Float32>
-final meanF32 = mean(f32);     // inferred static type: NDArray<Float32>
+final meanF32 = mean(f32);     // inferred static type: NDArray<Float64>
 ```
 
 ---
@@ -193,7 +193,8 @@ final meanF32 = mean(f32);     // inferred static type: NDArray<Float32>
 | `arr.T`, `arr.transpose()`| `arr.transposed`, `arr.transpose()`| **Zero-Copy View** with permuted strides (`[C, B, A]`). |
 | `np.expand_dims(a, 0)` | `expand_dims(a, 0)` | **Zero-Copy View** inserting size-1 axis at position `0`. |
 | `np.squeeze(a, axis=0)` | `squeeze(a, axis: [0])` | **Zero-Copy View** dropping size-1 dimensions. |
-| `arr.flatten()`, `arr.ravel()`| `arr.flatten()` | **Zero-Copy View** if C-contiguous (`isContiguous`), else copy. |
+| `arr.flatten()` | `arr.flatten()` | **Deep 1-D Copy** (`arr.flatten()` always returns an independent 1-D copy). |
+| `arr.ravel()` | `arr.ravel()` | **Zero-Copy View** (`arr.ravel()` returns a zero-copy view when contiguous, else copy). |
 | `arr.copy()` | `arr.copy()` | **Deep C-Contiguous Copy** (decouples backing C memory). |
 
 ---

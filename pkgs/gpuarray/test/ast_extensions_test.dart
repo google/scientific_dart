@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/jit.dart';
+import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
 
 void main() {
@@ -365,6 +366,99 @@ void main() {
             math.cos(xVal) * math.exp(math.sin(xVal)) + 2.0 * xVal;
 
         expect(analyticalGrad, closeTo(numericalGrad, 1e-4));
+      },
+    );
+  });
+
+  group('Feature 18: WgslJitCompiler & CompiledWgslKernel GpuArray Execution', () {
+    test(
+      'compileKernel and execute evaluate fused AST on GpuArray<Float32> and GpuArray<Float64>',
+      () {
+        ResourceScope.scope(() {
+          final x = Expr.variable('x', bindingIndex: 0);
+          final y = Expr.variable('y', bindingIndex: 1);
+          final scale = Expr.scalar('scale', defaultValue: 2.0);
+          final expr = (x * scale + y).relu();
+
+          final kernel = WgslJitCompiler.instance.compileKernel(
+            expr,
+            name: 'fused_axpy_relu',
+          );
+          expect(kernel.descriptor.name, equals('fused_axpy_relu'));
+
+          final a32 = GpuArray<Float32>.fromList(
+            [-2.0, 1.0, 3.0, -0.5],
+            [4],
+            DType.float32,
+          );
+          final b32 = GpuArray<Float32>.fromList(
+            [1.0, 2.0, -1.0, 2.0],
+            [4],
+            DType.float32,
+          );
+
+          // Execute via named inputs with default scalar (scale = 2.0)
+          final out32 = kernel<Float32>({'x': a32, 'y': b32});
+          expect(out32.dtype, equals(DType.float32));
+          expect(out32.shape, equals([4]));
+          expect(out32.toList().cast<double>(), equals([0.0, 4.0, 5.0, 1.0]));
+
+          // Execute with scalar override (scale = 3.0) and preallocated out:
+          final preallocated = GpuArray<Float32>.empty([4], DType.float32);
+          final outOverride = kernel.executePositional<Float32>(
+            [a32, b32],
+            scalars: {'scale': 3.0},
+            out: preallocated,
+          );
+          expect(identical(outOverride, preallocated), isTrue);
+          expect(
+            outOverride.toList().cast<double>(),
+            equals([0.0, 5.0, 8.0, 0.5]),
+          );
+
+          // Execute via WgslJitCompiler.instance.execute on Float64 inputs
+          final a64 = GpuArray<Float64>.fromList(
+            [1.0, 2.0],
+            [2],
+            DType.float64,
+          );
+          final b64 = GpuArray<Float64>.fromList(
+            [0.5, 1.5],
+            [2],
+            DType.float64,
+          );
+          final out64 = WgslJitCompiler.instance.execute<Float64>(
+            expr,
+            {'x': a64, 'y': b64},
+            scalars: {'scale': 4.0},
+          );
+          expect(out64.dtype, equals(DType.float64));
+          expect(out64.toList().cast<double>(), equals([4.5, 9.5]));
+        });
+      },
+    );
+
+    test(
+      'Zero-input procedural CoordExpr kernel executes on GPU with explicit outputShape and dtype',
+      () {
+        ResourceScope.scope(() {
+          final col = Expr.coord(1, shape: [2, 3], normalized: false);
+          final row = Expr.coord(0, shape: [2, 3], normalized: false);
+          final expr = row * 10.0 + col;
+
+          final out = WgslJitCompiler.instance.execute<Float32>(
+            expr,
+            const {},
+            outputShape: [2, 3],
+            dtype: DType.float32,
+          );
+          expect(out.shape, equals([2, 3]));
+          expect(out.dtype, equals(DType.float32));
+          expect(
+            out.toList().cast<double>(),
+            equals([0.0, 1.0, 2.0, 10.0, 11.0, 12.0]),
+          );
+        });
       },
     );
   });

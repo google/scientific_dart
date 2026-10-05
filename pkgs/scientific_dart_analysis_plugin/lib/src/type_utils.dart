@@ -23,6 +23,7 @@ const Set<String> kAlwaysViewNames = {
   'slice',
   'transpose',
   'T',
+  'transposed',
   'squeeze',
   'expandDims',
   'expand_dims',
@@ -73,6 +74,17 @@ const Set<String> kReductionNames = {
   'all',
   'ptp',
   'median',
+  'nanmedian',
+  'quantile',
+  'nanquantile',
+  'percentile',
+  'nanpercentile',
+  'argmax',
+  'argmin',
+  'nanargmax',
+  'nanargmin',
+  'count_nonzero',
+  'countNonzero',
 };
 
 /// Returns whether [type] is `NDArray`.
@@ -373,12 +385,14 @@ bool isViewProducingExpression(
       }
     }
   } else if (unwrapped is PropertyAccess) {
-    if (unwrapped.propertyName.name == 'T' &&
+    final propName = unwrapped.propertyName.name;
+    if ((propName == 'T' || propName == 'transposed') &&
         isNDArrayType(unwrapped.realTarget.staticType)) {
       return true;
     }
   } else if (unwrapped is PrefixedIdentifier) {
-    if (unwrapped.identifier.name == 'T' &&
+    final propName = unwrapped.identifier.name;
+    if ((propName == 'T' || propName == 'transposed') &&
         isNDArrayType(unwrapped.prefix.staticType)) {
       return true;
     }
@@ -425,7 +439,8 @@ bool isBroadcastViewExpression(
 
 /// Returns whether [expr] (or its local variable initializer in [decls]) is a
 /// reduction call (`sum`, `mean`, `min`, `max`, `prod`, etc.) with no `axis:`
-/// argument, producing a 0-dimensional scalar `NDArray`.
+/// argument (or `axis: null`) and no `keepdims: true`, producing a
+/// 0-dimensional scalar `NDArray`.
 bool isAxislessReductionExpression(
   Expression expr,
   SubtreeDeclarations decls, {
@@ -436,11 +451,40 @@ bool isAxislessReductionExpression(
   if (unwrapped is MethodInvocation) {
     final name = unwrapped.methodName.name;
     if (kReductionNames.contains(name) && isNDArrayType(unwrapped.staticType)) {
-      final hasAxisOrKeepdims = unwrapped.argumentList.arguments.any(
-        (arg) =>
-            arg is NamedArgument &&
-            (arg.name.lexeme == 'axis' || arg.name.lexeme == 'keepdims'),
-      );
+      if (name == 'quantile' ||
+          name == 'nanquantile' ||
+          name == 'percentile' ||
+          name == 'nanpercentile') {
+        final positionalArgs = unwrapped.argumentList.arguments
+            .where((a) => a is! NamedArgument)
+            .toList();
+        final qExpr = unwrapped.realTarget != null
+            ? (positionalArgs.isNotEmpty ? positionalArgs.first : null)
+            : (positionalArgs.length >= 2 ? positionalArgs[1] : null);
+        if (qExpr != null) {
+          final qUnwrapped = unwrapParenthesized(qExpr.argumentExpression);
+          if (qUnwrapped is ListLiteral ||
+              isNDArrayType(qUnwrapped.staticType)) {
+            return false;
+          }
+        }
+      }
+      var hasAxisOrKeepdims = false;
+      for (final arg in unwrapped.argumentList.arguments) {
+        if (arg is NamedArgument) {
+          final argName = arg.name.lexeme;
+          final argVal = unwrapParenthesized(arg.argumentExpression);
+          if (argName == 'axis') {
+            if (argVal is! NullLiteral) {
+              hasAxisOrKeepdims = true;
+            }
+          } else if (argName == 'keepdims') {
+            if (argVal is! BooleanLiteral || argVal.value) {
+              hasAxisOrKeepdims = true;
+            }
+          }
+        }
+      }
       return !hasAxisOrKeepdims;
     }
   } else if (unwrapped is SimpleIdentifier) {
@@ -529,7 +573,8 @@ bool isFreshScopedResourceAllocation(Expression expr) {
       }
     }
   } else if (unwrapped is PropertyAccess &&
-      unwrapped.propertyName.name == 'T') {
+      (unwrapped.propertyName.name == 'T' ||
+          unwrapped.propertyName.name == 'transposed')) {
     final sub = traceRootArrayAndView(
       unwrapped.realTarget,
       decls,
@@ -537,7 +582,8 @@ bool isFreshScopedResourceAllocation(Expression expr) {
     );
     return (rootElement: sub.rootElement, throughView: true);
   } else if (unwrapped is PrefixedIdentifier &&
-      unwrapped.identifier.name == 'T') {
+      (unwrapped.identifier.name == 'T' ||
+          unwrapped.identifier.name == 'transposed')) {
     final sub = traceRootArrayAndView(
       unwrapped.prefix,
       decls,

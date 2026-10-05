@@ -57,9 +57,13 @@ void main(List<String> args) async {
       ),
     };
 
+    final requirePrebuilt =
+        Platform.environment['POCKETFFT_REQUIRE_PREBUILT'] == '1';
+
     Uri builtLibrary;
     if (buildOptions.buildMode == BuildModeEnum.fetch &&
         !buildOptions.isExplicit &&
+        !requirePrebuilt &&
         currentSourceHash != nativeSourceHash) {
       print(
         'Prebuilt pocketfft binary for release $version differs from local '
@@ -72,7 +76,8 @@ void main(List<String> args) async {
         builtLibrary = await buildMode.build();
       } catch (e) {
         if (buildOptions.buildMode == BuildModeEnum.fetch &&
-            !buildOptions.isExplicit) {
+            !buildOptions.isExplicit &&
+            !requirePrebuilt) {
           print(
             'Prebuilt pocketfft binary unavailable ($e); '
             'falling back to `buildMode: source`.',
@@ -107,6 +112,28 @@ String _canonicalLibName(OS os) => os == OS.windows
     : ((os == OS.macOS || os == OS.iOS)
           ? 'libpocketfft.dylib'
           : 'libpocketfft.so');
+
+Future<T> _withSharedLock<T>(
+  Directory sharedDir,
+  Future<T> Function() action,
+) async {
+  if (!sharedDir.existsSync()) {
+    sharedDir.createSync(recursive: true);
+  }
+  final lockFile = File.fromUri(sharedDir.uri.resolve('.build.lock'));
+  final raf = lockFile.openSync(mode: FileMode.write);
+  try {
+    raf.lockSync(FileLock.blockingExclusive);
+    return await action();
+  } finally {
+    try {
+      raf.unlockSync();
+    } catch (_) {}
+    try {
+      raf.closeSync();
+    } catch (_) {}
+  }
+}
 
 sealed class BuildMode {
   final BuildInput input;
@@ -148,43 +175,59 @@ final class FetchMode extends BuildMode {
     }
 
     final libName = _canonicalLibName(os);
-    final cachedLibrary = File.fromUri(
-      input.outputDirectoryShared
-          .resolve('pocketfft-$version/${os.name}-${arch.name}/')
-          .resolve(libName),
+    final sharedCacheDir = Directory.fromUri(
+      input.outputDirectoryShared.resolve(
+        'pocketfft-$version/${os.name}-${arch.name}/',
+      ),
     );
+    final cachedLibrary = File.fromUri(sharedCacheDir.uri.resolve(libName));
 
-    if (await cachedLibrary.exists()) {
-      final cachedBytes = await cachedLibrary.readAsBytes();
-      final cachedHash = sha256.convert(cachedBytes).toString();
-      if (cachedHash == expectedHash) {
-        verifyArtifactSourceHash(
-          cachedBytes,
-          currentSourceHash: currentSourceHash,
-        );
-        print('Using cached pocketfft binary from ${cachedLibrary.path}.');
-        return cachedLibrary.uri;
+    final cachedUri = await _withSharedLock(sharedCacheDir, () async {
+      if (await cachedLibrary.exists()) {
+        final cachedBytes = await cachedLibrary.readAsBytes();
+        final cachedHash = sha256.convert(cachedBytes).toString();
+        if (cachedHash == expectedHash) {
+          verifyArtifactSourceHash(
+            cachedBytes,
+            currentSourceHash: currentSourceHash,
+          );
+          print('Using cached pocketfft binary from ${cachedLibrary.path}.');
+          return cachedLibrary.uri;
+        }
       }
-    }
 
-    final remoteUri = Uri.parse(
-      'https://github.com/$repository/releases/download/$version/$artifactName',
-    );
-    print('Fetching prebuilt pocketfft binary from $remoteUri...');
-    final bytes = await _downloadBytesWithRedirects(remoteUri);
-    final actualHash = sha256.convert(bytes).toString();
-    if (actualHash != expectedHash) {
-      throw StateError(
-        'SHA-256 mismatch for prebuilt pocketfft binary at $remoteUri:\n'
-        'Expected: $expectedHash\n'
-        'Actual:   $actualHash',
+      final remoteUri = Uri.parse(
+        'https://github.com/$repository/releases/download/$version/$artifactName',
       );
-    }
-    verifyArtifactSourceHash(bytes, currentSourceHash: currentSourceHash);
+      print('Fetching prebuilt pocketfft binary from $remoteUri...');
+      final bytes = await _downloadBytesWithRedirects(remoteUri);
+      final actualHash = sha256.convert(bytes).toString();
+      if (actualHash != expectedHash) {
+        throw StateError(
+          'SHA-256 mismatch for prebuilt pocketfft binary at $remoteUri:\n'
+          'Expected: $expectedHash\n'
+          'Actual:   $actualHash',
+        );
+      }
+      verifyArtifactSourceHash(bytes, currentSourceHash: currentSourceHash);
 
-    await cachedLibrary.parent.create(recursive: true);
-    await cachedLibrary.writeAsBytes(bytes, flush: true);
-    return cachedLibrary.uri;
+      await cachedLibrary.parent.create(recursive: true);
+      final tempFile = File(
+        '${cachedLibrary.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+      );
+      await tempFile.writeAsBytes(bytes, flush: true);
+      await tempFile.rename(cachedLibrary.path);
+      return cachedLibrary.uri;
+    });
+
+    final targetFile = File.fromUri(input.outputDirectory.resolve(libName));
+    await targetFile.parent.create(recursive: true);
+    final tempOut = File(
+      '${targetFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await File.fromUri(cachedUri).copy(tempOut.path);
+    await tempOut.rename(targetFile.path);
+    return targetFile.uri;
   }
 
   @override
@@ -241,7 +284,11 @@ final class LocalMode extends BuildMode {
     );
     final targetFile = File.fromUri(targetUri);
     await targetFile.parent.create(recursive: true);
-    await sourceFile.copy(targetFile.path);
+    final tempFile = File(
+      '${targetFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await sourceFile.copy(tempFile.path);
+    await tempFile.rename(targetFile.path);
     return targetFile.uri;
   }
 
@@ -304,6 +351,9 @@ final class SourceMode extends BuildMode {
       outputDir.createSync(recursive: true);
     }
     final libFile = File.fromUri(outputDir.uri.resolve(libName));
+    final tempLibFile = File(
+      '${libFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
 
     final currentSourceHash = computeNativeSourceHash(_root);
     final stampFile = File.fromUri(
@@ -329,12 +379,20 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
     final rawCompilerPath =
         cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'c++');
     final compilerLower = rawCompilerPath.toLowerCase();
+    final isClangCl = compilerLower.contains('clang-cl');
     final isGNU =
-        compilerLower.contains('gcc') ||
-        compilerLower.contains('clang') ||
-        compilerLower.contains('g++') ||
-        compilerLower.contains('c++');
-    final isMSVC = os == OS.windows && !isGNU;
+        !isClangCl &&
+        (compilerLower.contains('gcc') ||
+            compilerLower.contains('clang') ||
+            compilerLower.contains('g++') ||
+            compilerLower.contains('c++'));
+    final isMSVC =
+        isClangCl ||
+        (os == OS.windows &&
+            (!isGNU ||
+                compilerLower.endsWith('cl.exe') ||
+                compilerLower == 'cl' ||
+                compilerLower.contains('msvc')));
     final compilerPath = _resolveCxxCompiler(rawCompilerPath, os, isMSVC);
 
     final sanitize = buildOptions?.sanitize;
@@ -347,6 +405,8 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
     final sanitizeFlags = (sanitize != null && sanitize.isNotEmpty)
         ? <String>[
             '-fsanitize=$sanitize',
+            if (sanitize.contains('undefined'))
+              '-fno-sanitize=float-cast-overflow',
             '-fno-sanitize-recover=all',
             '-fno-omit-frame-pointer',
             '-g',
@@ -369,7 +429,7 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
             hookDir.path,
             wrapperFile.path,
             stampFile.path,
-            '/Fe:${libFile.path}',
+            '/Fe:${tempLibFile.path}',
             '/link',
             '/EXPORT:kiss_fft_alloc',
             '/EXPORT:kiss_fft',
@@ -406,7 +466,7 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
             wrapperFile.path,
             stampFile.path,
             '-o',
-            libFile.path,
+            tempLibFile.path,
             if (os != OS.windows) '-lm',
           ];
 
@@ -427,6 +487,11 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
       environment: runEnv,
     );
     if (res.exitCode != 0) {
+      if (tempLibFile.existsSync()) {
+        try {
+          tempLibFile.deleteSync();
+        } catch (_) {}
+      }
       throw StateError(
         'PocketFFT native C++ compilation failed (exit ${res.exitCode}):\n'
         'stdout: ${res.stdout}\n'
@@ -434,6 +499,7 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
       );
     }
 
+    await tempLibFile.rename(libFile.path);
     return libFile.uri;
   }
 
@@ -444,27 +510,36 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
 }
 
 Future<Uint8List> _downloadBytesWithRedirects(Uri url) async {
-  final client = HttpClient();
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
   try {
     var currentUrl = url;
     for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
-      final request = await client.getUrl(currentUrl);
-      final response = await request.close();
+      final request = await client
+          .getUrl(currentUrl)
+          .timeout(const Duration(seconds: 60));
+      final response = await request.close().timeout(
+        const Duration(seconds: 60),
+      );
       if (response.statusCode >= 300 &&
           response.statusCode < 400 &&
           response.headers.value(HttpHeaders.locationHeader) != null) {
-        currentUrl = currentUrl.resolve(
-          response.headers.value(HttpHeaders.locationHeader)!,
-        );
+        final location = response.headers.value(HttpHeaders.locationHeader)!;
+        await response.drain<void>().timeout(const Duration(seconds: 30));
+        final nextUrl = currentUrl.resolve(location);
+        if (nextUrl.scheme != 'https') {
+          throw HttpException('Refusing redirect to non-HTTPS URL: $nextUrl');
+        }
+        currentUrl = nextUrl;
         continue;
       }
       if (response.statusCode != 200) {
+        await response.drain<void>().timeout(const Duration(seconds: 30));
         throw HttpException(
           'Failed to download $currentUrl (HTTP ${response.statusCode})',
         );
       }
       final builder = BytesBuilder(copy: false);
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(const Duration(seconds: 60))) {
         builder.add(chunk);
       }
       return builder.takeBytes();
@@ -507,15 +582,21 @@ Future<Map<String, String>> getMSVCEnvironment(Architecture targetArch) async {
 
     final tempDir = Directory.systemTemp;
     final tempFile = File(
-      '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}.bat',
+      '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}_$pid.bat',
     );
-    await tempFile.writeAsString(
-      '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',
-    );
-    final envRes = await Process.run('cmd.exe', ['/c', tempFile.path]);
+    ProcessResult envRes;
     try {
-      await tempFile.delete();
-    } catch (_) {}
+      await tempFile.writeAsString(
+        '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',
+      );
+      envRes = await Process.run('cmd.exe', ['/c', tempFile.path]);
+    } finally {
+      try {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (_) {}
+    }
 
     if (envRes.exitCode != 0) return {};
 

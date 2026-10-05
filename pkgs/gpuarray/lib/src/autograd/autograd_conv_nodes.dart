@@ -440,3 +440,72 @@ final class BinaryCrossEntropyBackward extends GradFn {
     }
   }
 }
+
+/// Backward node for Mean Squared Error (MSE) loss.
+final class MseLossBackward extends GradFn {
+  /// Forward prediction tensor.
+  final GpuArray<DTypeTag> input;
+
+  /// Ground-truth target tensor.
+  final GpuArray<DTypeTag> target;
+
+  /// Reduction mode applied to the forward loss.
+  final LossReduction reduction;
+
+  /// Creates an [MseLossBackward] node.
+  const MseLossBackward(
+    this.input,
+    this.target, {
+    this.reduction = LossReduction.mean,
+  });
+
+  @override
+  String get name => 'MseLossBackward';
+
+  @override
+  List<GpuArray<DTypeTag>> get inputs => [input, target];
+
+  @override
+  List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
+    if (!input.requiresGrad && !target.requiresGrad) return [null, null];
+
+    final scale = switch (reduction) {
+      LossReduction.mean => 2.0 / input.size,
+      LossReduction.sum || LossReduction.none => 2.0,
+    };
+
+    GpuArray<DTypeTag>? gradInput;
+    if (input.requiresGrad) {
+      gradInput = GpuArray.empty(
+        input.shape,
+        input.dtype,
+        device: input.device,
+      );
+      dispatchMseBackward(
+        input: input,
+        targetTensor: target,
+        gradOutput: gradOutput,
+        gradResult: gradInput,
+        scale: scale,
+      );
+    }
+
+    GpuArray<DTypeTag>? gradTarget;
+    if (target.requiresGrad) {
+      gradTarget = GpuArray.empty(
+        target.shape,
+        target.dtype,
+        device: target.device,
+      );
+      dispatchMseBackward(
+        input: input,
+        targetTensor: target,
+        gradOutput: gradOutput,
+        gradResult: gradTarget,
+        scale: -scale,
+      );
+    }
+
+    return [gradInput, gradTarget];
+  }
+}

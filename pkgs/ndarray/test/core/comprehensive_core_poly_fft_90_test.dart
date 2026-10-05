@@ -938,12 +938,12 @@ void main() {
         // Series: c = [1, 2, 3] -> 1*T_0 + 2*T_1 + 3*T_2 = 1 + 2x + 3(2x^2 - 1) = 6x^2 + 2x - 2
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 1.0, -1.0], [3], DType.float64);
-        final y = chebval(c, x);
+        final y = chebval(x, c);
         expect(y.getCell([0]), closeTo(-2.0, 1e-6));
         expect(y.getCell([1]), closeTo(6.0, 1e-6));
         expect(y.getCell([2]), closeTo(2.0, 1e-6));
 
-        // Reversed argument order with 2D array
+        // 2D array evaluation
         final x2D = NDArray.fromList(
           [0.0, 1.0, -1.0, 0.0],
           [2, 2],
@@ -972,7 +972,7 @@ void main() {
         // P_0(x) = 1, P_1(x) = x, P_2(x) = 0.5*(3x^2 - 1)
         final c = NDArray.fromList([0.0, 0.0, 1.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 1.0], [2], DType.float64);
-        final y = legval(c, x);
+        final y = legval(x, c);
         expect(y.getCell([0]), closeTo(-0.5, 1e-6));
         expect(y.getCell([1]), closeTo(1.0, 1e-6));
 
@@ -993,7 +993,7 @@ void main() {
         // H_0(x) = 1, H_1(x) = 2x, H_2(x) = 4x^2 - 2
         final c = NDArray.fromList([0.0, 0.0, 1.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 1.0], [2], DType.float64);
-        final y = hermval(c, x);
+        final y = hermval(x, c);
         expect(y.getCell([0]), closeTo(-2.0, 1e-6));
         expect(y.getCell([1]), closeTo(2.0, 1e-6));
 
@@ -1014,7 +1014,7 @@ void main() {
         // L_0(x) = 1, L_1(x) = 1 - x, L_2(x) = 0.5*(x^2 - 4x + 2)
         final c = NDArray.fromList([0.0, 0.0, 1.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 2.0], [2], DType.float64);
-        final y = lagval(c, x);
+        final y = lagval(x, c);
         expect(y.getCell([0]), closeTo(1.0, 1e-6));
         expect(y.getCell([1]), closeTo(-1.0, 1e-6));
 

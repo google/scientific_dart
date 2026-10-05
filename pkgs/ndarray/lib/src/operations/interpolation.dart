@@ -40,7 +40,7 @@ void _validateSorted(NDArray<Float64> xp) {
     xp.strides[0],
   );
   if (res == 0) {
-    throw ArgumentError('xp must be strictly increasing.');
+    throw ArgumentError.value(xp, 'xp', 'Must be strictly increasing.');
   }
 }
 
@@ -65,11 +65,14 @@ void _validateSorted(NDArray<Float64> xp) {
 /// - It is an error if [xp] is not strictly increasing.
 ///
 /// **Example:**
-/// {@example /example/interpolation_example.dart}
+/// {@example /example/interpolation_example.dart lang=dart}
 NDArray<R> interp<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
-  NDArray<DTypeTag> fp, {
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+  >
+  fp, {
   Object? left,
   Object? right,
   InterpolationMethod method = InterpolationMethod.linear,
@@ -93,21 +96,34 @@ NDArray<R> interp<R extends DTypeTag>(
   final expectedDType = isComplexFp ? DType.complex128 : DType.float64;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, x.shape) || out.dtype != expectedDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
+      );
     }
   }
 
   if (xp.shape.length != 1 || fp.shape.length != 1) {
-    throw ArgumentError('xp and fp must be 1-dimensional arrays.');
+    throw ArgumentError.value(
+      xp.shape.length != 1 ? xp.shape : fp.shape,
+      xp.shape.length != 1 ? 'xp.shape' : 'fp.shape',
+      'Must be 1-dimensional',
+    );
   }
 
   if (xp.shape[0] != fp.shape[0]) {
-    throw ArgumentError('xp and fp must have the same length.');
+    throw ArgumentError.value(
+      fp.shape[0],
+      'fp.shape[0]',
+      'Must have the same length as xp (${xp.shape[0]})',
+    );
   }
 
   if (xp.shape[0] == 0) {
-    throw ArgumentError('xp must not be empty.');
+    throw ArgumentError.value(xp.shape[0], 'xp.shape[0]', 'Must not be empty');
   }
 
   if (isComplexFp) {
@@ -224,17 +240,14 @@ NDArray<R> interp<R extends DTypeTag>(
     }
   }
 
-  final xDouble = x.dtype == DType.float64
-      ? x as NDArray<Float64>
-      : promoteToDouble(x);
-  NDArray<Float64>? xpDouble;
-  NDArray<Float64>? fpDouble;
-
-  try {
-    xpDouble = xp.dtype == DType.float64
+  return NDArray.scope(() {
+    final xDouble = x.dtype == DType.float64
+        ? x as NDArray<Float64>
+        : promoteToDouble(x);
+    final xpDouble = xp.dtype == DType.float64
         ? xp as NDArray<Float64>
         : promoteToDouble(xp);
-    fpDouble = fp.dtype == DType.float64
+    final fpDouble = (fp.dtype as DType<DTypeTag>) == DType.float64
         ? fp as NDArray<Float64>
         : promoteToDouble(fp);
 
@@ -244,20 +257,18 @@ NDArray<R> interp<R extends DTypeTag>(
         (sharesMemory(x, out) ||
             sharesMemory(xp, out) ||
             sharesMemory(fp, out))) {
-      return NDArray.scope(() {
-        final temp = NDArray<Float64>.create(x.shape, DType.float64);
-        interp<Float64>(
-          xDouble,
-          xpDouble!,
-          fpDouble!,
-          left: leftD,
-          right: rightD,
-          method: method,
-          out: temp,
-        );
-        temp.copy(out: out as NDArray<Float64>);
-        return out;
-      });
+      final temp = NDArray<Float64>.create(x.shape, DType.float64);
+      interp<Float64>(
+        xDouble,
+        xpDouble,
+        fpDouble,
+        left: leftD,
+        right: rightD,
+        method: method,
+        out: temp,
+      );
+      temp.copy(out: out as NDArray<Float64>);
+      return out;
     }
 
     final res =
@@ -268,73 +279,55 @@ NDArray<R> interp<R extends DTypeTag>(
       final size = xDouble.size;
       final xpSize = xpDouble.shape[0];
       final xpContig = xpDouble.isContiguous ? xpDouble : xpDouble.copy();
-      try {
-        final fpContig = fpDouble.isContiguous ? fpDouble : fpDouble.copy();
-        try {
-          final xContig = xDouble.isContiguous ? xDouble : xDouble.copy();
-          try {
-            final xpPtr = xpContig.pointer.cast<ffi.Double>();
-            final fpPtr = fpContig.pointer.cast<ffi.Double>();
-            final xPtr = xContig.pointer.cast<ffi.Double>();
+      final fpContig = fpDouble.isContiguous ? fpDouble : fpDouble.copy();
+      final xContig = xDouble.isContiguous ? xDouble : xDouble.copy();
+      final xpPtr = xpContig.pointer.cast<ffi.Double>();
+      final fpPtr = fpContig.pointer.cast<ffi.Double>();
+      final xPtr = xContig.pointer.cast<ffi.Double>();
 
-            final xpMin = xpPtr[0];
-            final xpMax = xpPtr[xpSize - 1];
-            final defaultLeft = leftD ?? fpPtr[0];
-            final defaultRight = rightD ?? fpPtr[xpSize - 1];
+      final xpMin = xpPtr[0];
+      final xpMax = xpPtr[xpSize - 1];
+      final defaultLeft = leftD ?? fpPtr[0];
+      final defaultRight = rightD ?? fpPtr[xpSize - 1];
 
-            final tempRes = res.isContiguous
-                ? res
-                : NDArray<Float64>.create(x.shape, DType.float64);
-            try {
-              final tempResPtr = tempRes.pointer.cast<ffi.Double>();
-              for (var i = 0; i < size; i++) {
-                final xv = xPtr[i];
-                if (xv.isNaN) {
-                  tempResPtr[i] = double.nan;
-                } else if (xv < xpMin) {
-                  tempResPtr[i] = defaultLeft;
-                } else if (xv > xpMax) {
-                  tempResPtr[i] = defaultRight;
-                } else if (xpSize == 1) {
-                  tempResPtr[i] = fpPtr[0];
-                } else {
-                  var low = 0;
-                  var high = xpSize - 1;
-                  while (low < high - 1) {
-                    final mid = (low + high) ~/ 2;
-                    if (xpPtr[mid] <= xv) {
-                      low = mid;
-                    } else {
-                      high = mid;
-                    }
-                  }
-                  final x0 = xpPtr[low];
-                  final x1 = xpPtr[low + 1];
-                  final y0 = fpPtr[low];
-                  final y1 = fpPtr[low + 1];
-                  if ((xv - x0).abs() <= (x1 - xv).abs()) {
-                    tempResPtr[i] = y0;
-                  } else {
-                    tempResPtr[i] = y1;
-                  }
-                }
-              }
-              if (!identical(tempRes, res)) {
-                tempRes.copy(out: res);
-              }
-            } finally {
-              if (!identical(tempRes, res)) {
-                tempRes.dispose();
-              }
+      final tempRes = res.isContiguous
+          ? res
+          : NDArray<Float64>.create(x.shape, DType.float64);
+      final tempResPtr = tempRes.pointer.cast<ffi.Double>();
+      for (var i = 0; i < size; i++) {
+        final xv = xPtr[i];
+        if (xv.isNaN) {
+          tempResPtr[i] = double.nan;
+        } else if (xv < xpMin) {
+          tempResPtr[i] = defaultLeft;
+        } else if (xv > xpMax) {
+          tempResPtr[i] = defaultRight;
+        } else if (xpSize == 1) {
+          tempResPtr[i] = fpPtr[0];
+        } else {
+          var low = 0;
+          var high = xpSize - 1;
+          while (low < high - 1) {
+            final mid = (low + high) ~/ 2;
+            if (xpPtr[mid] <= xv) {
+              low = mid;
+            } else {
+              high = mid;
             }
-          } finally {
-            if (!identical(xContig, xDouble)) xContig.dispose();
           }
-        } finally {
-          if (!identical(fpContig, fpDouble)) fpContig.dispose();
+          final x0 = xpPtr[low];
+          final x1 = xpPtr[low + 1];
+          final y0 = fpPtr[low];
+          final y1 = fpPtr[low + 1];
+          if ((xv - x0).abs() <= (x1 - xv).abs()) {
+            tempResPtr[i] = y0;
+          } else {
+            tempResPtr[i] = y1;
+          }
         }
-      } finally {
-        if (!identical(xpContig, xpDouble)) xpContig.dispose();
+      }
+      if (!identical(tempRes, res)) {
+        tempRes.copy(out: res);
       }
     } else {
       final marker = ScratchArena.marker;
@@ -404,19 +397,18 @@ NDArray<R> interp<R extends DTypeTag>(
             pLeft,
             pRight,
           );
+          checkNativeOom();
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
 
-    return res as NDArray<R>;
-  } finally {
-    // Dispose promoted arrays if they were created.
-    if (!identical(xDouble, x)) xDouble.dispose();
-    if (xpDouble != null && !identical(xpDouble, xp)) xpDouble.dispose();
-    if (fpDouble != null && !identical(fpDouble, fp)) fpDouble.dispose();
-  }
+    if (out != null) {
+      return out;
+    }
+    return (res as NDArray<R>).detachToParentScope();
+  });
 }
 
 /// Computes one-dimensional interpolation.
@@ -425,7 +417,10 @@ NDArray<R> interp<R extends DTypeTag>(
 NDArray<R> interpolate<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
-  NDArray<DTypeTag> fp, {
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+  >
+  fp, {
   Object? left,
   Object? right,
   InterpolationMethod method = InterpolationMethod.linear,

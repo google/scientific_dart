@@ -22,6 +22,35 @@ import '../random/random.dart' as random_ops;
 import 'functional.dart' as functional;
 import 'module.dart';
 
+GpuArray<DTypeTag> _sampleUniformParameter({
+  required double low,
+  required double high,
+  required List<int> shape,
+  required DType<DTypeTag> dtype,
+  required GpuDevice device,
+}) {
+  if (!dtype.isFloating) {
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be a floating-point DType.',
+    );
+  }
+  final sampled = random_ops.uniform(
+    low: low,
+    high: high,
+    shape: shape,
+    device: device,
+  );
+  if (dtype == DType.float64) {
+    sampled.requiresGrad = true;
+    return sampled;
+  }
+  final converted = sampled.astype(dtype)..requiresGrad = true;
+  sampled.dispose();
+  return converted;
+}
+
 /// Applies an affine linear transformation to incoming data: $y = x A^T + b$.
 final class Linear extends Module {
   /// Size of each input sample.
@@ -34,10 +63,10 @@ final class Linear extends Module {
   final bool hasBias;
 
   /// Learnable weight matrix of shape `[outFeatures, inFeatures]`.
-  late final GpuArray<Float64> weight;
+  late final GpuArray<DTypeTag> weight;
 
   /// Optional learnable bias vector of shape `[outFeatures]`.
-  late final GpuArray<Float64>? bias;
+  late final GpuArray<DTypeTag>? bias;
 
   /// Creates a [Linear] layer mapping [inFeatures] to [outFeatures].
   ///
@@ -46,6 +75,7 @@ final class Linear extends Module {
     this.inFeatures,
     this.outFeatures, {
     this.hasBias = true,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) {
     RangeError.checkValueInInterval(inFeatures, 1, 0x7fffffff, 'inFeatures');
@@ -54,21 +84,23 @@ final class Linear extends Module {
     final targetDevice = device ?? GpuDevice.defaultDevice;
     final bound = 1.0 / math.sqrt(inFeatures);
 
-    final sampledWeight = random_ops.uniform(
+    final sampledWeight = _sampleUniformParameter(
       low: -bound,
       high: bound,
       shape: [outFeatures, inFeatures],
+      dtype: dtype,
       device: targetDevice,
-    )..requiresGrad = true;
+    );
     weight = registerParameter('weight', sampledWeight);
 
     if (hasBias) {
-      final sampledBias = random_ops.uniform(
+      final sampledBias = _sampleUniformParameter(
         low: -bound,
         high: bound,
         shape: [outFeatures],
+        dtype: dtype,
         device: targetDevice,
-      )..requiresGrad = true;
+      );
       bias = registerParameter('bias', sampledBias);
     } else {
       bias = null;
@@ -76,7 +108,8 @@ final class Linear extends Module {
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
     if (input.rank == 0 || input.shape[input.rank - 1] != inFeatures) {
       throw ArgumentError.value(
         input.shape,
@@ -114,10 +147,10 @@ final class Conv2d extends Module {
   final bool hasBias;
 
   /// Learnable filter weights of shape `[outChannels, inChannels, kernelSize, kernelSize]`.
-  late final GpuArray<Float64> weight;
+  late final GpuArray<DTypeTag> weight;
 
   /// Optional learnable bias vector of shape `[outChannels]`.
-  late final GpuArray<Float64>? bias;
+  late final GpuArray<DTypeTag>? bias;
 
   /// Creates a [Conv2d] layer.
   ///
@@ -130,6 +163,7 @@ final class Conv2d extends Module {
     this.stride = 1,
     this.padding = 0,
     this.hasBias = true,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) {
     if (inChannels <= 0) {
@@ -153,21 +187,23 @@ final class Conv2d extends Module {
     final targetDevice = device ?? GpuDevice.defaultDevice;
     final bound = 1.0 / math.sqrt(inChannels * kernelSize * kernelSize);
 
-    final sampledWeight = random_ops.uniform(
+    final sampledWeight = _sampleUniformParameter(
       low: -bound,
       high: bound,
       shape: [outChannels, inChannels, kernelSize, kernelSize],
+      dtype: dtype,
       device: targetDevice,
-    )..requiresGrad = true;
+    );
     weight = registerParameter('weight', sampledWeight);
 
     if (hasBias) {
-      final sampledBias = random_ops.uniform(
+      final sampledBias = _sampleUniformParameter(
         low: -bound,
         high: bound,
         shape: [outChannels],
+        dtype: dtype,
         device: targetDevice,
-      )..requiresGrad = true;
+      );
       bias = registerParameter('bias', sampledBias);
     } else {
       bias = null;
@@ -175,7 +211,8 @@ final class Conv2d extends Module {
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
     if (input.rank != 4) {
       throw ArgumentError.value(
         input.shape,
@@ -214,16 +251,28 @@ final class Conv2d extends Module {
         outHeight: outHeight,
         outWidth: outWidth,
       );
-      final weightMatrix = weight.reshape([outChannels, patchSize]);
+      final effectiveWeight = weight.dtype == input.dtype
+          ? weight
+          : weight.astype(input.dtype);
+      final weightMatrix = effectiveWeight.reshape([outChannels, patchSize]);
       final weightTransposed = weightMatrix.swapaxes(-1, -2);
       var outMatrix = columns.matmul(weightTransposed);
       columns.dispose();
       weightTransposed.dispose();
       weightMatrix.dispose();
+      if (!identical(effectiveWeight, weight)) {
+        effectiveWeight.dispose();
+      }
 
       if (bias != null) {
-        final withBias = outMatrix + bias;
+        final effectiveBias = bias!.dtype == input.dtype
+            ? bias!
+            : bias!.astype(input.dtype);
+        final withBias = outMatrix + effectiveBias;
         outMatrix.dispose();
+        if (!identical(effectiveBias, bias)) {
+          effectiveBias.dispose();
+        }
         outMatrix = withBias;
       }
 
@@ -238,7 +287,7 @@ final class Conv2d extends Module {
       reshaped.dispose();
       final contiguousOut = permuted.copy();
       permuted.dispose();
-      return contiguousOut;
+      return contiguousOut as GpuArray<T>;
     });
 
     if (isGradEnabled &&
@@ -269,14 +318,18 @@ final class LayerNorm extends Module {
   final double eps;
 
   /// Learnable elementwise affine scale parameter ($\gamma$).
-  late final GpuArray<Float64> weight;
+  late final GpuArray<DTypeTag> weight;
 
   /// Learnable elementwise affine shift parameter ($\beta$).
-  late final GpuArray<Float64> bias;
+  late final GpuArray<DTypeTag> bias;
 
   /// Creates a [LayerNorm] module for [normalizedShape].
-  LayerNorm(List<int> normalizedShape, {this.eps = 1e-5, GpuDevice? device})
-    : normalizedShape = List<int>.unmodifiable(normalizedShape) {
+  LayerNorm(
+    List<int> normalizedShape, {
+    this.eps = 1e-5,
+    DType<DTypeTag> dtype = DType.float64,
+    GpuDevice? device,
+  }) : normalizedShape = List<int>.unmodifiable(normalizedShape) {
     if (this.normalizedShape.isEmpty) {
       throw ArgumentError.value(
         normalizedShape,
@@ -287,12 +340,19 @@ final class LayerNorm extends Module {
     if (eps <= 0.0) {
       throw ArgumentError.value(eps, 'eps', 'Must be positive.');
     }
+    if (!dtype.isFloating) {
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be a floating-point DType.',
+      );
+    }
     final targetDevice = device ?? GpuDevice.defaultDevice;
     weight = registerParameter(
       'weight',
       GpuArray.ones(
         this.normalizedShape,
-        DType.float64,
+        dtype,
         device: targetDevice,
         requiresGrad: true,
       ),
@@ -301,7 +361,7 @@ final class LayerNorm extends Module {
       'bias',
       GpuArray.zeros(
         this.normalizedShape,
-        DType.float64,
+        dtype,
         device: targetDevice,
         requiresGrad: true,
       ),
@@ -309,11 +369,13 @@ final class LayerNorm extends Module {
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
     final mean = input.mean(axis: -1, keepDims: true);
     final centered = input - mean;
     final variance = (centered * centered).mean(axis: -1, keepDims: true);
-    final normalized = centered / (variance + eps).sqrt();
+    final stdInv = (variance + eps).sqrt();
+    final normalized = centered / stdInv;
     return normalized * weight + bias;
   }
 }
@@ -328,11 +390,15 @@ final class RMSNorm extends Module {
   final double eps;
 
   /// Learnable elementwise scale parameter ($\gamma$).
-  late final GpuArray<Float64> weight;
+  late final GpuArray<DTypeTag> weight;
 
   /// Creates an [RMSNorm] module for [normalizedShape].
-  RMSNorm(List<int> normalizedShape, {this.eps = 1e-6, GpuDevice? device})
-    : normalizedShape = List<int>.unmodifiable(normalizedShape) {
+  RMSNorm(
+    List<int> normalizedShape, {
+    this.eps = 1e-6,
+    DType<DTypeTag> dtype = DType.float64,
+    GpuDevice? device,
+  }) : normalizedShape = List<int>.unmodifiable(normalizedShape) {
     if (this.normalizedShape.isEmpty) {
       throw ArgumentError.value(
         normalizedShape,
@@ -343,12 +409,19 @@ final class RMSNorm extends Module {
     if (eps <= 0.0) {
       throw ArgumentError.value(eps, 'eps', 'Must be positive.');
     }
+    if (!dtype.isFloating) {
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be a floating-point DType.',
+      );
+    }
     final targetDevice = device ?? GpuDevice.defaultDevice;
     weight = registerParameter(
       'weight',
       GpuArray.ones(
         this.normalizedShape,
-        DType.float64,
+        dtype,
         device: targetDevice,
         requiresGrad: true,
       ),
@@ -356,7 +429,8 @@ final class RMSNorm extends Module {
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
     final xSquared = input * input;
     final meanSquared = xSquared.mean(axis: -1, keepDims: true);
     final rms = (meanSquared + eps).sqrt();
@@ -383,16 +457,16 @@ final class BatchNorm1d extends Module {
   final bool trackRunningStats;
 
   /// Optional learnable scale parameter ($\gamma$) of shape `[numFeatures]`.
-  late final GpuArray<Float64>? weight;
+  late final GpuArray<DTypeTag>? weight;
 
   /// Optional learnable shift parameter ($\beta$) of shape `[numFeatures]`.
-  late final GpuArray<Float64>? bias;
+  late final GpuArray<DTypeTag>? bias;
 
   /// Optional running mean buffer of shape `[numFeatures]`.
-  late final GpuArray<Float64>? runningMean;
+  late final GpuArray<DTypeTag>? runningMean;
 
   /// Optional running variance buffer of shape `[numFeatures]`.
-  late final GpuArray<Float64>? runningVar;
+  late final GpuArray<DTypeTag>? runningVar;
 
   /// Creates a [BatchNorm1d] layer for [numFeatures] channels.
   BatchNorm1d(
@@ -401,6 +475,7 @@ final class BatchNorm1d extends Module {
     this.momentum = 0.1,
     this.affine = true,
     this.trackRunningStats = true,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) {
     if (numFeatures <= 0) {
@@ -420,6 +495,13 @@ final class BatchNorm1d extends Module {
         'Must be in the closed interval [0.0, 1.0].',
       );
     }
+    if (!dtype.isFloating) {
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be a floating-point DType.',
+      );
+    }
 
     final targetDevice = device ?? GpuDevice.defaultDevice;
     if (affine) {
@@ -427,7 +509,7 @@ final class BatchNorm1d extends Module {
         'weight',
         GpuArray.ones(
           [numFeatures],
-          DType.float64,
+          dtype,
           device: targetDevice,
           requiresGrad: true,
         ),
@@ -436,7 +518,7 @@ final class BatchNorm1d extends Module {
         'bias',
         GpuArray.zeros(
           [numFeatures],
-          DType.float64,
+          dtype,
           device: targetDevice,
           requiresGrad: true,
         ),
@@ -447,15 +529,13 @@ final class BatchNorm1d extends Module {
     }
 
     if (trackRunningStats) {
-      runningMean = GpuArray.zeros(
-        [numFeatures],
-        DType.float64,
-        device: targetDevice,
+      runningMean = registerBuffer(
+        'runningMean',
+        GpuArray.zeros([numFeatures], dtype, device: targetDevice),
       );
-      runningVar = GpuArray.ones(
-        [numFeatures],
-        DType.float64,
-        device: targetDevice,
+      runningVar = registerBuffer(
+        'runningVar',
+        GpuArray.ones([numFeatures], dtype, device: targetDevice),
       );
     } else {
       runningMean = null;
@@ -464,7 +544,8 @@ final class BatchNorm1d extends Module {
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
     if ((input.rank != 2 && input.rank != 3) || input.shape[1] != numFeatures) {
       throw ArgumentError.value(
         input.shape,
@@ -472,7 +553,7 @@ final class BatchNorm1d extends Module {
         'Must be a 2D or 3D tensor with channel dimension equal to numFeatures ($numFeatures).',
       );
     }
-    return functional.batchNorm1d(
+    return functional.batchNorm1d<T>(
       input,
       runningMean: runningMean,
       runningVar: runningVar,

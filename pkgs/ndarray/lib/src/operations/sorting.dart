@@ -86,9 +86,6 @@ NDArray<T> sort<T extends DTypeTag>(
   if (out != null) {
     validateOutArray(out, a.shape, a.dtype, name: 'out');
   }
-  if (a.size == 0) {
-    return out ?? NDArray<T>.create(a.shape, a.dtype);
-  }
   final rank = a.shape.length;
   if (rank == 0) {
     if (out != null) {
@@ -107,6 +104,10 @@ NDArray<T> sort<T extends DTypeTag>(
       'axis',
       'Must be within valid rank range',
     );
+  }
+
+  if (a.size == 0) {
+    return out ?? NDArray<T>.create(a.shape, a.dtype);
   }
 
   if (targetAxis != rank - 1) {
@@ -263,8 +264,10 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute argsort() on a disposed array.');
   }
   if (dtype != DType.int32 && dtype != DType.int64) {
-    throw ArgumentError(
-      'dtype must be DType.int32 or DType.int64, got $dtype.',
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be DType.int32 or DType.int64, got $dtype',
     );
   }
   if (out != null) {
@@ -350,6 +353,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
           : result.pointer.cast<ffi.Int64>();
 
       void copyIf32() {
+        checkNativeOom();
         if (is32) {
           final outPtr = result.pointer.cast<ffi.Int32>();
           for (var i = 0; i < totalSize; i++) {
@@ -433,15 +437,23 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
           return finish();
         case DType.complex128:
         case DType.complex64:
+          int compareIEEE(double a, double b) {
+            if (a == b) return 0;
+            if (a.isNaN) return b.isNaN ? 0 : 1;
+            if (b.isNaN) return -1;
+            return a < b ? -1 : 1;
+          }
           for (var r = 0; r < numRows; r++) {
             final rowStart = r * n;
             final indices = List<int>.generate(n, (i) => i);
             indices.sort((i, j) {
               final cA = src.getCellFlat(rowStart + i) as Complex;
               final cB = src.getCellFlat(rowStart + j) as Complex;
-              final cmpReal = cA.real.compareTo(cB.real);
+              final cmpReal = compareIEEE(cA.real, cB.real);
               if (cmpReal != 0) return cmpReal;
-              return cA.imag.compareTo(cB.imag);
+              final cmpImag = compareIEEE(cA.imag, cB.imag);
+              if (cmpImag != 0) return cmpImag;
+              return i.compareTo(j);
             });
             for (var i = 0; i < n; i++) {
               result.setCellFlat(rowStart + i, indices[i]);
@@ -455,7 +467,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
             indices.sort((i, j) {
               final bA = src.getCellFlat(rowStart + i) as bool;
               final bB = src.getCellFlat(rowStart + j) as bool;
-              if (bA == bB) return 0;
+              if (bA == bB) return i.compareTo(j);
               return bA ? 1 : -1;
             });
             for (var i = 0; i < n; i++) {
@@ -604,7 +616,11 @@ NDArray<T> partition<T extends DTypeTag>(
       kList.add(val);
     }
   } else {
-    throw ArgumentError('kth must be an int or an Iterable of ints.');
+    throw ArgumentError.value(
+      kth,
+      'kth',
+      'kth must be an int or an Iterable of ints',
+    );
   }
 
   final uniqueK = kList.toSet().toList()..sort();
@@ -784,6 +800,7 @@ NDArray<T> partition<T extends DTypeTag>(
             return finish();
         }
       }
+      checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
@@ -826,8 +843,10 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute argpartition() on a disposed array.');
   }
   if (dtype != DType.int32 && dtype != DType.int64) {
-    throw ArgumentError(
-      'dtype must be DType.int32 or DType.int64, got $dtype.',
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be DType.int32 or DType.int64, got $dtype',
     );
   }
   if (out != null) {
@@ -872,7 +891,11 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
       kList.add(val);
     }
   } else {
-    throw ArgumentError('kth must be an int or an Iterable of ints.');
+    throw ArgumentError.value(
+      kth,
+      'kth',
+      'kth must be an int or an Iterable of ints',
+    );
   }
 
   final uniqueK = kList.toSet().toList()..sort();
@@ -1043,7 +1066,7 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
             indices.sort((i, j) {
               final bA = src.getCellFlat(rowStart + i) as bool;
               final bB = src.getCellFlat(rowStart + j) as bool;
-              if (bA == bB) return 0;
+              if (bA == bB) return i.compareTo(j);
               return bA ? 1 : -1;
             });
             for (var i = 0; i < n; i++) {
@@ -1117,6 +1140,7 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
             );
           }
       }
+      checkNativeOom();
 
       if (is32 && src.dtype != DType.boolean) {
         final outPtr = result.pointer.cast<ffi.Int32>();
@@ -1153,20 +1177,7 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
 /// - **Memory Complexity**: $O(M)$ to hold the returned N-dimensional shape. The C search runs in $O(1)$ auxiliary space.
 ///
 /// **Example:**
-/// ```dart
-/// import 'package:ndarray/ndarray.dart';
-///
-/// void main() {
-///   final a = NDArray.fromList([10.0, 20.0, 30.0], [3], DType.float64);
-///   final v = NDArray.fromList([15.0, 30.0, 5.0, 35.0], [2, 2], DType.float64);
-///
-///   // Finds insertion indices for the entire multi-dimensional grid v:
-///   final indices = searchsorted(a, v, side: SearchSide.left);
-///
-///   print(indices.shape); // [2, 2] (matches shape of v)
-///   print(indices.toList()); // [[1, 2], [0, 3]]
-/// }
-/// ```
+/// {@example /example/sorting_searching_example.dart lang=dart}
 NDArray<Int64> searchsorted<T extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> v, {
@@ -1202,26 +1213,36 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot use a disposed sorter array.');
   }
   if (dtype != DType.int32 && dtype != DType.int64) {
-    throw ArgumentError(
-      'dtype must be DType.int32 or DType.int64, got $dtype.',
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be DType.int32 or DType.int64, got $dtype',
     );
   }
   if (a.shape.length != 1) {
-    throw ArgumentError('a must be a 1-D array.');
+    throw ArgumentError.value(a, 'a', 'a must be a 1-D array');
   }
   if (v.dtype != a.dtype) {
-    throw ArgumentError(
-      'v and a must have the same DType (got v: ${v.dtype}, a: ${a.dtype}).',
+    throw ArgumentError.value(
+      v.dtype,
+      'v',
+      'v and a must have the same DType (got v: ${v.dtype}, a: ${a.dtype})',
     );
   }
 
   if (sorter != null) {
     if (sorter.shape.length != 1 || sorter.shape[0] != a.shape[0]) {
-      throw ArgumentError('sorter must be a 1-D array of the same size as a.');
+      throw ArgumentError.value(
+        sorter,
+        'sorter',
+        'sorter must be a 1-D array of the same size as a',
+      );
     }
     if (!sorter.dtype.isInteger) {
-      throw ArgumentError(
-        'sorter must have an integer dtype, got ${sorter.dtype}.',
+      throw ArgumentError.value(
+        sorter.dtype,
+        'sorter',
+        'sorter must have an integer dtype, got ${sorter.dtype}',
       );
     }
   }
@@ -1479,6 +1500,7 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
             cSorter,
           );
       }
+      checkNativeOom();
       if (is32 && !wroteResultDirectly) {
         final outPtr = result.pointer.cast<ffi.Int32>();
         for (var i = 0; i < numValues; i++) {
@@ -1529,14 +1551,7 @@ NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
 /// - Maps directly to NumPy's `np.where`.
 ///
 /// **Example:**
-/// ```dart
-/// final cond = NDArray.fromList([true, false, true], [3], DType.boolean);
-/// final x = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-/// final y = NDArray.fromList([10.0, 20.0, 30.0], [3], DType.float64);
-/// final result = where(cond, x, y) as NDArray<Float64>;
-/// print(result.toList()); // [1.0, 20.0, 3.0]
-/// result.dispose();
-/// ```
+/// {@example /example/sorting_searching_example.dart lang=dart}
 ///
 /// **Return Value Type Behavior:**
 /// - If [x] and [y] are provided, returns a single `NDArray<T>` of the resolved common type.
@@ -1560,19 +1575,29 @@ dynamic where<T extends DTypeTag>(
     throw StateError('Cannot write where() result to a disposed output array.');
   }
   if (condition.dtype != DType.boolean) {
-    throw ArgumentError('condition must be a boolean array');
+    throw ArgumentError.value(
+      condition,
+      'condition',
+      'condition must be a boolean array',
+    );
   }
   if (x == null && y == null) {
     if (out != null) {
-      throw ArgumentError(
-        'out buffer cannot be provided when x and y are omitted.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'out buffer cannot be provided when x and y are omitted',
       );
     }
     return nonzero(condition);
   }
 
   if ((x == null && y != null) || (x != null && y == null)) {
-    throw ArgumentError('Either both or neither of x and y must be given');
+    throw ArgumentError.value(
+      x,
+      'x',
+      'Either both or neither of x and y must be given',
+    );
   }
 
   // Calculate target common shape via high-speed 3-way broadcast matching
@@ -1581,14 +1606,19 @@ dynamic where<T extends DTypeTag>(
     throw UnsupportedError('where only supports up to 8 dimensions.');
   }
 
-  final DType<DTypeTag> targetDType = resolveDType(x.dtype, y.dtype);
+  final DType<DTypeTag> targetDType = x.dtype == y.dtype
+      ? x.dtype
+      : resolveDType(x.dtype, y.dtype);
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for where() result.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Provided out buffer has incompatible shape or dtype for where() result',
       );
     }
     if (sharesMemory(condition, out) ||
@@ -1964,10 +1994,7 @@ List<NDArray<Int64>> nonzero<T extends DTypeTag>(NDArray<T> a) {
 ///   1-D shape matching the number of non-zero elements in [a].
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([-2, -1, 0, 1, 2], [5], DType.int32);
-/// final idx = flatnonzero(a); // [0, 1, 3, 4] (DType.int64)
-/// ```
+/// {@example /example/sorting_searching_example.dart lang=dart}
 NDArray<Int64> flatnonzero<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<Int64>? out,
@@ -1987,6 +2014,7 @@ NDArray<Int64> flatnonzero<T extends DTypeTag>(
     final coords = nonzero<T>(flat);
     final res = coords[0];
     if (out != null) {
+      validateOutBuffer(out);
       if (!out.isWriteable ||
           !listEquals(out.shape, res.shape) ||
           out.dtype != DType.int64) {
@@ -2317,7 +2345,7 @@ void _dispatchCountNonzeroFFI(
 NDArray<Int64> count_nonzero<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
-  NDArray<DTypeTag>? out,
+  NDArray<Int64>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot count non-zero elements on a disposed array.');
@@ -2351,16 +2379,21 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
       : (List<int>.from(a.shape)..removeAt(normAxis));
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, targetShape) ||
         out.dtype != DType.int64) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Int64>.create(out.shape, DType.int64);
         count_nonzero<T>(a, axis: axis, out: temp);
-        return temp.copy(out: out as NDArray<Int64>);
+        return temp.copy(out: out);
       });
     }
   }
@@ -2389,8 +2422,7 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
       src = a;
     }
 
-    final result =
-        (out ?? NDArray<Int64>.create([], DType.int64)) as NDArray<Int64>;
+    final result = out ?? NDArray<Int64>.create([], DType.int64);
     final marker = ScratchArena.marker;
     try {
       final cShape = ScratchArena.allocate<ffi.Int64>(ffi.sizeOf<ffi.Int64>());
@@ -2422,9 +2454,7 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
   // Axis reduction
   final targetAxis = normAxis;
 
-  final result =
-      (out ?? NDArray<Int64>.create(targetShape, DType.int64))
-          as NDArray<Int64>;
+  final result = out ?? NDArray<Int64>.create(targetShape, DType.int64);
 
   final marker = ScratchArena.marker;
   try {
@@ -2579,17 +2609,19 @@ NDArray<Int64> _uint64ArgMinMax(
   int? normAxis,
   bool isMax, {
   bool keepdims = false,
-  NDArray<DTypeTag>? out,
+  NDArray<Int64>? out,
   required List<int> targetShape,
 }) {
-  final result =
-      (out ?? NDArray<Int64>.create(targetShape, DType.int64))
-          as NDArray<Int64>;
+  final result = out ?? NDArray<Int64>.create(targetShape, DType.int64);
   final rank = a.shape.length;
 
   if (normAxis == null) {
     if (a.size == 0) {
-      throw ArgumentError('attempt to get argmin/argmax of an empty sequence');
+      throw ArgumentError.value(
+        a,
+        'a',
+        'attempt to get argmin/argmax of an empty sequence',
+      );
     }
     var bestIdx = 0;
     var bestVal = a.getCellFlat(0) as int;
@@ -2607,7 +2639,11 @@ NDArray<Int64> _uint64ArgMinMax(
 
   final axisLen = a.shape[normAxis];
   if (axisLen == 0) {
-    throw ArgumentError('attempt to get argmin/argmax of an empty sequence');
+    throw ArgumentError.value(
+      a,
+      'a',
+      'attempt to get argmin/argmax of an empty sequence',
+    );
   }
 
   final squeezedDestStrides = keepdims
@@ -2676,7 +2712,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   int? axis,
   bool isMax, {
   bool keepdims = false,
-  NDArray<DTypeTag>? out,
+  NDArray<Int64>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate reduction on a disposed array.');
@@ -2699,7 +2735,11 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   }
 
   if (normAxis == null ? a.size == 0 : a.shape[normAxis] == 0) {
-    throw ArgumentError('Cannot compute reduction on an empty array.');
+    throw ArgumentError.value(
+      a,
+      'a',
+      'Cannot compute reduction on an empty array',
+    );
   }
 
   final targetShape = normAxis == null
@@ -2714,13 +2754,13 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
       return NDArray.scope(() {
         final temp = NDArray<Int64>.create(out.shape, DType.int64);
         _argminmaxFFI<T>(a, axis, isMax, keepdims: keepdims, out: temp);
-        return temp.copy(out: out as NDArray<Int64>);
+        return temp.copy(out: out);
       });
     }
   }
 
   if (a.size == 0) {
-    if (out != null) return out as NDArray<Int64>;
+    if (out != null) return out;
     return NDArray<Int64>.create(targetShape, DType.int64);
   }
 
@@ -2758,9 +2798,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
       src = a;
     }
 
-    final result =
-        (out ?? NDArray<Int64>.create(targetShape, DType.int64))
-            as NDArray<Int64>;
+    final result = out ?? NDArray<Int64>.create(targetShape, DType.int64);
     final marker = ScratchArena.marker;
     try {
       final cShape = ScratchArena.allocate<ffi.Int64>(ffi.sizeOf<ffi.Int64>());
@@ -2793,9 +2831,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   // Axis reduction
   final targetAxis = normAxis;
 
-  final result =
-      (out ?? NDArray<Int64>.create(targetShape, DType.int64))
-          as NDArray<Int64>;
+  final result = out ?? NDArray<Int64>.create(targetShape, DType.int64);
 
   final marker = ScratchArena.marker;
   try {
@@ -2851,7 +2887,7 @@ NDArray<Int64> argmax<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<DTypeTag>? out,
+  NDArray<Int64>? out,
 }) {
   return _argminmaxFFI<T>(a, axis, true, keepdims: keepdims, out: out);
 }
@@ -2867,7 +2903,7 @@ NDArray<Int64> argmin<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<DTypeTag>? out,
+  NDArray<Int64>? out,
 }) {
   return _argminmaxFFI<T>(a, axis, false, keepdims: keepdims, out: out);
 }
@@ -3111,14 +3147,20 @@ ffi.Pointer<ffi.Void> _allocateTarget(Object value, DType<DTypeTag> dtype) {
       return ptr.cast();
     case DType.float16:
       final ptr = ScratchArena.allocate<ffi.Float>(ffi.sizeOf<ffi.Float>());
-      ptr.value = Float16Utils.decodeFloat16(
-        Float16Utils.encodeFloat16((value as num).toDouble()),
+      final dVal = (value as num).toDouble();
+      _storeHalfTargetInFloat32(
+        ptr,
+        dVal,
+        Float16Utils.decodeFloat16(Float16Utils.encodeFloat16(dVal)),
       );
       return ptr.cast();
     case DType.bfloat16:
       final ptr = ScratchArena.allocate<ffi.Float>(ffi.sizeOf<ffi.Float>());
-      ptr.value = Float16Utils.decodeBFloat16(
-        Float16Utils.encodeBFloat16((value as num).toDouble()),
+      final dVal = (value as num).toDouble();
+      _storeHalfTargetInFloat32(
+        ptr,
+        dVal,
+        Float16Utils.decodeBFloat16(Float16Utils.encodeBFloat16(dVal)),
       );
       return ptr.cast();
     case DType.int8:
@@ -3137,5 +3179,31 @@ ffi.Pointer<ffi.Void> _allocateTarget(Object value, DType<DTypeTag> dtype) {
       final ptr = ScratchArena.allocate<ffi.Uint16>(ffi.sizeOf<ffi.Uint16>());
       ptr.value = value as int;
       return ptr.cast();
+  }
+}
+
+void _storeHalfTargetInFloat32(
+  ffi.Pointer<ffi.Float> ptr,
+  double dVal,
+  double decodedHalf,
+) {
+  ptr.value = dVal;
+  if (dVal.isNaN) return;
+  final fVal = ptr.value;
+  final uint32Ptr = ptr.cast<ffi.Uint32>();
+  if (dVal.isFinite && fVal.isInfinite) {
+    // dVal exceeds float32 max but is finite; clamp to max finite float32
+    // (which is still strictly greater than max finite float16/bfloat16).
+    uint32Ptr.value = dVal > 0 ? 0x7f7fffff : 0xff7fffff;
+    return;
+  }
+  if (fVal == decodedHalf && dVal != decodedHalf) {
+    if (decodedHalf == 0.0) {
+      uint32Ptr.value = dVal > 0 ? 0x00000001 : 0x80000001;
+    } else if ((decodedHalf > 0) == (dVal > decodedHalf)) {
+      uint32Ptr.value = uint32Ptr.value + 1;
+    } else {
+      uint32Ptr.value = uint32Ptr.value - 1;
+    }
   }
 }

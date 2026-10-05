@@ -58,12 +58,7 @@ NDArray<DTypeTag> _complexPartView(
 /// [out] is provided with incompatible shape or dtype (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<DTypeTag>.create([2], DType.complex128);
-/// a.setCell([0], Complex(3.0, 4.0));
-/// a.setCell([1], Complex(-1.0, 0.0));
-/// final r = real(a); // [3.0, -1.0] (DType.float64)
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> real<R extends DTypeTag>(
   NDArray<
     DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
@@ -101,21 +96,19 @@ NDArray<R> real<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype for real.",
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for real',
       );
     }
-    if (sharesMemory(a, out)) {
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()
-            : ((targetDType == DType.float32
-                      ? NDArray<Float32>.create(a.shape, DType.float32)
-                      : NDArray<Float64>.create(a.shape, DType.float64))
-                  as NDArray<R>);
+            : NDArray<R>.create(a.shape, out.dtype);
         real<R>(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
@@ -124,19 +117,18 @@ NDArray<R> real<R extends DTypeTag>(
   } else if (where == null &&
       (a.dtype as DType<DTypeTag>) != DType.complex128 &&
       (a.dtype as DType<DTypeTag>) != DType.complex64) {
-    return NDArray.view(a, shape: a.shape, strides: a.strides)
-        as NDArray<R>; // Zero-copy view for already real arrays!
+    return NDArray<R>.view(
+      a,
+      shape: a.shape,
+      strides: a.strides,
+    ); // Zero-copy view for already real arrays!
   }
 
   if (where == null &&
       ((a.dtype as DType<DTypeTag>) == DType.complex128 ||
           (a.dtype as DType<DTypeTag>) == DType.complex64)) {
     final NDArray<R> result =
-        out ??
-        ((targetDType == DType.float32
-                ? NDArray<Float32>.create(a.shape, DType.float32)
-                : NDArray<Float64>.create(a.shape, DType.float64))
-            as NDArray<R>);
+        out ?? NDArray<R>.create(a.shape, targetDType as DType<R>);
     final view = _complexPartView(a, targetDType, isImag: false);
     try {
       view.copy(out: result);
@@ -150,8 +142,11 @@ NDArray<R> real<R extends DTypeTag>(
   try {
     final NDArray<R> result =
         out ??
-        (NDArray.create(a.shape, targetDType, zeroInit: where != null)
-            as NDArray<R>);
+        NDArray<R>.create(
+          a.shape,
+          targetDType as DType<R>,
+          zeroInit: where != null,
+        );
     switch (a.dtype) {
       case DType.complex128:
       case DType.complex64:
@@ -223,12 +218,7 @@ NDArray<R> real<R extends DTypeTag>(
 /// [out] is provided with incompatible shape or dtype (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<DTypeTag>.create([2], DType.complex128);
-/// a.setCell([0], Complex(3.0, 4.0));
-/// a.setCell([1], Complex(-1.0, 0.0));
-/// final im = imag(a); // [4.0, 0.0] (DType.float64)
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> imag<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
@@ -249,21 +239,19 @@ NDArray<R> imag<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype for imag.",
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for imag',
       );
     }
-    if (sharesMemory(a, out)) {
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()
-            : ((targetDType == DType.float32
-                      ? NDArray<Float32>.create(a.shape, DType.float32)
-                      : NDArray<Float64>.create(a.shape, DType.float64))
-                  as NDArray<R>);
+            : NDArray<R>.create(a.shape, out.dtype);
         imag<R>(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
@@ -275,11 +263,7 @@ NDArray<R> imag<R extends DTypeTag>(
       ((a.dtype as DType<DTypeTag>) == DType.complex128 ||
           (a.dtype as DType<DTypeTag>) == DType.complex64)) {
     final NDArray<R> result =
-        out ??
-        ((targetDType == DType.float32
-                ? NDArray<Float32>.create(a.shape, DType.float32)
-                : NDArray<Float64>.create(a.shape, DType.float64))
-            as NDArray<R>);
+        out ?? NDArray<R>.create(a.shape, targetDType as DType<R>);
     final view = _complexPartView(a, targetDType, isImag: true);
     try {
       view.copy(out: result);
@@ -293,8 +277,11 @@ NDArray<R> imag<R extends DTypeTag>(
   try {
     final NDArray<R> result =
         out ??
-        (NDArray.create(a.shape, targetDType, zeroInit: where != null)
-            as NDArray<R>);
+        NDArray<R>.create(
+          a.shape,
+          targetDType as DType<R>,
+          zeroInit: where != null,
+        );
     if ((a.dtype as DType<DTypeTag>) != DType.complex128 &&
         (a.dtype as DType<DTypeTag>) != DType.complex64) {
       if (where == null) {
@@ -350,10 +337,7 @@ NDArray<R> imag<R extends DTypeTag>(
 /// [out] is provided with incompatible shape or dtype (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([Complex(1.0, 2.0)], [1], DType.complex128);
-/// final c = conj(a); // [Complex(1.0, -2.0)]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> conj<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
@@ -366,18 +350,20 @@ NDArray<T> conj<T extends DTypeTag>(
   }
   final targetDType = a.dtype;
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype for conj.",
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for conj',
       );
     }
-    if (sharesMemory(a, out) &&
-        (!a.isContiguous ||
-            !out.isContiguous ||
-            a.offsetElements != out.offsetElements ||
-            !listEquals(a.strides, out.strides))) {
+    if ((sharesMemory(a, out) &&
+            (!a.isContiguous ||
+                !out.isContiguous ||
+                a.offsetElements != out.offsetElements ||
+                !listEquals(a.strides, out.strides))) ||
+        (where != null && sharesMemory(where, out))) {
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()

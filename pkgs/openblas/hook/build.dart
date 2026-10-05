@@ -62,9 +62,13 @@ void main(List<String> args) async {
       ),
     };
 
+    final requirePrebuilt =
+        Platform.environment['OPENBLAS_REQUIRE_PREBUILT'] == '1';
+
     ({Uri openblasUri, Uri extensionsUri}) builtLibraries;
     if (buildOptions.buildMode == BuildModeEnum.fetch &&
         !buildOptions.isExplicit &&
+        !requirePrebuilt &&
         currentSourceHash != nativeSourceHash) {
       print(
         'Prebuilt openblas binary for release $version differs from local '
@@ -77,7 +81,8 @@ void main(List<String> args) async {
         builtLibraries = await buildMode.build();
       } catch (e) {
         if (buildOptions.buildMode == BuildModeEnum.fetch &&
-            !buildOptions.isExplicit) {
+            !buildOptions.isExplicit &&
+            !requirePrebuilt) {
           print(
             'Prebuilt openblas binary unavailable ($e); '
             'falling back to `buildMode: source`.',
@@ -129,6 +134,28 @@ String _canonicalExtensionsName(OS os) => os == OS.windows
           ? 'libopenblas_extensions.dylib'
           : 'libopenblas_extensions.so');
 
+Future<T> _withSharedLock<T>(
+  Directory sharedDir,
+  Future<T> Function() action,
+) async {
+  if (!sharedDir.existsSync()) {
+    sharedDir.createSync(recursive: true);
+  }
+  final lockFile = File.fromUri(sharedDir.uri.resolve('.build.lock'));
+  final raf = lockFile.openSync(mode: FileMode.write);
+  try {
+    raf.lockSync(FileLock.blockingExclusive);
+    return await action();
+  } finally {
+    try {
+      raf.unlockSync();
+    } catch (_) {}
+    try {
+      raf.closeSync();
+    } catch (_) {}
+  }
+}
+
 sealed class BuildMode {
   final BuildInput input;
 
@@ -177,6 +204,7 @@ final class FetchMode extends BuildMode {
     final sharedDir = input.outputDirectoryShared.resolve(
       'openblas-$version/${os.name}-${arch.name}/',
     );
+    final sharedCacheDir = Directory.fromUri(sharedDir);
     final cachedOpenblas = File.fromUri(
       sharedDir.resolve(_canonicalOpenblasName(os)),
     );
@@ -184,22 +212,47 @@ final class FetchMode extends BuildMode {
       sharedDir.resolve(_canonicalExtensionsName(os)),
     );
 
-    final openblasUri = await _fetchOrUseCached(
-      cachedFile: cachedOpenblas,
-      artifactName: openblasArtifact,
-      expectedHash: expectedOpenblasHash,
-      currentSourceHash: currentSourceHash,
-      verifySourceStamp: false,
-    );
-    final extensionsUri = await _fetchOrUseCached(
-      cachedFile: cachedExt,
-      artifactName: extArtifact,
-      expectedHash: expectedExtHash,
-      currentSourceHash: currentSourceHash,
-      verifySourceStamp: true,
+    final (cachedOpenblasUri, cachedExtUri) = await _withSharedLock(
+      sharedCacheDir,
+      () async {
+        final openblasUri = await _fetchOrUseCached(
+          cachedFile: cachedOpenblas,
+          artifactName: openblasArtifact,
+          expectedHash: expectedOpenblasHash,
+          currentSourceHash: currentSourceHash,
+          verifySourceStamp: false,
+        );
+        final extensionsUri = await _fetchOrUseCached(
+          cachedFile: cachedExt,
+          artifactName: extArtifact,
+          expectedHash: expectedExtHash,
+          currentSourceHash: currentSourceHash,
+          verifySourceStamp: true,
+        );
+
+        return (openblasUri, extensionsUri);
+      },
     );
 
-    return (openblasUri: openblasUri, extensionsUri: extensionsUri);
+    final dstOpenblas = File.fromUri(
+      input.outputDirectory.resolve(_canonicalOpenblasName(os)),
+    );
+    final dstExt = File.fromUri(
+      input.outputDirectory.resolve(_canonicalExtensionsName(os)),
+    );
+    await dstOpenblas.parent.create(recursive: true);
+    final tmpOpenblas = File(
+      '${dstOpenblas.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await File.fromUri(cachedOpenblasUri).copy(tmpOpenblas.path);
+    await tmpOpenblas.rename(dstOpenblas.path);
+    final tmpExt = File(
+      '${dstExt.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await File.fromUri(cachedExtUri).copy(tmpExt.path);
+    await tmpExt.rename(dstExt.path);
+
+    return (openblasUri: dstOpenblas.uri, extensionsUri: dstExt.uri);
   }
 
   Future<Uri> _fetchOrUseCached({
@@ -242,7 +295,11 @@ final class FetchMode extends BuildMode {
     }
 
     await cachedFile.parent.create(recursive: true);
-    await cachedFile.writeAsBytes(bytes, flush: true);
+    final tempFile = File(
+      '${cachedFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await tempFile.writeAsBytes(bytes, flush: true);
+    await tempFile.rename(cachedFile.path);
     return cachedFile.uri;
   }
 
@@ -332,8 +389,16 @@ final class LocalMode extends BuildMode {
       input.outputDirectory.resolve(_canonicalExtensionsName(os)),
     );
     await dstOpenblas.parent.create(recursive: true);
-    await srcOpenblas.copy(dstOpenblas.path);
-    await srcExt.copy(dstExt.path);
+    final tmpOpenblas = File(
+      '${dstOpenblas.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await srcOpenblas.copy(tmpOpenblas.path);
+    await tmpOpenblas.rename(dstOpenblas.path);
+    final tmpExt = File(
+      '${dstExt.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await srcExt.copy(tmpExt.path);
+    await tmpExt.rename(dstExt.path);
     return (openblasUri: dstOpenblas.uri, extensionsUri: dstExt.uri);
   }
 
@@ -365,6 +430,20 @@ final class SourceMode extends BuildMode {
     final customExtensionsPath = _root
         .resolve('hook/custom_extensions.c')
         .toFilePath();
+
+    final sanitize = buildOptions?.sanitize;
+    final coverage = buildOptions?.coverage ?? false;
+    final sanitizeFlags = (sanitize != null && sanitize.isNotEmpty)
+        ? <String>[
+            '-fsanitize=$sanitize',
+            '-fno-sanitize-recover=all',
+            '-fno-omit-frame-pointer',
+            '-g',
+          ]
+        : const <String>[];
+    final coverageFlags = coverage
+        ? const <String>['--coverage', '-O1', '-g']
+        : const <String>[];
 
     final currentSourceHash = computeNativeSourceHash(_root);
     final stampFile = File.fromUri(
@@ -405,8 +484,14 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         final libFile = File.fromUri(
           outputDir.uri.resolve('libopenblas.dylib'),
         );
+        final tempLibFile = File(
+          '${libFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+        );
         final extLibFile = File.fromUri(
           outputDir.uri.resolve('libopenblas_extensions.dylib'),
+        );
+        final tempExtLibFile = File(
+          '${extLibFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
         );
 
         final stubCompileArgs = [
@@ -418,11 +503,13 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
           ],
           '-dynamiclib',
           '-O3',
+          ...sanitizeFlags,
+          ...coverageFlags,
           stubFile.path,
           customExtensionsPath,
           stampFile.path,
           '-o',
-          libFile.path,
+          tempLibFile.path,
           '-framework',
           'Accelerate',
           '-Wl,-reexport_framework,Accelerate',
@@ -435,6 +522,7 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             'stderr: ${stubRes.stderr}',
           );
         }
+        await tempLibFile.rename(libFile.path);
 
         final extCompileArgs = [
           if (os == OS.macOS || os == OS.iOS) ...[
@@ -445,10 +533,12 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
           ],
           '-dynamiclib',
           '-O3',
+          ...sanitizeFlags,
+          ...coverageFlags,
           customExtensionsPath,
           stampFile.path,
           '-o',
-          extLibFile.path,
+          tempExtLibFile.path,
           '-framework',
           'Accelerate',
         ];
@@ -460,6 +550,7 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             'stderr: ${extRes.stderr}',
           );
         }
+        await tempExtLibFile.rename(extLibFile.path);
 
         return (openblasUri: libFile.uri, extensionsUri: extLibFile.uri);
 
@@ -468,75 +559,99 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             cCompiler?.compiler.toFilePath() ??
             (os == OS.windows ? 'cl' : 'cc');
         final compilerLower = compilerPath.toLowerCase();
+        final isClangCl = compilerLower.contains('clang-cl');
         final isGNU =
-            compilerLower.contains('gcc') ||
-            compilerLower.contains('clang') ||
-            compilerLower.contains('g++');
-        final isMSVC = os == OS.windows && !isGNU;
+            !isClangCl &&
+            (compilerLower.contains('gcc') ||
+                compilerLower.contains('clang') ||
+                compilerLower.contains('g++'));
+        final isMSVC =
+            isClangCl ||
+            (os == OS.windows &&
+                (!isGNU ||
+                    compilerLower.endsWith('cl.exe') ||
+                    compilerLower == 'cl' ||
+                    compilerLower.contains('msvc')));
 
         final zipUrl = Uri.parse(
           'https://github.com/OpenMathLib/OpenBLAS/releases/download/v0.3.33/OpenBLAS-0.3.33-x64.zip',
         );
-        final extractDir = outputDir.uri.resolve('OpenBLAS-precompiled/');
+        final extractDir = input.outputDirectoryShared.resolve(
+          'OpenBLAS-precompiled-0.3.33-x64/',
+        );
         final extractDirFile = Directory.fromUri(extractDir);
+        final completeMarker = File.fromUri(extractDir.resolve('.complete'));
 
-        if (!extractDirFile.existsSync()) {
-          print('Downloading precompiled OpenBLAS zip...');
-          final zipBytes = await _downloadBytesWithRedirects(zipUrl);
+        await _withSharedLock(extractDirFile, () async {
+          if (!completeMarker.existsSync()) {
+            print('Downloading precompiled OpenBLAS zip...');
+            final zipBytes = await _downloadBytesWithRedirects(zipUrl);
 
-          final actualZipHash = sha256.convert(zipBytes).toString();
-          const expectedZipHash =
-              '7ad797ef0c9a5c42e28903bf726eaaaade307dafe187ff0e923d90cd4002780c';
-          if (actualZipHash != expectedZipHash) {
-            throw StateError(
-              'SHA-256 mismatch for OpenBLAS zip: expected $expectedZipHash, got $actualZipHash',
-            );
-          }
-
-          final archive = ZipDecoder().decodeBytes(zipBytes);
-          final extractDirPath = Directory.fromUri(extractDir).path;
-          final safeExtractPrefix =
-              extractDirPath.endsWith(Platform.pathSeparator)
-              ? extractDirPath
-              : '$extractDirPath${Platform.pathSeparator}';
-          for (final file in archive) {
-            final outPath = extractDir.resolve(file.name).toFilePath();
-            if (!outPath.startsWith(safeExtractPrefix)) {
-              throw FormatException(
-                'Path traversal attempt in OpenBLAS zip: ${file.name}',
+            final actualZipHash = sha256.convert(zipBytes).toString();
+            const expectedZipHash =
+                '7ad797ef0c9a5c42e28903bf726eaaaade307dafe187ff0e923d90cd4002780c';
+            if (actualZipHash != expectedZipHash) {
+              throw StateError(
+                'SHA-256 mismatch for OpenBLAS zip: expected $expectedZipHash, got $actualZipHash',
               );
             }
-            if (file.isFile) {
-              final outFile = File(outPath);
-              outFile.createSync(recursive: true);
-              outFile.writeAsBytesSync(file.content as List<int>, flush: true);
-            } else {
-              Directory(outPath).createSync(recursive: true);
+
+            final archive = ZipDecoder().decodeBytes(zipBytes);
+            final extractDirPath = extractDirFile.path;
+            final safeExtractPrefix =
+                extractDirPath.endsWith(Platform.pathSeparator)
+                ? extractDirPath
+                : '$extractDirPath${Platform.pathSeparator}';
+            for (final file in archive) {
+              final outPath = extractDir.resolve(file.name).toFilePath();
+              if (!outPath.startsWith(safeExtractPrefix)) {
+                throw FormatException(
+                  'Path traversal attempt in OpenBLAS zip: ${file.name}',
+                );
+              }
+              if (file.isFile) {
+                final outFile = File(outPath);
+                outFile.createSync(recursive: true);
+                outFile.writeAsBytesSync(
+                  file.content as List<int>,
+                  flush: true,
+                );
+              } else {
+                Directory(outPath).createSync(recursive: true);
+              }
             }
+
+            final lapackHeader = File(
+              extractDir.resolve('include/lapack.h').toFilePath(),
+            );
+            if (lapackHeader.existsSync()) {
+              var content = await lapackHeader.readAsString();
+              content = content.replaceAll(
+                RegExp(r'typedef\s+[^;]+int32_t\s*;'),
+                '/* patched typedef int32_t */',
+              );
+              content = content.replaceAll(
+                RegExp(r'typedef\s+[^;]+uint32_t\s*;'),
+                '/* patched typedef uint32_t */',
+              );
+              await lapackHeader.writeAsString(content);
+            }
+            await completeMarker.writeAsString('ok', flush: true);
           }
-        }
+        });
 
         final dllFile = File.fromUri(extractDir.resolve('bin/libopenblas.dll'));
+        final outDllFile = File.fromUri(
+          outputDir.uri.resolve(_canonicalOpenblasName(os)),
+        );
+        final tempOutDll = File(
+          '${outDllFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+        );
+        await dllFile.copy(tempOutDll.path);
+        await tempOutDll.rename(outDllFile.path);
+
         final headersDir = extractDir.resolve('include/');
         final libDir = extractDir.resolve('lib/');
-
-        if (isMSVC) {
-          final lapackHeader = File(
-            headersDir.resolve('lapack.h').toFilePath(),
-          );
-          if (lapackHeader.existsSync()) {
-            var content = await lapackHeader.readAsString();
-            content = content.replaceAll(
-              RegExp(r'typedef\s+[^;]+int32_t\s*;'),
-              '/* patched typedef int32_t */',
-            );
-            content = content.replaceAll(
-              RegExp(r'typedef\s+[^;]+uint32_t\s*;'),
-              '/* patched typedef uint32_t */',
-            );
-            await lapackHeader.writeAsString(content);
-          }
-        }
 
         final openblasLibName = isMSVC
             ? 'libopenblas.lib'
@@ -546,6 +661,9 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         final extLibFile = File(
           outputDir.uri.resolve('libopenblas_extensions.dll').toFilePath(),
         );
+        final tempExtLibFile = File(
+          '${extLibFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+        );
         final compileArgs = isMSVC
             ? [
                 '/LD',
@@ -554,7 +672,7 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
                 '/I${headersDir.toFilePath()}',
                 customExtensionsPath,
                 stampFile.path,
-                '/Fe:${extLibFile.path}',
+                '/Fe:${tempExtLibFile.path}',
                 openblasLibFile.path,
                 '/link',
                 '/EXPORT:get_dgetrf_ptr',
@@ -567,11 +685,13 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
                 '-shared',
                 '-fPIC',
                 '-O3',
+                ...sanitizeFlags,
+                ...coverageFlags,
                 '-I${headersDir.toFilePath()}',
                 customExtensionsPath,
                 stampFile.path,
                 '-o',
-                extLibFile.path,
+                tempExtLibFile.path,
                 openblasLibFile.path,
               ];
 
@@ -598,8 +718,9 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             'stderr: ${extRes.stderr}',
           );
         }
+        await tempExtLibFile.rename(extLibFile.path);
 
-        return (openblasUri: dllFile.uri, extensionsUri: extLibFile.uri);
+        return (openblasUri: outDllFile.uri, extensionsUri: extLibFile.uri);
 
       case CompileOpenBlas(:final sourceUrl):
         String openBlasTarget = 'GENERIC';
@@ -634,96 +755,114 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
               .toFilePath(),
         );
 
-        if (!libFile.existsSync()) {
-          print('Downloading OpenBLAS release...');
-          final tarGzBytes = await _downloadBytesWithRedirects(
-            Uri.parse(sourceUrl),
-          );
-
-          final actualTarHash = sha256.convert(tarGzBytes).toString();
-          const expectedTarHash =
-              '6761af1d9f5d353ab4f0b7497be2643313b36c8f31caec0144bfef198e71e6ab';
-          if (actualTarHash != expectedTarHash) {
-            throw StateError(
-              'SHA-256 mismatch for OpenBLAS archive: expected $expectedTarHash, got $actualTarHash',
+        await _withSharedLock(sharedOpenblasBase, () async {
+          if (!libFile.existsSync()) {
+            print('Downloading OpenBLAS release...');
+            final tarGzBytes = await _downloadBytesWithRedirects(
+              Uri.parse(sourceUrl),
             );
-          }
 
-          final unzippedBytes = GZipDecoder().decodeBytes(tarGzBytes);
-          final archive = TarDecoder().decodeBytes(unzippedBytes);
-
-          final safeOutputPrefix =
-              sharedOpenblasBase.path.endsWith(Platform.pathSeparator)
-              ? sharedOpenblasBase.path
-              : '${sharedOpenblasBase.path}${Platform.pathSeparator}';
-          for (final file in archive) {
-            final outPath = sharedOpenblasBase.uri
-                .resolve(file.name)
-                .toFilePath();
-            if (!outPath.startsWith(safeOutputPrefix)) {
-              throw FormatException(
-                'Path traversal attempt in OpenBLAS archive: ${file.name}',
+            final actualTarHash = sha256.convert(tarGzBytes).toString();
+            const expectedTarHash =
+                '6761af1d9f5d353ab4f0b7497be2643313b36c8f31caec0144bfef198e71e6ab';
+            if (actualTarHash != expectedTarHash) {
+              throw StateError(
+                'SHA-256 mismatch for OpenBLAS archive: expected $expectedTarHash, got $actualTarHash',
               );
             }
-            if (file.isFile) {
-              final outFile = File(outPath);
-              outFile.createSync(recursive: true);
-              outFile.writeAsBytesSync(file.content as List<int>, flush: true);
-            } else {
-              Directory(outPath).createSync(recursive: true);
+
+            final unzippedBytes = GZipDecoder().decodeBytes(tarGzBytes);
+            final archive = TarDecoder().decodeBytes(unzippedBytes);
+
+            final safeOutputPrefix =
+                sharedOpenblasBase.path.endsWith(Platform.pathSeparator)
+                ? sharedOpenblasBase.path
+                : '${sharedOpenblasBase.path}${Platform.pathSeparator}';
+            for (final file in archive) {
+              final outPath = sharedOpenblasBase.uri
+                  .resolve(file.name)
+                  .toFilePath();
+              if (!outPath.startsWith(safeOutputPrefix)) {
+                throw FormatException(
+                  'Path traversal attempt in OpenBLAS archive: ${file.name}',
+                );
+              }
+              if (file.isFile) {
+                final outFile = File(outPath);
+                outFile.createSync(recursive: true);
+                outFile.writeAsBytesSync(
+                  file.content as List<int>,
+                  flush: true,
+                );
+              } else {
+                Directory(outPath).createSync(recursive: true);
+              }
+            }
+
+            print('Building OpenBLAS with target $openBlasTarget...');
+            final makeArgs = <String>[
+              'shared',
+              '-j${Platform.numberOfProcessors}',
+              'TARGET=$openBlasTarget',
+              if (arch == Architecture.x64) ...[
+                'DYNAMIC_ARCH=1',
+                'DYNAMIC_LIST=NEHALEM SANDYBRIDGE HASWELL SKYLAKEX ZEN',
+              ],
+              'USE_THREAD=1',
+              'FIXED_LIBNAME=1',
+              if (os != OS.current || arch != Architecture.current)
+                OS.current == OS.macOS ? 'HOSTCC=clang' : 'HOSTCC=gcc',
+            ];
+
+            if (cCompiler != null) {
+              makeArgs.add('CC=${cCompiler.compiler.toFilePath()}');
+              makeArgs.add('AR=${cCompiler.archiver.toFilePath()}');
+            }
+
+            await Process.run('chmod', [
+              '-R',
+              '+x',
+              '.',
+            ], workingDirectory: extractDir);
+
+            final buildResult = await Process.run(
+              'make',
+              makeArgs,
+              workingDirectory: extractDir,
+            );
+            if (buildResult.exitCode != 0) {
+              throw StateError(
+                'Failed to build OpenBLAS (exit ${buildResult.exitCode}):\n'
+                '${buildResult.stderr}',
+              );
             }
           }
+        });
 
-          print('Building OpenBLAS with target $openBlasTarget...');
-          final makeArgs = <String>[
-            'shared',
-            '-j${Platform.numberOfProcessors}',
-            'TARGET=$openBlasTarget',
-            if (arch == Architecture.x64) ...[
-              'DYNAMIC_ARCH=1',
-              'DYNAMIC_LIST=NEHALEM SANDYBRIDGE HASWELL SKYLAKEX ZEN',
-            ],
-            'USE_THREAD=1',
-            'FIXED_LIBNAME=1',
-            if (os != OS.current || arch != Architecture.current)
-              OS.current == OS.macOS ? 'HOSTCC=clang' : 'HOSTCC=gcc',
-          ];
-
-          if (cCompiler != null) {
-            makeArgs.add('CC=${cCompiler.compiler.toFilePath()}');
-            makeArgs.add('AR=${cCompiler.archiver.toFilePath()}');
-          }
-
-          await Process.run('chmod', [
-            '-R',
-            '+x',
-            '.',
-          ], workingDirectory: extractDir);
-
-          final buildResult = await Process.run(
-            'make',
-            makeArgs,
-            workingDirectory: extractDir,
-          );
-          if (buildResult.exitCode != 0) {
-            throw StateError(
-              'Failed to build OpenBLAS (exit ${buildResult.exitCode}):\n'
-              '${buildResult.stderr}',
-            );
-          }
-        }
+        final outOpenblasFile = File.fromUri(outputDir.uri.resolve(libName));
+        final tempOutOpenblas = File(
+          '${outOpenblasFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+        );
+        await libFile.copy(tempOutOpenblas.path);
+        await tempOutOpenblas.rename(outOpenblasFile.path);
 
         final extLibFile = File(
           outputDir.uri.resolve(_canonicalExtensionsName(os)).toFilePath(),
+        );
+        final tempExtLibFile = File(
+          '${extLibFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
         );
         final compilerPath =
             cCompiler?.compiler.toFilePath() ??
             (os == OS.windows ? 'cl' : 'cc');
         final compilerLower = compilerPath.toLowerCase();
+        final isClangCl = compilerLower.contains('clang-cl');
         final isMSVC =
             os == OS.windows &&
-            (compilerLower.endsWith('cl.exe') || compilerLower == 'cl') &&
-            !compilerLower.contains('clang');
+            (isClangCl ||
+                (!compilerLower.contains('clang') &&
+                    (compilerLower.endsWith('cl.exe') ||
+                        compilerLower == 'cl')));
 
         final compileArgs = isMSVC
             ? [
@@ -733,22 +872,28 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
                 '/I${extractDir}lapack-netlib/LAPACKE/include',
                 customExtensionsPath,
                 stampFile.path,
-                '/Fe:${extLibFile.path}',
+                '/Fe:${tempExtLibFile.path}',
                 '/link',
                 '/LIBPATH:$extractDir',
                 'libopenblas.lib',
+                '/EXPORT:get_dgetrf_ptr',
+                '/EXPORT:get_sgetrf_ptr',
+                '/EXPORT:get_zgetrf_ptr',
+                '/EXPORT:get_cgetrf_ptr',
                 '/EXPORT:openblas_embedded_source_hash',
               ]
             : [
                 '-shared',
                 '-fPIC',
                 '-O3',
+                ...sanitizeFlags,
+                ...coverageFlags,
                 if (os == OS.android) '-Wl,-z,max-page-size=16384',
                 '-I${extractDir}lapack-netlib/LAPACKE/include',
                 customExtensionsPath,
                 stampFile.path,
                 '-o',
-                extLibFile.path,
+                tempExtLibFile.path,
                 '-L$extractDir',
                 '-Wl,-rpath,\$ORIGIN',
                 '-lopenblas',
@@ -761,8 +906,12 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             'Failed to compile custom extensions: ${extRes.stderr}',
           );
         }
+        await tempExtLibFile.rename(extLibFile.path);
 
-        return (openblasUri: libFile.uri, extensionsUri: extLibFile.uri);
+        return (
+          openblasUri: outOpenblasFile.uri,
+          extensionsUri: extLibFile.uri,
+        );
     }
   }
 
@@ -803,34 +952,45 @@ final class CompileOpenBlas extends OpenBlasBinary {
 }
 
 Future<Uint8List> _downloadBytesWithRedirects(Uri url) async {
-  final client = HttpClient();
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
   try {
-    var currentUrl = url;
+    var currentUri = url;
     for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
-      final request = await client.getUrl(currentUrl);
-      final response = await request.close();
+      final request = await client
+          .getUrl(currentUri)
+          .timeout(const Duration(seconds: 30));
+      final response = await request.close().timeout(
+        const Duration(seconds: 30),
+      );
       if (response.statusCode >= 300 &&
           response.statusCode < 400 &&
           response.headers.value(HttpHeaders.locationHeader) != null) {
-        currentUrl = currentUrl.resolve(
-          response.headers.value(HttpHeaders.locationHeader)!,
-        );
+        final location = response.headers.value(HttpHeaders.locationHeader)!;
+        await response.drain<void>();
+        final nextUri = currentUri.resolve(location);
+        if (currentUri.scheme == 'https' && nextUri.scheme != 'https') {
+          throw HttpException(
+            'Refusing HTTPS-to-HTTP redirect downgrade: $nextUri',
+          );
+        }
+        currentUri = nextUri;
         continue;
       }
       if (response.statusCode != 200) {
+        await response.drain<void>();
         throw HttpException(
-          'Failed to download $currentUrl (HTTP ${response.statusCode})',
+          'Failed to download $currentUri (HTTP ${response.statusCode})',
         );
       }
       final builder = BytesBuilder(copy: false);
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(const Duration(minutes: 5))) {
         builder.add(chunk);
       }
       return builder.takeBytes();
     }
     throw HttpException('Too many redirects while downloading $url');
   } finally {
-    client.close();
+    client.close(force: true);
   }
 }
 
@@ -866,7 +1026,7 @@ Future<Map<String, String>> getMSVCEnvironment(Architecture targetArch) async {
 
     final tempDir = Directory.systemTemp;
     final tempFile = File(
-      '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}.bat',
+      '${tempDir.path}\\get_msvc_env_${DateTime.now().microsecondsSinceEpoch}_$pid.bat',
     );
     await tempFile.writeAsString(
       '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',

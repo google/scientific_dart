@@ -16,6 +16,7 @@ import '../ndarray.dart';
 
 // Standalone operational relative cross-imports
 import 'broadcasting.dart';
+import 'helpers.dart';
 import 'manipulation.dart';
 import 'spacers.dart';
 
@@ -54,10 +55,14 @@ final class GridRange {
   /// Creates a new grid range specification.
   GridRange(this.start, this.stop, {this.step = 1.0, this.numPoints}) {
     if (step == 0.0) {
-      throw ArgumentError('Step cannot be zero');
+      throw ArgumentError.value(step, 'step', 'Step cannot be zero');
     }
     if (numPoints != null && numPoints! <= 0) {
-      throw ArgumentError('numPoints must be positive');
+      throw ArgumentError.value(
+        numPoints,
+        'numPoints',
+        'numPoints must be positive',
+      );
     }
   }
 
@@ -74,7 +79,11 @@ final class GridRange {
     } else if (step is num) {
       return GridRange(start, stop, step: step.toDouble());
     } else {
-      throw ArgumentError('step must be a num or a Complex number');
+      throw ArgumentError.value(
+        step,
+        'step',
+        'step must be a num or a Complex number',
+      );
     }
   }
 }
@@ -137,8 +146,10 @@ NDArray<T> asStrided<T extends DTypeTag>(
   final targetStrides = strides ?? x.strides;
 
   if (targetShape.length != targetStrides.length) {
-    throw ArgumentError(
-      'Shape length (${targetShape.length}) must match strides length (${targetStrides.length}).',
+    throw ArgumentError.value(
+      targetStrides,
+      'strides',
+      'Shape length (${targetShape.length}) must match strides length (${targetStrides.length})',
     );
   }
 
@@ -175,12 +186,14 @@ List<NDArray<Float64>> ogrid(
   List<NDArray<Float64>>? out,
 }) {
   if (ranges.isEmpty) {
-    throw ArgumentError('ranges must not be empty.');
+    throw ArgumentError.value(ranges, 'ranges', 'ranges must not be empty');
   }
   if (out != null) {
     if (out.length != ranges.length) {
-      throw ArgumentError(
-        'Length of out (${out.length}) must match length of ranges (${ranges.length}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Length of out (${out.length}) must match length of ranges (${ranges.length})',
       );
     }
     for (var i = 0; i < ranges.length; i++) {
@@ -189,6 +202,7 @@ List<NDArray<Float64>> ogrid(
           'Cannot write ogrid result to a disposed output array.',
         );
       }
+      validateOutBuffer(out[i], 'out[$i]');
     }
   }
 
@@ -204,7 +218,11 @@ List<NDArray<Float64>> ogrid(
       if (out != null) {
         final targetOut = out[i];
         if (!listEquals(targetOut.shape, shape) || targetOut.dtype != dtype) {
-          throw ArgumentError('Incompatible out buffer shape or dtype.');
+          throw ArgumentError.value(
+            targetOut,
+            'out',
+            'Incompatible out buffer shape or dtype',
+          );
         }
         final reshaped = arr1D.reshape(shape);
         reshaped.copy(out: targetOut);
@@ -252,10 +270,13 @@ NDArray<Float64> mgrid(
   NDArray<Float64>? out,
 }) {
   if (ranges.isEmpty) {
-    throw ArgumentError('ranges must not be empty.');
+    throw ArgumentError.value(ranges, 'ranges', 'ranges must not be empty');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write mgrid result to a disposed output array.');
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError('Cannot write mgrid result to a disposed output array.');
+    }
+    validateOutBuffer(out);
   }
 
   return NDArray.scope(() {

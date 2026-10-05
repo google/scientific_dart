@@ -76,8 +76,15 @@ void main() {
               final rAdd1 = add(aContig, bContig);
               expect(rAdd1.shape, [2, 3]);
 
-              final rSub1 = subtract(aContig, bContig);
-              expect(rSub1.shape, [2, 3]);
+              if (dtA == DType.boolean) {
+                expect(
+                  () => subtract(aContig, bContig),
+                  throwsUnsupportedError,
+                );
+              } else {
+                final rSub1 = subtract(aContig, bContig);
+                expect(rSub1.shape, [2, 3]);
+              }
 
               final rMul1 = multiply(aContig, bContig);
               expect(rMul1.shape, [2, 3]);
@@ -94,8 +101,15 @@ void main() {
               final rAdd2 = add(aTrans, bTrans, where: mask);
               expect(rAdd2.shape, [2, 3]);
 
-              final rSub2 = subtract(aTrans, bTrans, where: mask);
-              expect(rSub2.shape, [2, 3]);
+              if (dtA == DType.boolean) {
+                expect(
+                  () => subtract(aTrans, bTrans, where: mask),
+                  throwsUnsupportedError,
+                );
+              } else {
+                final rSub2 = subtract(aTrans, bTrans, where: mask);
+                expect(rSub2.shape, [2, 3]);
+              }
 
               final rMul2 = multiply(aTrans, bTrans, where: mask);
               expect(rMul2.shape, [2, 3]);
@@ -109,8 +123,12 @@ void main() {
               final rAdd3 = add(aContig, bBcast);
               expect(rAdd3.shape, [2, 3]);
 
-              final rSub3 = subtract(aContig, bBcast);
-              expect(rSub3.shape, [2, 3]);
+              if (dtA == DType.boolean) {
+                expect(() => subtract(aContig, bBcast), throwsUnsupportedError);
+              } else {
+                final rSub3 = subtract(aContig, bBcast);
+                expect(rSub3.shape, [2, 3]);
+              }
 
               final rMul3 = multiply(aContig, bBcast);
               expect(rMul3.shape, [2, 3]);

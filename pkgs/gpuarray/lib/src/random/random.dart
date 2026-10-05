@@ -519,14 +519,6 @@ final class RandomState {
     GpuArray<Float64>? out,
   }) => normal(loc: 0.0, scale: 1.0, shape: shape, device: device, out: out);
 
-  /// Alias for [standardNormal].
-  // ignore: non_constant_identifier_names
-  GpuArray<Float64> standard_normal({
-    List<int> shape = const <int>[],
-    GpuDevice? device,
-    GpuArray<Float64>? out,
-  }) => normal(loc: 0.0, scale: 1.0, shape: shape, device: device, out: out);
-
   /// Generates truncated normal random values with standardized bounds `[low, high]`,
   /// mean [loc], and standard deviation [scale] on the GPU.
   ///
@@ -1302,14 +1294,6 @@ GpuArray<Float64> normal({
 
 /// Generates standard normal `N(0, 1)` random values with the given [shape] on the GPU.
 GpuArray<Float64> standardNormal({
-  List<int> shape = const <int>[],
-  GpuDevice? device,
-  GpuArray<Float64>? out,
-}) => defaultRng.standardNormal(shape: shape, device: device, out: out);
-
-/// Alias for [standardNormal].
-// ignore: non_constant_identifier_names
-GpuArray<Float64> standard_normal({
   List<int> shape = const <int>[],
   GpuDevice? device,
   GpuArray<Float64>? out,

@@ -17,6 +17,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/safetensors.dart';
 import 'package:test/test.dart';
 
 void main() {

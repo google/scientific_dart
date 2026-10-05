@@ -15,6 +15,7 @@
 import 'dart:math' as math;
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/linalg.dart' hide diagonal, trace;
 import 'package:test/test.dart';
 
 void main() {
@@ -204,5 +205,60 @@ void main() {
         coefficients.dispose();
       }
     });
+
+    test(
+      'Float32 solvers and matrix properties preserve Float32 dtype (F12)',
+      () {
+        final a = GpuArray.fromList(
+          <double>[3.0, 1.0, 1.0, 2.0],
+          [2, 2],
+          DType.float32,
+        );
+        final b = GpuArray.fromList(<double>[9.0, 8.0], [2], DType.float32);
+        try {
+          final sol = solve(a, b);
+          final invA = inv(a);
+          final pinvA = pinv(a);
+          final detA = det(a);
+          final slogA = slogdet(a);
+          final powA = matrixPower(a, 2);
+          final normA = norm(a);
+          final condA = cond(a);
+          final lstsqRes = lstsq(a, b);
+          try {
+            expect(sol.dtype, equals(DType.float32));
+            final solVals = sol.toList().cast<double>();
+            expect(solVals[0], closeTo(2.0, 1e-5));
+            expect(solVals[1], closeTo(3.0, 1e-5));
+
+            expect(invA.dtype, equals(DType.float32));
+            expect(pinvA.dtype, equals(DType.float32));
+            expect(detA.dtype, equals(DType.float32));
+            expect(detA.scalar as double, closeTo(5.0, 1e-5));
+            expect(slogA.sign.dtype, equals(DType.float32));
+            expect(slogA.logabsdet.dtype, equals(DType.float32));
+            expect(powA.dtype, equals(DType.float32));
+            expect(normA.dtype, equals(DType.float32));
+            expect(condA.dtype, equals(DType.float32));
+            expect(lstsqRes.solution.dtype, equals(DType.float32));
+            expect(lstsqRes.residuals.dtype, equals(DType.float32));
+            expect(lstsqRes.singularValues.dtype, equals(DType.float32));
+          } finally {
+            sol.dispose();
+            invA.dispose();
+            pinvA.dispose();
+            detA.dispose();
+            slogA.dispose();
+            powA.dispose();
+            normA.dispose();
+            condA.dispose();
+            lstsqRes.dispose();
+          }
+        } finally {
+          b.dispose();
+          a.dispose();
+        }
+      },
+    );
   });
 }

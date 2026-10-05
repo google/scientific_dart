@@ -17,6 +17,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#ifndef DTYPE_FLOAT64
 #define DTYPE_FLOAT64 0
 #define DTYPE_FLOAT32 1
 #define DTYPE_FLOAT16 2
@@ -32,6 +33,7 @@
 #define DTYPE_COMPLEX128 12
 #define DTYPE_COMPLEX64 13
 #define DTYPE_BOOLEAN 14
+#endif
 
 #ifdef __cplusplus
 extern "C" {

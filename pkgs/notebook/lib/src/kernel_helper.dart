@@ -105,9 +105,6 @@ abstract class Displayable {
 /// automatically formats it into a rendered LaTeX KaTeX widget.
 /// Otherwise, falls back to [Object.toString].
 String prettyFormat(dynamic x) {
-  if (x is Image) {
-    return x.toDataUrl();
-  }
   if (x is Displayable) {
     return x.toHtml();
   }

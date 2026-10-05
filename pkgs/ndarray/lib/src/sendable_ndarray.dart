@@ -48,12 +48,13 @@ enum _SendableMode { copy, borrow }
 ///   on the sending isolate for the duration of the isolate task (for example, by awaiting
 ///   `Isolate.run` inside an [NDArray.scope]).
 ///
-/// {@example /example/sendable_ndarray_example.dart}
+/// {@example /example/sendable_ndarray_example.dart lang=dart}
 final class SendableNDArray<T extends DTypeTag> {
   final _SendableMode _mode;
   final TransferableTypedData? _transferableData;
   final int? _address;
   final int? _physicalByteCapacity;
+  final bool _isWriteable;
 
   /// The dimensions of the array.
   final List<int> shape;
@@ -70,11 +71,13 @@ final class SendableNDArray<T extends DTypeTag> {
     required _SendableMode mode,
     required this.shape,
     required this.dtypeIndex,
+    required bool isWriteable,
     TransferableTypedData? transferableData,
     int? address,
     this.strides,
     int? physicalByteCapacity,
   }) : _mode = mode,
+       _isWriteable = isWriteable,
        _transferableData = transferableData,
        _address = address,
        _physicalByteCapacity = physicalByteCapacity;
@@ -95,14 +98,7 @@ final class SendableNDArray<T extends DTypeTag> {
   /// - Space complexity: $O(N)$ to allocate the transferable buffer.
   ///
   /// **Example:**
-  /// ```dart
-  /// final array = NDArray<Float64>.ones([10, 10], DType.float64);
-  /// final sendable = SendableNDArray.fromCopy(array);
-  /// final sum = await Isolate.run(() {
-  ///   final workerArray = sendable.materialize();
-  ///   return workerArray.sum().scalar;
-  /// });
-  /// ```
+  /// {@example /example/sendable_ndarray_example.dart lang=dart}
   factory SendableNDArray.fromCopy(NDArray<T> array) {
     if (array.isDisposed) {
       throw StateError('Cannot create SendableNDArray from a disposed array.');
@@ -128,6 +124,7 @@ final class SendableNDArray<T extends DTypeTag> {
       transferableData: transferable,
       shape: List<int>.unmodifiable(array.shape),
       dtypeIndex: array.dtype.index,
+      isWriteable: array.isWriteable,
     );
   }
 
@@ -150,15 +147,7 @@ final class SendableNDArray<T extends DTypeTag> {
   /// - Space complexity: $O(1)$.
   ///
   /// **Example:**
-  /// ```dart
-  /// final array = NDArray<Float64>.zeros([100], DType.float64);
-  /// final sendable = SendableNDArray.unsafeBorrow(array);
-  /// await Isolate.run(() {
-  ///   final view = sendable.materializeView();
-  ///   view.fill(1.0);
-  /// });
-  /// print(array[0]); // 1.0
-  /// ```
+  /// {@example /example/sendable_ndarray_example.dart lang=dart}
   factory SendableNDArray.unsafeBorrow(NDArray<T> array) {
     if (array.isDisposed) {
       throw StateError('Cannot borrow a disposed array.');
@@ -182,6 +171,7 @@ final class SendableNDArray<T extends DTypeTag> {
       strides: List<int>.unmodifiable(array.strides),
       dtypeIndex: array.dtype.index,
       physicalByteCapacity: array.physicalByteCapacity,
+      isWriteable: array.isWriteable,
     );
   }
 
@@ -196,6 +186,12 @@ final class SendableNDArray<T extends DTypeTag> {
 
   /// Returns true if this [SendableNDArray] has already been materialized.
   bool get isMaterialized => _isMaterialized;
+
+  /// Returns true if this [SendableNDArray] has already been consumed by [materialize] or [materializeView].
+  bool get isConsumed => _isMaterialized;
+
+  /// Returns true if the source array was writeable when this [SendableNDArray] was created.
+  bool get isWriteable => _isWriteable;
 
   /// The raw native C memory address if this is a borrowed array.
   ///
@@ -256,6 +252,9 @@ final class SendableNDArray<T extends DTypeTag> {
           .asTypedList(bytes.length)
           .setAll(0, bytes);
     }
+    if (!_isWriteable) {
+      result.isWriteable = false;
+    }
     return result;
   }
 
@@ -278,13 +277,18 @@ final class SendableNDArray<T extends DTypeTag> {
         'Use materialize() instead.',
       );
     }
+    _isMaterialized = true;
     final ptr = ffi.Pointer<ffi.Void>.fromAddress(_address!);
-    return NDArray<T>.fromPointer(
+    final view = NDArray<T>.fromPointer(
       ptr,
       shape,
       dtype,
       strides: strides,
       nativeFinalizer: null,
     );
+    if (!_isWriteable) {
+      view.isWriteable = false;
+    }
+    return view;
   }
 }

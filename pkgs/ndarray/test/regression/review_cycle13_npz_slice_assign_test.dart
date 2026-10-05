@@ -313,7 +313,7 @@ void main() {
     });
 
     test(
-      'arr[[0, 1]] = row and arr[[[0, 2]]] = row broadcast 1D row of shape [4] to 2 selected rows of [3, 4] array',
+      'arr[Indices([0, 1])] = row and arr[[[0, 2]]] = row broadcast 1D row of shape [4] to 2 selected rows of [3, 4] array',
       () {
         NDArray.scope(() {
           final arr1 = NDArray<Float64>.zeros([3, 4], DType.float64);
@@ -323,7 +323,7 @@ void main() {
             DType.float64,
           );
 
-          arr1[[0, 1]] = row;
+          arr1[Indices([0, 1])] = row;
           for (var c = 0; c < 4; c++) {
             expect(arr1.getCell([0, c]), closeTo(c + 1.0, 1e-12));
             expect(arr1.getCell([1, c]), closeTo(c + 1.0, 1e-12));

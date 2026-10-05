@@ -16,7 +16,8 @@ import 'dart:ffi' as ffi;
 import '../ndarray.dart';
 import '../ndarray_bindings.dart' as bindings;
 import '../scratch_arena.dart';
-import 'helpers.dart' show encodeDType, sharesMemory;
+import 'helpers.dart'
+    show checkNativeOom, encodeDType, sharesMemory, validateOutBuffer;
 import 'math.dart';
 import 'stats.dart';
 import 'linalg.dart';
@@ -91,6 +92,7 @@ NDArray<Float64> _promoteToFloat64(NDArray a) {
       cShape,
       ndim,
     );
+    checkNativeOom();
   } finally {
     ScratchArena.reset(marker);
   }
@@ -117,7 +119,7 @@ NDArray<Float64> _promoteToFloat64(NDArray a) {
 /// - Time complexity is $O(M^2 N)$ where $M$ is the number of observations and $N$ is the number of features.
 /// - Space complexity is $O(M^2)$ for the output array.
 ///
-/// {@example /example/distance_example.dart}
+/// {@example /example/distance_example.dart lang=dart}
 NDArray<Float64> pdist<T extends DTypeTag>(
   NDArray<T> x, {
   DistanceMetric metric = DistanceMetric.euclidean,
@@ -127,11 +129,17 @@ NDArray<Float64> pdist<T extends DTypeTag>(
     throw StateError('Cannot perform operation on a disposed array.');
   }
   if (x.shape.length != 2) {
-    throw ArgumentError('Input array x must be 2-dimensional.');
+    throw ArgumentError.value(
+      x.shape,
+      'x',
+      'Must be a 2D array (got shape ${x.shape})',
+    );
   }
   if (x.dtype.isComplex) {
-    throw ArgumentError(
-      'Complex dtypes are not supported for distance metrics.',
+    throw ArgumentError.value(
+      x.dtype,
+      'x',
+      'Must not be a complex dtype (complex dtypes are not supported for distance metrics)',
     );
   }
 
@@ -139,11 +147,17 @@ NDArray<Float64> pdist<T extends DTypeTag>(
   final n = x.shape[1];
   final outSize = m * (m - 1) ~/ 2;
 
+  if (out != null) {
+    validateOutBuffer(out);
+  }
+
   if (m < 2) {
     if (out != null) {
       if (out.shape.length != 1 || out.shape[0] != 0) {
-        throw ArgumentError(
-          'Output array shape mismatch. Expected [0], got ${out.shape}.',
+        throw ArgumentError.value(
+          out.shape,
+          'out',
+          'Must have shape [0] (got ${out.shape})',
         );
       }
       return out;
@@ -152,12 +166,11 @@ NDArray<Float64> pdist<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (out.isDisposed) {
-      throw StateError('Cannot use a disposed output array.');
-    }
     if (out.shape.length != 1 || out.shape[0] != outSize) {
-      throw ArgumentError(
-        'Output array shape mismatch. Expected [$outSize], got ${out.shape}.',
+      throw ArgumentError.value(
+        out.shape,
+        'out',
+        'Must have shape [$outSize] (got ${out.shape})',
       );
     }
   }
@@ -230,7 +243,7 @@ NDArray<Float64> pdist<T extends DTypeTag>(
 /// - Time complexity is $O(M K N)$.
 /// - Space complexity is $O(M K)$ for the output array.
 ///
-/// {@example /example/distance_example.dart}
+/// {@example /example/distance_example.dart lang=dart}
 NDArray<Float64> cdist<Ta extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Ta> xa,
   NDArray<Tb> xb, {
@@ -241,17 +254,24 @@ NDArray<Float64> cdist<Ta extends DTypeTag, Tb extends DTypeTag>(
     throw StateError('Cannot perform operation on a disposed array.');
   }
   if (xa.shape.length != 2 || xb.shape.length != 2) {
-    throw ArgumentError('Input arrays must be 2-dimensional.');
+    throw ArgumentError.value(
+      [xa.shape, xb.shape],
+      'xa, xb',
+      'Must be 2-dimensional (got xa: ${xa.shape}, xb: ${xb.shape})',
+    );
   }
   if (xa.shape[1] != xb.shape[1]) {
-    throw ArgumentError(
-      'Input arrays must have the same number of columns (features). '
-      'Got ${xa.shape[1]} and ${xb.shape[1]}.',
+    throw ArgumentError.value(
+      xb.shape[1],
+      'xb',
+      'Must have the same number of columns (features) as xa (got xa: ${xa.shape[1]}, xb: ${xb.shape[1]})',
     );
   }
   if (xa.dtype.isComplex || xb.dtype.isComplex) {
-    throw ArgumentError(
-      'Complex dtypes are not supported for distance metrics.',
+    throw ArgumentError.value(
+      [xa.dtype, xb.dtype],
+      'xa, xb',
+      'Must not be complex dtypes (complex dtypes are not supported for distance metrics)',
     );
   }
 
@@ -261,12 +281,12 @@ NDArray<Float64> cdist<Ta extends DTypeTag, Tb extends DTypeTag>(
   final outShape = [m, k];
 
   if (out != null) {
-    if (out.isDisposed) {
-      throw StateError('Cannot use a disposed output array.');
-    }
+    validateOutBuffer(out);
     if (out.shape.length != 2 || out.shape[0] != m || out.shape[1] != k) {
-      throw ArgumentError(
-        'Output array shape mismatch. Expected $outShape, got ${out.shape}.',
+      throw ArgumentError.value(
+        out.shape,
+        'out',
+        'Must have shape $outShape (got ${out.shape})',
       );
     }
   }
@@ -377,7 +397,8 @@ NDArray<Float64> _pdistCosine<T extends DTypeTag>(
     for (var i = 0; i < m; i++) {
       final rowOffset = i * m;
       for (var j = i + 1; j < m; j++) {
-        resPtr[idx++] = flatPtr[rowOffset + j];
+        final v = flatPtr[rowOffset + j];
+        resPtr[idx++] = v.isNaN ? v : v.clamp(0.0, 2.0);
       }
     }
 
@@ -427,6 +448,23 @@ NDArray<Float64> _cdistCosine<Ta extends DTypeTag, Tb extends DTypeTag>(
     final NDArray<Float64> div = divide(dot, denom);
     final one = NDArray<Float64>.fromList([1.0], [1], DType.float64);
     subtract(one, div, out: result);
+    if (result.isContiguous) {
+      final resPtr = result.pointer.cast<ffi.Double>();
+      final total = m * k;
+      for (var i = 0; i < total; i++) {
+        final v = resPtr[i];
+        if (!v.isNaN) {
+          resPtr[i] = v.clamp(0.0, 2.0);
+        }
+      }
+    } else {
+      for (var i = 0; i < m * k; i++) {
+        final v = result.getCellFlat(i);
+        if (!v.isNaN) {
+          result.setCellFlat(i, v.clamp(0.0, 2.0));
+        }
+      }
+    }
 
     if (out != null) {
       return result;

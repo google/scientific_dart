@@ -240,7 +240,7 @@ void main() {
         expect(resPoly.getCell([1]).isNaN, isTrue);
         expect(resPoly.getCell([2]), equals(5.0));
 
-        final resCheb = chebval(c0, x);
+        final resCheb = chebval(x, c0);
         expect(resCheb.getCell([0]), equals(5.0));
         expect(resCheb.getCell([1]).isNaN, isTrue);
         expect(resCheb.getCell([2]), equals(5.0));

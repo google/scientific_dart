@@ -29,7 +29,7 @@ void main() {
             [4],
             DType.float64,
           );
-          final y1D = chebval(cF64, x1D);
+          final y1D = chebval(x1D, cF64);
           expect(y1D.shape, equals([4]));
           expect(y1D.getCell([0]), closeTo(-1.0, 1e-10)); // 6(0)-1 = -1
           expect(y1D.getCell([1]), closeTo(5.0, 1e-10)); // 6(1)-1 = 5
@@ -42,21 +42,21 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          final y2D = chebval(cF64, x2D);
+          final y2D = chebval(x2D, cF64);
           expect(y2D.shape, equals([2, 2]));
           expect(y2D.getCell([0, 0]), closeTo(-1.0, 1e-10));
           expect(y2D.getCell([0, 1]), closeTo(5.0, 1e-10));
           expect(y2D.getCell([1, 0]), closeTo(5.0, 1e-10));
           expect(y2D.getCell([1, 1]), closeTo(23.0, 1e-10));
 
-          // Reversed argument order with 2D x: chebval(x2D, cF64)
+          // 2D x evaluation consistency
           final yRev = chebval(x2D, cF64);
           expect(yRev.toList(), equals(y2D.toList()));
 
           // 3D grid evaluation
           final x3D = NDArray.zeros([2, 2, 2], DType.float64);
           x3D[[1, 1, 1]] = 2.0;
-          final y3D = chebval(cF64, x3D);
+          final y3D = chebval(x3D, cF64);
           expect(y3D.shape, equals([2, 2, 2]));
           expect(y3D.getCell([0, 0, 0]), closeTo(-1.0, 1e-10));
           expect(y3D.getCell([1, 1, 1]), closeTo(23.0, 1e-10));
@@ -68,7 +68,7 @@ void main() {
             DType.float32,
           ); // 1 + 2x
           final xF32 = NDArray.fromList([3.0, -2.0], [2], DType.float32);
-          final yF32 = chebval(cF32, xF32);
+          final yF32 = chebval(xF32, cF32);
           expect(yF32.dtype, equals(DType.float32));
           expect(yF32.getCell([0]), closeTo(7.0, 1e-5));
           expect(yF32.getCell([1]), closeTo(-3.0, 1e-5));
@@ -84,7 +84,7 @@ void main() {
             [2],
             DType.complex128,
           );
-          final yC128 = chebval(cC128, xC128);
+          final yC128 = chebval(xC128, cC128);
           expect(yC128.dtype, equals(DType.complex128));
           expect(yC128.getCell([0]).real, closeTo(1.0, 1e-10));
           expect(
@@ -105,21 +105,21 @@ void main() {
             [1],
             DType.complex64,
           );
-          final yC64 = chebval(cC64, xC64);
+          final yC64 = chebval(xC64, cC64);
           expect(yC64.dtype, equals(DType.complex64));
           expect(yC64.getCell([0]).real, closeTo(4.0, 1e-4));
           expect(yC64.getCell([0]).imag, closeTo(1.0, 1e-4));
 
           // Mixed DType evaluation (c is float64, x is int32)
           final xInt = NDArray.fromList([0, 1, 2], [3], DType.int32);
-          final yMixed = chebval(cF64, xInt);
+          final yMixed = chebval(xInt, cF64);
           expect(yMixed.dtype, equals(DType.float64));
           expect(yMixed.getCell([0]), closeTo(-1.0, 1e-10));
           expect(yMixed.getCell([1]), closeTo(5.0, 1e-10));
 
           // Custom out buffer
           final outBuf = NDArray.zeros([4], DType.float64);
-          final resOut = chebval(cF64, x1D, out: outBuf);
+          final resOut = chebval(x1D, cF64, out: outBuf);
           expect(identical(resOut, outBuf), isTrue);
           expect(outBuf.getCell([0]), closeTo(-1.0, 1e-10));
 
@@ -134,7 +134,7 @@ void main() {
             Index(0),
           ]); // [0.0, 1.0, -1.0] strided
           expect(col0View.isContiguous, isFalse);
-          final yStrided = chebval(cF64, col0View);
+          final yStrided = chebval(col0View, cF64);
           expect(yStrided.getCell([0]), closeTo(-1.0, 1e-10));
           expect(yStrided.getCell([1]), closeTo(5.0, 1e-10));
           expect(yStrided.getCell([2]), closeTo(5.0, 1e-10));
@@ -235,7 +235,7 @@ void main() {
               [4],
               DType.float64,
             );
-            final y1D = legval(cF64, x1D);
+            final y1D = legval(x1D, cF64);
             expect(y1D.shape, equals([4]));
             expect(
               y1D.getCell([0]),
@@ -260,12 +260,12 @@ void main() {
               [2, 2],
               DType.float64,
             );
-            final y2D = legval(cF64, x2D);
+            final y2D = legval(x2D, cF64);
             expect(y2D.shape, equals([2, 2]));
             expect(y2D.getCell([0, 0]), closeTo(-0.5, 1e-10));
             expect(y2D.getCell([1, 1]), closeTo(21.5, 1e-10));
 
-            // Reversed argument order with 2D x
+            // 2D x evaluation consistency
             final yRev = legval(x2D, cF64);
             expect(yRev.toList(), equals(y2D.toList()));
 
@@ -276,7 +276,7 @@ void main() {
               DType.float32,
             ); // P_2(x) = 0.5*(3x^2-1)
             final xF32 = NDArray.fromList([1.0, 0.0], [2], DType.float32);
-            final yF32 = legval(cF32, xF32);
+            final yF32 = legval(xF32, cF32);
             expect(yF32.dtype, equals(DType.float32));
             expect(yF32.getCell([0]), closeTo(1.0, 1e-5));
             expect(yF32.getCell([1]), closeTo(-0.5, 1e-5));
@@ -292,7 +292,7 @@ void main() {
               [1],
               DType.complex128,
             );
-            final yC128 = legval(cC128, xC128);
+            final yC128 = legval(xC128, cC128);
             expect(
               yC128.getCell([0]).real,
               closeTo(-1.0, 1e-10),
@@ -310,7 +310,7 @@ void main() {
               [1],
               DType.complex64,
             );
-            final yC64 = legval(cC64, xC64);
+            final yC64 = legval(xC64, cC64);
             expect(yC64.dtype, equals(DType.complex64));
             expect(yC64.getCell([0]).real, closeTo(3.0, 1e-4));
             expect(yC64.getCell([0]).imag, closeTo(1.0, 1e-4));
@@ -322,7 +322,7 @@ void main() {
               DType.float64,
             );
             final sliceCol = mat.slice([Slice.all(), Index(0)]);
-            final yStrided = legval(cF64, sliceCol);
+            final yStrided = legval(sliceCol, cF64);
             expect(yStrided.getCell([0]), closeTo(-0.5, 1e-10));
             expect(yStrided.getCell([1]), closeTo(6.0, 1e-10));
           });
@@ -391,7 +391,7 @@ void main() {
               [4],
               DType.float64,
             );
-            final y1D = hermval(cF64, x1D);
+            final y1D = hermval(x1D, cF64);
             expect(y1D.shape, equals([4]));
             expect(y1D.getCell([0]), closeTo(-2.0, 1e-10)); // 4(0)-2 = -2
             expect(y1D.getCell([1]), closeTo(2.0, 1e-10)); // 4(1)-2 = 2
@@ -404,11 +404,11 @@ void main() {
               [2, 2],
               DType.float64,
             );
-            final y2D = hermval(cF64, x2D);
+            final y2D = hermval(x2D, cF64);
             expect(y2D.getCell([0, 0]), closeTo(-2.0, 1e-10));
             expect(y2D.getCell([1, 1]), closeTo(14.0, 1e-10));
 
-            // Reversed argument order with 2D x
+            // 2D x evaluation consistency
             final yRev = hermval(x2D, cF64);
             expect(yRev.toList(), equals(y2D.toList()));
 
@@ -419,7 +419,7 @@ void main() {
               DType.float32,
             ); // H_0 + H_1 = 1 + 2x
             final xF32 = NDArray.fromList([2.0, -1.0], [2], DType.float32);
-            final yF32 = hermval(cF32, xF32);
+            final yF32 = hermval(xF32, cF32);
             expect(yF32.dtype, equals(DType.float32));
             expect(yF32.getCell([0]), closeTo(5.0, 1e-5));
             expect(yF32.getCell([1]), closeTo(-1.0, 1e-5));
@@ -435,7 +435,7 @@ void main() {
               [1],
               DType.complex128,
             );
-            final yC128 = hermval(cC128, xC128);
+            final yC128 = hermval(xC128, cC128);
             expect(yC128.getCell([0]).real, closeTo(2.0, 1e-10));
             expect(yC128.getCell([0]).imag, closeTo(4.0, 1e-10));
 
@@ -450,7 +450,7 @@ void main() {
               [1],
               DType.complex64,
             );
-            final yC64 = hermval(cC64, xC64);
+            final yC64 = hermval(xC64, cC64);
             expect(yC64.dtype, equals(DType.complex64));
             expect(yC64.getCell([0]).real, closeTo(3.0, 1e-4));
 
@@ -461,7 +461,7 @@ void main() {
               DType.float64,
             );
             final col0 = mat.slice([Slice.all(), Index(0)]);
-            final yStrided = hermval(cF64, col0);
+            final yStrided = hermval(col0, cF64);
             expect(yStrided.getCell([0]), closeTo(-2.0, 1e-10));
             expect(yStrided.getCell([1]), closeTo(14.0, 1e-10));
           });
@@ -516,7 +516,7 @@ void main() {
             // c = [0, 0, 1] -> L_2(x) = 0.5*(x^2 - 4x + 2)
             final cF64 = NDArray.fromList([0.0, 0.0, 1.0], [3], DType.float64);
             final x1D = NDArray.fromList([0.0, 2.0, 4.0], [3], DType.float64);
-            final y1D = lagval(cF64, x1D);
+            final y1D = lagval(x1D, cF64);
             expect(y1D.shape, equals([3]));
             expect(y1D.getCell([0]), closeTo(1.0, 1e-10)); // 0.5(2) = 1
             expect(y1D.getCell([1]), closeTo(-1.0, 1e-10)); // 0.5(4-8+2) = -1
@@ -528,11 +528,11 @@ void main() {
               [2, 2],
               DType.float64,
             );
-            final y2D = lagval(cF64, x2D);
+            final y2D = lagval(x2D, cF64);
             expect(y2D.getCell([0, 0]), closeTo(1.0, 1e-10));
             expect(y2D.getCell([0, 1]), closeTo(-1.0, 1e-10));
 
-            // Reversed argument order with 2D x
+            // 2D x evaluation consistency
             final yRev = lagval(x2D, cF64);
             expect(yRev.toList(), equals(y2D.toList()));
 
@@ -543,7 +543,7 @@ void main() {
               DType.float32,
             ); // L_0 + L_1 = 1 + (1 - x) = 2 - x
             final xF32 = NDArray.fromList([0.0, 5.0], [2], DType.float32);
-            final yF32 = lagval(cF32, xF32);
+            final yF32 = lagval(xF32, cF32);
             expect(yF32.dtype, equals(DType.float32));
             expect(yF32.getCell([0]), closeTo(2.0, 1e-5));
             expect(yF32.getCell([1]), closeTo(-3.0, 1e-5));
@@ -559,7 +559,7 @@ void main() {
               [1],
               DType.complex128,
             );
-            final yC128 = lagval(cC128, xC128);
+            final yC128 = lagval(xC128, cC128);
             expect(yC128.getCell([0]).real, closeTo(2.0, 1e-10));
             expect(yC128.getCell([0]).imag, closeTo(-2.0, 1e-10));
 
@@ -574,7 +574,7 @@ void main() {
               [1],
               DType.complex64,
             );
-            final yC64 = lagval(cC64, xC64);
+            final yC64 = lagval(xC64, cC64);
             expect(yC64.dtype, equals(DType.complex64));
             expect(yC64.getCell([0]).real, closeTo(0.0, 1e-4));
 
@@ -585,7 +585,7 @@ void main() {
               DType.float64,
             );
             final col0 = mat.slice([Slice.all(), Index(0)]);
-            final yStrided = lagval(cF64, col0);
+            final yStrided = lagval(col0, cF64);
             expect(yStrided.getCell([0]), closeTo(1.0, 1e-10));
             expect(yStrided.getCell([1]), closeTo(-1.0, 1e-10));
           });
@@ -626,16 +626,16 @@ void main() {
           final x2D = NDArray.zeros([2, 2], DType.float64);
           final x = NDArray.zeros([3], DType.float64);
 
-          expect(() => chebval(cEmpty, x), throwsArgumentError);
-          expect(() => legval(cEmpty, x), throwsArgumentError);
-          expect(() => hermval(cEmpty, x), throwsArgumentError);
-          expect(() => lagval(cEmpty, x), throwsArgumentError);
+          expect(() => chebval(x, cEmpty), throwsArgumentError);
+          expect(() => legval(x, cEmpty), throwsArgumentError);
+          expect(() => hermval(x, cEmpty), throwsArgumentError);
+          expect(() => lagval(x, cEmpty), throwsArgumentError);
 
           // If both are 2D, neither is a 1D coefficient vector
-          expect(() => chebval(c2D, x2D), throwsArgumentError);
-          expect(() => legval(c2D, x2D), throwsArgumentError);
-          expect(() => hermval(c2D, x2D), throwsArgumentError);
-          expect(() => lagval(c2D, x2D), throwsArgumentError);
+          expect(() => chebval(x2D, c2D), throwsArgumentError);
+          expect(() => legval(x2D, c2D), throwsArgumentError);
+          expect(() => hermval(x2D, c2D), throwsArgumentError);
+          expect(() => lagval(x2D, c2D), throwsArgumentError);
 
           expect(() => chebroots(c2D), throwsArgumentError);
           expect(() => legroots(c2D), throwsArgumentError);
@@ -645,28 +645,28 @@ void main() {
           final cValid = NDArray.zeros([3], DType.float64);
           final badOutShape = NDArray.zeros([4], DType.float64);
           expect(
-            () => chebval(cValid, x, out: badOutShape),
+            () => chebval(x, cValid, out: badOutShape),
             throwsArgumentError,
           );
           expect(
-            () => legval(cValid, x, out: badOutShape),
+            () => legval(x, cValid, out: badOutShape),
             throwsArgumentError,
           );
           expect(
-            () => hermval(cValid, x, out: badOutShape),
+            () => hermval(x, cValid, out: badOutShape),
             throwsArgumentError,
           );
           expect(
-            () => lagval(cValid, x, out: badOutShape),
+            () => lagval(x, cValid, out: badOutShape),
             throwsArgumentError,
           );
 
           // Disposed arrays
           final cDisp = NDArray.zeros([2], DType.float64)..dispose();
-          expect(() => chebval(cDisp, x), throwsStateError);
-          expect(() => legval(cDisp, x), throwsStateError);
-          expect(() => hermval(cDisp, x), throwsStateError);
-          expect(() => lagval(cDisp, x), throwsStateError);
+          expect(() => chebval(x, cDisp), throwsStateError);
+          expect(() => legval(x, cDisp), throwsStateError);
+          expect(() => hermval(x, cDisp), throwsStateError);
+          expect(() => lagval(x, cDisp), throwsStateError);
 
           expect(() => chebroots(cDisp), throwsStateError);
           expect(() => legroots(cDisp), throwsStateError);

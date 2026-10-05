@@ -271,8 +271,10 @@ GpuArray<T> einsum<T extends DTypeTag>(
       return zeroOut;
     }
 
+    final single = isSinglePrecisionDType(first.dtype);
     final operandBuffers = <dynamic>[
-      for (final op in operands) toContiguousFloat64Buffer(op),
+      for (final op in operands)
+        single ? toContiguousFloat32Buffer(op) : toContiguousFloat64Buffer(op),
     ];
     final outBuffer = dispatchEinsumF64Gpu(
       first.device,
@@ -283,14 +285,23 @@ GpuArray<T> einsum<T extends DTypeTag>(
       numTotalLabels: allLabels.length,
       labelSizes: labelSizes,
       operandLabelStrides: operandLabelStrides,
+      singlePrecision: single,
     );
-    final output = writeFloat64BufferToArray<T>(
-      first.device,
-      outBuffer,
-      outShape,
-      first.dtype,
-      out: out,
-    );
+    final output = single
+        ? writeFloat32BufferToArray<T>(
+            first.device,
+            outBuffer,
+            outShape,
+            first.dtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<T>(
+            first.device,
+            outBuffer,
+            outShape,
+            first.dtype,
+            out: out,
+          );
     if (out == null) output.detachToParentScope();
     return output;
   });
@@ -432,13 +443,18 @@ GpuArray<T> tensordot<T extends DTypeTag>(
 
   final permA = <int>[...freeA, ...normAxesA];
   final permB = <int>[...normAxesB, ...freeB];
+  final single = isSinglePrecisionDType(a.dtype);
 
   return ResourceScope.scope(() {
     final aView = _isIdentityPermutation(permA) ? a : a.transpose(permA);
     final bView = _isIdentityPermutation(permB) ? b : b.transpose(permB);
     if (isComplexDType(a.dtype)) {
-      final bufferA = toContiguousComplex128Buffer(aView);
-      final bufferB = toContiguousComplex128Buffer(bView);
+      final bufferA = single
+          ? toContiguousComplex64Buffer(aView)
+          : toContiguousComplex128Buffer(aView);
+      final bufferB = single
+          ? toContiguousComplex64Buffer(bView)
+          : toContiguousComplex128Buffer(bView);
       final bufferC = dispatchBatchedMatmulC128Gpu(
         a.device,
         bufferA,
@@ -447,19 +463,32 @@ GpuArray<T> tensordot<T extends DTypeTag>(
         m: m,
         k: contractCount,
         n: n,
+        singlePrecision: single,
       );
-      final output = writeComplex128BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeComplex64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeComplex128BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     } else {
-      final bufferA = toContiguousFloat64Buffer(aView);
-      final bufferB = toContiguousFloat64Buffer(bView);
+      final bufferA = single
+          ? toContiguousFloat32Buffer(aView)
+          : toContiguousFloat64Buffer(aView);
+      final bufferB = single
+          ? toContiguousFloat32Buffer(bView)
+          : toContiguousFloat64Buffer(bView);
       final bufferC = dispatchBatchedMatmulF64Gpu(
         a.device,
         bufferA,
@@ -468,14 +497,23 @@ GpuArray<T> tensordot<T extends DTypeTag>(
         m: m,
         k: contractCount,
         n: n,
+        singlePrecision: single,
       );
-      final output = writeFloat64BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeFloat32BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     }
@@ -508,10 +546,15 @@ GpuArray<T> kron<T extends DTypeTag>(
     for (var i = 0; i < maxRank; i++) aPadded[i] * bPadded[i],
   ];
   validateLinalgOut(out, a.device, outShape, a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
 
   return ResourceScope.scope(() {
-    final bufferA = toContiguousFloat64Buffer(a);
-    final bufferB = toContiguousFloat64Buffer(b);
+    final bufferA = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
+    final bufferB = single
+        ? toContiguousFloat32Buffer(b)
+        : toContiguousFloat64Buffer(b);
     final bufferC = dispatchKronF64Gpu(
       a.device,
       bufferA,
@@ -519,14 +562,23 @@ GpuArray<T> kron<T extends DTypeTag>(
       outShape: outShape,
       aShapePadded: aPadded,
       bShapePadded: bPadded,
+      singlePrecision: single,
     );
-    final output = writeFloat64BufferToArray<T>(
-      a.device,
-      bufferC,
-      outShape,
-      a.dtype,
-      out: out,
-    );
+    final output = single
+        ? writeFloat32BufferToArray<T>(
+            a.device,
+            bufferC,
+            outShape,
+            a.dtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<T>(
+            a.device,
+            bufferC,
+            outShape,
+            a.dtype,
+            out: out,
+          );
     if (out == null) output.detachToParentScope();
     return output;
   });
@@ -567,10 +619,15 @@ GpuArray<T> inner<T extends DTypeTag>(
 
   final m = kA == 0 ? 0 : a.size ~/ kA;
   final n = kB == 0 ? 0 : b.size ~/ kB;
+  final single = isSinglePrecisionDType(a.dtype);
   return ResourceScope.scope(() {
     if (isComplexDType(a.dtype)) {
-      final bufferA = toContiguousComplex128Buffer(a);
-      final bufferB = toContiguousComplex128Buffer(b);
+      final bufferA = single
+          ? toContiguousComplex64Buffer(a)
+          : toContiguousComplex128Buffer(a);
+      final bufferB = single
+          ? toContiguousComplex64Buffer(b)
+          : toContiguousComplex128Buffer(b);
       final bufferC = dispatchBatchedMatmulC128Gpu(
         a.device,
         bufferA,
@@ -580,19 +637,32 @@ GpuArray<T> inner<T extends DTypeTag>(
         k: kA,
         n: n,
         transposeB: true,
+        singlePrecision: single,
       );
-      final output = writeComplex128BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeComplex64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeComplex128BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     } else {
-      final bufferA = toContiguousFloat64Buffer(a);
-      final bufferB = toContiguousFloat64Buffer(b);
+      final bufferA = single
+          ? toContiguousFloat32Buffer(a)
+          : toContiguousFloat64Buffer(a);
+      final bufferB = single
+          ? toContiguousFloat32Buffer(b)
+          : toContiguousFloat64Buffer(b);
       final bufferC = dispatchBatchedMatmulF64Gpu(
         a.device,
         bufferA,
@@ -602,14 +672,23 @@ GpuArray<T> inner<T extends DTypeTag>(
         k: kA,
         n: n,
         transposeB: true,
+        singlePrecision: single,
       );
-      final output = writeFloat64BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeFloat32BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     }
@@ -631,11 +710,16 @@ GpuArray<T> outer<T extends DTypeTag>(
   _checkPair(a, b, 'outer');
   final outShape = <int>[a.size, b.size];
   validateLinalgOut(out, a.device, outShape, a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
 
   return ResourceScope.scope(() {
     if (isComplexDType(a.dtype)) {
-      final bufferA = toContiguousComplex128Buffer(a);
-      final bufferB = toContiguousComplex128Buffer(b);
+      final bufferA = single
+          ? toContiguousComplex64Buffer(a)
+          : toContiguousComplex128Buffer(a);
+      final bufferB = single
+          ? toContiguousComplex64Buffer(b)
+          : toContiguousComplex128Buffer(b);
       final bufferC = dispatchBatchedMatmulC128Gpu(
         a.device,
         bufferA,
@@ -644,19 +728,32 @@ GpuArray<T> outer<T extends DTypeTag>(
         m: a.size,
         k: 1,
         n: b.size,
+        singlePrecision: single,
       );
-      final output = writeComplex128BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeComplex64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeComplex128BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     } else {
-      final bufferA = toContiguousFloat64Buffer(a);
-      final bufferB = toContiguousFloat64Buffer(b);
+      final bufferA = single
+          ? toContiguousFloat32Buffer(a)
+          : toContiguousFloat64Buffer(a);
+      final bufferB = single
+          ? toContiguousFloat32Buffer(b)
+          : toContiguousFloat64Buffer(b);
       final bufferC = dispatchBatchedMatmulF64Gpu(
         a.device,
         bufferA,
@@ -665,14 +762,23 @@ GpuArray<T> outer<T extends DTypeTag>(
         m: a.size,
         k: 1,
         n: b.size,
+        singlePrecision: single,
       );
-      final output = writeFloat64BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeFloat32BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     }
@@ -784,12 +890,17 @@ GpuArray<T> cross<T extends DTypeTag>(
   final batchCount = batchShape.isEmpty
       ? 1
       : batchShape.reduce((x, y) => x * y);
+  final single = isSinglePrecisionDType(a.dtype);
 
   return ResourceScope.scope(() {
     final aView = _isIdentityPermutation(permA) ? a : a.transpose(permA);
     final bView = _isIdentityPermutation(permB) ? b : b.transpose(permB);
-    final bufferA = toContiguousFloat64Buffer(aView);
-    final bufferB = toContiguousFloat64Buffer(bView);
+    final bufferA = single
+        ? toContiguousFloat32Buffer(aView)
+        : toContiguousFloat64Buffer(aView);
+    final bufferB = single
+        ? toContiguousFloat32Buffer(bView)
+        : toContiguousFloat64Buffer(bView);
     final bufferC = dispatchCrossF64Gpu(
       a.device,
       bufferA,
@@ -800,27 +911,43 @@ GpuArray<T> cross<T extends DTypeTag>(
       batchShape: batchShape,
       aBatchShape: aBatchPadded,
       bBatchShape: bBatchPadded,
+      singlePrecision: single,
     );
 
     if (both2d || normC == outNdim - 1) {
-      final output = writeFloat64BufferToArray<T>(
-        a.device,
-        bufferC,
-        outShape,
-        a.dtype,
-        out: out,
-      );
+      final output = single
+          ? writeFloat32BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<T>(
+              a.device,
+              bufferC,
+              outShape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     }
 
     final unpermutedShape = <int>[...batchShape, 3];
-    final tempArray = writeFloat64BufferToArray<T>(
-      a.device,
-      bufferC,
-      unpermutedShape,
-      a.dtype,
-    );
+    final tempArray = single
+        ? writeFloat32BufferToArray<T>(
+            a.device,
+            bufferC,
+            unpermutedShape,
+            a.dtype,
+          )
+        : writeFloat64BufferToArray<T>(
+            a.device,
+            bufferC,
+            unpermutedShape,
+            a.dtype,
+          );
     final outPerm = <int>[
       for (var i = 0; i < normC; i++) i,
       outNdim - 1,

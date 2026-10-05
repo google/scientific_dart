@@ -99,9 +99,13 @@ void main() {
             expect(sum.dtype, dtype);
 
             // subtract
-            final diff = subtract(a, b);
-            expect(diff.shape, [2, 3]);
-            expect(diff.dtype, resolveDType(dtype, dtype));
+            if (dtype == DType.boolean) {
+              expect(() => subtract(a, b), throwsUnsupportedError);
+            } else {
+              final diff = subtract(a, b);
+              expect(diff.shape, [2, 3]);
+              expect(diff.dtype, resolveDType(dtype, dtype));
+            }
 
             // multiply
             final prod = multiply(a, b);
@@ -166,9 +170,13 @@ void main() {
               expect(sum.shape, [2, 2]);
               expect(sum.dtype, dtA);
 
-              final diff = subtract<DTypeTag>(a, b);
-              expect(diff.shape, [2, 2]);
-              expect(diff.dtype, resolveDType(dtA, dtB));
+              if (dtA == DType.boolean) {
+                expect(() => subtract<DTypeTag>(a, b), throwsUnsupportedError);
+              } else {
+                final diff = subtract<DTypeTag>(a, b);
+                expect(diff.shape, [2, 2]);
+                expect(diff.dtype, resolveDType(dtA, dtB));
+              }
 
               final prod = multiply<DTypeTag>(a, b);
               expect(prod.shape, [2, 2]);

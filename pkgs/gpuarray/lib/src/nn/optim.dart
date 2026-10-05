@@ -16,6 +16,7 @@ import 'dart:math' as math;
 
 import '../autograd/autograd.dart';
 import '../gpu_array.dart';
+import 'nn_wgsl.dart';
 
 /// Base class for all neural network parameter optimizers.
 abstract class Optimizer {
@@ -118,50 +119,33 @@ final class SGD extends Optimizer {
         final grad = parameter.grad;
         if (grad == null) continue;
 
-        var effectiveGrad = grad;
-        GpuArray<DTypeTag>? decayedGrad;
-        GpuArray<DTypeTag>? nesterovGrad;
-        if (weightDecay != 0.0) {
-          final penalty = parameter * weightDecay;
-          decayedGrad = effectiveGrad + penalty;
-          penalty.dispose();
-          effectiveGrad = decayedGrad;
-        }
-
+        GpuArray<DTypeTag>? velocity;
         if (momentum != 0.0) {
-          final velocity = _velocity[parameter] ??= GpuArray.zeros(
+          velocity = _velocity[parameter] ??= GpuArray.zeros(
             parameter.shape,
             parameter.dtype,
             device: parameter.device,
-          );
-
-          final velocityScaled = velocity * momentum;
-          final nextVelocity = velocityScaled + effectiveGrad;
-          velocityScaled.dispose();
-          nextVelocity.buffer.copyToBuffer(velocity.buffer, velocity.byteSize);
-          nextVelocity.dispose();
-
-          if (nesterov) {
-            final velocityNesterov = velocity * momentum;
-            nesterovGrad = effectiveGrad + velocityNesterov;
-            velocityNesterov.dispose();
-            effectiveGrad = nesterovGrad;
-          } else {
-            effectiveGrad = velocity;
-          }
+          )..detachFromScope();
         }
 
-        final updateStep = effectiveGrad * lr;
-        final updatedParameter = parameter - updateStep;
-        updatedParameter.buffer.copyToBuffer(
-          parameter.buffer,
-          parameter.byteSize,
-        );
-
-        updateStep.dispose();
-        updatedParameter.dispose();
-        nesterovGrad?.dispose();
-        decayedGrad?.dispose();
+        final contiguousGrad = (grad.isContiguous && grad.offsetElements == 0)
+            ? grad
+            : grad.copy();
+        try {
+          dispatchSgdStep(
+            parameter: parameter,
+            grad: contiguousGrad,
+            velocity: velocity,
+            lr: lr,
+            momentum: momentum,
+            weightDecay: weightDecay,
+            nesterov: nesterov,
+          );
+        } finally {
+          if (!identical(contiguousGrad, grad)) {
+            contiguousGrad.dispose();
+          }
+        }
       }
     });
   }
@@ -235,74 +219,46 @@ final class Adam extends Optimizer {
     _checkNotDisposed();
     noGrad(() {
       _stepCount++;
-      final biasCorrection1 = 1.0 - math.pow(beta1, _stepCount);
-      final biasCorrection2 = 1.0 - math.pow(beta2, _stepCount);
-
       for (final parameter in params) {
         final grad = parameter.grad;
         if (grad == null) continue;
-
-        var effectiveGrad = grad;
-        GpuArray<DTypeTag>? decayedGrad;
-        if (weightDecay != 0.0) {
-          final penalty = parameter * weightDecay;
-          decayedGrad = effectiveGrad + penalty;
-          penalty.dispose();
-          effectiveGrad = decayedGrad;
-        }
 
         final firstMoment = _firstMoment[parameter] ??= GpuArray.zeros(
           parameter.shape,
           parameter.dtype,
           device: parameter.device,
-        );
+        )..detachFromScope();
         final secondMoment = _secondMoment[parameter] ??= GpuArray.zeros(
           parameter.shape,
           parameter.dtype,
           device: parameter.device,
-        );
+        )..detachFromScope();
 
-        final firstScaled = firstMoment * beta1;
-        final gradScaledFirst = effectiveGrad * (1.0 - beta1);
-        final nextFirst = firstScaled + gradScaledFirst;
-        firstScaled.dispose();
-        gradScaledFirst.dispose();
-        nextFirst.buffer.copyToBuffer(firstMoment.buffer, firstMoment.byteSize);
-        nextFirst.dispose();
-
-        final secondScaled = secondMoment * beta2;
-        final gradSquared = effectiveGrad * effectiveGrad;
-        final gradSquaredScaled = gradSquared * (1.0 - beta2);
-        final nextSecond = secondScaled + gradSquaredScaled;
-        secondScaled.dispose();
-        gradSquared.dispose();
-        gradSquaredScaled.dispose();
-        nextSecond.buffer.copyToBuffer(
-          secondMoment.buffer,
-          secondMoment.byteSize,
-        );
-        nextSecond.dispose();
-
-        final firstHat = firstMoment * (1.0 / biasCorrection1);
-        final secondHat = secondMoment * (1.0 / biasCorrection2);
-        final secondHatSqrt = secondHat.sqrt();
-        final denominator = secondHatSqrt + eps;
-        final stepDirection = firstHat / denominator;
-        final updateStep = stepDirection * lr;
-        final updatedParameter = parameter - updateStep;
-        updatedParameter.buffer.copyToBuffer(
-          parameter.buffer,
-          parameter.byteSize,
-        );
-
-        firstHat.dispose();
-        secondHat.dispose();
-        secondHatSqrt.dispose();
-        denominator.dispose();
-        stepDirection.dispose();
-        updateStep.dispose();
-        updatedParameter.dispose();
-        decayedGrad?.dispose();
+        final contiguousGrad = (grad.isContiguous && grad.offsetElements == 0)
+            ? grad
+            : grad.copy();
+        final invBiasCorrection1 = 1.0 / (1.0 - math.pow(beta1, _stepCount));
+        final invBiasCorrection2 = 1.0 / (1.0 - math.pow(beta2, _stepCount));
+        try {
+          dispatchAdamStep(
+            parameter: parameter,
+            grad: contiguousGrad,
+            firstMoment: firstMoment,
+            secondMoment: secondMoment,
+            lr: lr,
+            beta1: beta1,
+            beta2: beta2,
+            eps: eps,
+            weightDecay: weightDecay,
+            invBiasCorrection1: invBiasCorrection1,
+            invBiasCorrection2: invBiasCorrection2,
+            decoupledWeightDecay: false,
+          );
+        } finally {
+          if (!identical(contiguousGrad, grad)) {
+            contiguousGrad.dispose();
+          }
+        }
       }
     });
   }
@@ -380,73 +336,46 @@ final class AdamW extends Optimizer {
     _checkNotDisposed();
     noGrad(() {
       _stepCount++;
-      final biasCorrection1 = 1.0 - math.pow(beta1, _stepCount);
-      final biasCorrection2 = 1.0 - math.pow(beta2, _stepCount);
-
       for (final parameter in params) {
         final grad = parameter.grad;
         if (grad == null) continue;
-
-        if (weightDecay != 0.0) {
-          final decayedParameter = parameter * (1.0 - lr * weightDecay);
-          decayedParameter.buffer.copyToBuffer(
-            parameter.buffer,
-            parameter.byteSize,
-          );
-          decayedParameter.dispose();
-        }
 
         final firstMoment = _firstMoment[parameter] ??= GpuArray.zeros(
           parameter.shape,
           parameter.dtype,
           device: parameter.device,
-        );
+        )..detachFromScope();
         final secondMoment = _secondMoment[parameter] ??= GpuArray.zeros(
           parameter.shape,
           parameter.dtype,
           device: parameter.device,
-        );
+        )..detachFromScope();
 
-        final firstScaled = firstMoment * beta1;
-        final gradScaledFirst = grad * (1.0 - beta1);
-        final nextFirst = firstScaled + gradScaledFirst;
-        firstScaled.dispose();
-        gradScaledFirst.dispose();
-        nextFirst.buffer.copyToBuffer(firstMoment.buffer, firstMoment.byteSize);
-        nextFirst.dispose();
-
-        final secondScaled = secondMoment * beta2;
-        final gradSquared = grad * grad;
-        final gradSquaredScaled = gradSquared * (1.0 - beta2);
-        final nextSecond = secondScaled + gradSquaredScaled;
-        secondScaled.dispose();
-        gradSquared.dispose();
-        gradSquaredScaled.dispose();
-        nextSecond.buffer.copyToBuffer(
-          secondMoment.buffer,
-          secondMoment.byteSize,
-        );
-        nextSecond.dispose();
-
-        final firstHat = firstMoment * (1.0 / biasCorrection1);
-        final secondHat = secondMoment * (1.0 / biasCorrection2);
-        final secondHatSqrt = secondHat.sqrt();
-        final denominator = secondHatSqrt + eps;
-        final stepDirection = firstHat / denominator;
-        final updateStep = stepDirection * lr;
-        final updatedParameter = parameter - updateStep;
-        updatedParameter.buffer.copyToBuffer(
-          parameter.buffer,
-          parameter.byteSize,
-        );
-
-        firstHat.dispose();
-        secondHat.dispose();
-        secondHatSqrt.dispose();
-        denominator.dispose();
-        stepDirection.dispose();
-        updateStep.dispose();
-        updatedParameter.dispose();
+        final contiguousGrad = (grad.isContiguous && grad.offsetElements == 0)
+            ? grad
+            : grad.copy();
+        final invBiasCorrection1 = 1.0 / (1.0 - math.pow(beta1, _stepCount));
+        final invBiasCorrection2 = 1.0 / (1.0 - math.pow(beta2, _stepCount));
+        try {
+          dispatchAdamStep(
+            parameter: parameter,
+            grad: contiguousGrad,
+            firstMoment: firstMoment,
+            secondMoment: secondMoment,
+            lr: lr,
+            beta1: beta1,
+            beta2: beta2,
+            eps: eps,
+            weightDecay: weightDecay,
+            invBiasCorrection1: invBiasCorrection1,
+            invBiasCorrection2: invBiasCorrection2,
+            decoupledWeightDecay: true,
+          );
+        } finally {
+          if (!identical(contiguousGrad, grad)) {
+            contiguousGrad.dispose();
+          }
+        }
       }
     });
   }
@@ -464,4 +393,101 @@ final class AdamW extends Optimizer {
     _secondMoment.clear();
     super.dispose();
   }
+}
+
+/// Clips the total gradient norm of an iterable of [parameters] in place.
+///
+/// Computes the total $L_p$ norm (specified by [normType]) across all non-null
+/// parameter gradients, scales every gradient in place by
+/// `maxNorm / (totalNorm + 1e-6)` whenever `totalNorm > maxNorm`, and evaluates
+/// to the pre-clipped total norm.
+///
+/// Both [maxNorm] and [normType] must be positive.
+double clipGradNorm(
+  Iterable<GpuArray<DTypeTag>> parameters,
+  double maxNorm, {
+  double normType = 2.0,
+}) {
+  if (maxNorm <= 0.0 || maxNorm.isNaN) {
+    throw ArgumentError.value(maxNorm, 'maxNorm', 'Must be positive.');
+  }
+  if (normType <= 0.0 || normType.isNaN) {
+    throw ArgumentError.value(normType, 'normType', 'Must be positive.');
+  }
+
+  return noGrad(() {
+    final activeGrads = <GpuArray<DTypeTag>>[];
+    for (final parameter in parameters) {
+      final grad = parameter.grad;
+      if (grad != null && grad.size > 0) {
+        activeGrads.add(grad);
+      }
+    }
+    if (activeGrads.isEmpty) return 0.0;
+
+    var totalNorm = 0.0;
+    if (normType == double.infinity) {
+      for (final grad in activeGrads) {
+        final absGrad = grad.abs();
+        final maxGrad = absGrad.max();
+        final gradMaxVal = (maxGrad.scalar as num).toDouble();
+        maxGrad.dispose();
+        absGrad.dispose();
+        if (gradMaxVal > totalNorm) {
+          totalNorm = gradMaxVal;
+        }
+      }
+    } else if (normType == 2.0) {
+      var sumSquares = 0.0;
+      for (final grad in activeGrads) {
+        final sq = grad * grad;
+        final sqSum = sq.sum();
+        sumSquares += (sqSum.scalar as num).toDouble();
+        sqSum.dispose();
+        sq.dispose();
+      }
+      totalNorm = math.sqrt(sumSquares);
+    } else {
+      var sumPowers = 0.0;
+      for (final grad in activeGrads) {
+        final absGrad = grad.abs();
+        final powGrad = absGrad.pow(normType);
+        final powSum = powGrad.sum();
+        sumPowers += (powSum.scalar as num).toDouble();
+        powSum.dispose();
+        powGrad.dispose();
+        absGrad.dispose();
+      }
+      totalNorm = math.pow(sumPowers, 1.0 / normType).toDouble();
+    }
+
+    if (totalNorm > maxNorm) {
+      final clipCoefficient = maxNorm / (totalNorm + 1e-6);
+      for (final grad in activeGrads) {
+        final scaled = grad * clipCoefficient;
+        scaled.buffer.copyToBuffer(grad.buffer, grad.byteSize);
+        scaled.dispose();
+      }
+    }
+
+    return totalNorm;
+  });
+}
+
+/// Clips all non-null gradients of [parameters] elementwise to
+/// `[-clipValue, clipValue]` in place.
+///
+/// The [clipValue] must be non-negative.
+void clipGradValue(Iterable<GpuArray<DTypeTag>> parameters, double clipValue) {
+  if (clipValue < 0.0 || clipValue.isNaN) {
+    throw ArgumentError.value(clipValue, 'clipValue', 'Must be non-negative.');
+  }
+
+  noGrad(() {
+    for (final parameter in parameters) {
+      final grad = parameter.grad;
+      if (grad == null || grad.size == 0) continue;
+      grad.clip(-clipValue, clipValue, out: grad);
+    }
+  });
 }

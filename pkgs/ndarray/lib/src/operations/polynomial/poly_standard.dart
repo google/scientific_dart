@@ -74,29 +74,44 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// - It is an error if [out] shape or dtype is incompatible with [x].
 ///
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
-NDArray<R> polyval<
-  Tc extends DTypeTag,
-  Tx extends DTypeTag,
-  R extends DTypeTag
->(NDArray<Tc> c, NDArray<Tx> x, {NDArray<R>? out}) {
+NDArray<R> polyval<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  c,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x, {
+  NDArray<R>? out,
+}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute polyval() on a disposed array.");
   }
   if (c.shape.length != 1) {
-    throw ArgumentError("Coefficient array c must be 1-dimensional.");
+    throw ArgumentError.value(
+      c.shape,
+      'c',
+      'Must be 1-dimensional (got shape ${c.shape})',
+    );
   }
   if (c.shape[0] == 0) {
-    throw ArgumentError("Coefficient array c must not be empty.");
+    throw ArgumentError.value(c.shape[0], 'c', 'Must not be empty');
   }
 
   var resolved = resolveDType(c.dtype, x.dtype);
-  if (!resolved.isFloating && !resolved.isComplex) {
+  if ((!resolved.isFloating && !resolved.isComplex) ||
+      resolved == DType.float16 ||
+      resolved == DType.bfloat16) {
     resolved = DType.float64;
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, x.shape) || out.dtype != resolved) {
-      throw ArgumentError(
-        "Incompatible out buffer shape or dtype for polyval.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape or dtype for polyval (expected shape ${x.shape} and dtype $resolved, got shape ${out.shape} and dtype ${out.dtype})',
       );
     }
   }
@@ -250,6 +265,7 @@ NDArray<R> polyval<
               "Unsupported dtype $targetDType for polyval.",
             );
         }
+        checkNativeOom();
       }
     } finally {
       ScratchArena.reset(marker);
@@ -281,16 +297,20 @@ NDArray<R> polyval<
 /// - It is an error if [out] shape or dtype is incompatible.
 ///
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
-NDArray<R> polyfit<
-  Tx extends DTypeTag,
-  Ty extends DTypeTag,
-  Tw extends DTypeTag,
-  R extends DTypeTag
->(
-  NDArray<Tx> x,
-  NDArray<Ty> y,
+NDArray<R> polyfit<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  y,
   int deg, {
-  NDArray<Tw>? w,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >?
+  w,
   double? rcond,
   NDArray<R>? out,
 }) {
@@ -301,22 +321,36 @@ NDArray<R> polyfit<
     throw StateError("Cannot execute polyfit() on a disposed array.");
   }
   if (x.shape.length != 1 || y.shape.length != 1) {
-    throw ArgumentError("Input arrays x and y must be 1-dimensional.");
+    throw ArgumentError.value(
+      [x.shape, y.shape],
+      'x, y',
+      'Must be 1-dimensional (got x: ${x.shape}, y: ${y.shape})',
+    );
   }
   if (x.shape[0] != y.shape[0]) {
-    throw ArgumentError("Input arrays x and y must have equal length.");
+    throw ArgumentError.value(
+      y.shape[0],
+      'y',
+      'Must have equal length to x (got x: ${x.shape[0]}, y: ${y.shape[0]})',
+    );
   }
   if (deg < 0) {
-    throw ArgumentError("Polynomial degree deg must be non-negative.");
+    throw ArgumentError.value(deg, 'deg', 'Must be non-negative (got $deg)');
   }
   final m = x.shape[0];
   if (m <= deg) {
-    throw ArgumentError(
-      "Number of data points ($m) must be greater than deg ($deg).",
+    throw ArgumentError.value(
+      m,
+      'm',
+      'Must be greater than deg (data points $m <= deg $deg)',
     );
   }
   if (w != null && (w.shape.length != 1 || w.shape[0] != m)) {
-    throw ArgumentError("Weights w must be a 1D array of same length as x.");
+    throw ArgumentError.value(
+      w.shape,
+      'w',
+      'Must be a 1D array of same length as x (got shape ${w.shape}, expected [$m])',
+    );
   }
   checkBlasIntDim(m, 'm', 'polyfit');
   checkBlasIntDim(deg + 1, 'n', 'polyfit');
@@ -333,15 +367,20 @@ NDArray<R> polyfit<
   if (w != null) {
     resolvedType = resolveDType(resolvedType, w.dtype);
   }
-  if (!resolvedType.isFloating && !resolvedType.isComplex) {
+  if ((!resolvedType.isFloating && !resolvedType.isComplex) ||
+      resolvedType == DType.float16 ||
+      resolvedType == DType.bfloat16) {
     resolvedType = DType.float64;
   }
   final targetDType = resolvedType as DType<R>;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, [deg + 1]) || out.dtype != targetDType) {
-      throw ArgumentError(
-        "Incompatible out buffer shape or dtype for polyfit.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape or dtype for polyfit (expected shape [${deg + 1}] and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype})',
       );
     }
   }
@@ -738,7 +777,11 @@ NDArray<R> polyfit<
       }
 
       if (info < 0) {
-        throw ArgumentError("Illegal parameter in LAPACK least-squares: $info");
+        throw ArgumentError.value(
+          info,
+          'info',
+          'Must be non-negative (illegal parameter in LAPACK least-squares: $info)',
+        );
       }
     } finally {
       ScratchArena.reset(marker);
@@ -766,22 +809,32 @@ NDArray<R> polyfit<
 /// - It is an error if [p] is not 1-dimensional.
 ///
 /// Reference: [NumPy roots](https://numpy.org/doc/stable/reference/generated/numpy.roots.html)
-NDArray<DTypeTag> roots<T extends DTypeTag>(
-  NDArray<T> p, {
-  NDArray<DTypeTag>? out,
+NDArray<C> roots<C extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+  >
+  p, {
+  NDArray<C>? out,
 }) {
   if (p.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute roots() on a disposed array.");
   }
   if (p.shape.length != 1) {
-    throw ArgumentError("Coefficient array p must be 1-dimensional.");
+    throw ArgumentError.value(
+      p.shape,
+      'p',
+      'Must be 1-dimensional (got shape ${p.shape})',
+    );
   }
   checkBlasIntDim(p.shape[0], 'n', 'roots');
   checkBlasIntStride(p.strides[0], 'incp', 'roots');
 
-  final DType<DTypeTag> targetComplexDType = p.dtype == DType.complex64
-      ? DType.complex64
-      : DType.complex128;
+  final DType<DTypeTag> pDType = p.dtype;
+  final DType<C> targetComplexDType =
+      ((pDType == DType.complex64 || pDType == DType.float32)
+              ? DType.complex64
+              : DType.complex128)
+          as DType<C>;
 
   return NDArray.scope(() {
     final size = p.shape[0];
@@ -798,20 +851,23 @@ NDArray<DTypeTag> roots<T extends DTypeTag>(
         : (size - firstNonZero - 1);
 
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, [deg]) || out.dtype != targetComplexDType) {
-        throw ArgumentError(
-          "Incompatible out buffer shape or dtype for roots result (expected shape [$deg] and dtype $targetComplexDType, got shape ${out.shape} and dtype ${out.dtype}).",
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape or dtype for roots result (expected shape [$deg] and dtype $targetComplexDType, got shape ${out.shape} and dtype ${out.dtype})',
         );
       }
       if (!out.isContiguous || sharesMemory(p, out)) {
-        final temp = roots<T>(p);
+        final temp = roots<C>(p);
         _copyInto(temp, out);
         return out;
       }
     }
 
     if (deg == 0) {
-      final res = NDArray<DTypeTag>.zeros([0], targetComplexDType);
+      final res = NDArray<C>.zeros([0], targetComplexDType);
       if (out != null) {
         _copyInto(res, out);
         return out;
@@ -826,11 +882,7 @@ NDArray<DTypeTag> roots<T extends DTypeTag>(
       final complexRoot = rootVal is Complex
           ? rootVal
           : Complex((rootVal as num).toDouble(), 0.0);
-      final res = NDArray<DTypeTag>.fromList(
-        [complexRoot],
-        [1],
-        targetComplexDType,
-      );
+      final res = NDArray<C>.fromList([complexRoot], [1], targetComplexDType);
       if (out != null) {
         _copyInto(res, out);
         return out;
@@ -838,16 +890,15 @@ NDArray<DTypeTag> roots<T extends DTypeTag>(
       return res.detachToParentScope();
     }
 
-    final bool isComp =
-        p.dtype == DType.complex64 || p.dtype == DType.complex128;
+    final bool isComp = pDType == DType.complex64 || pDType == DType.complex128;
     final NDArray aMat;
-    switch (p.dtype) {
+    switch (pDType) {
       case DType.complex64:
       case DType.complex128:
-        aMat = NDArray<DTypeTag>.zeros([deg, deg], p.dtype as DType<DTypeTag>);
+      case DType.float32:
+        aMat = NDArray<DTypeTag>.zeros([deg, deg], pDType);
         break;
       case DType.float64:
-      case DType.float32:
       case DType.float16:
       case DType.bfloat16:
       case DType.int64:
@@ -876,7 +927,21 @@ NDArray<DTypeTag> roots<T extends DTypeTag>(
       aMat.setCellFlat(i * deg + i - 1, castValue(one, targetMatDType));
     }
 
-    final res = eigvals(aMat as NDArray<AnySpec>, out: out);
+    final res = eigvals(
+      aMat
+          as NDArray<
+            DTypeSpec<
+              DTypeTag,
+              Object?,
+              DTypeTag,
+              C,
+              DTypeTag,
+              DTypeTag,
+              DTypeTag
+            >
+          >,
+      out: out,
+    );
     if (out != null) return out;
     return res.detachToParentScope();
   });

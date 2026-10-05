@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/linalg.dart' hide diagonal, trace;
 import 'package:test/test.dart';
 
 void main() {
@@ -43,7 +44,7 @@ void main() {
       }
     });
 
-    test('svdvals supports out: parameter', () {
+    test('svdValues supports out: parameter', () {
       final matrix = GpuArray.fromList(
         <double>[4.0, 0.0, 0.0, 5.0],
         [2, 2],
@@ -51,7 +52,7 @@ void main() {
       );
       final outSingularValues = GpuArray.zeros([2], DType.float64);
       try {
-        final result = svdvals(matrix, out: outSingularValues);
+        final result = svdValues(matrix, out: outSingularValues);
         expect(identical(result, outSingularValues), isTrue);
         final values = result.toList().cast<double>();
         expect(values[0], closeTo(5.0, 1e-10));
@@ -253,5 +254,108 @@ void main() {
         matrix.dispose();
       }
     });
+
+    test(
+      'Float32 decompositions preserve Float32 and Complex64 dtypes (F11)',
+      () {
+        final spdF32 = GpuArray.fromList(
+          <double>[4.0, 2.0, 2.0, 5.0],
+          [2, 2],
+          DType.float32,
+        );
+        try {
+          final svdRes = svd(spdF32);
+          try {
+            expect(svdRes.u.dtype, equals(DType.float32));
+            expect(svdRes.s.dtype, equals(DType.float32));
+            expect(svdRes.vt.dtype, equals(DType.float32));
+          } finally {
+            svdRes.dispose();
+          }
+
+          final sVals = svdValues(spdF32);
+          try {
+            expect(sVals.dtype, equals(DType.float32));
+          } finally {
+            sVals.dispose();
+          }
+
+          final qrRes = qr(spdF32);
+          try {
+            expect(qrRes.q.dtype, equals(DType.float32));
+            expect(qrRes.r.dtype, equals(DType.float32));
+          } finally {
+            qrRes.dispose();
+          }
+
+          final rOnly = qrR(spdF32);
+          try {
+            expect(rOnly.dtype, equals(DType.float32));
+          } finally {
+            rOnly.dispose();
+          }
+
+          final cholRes = cholesky(spdF32);
+          try {
+            expect(cholRes.dtype, equals(DType.float32));
+            final vals = cholRes.toList().cast<double>();
+            expect(vals[0], closeTo(2.0, 1e-5));
+            expect(vals[2], closeTo(1.0, 1e-5));
+            expect(vals[3], closeTo(2.0, 1e-5));
+          } finally {
+            cholRes.dispose();
+          }
+
+          final eighRes = eigh(spdF32);
+          try {
+            expect(eighRes.eigenvalues.dtype, equals(DType.float32));
+            expect(eighRes.eigenvectors.dtype, equals(DType.float32));
+          } finally {
+            eighRes.dispose();
+          }
+
+          final evalshRes = eigvalsh(spdF32);
+          try {
+            expect(evalshRes.dtype, equals(DType.float32));
+          } finally {
+            evalshRes.dispose();
+          }
+
+          final eigRes = eig(spdF32);
+          try {
+            expect(eigRes.eigenvalues.dtype, equals(DType.complex64));
+            expect(eigRes.eigenvectors.dtype, equals(DType.complex64));
+          } finally {
+            eigRes.dispose();
+          }
+
+          final evalsRes = eigvals(spdF32);
+          try {
+            expect(evalsRes.dtype, equals(DType.complex64));
+          } finally {
+            evalsRes.dispose();
+          }
+
+          final luRes = lu(spdF32);
+          try {
+            expect(luRes.p.dtype, equals(DType.float32));
+            expect(luRes.l.dtype, equals(DType.float32));
+            expect(luRes.u.dtype, equals(DType.float32));
+          } finally {
+            luRes.dispose();
+          }
+
+          final luFacRes = luFactor(spdF32);
+          try {
+            expect(luFacRes.lu.dtype, equals(DType.float32));
+            expect(luFacRes.pivots.dtype, equals(DType.int32));
+          } finally {
+            luFacRes.dispose();
+          }
+        } finally {
+          spdF32.dispose();
+        }
+      },
+    );
   });
 }

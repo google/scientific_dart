@@ -12,17 +12,61 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
-import 'dart:math' as math;
-
 import '../autograd/autograd.dart';
 import '../autograd/autograd_wgsl.dart';
 import '../autograd/loss_wgsl.dart';
+import '../dtype.dart';
 import '../gpu_array.dart';
 import '../random/random.dart' as random_ops;
+import 'nn_wgsl.dart';
 
 export '../autograd/autograd.dart' show LossReduction;
 export 'functional_attention.dart';
+
+void _validateOutTensor<T extends DTypeTag>(
+  GpuArray<T> input,
+  GpuArray<T>? out,
+) {
+  if (out == null) return;
+  if (out.isDisposed) {
+    throw StateError('Cannot write into a disposed GpuArray out tensor.');
+  }
+  if (out.size > 1 && out.strides.contains(0)) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must be writeable and not a broadcasted view.',
+    );
+  }
+  if (!identical(out.device, input.device)) {
+    throw ArgumentError.value(
+      out.device,
+      'out',
+      'Must reside on the same GpuDevice as input.',
+    );
+  }
+  if (!areShapesIdentical(out.shape, input.shape)) {
+    throw ArgumentError.value(
+      out.shape,
+      'out',
+      'Must match output shape ${input.shape}.',
+    );
+  }
+  if (out.dtype != input.dtype) {
+    throw ArgumentError.value(
+      out.dtype,
+      'out',
+      'Must match output dtype ${input.dtype}.',
+    );
+  }
+  if (!out.isContiguous || out.offsetElements != 0) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must be a contiguous tensor with zero offset.',
+    );
+  }
+}
 
 /// Copies [computed] into [out] if provided, validating shape, dtype, and disposal state.
 GpuArray<T> _finalizeOutput<T extends DTypeTag>(
@@ -32,43 +76,11 @@ GpuArray<T> _finalizeOutput<T extends DTypeTag>(
   if (out == null || identical(computed, out)) {
     return computed;
   }
-  if (out.isDisposed) {
+  try {
+    _validateOutTensor(computed, out);
+  } on Object {
     computed.dispose();
-    throw StateError('Cannot write into a disposed GpuArray out tensor.');
-  }
-  if (out.size > 1 && out.strides.contains(0)) {
-    computed.dispose();
-    throw ArgumentError.value(
-      out,
-      'out',
-      'Must be writeable and not a broadcasted view.',
-    );
-  }
-  if (!areShapesIdentical(out.shape, computed.shape)) {
-    final computedShape = computed.shape;
-    computed.dispose();
-    throw ArgumentError.value(
-      out.shape,
-      'out',
-      'Must match output shape $computedShape.',
-    );
-  }
-  if (out.dtype != computed.dtype) {
-    final computedDType = computed.dtype;
-    computed.dispose();
-    throw ArgumentError.value(
-      out.dtype,
-      'out',
-      'Must match output dtype $computedDType.',
-    );
-  }
-  if (!out.isContiguous || out.offsetElements != 0) {
-    computed.dispose();
-    throw ArgumentError.value(
-      out,
-      'out',
-      'Must be a contiguous tensor with zero offset.',
-    );
+    rethrow;
   }
 
   computed.buffer.copyToBuffer(out.buffer, out.byteSize);
@@ -97,84 +109,184 @@ GpuArray<T> _finalizeOutput<T extends DTypeTag>(
   return out;
 }
 
+GpuArray<T> _runUnaryActivation<T extends DTypeTag>({
+  required GpuArray<T> input,
+  required String op,
+  required GradFn Function(GpuArray<T> savedInput, GpuArray<T> output)
+  buildGradFn,
+  double param0 = 0.0,
+  double param1 = 0.0,
+  GpuArray<T>? out,
+}) {
+  if (input.isDisposed) {
+    throw StateError('Cannot operate on a disposed GpuArray.');
+  }
+  _validateOutTensor(input, out);
+
+  final trackGrad = isGradEnabled && input.requiresGrad;
+  final savedInput =
+      (trackGrad && out != null && identical(input.buffer, out.buffer))
+      ? noGrad(() => input.copy())
+      : input;
+
+  final target =
+      out ?? GpuArray.empty(input.shape, input.dtype, device: input.device);
+  dispatchUnaryActivationForward(
+    input: savedInput,
+    output: target,
+    op: op,
+    param0: param0,
+    param1: param1,
+  );
+
+  if (trackGrad) {
+    target.requiresGrad = true;
+    target.gradFn = buildGradFn(savedInput, target);
+  } else if (out != null) {
+    target.requiresGrad = false;
+    target.gradFn = null;
+  }
+  return target;
+}
+
 /// Applies the Rectified Linear Unit activation elementwise: $\text{ReLU}(x) = \max(0, x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> relu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) {
-  final computed = noGrad(() {
-    final positiveMask = input.greater(0.0);
-    final mask = positiveMask.astype(input.dtype);
-    positiveMask.dispose();
-    final result = (input * mask) as GpuArray<T>;
-    mask.dispose();
-    return result;
-  });
-  if (isGradEnabled && input.requiresGrad) {
-    computed.requiresGrad = true;
-    computed.gradFn = ReluBackward(input);
-  }
-  return _finalizeOutput(computed, out);
-}
+GpuArray<T> relu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
+    _runUnaryActivation(
+      input: input,
+      op: 'relu',
+      buildGradFn: (saved, _) => ReluBackward(saved),
+      out: out,
+    );
 
 /// Applies the logistic Sigmoid activation elementwise: $\sigma(x) = \frac{1}{1 + e^{-x}}$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> sigmoid<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) {
-  final computed = noGrad(() {
-    final negated = input.negate();
-    final expNegated = negated.exp();
-    negated.dispose();
-    final denominator = expNegated + 1.0;
-    expNegated.dispose();
-    final result = denominator.pow(-1.0) as GpuArray<T>;
-    denominator.dispose();
-    return result;
-  });
-  if (isGradEnabled && input.requiresGrad) {
-    computed.requiresGrad = true;
-    computed.gradFn = SigmoidBackward(input, computed);
-  }
-  return _finalizeOutput(computed, out);
-}
+GpuArray<T> sigmoid<T extends DTypeTag>(
+  GpuArray<T> input, {
+  GpuArray<T>? out,
+}) => _runUnaryActivation(
+  input: input,
+  op: 'sigmoid',
+  buildGradFn: (saved, output) => SigmoidBackward(saved, output),
+  out: out,
+);
 
 /// Applies the Hyperbolic Tangent activation elementwise: $\tanh(x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> tanh<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) {
-  final computed = noGrad(() => input.tanh());
-  if (isGradEnabled && input.requiresGrad) {
-    computed.requiresGrad = true;
-    computed.gradFn = TanhBackward(input, computed);
-  }
-  return _finalizeOutput(computed, out);
-}
+GpuArray<T> tanh<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
+    _runUnaryActivation(
+      input: input,
+      op: 'tanh',
+      buildGradFn: (saved, output) => TanhBackward(saved, output),
+      out: out,
+    );
 
 /// Applies the Gaussian Error Linear Unit (GELU) activation elementwise:
 /// $\text{GELU}(x) = 0.5x \left(1 + \tanh\left(\sqrt{2/\pi}\left(x + 0.044715 x^3\right)\right)\right)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> gelu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) {
-  final sqrt2OverPi = math.sqrt(2.0 / math.pi);
-  final xSquared = input * input;
-  final xCubed = xSquared * input;
-  final scaledCubic = xCubed * 0.044715;
-  final sumTerm = input + scaledCubic;
-  final inner = (sumTerm * sqrt2OverPi) as GpuArray<T>;
-  final tanhInner = tanh(inner);
-  final onePlusTanh = tanhInner + 1.0;
-  final halfInput = input * 0.5;
-  final computed = (halfInput * onePlusTanh) as GpuArray<T>;
-  return _finalizeOutput(computed, out);
-}
+GpuArray<T> gelu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
+    _runUnaryActivation(
+      input: input,
+      op: 'gelu',
+      buildGradFn: (saved, _) => GeluBackward(saved),
+      out: out,
+    );
 
 /// Applies the Sigmoid Linear Unit (SiLU / Swish) activation elementwise:
 /// $\text{SiLU}(x) = x \cdot \sigma(x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> silu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) {
-  final sigmoidVal = sigmoid(input);
-  final computed = (input * sigmoidVal) as GpuArray<T>;
-  return _finalizeOutput(computed, out);
+GpuArray<T> silu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
+    _runUnaryActivation(
+      input: input,
+      op: 'silu',
+      buildGradFn: (saved, _) => SiluBackward(saved),
+      out: out,
+    );
+
+/// Applies the Swish activation elementwise: $\text{Swish}(x) = x \cdot \sigma(x)$.
+///
+/// If [out] is provided, the result is written directly into [out] and returned.
+GpuArray<T> swish<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
+    silu(input, out: out);
+
+/// Applies the Leaky Rectified Linear Unit activation elementwise:
+/// $\text{LeakyReLU}(x) = \max(0, x) + \text{negativeSlope} \cdot \min(0, x)$.
+///
+/// If [out] is provided, the result is written directly into [out] and returned.
+GpuArray<T> leakyRelu<T extends DTypeTag>(
+  GpuArray<T> input, {
+  double negativeSlope = 0.01,
+  GpuArray<T>? out,
+}) {
+  if (negativeSlope.isNaN) {
+    throw ArgumentError.value(
+      negativeSlope,
+      'negativeSlope',
+      'Must not be NaN.',
+    );
+  }
+  return _runUnaryActivation(
+    input: input,
+    op: 'leaky_relu',
+    param0: negativeSlope,
+    buildGradFn: (saved, _) =>
+        LeakyReluBackward(saved, negativeSlope: negativeSlope),
+    out: out,
+  );
+}
+
+/// Applies the Exponential Linear Unit (ELU) activation elementwise:
+/// $\text{ELU}(x) = \max(0, x) + \min(0, \alpha (\exp(x) - 1))$.
+///
+/// If [out] is provided, the result is written directly into [out] and returned.
+GpuArray<T> elu<T extends DTypeTag>(
+  GpuArray<T> input, {
+  double alpha = 1.0,
+  GpuArray<T>? out,
+}) {
+  if (alpha.isNaN) {
+    throw ArgumentError.value(alpha, 'alpha', 'Must not be NaN.');
+  }
+  return _runUnaryActivation(
+    input: input,
+    op: 'elu',
+    param0: alpha,
+    buildGradFn: (saved, _) => EluBackward(saved, alpha: alpha),
+    out: out,
+  );
+}
+
+/// Applies the Softplus activation elementwise:
+/// $\text{Softplus}(x) = \frac{1}{\beta} \ln(1 + \exp(\beta x))$, reverting to
+/// linear $x$ when $\beta x > \text{threshold}$.
+///
+/// If [out] is provided, the result is written directly into [out] and returned.
+GpuArray<T> softplus<T extends DTypeTag>(
+  GpuArray<T> input, {
+  double beta = 1.0,
+  double threshold = 20.0,
+  GpuArray<T>? out,
+}) {
+  if (beta <= 0.0 || beta.isNaN) {
+    throw ArgumentError.value(beta, 'beta', 'Must be positive.');
+  }
+  if (threshold.isNaN) {
+    throw ArgumentError.value(threshold, 'threshold', 'Must not be NaN.');
+  }
+  return _runUnaryActivation(
+    input: input,
+    op: 'softplus',
+    param0: beta,
+    param1: threshold,
+    buildGradFn: (saved, _) =>
+        SoftplusBackward(saved, beta: beta, threshold: threshold),
+    out: out,
+  );
 }
 
 /// Randomly zeroes elements of [input] with probability [p] during [training].
@@ -191,13 +303,22 @@ GpuArray<T> dropout<T extends DTypeTag>(
     );
   }
   if (!training || p == 0.0) return input;
-  final randomValues = random_ops.rand(input.shape, input.device);
-  final keepBoolean = randomValues.greater(p);
-  final keepMask = keepBoolean.astype(input.dtype);
-  randomValues.dispose();
-  keepBoolean.dispose();
-  final scale = 1.0 / (1.0 - p);
-  return (input * keepMask * scale) as GpuArray<T>;
+  final scaledMask = noGrad(() {
+    final randomValues = random_ops.rand(input.shape, input.device);
+    final keepBoolean = randomValues.greater(p);
+    final keepMask = keepBoolean.astype(input.dtype);
+    randomValues.dispose();
+    keepBoolean.dispose();
+    final scale = 1.0 / (1.0 - p);
+    final mask = keepMask * scale;
+    keepMask.dispose();
+    return mask;
+  });
+  final result = input * scaledMask;
+  if (!result.requiresGrad) {
+    scaledMask.dispose();
+  }
+  return result;
 }
 
 /// Applies the Softmax function to an N-dimensional tensor along [axis].
@@ -208,6 +329,7 @@ GpuArray<T> softmax<T extends DTypeTag>(
   int axis = -1,
   GpuArray<T>? out,
 }) {
+  _validateOutTensor(input, out);
   final computed = noGrad(() {
     final maxVal = input.max(axis: axis, keepDims: true);
     final shifted = input - maxVal;
@@ -215,7 +337,7 @@ GpuArray<T> softmax<T extends DTypeTag>(
     final expShifted = shifted.exp();
     shifted.dispose();
     final sumExp = expShifted.sum(axis: axis, keepDims: true);
-    final result = (expShifted / sumExp) as GpuArray<T>;
+    final result = expShifted / sumExp;
     expShifted.dispose();
     sumExp.dispose();
     return result;
@@ -235,6 +357,7 @@ GpuArray<T> logSoftmax<T extends DTypeTag>(
   int axis = -1,
   GpuArray<T>? out,
 }) {
+  _validateOutTensor(input, out);
   final computed = noGrad(() {
     final maxVal = input.max(axis: axis, keepDims: true);
     final shifted = input - maxVal;
@@ -244,7 +367,7 @@ GpuArray<T> logSoftmax<T extends DTypeTag>(
     expShifted.dispose();
     final logSumExp = sumExp.log();
     sumExp.dispose();
-    final result = (shifted - logSumExp) as GpuArray<T>;
+    final result = shifted - logSumExp;
     shifted.dispose();
     logSumExp.dispose();
     return result;
@@ -256,17 +379,18 @@ GpuArray<T> logSoftmax<T extends DTypeTag>(
   return _finalizeOutput(computed, out);
 }
 
-/// Applies the Log-Softmax function to an N-dimensional tensor along [axis].
-///
-/// Alias for [logSoftmax] provided for PyTorch naming parity.
-GpuArray<T> log_softmax<T extends DTypeTag>(
-  GpuArray<T> input, {
-  int axis = -1,
-  GpuArray<T>? out,
-}) => logSoftmax(input, axis: axis, out: out);
+GpuArray<T> _castLossOutput<T extends DTypeTag>(
+  GpuArray<DTypeTag> reduced,
+  DType<T> targetDType,
+) {
+  if (reduced is GpuArray<T>) return reduced;
+  final casted = reduced.astype(targetDType);
+  reduced.dispose();
+  return casted;
+}
 
 /// Measures the Mean Squared Error (squared L2 norm) between [input] and [target].
-GpuArray<DTypeTag> mseLoss<T extends DTypeTag>(
+GpuArray<T> mseLoss<T extends DTypeTag>(
   GpuArray<T> input,
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
@@ -278,26 +402,40 @@ GpuArray<DTypeTag> mseLoss<T extends DTypeTag>(
       'Must match input shape ${input.shape}.',
     );
   }
-  final difference = input - target;
-  final squared = difference * difference;
-  return switch (reduction) {
-    LossReduction.mean => squared.mean(),
-    LossReduction.sum => squared.sum(),
-    LossReduction.none => squared,
-  };
+  final computed = noGrad(() {
+    final elementLosses = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchMseForward(
+      input: input,
+      targetTensor: target,
+      output: elementLosses,
+    );
+    return switch (reduction) {
+      LossReduction.mean => () {
+        final result = elementLosses.mean();
+        elementLosses.dispose();
+        return _castLossOutput(result, input.dtype);
+      }(),
+      LossReduction.sum => () {
+        final result = elementLosses.sum();
+        elementLosses.dispose();
+        return result;
+      }(),
+      LossReduction.none => elementLosses,
+    };
+  });
+  if (isGradEnabled && (input.requiresGrad || target.requiresGrad)) {
+    computed.requiresGrad = true;
+    computed.gradFn = MseLossBackward(input, target, reduction: reduction);
+  }
+  return computed;
 }
 
-/// Measures the Mean Squared Error (squared L2 norm) between [input] and [target].
-///
-/// Alias for [mseLoss] provided for PyTorch naming parity.
-GpuArray<DTypeTag> mse_loss<T extends DTypeTag>(
-  GpuArray<T> input,
-  GpuArray<T> target, {
-  LossReduction reduction = LossReduction.mean,
-}) => mseLoss(input, target, reduction: reduction);
-
 /// Measures the Mean Absolute Error (L1 norm) between [input] and [target].
-GpuArray<DTypeTag> l1Loss<T extends DTypeTag>(
+GpuArray<T> l1Loss<T extends DTypeTag>(
   GpuArray<T> input,
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
@@ -317,7 +455,7 @@ GpuArray<DTypeTag> l1Loss<T extends DTypeTag>(
       LossReduction.mean => () {
         final result = absDifference.mean();
         absDifference.dispose();
-        return result;
+        return _castLossOutput(result, input.dtype);
       }(),
       LossReduction.sum => () {
         final result = absDifference.sum();
@@ -334,19 +472,10 @@ GpuArray<DTypeTag> l1Loss<T extends DTypeTag>(
   return computed;
 }
 
-/// Measures the Mean Absolute Error (L1 norm) between [input] and [target].
-///
-/// Alias for [l1Loss] provided for PyTorch naming parity.
-GpuArray<DTypeTag> l1_loss<T extends DTypeTag>(
-  GpuArray<T> input,
-  GpuArray<T> target, {
-  LossReduction reduction = LossReduction.mean,
-}) => l1Loss(input, target, reduction: reduction);
-
 /// Measures the Binary Cross-Entropy loss between target probabilities [target] and
 /// predicted probabilities [input]:
 /// $$\ell(x, y) = -\left(y \ln(x) + (1 - y) \ln(1 - x)\right)$$
-GpuArray<DTypeTag> binaryCrossEntropy<T extends DTypeTag>(
+GpuArray<T> binaryCrossEntropy<T extends DTypeTag>(
   GpuArray<T> input,
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
@@ -373,7 +502,7 @@ GpuArray<DTypeTag> binaryCrossEntropy<T extends DTypeTag>(
       LossReduction.mean => () {
         final result = elementLosses.mean();
         elementLosses.dispose();
-        return result;
+        return _castLossOutput(result, input.dtype);
       }(),
       LossReduction.sum => () {
         final result = elementLosses.sum();
@@ -393,15 +522,6 @@ GpuArray<DTypeTag> binaryCrossEntropy<T extends DTypeTag>(
   }
   return computed;
 }
-
-/// Measures the Binary Cross-Entropy loss between [input] and [target].
-///
-/// Alias for [binaryCrossEntropy] provided for PyTorch naming parity.
-GpuArray<DTypeTag> binary_cross_entropy<T extends DTypeTag>(
-  GpuArray<T> input,
-  GpuArray<T> target, {
-  LossReduction reduction = LossReduction.mean,
-}) => binaryCrossEntropy(input, target, reduction: reduction);
 
 /// Computes the categorical cross-entropy loss between [logits] (`[N, C]`) and
 /// integer class [targets] (`[N]`).
@@ -452,12 +572,12 @@ GpuArray<T> crossEntropy<T extends DTypeTag>(
       );
       return switch (reduction) {
         LossReduction.mean => () {
-          final reduced = sampleLosses.mean().astype(logits.dtype);
+          final reduced = sampleLosses.mean();
           sampleLosses.dispose();
-          return reduced;
+          return _castLossOutput(reduced, logits.dtype);
         }(),
         LossReduction.sum => () {
-          final reduced = sampleLosses.sum().astype(logits.dtype);
+          final reduced = sampleLosses.sum();
           sampleLosses.dispose();
           return reduced;
         }(),
@@ -480,12 +600,3 @@ GpuArray<T> crossEntropy<T extends DTypeTag>(
 
   return lossArray;
 }
-
-/// Computes the categorical cross-entropy loss between [logits] and [targets].
-///
-/// Alias for [crossEntropy] provided for PyTorch naming parity.
-GpuArray<T> cross_entropy<T extends DTypeTag>(
-  GpuArray<T> logits,
-  GpuArray<DTypeTag> targets, {
-  LossReduction reduction = LossReduction.mean,
-}) => crossEntropy(logits, targets, reduction: reduction);

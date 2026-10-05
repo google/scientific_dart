@@ -561,6 +561,384 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 ''';
 
+const String _toContiguousF32Shader =
+    '''
+$linalgDf64WgslLibrary
+$_stridedIndexWgsl
+
+@group(0) @binding(0) var<storage, read> input_words: array<u32>;
+@group(0) @binding(1) var<storage, read_write> out_f32: array<f32>;
+@group(0) @binding(2) var<uniform> params: StridedParams;
+
+fn read_as_f32(u_byte: u32, code: u32) -> f32 {
+  let word_idx = u_byte >> 2u;
+  let byte_shift = (u_byte & 3u) * 8u;
+  switch (code) {
+    case 0u: {
+      let v = unpack_f64_df64(vec2<u32>(input_words[word_idx], input_words[word_idx + 1u]));
+      return v.x + v.y;
+    }
+    case 1u: {
+      return bitcast<f32>(input_words[word_idx]);
+    }
+    case 2u: {
+      let half_bits = (input_words[word_idx] >> byte_shift) & 0xFFFFu;
+      return unpack2x16float(half_bits).x;
+    }
+    case 3u: {
+      let bf_bits = (input_words[word_idx] >> byte_shift) & 0xFFFFu;
+      return bitcast<f32>(bf_bits << 16u);
+    }
+    case 4u: {
+      let v = i64_to_df64(input_words[word_idx], input_words[word_idx + 1u]);
+      return v.x + v.y;
+    }
+    case 5u: {
+      return f32(bitcast<i32>(input_words[word_idx]));
+    }
+    case 6u: {
+      let raw = (input_words[word_idx] >> byte_shift) & 0xFFFFu;
+      return f32((bitcast<i32>(raw) << 16) >> 16);
+    }
+    case 7u: {
+      let raw = (input_words[word_idx] >> byte_shift) & 0xFFu;
+      return f32((bitcast<i32>(raw) << 24) >> 24);
+    }
+    case 8u: {
+      let v = u64_to_df64(input_words[word_idx], input_words[word_idx + 1u]);
+      return v.x + v.y;
+    }
+    case 9u: {
+      return f32(input_words[word_idx]);
+    }
+    case 10u: {
+      return f32((input_words[word_idx] >> byte_shift) & 0xFFFFu);
+    }
+    case 11u: {
+      return f32((input_words[word_idx] >> byte_shift) & 0xFFu);
+    }
+    case 12u: {
+      let raw = (input_words[word_idx] >> byte_shift) & 0xFFu;
+      return select(0.0, 1.0, raw != 0u);
+    }
+    case 13u: {
+      return bitcast<f32>(input_words[word_idx]);
+    }
+    default: {
+      let v = unpack_f64_df64(vec2<u32>(input_words[word_idx], input_words[word_idx + 1u]));
+      return v.x + v.y;
+    }
+  }
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.total_elements) { return; }
+  let u_byte = compute_byte_offset(params, i);
+  out_f32[i] = read_as_f32(u_byte, params.dtype_code);
+}
+''';
+
+const String _toContiguousC64Shader =
+    '''
+$linalgDf64WgslLibrary
+$_stridedIndexWgsl
+
+@group(0) @binding(0) var<storage, read> input_words: array<u32>;
+@group(0) @binding(1) var<storage, read_write> out_c64: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: StridedParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.total_elements) { return; }
+  let u_byte = compute_byte_offset(params, i);
+  let word_idx = u_byte >> 2u;
+  let byte_shift = (u_byte & 3u) * 8u;
+  var re = 0.0;
+  var im = 0.0;
+  switch (params.dtype_code) {
+    case 14u: {
+      let re_v = unpack_f64_df64(vec2<u32>(input_words[word_idx], input_words[word_idx + 1u]));
+      let im_v = unpack_f64_df64(vec2<u32>(input_words[word_idx + 2u], input_words[word_idx + 3u]));
+      re = re_v.x + re_v.y;
+      im = im_v.x + im_v.y;
+    }
+    case 13u: {
+      re = bitcast<f32>(input_words[word_idx]);
+      im = bitcast<f32>(input_words[word_idx + 1u]);
+    }
+    case 0u: {
+      let re_v = unpack_f64_df64(vec2<u32>(input_words[word_idx], input_words[word_idx + 1u]));
+      re = re_v.x + re_v.y;
+    }
+    case 1u: {
+      re = bitcast<f32>(input_words[word_idx]);
+    }
+    case 2u: {
+      let half_bits = (input_words[word_idx] >> byte_shift) & 0xFFFFu;
+      re = unpack2x16float(half_bits).x;
+    }
+    case 3u: {
+      let bf_bits = (input_words[word_idx] >> byte_shift) & 0xFFFFu;
+      re = bitcast<f32>(bf_bits << 16u);
+    }
+    case 4u: {
+      let v = i64_to_df64(input_words[word_idx], input_words[word_idx + 1u]);
+      re = v.x + v.y;
+    }
+    case 5u: {
+      re = f32(bitcast<i32>(input_words[word_idx]));
+    }
+    case 6u: {
+      let raw = (input_words[word_idx] >> byte_shift) & 0xFFFFu;
+      re = f32((bitcast<i32>(raw) << 16) >> 16);
+    }
+    case 7u: {
+      let raw = (input_words[word_idx] >> byte_shift) & 0xFFu;
+      re = f32((bitcast<i32>(raw) << 24) >> 24);
+    }
+    case 8u: {
+      let v = u64_to_df64(input_words[word_idx], input_words[word_idx + 1u]);
+      re = v.x + v.y;
+    }
+    case 9u: {
+      re = f32(input_words[word_idx]);
+    }
+    case 10u: {
+      re = f32((input_words[word_idx] >> byte_shift) & 0xFFFFu);
+    }
+    case 11u: {
+      re = f32((input_words[word_idx] >> byte_shift) & 0xFFu);
+    }
+    default: {
+      let raw = (input_words[word_idx] >> byte_shift) & 0xFFu;
+      re = select(0.0, 1.0, raw != 0u);
+    }
+  }
+  out_c64[i] = vec2<f32>(re, im);
+}
+''';
+
+const String _fromF32ToArrayWordShader =
+    '''
+$linalgDf64WgslLibrary
+$_stridedIndexWgsl
+
+@group(0) @binding(0) var<storage, read> in_f32: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out_words: array<u32>;
+@group(0) @binding(2) var<uniform> params: StridedParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.total_elements) { return; }
+  let f = in_f32[i];
+  let u_byte = compute_byte_offset(params, i);
+  let word_idx = u_byte >> 2u;
+  switch (params.dtype_code) {
+    case 1u: {
+      out_words[word_idx] = bitcast<u32>(f);
+    }
+    case 0u: {
+      let bits = pack_df64_f64(df64_from_f32(f));
+      out_words[word_idx] = bits.x;
+      out_words[word_idx + 1u] = bits.y;
+    }
+    case 4u: {
+      let iv = i32(round(f));
+      out_words[word_idx] = bitcast<u32>(iv);
+      out_words[word_idx + 1u] = select(0u, 0xFFFFFFFFu, iv < 0);
+    }
+    case 5u: {
+      out_words[word_idx] = bitcast<u32>(i32(round(f)));
+    }
+    case 8u: {
+      let uv = u32(max(0.0, round(f)));
+      out_words[word_idx] = uv;
+      out_words[word_idx + 1u] = 0u;
+    }
+    case 9u: {
+      out_words[word_idx] = u32(max(0.0, round(f)));
+    }
+    case 13u: {
+      out_words[word_idx] = bitcast<u32>(f);
+      out_words[word_idx + 1u] = 0u;
+    }
+    default: {
+      let bits = pack_df64_f64(df64_from_f32(f));
+      out_words[word_idx] = bits.x;
+      out_words[word_idx + 1u] = bits.y;
+      out_words[word_idx + 2u] = 0u;
+      out_words[word_idx + 3u] = 0u;
+    }
+  }
+}
+''';
+
+const String _fromF32ToArraySubwordShader =
+    '''
+$_stridedIndexWgsl
+
+@group(0) @binding(0) var<storage, read> in_f32: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out_words: array<atomic<u32>>;
+@group(0) @binding(2) var<uniform> params: StridedParams;
+
+fn atomic_write_subword(word_idx: u32, shift: u32, mask: u32, value: u32) {
+  let shifted_mask = mask << shift;
+  let shifted_val = (value & mask) << shift;
+  var old_word = atomicLoad(&out_words[word_idx]);
+  loop {
+    let new_word = (old_word & (~shifted_mask)) | shifted_val;
+    let res = atomicCompareExchangeWeak(&out_words[word_idx], old_word, new_word);
+    if (res.exchanged) { break; }
+    old_word = res.old_value;
+  }
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.total_elements) { return; }
+  let f = in_f32[i];
+  let u_byte = compute_byte_offset(params, i);
+  let word_idx = u_byte >> 2u;
+  let shift = (u_byte & 3u) * 8u;
+  switch (params.dtype_code) {
+    case 2u: {
+      let h = pack2x16float(vec2<f32>(f, 0.0)) & 0xFFFFu;
+      atomic_write_subword(word_idx, shift, 0xFFFFu, h);
+    }
+    case 3u: {
+      let bf = (bitcast<u32>(f) + 0x8000u) >> 16u;
+      atomic_write_subword(word_idx, shift, 0xFFFFu, bf);
+    }
+    case 6u: {
+      let iv = bitcast<u32>(i32(round(f))) & 0xFFFFu;
+      atomic_write_subword(word_idx, shift, 0xFFFFu, iv);
+    }
+    case 7u: {
+      let iv = bitcast<u32>(i32(round(f))) & 0xFFu;
+      atomic_write_subword(word_idx, shift, 0xFFu, iv);
+    }
+    case 10u: {
+      let uv = u32(max(0.0, round(f))) & 0xFFFFu;
+      atomic_write_subword(word_idx, shift, 0xFFFFu, uv);
+    }
+    case 11u: {
+      let uv = u32(max(0.0, round(f))) & 0xFFu;
+      atomic_write_subword(word_idx, shift, 0xFFu, uv);
+    }
+    default: {
+      let bv = select(0u, 1u, f != 0.0);
+      atomic_write_subword(word_idx, shift, 0xFFu, bv);
+    }
+  }
+}
+''';
+
+const String _fromC64ToArrayShader =
+    '''
+$linalgDf64WgslLibrary
+$_stridedIndexWgsl
+
+@group(0) @binding(0) var<storage, read> in_c64: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> out_words: array<u32>;
+@group(0) @binding(2) var<uniform> params: StridedParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let i = gid.x;
+  if (i >= params.total_elements) { return; }
+  let z = in_c64[i];
+  let u_byte = compute_byte_offset(params, i);
+  let word_idx = u_byte >> 2u;
+  switch (params.dtype_code) {
+    case 13u: {
+      out_words[word_idx] = bitcast<u32>(z.x);
+      out_words[word_idx + 1u] = bitcast<u32>(z.y);
+    }
+    case 14u: {
+      let re_bits = pack_df64_f64(df64_from_f32(z.x));
+      let im_bits = pack_df64_f64(df64_from_f32(z.y));
+      out_words[word_idx] = re_bits.x;
+      out_words[word_idx + 1u] = re_bits.y;
+      out_words[word_idx + 2u] = im_bits.x;
+      out_words[word_idx + 3u] = im_bits.y;
+    }
+    case 0u: {
+      let re_bits = pack_df64_f64(df64_from_f32(z.x));
+      out_words[word_idx] = re_bits.x;
+      out_words[word_idx + 1u] = re_bits.y;
+    }
+    default: {
+      out_words[word_idx] = bitcast<u32>(z.x);
+    }
+  }
+}
+''';
+
+/// Allocates and populates a contiguous `Float32` (`array<f32>`) [GpuBuffer]
+/// from [input] on GPU.
+GpuBuffer toContiguousFloat32Buffer(GpuArray<DTypeTag> input) {
+  final count = input.size;
+  final byteLength = math.max(1, count) * 4;
+  final resultBuffer = input.device.createBuffer(sizeInBytes: byteLength);
+  if (count == 0) return resultBuffer;
+
+  final module = getOrCreateLinalgShader(
+    'linalg_to_f32_contiguous',
+    () => _toContiguousF32Shader,
+    workgroupSize: 64,
+  );
+  final uniforms = _packStridedUniforms(
+    count,
+    input.ndim,
+    input.offsetElements,
+    input.dtype,
+    input.shape,
+    input.strides,
+  );
+  input.device.backend.dispatchComputePipeline(
+    shaderModule: module,
+    buffers: [input.buffer, resultBuffer],
+    uniforms: uniforms,
+    workgroupsX: (count + 63) ~/ 64,
+  );
+  return resultBuffer;
+}
+
+/// Allocates and populates a contiguous `Complex64` (`array<vec2<f32>>`)
+/// [GpuBuffer] from [input] on GPU.
+GpuBuffer toContiguousComplex64Buffer(GpuArray<DTypeTag> input) {
+  final count = input.size;
+  final byteLength = math.max(1, count) * 8;
+  final resultBuffer = input.device.createBuffer(sizeInBytes: byteLength);
+  if (count == 0) return resultBuffer;
+
+  final module = getOrCreateLinalgShader(
+    'linalg_to_c64_contiguous',
+    () => _toContiguousC64Shader,
+    workgroupSize: 64,
+  );
+  final uniforms = _packStridedUniforms(
+    count,
+    input.ndim,
+    input.offsetElements,
+    input.dtype,
+    input.shape,
+    input.strides,
+  );
+  input.device.backend.dispatchComputePipeline(
+    shaderModule: module,
+    buffers: [input.buffer, resultBuffer],
+    uniforms: uniforms,
+    workgroupsX: (count + 63) ~/ 64,
+  );
+  return resultBuffer;
+}
+
 /// Allocates and populates a contiguous `Float64` (`array<vec2<u32>>`)
 /// [GpuBuffer] from [input] on GPU.
 GpuBuffer toContiguousFloat64Buffer(GpuArray<DTypeTag> input) {
@@ -619,6 +997,100 @@ GpuBuffer toContiguousComplex128Buffer(GpuArray<DTypeTag> input) {
     workgroupsX: (count + 63) ~/ 64,
   );
   return resultBuffer;
+}
+
+/// Writes a contiguous `Float32` [sourceF32] buffer into [out] (if provided) or
+/// a newly allocated [GpuArray] of [shape] and [targetDType] on [device].
+GpuArray<T> writeFloat32BufferToArray<T extends DTypeTag>(
+  GpuDevice device,
+  GpuBuffer sourceF32,
+  List<int> shape,
+  DType targetDType, {
+  GpuArray<T>? out,
+  String outParamName = 'out',
+}) {
+  validateLinalgOut(out, device, shape, targetDType, paramName: outParamName);
+  final destination =
+      out ?? GpuArray<T>.empty(shape, targetDType as DType<T>, device: device);
+  final count = destination.size;
+  if (count == 0) return destination;
+
+  final isSubword = switch (targetDType) {
+    DType.float16 ||
+    DType.bfloat16 ||
+    DType.int16 ||
+    DType.int8 ||
+    DType.uint16 ||
+    DType.uint8 ||
+    DType.boolean => true,
+    DType.float64 ||
+    DType.float32 ||
+    DType.int64 ||
+    DType.int32 ||
+    DType.uint64 ||
+    DType.uint32 ||
+    DType.complex64 ||
+    DType.complex128 => false,
+  };
+
+  final module = getOrCreateLinalgShader(
+    isSubword ? 'linalg_from_f32_subword' : 'linalg_from_f32_word',
+    () => isSubword ? _fromF32ToArraySubwordShader : _fromF32ToArrayWordShader,
+    workgroupSize: 64,
+  );
+  final uniforms = _packStridedUniforms(
+    count,
+    destination.ndim,
+    destination.offsetElements,
+    targetDType,
+    destination.shape,
+    destination.strides,
+  );
+  device.backend.dispatchComputePipeline(
+    shaderModule: module,
+    buffers: [sourceF32, destination.buffer],
+    uniforms: uniforms,
+    workgroupsX: (count + 63) ~/ 64,
+  );
+  return destination;
+}
+
+/// Writes a contiguous `Complex64` [sourceC64] buffer into [out] (if provided)
+/// or a newly allocated [GpuArray] of [shape] and [targetDType] on [device].
+GpuArray<T> writeComplex64BufferToArray<T extends DTypeTag>(
+  GpuDevice device,
+  GpuBuffer sourceC64,
+  List<int> shape,
+  DType targetDType, {
+  GpuArray<T>? out,
+  String outParamName = 'out',
+}) {
+  validateLinalgOut(out, device, shape, targetDType, paramName: outParamName);
+  final destination =
+      out ?? GpuArray<T>.empty(shape, targetDType as DType<T>, device: device);
+  final count = destination.size;
+  if (count == 0) return destination;
+
+  final module = getOrCreateLinalgShader(
+    'linalg_from_c64_word',
+    () => _fromC64ToArrayShader,
+    workgroupSize: 64,
+  );
+  final uniforms = _packStridedUniforms(
+    count,
+    destination.ndim,
+    destination.offsetElements,
+    targetDType,
+    destination.shape,
+    destination.strides,
+  );
+  device.backend.dispatchComputePipeline(
+    shaderModule: module,
+    buffers: [sourceC64, destination.buffer],
+    uniforms: uniforms,
+    workgroupsX: (count + 63) ~/ 64,
+  );
+  return destination;
 }
 
 /// Writes a contiguous `Float64` [sourceF64] buffer into [out] (if provided) or
@@ -731,6 +1203,19 @@ GpuArray<T> copyGpuArray<T extends DTypeTag>(
   );
   return ResourceScope.scope(() {
     if (isComplexDType(source.dtype)) {
+      if (isSinglePrecisionDType(source.dtype)) {
+        final buffer = toContiguousComplex64Buffer(source);
+        final output = writeComplex64BufferToArray<T>(
+          source.device,
+          buffer,
+          source.shape,
+          source.dtype,
+          out: out,
+          outParamName: outParamName,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      }
       final buffer = toContiguousComplex128Buffer(source);
       final output = writeComplex128BufferToArray<T>(
         source.device,
@@ -743,6 +1228,19 @@ GpuArray<T> copyGpuArray<T extends DTypeTag>(
       if (out == null) output.detachToParentScope();
       return output;
     } else {
+      if (isSinglePrecisionDType(source.dtype)) {
+        final buffer = toContiguousFloat32Buffer(source);
+        final output = writeFloat32BufferToArray<T>(
+          source.device,
+          buffer,
+          source.shape,
+          source.dtype,
+          out: out,
+          outParamName: outParamName,
+        );
+        if (out == null) output.detachToParentScope();
+        return output;
+      }
       final buffer = toContiguousFloat64Buffer(source);
       final output = writeFloat64BufferToArray<T>(
         source.device,
@@ -757,6 +1255,56 @@ GpuArray<T> copyGpuArray<T extends DTypeTag>(
     }
   });
 }
+
+const String _sumLastAxisF32Shader = r'''
+struct SumParams {
+  outer_size: u32,
+  axis_len: u32,
+  pad0: u32,
+  pad1: u32,
+}
+
+@group(0) @binding(0) var<storage, read> in_f32: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out_f32: array<f32>;
+@group(0) @binding(2) var<uniform> params: SumParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let row = gid.x;
+  if (row >= params.outer_size) { return; }
+  var acc: f32 = 0.0;
+  let base = row * params.axis_len;
+  for (var j: u32 = 0u; j < params.axis_len; j = j + 1u) {
+    acc = acc + in_f32[base + j];
+  }
+  out_f32[row] = acc;
+}
+''';
+
+const String _sumLastAxisC64Shader = r'''
+struct SumParams {
+  outer_size: u32,
+  axis_len: u32,
+  pad0: u32,
+  pad1: u32,
+}
+
+@group(0) @binding(0) var<storage, read> in_c64: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> out_c64: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: SumParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let row = gid.x;
+  if (row >= params.outer_size) { return; }
+  var acc = vec2<f32>(0.0, 0.0);
+  let base = row * params.axis_len;
+  for (var j: u32 = 0u; j < params.axis_len; j = j + 1u) {
+    acc = acc + in_c64[base + j];
+  }
+  out_c64[row] = acc;
+}
+''';
 
 const String _sumLastAxisF64Shader =
     '''
@@ -809,7 +1357,9 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   let base = row * params.axis_len;
   for (var j: u32 = 0u; j < params.axis_len; j = j + 1u) {
     let idx = (base + j) * 2u;
-    let val = unpack_c128_cdf64(in_c128[idx], in_c128[idx + 1u]);
+    let re = unpack_f64_df64(in_c128[idx]);
+    let im = unpack_f64_df64(in_c128[idx + 1u]);
+    let val = vec4<f32>(re.x, re.y, im.x, im.y);
     acc = cdf64_add(acc, val);
   }
   let out_idx = row * 2u;
@@ -818,7 +1368,8 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 ''';
 
-/// Sums [source] along its last axis on GPU using `df64` / `cdf64` precision.
+/// Sums [source] along its last axis on GPU using native `f32`/`c64` or
+/// `df64`/`cdf64` precision.
 GpuArray<T> sumLastAxisGpu<T extends DTypeTag>(
   GpuArray<T> source, {
   required List<int> resultShape,
@@ -839,6 +1390,32 @@ GpuArray<T> sumLastAxisGpu<T extends DTypeTag>(
       return emptyOut;
     }
     if (isComplexDType(source.dtype)) {
+      if (isSinglePrecisionDType(source.dtype)) {
+        final inBuffer = toContiguousComplex64Buffer(source);
+        final outBuffer = source.device.createBuffer(
+          sizeInBytes: math.max(outerSize * 8, 8),
+        );
+        final module = getOrCreateLinalgShader(
+          'linalg_sum_last_c64',
+          () => _sumLastAxisC64Shader,
+          workgroupSize: 64,
+        );
+        source.device.backend.dispatchComputePipeline(
+          shaderModule: module,
+          buffers: [inBuffer, outBuffer],
+          uniforms: <int>[outerSize, axisLength, 0, 0],
+          workgroupsX: (outerSize + 63) ~/ 64,
+        );
+        final result = writeComplex64BufferToArray<T>(
+          source.device,
+          outBuffer,
+          resultShape,
+          source.dtype,
+          out: out,
+        );
+        if (out == null) result.detachToParentScope();
+        return result;
+      }
       final inBuffer = toContiguousComplex128Buffer(source);
       final outBuffer = source.device.createBuffer(
         sizeInBytes: math.max(outerSize * 16, 16),
@@ -864,6 +1441,32 @@ GpuArray<T> sumLastAxisGpu<T extends DTypeTag>(
       if (out == null) result.detachToParentScope();
       return result;
     } else {
+      if (isSinglePrecisionDType(source.dtype)) {
+        final inBuffer = toContiguousFloat32Buffer(source);
+        final outBuffer = source.device.createBuffer(
+          sizeInBytes: math.max(outerSize * 4, 4),
+        );
+        final module = getOrCreateLinalgShader(
+          'linalg_sum_last_f32',
+          () => _sumLastAxisF32Shader,
+          workgroupSize: 64,
+        );
+        source.device.backend.dispatchComputePipeline(
+          shaderModule: module,
+          buffers: [inBuffer, outBuffer],
+          uniforms: <int>[outerSize, axisLength, 0, 0],
+          workgroupsX: (outerSize + 63) ~/ 64,
+        );
+        final result = writeFloat32BufferToArray<T>(
+          source.device,
+          outBuffer,
+          resultShape,
+          source.dtype,
+          out: out,
+        );
+        if (out == null) result.detachToParentScope();
+        return result;
+      }
       final inBuffer = toContiguousFloat64Buffer(source);
       final outBuffer = source.device.createBuffer(
         sizeInBytes: math.max(outerSize * 8, 8),

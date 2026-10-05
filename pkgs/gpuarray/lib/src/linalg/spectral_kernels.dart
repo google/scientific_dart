@@ -652,34 +652,591 @@ fn main() {
 }
 ''';
 
+const String _svdF32Shader = '''
+struct SvdParams {
+  m: u32,
+  n: u32,
+  u_cols: u32,
+  vt_rows: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> work_b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> work_u_full: array<f32>;
+@group(0) @binding(3) var<storage, read_write> work_v_full: array<f32>;
+@group(0) @binding(4) var<storage, read_write> out_u: array<f32>;
+@group(0) @binding(5) var<storage, read_write> out_s: array<f32>;
+@group(0) @binding(6) var<storage, read_write> out_vt: array<f32>;
+@group(0) @binding(7) var<uniform> params: SvdParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let m = params.m;
+  let n = params.n;
+  let transposed = m < n;
+  let p = max(m, n);
+  let q = min(m, n);
+
+  for (var r = 0u; r < p; r = r + 1u) {
+    for (var c = 0u; c < q; c = c + 1u) {
+      if (!transposed) {
+        work_b[r * q + c] = in_a[r * n + c];
+      } else {
+        work_b[r * q + c] = in_a[c * n + r];
+      }
+    }
+  }
+
+  for (var r = 0u; r < q; r = r + 1u) {
+    for (var c = 0u; c < q; c = c + 1u) {
+      work_v_full[r * q + c] = select(0.0, 1.0, r == c);
+    }
+  }
+
+  for (var sweep = 0u; sweep < 35u; sweep = sweep + 1u) {
+    var max_off = 0.0;
+    for (var i = 0u; i < q; i = i + 1u) {
+      for (var j = i + 1u; j < q; j = j + 1u) {
+        var app = 0.0;
+        var aqq = 0.0;
+        var apq = 0.0;
+        for (var r = 0u; r < p; r = r + 1u) {
+          let bri = work_b[r * q + i];
+          let brj = work_b[r * q + j];
+          app = app + bri * bri;
+          aqq = aqq + brj * brj;
+          apq = apq + bri * brj;
+        }
+        let abs_apq = abs(apq);
+        let scale_ij = sqrt(max(0.0, app * aqq));
+        if (abs_apq > 1e-7 * scale_ij && abs_apq > 0.0) {
+          if (abs_apq > max_off) {
+            max_off = abs_apq;
+          }
+          let diff = aqq - app;
+          let tau = diff / (2.0 * apq);
+          let abs_tau = abs(tau);
+          var t_mag = 0.0;
+          if (abs_tau > 1e4) {
+            t_mag = 1.0 / (2.0 * abs_tau);
+          } else {
+            t_mag = 1.0 / (abs_tau + sqrt(1.0 + tau * tau));
+          }
+          let t = select(-t_mag, t_mag, tau >= 0.0);
+          let c_rot = 1.0 / sqrt(1.0 + t * t);
+          let s_rot = t * c_rot;
+
+          for (var r = 0u; r < p; r = r + 1u) {
+            let bri = work_b[r * q + i];
+            let brj = work_b[r * q + j];
+            work_b[r * q + i] = c_rot * bri - s_rot * brj;
+            work_b[r * q + j] = s_rot * bri + c_rot * brj;
+          }
+          for (var r = 0u; r < q; r = r + 1u) {
+            let vri = work_v_full[r * q + i];
+            let vrj = work_v_full[r * q + j];
+            work_v_full[r * q + i] = c_rot * vri - s_rot * vrj;
+            work_v_full[r * q + j] = s_rot * vri + c_rot * vrj;
+          }
+        }
+      }
+    }
+    if (max_off == 0.0) {
+      break;
+    }
+  }
+
+  for (var j = 0u; j < q; j = j + 1u) {
+    var sum_sq = 0.0;
+    for (var r = 0u; r < p; r = r + 1u) {
+      let brj = work_b[r * q + j];
+      sum_sq = sum_sq + brj * brj;
+    }
+    out_s[j] = sqrt(sum_sq);
+  }
+
+  for (var i = 0u; i < q; i = i + 1u) {
+    var max_idx = i;
+    var max_val = out_s[i];
+    for (var j = i + 1u; j < q; j = j + 1u) {
+      let sj = out_s[j];
+      if (sj > max_val) {
+        max_val = sj;
+        max_idx = j;
+      }
+    }
+    if (max_idx != i) {
+      let tmp_s = out_s[i];
+      out_s[i] = out_s[max_idx];
+      out_s[max_idx] = tmp_s;
+      for (var r = 0u; r < p; r = r + 1u) {
+        let tmp_b = work_b[r * q + i];
+        work_b[r * q + i] = work_b[r * q + max_idx];
+        work_b[r * q + max_idx] = tmp_b;
+      }
+      for (var r = 0u; r < q; r = r + 1u) {
+        let tmp_v = work_v_full[r * q + i];
+        work_v_full[r * q + i] = work_v_full[r * q + max_idx];
+        work_v_full[r * q + max_idx] = tmp_v;
+      }
+    }
+  }
+
+  let s0 = out_s[0];
+  let tol = max(1e-6 * s0, 1e-30);
+  var rank_count = 0u;
+  for (var j = 0u; j < q; j = j + 1u) {
+    let sj = out_s[j];
+    if (sj > tol) {
+      for (var r = 0u; r < p; r = r + 1u) {
+        work_u_full[r * p + j] = work_b[r * q + j] / sj;
+      }
+      rank_count = j + 1u;
+    } else {
+      break;
+    }
+  }
+
+  for (var col = rank_count; col < p; col = col + 1u) {
+    for (var cand = 0u; cand < p; cand = cand + 1u) {
+      for (var r = 0u; r < p; r = r + 1u) {
+        work_u_full[r * p + col] = select(0.0, 1.0, r == cand);
+      }
+      for (var gs_pass = 0u; gs_pass < 2u; gs_pass = gs_pass + 1u) {
+        for (var prev = 0u; prev < col; prev = prev + 1u) {
+          var dot_val = 0.0;
+          for (var r = 0u; r < p; r = r + 1u) {
+            dot_val = dot_val + work_u_full[r * p + prev] * work_u_full[r * p + col];
+          }
+          for (var r = 0u; r < p; r = r + 1u) {
+            work_u_full[r * p + col] = work_u_full[r * p + col] - dot_val * work_u_full[r * p + prev];
+          }
+        }
+      }
+      var norm_sq = 0.0;
+      for (var r = 0u; r < p; r = r + 1u) {
+        let ur_col = work_u_full[r * p + col];
+        norm_sq = norm_sq + ur_col * ur_col;
+      }
+      if (norm_sq > 0.1) {
+        let inv_norm = 1.0 / sqrt(norm_sq);
+        for (var r = 0u; r < p; r = r + 1u) {
+          work_u_full[r * p + col] = work_u_full[r * p + col] * inv_norm;
+        }
+        break;
+      }
+    }
+  }
+
+  let u_cols = params.u_cols;
+  let vt_rows = params.vt_rows;
+  if (!transposed) {
+    for (var r = 0u; r < m; r = r + 1u) {
+      for (var c = 0u; c < u_cols; c = c + 1u) {
+        out_u[r * u_cols + c] = work_u_full[r * p + c];
+      }
+    }
+    for (var r = 0u; r < vt_rows; r = r + 1u) {
+      for (var c = 0u; c < n; c = c + 1u) {
+        out_vt[r * n + c] = work_v_full[c * q + r];
+      }
+    }
+  } else {
+    for (var r = 0u; r < m; r = r + 1u) {
+      for (var c = 0u; c < u_cols; c = c + 1u) {
+        out_u[r * u_cols + c] = work_v_full[r * q + c];
+      }
+    }
+    for (var r = 0u; r < vt_rows; r = r + 1u) {
+      for (var c = 0u; c < n; c = c + 1u) {
+        out_vt[r * n + c] = work_u_full[c * p + r];
+      }
+    }
+  }
+}
+''';
+
+const String _eigF32Shader = '''
+struct EigParams {
+  n: u32,
+  compute_vectors: u32,
+  pad0: u32,
+  pad1: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> work_h: array<f32>;
+@group(0) @binding(2) var<storage, read_write> work_q: array<f32>;
+@group(0) @binding(3) var<storage, read_write> work_m: array<vec2<f32>>;
+@group(0) @binding(4) var<storage, read_write> out_w: array<vec2<f32>>;
+@group(0) @binding(5) var<storage, read_write> out_v: array<vec2<f32>>;
+@group(0) @binding(6) var<uniform> params: EigParams;
+
+fn c64_mul(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+fn c64_div(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+  let denom = b.x * b.x + b.y * b.y;
+  return vec2<f32>(
+    (a.x * b.x + a.y * b.y) / denom,
+    (a.y * b.x - a.x * b.y) / denom
+  );
+}
+
+fn c64_abs2(a: vec2<f32>) -> f32 {
+  return a.x * a.x + a.y * a.y;
+}
+
+@compute @workgroup_size(1)
+fn main() {
+  let n = params.n;
+  for (var r = 0u; r < n; r = r + 1u) {
+    for (var c = 0u; c < n; c = c + 1u) {
+      work_h[r * n + c] = in_a[r * n + c];
+      work_q[r * n + c] = select(0.0, 1.0, r == c);
+    }
+  }
+
+  if (n > 2u) {
+    for (var k = 0u; k < n - 2u; k = k + 1u) {
+      var norm_sq = 0.0;
+      for (var i = k + 1u; i < n; i = i + 1u) {
+        let hik = work_h[i * n + k];
+        norm_sq = norm_sq + hik * hik;
+      }
+      let norm_x = sqrt(norm_sq);
+      if (norm_x > 0.0) {
+        let x0 = work_h[(k + 1u) * n + k];
+        let alpha = select(norm_x, -norm_x, x0 >= 0.0);
+        let v0 = x0 - alpha;
+        var tail_sq = 0.0;
+        for (var i = k + 2u; i < n; i = i + 1u) {
+          let vi = work_h[i * n + k];
+          tail_sq = tail_sq + vi * vi;
+        }
+        let v_norm_sq = v0 * v0 + tail_sq;
+        if (v_norm_sq > 0.0) {
+          work_h[(k + 1u) * n + k] = v0;
+          for (var c = k + 1u; c < n; c = c + 1u) {
+            var dot_v = 0.0;
+            for (var i = k + 1u; i < n; i = i + 1u) {
+              dot_v = dot_v + work_h[i * n + k] * work_h[i * n + c];
+            }
+            let scale = (2.0 * dot_v) / v_norm_sq;
+            for (var i = k + 1u; i < n; i = i + 1u) {
+              work_h[i * n + c] = work_h[i * n + c] - scale * work_h[i * n + k];
+            }
+          }
+          for (var r = 0u; r < n; r = r + 1u) {
+            var dot_v = 0.0;
+            for (var i = k + 1u; i < n; i = i + 1u) {
+              dot_v = dot_v + work_h[r * n + i] * work_h[i * n + k];
+            }
+            let scale = (2.0 * dot_v) / v_norm_sq;
+            for (var i = k + 1u; i < n; i = i + 1u) {
+              work_h[r * n + i] = work_h[r * n + i] - scale * work_h[i * n + k];
+            }
+          }
+          for (var r = 0u; r < n; r = r + 1u) {
+            var dot_v = 0.0;
+            for (var i = k + 1u; i < n; i = i + 1u) {
+              dot_v = dot_v + work_q[r * n + i] * work_h[i * n + k];
+            }
+            let scale = (2.0 * dot_v) / v_norm_sq;
+            for (var i = k + 1u; i < n; i = i + 1u) {
+              work_q[r * n + i] = work_q[r * n + i] - scale * work_h[i * n + k];
+            }
+          }
+          work_h[(k + 1u) * n + k] = alpha;
+          for (var i = k + 2u; i < n; i = i + 1u) {
+            work_h[i * n + k] = 0.0;
+          }
+        }
+      }
+    }
+  }
+
+  if (n > 1u) {
+    var active_end = i32(n) - 1;
+    var iter = 0u;
+    loop {
+      if (active_end <= 0 || iter >= 300u) {
+        break;
+      }
+      var l = active_end;
+      loop {
+        if (l <= 0) { break; }
+        let sub = abs(work_h[u32(l) * n + u32(l - 1)]);
+        let diag_sum = abs(work_h[u32(l - 1) * n + u32(l - 1)]) + abs(work_h[u32(l) * n + u32(l)]);
+        if (sub <= 1e-6 * max(1e-12, diag_sum)) {
+          work_h[u32(l) * n + u32(l - 1)] = 0.0;
+          break;
+        }
+        l = l - 1;
+      }
+      if (l == active_end) {
+        active_end = active_end - 1;
+        continue;
+      }
+      if (l == active_end - 1) {
+        let p_idx = u32(active_end - 1);
+        let q_idx = u32(active_end);
+        let a = work_h[p_idx * n + p_idx];
+        let b = work_h[p_idx * n + q_idx];
+        let c = work_h[q_idx * n + p_idx];
+        let d = work_h[q_idx * n + q_idx];
+        let half_diff = 0.5 * (a - d);
+        let disc = half_diff * half_diff + b * c;
+        if (disc >= 0.0) {
+          let root = sqrt(disc);
+          let shift = d + select(half_diff + root, half_diff - root, half_diff < 0.0);
+          var vx = a - shift;
+          var vy = c;
+          if (abs(b) > abs(c)) {
+            vx = b;
+            vy = shift - a;
+          }
+          let r_len = sqrt(vx * vx + vy * vy);
+          if (r_len > 0.0) {
+            let cs = vx / r_len;
+            let sn = vy / r_len;
+            for (var col = p_idx; col < n; col = col + 1u) {
+              let hp = work_h[p_idx * n + col];
+              let hq = work_h[q_idx * n + col];
+              work_h[p_idx * n + col] = cs * hp + sn * hq;
+              work_h[q_idx * n + col] = cs * hq - sn * hp;
+            }
+            for (var row = 0u; row <= q_idx; row = row + 1u) {
+              let hp = work_h[row * n + p_idx];
+              let hq = work_h[row * n + q_idx];
+              work_h[row * n + p_idx] = cs * hp + sn * hq;
+              work_h[row * n + q_idx] = cs * hq - sn * hp;
+            }
+            for (var row = 0u; row < n; row = row + 1u) {
+              let qp = work_q[row * n + p_idx];
+              let qq = work_q[row * n + q_idx];
+              work_q[row * n + p_idx] = cs * qp + sn * qq;
+              work_q[row * n + q_idx] = cs * qq - sn * qp;
+            }
+          }
+          work_h[q_idx * n + p_idx] = 0.0;
+        }
+        active_end = active_end - 2;
+        continue;
+      }
+
+      iter = iter + 1u;
+      let p_idx = u32(active_end - 1);
+      let q_idx = u32(active_end);
+      let a = work_h[p_idx * n + p_idx];
+      let b = work_h[p_idx * n + q_idx];
+      let c = work_h[q_idx * n + p_idx];
+      let d = work_h[q_idx * n + q_idx];
+      let half_diff = 0.5 * (a - d);
+      let disc = half_diff * half_diff + b * c;
+      var shift = d;
+      if (disc >= 0.0) {
+        let root = sqrt(disc);
+        shift = d + select(half_diff - root, half_diff + root, half_diff >= 0.0);
+      } else if ((iter % 10u) == 0u) {
+        shift = d + abs(c);
+      }
+
+      let u_start = u32(l);
+      let u_end = u32(active_end);
+      for (var i = u_start; i <= u_end; i = i + 1u) {
+        work_h[i * n + i] = work_h[i * n + i] - shift;
+      }
+      for (var i = u_start; i < u_end; i = i + 1u) {
+        let x_val = work_h[i * n + i];
+        let y_val = work_h[(i + 1u) * n + i];
+        let r_len = sqrt(x_val * x_val + y_val * y_val);
+        var cs = 1.0;
+        var sn = 0.0;
+        if (r_len > 0.0) {
+          cs = x_val / r_len;
+          sn = y_val / r_len;
+        }
+        out_w[i] = vec2<f32>(cs, sn);
+        for (var col = i; col < n; col = col + 1u) {
+          let hi = work_h[i * n + col];
+          let hi1 = work_h[(i + 1u) * n + col];
+          work_h[i * n + col] = cs * hi + sn * hi1;
+          work_h[(i + 1u) * n + col] = cs * hi1 - sn * hi;
+        }
+        work_h[(i + 1u) * n + i] = 0.0;
+      }
+      for (var i = u_start; i < u_end; i = i + 1u) {
+        let cs = out_w[i].x;
+        let sn = out_w[i].y;
+        for (var row = 0u; row <= i + 1u; row = row + 1u) {
+          let hi = work_h[row * n + i];
+          let hi1 = work_h[row * n + i + 1u];
+          work_h[row * n + i] = cs * hi + sn * hi1;
+          work_h[row * n + i + 1u] = cs * hi1 - sn * hi;
+        }
+        for (var row = 0u; row < n; row = row + 1u) {
+          let qi = work_q[row * n + i];
+          let qi1 = work_q[row * n + i + 1u];
+          work_q[row * n + i] = cs * qi + sn * qi1;
+          work_q[row * n + i + 1u] = cs * qi1 - sn * qi;
+        }
+      }
+      for (var i = u_start; i <= u_end; i = i + 1u) {
+        work_h[i * n + i] = work_h[i * n + i] + shift;
+      }
+    }
+  }
+
+  var idx = 0u;
+  loop {
+    if (idx >= n) { break; }
+    if (idx + 1u < n) {
+      let sub = work_h[(idx + 1u) * n + idx];
+      if (abs(sub) > 1e-6) {
+        let a = work_h[idx * n + idx];
+        let b = work_h[idx * n + idx + 1u];
+        let c = sub;
+        let d = work_h[(idx + 1u) * n + idx + 1u];
+        let mean = 0.5 * (a + d);
+        let half_diff = 0.5 * (a - d);
+        let disc = half_diff * half_diff + b * c;
+        let imag = sqrt(abs(disc));
+        out_w[idx] = vec2<f32>(mean, imag);
+        out_w[idx + 1u] = vec2<f32>(mean, -imag);
+        idx = idx + 2u;
+        continue;
+      }
+    }
+    out_w[idx] = vec2<f32>(work_h[idx * n + idx], 0.0);
+    idx = idx + 1u;
+  }
+
+  if (params.compute_vectors == 0u) {
+    return;
+  }
+
+  for (var eig_idx = 0u; eig_idx < n; eig_idx = eig_idx + 1u) {
+    let lambda = out_w[eig_idx];
+    var m_end = eig_idx;
+    if (eig_idx + 1u < n && abs(work_h[(eig_idx + 1u) * n + eig_idx]) > 1e-6) {
+      m_end = eig_idx + 1u;
+    }
+    let m_sz = m_end + 1u;
+
+    for (var r = 0u; r < m_sz; r = r + 1u) {
+      for (var c = 0u; c < m_sz; c = c + 1u) {
+        var val = vec2<f32>(work_h[r * n + c], 0.0);
+        if (r == c) {
+          val = val - lambda;
+        }
+        work_m[r * n + c] = val;
+      }
+    }
+
+    if (m_sz > 1u) {
+      for (var k = 0u; k < m_sz - 1u; k = k + 1u) {
+        let diag_k = work_m[k * n + k];
+        let sub_k = work_m[(k + 1u) * n + k];
+        if (c64_abs2(sub_k) > c64_abs2(diag_k)) {
+          for (var c = k; c < m_sz; c = c + 1u) {
+            let tmp = work_m[k * n + c];
+            work_m[k * n + c] = work_m[(k + 1u) * n + c];
+            work_m[(k + 1u) * n + c] = tmp;
+          }
+        }
+        let piv = work_m[k * n + k];
+        let elim = work_m[(k + 1u) * n + k];
+        if (c64_abs2(piv) > 1e-20 && c64_abs2(elim) > 0.0) {
+          let factor = c64_div(elim, piv);
+          work_m[(k + 1u) * n + k] = vec2<f32>(0.0, 0.0);
+          for (var c = k + 1u; c < m_sz; c = c + 1u) {
+            work_m[(k + 1u) * n + c] = work_m[(k + 1u) * n + c] - c64_mul(factor, work_m[k * n + c]);
+          }
+        }
+      }
+    }
+
+    for (var i = 0u; i < n; i = i + 1u) {
+      out_v[i * n + eig_idx] = vec2<f32>(0.0, 0.0);
+    }
+    let free_idx = m_sz - 1u;
+    out_v[free_idx * n + eig_idx] = vec2<f32>(1.0, 0.0);
+    if (free_idx > 0u) {
+      var r = i32(free_idx) - 1;
+      loop {
+        if (r < 0) { break; }
+        let ur = u32(r);
+        var sum = vec2<f32>(0.0, 0.0);
+        for (var c = ur + 1u; c <= free_idx; c = c + 1u) {
+          sum = sum + c64_mul(work_m[ur * n + c], out_v[c * n + eig_idx]);
+        }
+        var denom = work_m[ur * n + ur];
+        if (c64_abs2(denom) <= 1e-16) {
+          denom = vec2<f32>(1e-8, 0.0);
+        }
+        out_v[ur * n + eig_idx] = c64_div(-sum, denom);
+        r = r - 1;
+      }
+    }
+
+    var norm_sq = 0.0;
+    for (var r = 0u; r < n; r = r + 1u) {
+      var acc = vec2<f32>(0.0, 0.0);
+      for (var c = 0u; c <= free_idx; c = c + 1u) {
+        acc = acc + out_v[c * n + eig_idx] * work_q[r * n + c];
+      }
+      work_m[r * n] = acc;
+      norm_sq = norm_sq + c64_abs2(acc);
+    }
+    let inv_norm = 1.0 / sqrt(max(1e-30, norm_sq));
+    for (var r = 0u; r < n; r = r + 1u) {
+      out_v[r * n + eig_idx] = work_m[r * n] * inv_norm;
+    }
+  }
+}
+''';
+
 /// Dispatches the Singular Value Decomposition kernel on [device].
 ({GpuBuffer u, GpuBuffer s, GpuBuffer vt}) dispatchSvdGpu(
   GpuDevice device,
-  GpuBuffer inputF64,
+  GpuBuffer inputBuffer,
   int m,
   int n, {
   required bool fullMatrices,
+  bool singlePrecision = false,
 }) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final p = math.max(m, n);
   final q = math.min(m, n);
   final uCols = fullMatrices ? m : q;
   final vtRows = fullMatrices ? n : q;
 
-  final workB = device.createBuffer(sizeInBytes: math.max(1, p * q) * 8);
-  final workUFull = device.createBuffer(sizeInBytes: math.max(1, p * p) * 8);
-  final workVFull = device.createBuffer(sizeInBytes: math.max(1, q * q) * 8);
-  final outU = device.createBuffer(sizeInBytes: math.max(1, m * uCols) * 8);
-  final outS = device.createBuffer(sizeInBytes: math.max(1, q) * 8);
-  final outVt = device.createBuffer(sizeInBytes: math.max(1, vtRows * n) * 8);
+  final workB = device.createBuffer(
+    sizeInBytes: math.max(1, p * q) * elemBytes,
+  );
+  final workUFull = device.createBuffer(
+    sizeInBytes: math.max(1, p * p) * elemBytes,
+  );
+  final workVFull = device.createBuffer(
+    sizeInBytes: math.max(1, q * q) * elemBytes,
+  );
+  final outU = device.createBuffer(
+    sizeInBytes: math.max(1, m * uCols) * elemBytes,
+  );
+  final outS = device.createBuffer(sizeInBytes: math.max(1, q) * elemBytes);
+  final outVt = device.createBuffer(
+    sizeInBytes: math.max(1, vtRows * n) * elemBytes,
+  );
   if (m == 0 || n == 0) return (u: outU, s: outS, vt: outVt);
 
-  final module = getOrCreateLinalgShader(
-    'linalg_svd_f64',
-    () => _svdRealShader,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader('linalg_svd_f32', () => _svdF32Shader)
+      : getOrCreateLinalgShader('linalg_svd_f64', () => _svdRealShader);
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, workB, workUFull, workVFull, outU, outS, outVt],
+    buffers: [inputBuffer, workB, workUFull, workVFull, outU, outS, outVt],
     uniforms: [m, n, uCols, vtRows],
     workgroupsX: 1,
   );
@@ -689,24 +1246,34 @@ fn main() {
 /// Dispatches the general non-symmetric eigendecomposition kernel on [device].
 ({GpuBuffer eigenvalues, GpuBuffer eigenvectors}) dispatchEigGpu(
   GpuDevice device,
-  GpuBuffer inputF64,
+  GpuBuffer inputBuffer,
   int n, {
   required bool computeVectors,
+  bool singlePrecision = false,
 }) {
-  final workH = device.createBuffer(sizeInBytes: math.max(1, n * n) * 8);
-  final workQ = device.createBuffer(sizeInBytes: math.max(1, n * n) * 8);
-  final workM = device.createBuffer(sizeInBytes: math.max(1, n * n) * 16);
-  final outW = device.createBuffer(sizeInBytes: math.max(1, n) * 16);
-  final outV = device.createBuffer(sizeInBytes: math.max(1, n * n) * 16);
+  final realBytes = singlePrecision ? 4 : 8;
+  final complexBytes = singlePrecision ? 8 : 16;
+  final workH = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * realBytes,
+  );
+  final workQ = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * realBytes,
+  );
+  final workM = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * complexBytes,
+  );
+  final outW = device.createBuffer(sizeInBytes: math.max(1, n) * complexBytes);
+  final outV = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * complexBytes,
+  );
   if (n == 0) return (eigenvalues: outW, eigenvectors: outV);
 
-  final module = getOrCreateLinalgShader(
-    'linalg_eig_f64',
-    () => _eigRealShader,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader('linalg_eig_f32', () => _eigF32Shader)
+      : getOrCreateLinalgShader('linalg_eig_f64', () => _eigRealShader);
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, workH, workQ, workM, outW, outV],
+    buffers: [inputBuffer, workH, workQ, workM, outW, outV],
     uniforms: [n, computeVectors ? 1 : 0, 0, 0],
     workgroupsX: 1,
   );

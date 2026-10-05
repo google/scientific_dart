@@ -35,12 +35,14 @@ final class ReluBackward extends GradFn {
   @override
   List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
     if (!x.requiresGrad) return [null];
-    final positiveMask = x.greater(0.0);
-    final mask = positiveMask.astype(x.dtype);
-    positiveMask.dispose();
-    final result = gradOutput * mask;
-    mask.dispose();
-    return [result];
+    final gradInput = GpuArray.empty(x.shape, x.dtype, device: x.device);
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: x,
+      gradInput: gradInput,
+      op: 'relu',
+    );
+    return [gradInput];
   }
 }
 
@@ -50,10 +52,10 @@ final class SigmoidBackward extends GradFn {
   final GpuArray<DTypeTag> input;
 
   /// Cached forward output tensor $y = \sigma(x)$.
-  final GpuArray<DTypeTag> y;
+  final GpuArray<DTypeTag>? y;
 
-  /// Creates a [SigmoidBackward] node with forward [input] and cached output [y].
-  const SigmoidBackward(this.input, this.y);
+  /// Creates a [SigmoidBackward] node with forward [input] and optional cached output [y].
+  const SigmoidBackward(this.input, [this.y]);
 
   @override
   String get name => 'SigmoidBackward';
@@ -64,14 +66,18 @@ final class SigmoidBackward extends GradFn {
   @override
   List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
     if (!input.requiresGrad) return [null];
-    final negatedY = y.negate();
-    final oneMinusY = negatedY + 1.0;
-    negatedY.dispose();
-    final gradTimesY = gradOutput * y;
-    final result = gradTimesY * oneMinusY;
-    gradTimesY.dispose();
-    oneMinusY.dispose();
-    return [result];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'sigmoid',
+    );
+    return [gradInput];
   }
 }
 
@@ -81,10 +87,10 @@ final class TanhBackward extends GradFn {
   final GpuArray<DTypeTag> input;
 
   /// Cached forward output tensor $y = \tanh(x)$.
-  final GpuArray<DTypeTag> y;
+  final GpuArray<DTypeTag>? y;
 
-  /// Creates a [TanhBackward] node with forward [input] and cached output [y].
-  const TanhBackward(this.input, this.y);
+  /// Creates a [TanhBackward] node with forward [input] and optional cached output [y].
+  const TanhBackward(this.input, [this.y]);
 
   @override
   String get name => 'TanhBackward';
@@ -95,14 +101,194 @@ final class TanhBackward extends GradFn {
   @override
   List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
     if (!input.requiresGrad) return [null];
-    final ySquared = y * y;
-    final negatedYSquared = ySquared.negate();
-    ySquared.dispose();
-    final oneMinusYSquared = negatedYSquared + 1.0;
-    negatedYSquared.dispose();
-    final result = gradOutput * oneMinusYSquared;
-    oneMinusYSquared.dispose();
-    return [result];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'tanh',
+    );
+    return [gradInput];
+  }
+}
+
+/// Backward node for Gaussian Error Linear Unit (GELU) activation.
+final class GeluBackward extends GradFn {
+  /// Forward input tensor.
+  final GpuArray<DTypeTag> input;
+
+  /// Creates a [GeluBackward] node for [input].
+  const GeluBackward(this.input);
+
+  @override
+  String get name => 'GeluBackward';
+
+  @override
+  List<GpuArray<DTypeTag>> get inputs => [input];
+
+  @override
+  List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
+    if (!input.requiresGrad) return [null];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'gelu',
+    );
+    return [gradInput];
+  }
+}
+
+/// Backward node for Sigmoid Linear Unit (SiLU / Swish) activation.
+final class SiluBackward extends GradFn {
+  /// Forward input tensor.
+  final GpuArray<DTypeTag> input;
+
+  /// Creates a [SiluBackward] node for [input].
+  const SiluBackward(this.input);
+
+  @override
+  String get name => 'SiluBackward';
+
+  @override
+  List<GpuArray<DTypeTag>> get inputs => [input];
+
+  @override
+  List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
+    if (!input.requiresGrad) return [null];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'silu',
+    );
+    return [gradInput];
+  }
+}
+
+/// Backward node for Leaky ReLU activation.
+final class LeakyReluBackward extends GradFn {
+  /// Forward input tensor.
+  final GpuArray<DTypeTag> input;
+
+  /// Negative slope coefficient.
+  final double negativeSlope;
+
+  /// Creates a [LeakyReluBackward] node for [input] with [negativeSlope].
+  const LeakyReluBackward(this.input, {this.negativeSlope = 0.01});
+
+  @override
+  String get name => 'LeakyReluBackward';
+
+  @override
+  List<GpuArray<DTypeTag>> get inputs => [input];
+
+  @override
+  List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
+    if (!input.requiresGrad) return [null];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'leaky_relu',
+      param0: negativeSlope,
+    );
+    return [gradInput];
+  }
+}
+
+/// Backward node for Exponential Linear Unit (ELU) activation.
+final class EluBackward extends GradFn {
+  /// Forward input tensor.
+  final GpuArray<DTypeTag> input;
+
+  /// Scale factor for negative inputs.
+  final double alpha;
+
+  /// Creates an [EluBackward] node for [input] with [alpha].
+  const EluBackward(this.input, {this.alpha = 1.0});
+
+  @override
+  String get name => 'EluBackward';
+
+  @override
+  List<GpuArray<DTypeTag>> get inputs => [input];
+
+  @override
+  List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
+    if (!input.requiresGrad) return [null];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'elu',
+      param0: alpha,
+    );
+    return [gradInput];
+  }
+}
+
+/// Backward node for Softplus activation.
+final class SoftplusBackward extends GradFn {
+  /// Forward input tensor.
+  final GpuArray<DTypeTag> input;
+
+  /// Inverse temperature scaling factor.
+  final double beta;
+
+  /// Linear stability threshold.
+  final double threshold;
+
+  /// Creates a [SoftplusBackward] node for [input] with [beta] and [threshold].
+  const SoftplusBackward(this.input, {this.beta = 1.0, this.threshold = 20.0});
+
+  @override
+  String get name => 'SoftplusBackward';
+
+  @override
+  List<GpuArray<DTypeTag>> get inputs => [input];
+
+  @override
+  List<GpuArray<DTypeTag>?> backward(GpuArray<DTypeTag> gradOutput) {
+    if (!input.requiresGrad) return [null];
+    final gradInput = GpuArray.empty(
+      input.shape,
+      input.dtype,
+      device: input.device,
+    );
+    dispatchUnaryActivationBackward(
+      gradOutput: gradOutput,
+      savedTensor: input,
+      gradInput: gradInput,
+      op: 'softplus',
+      param0: beta,
+      param1: threshold,
+    );
+    return [gradInput];
   }
 }
 

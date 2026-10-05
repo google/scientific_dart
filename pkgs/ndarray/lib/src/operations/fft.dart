@@ -386,8 +386,10 @@ NDArray<R> fft<R extends DTypeTag>(
     throw StateError('Cannot write FFT result to a disposed output array.');
   }
   if (a.shape.isEmpty) {
-    throw ArgumentError(
-      'Cannot compute FFT on a 0-dimensional or empty scalar array',
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must not be 0-dimensional or empty scalar array (cannot compute FFT on a 0-dimensional or empty scalar array)',
     );
   }
 
@@ -400,8 +402,10 @@ NDArray<R> fft<R extends DTypeTag>(
   final lastAxisDim = a.shape[normAxis];
   final targetLen = n ?? lastAxisDim;
   if (targetLen <= 0) {
-    throw ArgumentError(
-      'Target transform length [n] must be greater than 0 (was $n)',
+    throw ArgumentError.value(
+      n,
+      'n',
+      'Must be greater than 0 (target transform length [n] was $n)',
     );
   }
 
@@ -418,20 +422,29 @@ NDArray<R> fft<R extends DTypeTag>(
   final targetDType = out?.dtype ?? expectedDType;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloatOrComplex && out.dtype != expectedDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible dtype (expected $expectedDType, got ${out.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must be $expectedDType (provided out buffer has incompatible dtype, got ${out.dtype})',
       );
     }
     if (!isFloatOrComplex &&
         out.dtype != DType.complex64 &&
         out.dtype != DType.complex128) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible dtype (expected complex64 or complex128, got ${out.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must be complex64 or complex128 (provided out buffer has incompatible dtype, got ${out.dtype})',
       );
     }
     if (!listEquals(out.shape, outShape)) {
-      throw ArgumentError('Provided out buffer has incompatible shape.');
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape (provided out buffer has incompatible shape)',
+      );
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
@@ -606,8 +619,10 @@ NDArray<R> ifft<R extends DTypeTag>(
     throw StateError('Cannot write IFFT result to a disposed output array.');
   }
   if (a.shape.isEmpty) {
-    throw ArgumentError(
-      'Cannot compute IFFT on a 0-dimensional or empty scalar array',
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must not be 0-dimensional or empty scalar array (cannot compute IFFT on a 0-dimensional or empty scalar array)',
     );
   }
 
@@ -620,8 +635,10 @@ NDArray<R> ifft<R extends DTypeTag>(
   final lastAxisDim = a.shape[normAxis];
   final targetLen = n ?? lastAxisDim;
   if (targetLen <= 0) {
-    throw ArgumentError(
-      'Target transform length [n] must be greater than 0 (was $n)',
+    throw ArgumentError.value(
+      n,
+      'n',
+      'Must be greater than 0 (target transform length [n] was $n)',
     );
   }
 
@@ -638,20 +655,29 @@ NDArray<R> ifft<R extends DTypeTag>(
   final targetDType = out?.dtype ?? expectedDType;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloatOrComplex && out.dtype != expectedDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible dtype (expected $expectedDType, got ${out.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must be $expectedDType (provided out buffer has incompatible dtype, got ${out.dtype})',
       );
     }
     if (!isFloatOrComplex &&
         out.dtype != DType.complex64 &&
         out.dtype != DType.complex128) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible dtype (expected complex64 or complex128, got ${out.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must be complex64 or complex128 (provided out buffer has incompatible dtype, got ${out.dtype})',
       );
     }
     if (!listEquals(out.shape, outShape)) {
-      throw ArgumentError('Provided out buffer has incompatible shape.');
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape (provided out buffer has incompatible shape)',
+      );
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
@@ -821,6 +847,9 @@ NDArray<T> fftshift<T extends DTypeTag>(
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot shift a disposed array.');
   }
+  if (out != null) {
+    validateOutBuffer(out);
+  }
 
   final rank = a.rank;
   if (rank == 0) {
@@ -845,13 +874,19 @@ NDArray<T> fftshift<T extends DTypeTag>(
         throw RangeError.range(axis, -rank, rank - 1, 'axes');
       }
       if (resolvedAxes.contains(norm)) {
-        throw ArgumentError('Duplicate axis $norm specified in axes.');
+        throw ArgumentError.value(
+          axis,
+          'axes',
+          'Must not contain duplicate axes (duplicate axis $norm specified in axes)',
+        );
       }
       resolvedAxes.add(norm);
     }
   } else {
-    throw ArgumentError(
-      'axes must be null, an integer, or a list of integers.',
+    throw ArgumentError.value(
+      axes,
+      'axes',
+      'Must be null, an integer, or a list of integers',
     );
   }
 
@@ -898,6 +933,9 @@ NDArray<T> ifftshift<T extends DTypeTag>(
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot shift a disposed array.');
   }
+  if (out != null) {
+    validateOutBuffer(out);
+  }
 
   final rank = a.rank;
   if (rank == 0) {
@@ -922,13 +960,19 @@ NDArray<T> ifftshift<T extends DTypeTag>(
         throw RangeError.range(axis, -rank, rank - 1, 'axes');
       }
       if (resolvedAxes.contains(norm)) {
-        throw ArgumentError('Duplicate axis $norm specified in axes.');
+        throw ArgumentError.value(
+          axis,
+          'axes',
+          'Must not contain duplicate axes (duplicate axis $norm specified in axes)',
+        );
       }
       resolvedAxes.add(norm);
     }
   } else {
-    throw ArgumentError(
-      'axes must be null, an integer, or a list of integers.',
+    throw ArgumentError.value(
+      axes,
+      'axes',
+      'Must be null, an integer, or a list of integers',
     );
   }
 
@@ -1251,15 +1295,23 @@ NDArray<Float64> fftfreq(int n, {double d = 1.0, NDArray<Float64>? out}) {
     throw StateError('Cannot write fftfreq result to a disposed output array.');
   }
   if (n <= 0) {
-    throw ArgumentError('n must be strictly positive (was $n)');
+    throw ArgumentError.value(n, 'n', 'Must be strictly positive (was $n)');
   }
   if (d == 0.0) {
-    throw ArgumentError('sample spacing d must be non-zero');
+    throw ArgumentError.value(
+      d,
+      'd',
+      'Must be non-zero (sample spacing d must be non-zero)',
+    );
   }
   if (out != null) {
     validateOutBuffer(out);
     if (!listEquals(out.shape, [n]) || out.dtype != DType.float64) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape [$n] and dtype ${DType.float64} (incompatible out buffer shape or dtype)',
+      );
     }
   }
   final val = 1.0 / (d * n);
@@ -1311,17 +1363,25 @@ NDArray<Float64> rfftfreq(int n, {double d = 1.0, NDArray<Float64>? out}) {
     );
   }
   if (n <= 0) {
-    throw ArgumentError('n must be strictly positive (was $n)');
+    throw ArgumentError.value(n, 'n', 'Must be strictly positive (was $n)');
   }
   if (d == 0.0) {
-    throw ArgumentError('sample spacing d must be non-zero');
+    throw ArgumentError.value(
+      d,
+      'd',
+      'Must be non-zero (sample spacing d must be non-zero)',
+    );
   }
   final val = 1.0 / (d * n);
   final limit = n ~/ 2 + 1;
   if (out != null) {
     validateOutBuffer(out);
     if (!listEquals(out.shape, [limit]) || out.dtype != DType.float64) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape [$limit] and dtype ${DType.float64} (incompatible out buffer shape or dtype)',
+      );
     }
   }
   final result =
@@ -1451,6 +1511,7 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
   final targetDType = out?.dtype ?? expectedDType;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloat && out.dtype != expectedDType) {
       throw ArgumentError.value(
         out.dtype,
@@ -1732,6 +1793,7 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
   final targetDType = out?.dtype ?? expectedDType;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloatOrComplex && out.dtype != expectedDType) {
       throw ArgumentError.value(
         out.dtype,
@@ -1919,7 +1981,11 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
 
   final rank = a.rank;
   if (rank == 0) {
-    throw ArgumentError('Cannot compute FFT on a 0-dimensional array.');
+    throw ArgumentError.value(
+      a.shape,
+      'a',
+      'Must not be 0-dimensional (cannot compute FFT on a 0-dimensional array)',
+    );
   }
 
   final List<int> axesResolved;
@@ -1939,7 +2005,11 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
     }
   }
   if (axesResolved.toSet().length != axesResolved.length) {
-    throw ArgumentError('axes must be unique');
+    throw ArgumentError.value(
+      axes,
+      'axes',
+      'Must be unique (axes must be unique)',
+    );
   }
 
   final List<int> sResolved;
@@ -1950,11 +2020,19 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
   }
 
   if (axesResolved.length != sResolved.length) {
-    throw ArgumentError('axes and s must have the same length');
+    throw ArgumentError.value(
+      [axesResolved.length, sResolved.length],
+      'axes, s',
+      'Must have the same length (axes and s must have the same length, got axes length ${axesResolved.length} and s length ${sResolved.length})',
+    );
   }
   for (final sz in sResolved) {
     if (sz <= 0) {
-      throw ArgumentError('transform size must be positive');
+      throw ArgumentError.value(
+        sz,
+        's',
+        'Must be positive (transform size must be positive, got $sz)',
+      );
     }
   }
 
@@ -1970,20 +2048,29 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
   }
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloatOrComplex && out.dtype != expectedDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible dtype (expected $expectedDType, got ${out.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must be $expectedDType (provided out buffer has incompatible dtype, got ${out.dtype})',
       );
     }
     if (!isFloatOrComplex &&
         out.dtype != DType.complex64 &&
         out.dtype != DType.complex128) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible dtype (expected complex64 or complex128, got ${out.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must be complex64 or complex128 (provided out buffer has incompatible dtype, got ${out.dtype})',
       );
     }
     if (!listEquals(out.shape, outShape)) {
-      throw ArgumentError('Provided out buffer has incompatible shape.');
+      throw ArgumentError.value(
+        out.shape,
+        'out.shape',
+        'Must match expected output shape $outShape (provided out buffer has incompatible shape)',
+      );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
@@ -2170,7 +2257,11 @@ NDArray<R> fft2<R extends DTypeTag>(
 }) {
   final resolvedAxes = axes ?? const [-2, -1];
   if (resolvedAxes.length != 2) {
-    throw ArgumentError('axes must have length 2');
+    throw ArgumentError.value(
+      axes,
+      'axes',
+      'Must have length 2 (axes must have length 2, got length ${resolvedAxes.length})',
+    );
   }
   return fftn<R>(a, s: s, axes: resolvedAxes, out: out);
 }
@@ -2200,7 +2291,11 @@ NDArray<R> ifft2<R extends DTypeTag>(
 }) {
   final resolvedAxes = axes ?? const [-2, -1];
   if (resolvedAxes.length != 2) {
-    throw ArgumentError('axes must have length 2');
+    throw ArgumentError.value(
+      axes,
+      'axes',
+      'Must have length 2 (axes must have length 2, got length ${resolvedAxes.length})',
+    );
   }
   return ifftn<R>(a, s: s, axes: resolvedAxes, out: out);
 }
@@ -2317,6 +2412,7 @@ NDArray<R> rfftn<R extends DTypeTag>(
   outShape[axesResolved.last] = sResolved.last ~/ 2 + 1;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloat && out.dtype != expectedDType) {
       throw ArgumentError.value(
         out.dtype,
@@ -2503,6 +2599,7 @@ NDArray<R> irfftn<R extends DTypeTag>(
   }
 
   if (out != null) {
+    validateOutBuffer(out);
     if (isFloatOrComplex && out.dtype != expectedDType) {
       throw ArgumentError.value(
         out.dtype,

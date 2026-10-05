@@ -43,8 +43,8 @@ DType<DTypeTag> _descrToDType(String descr) {
   if (descr.contains('>')) {
     throw UnsupportedError('Big-Endian .npy files are not supported yet.');
   }
-  // Strip byte-order indicators if any (e.g., '<', '>', '|')
-  final clean = descr.replaceAll(RegExp(r'[<>|]'), '');
+  // Strip byte-order indicators if any (e.g., '<', '>', '|', '=')
+  final clean = descr.replaceAll(RegExp(r'[<>|=]'), '');
   switch (clean) {
     case 'f8':
       return DType.float64;
@@ -319,6 +319,7 @@ NDArray<DTypeTag> load(String filepath) {
     }
 
     // 3. Read header length
+    const maxNpyHeaderBytes = 1024 * 1024;
     final int headerLen;
     if (majorVersion >= 2) {
       final lenBytes = _readExactSync(raf, 4);
@@ -326,6 +327,11 @@ NDArray<DTypeTag> load(String filepath) {
     } else {
       final lenBytes = _readExactSync(raf, 2);
       headerLen = ByteData.sublistView(lenBytes).getUint16(0, Endian.little);
+    }
+    if (headerLen > maxNpyHeaderBytes) {
+      throw FormatException(
+        'NPY header length ($headerLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
+      );
     }
 
     // 4. Read ASCII/UTF-8 Header dictionary
@@ -432,6 +438,9 @@ void savez(
   Map<String, NDArray<DTypeTag>> arrays, {
   bool compressed = false,
 }) {
+  if (arrays.isEmpty) {
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty');
+  }
   for (final entry in arrays.entries) {
     if (entry.value.isDisposed) {
       throw StateError('Cannot save a disposed NDArray (key: ${entry.key}).');
@@ -623,7 +632,7 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
       final numEntries = pNumEntries.value;
       final results = <String, NDArray<DTypeTag>>{};
 
-      const nameBufLen = 512;
+      const nameBufLen = 4096;
       final nameBuf = ScratchArena.allocate<ffi.Char>(
         nameBufLen * ffi.sizeOf<ffi.Char>(),
       );
@@ -653,7 +662,13 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
               continue;
             }
             if (infoStatus == -9) {
+              const maxNpyHeaderBytes = 1024 * 1024;
               final requiredHeaderLen = pHeaderLen.value;
+              if (requiredHeaderLen > maxNpyHeaderBytes) {
+                throw FormatException(
+                  'NPY header length ($requiredHeaderLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
+                );
+              }
               final largeHeaderBuf = ScratchArena.allocate<ffi.Uint8>(
                 requiredHeaderLen,
               );
@@ -763,6 +778,7 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
             );
           }
 
+          results[key]?.dispose();
           results[key] = loadedArray;
         }
 

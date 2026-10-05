@@ -61,12 +61,23 @@ NDArray<R> exp<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for exp.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for exp',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        exp<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -212,7 +223,9 @@ NDArray<R> exp<R extends DTypeTag>(
           final expR = math.exp(x.real);
           return Complex(expR * math.cos(x.imag), expR * math.sin(x.imag));
         }
-        final dx = x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble();
+        final dx = (a.dtype as DType<DTypeTag>) == DType.uint64
+            ? uint64ToDouble(x as int)
+            : (x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble());
         return castValue(math.exp(dx), result.dtype);
       },
       maskHolder.pointer,
@@ -263,12 +276,23 @@ NDArray<R> log<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for log.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for log',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        log<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -415,7 +439,9 @@ NDArray<R> log<R extends DTypeTag>(
       result.offsetElements,
       (x) {
         if (x is Complex) return x.log();
-        final dx = x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble();
+        final dx = (a.dtype as DType<DTypeTag>) == DType.uint64
+            ? uint64ToDouble(x as int)
+            : (x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble());
         return castValue(math.log(dx), result.dtype);
       },
       maskHolder.pointer,
@@ -460,12 +486,23 @@ NDArray<R> log2<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for log2.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for log2',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        log2<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -613,7 +650,9 @@ NDArray<R> log2<R extends DTypeTag>(
       result.offsetElements,
       (x) {
         if (x is Complex) return x.log() / math.log(2.0);
-        final dx = x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble();
+        final dx = (a.dtype as DType<DTypeTag>) == DType.uint64
+            ? uint64ToDouble(x as int)
+            : (x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble());
         return castValue(math.log(dx) / math.log(2.0), result.dtype);
       },
       maskHolder.pointer,
@@ -658,12 +697,23 @@ NDArray<R> log10<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for log10.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for log10',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        log10<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -811,7 +861,9 @@ NDArray<R> log10<R extends DTypeTag>(
       result.offsetElements,
       (x) {
         if (x is Complex) return x.log() / math.log(10.0);
-        final dx = x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble();
+        final dx = (a.dtype as DType<DTypeTag>) == DType.uint64
+            ? uint64ToDouble(x as int)
+            : (x is bool ? (x ? 1.0 : 0.0) : (x as num).toDouble());
         return castValue(math.log(dx) / math.log(10.0), result.dtype);
       },
       maskHolder.pointer,

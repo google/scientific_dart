@@ -13,9 +13,9 @@ This file tracks all verified remaining work items identified during the product
 - [ ] **P0-2: Build and upload prebuilt native binaries (`artifacts-v0.2.0`) & regenerate hashes**
   - **Location**: [`hook/build.dart:44-75`](hook/build.dart#L44-L75), [`lib/src/hook_helpers/hashes.dart:14-41`](lib/src/hook_helpers/hashes.dart#L14-L41)
   - **Details**: Native C++ sources (`hook/custom_ufuncs.cpp`, `hook/custom_sorting.cpp`, `hook/custom_indexing.cpp`, `hook/npz_io.cpp`) were modified during the review remediation. Before cutting the release:
-    1. Build `libndarray_c` across all release targets (`linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, `windows-x64`) via CI.
+    1. Build `ndarray` across all release targets (`linux-x64`, `linux-arm64`, `macos-arm64`, `macos-x64`, `windows-x64`) via CI.
     2. Upload the archives to the GitHub Release `artifacts-v0.2.0`.
-    3. Run `dart run tool/regenerate_hashes.dart` to update `expectedSourceHash` and `prebuiltHashes` in `lib/src/hook_helpers/hashes.dart`.
+    3. Run `dart run tool/regenerate_hashes.dart` to update `nativeSourceHash` and `prebuiltArtifactHashes` (`fileHashes`) in `lib/src/hook_helpers/hashes.dart`.
 
 ---
 
@@ -71,8 +71,8 @@ This file tracks all verified remaining work items identified during the product
 
 ---
 
-## P3: Long-Term Format & I/O Enhancements
+## P3: Long-Term Format & I/O Enhancements (All Completed)
 
-- [ ] **P3-1: ZIP64 large archive support (> 4 GiB) in `npz_io.cpp`**
-  - **Location**: [`hook/npz_io.cpp:201-425`](hook/npz_io.cpp#L201-L425)
-  - **Details**: `npz_save_stored` and `npz_save_compressed` write 32-bit ZIP headers and return `-4` (translated to `UnsupportedError` in Dart) when cumulative offsets or member sizes exceed `0xFFFFFFFF` (4 GiB). Implement ZIP64 extended information extra fields (`0x0001`), ZIP64 End of Central Directory record (`0x06064b50`), and ZIP64 End of Central Directory Locator (`0x07064b50`) to support reading and writing `.npz` archives larger than 4 GiB.
+- [x] **P3-1: ZIP64 large archive support (> 4 GiB) in `npz_io.cpp`**
+  - **Location**: [`hook/npz_io.cpp:178-501, 697-823`](hook/npz_io.cpp#L178-L501)
+  - **Resolution**: Implemented full ZIP64 support (`0x0001` extended information extra fields, `0x06064b50` ZIP64 End of Central Directory record, and `0x07064b50` ZIP64 End of Central Directory Locator) across `npz_save_stored`, `npz_save_deflate` (`MZ_ZIP_FLAG_WRITE_ZIP64`), and `npz_open_reader` to support reading and writing `.npz` archives larger than 4 GiB or containing $\ge 65,535$ entries.

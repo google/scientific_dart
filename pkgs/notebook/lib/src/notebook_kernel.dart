@@ -57,9 +57,12 @@ class NotebookKernel {
   LspClient? _lspClient;
   int _workspaceVersion = 1;
 
+  static const String _gpuArrayDefaultImport =
+      "import 'package:gpuarray/gpuarray.dart' show GpuArray, GpuDevice, GpuBuffer, GpuBackend, GpuDeviceType, GpuMemoryPool, NDArrayGpuInterop, GpuArrayNDArrayInterop;";
+
   final Set<String> _imports = {
     "import 'package:ndarray/ndarray.dart';",
-    "import 'package:gpuarray/gpuarray.dart';",
+    _gpuArrayDefaultImport,
     "import 'dart:math' as math;",
   };
   final Map<String, String> _definitions = {};
@@ -384,12 +387,7 @@ class NotebookKernel {
 
     final prevDefs = Map<String, String>.from(_definitions);
     final transformRes = _transformCellCode(rawCode);
-    for (final def in transformRes.topLevelDefinitions) {
-      final name = def.split(' ')[1].replaceAll(';', '');
-      if (!_definitions.containsKey(name)) {
-        _definitions[name] = def;
-      }
-    }
+    _definitions.addAll(transformRes.namedDefinitions);
     try {
       await _reloadWorkspace();
     } catch (e) {
@@ -984,7 +982,9 @@ class NotebookKernel {
     _writeWorkspace();
     final reloadReport = await _service!.reloadSources(_isolateId!);
     if (reloadReport.success != true) {
-      throw StateError('Failed to reload workspace: ${reloadReport.toJson()}');
+      throw StateError(
+        'Failed to reload workspace: ${reloadReport.json ?? reloadReport.toJson()}',
+      );
     }
     final isolate = await _service!.getIsolate(_isolateId!);
     _updateWorkspaceLibId(isolate);
@@ -1053,21 +1053,25 @@ class NotebookKernel {
   void _writeWorkspace() {
     final workspaceFile = _getWorkspaceFile();
     final buffer = StringBuffer();
-    buffer.writeln('// ignore_for_file: unused_import, unused_element');
+    buffer.writeln(
+      '// ignore_for_file: unused_import, unused_element, non_constant_identifier_names',
+    );
     buffer.writeln('// Auto-generated workspace. Do not edit.');
     final defaultImports = {
       "import 'dart:math' as math;",
       "import 'package:notebook/src/kernel_helper.dart';",
-      "import 'package:ndarray/ndarray.dart' hide sin, cos, tan, asin, acos, atan, exp, log, sqrt, abs;",
+      "import 'package:ndarray/ndarray.dart';",
       "import 'package:symbolic_dart/symbolic_dart.dart' hide sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, exp, log, sqrt, abs;",
       "import 'package:resource_scope/resource_scope.dart';",
-      "import 'package:gpuarray/gpuarray.dart';",
+      _gpuArrayDefaultImport,
     };
     for (final imp in defaultImports) {
       buffer.writeln(imp);
     }
     for (final imp in _imports) {
-      if (!defaultImports.contains(imp.trim())) {
+      final trimmedImp = imp.trim();
+      if (!defaultImports.contains(trimmedImp) &&
+          trimmedImp != "import 'package:gpuarray/gpuarray.dart';") {
         buffer.writeln(imp);
       }
     }
@@ -1105,7 +1109,7 @@ class NotebookKernel {
       }
 
       final unit = parseResult.unit;
-      if (unit.declarations.isEmpty) {
+      if (unit.declarations.length != 1) {
         return null;
       }
 
@@ -1125,7 +1129,7 @@ class NotebookKernel {
         }
       } else if (decl is TopLevelVariableDeclaration) {
         final variables = decl.variables.variables;
-        if (variables.isNotEmpty) {
+        if (variables.length == 1) {
           return DeclaredSymbolResult(variables.first.name.lexeme, true);
         }
       }
@@ -1170,18 +1174,53 @@ class NotebookKernel {
 
     final statements = body.block.statements;
     final topLevelDefs = <String>[];
+    final namedDefs = <String, String>{};
     final bodyBuffer = StringBuffer();
 
     for (var i = 0; i < statements.length; i++) {
       final stmt = statements[i];
       final isLast = (i == statements.length - 1);
 
-      if (stmt is VariableDeclarationStatement) {
+      if (stmt is FunctionDeclarationStatement) {
+        final funcDecl = stmt.functionDeclaration;
+        final funcName = funcDecl.name.lexeme;
+        final funcSrc = funcDecl.toSource();
+        topLevelDefs.add(funcSrc);
+        namedDefs[funcName] = funcSrc;
+      } else if (stmt is VariableDeclarationStatement) {
+        final typeAnnotation = stmt.variables.type?.toSource();
+        final isConst = stmt.variables.isConst;
         for (final v in stmt.variables.variables) {
           final varName = v.name.lexeme;
-          topLevelDefs.add('dynamic $varName;');
+          final String def;
+          if (typeAnnotation != null) {
+            def =
+                'late $typeAnnotation $varName;\n'
+                'T __set_$varName<T extends $typeAnnotation>(T v) {\n'
+                '  $varName = v;\n'
+                '  return v;\n'
+                '}';
+          } else {
+            def =
+                'dynamic $varName;\n'
+                'T __set_$varName<T>(T v) {\n'
+                '  $varName = v;\n'
+                '  return v;\n'
+                '}';
+          }
+          topLevelDefs.add(def);
+          namedDefs[varName] = def;
           if (v.initializer != null) {
-            bodyBuffer.writeln('$varName = ${v.initializer!.toSource()};');
+            if (isConst) {
+              bodyBuffer.writeln(
+                'const $varName = ${v.initializer!.toSource()};',
+              );
+              bodyBuffer.writeln('__set_$varName($varName);');
+            } else {
+              bodyBuffer.writeln(
+                'var $varName = __set_$varName(${v.initializer!.toSource()});',
+              );
+            }
           } else {
             bodyBuffer.writeln('// $varName');
           }
@@ -1201,7 +1240,11 @@ class NotebookKernel {
       }
     }
 
-    return CellTransformationResult(topLevelDefs, bodyBuffer.toString());
+    return CellTransformationResult(
+      topLevelDefs,
+      bodyBuffer.toString(),
+      namedDefinitions: namedDefs,
+    );
   }
 
   Future<CellOutputItem?> _formatResultToOutputItem(dynamic response) async {
@@ -1334,8 +1377,15 @@ final class CellTransformationResult {
   /// Top-level variable definitions to register in the workspace.
   final List<String> topLevelDefinitions;
 
+  /// Top-level definitions keyed by symbol name.
+  final Map<String, String> namedDefinitions;
+
   /// The transformed body code for cell execution.
   final String cellBodyCode;
 
-  CellTransformationResult(this.topLevelDefinitions, this.cellBodyCode);
+  CellTransformationResult(
+    this.topLevelDefinitions,
+    this.cellBodyCode, {
+    this.namedDefinitions = const {},
+  });
 }

@@ -68,15 +68,20 @@ NDArray<R> angle<R extends DTypeTag>(
     DType.uint32 ||
     DType.uint16 ||
     DType.uint8 => DType.float64 as DType<R>,
-    DType.boolean => throw ArgumentError(
-      'angle does not support boolean dtype.',
+    DType.boolean => throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must not be boolean',
     ),
   };
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for angle.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
       );
     }
     if (sharesMemory(a, out)) {
@@ -122,6 +127,7 @@ NDArray<R> angle<R extends DTypeTag>(
               rank,
               ffi.nullptr,
             );
+            checkNativeOom();
           } finally {
             ScratchArena.reset(marker);
           }
@@ -157,6 +163,7 @@ NDArray<R> angle<R extends DTypeTag>(
               rank,
               ffi.nullptr,
             );
+            checkNativeOom();
           } finally {
             ScratchArena.reset(marker);
           }
@@ -189,6 +196,7 @@ NDArray<R> angle<R extends DTypeTag>(
             (val) {
               // `doubleA` was just cast to float64, so the element is a double.
               final v = val as double;
+              if (v.isNaN) return double.nan;
               return (v < 0.0 || identical(v, -0.0)) ? math.pi : 0.0;
             },
           );
@@ -197,7 +205,7 @@ NDArray<R> angle<R extends DTypeTag>(
         });
         return result;
       case DType.boolean:
-        throw ArgumentError('angle does not support boolean dtype.');
+        throw ArgumentError.value(a.dtype, 'a.dtype', 'Must not be boolean');
     }
   } catch (_) {
     if (out == null) {
@@ -228,18 +236,11 @@ NDArray<R> angle<R extends DTypeTag>(
 /// {@example /example/dsp_example.dart lang=dart}
 ///
 /// Reference: [NumPy unwrap](https://numpy.org/doc/stable/reference/generated/numpy.unwrap.html)
-NDArray<T> unwrap<
-  T extends DTypeSpec<
-    DTypeTag,
-    num,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
+NDArray<T> unwrap<T extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
   >
->(
-  NDArray<DTypeTag> a, {
+  a, {
   double discont = math.pi,
   int axis = -1,
   NDArray<T>? out,
@@ -248,9 +249,12 @@ NDArray<T> unwrap<
     throw StateError('Cannot execute unwrap() on a disposed array.');
   }
 
-  if (a.dtype == DType.boolean || a.dtype.isComplex) {
-    throw ArgumentError(
-      'unwrap does not support boolean or complex dtypes (got ${a.dtype}).',
+  final DType<DTypeTag> aDType = a.dtype;
+  if (aDType == DType.boolean || aDType.isComplex) {
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must not be boolean or complex',
     );
   }
 
@@ -267,16 +271,22 @@ NDArray<T> unwrap<
   final resolvedAxis = axis < 0 ? rank + axis : axis;
 
   final DType targetDType =
-      out?.dtype ?? (a.dtype.isInteger ? DType.float64 : a.dtype);
+      out?.dtype ??
+      ((aDType.isInteger || aDType == DType.float16 || aDType == DType.bfloat16)
+          ? DType.float64
+          : aDType);
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, a.shape) ||
         out.dtype == DType.boolean ||
         out.dtype.isComplex ||
-        ((a.dtype == DType.float64 || a.dtype == DType.float32) &&
-            out.dtype != a.dtype)) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for unwrap.',
+        ((aDType == DType.float64 || aDType == DType.float32) &&
+            out.dtype != aDType)) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
       );
     }
     if (sharesMemory(a, out)) {
@@ -304,8 +314,10 @@ NDArray<T> unwrap<
             DType.uint32 => NDArray<Uint32>.create(a.shape, DType.uint32),
             DType.uint16 => NDArray<Uint16>.create(a.shape, DType.uint16),
             DType.uint8 => NDArray<Uint8>.create(a.shape, DType.uint8),
-            _ => throw ArgumentError(
-              'unwrap does not support boolean or complex dtypes (got $targetDType).',
+            _ => throw ArgumentError.value(
+              targetDType,
+              'targetDType',
+              'Must not be boolean or complex',
             ),
           }
           as NDArray<T>);
@@ -335,6 +347,7 @@ NDArray<T> unwrap<
             resolvedAxis,
             discont,
           );
+          checkNativeOom();
         } finally {
           ScratchArena.reset(marker);
         }
@@ -362,6 +375,7 @@ NDArray<T> unwrap<
             resolvedAxis,
             discont,
           );
+          checkNativeOom();
         } finally {
           ScratchArena.reset(marker);
         }
@@ -390,8 +404,10 @@ NDArray<T> unwrap<
       case DType.boolean:
       case DType.complex128:
       case DType.complex64:
-        throw ArgumentError(
-          'unwrap does not support boolean or complex dtypes (got ${a.dtype}).',
+        throw ArgumentError.value(
+          a.dtype,
+          'a.dtype',
+          'Must not be boolean or complex',
         );
     }
   } catch (_) {
@@ -415,8 +431,10 @@ NDArray<R> _correlateValid<
   );
 
   if (out != null && out.dtype != in1.dtype) {
-    throw ArgumentError(
-      'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
+    throw ArgumentError.value(
+      out.dtype,
+      'out.dtype',
+      'Must match in1 dtype (${in1.dtype})',
     );
   }
   if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
@@ -545,6 +563,18 @@ NDArray<R> _correlateValid<
         });
         break;
       case DType.uint64:
+        bindings.s_correlate_valid_uint64(
+          in1.pointer.cast(),
+          cStrides1,
+          in2.pointer.cast(),
+          cStrides2,
+          result.pointer.cast(),
+          cStridesRes,
+          cShapeRes,
+          cShapeK,
+          rank,
+        );
+        break;
       case DType.float16:
       case DType.bfloat16:
         NDArray.scope(() {
@@ -561,7 +591,11 @@ NDArray<R> _correlateValid<
         break;
       case DType.boolean:
         if (out == null) result.dispose();
-        throw ArgumentError('Unsupported dtype for correlate: ${in1.dtype}');
+        throw ArgumentError.value(
+          in1.dtype,
+          'in1.dtype',
+          'Must not be boolean',
+        );
     }
   } finally {
     ScratchArena.reset(marker);
@@ -593,7 +627,7 @@ enum ConvMode {
 ///
 /// Cross-correlation evaluates the similarity of two signals as a function of the displacement of one relative to the other.
 /// For $d$-dimensional input arrays $y = \text{in1}$ and $w = \text{in2}$, the cross-correlation at index $\mathbf{n}$ is:
-/// $$z[\mathbf{n}] = \sum_{\mathbf{m}} y[\mathbf{n} + \mathbf{m}] \cdot w[\mathbf{m}]$$
+/// $$z[\mathbf{n}] = \sum_{\mathbf{m}} y[\mathbf{n} + \mathbf{m}] \cdot \overline{w[\mathbf{m}]}$$
 ///
 /// Contrast with [convolve], where the kernel array [in2] is flipped across all axes prior to cross-correlation:
 /// $$\text{convolve}(y, w) = \text{correlate}(y, \text{flip}(w))$$
@@ -622,19 +656,33 @@ NDArray<T> correlate<T extends DTypeTag>(
     throw StateError('Cannot execute correlate() on a disposed array.');
   }
   if (in1.rank != in2.rank || in1.rank == 0) {
-    throw ArgumentError('in1 and in2 must have the same non-zero rank.');
+    throw ArgumentError.value(
+      in2.rank,
+      'in2.rank',
+      'Must have the same non-zero rank as in1 (${in1.rank})',
+    );
   }
   if (in1.size == 0 || in2.size == 0) {
-    throw ArgumentError('in1 and in2 must not be empty.');
+    throw ArgumentError.value(
+      in1.size == 0 ? in1.size : in2.size,
+      in1.size == 0 ? 'in1' : 'in2',
+      'Must not be empty',
+    );
   }
   if (in1.dtype != in2.dtype) {
-    throw ArgumentError('in1 and in2 must have matching DType.');
+    throw ArgumentError.value(
+      in2.dtype,
+      'in2.dtype',
+      'Must match in1 dtype (${in1.dtype})',
+    );
   }
   if (out != null) {
     validateOutBuffer(out);
     if (out.dtype != in1.dtype) {
-      throw ArgumentError(
-        'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must match in1 dtype (${in1.dtype})',
       );
     }
   }
@@ -645,8 +693,10 @@ NDArray<T> correlate<T extends DTypeTag>(
     case ConvMode.valid:
       for (var i = 0; i < rank; i++) {
         if (in1.shape[i] < in2.shape[i]) {
-          throw ArgumentError(
-            'in1 dimensions must be >= in2 dimensions for valid mode.',
+          throw ArgumentError.value(
+            in1.shape[i],
+            'in1.shape[$i]',
+            'Must be greater than or equal to in2 dimension (${in2.shape[i]})',
           );
         }
       }
@@ -655,7 +705,11 @@ NDArray<T> correlate<T extends DTypeTag>(
         (i) => in1.shape[i] - in2.shape[i] + 1,
       );
       if (out != null && !listEquals(out.shape, expectedShape)) {
-        throw ArgumentError('Provided out buffer has incompatible shape.');
+        throw ArgumentError.value(
+          out.shape,
+          'out.shape',
+          'Must have shape $expectedShape',
+        );
       }
       if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
         return NDArray.scope(() {
@@ -671,7 +725,11 @@ NDArray<T> correlate<T extends DTypeTag>(
         (i) => in1.shape[i] + in2.shape[i] - 1,
       );
       if (out != null && !listEquals(out.shape, expectedShape)) {
-        throw ArgumentError('Provided out buffer has incompatible shape.');
+        throw ArgumentError.value(
+          out.shape,
+          'out.shape',
+          'Must have shape $expectedShape',
+        );
       }
       if (out != null && (sharesMemory(in1, out) || sharesMemory(in2, out))) {
         return NDArray.scope(() {
@@ -697,7 +755,11 @@ NDArray<T> correlate<T extends DTypeTag>(
       });
     case ConvMode.same:
       if (out != null && !listEquals(out.shape, in1.shape)) {
-        throw ArgumentError('Provided out buffer has incompatible shape.');
+        throw ArgumentError.value(
+          out.shape,
+          'out.shape',
+          'Must have shape ${in1.shape}',
+        );
       }
       return NDArray.scope(() {
         final fullCorr = correlate<T>(in1, in2, mode: ConvMode.full);
@@ -750,19 +812,33 @@ NDArray<T> convolve<T extends DTypeTag>(
     throw StateError('Cannot execute convolve() on a disposed array.');
   }
   if (in1.rank != in2.rank || in1.rank == 0) {
-    throw ArgumentError('in1 and in2 must have the same non-zero rank.');
+    throw ArgumentError.value(
+      in2.rank,
+      'in2.rank',
+      'Must have the same non-zero rank as in1 (${in1.rank})',
+    );
   }
   if (in1.size == 0 || in2.size == 0) {
-    throw ArgumentError('in1 and in2 must not be empty.');
+    throw ArgumentError.value(
+      in1.size == 0 ? in1.size : in2.size,
+      in1.size == 0 ? 'in1' : 'in2',
+      'Must not be empty',
+    );
   }
   if (in1.dtype != in2.dtype) {
-    throw ArgumentError('in1 and in2 must have matching DType.');
+    throw ArgumentError.value(
+      in2.dtype,
+      'in2.dtype',
+      'Must match in1 dtype (${in1.dtype})',
+    );
   }
   if (out != null) {
     validateOutBuffer(out);
     if (out.dtype != in1.dtype) {
-      throw ArgumentError(
-        'Provided out buffer dtype (${out.dtype}) must match in1 dtype (${in1.dtype}).',
+      throw ArgumentError.value(
+        out.dtype,
+        'out.dtype',
+        'Must match in1 dtype (${in1.dtype})',
       );
     }
   }
@@ -770,8 +846,10 @@ NDArray<T> convolve<T extends DTypeTag>(
     return NDArray.scope(() {
       final temp = convolve<T>(in1, in2, mode: mode);
       if (out.dtype != temp.dtype || !listEquals(out.shape, temp.shape)) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape and dtype',
         );
       }
       temp.copy(out: out);
@@ -849,7 +927,11 @@ NDArray<T> convolve2d<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (in1.rank != 2 || in2.rank != 2) {
-    throw ArgumentError('convolve2d requires 2-dimensional arrays.');
+    throw ArgumentError.value(
+      in1.rank != 2 ? in1.rank : in2.rank,
+      in1.rank != 2 ? 'in1.rank' : 'in2.rank',
+      'Must be 2-dimensional',
+    );
   }
   return convolve<T>(in1, in2, mode: mode, out: out);
 }

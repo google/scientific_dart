@@ -111,6 +111,15 @@ List<File> nativeSourceFiles(Uri packageRoot) {
         name.endsWith('.h') ||
         name.endsWith('.def');
   }).toList();
+  for (final relPath in const [
+    'third_party/miniz/miniz.c',
+    'third_party/miniz/miniz.h',
+  ]) {
+    final extra = File.fromUri(packageRoot.resolve(relPath));
+    if (extra.existsSync()) {
+      files.add(extra);
+    }
+  }
   files.sort(
     (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
   );

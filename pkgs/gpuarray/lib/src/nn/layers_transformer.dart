@@ -13,14 +13,12 @@
 // limitations under the License.
 
 import '../device.dart';
+import '../dtype.dart';
 import '../gpu_array.dart';
 import 'functional.dart' as functional;
 import 'layers_basic.dart';
 import 'layers_losses.dart';
 import 'module.dart';
-
-/// CamelCase alias for [MultiheadAttention].
-typedef MultiHeadAttention = MultiheadAttention;
 
 /// Applies Multi-Head Attention over input sequences:
 /// $$\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W^O$$
@@ -69,6 +67,7 @@ final class MultiheadAttention extends Module {
     this.hasBias = true,
     int? kdim,
     int? vdim,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) : kdim = kdim ?? embedDim,
        vdim = vdim ?? embedDim,
@@ -88,27 +87,56 @@ final class MultiheadAttention extends Module {
     }
     final targetDevice = device ?? GpuDevice.defaultDevice;
     qProj = registerModule(
-      Linear(embedDim, embedDim, hasBias: hasBias, device: targetDevice),
+      Linear(
+        embedDim,
+        embedDim,
+        hasBias: hasBias,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'qProj',
     );
     kProj = registerModule(
-      Linear(this.kdim, embedDim, hasBias: hasBias, device: targetDevice),
+      Linear(
+        this.kdim,
+        embedDim,
+        hasBias: hasBias,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'kProj',
     );
     vProj = registerModule(
-      Linear(this.vdim, embedDim, hasBias: hasBias, device: targetDevice),
+      Linear(
+        this.vdim,
+        embedDim,
+        hasBias: hasBias,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'vProj',
     );
     outProj = registerModule(
-      Linear(embedDim, embedDim, hasBias: hasBias, device: targetDevice),
+      Linear(
+        embedDim,
+        embedDim,
+        hasBias: hasBias,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'outProj',
     );
   }
 
   @override
-  GpuArray<DTypeTag> forward(
-    GpuArray<DTypeTag> input, {
-    GpuArray<DTypeTag>? key,
-    GpuArray<DTypeTag>? value,
+  GpuArray<T> forward<T extends DTypeTag>(
+    GpuArray<T> input, {
+    GpuArray<T>? key,
+    GpuArray<T>? value,
     GpuArray<DTypeTag>? attnMask,
     bool isCausal = false,
   }) {
+    checkNotDisposed();
     final query = input;
     final keyTensor = key ?? query;
     final valueTensor = value ?? query;
@@ -124,9 +152,9 @@ final class MultiheadAttention extends Module {
     final targetLength = qInput.shape[1];
     final sourceLength = kInput.shape[1];
 
-    final qProjOut = qProj(qInput);
-    final kProjOut = kProj(kInput);
-    final vProjOut = vProj(vInput);
+    final qProjOut = qProj<T>(qInput);
+    final kProjOut = kProj<T>(kInput);
+    final vProjOut = vProj<T>(vInput);
 
     final qHeads = qProjOut
         .reshape([batchSize, targetLength, numHeads, headDim])
@@ -138,7 +166,7 @@ final class MultiheadAttention extends Module {
         .reshape([batchSize, sourceLength, numHeads, headDim])
         .swapaxes(1, 2);
 
-    final attentionOut = functional.scaledDotProductAttention(
+    final attentionOut = functional.scaledDotProductAttention<T>(
       qHeads,
       kHeads,
       vHeads,
@@ -153,18 +181,18 @@ final class MultiheadAttention extends Module {
       embedDim,
     ]);
 
-    final output = outProj(merged);
+    final output = outProj<T>(merged);
     return is2D ? output.squeeze(axis: 0) : output;
   }
 
   @override
-  GpuArray<DTypeTag> call(
-    GpuArray<DTypeTag> input, {
-    GpuArray<DTypeTag>? key,
-    GpuArray<DTypeTag>? value,
+  GpuArray<T> call<T extends DTypeTag>(
+    GpuArray<T> input, {
+    GpuArray<T>? key,
+    GpuArray<T>? value,
     GpuArray<DTypeTag>? attnMask,
     bool isCausal = false,
-  }) => forward(
+  }) => forward<T>(
     input,
     key: key,
     value: value,
@@ -223,63 +251,82 @@ final class TransformerEncoderLayer extends Module {
     this.dropout = 0.1,
     Module? activation,
     this.normFirst = false,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) : dimFeedforward = dimFeedforward ?? (4 * dModel),
        activation = activation ?? ReLU() {
     final targetDevice = device ?? GpuDevice.defaultDevice;
     selfAttn = registerModule(
-      MultiheadAttention(dModel, nhead, dropout: dropout, device: targetDevice),
+      MultiheadAttention(
+        dModel,
+        nhead,
+        dropout: dropout,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'selfAttn',
     );
     linear1 = registerModule(
-      Linear(dModel, this.dimFeedforward, device: targetDevice),
+      Linear(dModel, this.dimFeedforward, dtype: dtype, device: targetDevice),
+      'linear1',
     );
-    dropout1 = registerModule(Dropout(p: dropout));
+    dropout1 = registerModule(Dropout(p: dropout), 'dropout1');
     linear2 = registerModule(
-      Linear(this.dimFeedforward, dModel, device: targetDevice),
+      Linear(this.dimFeedforward, dModel, dtype: dtype, device: targetDevice),
+      'linear2',
     );
-    dropout2 = registerModule(Dropout(p: dropout));
-    norm1 = registerModule(LayerNorm([dModel], device: targetDevice));
-    norm2 = registerModule(LayerNorm([dModel], device: targetDevice));
-    registerModule(this.activation);
+    dropout2 = registerModule(Dropout(p: dropout), 'dropout2');
+    norm1 = registerModule(
+      LayerNorm([dModel], dtype: dtype, device: targetDevice),
+      'norm1',
+    );
+    norm2 = registerModule(
+      LayerNorm([dModel], dtype: dtype, device: targetDevice),
+      'norm2',
+    );
+    registerModule(this.activation, 'activation');
   }
 
   @override
-  GpuArray<DTypeTag> forward(
-    GpuArray<DTypeTag> input, {
+  GpuArray<T> forward<T extends DTypeTag>(
+    GpuArray<T> input, {
     GpuArray<DTypeTag>? srcMask,
     bool isCausal = false,
   }) {
+    checkNotDisposed();
     if (normFirst) {
       var hidden = input;
-      final selfAttnOut = selfAttn(
-        norm1(hidden),
+      final selfAttnOut = selfAttn<T>(
+        norm1<T>(hidden),
         attnMask: srcMask,
         isCausal: isCausal,
       );
-      hidden = hidden + dropout1(selfAttnOut);
-      final feedForwardOut = linear2(
-        dropout2(activation(linear1(norm2(hidden)))),
+      hidden = hidden + dropout1<T>(selfAttnOut);
+      final feedForwardOut = linear2<T>(
+        dropout2<T>(activation<T>(linear1<T>(norm2<T>(hidden)))),
       );
       return hidden + feedForwardOut;
     } else {
       var hidden = input;
-      final selfAttnOut = selfAttn(
+      final selfAttnOut = selfAttn<T>(
         hidden,
         attnMask: srcMask,
         isCausal: isCausal,
       );
-      hidden = norm1(hidden + dropout1(selfAttnOut));
-      final feedForwardOut = linear2(dropout2(activation(linear1(hidden))));
-      return norm2(hidden + feedForwardOut);
+      hidden = norm1<T>(hidden + dropout1<T>(selfAttnOut));
+      final feedForwardOut = linear2<T>(
+        dropout2<T>(activation<T>(linear1<T>(hidden))),
+      );
+      return norm2<T>(hidden + feedForwardOut);
     }
   }
 
   @override
-  GpuArray<DTypeTag> call(
-    GpuArray<DTypeTag> input, {
+  GpuArray<T> call<T extends DTypeTag>(
+    GpuArray<T> input, {
     GpuArray<DTypeTag>? srcMask,
     bool isCausal = false,
-  }) => forward(input, srcMask: srcMask, isCausal: isCausal);
+  }) => forward<T>(input, srcMask: srcMask, isCausal: isCausal);
 }
 
 /// Transformer Decoder Layer composed of multi-head self-attention, encoder-decoder
@@ -341,90 +388,119 @@ final class TransformerDecoderLayer extends Module {
     this.dropout = 0.1,
     Module? activation,
     this.normFirst = false,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) : dimFeedforward = dimFeedforward ?? (4 * dModel),
        activation = activation ?? ReLU() {
     final targetDevice = device ?? GpuDevice.defaultDevice;
     selfAttn = registerModule(
-      MultiheadAttention(dModel, nhead, dropout: dropout, device: targetDevice),
+      MultiheadAttention(
+        dModel,
+        nhead,
+        dropout: dropout,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'selfAttn',
     );
     multiheadAttn = registerModule(
-      MultiheadAttention(dModel, nhead, dropout: dropout, device: targetDevice),
+      MultiheadAttention(
+        dModel,
+        nhead,
+        dropout: dropout,
+        dtype: dtype,
+        device: targetDevice,
+      ),
+      'multiheadAttn',
     );
     linear1 = registerModule(
-      Linear(dModel, this.dimFeedforward, device: targetDevice),
+      Linear(dModel, this.dimFeedforward, dtype: dtype, device: targetDevice),
+      'linear1',
     );
-    dropout1 = registerModule(Dropout(p: dropout));
+    dropout1 = registerModule(Dropout(p: dropout), 'dropout1');
     linear2 = registerModule(
-      Linear(this.dimFeedforward, dModel, device: targetDevice),
+      Linear(this.dimFeedforward, dModel, dtype: dtype, device: targetDevice),
+      'linear2',
     );
-    dropout2 = registerModule(Dropout(p: dropout));
-    dropout3 = registerModule(Dropout(p: dropout));
-    norm1 = registerModule(LayerNorm([dModel], device: targetDevice));
-    norm2 = registerModule(LayerNorm([dModel], device: targetDevice));
-    norm3 = registerModule(LayerNorm([dModel], device: targetDevice));
-    registerModule(this.activation);
+    dropout2 = registerModule(Dropout(p: dropout), 'dropout2');
+    dropout3 = registerModule(Dropout(p: dropout), 'dropout3');
+    norm1 = registerModule(
+      LayerNorm([dModel], dtype: dtype, device: targetDevice),
+      'norm1',
+    );
+    norm2 = registerModule(
+      LayerNorm([dModel], dtype: dtype, device: targetDevice),
+      'norm2',
+    );
+    norm3 = registerModule(
+      LayerNorm([dModel], dtype: dtype, device: targetDevice),
+      'norm3',
+    );
+    registerModule(this.activation, 'activation');
   }
 
   @override
-  GpuArray<DTypeTag> forward(
-    GpuArray<DTypeTag> input, {
-    GpuArray<DTypeTag>? memory,
+  GpuArray<T> forward<T extends DTypeTag>(
+    GpuArray<T> input, {
+    GpuArray<T>? memory,
     GpuArray<DTypeTag>? tgtMask,
     GpuArray<DTypeTag>? memoryMask,
     bool tgtIsCausal = true,
   }) {
+    checkNotDisposed();
     if (normFirst) {
       var hidden = input;
-      final selfAttnOut = selfAttn(
-        norm1(hidden),
+      final selfAttnOut = selfAttn<T>(
+        norm1<T>(hidden),
         attnMask: tgtMask,
         isCausal: tgtIsCausal,
       );
-      hidden = hidden + dropout1(selfAttnOut);
+      hidden = hidden + dropout1<T>(selfAttnOut);
       if (memory != null) {
-        final crossAttnOut = multiheadAttn(
-          norm2(hidden),
+        final crossAttnOut = multiheadAttn<T>(
+          norm2<T>(hidden),
           key: memory,
           value: memory,
           attnMask: memoryMask,
         );
-        hidden = hidden + dropout2(crossAttnOut);
+        hidden = hidden + dropout2<T>(crossAttnOut);
       }
-      final feedForwardOut = linear2(
-        dropout3(activation(linear1(norm3(hidden)))),
+      final feedForwardOut = linear2<T>(
+        dropout3<T>(activation<T>(linear1<T>(norm3<T>(hidden)))),
       );
       return hidden + feedForwardOut;
     } else {
       var hidden = input;
-      final selfAttnOut = selfAttn(
+      final selfAttnOut = selfAttn<T>(
         hidden,
         attnMask: tgtMask,
         isCausal: tgtIsCausal,
       );
-      hidden = norm1(hidden + dropout1(selfAttnOut));
+      hidden = norm1<T>(hidden + dropout1<T>(selfAttnOut));
       if (memory != null) {
-        final crossAttnOut = multiheadAttn(
+        final crossAttnOut = multiheadAttn<T>(
           hidden,
           key: memory,
           value: memory,
           attnMask: memoryMask,
         );
-        hidden = norm2(hidden + dropout2(crossAttnOut));
+        hidden = norm2<T>(hidden + dropout2<T>(crossAttnOut));
       }
-      final feedForwardOut = linear2(dropout3(activation(linear1(hidden))));
-      return norm3(hidden + feedForwardOut);
+      final feedForwardOut = linear2<T>(
+        dropout3<T>(activation<T>(linear1<T>(hidden))),
+      );
+      return norm3<T>(hidden + feedForwardOut);
     }
   }
 
   @override
-  GpuArray<DTypeTag> call(
-    GpuArray<DTypeTag> input, {
-    GpuArray<DTypeTag>? memory,
+  GpuArray<T> call<T extends DTypeTag>(
+    GpuArray<T> input, {
+    GpuArray<T>? memory,
     GpuArray<DTypeTag>? tgtMask,
     GpuArray<DTypeTag>? memoryMask,
     bool tgtIsCausal = true,
-  }) => forward(
+  }) => forward<T>(
     input,
     memory: memory,
     tgtMask: tgtMask,

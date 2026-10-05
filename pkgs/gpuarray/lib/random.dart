@@ -41,6 +41,5 @@ export 'src/random/random.dart'
         seed,
         shuffle,
         standardNormal,
-        standard_normal,
         truncatedNormal,
         uniform;

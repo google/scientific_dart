@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
-
 import '../gpu_array.dart';
 import 'autograd_wgsl.dart';
 
@@ -49,10 +47,16 @@ R noGrad<R>(R Function() body) {
   }
 }
 
-/// Disables gradient calculation during the synchronous execution of [body].
-///
-/// Alias for [noGrad] provided for PyTorch naming parity.
-R no_grad<R>(R Function() body) => noGrad(body);
+/// Enables gradient calculation during the synchronous execution of [body].
+R enableGrad<R>(R Function() body) {
+  final previous = _gradEnabled;
+  _gradEnabled = true;
+  try {
+    return body();
+  } finally {
+    _gradEnabled = previous;
+  }
+}
 
 /// Base class for reverse-mode automatic differentiation graph nodes.
 abstract class GradFn {
@@ -167,11 +171,19 @@ void runBackward(
 
     if (root.isLeaf) {
       if (root.grad == null) {
-        root.grad = seedGrad.copy();
+        root.grad = seedGrad.dtype == root.dtype
+            ? seedGrad.copy()
+            : seedGrad.astype(root.dtype);
       } else {
         final previousGrad = root.grad!;
-        root.grad = previousGrad + seedGrad;
+        final matchedSeed = seedGrad.dtype == root.dtype
+            ? seedGrad
+            : seedGrad.astype(root.dtype);
+        root.grad = previousGrad + matchedSeed;
         previousGrad.dispose();
+        if (!identical(matchedSeed, seedGrad)) {
+          matchedSeed.dispose();
+        }
       }
     }
 
@@ -210,30 +222,37 @@ void runBackward(
 
           if (incomingGrad != null) {
             if (inputTensor.requiresGrad) {
+              var typedIncoming = incomingGrad;
+              if (incomingGrad.dtype != inputTensor.dtype) {
+                typedIncoming = incomingGrad.astype(inputTensor.dtype);
+                if (!identical(incomingGrad, nodeGrad)) {
+                  incomingGrad.dispose();
+                }
+              }
               if (inputTensor.isLeaf) {
                 if (inputTensor.grad == null) {
-                  inputTensor.grad = identical(incomingGrad, nodeGrad)
-                      ? incomingGrad.copy()
-                      : incomingGrad;
+                  inputTensor.grad = identical(typedIncoming, nodeGrad)
+                      ? typedIncoming.copy()
+                      : typedIncoming;
                 } else {
                   final previousGrad = inputTensor.grad!;
-                  inputTensor.grad = previousGrad + incomingGrad;
+                  inputTensor.grad = previousGrad + typedIncoming;
                   previousGrad.dispose();
-                  if (!identical(incomingGrad, nodeGrad)) {
-                    incomingGrad.dispose();
+                  if (!identical(typedIncoming, nodeGrad)) {
+                    typedIncoming.dispose();
                   }
                 }
               } else {
                 final existingGrad = nodeGrads[inputTensor];
                 if (existingGrad == null) {
-                  nodeGrads[inputTensor] = identical(incomingGrad, nodeGrad)
-                      ? incomingGrad.copy()
-                      : incomingGrad;
+                  nodeGrads[inputTensor] = identical(typedIncoming, nodeGrad)
+                      ? typedIncoming.copy()
+                      : typedIncoming;
                 } else {
-                  nodeGrads[inputTensor] = existingGrad + incomingGrad;
+                  nodeGrads[inputTensor] = existingGrad + typedIncoming;
                   existingGrad.dispose();
-                  if (!identical(incomingGrad, nodeGrad)) {
-                    incomingGrad.dispose();
+                  if (!identical(typedIncoming, nodeGrad)) {
+                    typedIncoming.dispose();
                   }
                 }
               }

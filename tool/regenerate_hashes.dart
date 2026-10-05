@@ -319,6 +319,15 @@ List<File> nativeSourceFiles(Uri packageRoot) {
         name.endsWith('.h') ||
         name.endsWith('.def');
   }).toList();
+  for (final relPath in const [
+    'third_party/miniz/miniz.c',
+    'third_party/miniz/miniz.h',
+  ]) {
+    final extra = File.fromUri(packageRoot.resolve(relPath));
+    if (extra.existsSync()) {
+      files.add(extra);
+    }
+  }
   files.sort(
     (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
   );
@@ -537,7 +546,8 @@ void verifyArtifactSourceHash(
   }
 }
 
-/// Lists the tracked native source files in `hook/` under [packageRoot].
+/// Lists the tracked native source files in `hook/` (and `third_party/miniz/`)
+/// under [packageRoot].
 List<File> nativeSourceFiles(Uri packageRoot) {
   final hookDir = Directory.fromUri(packageRoot.resolve('hook/'));
   if (!hookDir.existsSync()) return const [];
@@ -549,6 +559,15 @@ List<File> nativeSourceFiles(Uri packageRoot) {
         name.endsWith('.h') ||
         name.endsWith('.def');
   }).toList();
+  for (final relPath in const [
+    'third_party/miniz/miniz.c',
+    'third_party/miniz/miniz.h',
+  ]) {
+    final file = File.fromUri(packageRoot.resolve(relPath));
+    if (file.existsSync()) {
+      files.add(file);
+    }
+  }
   files.sort(
     (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
   );
@@ -626,6 +645,10 @@ Future<String> _computeNativeSourceHashForRef({
       '--name-only',
       gitRef,
       'pkgs/$packageName/hook/',
+      if (packageName == 'ndarray') ...[
+        'pkgs/$packageName/third_party/miniz/miniz.c',
+        'pkgs/$packageName/third_party/miniz/miniz.h',
+      ],
     ]);
     if (lsTree.exitCode == 0) {
       final paths = (lsTree.stdout as String)
@@ -653,15 +676,23 @@ Future<String> _computeNativeSourceHashForRef({
   }
 
   final hookDir = Directory('pkgs/$packageName/hook');
-  final files =
-      hookDir
-          .listSync()
-          .whereType<File>()
-          .where((f) => isTrackedSource(f.uri.pathSegments.last))
-          .toList()
-        ..sort(
-          (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
-        );
+  final files = hookDir
+      .listSync()
+      .whereType<File>()
+      .where((f) => isTrackedSource(f.uri.pathSegments.last))
+      .toList();
+  for (final relPath in const [
+    'third_party/miniz/miniz.c',
+    'third_party/miniz/miniz.h',
+  ]) {
+    final extra = File('pkgs/$packageName/$relPath');
+    if (extra.existsSync()) {
+      files.add(extra);
+    }
+  }
+  files.sort(
+    (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
+  );
   final buffer = StringBuffer();
   for (final file in files) {
     final name = file.uri.pathSegments.last;
@@ -733,24 +764,32 @@ Future<void> _verifyProvenance({
 Future<Uint8List?> _downloadWithRedirects(Uri url) async {
   final client = HttpClient();
   try {
-    var currentUrl = url;
+    var currentUri = url;
     for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
-      final request = await client.getUrl(currentUrl);
+      final request = await client.getUrl(currentUri);
       final response = await request.close();
       if (response.statusCode >= 300 &&
           response.statusCode < 400 &&
           response.headers.value(HttpHeaders.locationHeader) != null) {
-        currentUrl = currentUrl.resolve(
-          response.headers.value(HttpHeaders.locationHeader)!,
-        );
+        final location = response.headers.value(HttpHeaders.locationHeader)!;
+        await response.drain<void>();
+        final nextUri = currentUri.resolve(location);
+        if (currentUri.scheme == 'https' && nextUri.scheme != 'https') {
+          throw HttpException(
+            'Refusing HTTPS-to-HTTP redirect downgrade: $nextUri',
+          );
+        }
+        currentUri = nextUri;
         continue;
       }
       if (response.statusCode == 404) {
+        await response.drain<void>();
         return null;
       }
       if (response.statusCode != 200) {
+        await response.drain<void>();
         throw HttpException(
-          'Failed to download $currentUrl (HTTP ${response.statusCode})',
+          'Failed to download $currentUri (HTTP ${response.statusCode})',
         );
       }
       final builder = BytesBuilder(copy: false);

@@ -203,5 +203,161 @@ void main() {
         expect(sub.abs().toList(), equals([2.0, 3.0, 4.0]));
       });
     });
+
+    test(
+      'F1: GpuArray<T> static typing and scalar operand dtype preservation',
+      () {
+        ResourceScope.scope(() {
+          final f32 = GpuArray.fromList([4.0, 9.0, 16.0], [3], DType.float32);
+          final f32b = GpuArray.fromList([2.0, 3.0, 4.0], [3], DType.float32);
+
+          // Static and dynamic type preservation for binary operators & scalars
+          final GpuArray<Float32> addScalar = f32 + 1.0;
+          final GpuArray<Float32> subScalar = f32 - 1.0;
+          final GpuArray<Float32> mulScalar = f32 * 2.0;
+          final GpuArray<Float32> divScalar = f32 / 2.0;
+          final GpuArray<Float32> fdivScalar = f32 ~/ 3.0;
+          final GpuArray<Float32> modScalar = f32 % 5.0;
+          expect(addScalar.dtype, equals(DType.float32));
+          expect(subScalar.dtype, equals(DType.float32));
+          expect(mulScalar.dtype, equals(DType.float32));
+          expect(divScalar.dtype, equals(DType.float32));
+          expect(fdivScalar.dtype, equals(DType.float32));
+          expect(modScalar.dtype, equals(DType.float32));
+          expect(addScalar.toList(), equals([5.0, 10.0, 17.0]));
+          expect(fdivScalar.toList(), equals([1.0, 3.0, 5.0]));
+          expect(modScalar.toList(), equals([4.0, 4.0, 1.0]));
+
+          // Binary methods and top-level functions preserve GpuArray<Float32>
+          final GpuArray<Float32> mPow = pow(f32b, 2.0);
+          final GpuArray<Float32> mMax = maximum(f32, 10.0);
+          final GpuArray<Float32> mMin = minimum(f32, 10.0);
+          final GpuArray<Float32> mHypot = hypot(
+            GpuArray.fromList([3.0, 5.0], [2], DType.float32),
+            GpuArray.fromList([4.0, 12.0], [2], DType.float32),
+          );
+          final GpuArray<Float32> mAtan2 = atan2(
+            GpuArray.fromList([1.0, 0.0], [2], DType.float32),
+            GpuArray.fromList([1.0, 1.0], [2], DType.float32),
+          );
+          final GpuArray<Float32> mCopysign = copysign(f32, -1.0);
+          expect(mPow.dtype, equals(DType.float32));
+          expect(mPow.toList(), equals([4.0, 9.0, 16.0]));
+          expect(mMax.toList(), equals([10.0, 10.0, 16.0]));
+          expect(mMin.toList(), equals([4.0, 9.0, 10.0]));
+          expect(mHypot.toList(), equals([5.0, 13.0]));
+          expect(
+            (mAtan2.toList()[0] as num).toDouble(),
+            closeTo(0.785398, 1e-4),
+          );
+          expect(mCopysign.toList(), equals([-4.0, -9.0, -16.0]));
+        });
+      },
+    );
+
+    test(
+      'F5: Bitwise, predicate, nanToNum, isClose/allClose, clip, and complex ufuncs (methods & top-level)',
+      () {
+        ResourceScope.scope(() {
+          // Bitwise ops on Int32
+          final a = GpuArray.fromList([6, 12, 15], [3], DType.int32);
+          final b = GpuArray.fromList([3, 5, 7], [3], DType.int32);
+          final GpuArray<Int32> bAnd = a & b;
+          final GpuArray<Int32> bOr = a | b;
+          final GpuArray<Int32> bXor = a ^ b;
+          final GpuArray<Int32> bNot = ~a;
+          final GpuArray<Int32> bShl = a << 1;
+          final GpuArray<Int32> bShr = a >> 1;
+          expect(bAnd.toList(), equals([2, 4, 7]));
+          expect(bitwiseAnd(a, b).toList(), equals([2, 4, 7]));
+          expect(bOr.toList(), equals([7, 13, 15]));
+          expect(bitwiseOr(a, b).toList(), equals([7, 13, 15]));
+          expect(bXor.toList(), equals([5, 9, 8]));
+          expect(bitwiseXor(a, b).toList(), equals([5, 9, 8]));
+          expect(bNot.toList(), equals([-7, -13, -16]));
+          expect(invert(a).toList(), equals([-7, -13, -16]));
+          expect(bShl.toList(), equals([12, 24, 30]));
+          expect(leftShift(a, 1).toList(), equals([12, 24, 30]));
+          expect(bShr.toList(), equals([3, 6, 7]));
+          expect(rightShift(a, 1).toList(), equals([3, 6, 7]));
+          expect(gcd(a, b).toList(), equals([3, 1, 1]));
+          expect(lcm(a, b).toList(), equals([6, 60, 105]));
+
+          // Sign, clip, rint, trunc, fix, square, reciprocal, cbrt
+          final x = GpuArray.fromList([-2.7, 0.0, 3.2], [3], DType.float64);
+          expect(sign(x).toList(), equals([-1.0, 0.0, 1.0]));
+          expect(x.clip(-1.0, 2.0).toList(), equals([-1.0, 0.0, 2.0]));
+          expect(clip(x, -1.0, 2.0).toList(), equals([-1.0, 0.0, 2.0]));
+          expect(trunc(x).toList(), equals([-2.0, 0.0, 3.0]));
+          expect(fix(x).toList(), equals([-2.0, 0.0, 3.0]));
+          expect(rint(x).toList(), equals([-3.0, 0.0, 3.0]));
+
+          // Predicates & nanToNum
+          final special = GpuArray.fromList(
+            [1.0, double.nan, double.infinity, double.negativeInfinity],
+            [4],
+            DType.float64,
+          );
+          expect(isnan(special).toList(), equals([false, true, false, false]));
+          expect(isinf(special).toList(), equals([false, false, true, true]));
+          expect(
+            isfinite(special).toList(),
+            equals([true, false, false, false]),
+          );
+          final cleaned = nanToNum(
+            special,
+            nan: 0.0,
+            posinf: 99.0,
+            neginf: -99.0,
+          );
+          expect(cleaned.toList(), equals([1.0, 0.0, 99.0, -99.0]));
+
+          // isClose / isclose & allClose / allclose
+          final u = GpuArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+          final v = GpuArray.fromList(
+            [1.0, 2.0 + 1e-7, 3.1],
+            [3],
+            DType.float64,
+          );
+          expect(
+            isClose(u, v, atol: 1e-5).toList(),
+            equals([true, true, false]),
+          );
+          expect(
+            isclose(u, v, atol: 1e-5).toList(),
+            equals([true, true, false]),
+          );
+          expect(allClose(u, v, atol: 1e-5), isFalse);
+          expect(allclose(u, v, atol: 0.2), isTrue);
+
+          // Complex components: real, imag, conj, conjugate, angle
+          final c64 = GpuArray.fromList(
+            [Complex(1.0, 1.0), Complex(0.0, -2.0)],
+            [2],
+            DType.complex64,
+          );
+          final GpuArray<Float32> r64 = c64.real();
+          final GpuArray<Float32> i64 = c64.imag();
+          final GpuArray<Complex64> cj64 = c64.conjugate();
+          final GpuArray<Float32> angDeg = c64.angle(deg: true);
+          expect(r64.dtype, equals(DType.float32));
+          expect(r64.toList(), equals([1.0, 0.0]));
+          expect(i64.dtype, equals(DType.float32));
+          expect(i64.toList(), equals([1.0, -2.0]));
+          expect(
+            cj64.toList(),
+            equals([Complex(1.0, -1.0), Complex(0.0, 2.0)]),
+          );
+          expect((angDeg.toList()[0] as num).toDouble(), closeTo(45.0, 1e-3));
+          expect((angDeg.toList()[1] as num).toDouble(), closeTo(-90.0, 1e-3));
+          expect(real(c64).toList(), equals([1.0, 0.0]));
+          expect(imag(c64).toList(), equals([1.0, -2.0]));
+          expect(
+            conj(c64).toList(),
+            equals([Complex(1.0, -1.0), Complex(0.0, 2.0)]),
+          );
+        });
+      },
+    );
   });
 }

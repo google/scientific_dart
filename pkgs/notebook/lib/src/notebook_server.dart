@@ -24,6 +24,7 @@ class NotebookServer {
   final String workspaceDir;
   final String dartSdkPath;
   final int port;
+  final String? notebookPath;
 
   HttpServer? _server;
   NotebookKernel? _kernel;
@@ -33,12 +34,19 @@ class NotebookServer {
     required this.workspaceDir,
     required this.dartSdkPath,
     this.port = 8080,
+    this.notebookPath,
   });
 
   int get actualPort => _server?.port ?? port;
 
   List<Map<String, dynamic>> _sessionCells = [];
 
+  File? get _initialIpynbFile => switch (notebookPath) {
+    final path? => File(
+      p.normalize(p.isAbsolute(path) ? path : p.join(workspaceDir, path)),
+    ),
+    null => null,
+  };
   File get _sessionIpynbFile =>
       File(p.join(workspaceDir, 'notebook_session.ipynb'));
   File get _sessionJsonFile =>
@@ -46,6 +54,16 @@ class NotebookServer {
 
   void _loadSessionData() {
     try {
+      if (_initialIpynbFile case final initialFile?
+          when initialFile.existsSync()) {
+        final content = initialFile.readAsStringSync();
+        if (content.trim().isNotEmpty) {
+          final nb = IpynbNotebook.fromJsonString(content);
+          _sessionCells = nb.toSessionCells();
+          return;
+        }
+      }
+
       if (_sessionIpynbFile.existsSync()) {
         final content = _sessionIpynbFile.readAsStringSync();
         if (content.trim().isNotEmpty) {
@@ -137,6 +155,24 @@ class NotebookServer {
     print('Starting notebook kernel...');
     await _kernel!.start();
     print('Kernel started successfully.');
+
+    if (notebookPath != null) {
+      final evaluatedCodeCells = _sessionCells
+          .where((c) => c['type'] == 'code' && c['evaluated'] == true)
+          .toList();
+      if (evaluatedCodeCells.isNotEmpty) {
+        print(
+          'Warming up kernel state (${evaluatedCodeCells.length} cells)...',
+        );
+        for (final cell in evaluatedCodeCells) {
+          final code = (cell['code'] as String?) ?? '';
+          if (code.trim().isNotEmpty) {
+            await _kernel!.execute(code);
+          }
+        }
+        print('Kernel state warmed up.');
+      }
+    }
 
     _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
     print('Server listening on http://localhost:$port');

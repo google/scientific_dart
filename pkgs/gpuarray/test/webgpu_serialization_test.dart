@@ -14,6 +14,7 @@
 
 import 'package:test/test.dart';
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 
 void main() {
   group('WebGPU Compute Pipeline Serialization & Browser Widgets', () {

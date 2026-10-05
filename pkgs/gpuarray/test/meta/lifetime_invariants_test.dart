@@ -16,6 +16,8 @@ import 'package:gpuarray/fft.dart' as gpu_fft;
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
 import 'package:gpuarray/nn.dart' as nn;
+import 'package:gpuarray/random.dart';
+import 'package:gpuarray/safetensors.dart';
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
 

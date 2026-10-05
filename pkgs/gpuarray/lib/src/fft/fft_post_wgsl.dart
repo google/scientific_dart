@@ -18,7 +18,64 @@ import 'fft_wgsl.dart';
 
 /// Builds a WGSL shader for Bluestein's Chirp-Z pre-multiplication and padding
 /// into length `chirpM` (power of 2 >= `2 * n - 1`).
-WgslShaderModule buildFftBluesteinPreShader() {
+WgslShaderModule buildFftBluesteinPreShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code =
+        '''
+$wgslComplex64Lib
+
+struct BluesteinPreUniforms {
+  batch_count: u32,
+  n: u32,
+  chirp_m: u32,
+  sign_bits: u32,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> a_pad_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> b_pad_buf: array<vec2<f32>>;
+@group(0) @binding(3) var<uniform> params: BluesteinPreUniforms;
+
+fn bluestein_chirp(idx: u32, n: u32, sign_dir: f32) -> vec2<f32> {
+  let two_n = 2u * n;
+  let k_mod = idx % two_n;
+  let sq_mod = (k_mod * k_mod) % two_n;
+  return c64_twiddle_ratio(sq_mod, two_n, sign_dir);
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.chirp_m;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.chirp_m;
+  let k = linear_idx % params.chirp_m;
+  let sign_dir = bitcast<f32>(params.sign_bits);
+
+  if (k < params.n) {
+    let w = bluestein_chirp(k, params.n, sign_dir);
+    let x_val = src_buf[batch_idx * params.n + k];
+    a_pad_buf[linear_idx] = c64_mul(x_val, w);
+    b_pad_buf[linear_idx] = c64_conj(w);
+  } else if (k > params.chirp_m - params.n) {
+    a_pad_buf[linear_idx] = vec2<f32>(0.0, 0.0);
+    let mirror = params.chirp_m - k;
+    let w = bluestein_chirp(mirror, params.n, sign_dir);
+    b_pad_buf[linear_idx] = c64_conj(w);
+  } else {
+    a_pad_buf[linear_idx] = vec2<f32>(0.0, 0.0);
+    b_pad_buf[linear_idx] = vec2<f32>(0.0, 0.0);
+  }
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_bluestein_pre_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib
@@ -76,8 +133,40 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   );
 }
 
-/// Builds a WGSL shader for pointwise complex double-float multiplication.
-WgslShaderModule buildFftComplexMulShader() {
+/// Builds a WGSL shader for pointwise complex multiplication.
+WgslShaderModule buildFftComplexMulShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code =
+        '''
+$wgslComplex64Lib
+
+struct MulUniforms {
+  total_elements: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
+}
+
+@group(0) @binding(0) var<storage, read> a_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read> b_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(3) var<uniform> params: MulUniforms;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.total_elements) {
+    return;
+  }
+  dst_buf[idx] = c64_mul(a_buf[idx], b_buf[idx]);
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_complex_mul_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib
@@ -114,7 +203,56 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 /// Builds a WGSL shader for Bluestein's Chirp-Z post-multiplication and extraction
 /// of the first `n` bins per batch row.
-WgslShaderModule buildFftBluesteinPostShader() {
+WgslShaderModule buildFftBluesteinPostShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code =
+        '''
+$wgslComplex64Lib
+
+struct BluesteinPostUniforms {
+  batch_count: u32,
+  n: u32,
+  chirp_m: u32,
+  sign_bits: u32,
+  inv_m_hi: u32,
+  inv_m_lo: u32,
+  pad0: u32,
+  pad1: u32,
+}
+
+@group(0) @binding(0) var<storage, read> conv_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: BluesteinPostUniforms;
+
+fn bluestein_chirp(idx: u32, n: u32, sign_dir: f32) -> vec2<f32> {
+  let two_n = 2u * n;
+  let k_mod = idx % two_n;
+  let sq_mod = (k_mod * k_mod) % two_n;
+  return c64_twiddle_ratio(sq_mod, two_n, sign_dir);
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.n;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.n;
+  let k = linear_idx % params.n;
+  let sign_dir = bitcast<f32>(params.sign_bits);
+  let inv_m = 1.0 / f32(params.chirp_m);
+  let w = bluestein_chirp(k, params.n, sign_dir);
+  let raw = conv_buf[batch_idx * params.chirp_m + k];
+  dst_buf[linear_idx] = c64_mul(raw, w) * inv_m;
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_bluestein_post_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib
@@ -127,7 +265,6 @@ struct BluesteinPostUniforms {
   inv_m_hi: u32,
   inv_m_lo: u32,
   pad0: u32,
-  pad1: u32,
 }
 
 @group(0) @binding(0) var<storage, read> conv_buf: array<vec4<u32>>;
@@ -166,9 +303,79 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 /// Builds a WGSL shader that scatters `[batchCount, outAxisLength]` from a
-/// `[batchCount, srcAxisLength]` `Complex128` buffer into a potentially strided
-/// N-D `Complex128` destination buffer, applying normalization scaling and optional conjugation.
-WgslShaderModule buildFftScatterComplexShader() {
+/// `[batchCount, srcAxisLength]` complex buffer into a potentially strided
+/// N-D `Complex64` or `Complex128` destination buffer, applying normalization scaling and optional conjugation.
+WgslShaderModule buildFftScatterComplexShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code = '''
+struct ScatterComplexUniforms {
+  batch_count: u32,
+  src_axis_length: u32,
+  out_axis_length: u32,
+  outer_rank: u32,
+  out_offset: u32,
+  out_axis_stride: i32,
+  scale_hi: u32,
+  scale_lo: u32,
+  conjugate_output: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
+  outer_shape0: vec4<u32>,
+  outer_shape1: vec4<u32>,
+  out_outer_strides0: vec4<i32>,
+  out_outer_strides1: vec4<i32>,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: ScatterComplexUniforms;
+
+fn get_outer_dim(d: u32) -> u32 {
+  if (d < 4u) { return params.outer_shape0[d]; }
+  return params.outer_shape1[d - 4u];
+}
+
+fn get_out_outer_stride(d: u32) -> i32 {
+  if (d < 4u) { return params.out_outer_strides0[d]; }
+  return params.out_outer_strides1[d - 4u];
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.out_axis_length;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.out_axis_length;
+  let k = linear_idx % params.out_axis_length;
+
+  var rem = batch_idx;
+  var base_offset = i32(params.out_offset);
+  for (var i = 0u; i < params.outer_rank; i = i + 1u) {
+    let d = params.outer_rank - 1u - i;
+    let dim_size = get_outer_dim(d);
+    let coord = rem % dim_size;
+    rem = rem / dim_size;
+    base_offset = base_offset + i32(coord) * get_out_outer_stride(d);
+  }
+  let phys_idx = u32(base_offset + i32(k) * params.out_axis_stride);
+
+  let scale = bitcast<f32>(params.scale_hi);
+  var val = src_buf[batch_idx * params.src_axis_length + k] * scale;
+  if (params.conjugate_output != 0u) {
+    val = vec2<f32>(val.x, -val.y);
+  }
+  dst_buf[phys_idx] = val;
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_scatter_complex_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib
@@ -243,8 +450,70 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 /// Builds a WGSL shader that extracts and scales the real part of `[batchCount, n]`
-/// from a `Complex128` buffer into a potentially strided N-D `Float64` destination buffer.
-WgslShaderModule buildFftScatterRealShader() {
+/// from a complex buffer into a potentially strided N-D `Float32` or `Float64` destination buffer.
+WgslShaderModule buildFftScatterRealShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code = '''
+struct ScatterRealUniforms {
+  batch_count: u32,
+  n: u32,
+  outer_rank: u32,
+  out_offset: u32,
+  out_axis_stride: i32,
+  scale_hi: u32,
+  scale_lo: u32,
+  pad0: u32,
+  outer_shape0: vec4<u32>,
+  outer_shape1: vec4<u32>,
+  out_outer_strides0: vec4<i32>,
+  out_outer_strides1: vec4<i32>,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<f32>;
+@group(0) @binding(2) var<uniform> params: ScatterRealUniforms;
+
+fn get_outer_dim(d: u32) -> u32 {
+  if (d < 4u) { return params.outer_shape0[d]; }
+  return params.outer_shape1[d - 4u];
+}
+
+fn get_out_outer_stride(d: u32) -> i32 {
+  if (d < 4u) { return params.out_outer_strides0[d]; }
+  return params.out_outer_strides1[d - 4u];
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.n;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.n;
+  let k = linear_idx % params.n;
+
+  var rem = batch_idx;
+  var base_offset = i32(params.out_offset);
+  for (var i = 0u; i < params.outer_rank; i = i + 1u) {
+    let d = params.outer_rank - 1u - i;
+    let dim_size = get_outer_dim(d);
+    let coord = rem % dim_size;
+    rem = rem / dim_size;
+    base_offset = base_offset + i32(coord) * get_out_outer_stride(d);
+  }
+  let phys_idx = u32(base_offset + i32(k) * params.out_axis_stride);
+
+  let scale = bitcast<f32>(params.scale_hi);
+  dst_buf[phys_idx] = src_buf[batch_idx * params.n + k].x * scale;
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_scatter_real_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib

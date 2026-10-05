@@ -564,6 +564,13 @@ void s_diff_double(const double *src, const int64_t *stridesSrc, double *res, co
 void s_diff_float(const float *src, const int64_t *stridesSrc, float *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_diff_int64(const int64_t *src, const int64_t *stridesSrc, int64_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_diff_int32(const int32_t *src, const int64_t *stridesSrc, int32_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_int16(const int16_t *src, const int64_t *stridesSrc, int16_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_int8(const int8_t *src, const int64_t *stridesSrc, int8_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_uint64(const uint64_t *src, const int64_t *stridesSrc, uint64_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_uint32(const uint32_t *src, const int64_t *stridesSrc, uint32_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_uint16(const uint16_t *src, const int64_t *stridesSrc, uint16_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_uint8(const uint8_t *src, const int64_t *stridesSrc, uint8_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
+void s_diff_boolean(const uint8_t *src, const int64_t *stridesSrc, uint8_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_diff_complex128(const cpx_t *src, const int64_t *stridesSrc, cpx_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_diff_complex64(const cpx_f_t *src, const int64_t *stridesSrc, cpx_f_t *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis);
 void s_unwrap_double(const double *src, const int64_t *stridesSrc, double *res, const int64_t *stridesRes, const int64_t *shape, int rank, int axis, double discont);
@@ -769,15 +776,15 @@ uint32_t s_hash_boolean(const uint8_t *a, const int64_t *strides, const int64_t 
  * High-performance random statistical simulators.
  */
 
-void v_normal_double(double *res, int64_t size, double loc, double scale, unsigned long long seed);
-void v_normal_float(float *res, int64_t size, float loc, float scale, unsigned long long seed);
-void v_uniform_double(double *res, int64_t size, unsigned long long seed);
-void v_uniform_float(float *res, int64_t size, unsigned long long seed);
+void v_normal_double(double *res, int64_t size, double loc, double scale, uint64_t seed);
+void v_normal_float(float *res, int64_t size, float loc, float scale, uint64_t seed);
+void v_uniform_double(double *res, int64_t size, uint64_t seed);
+void v_uniform_float(float *res, int64_t size, uint64_t seed);
 
-void v_randint_int64(int64_t *res, int64_t size, int64_t low, int64_t high, unsigned long long seed);
-void v_randint_int32(int32_t *res, int64_t size, int32_t low, int32_t high, unsigned long long seed);
-void v_randint_int16(int16_t *res, int64_t size, int low, int high, unsigned long long seed);
-void v_randint_uint8(uint8_t *res, int64_t size, int low, int high, unsigned long long seed);
+void v_randint_int64(int64_t *res, int64_t size, int64_t low, int64_t high, uint64_t seed);
+void v_randint_int32(int32_t *res, int64_t size, int32_t low, int32_t high, uint64_t seed);
+void v_randint_int16(int16_t *res, int64_t size, int low, int high, uint64_t seed);
+void v_randint_uint8(uint8_t *res, int64_t size, int low, int high, uint64_t seed);
 
 void v_fill_double(double *res, double value, int64_t size);
 void v_fill_float(float *res, float value, int64_t size);
@@ -825,10 +832,14 @@ void v_secure_randint_uint8(uint8_t *res, int64_t size, int low, int high);
 
 void v_secure_normal_double(double *res, int64_t size, double loc, double scale);
 void v_secure_normal_float(float *res, int64_t size, float loc, float scale);
-void v_poisson_int64(int64_t *res, int64_t size, double lam, unsigned long long seed);
-void v_poisson_int32(int32_t *res, int64_t size, double lam, unsigned long long seed);
-void v_binomial_int64(int64_t *res, int64_t size, int n, double p, unsigned long long seed);
-void v_binomial_int32(int32_t *res, int64_t size, int n, double p, unsigned long long seed);
+void v_poisson_int64(int64_t *res, int64_t size, double lam, uint64_t seed);
+void v_poisson_int32(int32_t *res, int64_t size, double lam, uint64_t seed);
+void v_secure_poisson_int64(int64_t *res, int64_t size, double lam);
+void v_secure_poisson_int32(int32_t *res, int64_t size, double lam);
+void v_binomial_int64(int64_t *res, int64_t size, int n, double p, uint64_t seed);
+void v_binomial_int32(int32_t *res, int64_t size, int n, double p, uint64_t seed);
+void v_secure_binomial_int64(int64_t *res, int64_t size, int n, double p);
+void v_secure_binomial_int32(int32_t *res, int64_t size, int n, double p);
 
 /* ============================================================================
  * SECTION 7: TRIANGULAR MATRIX EXTRACTORS
@@ -1542,6 +1553,26 @@ void s_quantile_int32(const int32_t *src, const int64_t *stridesSrc, double *des
 void s_quantile_int16(const int16_t *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, double q, int method);
 void s_quantile_uint8(const uint8_t *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, double q, int method);
 
+/* Nanmedian global reductions (contiguous) */
+double r_nanmedian_double(const double *src, int64_t size);
+float r_nanmedian_float(const float *src, int64_t size);
+cpx_t r_nanmedian_complex128(const cpx_t *src, int64_t size);
+cpx_f_t r_nanmedian_complex64(const cpx_f_t *src, int64_t size);
+
+/* Nanmedian axis reductions (strided) */
+void s_nanmedian_double(const double *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);
+void s_nanmedian_float(const float *src, const int64_t *stridesSrc, float *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);
+void s_nanmedian_complex128(const cpx_t *src, const int64_t *stridesSrc, cpx_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);
+void s_nanmedian_complex64(const cpx_f_t *src, const int64_t *stridesSrc, cpx_f_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);
+
+/* Nanquantile global reductions (contiguous) */
+double r_nanquantile_double(const double *src, int64_t size, double q, int method);
+double r_nanquantile_float(const float *src, int64_t size, double q, int method);
+
+/* Nanquantile axis reductions (strided) */
+void s_nanquantile_double(const double *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, double q, int method);
+void s_nanquantile_float(const float *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, double q, int method);
+
 /* ============================================================================
  * SECTION 11: INTERPOLATION KERNELS
  * ============================================================================
@@ -1819,12 +1850,15 @@ void s_erf_double(const double *src, const int64_t *stridesSrc, double *res, con
 
 
 /* Spatial N-D Correlation */
+void s_correlate_full_1d_double(const double *src, int64_t N, const double *kernel, int64_t K, double *res);
+void s_correlate_full_1d_float(const float *src, int64_t N, const float *kernel, int64_t K, float *res);
 void s_correlate_valid_double(const double *src, const int64_t *stridesSrc, const double *kernel, const int64_t *stridesKernel, double *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
 void s_correlate_valid_float(const float *src, const int64_t *stridesSrc, const float *kernel, const int64_t *stridesKernel, float *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
 void s_correlate_valid_complex128(const cpx_t *src, const int64_t *stridesSrc, const cpx_t *kernel, const int64_t *stridesKernel, cpx_t *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
 void s_correlate_valid_complex64(const cpx_f_t *src, const int64_t *stridesSrc, const cpx_f_t *kernel, const int64_t *stridesKernel, cpx_f_t *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
 void s_correlate_valid_int64(const int64_t *src, const int64_t *stridesSrc, const int64_t *kernel, const int64_t *stridesKernel, int64_t *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
 void s_correlate_valid_int32(const int32_t *src, const int64_t *stridesSrc, const int32_t *kernel, const int64_t *stridesKernel, int32_t *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
+void s_correlate_valid_uint64(const uint64_t *src, const int64_t *stridesSrc, const uint64_t *kernel, const int64_t *stridesKernel, uint64_t *res, const int64_t *stridesRes, const int64_t *resShape, const int64_t *kernelShape, int rank);
 
 
 /* Generalized Ufunc Reduction, Cumulative & Scatter AT Kernels */
@@ -2108,7 +2142,7 @@ void native_shuffle_1d(
     int64_t size,
     int64_t stride,
     int item_size,
-    unsigned long long seed
+    uint64_t seed
 );
 
 void native_shuffle_nd(
@@ -2117,7 +2151,7 @@ void native_shuffle_nd(
     const int64_t *strides,
     int rank,
     int item_size,
-    unsigned long long seed
+    uint64_t seed
 );
 
 void native_choice_uniform(
@@ -2128,7 +2162,7 @@ void native_choice_uniform(
     int64_t src_size,
     int64_t sample_count,
     int item_size,
-    unsigned long long seed
+    uint64_t seed
 );
 
 void native_choice_weighted(
@@ -2140,7 +2174,7 @@ void native_choice_weighted(
     int64_t src_size,
     int64_t sample_count,
     int item_size,
-    unsigned long long seed
+    uint64_t seed
 );
 
 void native_choice_without_replacement(
@@ -2151,7 +2185,7 @@ void native_choice_without_replacement(
     int64_t src_size,
     int64_t sample_count,
     int item_size,
-    unsigned long long seed
+    uint64_t seed
 );
 
 void native_choice_weighted_without_replacement(
@@ -2163,22 +2197,79 @@ void native_choice_weighted_without_replacement(
     int64_t src_size,
     int64_t sample_count,
     int item_size,
-    unsigned long long seed
+    uint64_t seed
 );
 
-void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void* out, intptr_t n);
+void native_secure_shuffle_1d(
+    void *data,
+    int64_t size,
+    int64_t stride,
+    int item_size
+);
+
+void native_secure_shuffle_nd(
+    void *data,
+    const int64_t *shape,
+    const int64_t *strides,
+    int rank,
+    int item_size
+);
+
+void native_secure_choice_uniform(
+    const void *src,
+    int64_t src_stride,
+    void *dest,
+    int64_t dest_stride,
+    int64_t src_size,
+    int64_t sample_count,
+    int item_size
+);
+
+void native_secure_choice_weighted(
+    const void *src,
+    int64_t src_stride,
+    void *dest,
+    int64_t dest_stride,
+    const double *cdf,
+    int64_t src_size,
+    int64_t sample_count,
+    int item_size
+);
+
+void native_secure_choice_without_replacement(
+    const void *src,
+    int64_t src_stride,
+    void *dest,
+    int64_t dest_stride,
+    int64_t src_size,
+    int64_t sample_count,
+    int item_size
+);
+
+void native_secure_choice_weighted_without_replacement(
+    const void *src,
+    int64_t src_stride,
+    void *dest,
+    int64_t dest_stride,
+    const double *probs,
+    int64_t src_size,
+    int64_t sample_count,
+    int item_size
+);
+
+void v_binary_minmax(int op_code, int dtype, const void* a, const void* b, void* out, int64_t n);
 
 void s_binary_minmax(
     int op_code,
     int dtype,
     int ndim,
-    const intptr_t* shape,
+    const int64_t* shape,
     const void* a_data,
-    const intptr_t* a_strides,
+    const int64_t* a_strides,
     const void* b_data,
-    const intptr_t* b_strides,
+    const int64_t* b_strides,
     void* out_data,
-    const intptr_t* out_strides
+    const int64_t* out_strides
 );
 
 #ifdef __cplusplus

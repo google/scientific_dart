@@ -153,8 +153,10 @@ NDArray<R> _returnFromScope<R extends DTypeTag>(
 
 NDArray<T> _diagonalView<T extends DTypeTag>(NDArray<T> arr, int ax1, int ax2) {
   if (arr.shape[ax1] != arr.shape[ax2]) {
-    throw ArgumentError(
-      "Dimension mismatch for diagonal extraction: axis $ax1 size (${arr.shape[ax1]}) != axis $ax2 size (${arr.shape[ax2]}).",
+    throw ArgumentError.value(
+      arr.shape[ax2],
+      'arr.shape[$ax2]',
+      'Must match axis $ax1 size (${arr.shape[ax1]}) for diagonal extraction',
     );
   }
   final minAx = math.min(ax1, ax2);
@@ -224,8 +226,10 @@ final class TensordotAxes {
     }
     if (axes is List) {
       if (axes.length != 2) {
-        throw ArgumentError(
-          "List axes specification must contain exactly 2 elements, got length ${axes.length}.",
+        throw ArgumentError.value(
+          axes.length,
+          'axes.length',
+          'Must contain exactly 2 elements',
         );
       }
       if (axes[0] is int && axes[1] is int) {
@@ -238,7 +242,11 @@ final class TensordotAxes {
         );
       }
     }
-    throw ArgumentError("Unsupported axes parameter type or format: $axes.");
+    throw ArgumentError.value(
+      axes,
+      'axes',
+      'Must be an int, (int, int), (List<int>, List<int>), List, or TensordotAxes',
+    );
   }
 
   /// 1. Contracts the last [n] axes of array A with the first [n] axes of array B.
@@ -257,8 +265,10 @@ final class TensordotAxes {
       explicitAxesA = List<int>.unmodifiable(axesA),
       explicitAxesB = List<int>.unmodifiable(axesB) {
     if (axesA.length != axesB.length) {
-      throw ArgumentError(
-        "Axes length mismatch: ${axesA.length} vs ${axesB.length}.",
+      throw ArgumentError.value(
+        axesB.length,
+        'axesB.length',
+        'Must have the same length as axesA (${axesA.length})',
       );
     }
   }
@@ -270,22 +280,24 @@ final class TensordotAxes {
       explicitAxesB = List<int>.unmodifiable([axisB]);
 
   /// Resolves contracted axis index lists for tensors of rank [rankA] and [rankB].
-  (List<int>, List<int>) resolve(int rankA, int rankB) {
+  ({List<int> axesA, List<int> axesB}) resolve(int rankA, int rankB) {
     if (count != null) {
       final n = count!;
       if (n < 0 || n > rankA || n > rankB) {
-        throw ArgumentError(
-          "Invalid number of contracted axes $n for tensor ranks $rankA and $rankB.",
+        throw ArgumentError.value(
+          n,
+          'count',
+          'Must be between 0 and min(rankA, rankB) ($rankA, $rankB)',
         );
       }
       final axesA = List.generate(n, (i) => rankA - n + i);
       final axesB = List.generate(n, (i) => i);
-      return (axesA, axesB);
+      return (axesA: axesA, axesB: axesB);
     }
 
     final axesA = explicitAxesA!;
     final axesB = explicitAxesB!;
-    return (List<int>.from(axesA), List<int>.from(axesB));
+    return (axesA: List<int>.from(axesA), axesB: List<int>.from(axesB));
   }
 }
 
@@ -312,12 +324,7 @@ final class TensordotAxes {
 /// - Outer product (`axes == 0`) uses optimized elementwise broadcasting.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.arange(60.0).reshape([3, 4, 5]);
-/// final b = NDArray.arange(24.0).reshape([4, 3, 2]);
-/// final c = tensordot(a, b, axes: ([1, 0], [0, 1]));
-/// print(c.shape); // [5, 2]
-/// ```
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy tensordot](https://numpy.org/doc/stable/reference/generated/numpy.tensordot.html)
 NDArray<T> tensordot<T extends DTypeTag>(
@@ -346,7 +353,7 @@ NDArray<T> tensordot<T extends DTypeTag>(
   }
 
   final resolvedAxes = TensordotAxes.from(axes);
-  final (axesA, axesB) = resolvedAxes.resolve(a.shape.length, b.shape.length);
+  final (:axesA, :axesB) = resolvedAxes.resolve(a.shape.length, b.shape.length);
 
   final normAxesA = axesA
       .map((ax) => ax < 0 ? a.shape.length + ax : ax)
@@ -365,8 +372,10 @@ NDArray<T> tensordot<T extends DTypeTag>(
       throw RangeError.range(axB, 0, b.shape.length - 1, "axisB");
     }
     if (a.shape[axA] != b.shape[axB]) {
-      throw ArgumentError(
-        "Dimension mismatch at contracted axis: ${a.shape[axA]} != ${b.shape[axB]}",
+      throw ArgumentError.value(
+        b.shape[axB],
+        'b.shape[$axB]',
+        'Must match a.shape[$axA] (${a.shape[axA]}) at contracted axis',
       );
     }
   }
@@ -376,8 +385,10 @@ NDArray<T> tensordot<T extends DTypeTag>(
     final targetDType = resolveDType(a.dtype, b.dtype);
     if (out != null) {
       if (!listEquals(out.shape, targetShape) || out.dtype != targetDType) {
-        throw ArgumentError(
-          "Provided out buffer has incompatible shape or dtype (expected shape $targetShape and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).",
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have shape $targetShape and dtype $targetDType',
         );
       }
     }
@@ -411,8 +422,10 @@ NDArray<T> tensordot<T extends DTypeTag>(
   final targetDType = resolveDType(a.dtype, b.dtype);
   if (out != null) {
     if (!listEquals(out.shape, targetShape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype (expected shape $targetShape and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have shape $targetShape and dtype $targetDType',
       );
     }
   }
@@ -532,26 +545,56 @@ final class EinsumSubscripts {
     List<int>? outputIndices,
   ]) {
     if (inputIndices.isEmpty) {
-      throw ArgumentError('inputIndices cannot be empty.');
+      throw ArgumentError.value(
+        inputIndices,
+        'inputIndices',
+        'Must not be empty',
+      );
     }
 
     var containsEllipsis = false;
+    final inputIdSet = <int>{};
     for (final op in inputIndices) {
       if (op.where((idx) => idx == -1).length > 1) {
-        throw ArgumentError(
-          'Operand indices cannot contain more than one ellipsis (-1).',
+        throw ArgumentError.value(
+          op,
+          'inputIndices',
+          'Must not contain more than one ellipsis (-1) in any operand',
         );
       }
       if (op.contains(-1)) containsEllipsis = true;
+      for (final idx in op) {
+        if (idx != -1) inputIdSet.add(idx);
+      }
     }
     if (outputIndices != null) {
       if (outputIndices.where((idx) => idx == -1).length > 1) {
-        throw ArgumentError(
-          'Output indices cannot contain more than one ellipsis (-1).',
+        throw ArgumentError.value(
+          outputIndices,
+          'outputIndices',
+          'Must not contain more than one ellipsis (-1)',
         );
       }
       if (outputIndices.contains(-1)) {
         containsEllipsis = true;
+      }
+      final seenOutputIds = <int>{};
+      for (final idx in outputIndices) {
+        if (idx == -1) continue;
+        if (!inputIdSet.contains(idx)) {
+          throw ArgumentError.value(
+            outputIndices,
+            'outputIndices',
+            'Output index $idx does not appear in any input operand',
+          );
+        }
+        if (!seenOutputIds.add(idx)) {
+          throw ArgumentError.value(
+            outputIndices,
+            'outputIndices',
+            'Output index $idx appears more than once in output subscripts',
+          );
+        }
       }
     }
 
@@ -584,8 +627,10 @@ final class EinsumSubscripts {
   static EinsumSubscripts _parseImpl(String cleanSub) {
     final parts = cleanSub.split('->');
     if (parts.length > 2) {
-      throw ArgumentError(
-        'Invalid einsum subscript: multiple "->" delimiters found.',
+      throw ArgumentError.value(
+        cleanSub,
+        'subscripts',
+        'Must not contain multiple "->" delimiters',
       );
     }
 
@@ -612,14 +657,20 @@ final class EinsumSubscripts {
     List<String>? outputLabels,
   ]) {
     if (inputLabels.isEmpty) {
-      throw ArgumentError('inputLabels cannot be empty.');
+      throw ArgumentError.value(
+        inputLabels,
+        'inputLabels',
+        'Must not be empty',
+      );
     }
 
     final distinctLabelsSet = <String>{};
     for (final list in inputLabels) {
       if (list.where((lbl) => lbl == '...').length > 1) {
-        throw ArgumentError(
-          'Operand subscript cannot contain more than one ellipsis ("...").',
+        throw ArgumentError.value(
+          list,
+          'inputLabels',
+          'Must not contain more than one ellipsis ("...") in any operand',
         );
       }
       for (final lbl in list) {
@@ -628,8 +679,10 @@ final class EinsumSubscripts {
     }
     if (outputLabels != null) {
       if (outputLabels.where((lbl) => lbl == '...').length > 1) {
-        throw ArgumentError(
-          'Output subscript cannot contain more than one ellipsis ("...").',
+        throw ArgumentError.value(
+          outputLabels,
+          'outputLabels',
+          'Must not contain more than one ellipsis ("...")',
         );
       }
       for (final lbl in outputLabels) {
@@ -664,8 +717,10 @@ final class EinsumSubscripts {
       if (i + 2 < term.length && term.substring(i, i + 3) == '...') {
         ellipsisCount++;
         if (ellipsisCount > 1) {
-          throw ArgumentError(
-            'Invalid einsum subscript: operand or output term cannot contain more than one ellipsis ("..."). Term: "$term"',
+          throw ArgumentError.value(
+            term,
+            'term',
+            'Must not contain more than one ellipsis ("...")',
           );
         }
         tokens.add('...');
@@ -701,12 +756,7 @@ final class EinsumSubscripts {
 ///   are automatically selected to leverage BLAS GEMM where possible.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-/// final b = NDArray.fromList([5.0, 6.0, 7.0, 8.0], [2, 2], DType.float64);
-/// final c = einsum(EinsumSubscripts.parse('ij,jk->ik'), [a, b]);
-/// print(c.toList()); // [19.0, 22.0, 43.0, 50.0]
-/// ```
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy einsum](https://numpy.org/doc/stable/reference/generated/numpy.einsum.html)
 NDArray<T> einsum<T extends DTypeTag>(
@@ -715,7 +765,7 @@ NDArray<T> einsum<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (operands.isEmpty) {
-    throw ArgumentError("einsum requires at least one operand.");
+    throw ArgumentError.value(operands, 'operands', 'Must not be empty');
   }
   for (var i = 0; i < operands.length; i++) {
     if (operands[i].isDisposed) {
@@ -734,8 +784,10 @@ NDArray<T> einsum<T extends DTypeTag>(
   }
 
   if (subscripts.operandIndices.length != operands.length) {
-    throw ArgumentError(
-      "Number of subscript terms (${subscripts.operandIndices.length}) does not match number of operands (${operands.length}).",
+    throw ArgumentError.value(
+      operands.length,
+      'operands.length',
+      'Must match the number of subscript terms (${subscripts.operandIndices.length})',
     );
   }
 
@@ -749,8 +801,10 @@ NDArray<T> einsum<T extends DTypeTag>(
       final explicitCount = sub.where((id) => id != -1).length;
       final ellipsisDims = operands[i].shape.length - explicitCount;
       if (ellipsisDims < 0) {
-        throw ArgumentError(
-          "Operand $i shape ${operands[i].shape} has fewer dimensions than explicit labels in $sub.",
+        throw ArgumentError.value(
+          operands[i].shape,
+          'operands[$i].shape',
+          'Must have at least as many dimensions as explicit labels in $sub',
         );
       }
       if (ellipsisDims > maxEllipsisDims) {
@@ -836,8 +890,10 @@ NDArray<T> einsum<T extends DTypeTag>(
 
   for (var i = 0; i < operands.length; i++) {
     if (operandSubs[i].length != operands[i].shape.length) {
-      throw ArgumentError(
-        "Operand $i shape ${operands[i].shape} rank does not match subscript ${operandSubs[i]} length (${operandSubs[i].length}).",
+      throw ArgumentError.value(
+        operands[i].shape,
+        'operands[$i].shape',
+        'Must have rank matching subscript ${operandSubs[i]} length (${operandSubs[i].length})',
       );
     }
   }
@@ -852,8 +908,10 @@ NDArray<T> einsum<T extends DTypeTag>(
         final size = shape[j];
         if (labelSizes.containsKey(id)) {
           if (labelSizes[id] != size) {
-            throw ArgumentError(
-              "Dimension mismatch for label ID $id: ${labelSizes[id]} vs $size",
+            throw ArgumentError.value(
+              size,
+              'operands[$i].shape[$j]',
+              'Must match size (${labelSizes[id]}) for label ID $id',
             );
           }
         } else {
@@ -911,8 +969,10 @@ NDArray<T> einsum<T extends DTypeTag>(
       final targetDType = res.dtype;
       if (out != null) {
         if (!listEquals(out.shape, res.shape) || out.dtype != targetDType) {
-          throw ArgumentError(
-            "Provided out buffer has incompatible shape or dtype (expected shape ${res.shape} and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).",
+          throw ArgumentError.value(
+            out,
+            'out',
+            'Must have shape ${res.shape} and dtype $targetDType',
           );
         }
       }
@@ -1111,8 +1171,10 @@ NDArray<T> einsum<T extends DTypeTag>(
           if (out != null) {
             if (!listEquals(out.shape, finalRes.shape) ||
                 out.dtype != targetDType) {
-              throw ArgumentError(
-                "Provided out buffer has incompatible shape or dtype (expected shape ${finalRes.shape} and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).",
+              throw ArgumentError.value(
+                out,
+                'out',
+                'Must have shape ${finalRes.shape} and dtype $targetDType',
               );
             }
           }
@@ -1127,13 +1189,11 @@ NDArray<T> einsum<T extends DTypeTag>(
       final toDispose = <NDArray>[];
 
       try {
-        bool progress = true;
-        while (currentOps.length > 2 && progress) {
-          progress = false;
+        while (currentOps.length > 2) {
           int bestI = -1;
           int bestJ = -1;
           num minCost = double.infinity;
-          List<int>? bestInterOut;
+          List<int> bestInterOut = const [];
 
           for (var i = 0; i < currentOps.length; i++) {
             for (var j = i + 1; j < currentOps.length; j++) {
@@ -1171,41 +1231,67 @@ NDArray<T> einsum<T extends DTypeTag>(
             }
           }
 
-          if (bestI != -1 && bestJ != -1 && bestInterOut != null) {
-            final opI = currentOps[bestI];
-            final opJ = currentOps[bestJ];
-            final subI = currentSubs[bestI];
-            final subJ = currentSubs[bestJ];
+          if (bestI == -1) {
+            for (var i = 0; i < currentOps.length; i++) {
+              for (var j = i + 1; j < currentOps.length; j++) {
+                final subI = currentSubs[i];
+                final subJ = currentSubs[j];
+                final union = <int>{...subI, ...subJ};
 
-            final specInter = EinsumSubscripts.fromIndices([
-              subI,
-              subJ,
-            ], bestInterOut);
+                final neededByOthers = <int>{...finalOutSub};
+                for (var k = 0; k < currentOps.length; k++) {
+                  if (k != i && k != j) {
+                    neededByOthers.addAll(currentSubs[k]);
+                  }
+                }
 
-            final interRes = NDArray.unmanaged(
-              () => einsum<DTypeTag>(specInter, [opI, opJ]),
-            );
-            toDispose.add(interRes);
-
-            currentOps[bestI] = interRes;
-            currentSubs[bestI] = bestInterOut;
-            currentOps.removeAt(bestJ);
-            currentSubs.removeAt(bestJ);
-            progress = true;
+                final interOut = union
+                    .where((id) => neededByOthers.contains(id))
+                    .toList();
+                num cost = 1;
+                for (final id in union) {
+                  cost *= labelSizes[id]!;
+                }
+                if (cost < minCost) {
+                  minCost = cost;
+                  bestI = i;
+                  bestJ = j;
+                  bestInterOut = interOut;
+                }
+              }
+            }
           }
+
+          final opI = currentOps[bestI];
+          final opJ = currentOps[bestJ];
+          final subI = currentSubs[bestI];
+          final subJ = currentSubs[bestJ];
+
+          final specInter = EinsumSubscripts.fromIndices([
+            subI,
+            subJ,
+          ], bestInterOut);
+
+          final interRes = NDArray.unmanaged(
+            () => einsum<DTypeTag>(specInter, [opI, opJ]),
+          );
+          toDispose.add(interRes);
+
+          currentOps[bestI] = interRes;
+          currentSubs[bestI] = bestInterOut;
+          currentOps.removeAt(bestJ);
+          currentSubs.removeAt(bestJ);
         }
 
-        if (currentOps.length == 2) {
-          final specFinal = EinsumSubscripts.fromIndices([
-            currentSubs[0],
-            currentSubs[1],
-          ], finalOutSub);
-          final finalRes = einsum<DTypeTag>(specFinal, [
-            currentOps[0],
-            currentOps[1],
-          ], out: out);
-          return _returnFromScope<T>(finalRes, operands, out: out);
-        }
+        final specFinal = EinsumSubscripts.fromIndices([
+          currentSubs[0],
+          currentSubs[1],
+        ], finalOutSub);
+        final finalRes = einsum<DTypeTag>(specFinal, [
+          currentOps[0],
+          currentOps[1],
+        ], out: out);
+        return _returnFromScope<T>(finalRes, operands, out: out);
       } finally {
         for (final temp in toDispose) {
           if (!temp.isDisposed) {
@@ -1279,8 +1365,10 @@ NDArray<T> einsum<T extends DTypeTag>(
     final targetDType = combined.dtype;
     if (out != null) {
       if (!listEquals(out.shape, combined.shape) || out.dtype != targetDType) {
-        throw ArgumentError(
-          "Provided out buffer has incompatible shape or dtype (expected shape ${combined.shape} and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).",
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have shape ${combined.shape} and dtype $targetDType',
         );
       }
     }
@@ -1307,12 +1395,7 @@ NDArray<T> einsum<T extends DTypeTag>(
 /// - Internally delegates to [matmul] with reshaped/transposed views.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-/// final b = NDArray.fromList([0.0, 1.0, 0.0], [3], DType.float64);
-/// final res = inner(a, b);
-/// print(res.scalar); // 2.0
-/// ```
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy inner](https://numpy.org/doc/stable/reference/generated/numpy.inner.html)
 NDArray<T> inner<T extends DTypeTag>(
@@ -1345,8 +1428,10 @@ NDArray<T> inner<T extends DTypeTag>(
   }
 
   if (a.shape.last != b.shape.last) {
-    throw ArgumentError(
-      "Dimension mismatch for inner: last dimension of a (${a.shape.last}) != last dimension of b (${b.shape.last}).",
+    throw ArgumentError.value(
+      b.shape.last,
+      'b.shape.last',
+      'Must match last dimension of a (${a.shape.last})',
     );
   }
 
@@ -1379,13 +1464,7 @@ NDArray<T> inner<T extends DTypeTag>(
 /// - Delegates to BLAS dot product kernels via [matmul].
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([Complex(1, 2), Complex(3, 4)], [2], DType.complex128);
-/// final b = NDArray.fromList([Complex(5, 6), Complex(7, 8)], [2], DType.complex128);
-/// final res = vdot(a, b);
-/// // (1 - 2i)*(5 + 6i) + (3 - 4i)*(7 + 8i) = (17 - 4i) + (53 - 4i) = 70 - 8i
-/// print(res.scalar); // 70.0 - 8.0i
-/// ```
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy vdot](https://numpy.org/doc/stable/reference/generated/numpy.vdot.html)
 NDArray<T> vdot<T extends DTypeTag>(
@@ -1410,8 +1489,10 @@ NDArray<T> vdot<T extends DTypeTag>(
     );
   }
   if (a.size != b.size) {
-    throw ArgumentError(
-      "Cannot compute vdot: operands must have the same total number of elements (${a.size} != ${b.size}).",
+    throw ArgumentError.value(
+      b.size,
+      'b.size',
+      'Must match total number of elements in a (${a.size})',
     );
   }
   if (a.dtype.isFloating || a.dtype.isComplex) {
@@ -1495,8 +1576,10 @@ NDArray<T> kron<T extends DTypeTag>(
   final targetDType = a.dtype;
   if (out != null &&
       (!listEquals(out.shape, expectedShape) || out.dtype != targetDType)) {
-    throw ArgumentError(
-      'Provided out buffer has incompatible shape or dtype (expected shape $expectedShape and dtype $targetDType).',
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must have shape $expectedShape and dtype $targetDType',
     );
   }
 

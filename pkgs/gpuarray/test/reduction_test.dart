@@ -185,5 +185,114 @@ void main() {
         expect(() => mat.sum(axis: 5), throwsA(isA<RangeError>()));
       });
     });
+
+    test(
+      'F2: mean() and nanmean() preserve floating-point dtypes and promote integers to Float64',
+      () {
+        ResourceScope.scope(() {
+          final f32 = GpuArray.fromList(
+            [1.0, 2.0, 3.0, 4.0],
+            [4],
+            DType.float32,
+          );
+          final GpuArray<Float32> m32 = f32.mean();
+          expect(m32.dtype, equals(DType.float32));
+          expect(m32.scalar, closeTo(2.5, 1e-5));
+
+          final f16 = GpuArray.fromList([2.0, 4.0], [2], DType.float16);
+          final GpuArray<Float16> m16 = f16.mean();
+          expect(m16.dtype, equals(DType.float16));
+          expect(m16.scalar, closeTo(3.0, 1e-2));
+
+          final bf16 = GpuArray.fromList([2.0, 6.0], [2], DType.bfloat16);
+          final GpuArray<BFloat16> mb16 = bf16.mean();
+          expect(mb16.dtype, equals(DType.bfloat16));
+          expect(mb16.scalar, closeTo(4.0, 1e-2));
+
+          final i32 = GpuArray.fromList([1, 2, 3, 4], [4], DType.int32);
+          final mi32 = i32.mean();
+          expect(mi32.dtype, equals(DType.float64));
+          expect(mi32.scalar, closeTo(2.5, 1e-6));
+
+          final mi32Custom = i32.mean(dtype: DType.float32);
+          expect(mi32Custom.dtype, equals(DType.float32));
+          expect(mi32Custom.scalar, closeTo(2.5, 1e-5));
+        });
+      },
+    );
+
+    test('F3: argmin, argmax, and countNonzero return GpuArray<Int64>', () {
+      ResourceScope.scope(() {
+        final a = GpuArray.fromList(
+          [
+            [3.0, 0.0, 5.0],
+            [1.0, 8.0, 0.0],
+          ],
+          [2, 3],
+          DType.float32,
+        );
+        final GpuArray<Int64> amin = a.argmin();
+        final GpuArray<Int64> amax = a.argmax();
+        final GpuArray<Int64> cnz = a.countNonzero();
+        expect(amin.dtype, equals(DType.int64));
+        expect(amax.dtype, equals(DType.int64));
+        expect(cnz.dtype, equals(DType.int64));
+        expect(amin.scalar, equals(1));
+        expect(amax.scalar, equals(4));
+        expect(cnz.scalar, equals(4));
+
+        final GpuArray<Int64> aminAxis1 = argmin(a, axis: 1);
+        final GpuArray<Int64> amaxAxis0 = argmax(a, axis: 0);
+        final GpuArray<Int64> cnzAxis1 = countNonzero(a, axis: 1);
+        expect(aminAxis1.dtype, equals(DType.int64));
+        expect(aminAxis1.toList(), equals([1, 2]));
+        expect(amaxAxis0.dtype, equals(DType.int64));
+        expect(amaxAxis0.toList(), equals([0, 1, 0]));
+        expect(cnzAxis1.dtype, equals(DType.int64));
+        expect(cnzAxis1.toList(), equals([2, 2]));
+      });
+    });
+
+    test(
+      'F4: Statistical and NaN-aware reductions (variance, std, ptp, nansum, nanmean, nanmin, nanmax)',
+      () {
+        ResourceScope.scope(() {
+          final f32 = GpuArray.fromList(
+            [1.0, 2.0, 3.0, 4.0],
+            [4],
+            DType.float32,
+          );
+          final GpuArray<Float32> v32 = f32.variance();
+          final GpuArray<Float32> s32 = f32.std();
+          final GpuArray<Float32> p32 = f32.ptp();
+          expect(v32.dtype, equals(DType.float32));
+          expect(s32.dtype, equals(DType.float32));
+          expect(p32.dtype, equals(DType.float32));
+          expect(v32.scalar, closeTo(1.25, 1e-5));
+          expect(s32.scalar, closeTo(1.1180339887, 1e-5));
+          expect(p32.scalar, closeTo(3.0, 1e-5));
+
+          // Sample variance with ddof: 1
+          expect(variance(f32, ddof: 1).scalar, closeTo(5.0 / 3.0, 1e-5));
+
+          // NaN-aware reductions
+          final withNan = GpuArray.fromList(
+            [1.0, double.nan, 3.0, 5.0],
+            [4],
+            DType.float32,
+          );
+          final GpuArray<Float32> ns = nansum(withNan);
+          final GpuArray<Float32> nm = withNan.nanmean();
+          final GpuArray<Float32> nmin = nanmin(withNan);
+          final GpuArray<Float32> nmax = nanmax(withNan);
+          expect(ns.dtype, equals(DType.float32));
+          expect(nm.dtype, equals(DType.float32));
+          expect(ns.scalar, closeTo(9.0, 1e-5));
+          expect(nm.scalar, closeTo(3.0, 1e-5));
+          expect(nmin.scalar, closeTo(1.0, 1e-5));
+          expect(nmax.scalar, closeTo(5.0, 1e-5));
+        });
+      },
+    );
   });
 }

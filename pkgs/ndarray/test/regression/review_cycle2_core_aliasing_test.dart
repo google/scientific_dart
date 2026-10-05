@@ -275,18 +275,18 @@ void main() {
             [3],
             DType.float64,
           );
-          final expected = polyval<Float64, Float64, Float64>(c, x);
+          final expected = polyval<Float64>(c, x);
 
           // Aliasing out with x
           final xCopy = x.copy();
-          polyval<Float64, Float64, Float64>(c, xCopy, out: xCopy);
+          polyval<Float64>(c, xCopy, out: xCopy);
           for (var i = 0; i < 3; i++) {
             expect(xCopy.getCell([i]), closeTo(expected.getCell([i]), 1e-12));
           }
 
           // Aliasing out with c
           final cCopy = c.copy();
-          polyval<Float64, Float64, Float64>(cCopy, x, out: cCopy);
+          polyval<Float64>(cCopy, x, out: cCopy);
           for (var i = 0; i < 3; i++) {
             expect(cCopy.getCell([i]), closeTo(expected.getCell([i]), 1e-12));
           }

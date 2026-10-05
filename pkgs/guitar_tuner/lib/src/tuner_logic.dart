@@ -124,7 +124,7 @@ final class TunerLogic {
 
       // Denoising: SNR (Signal-to-Noise Ratio) & Sharpness Thresholds
       // Guitar plucks produce very narrow, high-energy spectral peaks compared to broadband room noise.
-      final double meanMag = mean(searchRange).scalar as double;
+      final double meanMag = mean(searchRange).scalar;
       final magsList = magnitudes.toList();
       final double peakMag = magsList[peakIdx];
 

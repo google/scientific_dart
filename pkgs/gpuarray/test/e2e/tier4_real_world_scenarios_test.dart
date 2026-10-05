@@ -16,9 +16,11 @@ import 'dart:math' as math;
 
 import 'package:gpuarray/fft.dart' as gpu_fft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
 import 'package:gpuarray/nn.dart' as gpu_nn;
 import 'package:gpuarray/random.dart' as gpu_random;
+import 'package:gpuarray/safetensors.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
@@ -145,7 +147,7 @@ void main() {
           // Covariance matrix C = (X_c^T * X_c) / (n - 1)
           final cov = centered.transpose().matmul(centered) / 9.0;
           final eigResult = gpu_linalg.eigh(cov);
-          final svdVals = gpu_linalg.svdvals(centered);
+          final svdVals = gpu_linalg.svdValues(centered);
 
           // Singular values squared / (n - 1) must match sorted covariance eigenvalues
           final eigSortedDesc = List<double>.from(
@@ -188,7 +190,7 @@ void main() {
             final east = padded.slice([Slice(1, 5), Slice(2, 6)]);
 
             final laplacian = (north + south + west + east) - (center * 4.0);
-            temperature = (center + (laplacian * alpha)) as GpuArray<Float32>;
+            temperature = center + (laplacian * alpha);
           }
 
           final finalEnergy = (temperature.sum().scalar as num).toDouble();
@@ -332,17 +334,17 @@ void main() {
             DType.float64,
           );
 
-          final initialPred = model.forward(inputs) as GpuArray<Float64>;
+          final initialPred = model.forward(inputs);
           final initialLoss =
               (gpu_nn.mseLoss(initialPred, targets).scalar as num).toDouble();
           for (var epoch = 0; epoch < 12; epoch++) {
             optimizer.zeroGrad();
-            final pred = model.forward(inputs) as GpuArray<Float64>;
+            final pred = model.forward(inputs);
             final loss = gpu_nn.mseLoss(pred, targets);
             loss.backward();
             optimizer.step();
           }
-          final trainedPred = model.forward(inputs) as GpuArray<Float64>;
+          final trainedPred = model.forward(inputs);
           final trainedLoss =
               (gpu_nn.mseLoss(trainedPred, targets).scalar as num).toDouble();
           expect(trainedLoss, lessThan(initialLoss));
@@ -413,7 +415,7 @@ void main() {
             final feat = gpu_nn.relu(conv.forward(batchImages));
             final flat = feat.reshape([2, 8]);
             final normed = normLayer.forward(flat);
-            return head.forward(normed) as GpuArray<Float64>;
+            return head.forward(normed);
           }
 
           final lossBefore =
@@ -525,7 +527,7 @@ void main() {
           for (var iter = 0; iter < 15; iter++) {
             final nextVec = gpu_linalg.matmul(spd, vec);
             final length = (gpu_linalg.norm(nextVec).scalar as num).toDouble();
-            vec = (nextVec / length) as GpuArray<Float64>;
+            vec = nextVec / length;
           }
           final rayleighQuotient =
               (vec.dot(gpu_linalg.matmul(spd, vec)).scalar as num).toDouble();
@@ -590,6 +592,127 @@ void main() {
         } finally {
           device.dispose();
         }
+      },
+    );
+
+    test(
+      'Scenario 13: End-to-End Float32 Transformer Training, Fused AdamW, Grad Clipping & SafeTensors Checkpointing',
+      () {
+        ResourceScope.scope(() {
+          gpu_random.seed(77);
+          final model = gpu_nn.Sequential([
+            gpu_nn.Linear(4, 8, dtype: DType.float32),
+            gpu_nn.GELU(),
+            gpu_nn.LayerNorm([8], dtype: DType.float32),
+            gpu_nn.Linear(8, 2, dtype: DType.float32),
+          ]);
+          final opt = gpu_nn.AdamW(
+            model.parameters,
+            lr: 0.05,
+            weightDecay: 0.01,
+          );
+          final x = GpuArray<Float32>.fromList(
+            <double>[1.0, 0.5, -0.5, 2.0, -1.0, 1.5, 0.25, -0.75],
+            [2, 4],
+            DType.float32,
+          );
+          final y = GpuArray<Float32>.fromList(
+            <double>[1.0, -1.0, -0.5, 0.5],
+            [2, 2],
+            DType.float32,
+          );
+
+          final initialLoss =
+              (gpu_nn.mseLoss(model.forward(x), y).scalar as num).toDouble();
+          for (var step = 0; step < 15; step++) {
+            opt.zeroGrad();
+            final pred = model.forward(x);
+            final loss = gpu_nn.mseLoss(pred, y);
+            loss.backward();
+            gpu_nn.clipGradNorm(model.parameters, 5.0);
+            opt.step();
+          }
+          final finalLoss = (gpu_nn.mseLoss(model.forward(x), y).scalar as num)
+              .toDouble();
+          expect(finalLoss, lessThan(initialLoss));
+
+          final ckpt = model.saveToSafetensors();
+          final restored = gpu_nn.Sequential([
+            gpu_nn.Linear(4, 8, dtype: DType.float32),
+            gpu_nn.GELU(),
+            gpu_nn.LayerNorm([8], dtype: DType.float32),
+            gpu_nn.Linear(8, 2, dtype: DType.float32),
+          ]);
+          restored.loadFromSafetensors(ckpt);
+          _expectCloseList(
+            restored.forward(x).toList(),
+            model.forward(x).toList(),
+            tolerance: 1e-5,
+          );
+        });
+      },
+    );
+
+    test(
+      'Scenario 14: Float32 Spectral Filtering, NaN Imputation & Top-K Peak Detection',
+      () {
+        ResourceScope.scope(() {
+          final noisyWithNan = GpuArray<Float32>.fromList(
+            <double>[1.0, 4.0, double.nan, 2.0, 5.0, 1.0, 3.0, 2.0],
+            [8],
+            DType.float32,
+          );
+          final meanVal = (nanmean(noisyWithNan).scalar as num).toDouble();
+          final imputed = nanToNum(noisyWithNan, nan: meanVal);
+          final spectrum = gpu_fft.rfft(imputed);
+          expect(spectrum.dtype, equals(DType.complex64));
+          final magnitudes = spectrum.abs().real();
+          expect(magnitudes.dtype, equals(DType.float32));
+          final topBins = topk(magnitudes, 2);
+          expect(topBins.indices.dtype, equals(DType.int64));
+          expect(
+            topBins.indices.toList().first,
+            equals(0),
+          ); // DC component dominates
+        });
+      },
+    );
+
+    test(
+      'Scenario 15: Custom Fused WGSL Kinematics Step via CompiledWgslKernel + Cumulative Scans',
+      () {
+        ResourceScope.scope(() {
+          final vExpr = Expr.variable('v', bindingIndex: 0);
+          final aExpr = Expr.variable('a', bindingIndex: 1);
+          final dtExpr = Expr.scalar('dt');
+          final stepKernel = GpuDevice.defaultDevice.jitCompiler.compileKernel(
+            vExpr + (aExpr * dtExpr),
+          );
+          final v0 = GpuArray<Float32>.fromList(
+            <double>[1.0, 1.0, 1.0, 1.0],
+            [4],
+            DType.float32,
+          );
+          final accel = GpuArray<Float32>.fromList(
+            <double>[2.0, 4.0, 6.0, 8.0],
+            [4],
+            DType.float32,
+          );
+          final vNext = stepKernel.execute<Float32>(
+            {'v': v0, 'a': accel},
+            scalars: const {'dt': 0.5},
+          );
+          // vNext = [2.0, 3.0, 4.0, 5.0]
+          final displacement = cumsum(vNext);
+          final recoveredV = diff(displacement, prepend: 0.0);
+          _expectCloseList(displacement.toList(), <double>[
+            2.0,
+            5.0,
+            9.0,
+            14.0,
+          ]);
+          _expectCloseList(recoveredV.toList(), vNext.toList());
+        });
       },
     );
   });

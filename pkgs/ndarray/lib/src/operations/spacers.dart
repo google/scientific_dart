@@ -16,6 +16,7 @@ import 'dart:math' as math;
 import '../ndarray.dart';
 import 'dart:ffi' as ffi;
 import '../ndarray_bindings.dart';
+import '../nditer.dart';
 import '../scratch_arena.dart';
 
 // Standalone operational relative cross-imports
@@ -50,27 +51,7 @@ enum SortKind {
 /// - [SearchSide.right] returns the index of the **last** suitable location found (the rightmost match).
 ///
 /// **Example:**
-/// ```dart
-/// import 'package:ndarray/ndarray.dart';
-///
-/// void main() {
-///   // Given a sorted 1-D target array with duplicate elements:
-///   final a = NDArray.fromList([10.0, 20.0, 20.0, 20.0, 30.0], [5], DType.float64);
-///
-///   // Value to insert:
-///   final v = NDArray.fromList([20.0], [1], DType.float64);
-///
-///   // 1. Using SearchSide.left:
-///   // Finds the index of the first occurrence (index 1).
-///   final idxLeft = searchsorted(a, v, side: SearchSide.left);
-///   print(idxLeft.toList()); // [1]
-///
-///   // 2. Using SearchSide.right:
-///   // Finds the index after the last occurrence (index 4).
-///   final idxRight = searchsorted(a, v, side: SearchSide.right);
-///   print(idxRight.toList()); // [4]
-/// }
-/// ```
+/// {@example /example/shaping_example.dart lang=dart}
 enum SearchSide {
   /// Finds the first suitable index to insert to maintain sorted order.
   left,
@@ -94,9 +75,7 @@ enum SearchSide {
 /// - Allocates a new array on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
 ///
 /// **Example:**
-/// ```dart
-/// linspace(0.0, 10.0, 5, dtype: DType.float64); // [0.0, 2.5, 5.0, 7.5, 10.0]
-/// ```
+/// {@example /example/shaping_example.dart lang=dart}
 NDArray<T> linspace<T extends DTypeTag>(
   Object? start,
   Object? stop,
@@ -151,15 +130,7 @@ NDArray<T> linspace<T extends DTypeTag>(
 /// Returns an array of shape `(..., numSamples, ...)` depending on the [axis].
 ///
 /// **Example:**
-/// ```dart
-/// final start = NDArray.fromList([0.0, 10.0], [2], DType.float64);
-/// final stop  = NDArray.fromList([1.0, 11.0], [2], DType.float64);
-/// final grid  = linspaceGrid(start, stop, 3); // Shape [3, 2]
-/// // Row 0: [0.0, 10.0]
-/// // Row 1: [0.5, 10.5]
-/// // Row 2: [1.0, 11.0]
-/// print(grid.toList()); // [0.0, 10.0, 0.5, 10.5, 1.0, 11.0]
-/// ```
+/// {@example /example/shaping_example.dart lang=dart}
 ///
 /// **Preconditions:**
 /// - [start] and [stop] must not be disposed.
@@ -201,12 +172,7 @@ NDArray<T> linspaceGrid<T extends DTypeTag>(
 /// Returns a Record `(samples, step)`.
 ///
 /// **Example:**
-/// ```dart
-/// final start = NDArray.fromList([0.0, 10.0], [2], DType.float64);
-/// final stop  = NDArray.fromList([1.0, 12.0], [2], DType.float64);
-/// final (grid, step) = linspaceGridWithStep(start, stop, 3);
-/// print(step.toList()); // [0.5, 1.0]
-/// ```
+/// {@example /example/shaping_example.dart lang=dart}
 ///
 /// **Preconditions:**
 /// - [start] and [stop] must not be disposed.
@@ -254,7 +220,9 @@ _linspaceGridInternal<T extends DTypeTag>(
   DType<T>? dtype,
   NDArray<T>? out,
 }) {
-  if (numSamples < 0) throw ArgumentError('numSamples must be non-negative');
+  if (numSamples < 0) {
+    throw ArgumentError.value(numSamples, 'numSamples', 'Must be non-negative');
+  }
   if (dtype == DType.boolean ||
       start.dtype == DType.boolean ||
       stop.dtype == DType.boolean) {
@@ -262,9 +230,7 @@ _linspaceGridInternal<T extends DTypeTag>(
   }
 
   final resolvedDType =
-      dtype ??
-      out?.dtype ??
-      (resolveDType(start.dtype, stop.dtype) as DType<T>);
+      dtype ?? (resolveDType(start.dtype, stop.dtype) as DType<T>);
 
   return NDArray.scope(() {
     final startArr = toNDArray(start, resolvedDType);
@@ -287,8 +253,13 @@ _linspaceGridInternal<T extends DTypeTag>(
     resultShape.insert(actualAxis, numSamples);
 
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, resultShape) || out.dtype != resolvedDType) {
-        throw ArgumentError('Incompatible out buffer shape or dtype.');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Incompatible out buffer shape or dtype',
+        );
       }
     }
     if (numSamples == 0) {
@@ -463,15 +434,134 @@ _linspaceGridInternal<T extends DTypeTag>(
           );
         case DType.float16:
         case DType.bfloat16:
+          final startF64 = castNDArray<Float64>(
+            startBroadcasted,
+            DType.float64,
+          );
+          final stopF64 = castNDArray<Float64>(stopBroadcasted, DType.float64);
+          final resF64 = NDArray<Float64>.create(resultShape, DType.float64);
+          final stepF64 = NDArray<Float64>.create(commonShape, DType.float64);
+          final stridesStartF64 = List<int>.from(startF64.strides)
+            ..insert(actualAxis, 0);
+          final stridesStopF64 = List<int>.from(stopF64.strides)
+            ..insert(actualAxis, 0);
+          final stridesStepF64 = List<int>.from(stepF64.strides)
+            ..insert(actualAxis, 0);
+          final cStridesStartF64 = ScratchArena.copyInts(stridesStartF64);
+          final cStridesStopF64 = ScratchArena.copyInts(stridesStopF64);
+          final cStridesResF64 = ScratchArena.copyInts(resF64.strides);
+          final cStridesStepF64 = ScratchArena.copyInts(stridesStepF64);
+          s_linspace_grid_double(
+            startF64.pointer.cast<ffi.Double>(),
+            cStridesStartF64,
+            stopF64.pointer.cast<ffi.Double>(),
+            cStridesStopF64,
+            resF64.pointer.cast<ffi.Double>(),
+            cStridesResF64,
+            stepF64.pointer.cast<ffi.Double>(),
+            cStridesStepF64,
+            cShape,
+            rank,
+            actualAxis,
+            numSamples,
+            endpoint ? 1 : 0,
+          );
+          castNDArray<T>(resF64, resolvedDType).copy(out: res);
+          castNDArray<T>(stepF64, resolvedDType).copy(out: step);
         case DType.int8:
-        case DType.uint64:
         case DType.uint32:
         case DType.uint16:
+          final startF64 = castNDArray<Float64>(
+            startBroadcasted,
+            DType.float64,
+          );
+          final stopF64 = castNDArray<Float64>(stopBroadcasted, DType.float64);
+          final resF64 = NDArray<Float64>.create(resultShape, DType.float64);
+          final stepF64 = NDArray<Float64>.create(commonShape, DType.float64);
+          final stridesStartF64 = List<int>.from(startF64.strides)
+            ..insert(actualAxis, 0);
+          final stridesStopF64 = List<int>.from(stopF64.strides)
+            ..insert(actualAxis, 0);
+          final stridesStepF64 = List<int>.from(stepF64.strides)
+            ..insert(actualAxis, 0);
+          final cStridesStartF64 = ScratchArena.copyInts(stridesStartF64);
+          final cStridesStopF64 = ScratchArena.copyInts(stridesStopF64);
+          final cStridesResF64 = ScratchArena.copyInts(resF64.strides);
+          final cStridesStepF64 = ScratchArena.copyInts(stridesStepF64);
+          s_linspace_grid_double(
+            startF64.pointer.cast<ffi.Double>(),
+            cStridesStartF64,
+            stopF64.pointer.cast<ffi.Double>(),
+            cStridesStopF64,
+            resF64.pointer.cast<ffi.Double>(),
+            cStridesResF64,
+            stepF64.pointer.cast<ffi.Double>(),
+            cStridesStepF64,
+            cShape,
+            rank,
+            actualAxis,
+            numSamples,
+            endpoint ? 1 : 0,
+          );
+          final resPtr = resF64.pointer.cast<ffi.Double>();
+          for (var i = 0; i < resF64.size; i++) {
+            resPtr[i] = resPtr[i].floorToDouble();
+          }
+          final stepPtr = stepF64.pointer.cast<ffi.Double>();
+          for (var i = 0; i < stepF64.size; i++) {
+            stepPtr[i] = stepPtr[i].floorToDouble();
+          }
+          castNDArray<T>(resF64, resolvedDType).copy(out: res);
+          castNDArray<T>(stepF64, resolvedDType).copy(out: step);
+        case DType.uint64:
+          final div = endpoint ? (numSamples - 1) : numSamples;
+          final iter = NDIter.broadcast3(
+            startBroadcasted,
+            stopBroadcasted,
+            step,
+          );
+          while (iter.moveNext()) {
+            final sInt =
+                startBroadcasted.getCellRawUntyped(iter.getIndex(0)) as int;
+            final eInt =
+                stopBroadcasted.getCellRawUntyped(iter.getIndex(1)) as int;
+            final sD = sInt < 0
+                ? BigInt.from(sInt).toUnsigned(64).toDouble()
+                : sInt.toDouble();
+            final eD = eInt < 0
+                ? BigInt.from(eInt).toUnsigned(64).toDouble()
+                : eInt.toDouble();
+            final stp = numSamples <= 1 ? 0.0 : (eD - sD) / div;
+            step.setCellRaw(
+              iter.getIndex(2),
+              saturatingDoubleToInt(stp.floorToDouble(), DType.uint64),
+            );
+            var baseOffset = res.offsetElements;
+            final coords = iter.coords;
+            for (var d = 0; d < commonShape.length; d++) {
+              final resDim = d < actualAxis ? d : d + 1;
+              baseOffset += coords[d] * res.strides[resDim];
+            }
+            final axisStride = res.strides[actualAxis];
+            for (var k = 0; k < numSamples; k++) {
+              final int cellVal;
+              if (endpoint && numSamples > 1 && k == numSamples - 1) {
+                cellVal = eInt;
+              } else {
+                cellVal = saturatingDoubleToInt(
+                  (sD + k * stp).floorToDouble(),
+                  DType.uint64,
+                );
+              }
+              res.setCellRaw(baseOffset + k * axisStride, cellVal);
+            }
+          }
         case DType.boolean:
           throw UnsupportedError(
             'linspaceGrid not supported for type $resolvedDType',
           );
       }
+      checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
@@ -509,17 +599,29 @@ NDArray<T> logspace<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (numSamples < 0) {
-    throw ArgumentError('numSamples must be non-negative (was $numSamples)');
+    throw ArgumentError.value(
+      numSamples,
+      'numSamples',
+      'Must be non-negative (was $numSamples)',
+    );
   }
   final resolvedDType = dtype;
+  if (resolvedDType == DType.boolean) {
+    throw UnsupportedError('logspace not supported for type $resolvedDType');
+  }
   if (out != null) {
     if (out.isDisposed) {
       throw StateError(
         'Cannot write logspace result to a disposed output array.',
       );
     }
+    validateOutBuffer(out);
     if (!listEquals(out.shape, [numSamples]) || out.dtype != resolvedDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
   }
   if (numSamples == 0) {
@@ -603,15 +705,7 @@ NDArray<T> logspace<T extends DTypeTag>(
 /// Generalized [logspace] that supports broadcasting.
 ///
 /// **Example:**
-/// ```dart
-/// final start = NDArray.fromList([0.0, 1.0], [2], DType.float64);
-/// final stop  = NDArray.fromList([2.0, 3.0], [2], DType.float64);
-/// final grid  = logspaceGrid(start, stop, 3); // 10^start to 10^stop
-/// // Row 0: [10^0, 10^1] = [1, 10]
-/// // Row 1: [10^1, 10^2] = [10, 100]
-/// // Row 2: [10^2, 10^3] = [100, 1000]
-/// print(grid.toList()); // [1.0, 10.0, 10.0, 100.0, 100.0, 1000.0]
-/// ```
+/// {@example /example/shaping_example.dart lang=dart}
 ///
 /// **Parameters:**
 /// - [start]: The starting value(s) as an [NDArray].
@@ -620,14 +714,13 @@ NDArray<T> logspace<T extends DTypeTag>(
 /// - [base]: The base of the log space as an [NDArray]. Defaults to 10.0.
 /// - [endpoint]: If true, `stop` is the last sample. Otherwise, it is not included.
 /// - [axis]: The axis in the result to store the samples. Defaults to 0.
-/// - [dtype]: The type of the output array. If not provided, it defaults to:
-///   - [out.dtype] if [out] is provided, or
-///   - the resolved dtype between [start] and [stop].
+/// - [dtype]: The type of the output array. If not provided, it defaults to
+///   the resolved dtype between [start] and [stop].
 NDArray<T> logspaceGrid<T extends DTypeTag>(
   NDArray<T> start,
   NDArray<T> stop,
   int numSamples, {
-  NDArray<Float64>? base,
+  NDArray<T>? base,
   bool endpoint = true,
   int axis = 0,
   DType<T>? dtype,
@@ -643,13 +736,12 @@ NDArray<T> logspaceGrid<T extends DTypeTag>(
   }
   if (dtype == DType.boolean ||
       start.dtype == DType.boolean ||
-      stop.dtype == DType.boolean) {
+      stop.dtype == DType.boolean ||
+      (base != null && base.dtype == DType.boolean)) {
     throw UnsupportedError('logspaceGrid not supported for boolean arrays');
   }
   final resolvedDType =
-      dtype ??
-      out?.dtype ??
-      (resolveDType(start.dtype, stop.dtype) as DType<T>);
+      dtype ?? (resolveDType(start.dtype, stop.dtype) as DType<T>);
 
   return NDArray.scope(() {
     final startArr = toNDArray<T>(start, resolvedDType);
@@ -692,8 +784,13 @@ NDArray<T> logspaceGrid<T extends DTypeTag>(
     final baseExpanded = baseBroad.reshape(expandedBaseShape);
     final res = power<T>(baseExpanded, y);
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, res.shape) || out.dtype != resolvedDType) {
-        throw ArgumentError('Incompatible out buffer shape or dtype.');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Incompatible out buffer shape or dtype',
+        );
       }
       res.copy(out: out);
       return out;
@@ -726,7 +823,11 @@ NDArray<T> geomspace<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (numSamples < 0) {
-    throw ArgumentError('numSamples must be non-negative (was $numSamples)');
+    throw ArgumentError.value(
+      numSamples,
+      'numSamples',
+      'Must be non-negative (was $numSamples)',
+    );
   }
   final resolvedDType = dtype;
   if (out != null) {
@@ -735,8 +836,13 @@ NDArray<T> geomspace<T extends DTypeTag>(
         'Cannot write geomspace result to a disposed output array.',
       );
     }
+    validateOutBuffer(out);
     if (!listEquals(out.shape, [numSamples]) || out.dtype != resolvedDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
   }
   if (numSamples == 0) {
@@ -752,11 +858,17 @@ NDArray<T> geomspace<T extends DTypeTag>(
         final s = (start as num).toDouble();
         final e = (stop as num).toDouble();
         if (s == 0.0 || e == 0.0) {
-          throw ArgumentError('Geometric sequence cannot include zero.');
+          throw ArgumentError.value(
+            start,
+            'start',
+            'Geometric sequence cannot include zero',
+          );
         }
         if ((s > 0.0) != (e > 0.0)) {
-          throw ArgumentError(
-            'Geometric sequence start and stop must have same sign.',
+          throw ArgumentError.value(
+            stop,
+            'stop',
+            'Geometric sequence start and stop must have same sign',
           );
         }
 
@@ -799,7 +911,11 @@ NDArray<T> geomspace<T extends DTypeTag>(
         final s = normalizeScalar(start as Object, DType.complex128) as Complex;
         final e = normalizeScalar(stop as Object, DType.complex128) as Complex;
         if (s.abs == 0.0 || e.abs == 0.0) {
-          throw ArgumentError('Geometric sequence cannot include zero.');
+          throw ArgumentError.value(
+            start,
+            'start',
+            'Geometric sequence cannot include zero',
+          );
         }
 
         final logStart = s.log() / math.ln10;
@@ -860,15 +976,7 @@ NDArray<T> geomspace<T extends DTypeTag>(
 /// Generalized [geomspace] that supports broadcasting.
 ///
 /// **Example:**
-/// ```dart
-/// final start = NDArray.fromList([1.0, 10.0], [2], DType.float64);
-/// final stop  = NDArray.fromList([100.0, 1000.0], [2], DType.float64);
-/// final grid  = geomspaceGrid(start, stop, 3);
-/// // Row 0: [1, 10]
-/// // Row 1: [10, 100]
-/// // Row 2: [100, 1000]
-/// print(grid.toList()); // [1.0, 10.0, 10.0, 100.0, 100.0, 1000.0]
-/// ```
+/// {@example /example/shaping_example.dart lang=dart}
 ///
 /// **Parameters:**
 /// - [start]: The starting value(s) as an [NDArray].
@@ -876,9 +984,8 @@ NDArray<T> geomspace<T extends DTypeTag>(
 /// - [numSamples]: Number of samples to generate. Must be non-negative.
 /// - [endpoint]: If true, `stop` is the last sample. Otherwise, it is not included.
 /// - [axis]: The axis in the result to store the samples. Defaults to 0.
-/// - [dtype]: The type of the output array. If not provided, it defaults to:
-///   - [out.dtype] if [out] is provided, or
-///   - the resolved dtype between [start] and [stop].
+/// - [dtype]: The type of the output array. If not provided, it defaults to
+///   the resolved dtype between [start] and [stop].
 NDArray<T> geomspaceGrid<T extends DTypeTag>(
   NDArray<T> start,
   NDArray<T> stop,
@@ -902,9 +1009,7 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
   }
 
   final resolvedDType =
-      dtype ??
-      out?.dtype ??
-      (resolveDType(start.dtype, stop.dtype) as DType<T>);
+      dtype ?? (resolveDType(start.dtype, stop.dtype) as DType<T>);
 
   return NDArray.scope(() {
     final startArr = toNDArray(start, resolvedDType);
@@ -914,7 +1019,11 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
     final startZero = equal(startArr, zero);
     final stopZero = equal(stopArr, zero);
     if (any(startZero).scalar || any(stopZero).scalar) {
-      throw ArgumentError('Geometric sequence cannot include zero.');
+      throw ArgumentError.value(
+        start,
+        'start',
+        'Geometric sequence cannot include zero',
+      );
     }
 
     if (resolvedDType.isFloating) {
@@ -922,8 +1031,10 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
       final stopNeg = less(stopArr, zero);
       final diffSign = notEqual(startNeg, stopNeg);
       if (any(diffSign).scalar) {
-        throw ArgumentError(
-          'Geometric sequence start and stop must have same sign.',
+        throw ArgumentError.value(
+          stop,
+          'stop',
+          'Geometric sequence start and stop must have same sign',
         );
       }
     }
@@ -947,30 +1058,40 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
       final signs = sign<T>(startBroad);
       final absStart = abs(startBroad as NDArray<AnySpec>) as NDArray<T>;
       final absStop = abs(stopBroad as NDArray<AnySpec>) as NDArray<T>;
-      final logStart = divide<T, T, T>(
-        log(absStart as NDArray<AnySpec>) as NDArray<T>,
-        toNDArray<T>(math.ln10, resolvedDType),
-      );
-      final logStop = divide<T, T, T>(
-        log(absStop as NDArray<AnySpec>) as NDArray<T>,
-        toNDArray<T>(math.ln10, resolvedDType),
-      );
-      final y = linspaceGrid<T>(
+      final compDType =
+          (resolvedDType == DType.float16 || resolvedDType == DType.bfloat16)
+          ? DType.float64
+          : resolvedDType;
+      final ln10Arr = toNDArray<DTypeTag>(math.ln10, compDType);
+      final logStart = divide(log(absStart as NDArray<AnySpec>), ln10Arr);
+      final logStop = divide(log(absStop as NDArray<AnySpec>), ln10Arr);
+      final y = linspaceGrid<DTypeTag>(
         logStart,
         logStop,
         numSamples,
         endpoint: endpoint,
         axis: actualAxis,
-        dtype: resolvedDType,
+        dtype: compDType,
       );
-      final powRes = power<T>(toNDArray<T>(10.0, resolvedDType), y);
+      final powResComp = power<DTypeTag>(
+        toNDArray<DTypeTag>(10.0, compDType),
+        y,
+      );
+      final powRes = powResComp.dtype == resolvedDType
+          ? powResComp as NDArray<T>
+          : castNDArray<T>(powResComp, resolvedDType);
       final expandedSignShape = List<int>.from(commonShape)
         ..insert(actualAxis, 1);
       final signsExpanded = signs.reshape(expandedSignShape);
       final res = multiply<T>(signsExpanded, powRes);
       if (out != null) {
+        validateOutBuffer(out);
         if (!listEquals(out.shape, res.shape) || out.dtype != resolvedDType) {
-          throw ArgumentError('Incompatible out buffer shape or dtype.');
+          throw ArgumentError.value(
+            out,
+            'out',
+            'Incompatible out buffer shape or dtype',
+          );
         }
         res.copy(out: out);
         return out;
@@ -998,8 +1119,13 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
     );
     final res = power<T>(toNDArray<T>(10.0, resolvedDType), y);
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, res.shape) || out.dtype != resolvedDType) {
-        throw ArgumentError('Incompatible out buffer shape or dtype.');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Incompatible out buffer shape or dtype',
+        );
       }
       res.copy(out: out);
       return out;

@@ -69,7 +69,11 @@ NDArray<T> repeat<T extends DTypeTag>(
   } else if (repeats is List<int>) {
     rawRepeats = repeats;
   } else {
-    throw ArgumentError('repeats must be an int or a List<int>');
+    throw ArgumentError.value(
+      repeats,
+      'repeats',
+      'repeats must be an int or a List<int>',
+    );
   }
 
   return NDArray.scope(() {
@@ -96,14 +100,20 @@ NDArray<T> repeat<T extends DTypeTag>(
     }
 
     if (repsList.length != src.shape[normAxis]) {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        repsList,
+        'repeats',
         'repeats length (${repsList.length}) must match the dimension along axis ($normAxis) which is ${src.shape[normAxis]}',
       );
     }
 
     final bool hasNegative = repsList.any((x) => x < 0);
     if (hasNegative) {
-      throw ArgumentError('repeats values must be non-negative');
+      throw ArgumentError.value(
+        repsList,
+        'repeats',
+        'repeats values must be non-negative',
+      );
     }
 
     final outputShape = List<int>.from(src.shape);
@@ -111,15 +121,28 @@ NDArray<T> repeat<T extends DTypeTag>(
     outputShape[normAxis] = newDimSize;
 
     if (out != null) {
+      validateOutBuffer(out);
       if (out.dtype != src.dtype) {
-        throw ArgumentError('out buffer must have the same dtype as input');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'out buffer must have the same dtype as input',
+        );
       }
       if (out.shape.length != outputShape.length) {
-        throw ArgumentError('out buffer shape length must match output shape');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'out buffer shape length must match output shape',
+        );
       }
       for (var i = 0; i < outputShape.length; i++) {
         if (out.shape[i] != outputShape[i]) {
-          throw ArgumentError('out buffer shape must match output shape');
+          throw ArgumentError.value(
+            out,
+            'out',
+            'out buffer shape must match output shape',
+          );
         }
       }
     }
@@ -372,7 +395,7 @@ NDArray<T> tile<T extends DTypeTag>(
 
   final bool hasNegative = rawReps.any((x) => x < 0);
   if (hasNegative) {
-    throw ArgumentError('reps values must be non-negative');
+    throw ArgumentError.value(reps, 'reps', 'reps values must be non-negative');
   }
 
   return NDArray.scope(() {
@@ -381,11 +404,10 @@ NDArray<T> tile<T extends DTypeTag>(
 
     // Align dimensions
     if (src.rank < tileReps.length) {
-      final newShape = [
-        ...List<int>.filled(tileReps.length - src.rank, 1),
-        ...src.shape,
-      ];
-      src = src.reshape(newShape);
+      final padDims = tileReps.length - src.rank;
+      final newShape = [...List<int>.filled(padDims, 1), ...src.shape];
+      final newStrides = [...List<int>.filled(padDims, 0), ...src.strides];
+      src = NDArray.view(src, shape: newShape, strides: newStrides);
     } else if (src.rank > tileReps.length) {
       tileReps = [
         ...List<int>.filled(src.rank - tileReps.length, 1),
@@ -399,15 +421,28 @@ NDArray<T> tile<T extends DTypeTag>(
     }
 
     if (out != null) {
+      validateOutBuffer(out);
       if (out.dtype != src.dtype) {
-        throw ArgumentError('out buffer must have the same dtype as input');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'out buffer must have the same dtype as input',
+        );
       }
       if (out.shape.length != outputShape.length) {
-        throw ArgumentError('out buffer shape length must match output shape');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'out buffer shape length must match output shape',
+        );
       }
       for (var i = 0; i < outputShape.length; i++) {
         if (out.shape[i] != outputShape[i]) {
-          throw ArgumentError('out buffer shape must match output shape');
+          throw ArgumentError.value(
+            out,
+            'out',
+            'out buffer shape must match output shape',
+          );
         }
       }
     }

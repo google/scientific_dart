@@ -38,6 +38,8 @@ export 'package:ndarray/ndarray.dart'
         Complex,
         Complex64,
         Complex128,
+        SearchSide,
+        SortKind,
         uint64Compare;
 
 /// Alias for [Boolean] data type tag.

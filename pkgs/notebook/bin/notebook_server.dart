@@ -23,17 +23,27 @@ void main(List<String> args) async {
   final workspaceDir = p.dirname(p.dirname(Platform.script.toFilePath()));
 
   int port = 8080;
-  if (args.isNotEmpty) {
-    port = int.tryParse(args[0]) ?? 8080;
+  String? notebookPath;
+  for (final arg in args) {
+    final parsedPort = int.tryParse(arg);
+    if (parsedPort != null) {
+      port = parsedPort;
+    } else {
+      notebookPath = arg;
+    }
   }
 
   print('SDK Path: $dartSdkPath');
   print('Workspace Dir: $workspaceDir');
+  if (notebookPath != null) {
+    print('Notebook File: $notebookPath');
+  }
 
   final server = NotebookServer(
     workspaceDir: workspaceDir,
     dartSdkPath: dartSdkPath,
     port: port,
+    notebookPath: notebookPath,
   );
 
   try {

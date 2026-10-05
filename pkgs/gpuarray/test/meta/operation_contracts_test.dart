@@ -16,7 +16,9 @@ import 'dart:typed_data';
 
 import 'package:gpuarray/fft.dart' as gpu_fft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
+import 'package:gpuarray/safetensors.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
@@ -439,10 +441,10 @@ void main() {
               reason: 'linalg cholesky',
             );
             _expectMatchNDArray(
-              gpu_linalg.svdvals(gpuSpd),
+              gpu_linalg.svdValues(gpuSpd),
               ndSvd.s,
               tol: 1e-5,
-              reason: 'linalg svdvals',
+              reason: 'linalg svdValues',
             );
             final gpuSpec = gpu_fft.fft(gpuSig);
             _expectMatchNDArray(gpuSpec, ndFft, tol: 1e-4, reason: 'fft');
@@ -475,6 +477,852 @@ void main() {
             ndRfft.dispose();
           }
         });
+      },
+    );
+
+    test(
+      'R1 & R4: DType preservation, Int64 index/count ops, scans, statistical/NaN reductions, and ufuncs vs NDArray oracle',
+      () {
+        nd.NDArray.scope(() {
+          ResourceScope.scope(() {
+            // 1. Unary/binary arithmetic & scalar ops preserve Float32
+            final ndF32A = nd.NDArray<Float32>.fromList(
+              [4.0, 9.0, 16.0, 25.0],
+              [2, 2],
+              nd.DType.float32,
+            );
+            final ndF32B = nd.NDArray<Float32>.fromList(
+              [2.0, 3.0, 4.0, 5.0],
+              [2, 2],
+              nd.DType.float32,
+            );
+            final gpuF32A = GpuArray<Float32>.fromNDArray(
+              ndF32A,
+              device: device,
+            );
+            final gpuF32B = GpuArray<Float32>.fromNDArray(
+              ndF32B,
+              device: device,
+            );
+
+            final GpuArray<Float32> opAdd = gpuF32A + gpuF32B;
+            final GpuArray<Float32> opSub = gpuF32A - gpuF32B;
+            final GpuArray<Float32> opMul = gpuF32A * gpuF32B;
+            final GpuArray<Float32> opDiv = gpuF32A / gpuF32B;
+            final GpuArray<Float32> opMod = gpuF32A % gpuF32B;
+            final GpuArray<Float32> opFDiv = gpuF32A ~/ gpuF32B;
+            final GpuArray<Float32> opScalar = gpuF32A + 1.0;
+            final GpuArray<Float32> mMax = maximum(gpuF32A, gpuF32B);
+            final GpuArray<Float32> mMin = minimum(gpuF32A, gpuF32B);
+            final GpuArray<Float32> mRem = remainder(gpuF32A, gpuF32B);
+            final GpuArray<Float32> mFloorDiv = floorDivide(gpuF32A, gpuF32B);
+            expect(opAdd.dtype, equals(DType.float32));
+            expect(opSub.dtype, equals(DType.float32));
+            expect(opMul.dtype, equals(DType.float32));
+            expect(opDiv.dtype, equals(DType.float32));
+            expect(opMod.dtype, equals(DType.float32));
+            expect(opFDiv.dtype, equals(DType.float32));
+            expect(opScalar.dtype, equals(DType.float32));
+            _expectMatchNDArray(opAdd, nd.add(ndF32A, ndF32B), reason: 'op +');
+            _expectMatchNDArray(
+              opSub,
+              nd.subtract(ndF32A, ndF32B),
+              reason: 'op -',
+            );
+            _expectMatchNDArray(
+              opMul,
+              nd.multiply(ndF32A, ndF32B),
+              reason: 'op *',
+            );
+            _expectMatchNDArray(
+              opDiv,
+              nd.divide(ndF32A, ndF32B),
+              reason: 'op /',
+            );
+            _expectMatchNDArray(
+              opMod,
+              nd.remainder(ndF32A, ndF32B),
+              reason: 'op %',
+            );
+            _expectMatchNDArray(opFDiv, ndF32A ~/ ndF32B, reason: 'op ~/');
+            _expectMatchNDArray(
+              mRem,
+              nd.remainder(ndF32A, ndF32B),
+              reason: 'remainder',
+            );
+            _expectMatchNDArray(
+              mFloorDiv,
+              ndF32A ~/ ndF32B,
+              reason: 'floorDivide',
+            );
+            expect(mMax.toList(), equals([4.0, 9.0, 16.0, 25.0]));
+            expect(mMin.toList(), equals([2.0, 3.0, 4.0, 5.0]));
+
+            // 2. mean() floating-point preservation & integer/bool promotion
+            final GpuArray<Float32> meanF32 = gpuF32A.mean();
+            final GpuArray<Float16> meanF16 = GpuArray<Float16>.fromList(
+              [2.0, 4.0],
+              [2],
+              DType.float16,
+              device: device,
+            ).mean();
+            final GpuArray<BFloat16> meanBF16 = GpuArray<BFloat16>.fromList(
+              [2.0, 6.0],
+              [2],
+              DType.bfloat16,
+              device: device,
+            ).mean();
+            final GpuArray<Float64> meanF64 = GpuArray<Float64>.fromList(
+              [2.0, 6.0],
+              [2],
+              DType.float64,
+              device: device,
+            ).mean();
+            final meanI32 = GpuArray<Int32>.fromList(
+              [1, 3],
+              [2],
+              DType.int32,
+              device: device,
+            ).mean();
+            final meanBool = GpuArray<Boolean>.fromList(
+              [true, false],
+              [2],
+              DType.boolean,
+              device: device,
+            ).mean();
+            expect(meanF32.dtype, equals(DType.float32));
+            expect(meanF16.dtype, equals(DType.float16));
+            expect(meanBF16.dtype, equals(DType.bfloat16));
+            expect(meanF64.dtype, equals(DType.float64));
+            expect(meanI32.dtype, equals(DType.float64));
+            expect(meanBool.dtype, equals(DType.float64));
+            _expectMatchNDArray(meanF32, nd.mean(ndF32A), reason: 'mean f32');
+
+            // 3. Index/count operations returning GpuArray<Int64>
+            final ndSortIn = nd.NDArray<Float32>.fromList(
+              [3.0, 0.0, 2.0, 1.0, 5.0, 0.0],
+              [2, 3],
+              nd.DType.float32,
+            );
+            final gpuSortIn = GpuArray<Float32>.fromNDArray(
+              ndSortIn,
+              device: device,
+            );
+            final GpuArray<Int64> gArgmin = argmin(gpuSortIn, axis: 1);
+            final GpuArray<Int64> gArgmax = argmax(gpuSortIn, axis: 1);
+            final List<GpuArray<Int64>> gNonzero = nonzero(gpuSortIn);
+            final GpuArray<Int64> gFlatnz = flatnonzero(gpuSortIn);
+            final GpuArray<Int64> gArgwhere = argwhere(gpuSortIn);
+            final GpuArray<Float32> gSort = sort(gpuSortIn, axis: 1);
+            final GpuArray<Int64> gArgsort = argsort(gpuSortIn, axis: 1);
+            final GpuArray<Float32> gPart = partition(gpuSortIn, 1, axis: 1);
+            final GpuArray<Int64> gArgpart = argpartition(
+              gpuSortIn,
+              1,
+              axis: 1,
+            );
+            final GpuArray<Int64> gCnz = countNonzero(gpuSortIn, axis: 1);
+            final topkRes = topk(gpuSortIn, 2, axis: 1);
+
+            expect(gArgmin.dtype, equals(DType.int64));
+            expect(gArgmax.dtype, equals(DType.int64));
+            expect(gNonzero.first.dtype, equals(DType.int64));
+            expect(gFlatnz.dtype, equals(DType.int64));
+            expect(gArgwhere.dtype, equals(DType.int64));
+            expect(gArgsort.dtype, equals(DType.int64));
+            expect(gArgpart.dtype, equals(DType.int64));
+            expect(gCnz.dtype, equals(DType.int64));
+            expect(topkRes.values.dtype, equals(DType.float32));
+            expect(topkRes.indices.dtype, equals(DType.int64));
+
+            _expectMatchNDArray(
+              gArgmin,
+              nd.argmin(ndSortIn, axis: 1),
+              reason: 'argmin',
+            );
+            _expectMatchNDArray(
+              gArgmax,
+              nd.argmax(ndSortIn, axis: 1),
+              reason: 'argmax',
+            );
+            final ndNz = nd.nonzero(ndSortIn);
+            _expectMatchNDArray(gNonzero[0], ndNz[0], reason: 'nonzero[0]');
+            _expectMatchNDArray(gNonzero[1], ndNz[1], reason: 'nonzero[1]');
+            _expectMatchNDArray(
+              gFlatnz,
+              nd.flatnonzero(ndSortIn),
+              reason: 'flatnonzero',
+            );
+            _expectMatchNDArray(
+              gArgwhere,
+              nd.argwhere(ndSortIn),
+              reason: 'argwhere',
+            );
+            _expectMatchNDArray(
+              gSort,
+              nd.sort(ndSortIn, axis: 1),
+              reason: 'sort',
+            );
+            _expectMatchNDArray(
+              gArgsort,
+              nd.argsort(ndSortIn, axis: 1),
+              reason: 'argsort',
+            );
+            _expectMatchNDArray(
+              gPart,
+              nd.partition(ndSortIn, [1], axis: 1),
+              reason: 'partition',
+            );
+            _expectMatchNDArray(
+              gCnz,
+              nd.count_nonzero(ndSortIn, axis: 1),
+              reason: 'countNonzero',
+            );
+
+            // searchsorted, uniqueAll, bincount
+            final ndSorted1D = nd.NDArray<Int32>.fromList(
+              [10, 20, 20, 30, 40],
+              [5],
+              nd.DType.int32,
+            );
+            final ndQuery1D = nd.NDArray<Int32>.fromList(
+              [5, 20, 35],
+              [3],
+              nd.DType.int32,
+            );
+            final gpuSorted1D = GpuArray<Int32>.fromNDArray(
+              ndSorted1D,
+              device: device,
+            );
+            final gpuQuery1D = GpuArray<Int32>.fromNDArray(
+              ndQuery1D,
+              device: device,
+            );
+            final GpuArray<Int64> gSearchL = searchsorted(
+              gpuSorted1D,
+              gpuQuery1D,
+              side: SearchSide.left,
+            );
+            final GpuArray<Int64> gSearchR = searchsorted(
+              gpuSorted1D,
+              gpuQuery1D,
+              side: SearchSide.right,
+            );
+            expect(gSearchL.dtype, equals(DType.int64));
+            expect(gSearchR.dtype, equals(DType.int64));
+            _expectMatchNDArray(
+              gSearchL,
+              nd.searchsorted(ndSorted1D, ndQuery1D, side: nd.SearchSide.left),
+              reason: 'searchsorted left',
+            );
+            _expectMatchNDArray(
+              gSearchR,
+              nd.searchsorted(ndSorted1D, ndQuery1D, side: nd.SearchSide.right),
+              reason: 'searchsorted right',
+            );
+
+            final ndUniqIn = nd.NDArray<Int32>.fromList(
+              [3, 1, 2, 1, 3, 0, 2],
+              [7],
+              nd.DType.int32,
+            );
+            final gpuUniqIn = GpuArray<Int32>.fromNDArray(
+              ndUniqIn,
+              device: device,
+            );
+            final gUniqAll = uniqueAll(gpuUniqIn);
+            final ndUniqAll = nd.uniqueAll(ndUniqIn);
+            expect(gUniqAll.values.dtype, equals(DType.int32));
+            expect(gUniqAll.indices.dtype, equals(DType.int64));
+            expect(gUniqAll.inverse.dtype, equals(DType.int64));
+            expect(gUniqAll.counts.dtype, equals(DType.int64));
+            _expectMatchNDArray(
+              gUniqAll.values,
+              ndUniqAll.values,
+              reason: 'uniqueAll.values',
+            );
+            _expectMatchNDArray(
+              gUniqAll.indices,
+              ndUniqAll.index,
+              reason: 'uniqueAll.indices',
+            );
+            _expectMatchNDArray(
+              gUniqAll.inverse,
+              ndUniqAll.inverse,
+              reason: 'uniqueAll.inverse',
+            );
+            _expectMatchNDArray(
+              gUniqAll.counts,
+              ndUniqAll.counts,
+              reason: 'uniqueAll.counts',
+            );
+
+            final gBincount = bincount(gpuUniqIn);
+            expect(gBincount.dtype, equals(DType.int64));
+            _expectMatchNDArray(
+              gBincount,
+              nd.bincount(ndUniqIn),
+              reason: 'bincount',
+            );
+
+            // 4. Cumulative scans & differences (cumsum, cumprod, diff)
+            final ndScanIn = nd.NDArray<Int32>.fromList(
+              [1, 2, 3, 4, 5, 6],
+              [2, 3],
+              nd.DType.int32,
+            );
+            final gpuScanIn = GpuArray<Int32>.fromNDArray(
+              ndScanIn,
+              device: device,
+            );
+            final gCumsum = cumsum(gpuScanIn, axis: 1);
+            final gCumprod = cumprod(gpuScanIn, axis: 1);
+            final gDiff = diff(gpuScanIn, n: 1, axis: 1);
+            expect(gCumsum.dtype, equals(DType.int64));
+            expect(gCumprod.dtype, equals(DType.int64));
+            expect(gDiff.dtype, equals(DType.int32));
+            _expectMatchNDArray(
+              gCumsum,
+              nd.cumsum(ndScanIn, axis: 1),
+              reason: 'cumsum',
+            );
+            _expectMatchNDArray(
+              gCumprod,
+              nd.cumprod(ndScanIn, axis: 1),
+              reason: 'cumprod',
+            );
+            _expectMatchNDArray(
+              gDiff,
+              nd.diff(ndScanIn, n: 1, axis: 1),
+              reason: 'diff',
+            );
+
+            // 5. Statistical & NaN-aware reductions
+            _expectMatchNDArray(
+              variance(gpuF32A, axis: 1),
+              nd.var_(ndF32A, axis: 1),
+              reason: 'variance',
+            );
+            _expectMatchNDArray(
+              std(gpuF32A, axis: 1),
+              nd.std(ndF32A, axis: 1),
+              reason: 'std',
+            );
+            _expectMatchNDArray(
+              ptp(gpuF32A, axis: 1),
+              nd.ptp(ndF32A, axis: 1),
+              reason: 'ptp',
+            );
+
+            final ndNanArr = nd.NDArray<Float32>.fromList(
+              [1.0, double.nan, 3.0, 4.0, 2.0, double.nan],
+              [2, 3],
+              nd.DType.float32,
+            );
+            final gpuNanArr = GpuArray<Float32>.fromNDArray(
+              ndNanArr,
+              device: device,
+            );
+            _expectMatchNDArray(
+              nansum(gpuNanArr, axis: 1),
+              nd.nansum(ndNanArr, axis: 1),
+              reason: 'nansum',
+            );
+            _expectMatchNDArray(
+              nanmean(gpuNanArr, axis: 1),
+              nd.nanmean(ndNanArr, axis: 1),
+              reason: 'nanmean',
+            );
+            _expectMatchNDArray(
+              nanmin(gpuNanArr, axis: 1),
+              nd.nanmin(ndNanArr, axis: 1),
+              reason: 'nanmin',
+            );
+            _expectMatchNDArray(
+              nanmax(gpuNanArr, axis: 1),
+              nd.nanmax(ndNanArr, axis: 1),
+              reason: 'nanmax',
+            );
+
+            // 6. Elementwise, bitwise & complex ufuncs
+            _expectMatchNDArray(
+              clip(gpuF32A, 5.0, 20.0),
+              nd.clip(ndF32A, min: 5.0, max: 20.0),
+              reason: 'clip',
+            );
+            _expectMatchNDArray(
+              sign(gpuF32A - 10.0),
+              nd.sign(ndF32A - 10.0),
+              reason: 'sign',
+            );
+            _expectMatchNDArray(
+              atan2(gpuF32A, gpuF32B),
+              nd.atan2(ndF32A, ndF32B),
+              reason: 'atan2',
+            );
+            _expectMatchNDArray(
+              hypot(gpuF32A, gpuF32B),
+              nd.hypot(ndF32A, ndF32B),
+              reason: 'hypot',
+            );
+
+            final ndSpec = nd.NDArray<Float32>.fromList(
+              [1.0, double.nan, double.infinity, double.negativeInfinity],
+              [4],
+              nd.DType.float32,
+            );
+            final gpuSpec = GpuArray<Float32>.fromNDArray(
+              ndSpec,
+              device: device,
+            );
+            _expectMatchNDArray(
+              isnan(gpuSpec),
+              nd.isnan(ndSpec),
+              reason: 'isnan',
+            );
+            _expectMatchNDArray(
+              isinf(gpuSpec),
+              nd.isinf(ndSpec),
+              reason: 'isinf',
+            );
+            _expectMatchNDArray(
+              isfinite(gpuSpec),
+              nd.isfinite(ndSpec),
+              reason: 'isfinite',
+            );
+            _expectMatchNDArray(
+              nanToNum(gpuSpec, nan: 0.0, posinf: 99.0, neginf: -99.0),
+              nd.nan_to_num(ndSpec, nan: 0.0, posinf: 99.0, neginf: -99.0),
+              reason: 'nanToNum',
+            );
+            expect(
+              isClose(gpuF32A, gpuF32A + 1e-6, atol: 1e-4).toList(),
+              equals([true, true, true, true]),
+            );
+            expect(allClose(gpuF32A, gpuF32A + 1e-6, atol: 1e-4), isTrue);
+
+            // Bitwise ufuncs
+            final ndBitA = nd.NDArray<Int32>.fromList(
+              [6, 12, 15],
+              [3],
+              nd.DType.int32,
+            );
+            final ndBitB = nd.NDArray<Int32>.fromList(
+              [3, 5, 7],
+              [3],
+              nd.DType.int32,
+            );
+            final gpuBitA = GpuArray<Int32>.fromNDArray(ndBitA, device: device);
+            final gpuBitB = GpuArray<Int32>.fromNDArray(ndBitB, device: device);
+            _expectMatchNDArray(
+              gpuBitA & gpuBitB,
+              ndBitA & ndBitB,
+              reason: 'bitwise &',
+            );
+            _expectMatchNDArray(
+              gpuBitA | gpuBitB,
+              ndBitA | ndBitB,
+              reason: 'bitwise |',
+            );
+            _expectMatchNDArray(
+              gpuBitA ^ gpuBitB,
+              ndBitA ^ ndBitB,
+              reason: 'bitwise ^',
+            );
+            _expectMatchNDArray(~gpuBitA, ~ndBitA, reason: 'bitwise ~');
+            _expectMatchNDArray(
+              gpuBitA << 1,
+              ndBitA << 1,
+              reason: 'bitwise <<',
+            );
+            _expectMatchNDArray(
+              gpuBitA >> 1,
+              ndBitA >> 1,
+              reason: 'bitwise >>',
+            );
+
+            // Complex ufuncs (real, imag, conj, angle) on Complex64
+            final ndC64 = nd.NDArray<Complex64>.fromList(
+              [nd.Complex(1.0, 1.0), nd.Complex(0.0, -2.0)],
+              [2],
+              nd.DType.complex64,
+            );
+            final gpuC64 = GpuArray<Complex64>.fromNDArray(
+              ndC64,
+              device: device,
+            );
+            final GpuArray<Float32> gReal = gpuC64.real();
+            final GpuArray<Float32> gImag = gpuC64.imag();
+            final GpuArray<Complex64> gConj = conj(gpuC64);
+            final GpuArray<Float32> gAngle = gpuC64.angle();
+            expect(gReal.dtype, equals(DType.float32));
+            expect(gImag.dtype, equals(DType.float32));
+            expect(gConj.dtype, equals(DType.complex64));
+            expect(gAngle.dtype, equals(DType.float32));
+            _expectMatchNDArray(gReal, nd.real(ndC64), reason: 'real');
+            _expectMatchNDArray(gImag, nd.imag(ndC64), reason: 'imag');
+            _expectMatchNDArray(gConj, nd.conj(ndC64), reason: 'conj');
+            _expectMatchNDArray(
+              gAngle,
+              nd.angle(ndC64),
+              tol: 1e-3,
+              reason: 'angle',
+            );
+          });
+        });
+      },
+    );
+
+    test(
+      'R1.4: Native Float32 and Complex64 linalg and FFT DTypeSpec projections vs NDArray oracle',
+      () {
+        nd.NDArray.scope(() {
+          ResourceScope.scope(() {
+            final ndSpd32 = nd.NDArray<Float32>.fromList(
+              [4.0, 1.0, 1.0, 3.0],
+              [2, 2],
+              nd.DType.float32,
+            );
+            final ndRhs32 = nd.NDArray<Float32>.fromList(
+              [1.0, 2.0],
+              [2],
+              nd.DType.float32,
+            );
+            final gpuSpd32 = GpuArray<Float32>.fromNDArray(
+              ndSpd32,
+              device: device,
+            );
+            final gpuRhs32 = GpuArray<Float32>.fromNDArray(
+              ndRhs32,
+              device: device,
+            );
+
+            // Linalg decompositions & solvers on Float32
+            final svdRes = gpu_linalg.svd(gpuSpd32);
+            final GpuArray<Float32> sVals = gpu_linalg.svdValues(gpuSpd32);
+            final qrRes = gpu_linalg.qr(gpuSpd32);
+            final GpuArray<Float32> cholRes = gpu_linalg.cholesky(gpuSpd32);
+            final eighRes = gpu_linalg.eigh(gpuSpd32);
+            final GpuArray<Float32> eigvalshRes = gpu_linalg.eigvalsh(gpuSpd32);
+            final luRes = gpu_linalg.lu(gpuSpd32);
+            final luFac = gpu_linalg.luFactor(gpuSpd32);
+            final GpuArray<Float32> luSol = gpu_linalg.luSolve(
+              luFac.lu,
+              luFac.pivots,
+              gpuRhs32,
+            );
+            final GpuArray<Float32> sol = gpu_linalg.solve(gpuSpd32, gpuRhs32);
+            final GpuArray<Float32> invRes = gpu_linalg.inv(gpuSpd32);
+            final GpuArray<Float32> pinvRes = gpu_linalg.pinv(gpuSpd32);
+            final lstsqRes = gpu_linalg.lstsq(gpuSpd32, gpuRhs32);
+            final GpuArray<Float32> detRes = gpu_linalg.det(gpuSpd32);
+            final slogdetRes = gpu_linalg.slogdet(gpuSpd32);
+            final GpuArray<Float32> normRes = gpu_linalg.norm(gpuSpd32);
+            final GpuArray<Float32> condRes = gpu_linalg.cond(gpuSpd32);
+
+            expect(svdRes.u.dtype, equals(DType.float32));
+            expect(svdRes.s.dtype, equals(DType.float32));
+            expect(svdRes.vt.dtype, equals(DType.float32));
+            expect(sVals.dtype, equals(DType.float32));
+            expect(qrRes.q.dtype, equals(DType.float32));
+            expect(qrRes.r.dtype, equals(DType.float32));
+            expect(cholRes.dtype, equals(DType.float32));
+            expect(eighRes.eigenvalues.dtype, equals(DType.float32));
+            expect(eighRes.eigenvectors.dtype, equals(DType.float32));
+            expect(eigvalshRes.dtype, equals(DType.float32));
+            expect(luRes.p.dtype, equals(DType.float32));
+            expect(luRes.l.dtype, equals(DType.float32));
+            expect(luRes.u.dtype, equals(DType.float32));
+            expect(luFac.lu.dtype, equals(DType.float32));
+            expect(luSol.dtype, equals(DType.float32));
+            expect(sol.dtype, equals(DType.float32));
+            expect(invRes.dtype, equals(DType.float32));
+            expect(pinvRes.dtype, equals(DType.float32));
+            expect(lstsqRes.solution.dtype, equals(DType.float32));
+            expect(detRes.dtype, equals(DType.float32));
+            expect(slogdetRes.sign.dtype, equals(DType.float32));
+            expect(slogdetRes.logabsdet.dtype, equals(DType.float32));
+            expect(normRes.dtype, equals(DType.float32));
+            expect(condRes.dtype, equals(DType.float32));
+
+            _expectMatchNDArray(
+              sVals,
+              nd.svd(ndSpd32).s,
+              tol: 1e-4,
+              reason: 'f32 svdValues',
+            );
+            _expectMatchNDArray(
+              cholRes,
+              nd.cholesky(ndSpd32),
+              tol: 1e-4,
+              reason: 'f32 cholesky',
+            );
+            _expectMatchNDArray(
+              eigvalshRes,
+              nd.eigvalsh(ndSpd32),
+              tol: 1e-4,
+              reason: 'f32 eigvalsh',
+            );
+            _expectMatchNDArray(
+              sol,
+              nd.solve(ndSpd32, ndRhs32),
+              tol: 1e-4,
+              reason: 'f32 solve',
+            );
+            _expectMatchNDArray(
+              luSol,
+              nd.solve(ndSpd32, ndRhs32),
+              tol: 1e-4,
+              reason: 'f32 luSolve',
+            );
+            _expectMatchNDArray(
+              invRes,
+              nd.inv(ndSpd32),
+              tol: 1e-4,
+              reason: 'f32 inv',
+            );
+            _expectMatchNDArray(
+              pinvRes,
+              nd.pinv(ndSpd32),
+              tol: 1e-4,
+              reason: 'f32 pinv',
+            );
+            _expectMatchNDArray(
+              lstsqRes.solution,
+              nd.lstsq(ndSpd32, ndRhs32).x,
+              tol: 1e-4,
+              reason: 'f32 lstsq',
+            );
+            _expectMatchNDArray(
+              detRes,
+              nd.det(ndSpd32),
+              tol: 1e-4,
+              reason: 'f32 det',
+            );
+            _expectMatchNDArray(
+              normRes,
+              nd.norm(ndSpd32),
+              tol: 1e-4,
+              reason: 'f32 norm',
+            );
+            _expectMatchNDArray(
+              condRes,
+              nd.cond(ndSpd32),
+              tol: 1e-3,
+              reason: 'f32 cond',
+            );
+
+            // FFT on Float32 & Complex64 (fft, ifft, rfft, irfft, fft2, ifft2, fftn, ifftn)
+            final ndSig32 = nd.NDArray<Float32>.fromList(
+              [1.0, 2.0, 3.0, 4.0, 2.0, 1.0, 0.5, -1.0],
+              [2, 4],
+              nd.DType.float32,
+            );
+            final gpuSig32 = GpuArray<Float32>.fromNDArray(
+              ndSig32,
+              device: device,
+            );
+            final GpuArray<Complex64> gFft = gpu_fft.fft(gpuSig32);
+            final GpuArray<Complex64> gIfft = gpu_fft.ifft(gFft);
+            final GpuArray<Complex64> gRfft = gpu_fft.rfft(gpuSig32);
+            final GpuArray<Float32> gIrfft = gpu_fft.irfft(gRfft, n: 4);
+            final GpuArray<Complex64> gFft2 = gpu_fft.fft2(gpuSig32);
+            final GpuArray<Complex64> gIfft2 = gpu_fft.ifft2(gFft2);
+            final GpuArray<Complex64> gFftn = gpu_fft.fftn(gpuSig32);
+            final GpuArray<Complex64> gIfftn = gpu_fft.ifftn(gFftn);
+
+            expect(gFft.dtype, equals(DType.complex64));
+            expect(gIfft.dtype, equals(DType.complex64));
+            expect(gRfft.dtype, equals(DType.complex64));
+            expect(gIrfft.dtype, equals(DType.float32));
+            expect(gFft2.dtype, equals(DType.complex64));
+            expect(gIfft2.dtype, equals(DType.complex64));
+            expect(gFftn.dtype, equals(DType.complex64));
+            expect(gIfftn.dtype, equals(DType.complex64));
+
+            _expectMatchNDArray(
+              gFft,
+              nd.fft(ndSig32),
+              tol: 1e-4,
+              reason: 'f32 fft',
+            );
+            _expectMatchNDArray(
+              gRfft,
+              nd.rfft(ndSig32),
+              tol: 1e-4,
+              reason: 'f32 rfft',
+            );
+            _expectMatchNDArray(
+              gIrfft,
+              ndSig32,
+              tol: 1e-4,
+              reason: 'f32 irfft',
+            );
+            _expectMatchNDArray(
+              gFft2,
+              nd.fft2(ndSig32),
+              tol: 1e-4,
+              reason: 'f32 fft2',
+            );
+            _expectMatchNDArray(
+              gFftn,
+              nd.fftn(ndSig32),
+              tol: 1e-4,
+              reason: 'f32 fftn',
+            );
+            _expectMatchNDArray(
+              gIfft.real(),
+              ndSig32,
+              tol: 1e-4,
+              reason: 'f32 ifft real',
+            );
+            _expectMatchNDArray(
+              gIfft2.real(),
+              ndSig32,
+              tol: 1e-4,
+              reason: 'f32 ifft2 real',
+            );
+            _expectMatchNDArray(
+              gIfftn.real(),
+              ndSig32,
+              tol: 1e-4,
+              reason: 'f32 ifftn real',
+            );
+          });
+        });
+      },
+    );
+
+    test(
+      'Cross-cutting behavioral invariants: 0-D scalars, empty arrays, strided/negative-stride views, out: aliasing, and ResourceScope zero-leak',
+      () {
+        final baselineActive = device.activeBufferCount;
+        ResourceScope.scope(() {
+          // 1. 0-D scalars
+          final s1 = GpuArray<Float32>.fromList(
+            [3.0],
+            const [],
+            DType.float32,
+            device: device,
+          );
+          final s2 = GpuArray<Float32>.fromList(
+            [4.0],
+            const [],
+            DType.float32,
+            device: device,
+          );
+          final sAdd = s1 + s2;
+          final sHyp = hypot(s1, s2);
+          final sMean = s1.mean();
+          expect(sAdd.shape, isEmpty);
+          expect(sAdd.scalar, closeTo(7.0, 1e-5));
+          expect(sHyp.shape, isEmpty);
+          expect(sHyp.scalar, closeTo(5.0, 1e-5));
+          expect(sMean.shape, isEmpty);
+          expect(sMean.scalar, closeTo(3.0, 1e-5));
+
+          // 2. Empty arrays
+          final empty1D = GpuArray<Float32>.zeros(
+            [0],
+            DType.float32,
+            device: device,
+          );
+          final emptySum = empty1D.sum();
+          final emptySort = sort(empty1D);
+          final emptyArgsort = argsort(empty1D);
+          final emptyCumsum = cumsum(empty1D);
+          final emptyUniq = unique(empty1D);
+          final emptyInt = GpuArray<Int32>.zeros(
+            [0],
+            DType.int32,
+            device: device,
+          );
+          final emptyBin = bincount(emptyInt, minlength: 3);
+          expect(emptySum.scalar, equals(0.0));
+          expect(emptySort.shape, equals([0]));
+          expect(emptyArgsort.shape, equals([0]));
+          expect(emptyCumsum.shape, equals([0]));
+          expect(emptyUniq.shape, equals([0]));
+          expect(emptyBin.toList(), equals([0, 0, 0]));
+
+          // 3. Non-contiguous views (transposed, step-sliced, negative-stride)
+          final ndBase = nd.NDArray<Float32>.fromList(
+            [3.0, -1.0, 4.0, 2.0, 5.0, 0.0, -2.0, 6.0],
+            [2, 4],
+            nd.DType.float32,
+          );
+          final gpuBase = GpuArray<Float32>.fromNDArray(ndBase, device: device);
+          try {
+            final gpuFlip = gpuBase.slice([
+              const Slice.all(),
+              const Slice(3, null, -1),
+            ]);
+            final ndFlip = ndBase.slice([
+              nd.Slice.all(),
+              nd.Slice(start: 3, step: -1),
+            ]);
+            _expectMatchNDArray(
+              sort(gpuFlip, axis: 1),
+              nd.sort(ndFlip, axis: 1),
+              reason: 'negative-stride sort',
+            );
+            _expectMatchNDArray(
+              cumsum(gpuFlip, axis: 1),
+              nd.cumsum(ndFlip, axis: 1),
+              reason: 'negative-stride cumsum',
+            );
+            _expectMatchNDArray(
+              diff(gpuFlip, axis: 1),
+              nd.diff(ndFlip, axis: 1),
+              reason: 'negative-stride diff',
+            );
+            _expectMatchNDArray(
+              variance(gpuFlip, axis: 1),
+              nd.var_(ndFlip, axis: 1),
+              reason: 'negative-stride variance',
+            );
+            _expectMatchNDArray(
+              clip(gpuFlip, 0.0, 4.0),
+              nd.clip(ndFlip, min: 0.0, max: 4.0),
+              reason: 'negative-stride clip',
+            );
+          } finally {
+            ndBase.dispose();
+          }
+
+          // 4. out: aliasing & non-contiguous out: on R4 ops
+          final aliasArr = GpuArray<Float32>.fromList(
+            [-2.0, 0.5, 4.0],
+            [3],
+            DType.float32,
+            device: device,
+          );
+          expect(
+            identical(clip(aliasArr, 0.0, 2.0, out: aliasArr), aliasArr),
+            isTrue,
+          );
+          expect(aliasArr.toList(), equals([0.0, 0.5, 2.0]));
+
+          final fullOut = GpuArray<Float32>.filled(
+            [6],
+            -1.0,
+            DType.float32,
+            device: device,
+          );
+          final stridedOut = fullOut.slice([const Slice(0, 6, 2)]);
+          final scanSrc = GpuArray<Float32>.fromList(
+            [1.0, 2.0, 3.0],
+            [3],
+            DType.float32,
+            device: device,
+          );
+          expect(
+            identical(cumsum(scanSrc, out: stridedOut), stridedOut),
+            isTrue,
+          );
+          expect(fullOut.toList(), equals([1.0, -1.0, 3.0, -1.0, 6.0, -1.0]));
+        });
+        expect(device.activeBufferCount, equals(baselineActive));
       },
     );
   });

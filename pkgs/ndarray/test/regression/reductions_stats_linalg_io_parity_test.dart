@@ -252,7 +252,7 @@ void main() {
         );
         final res = interp(x, xp, fp, left: -99.0, right: 99.0).toList();
         expect(res[0], -99.0);
-        expect((res[1] as double).isNaN, isTrue);
+        expect(res[1].isNaN, isTrue);
         expect(res[2], 99.0);
       });
     });

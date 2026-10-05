@@ -297,11 +297,7 @@ void _checkLapackInfo(
 ///   for integer and boolean arrays.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 0.0, 0.0, 1.0], [2, 2], DType.float64);
-/// final b = NDArray.fromList([4.0, 1.0, 2.0, 2.0], [2, 2], DType.float64);
-/// final c = matmul(a, b);
-/// ```
+/// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [NumPy matmul](https://numpy.org/doc/stable/reference/generated/numpy.matmul.html)
 NDArray<T> matmul<T extends DTypeTag>(
@@ -312,12 +308,19 @@ NDArray<T> matmul<T extends DTypeTag>(
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot execute matmul() on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write matmul result to a disposed output array.');
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError(
+        'Cannot write matmul result to a disposed output array.',
+      );
+    }
+    validateOutBuffer(out);
   }
   if (a.rank == 0 || b.rank == 0) {
-    throw ArgumentError(
-      'matmul does not support 0D scalar arrays (got shapes ${a.shape} and ${b.shape}).',
+    throw ArgumentError.value(
+      [a.shape, b.shape],
+      'a, b',
+      'Must not be 0D scalar arrays (matmul does not support 0D scalar arrays, got shapes ${a.shape} and ${b.shape}).',
     );
   }
   if (a.dtype != b.dtype) {
@@ -331,8 +334,10 @@ NDArray<T> matmul<T extends DTypeTag>(
 
   if (a.shape.length == 1 && b.shape.length == 1) {
     if (a.shape[0] != b.shape[0]) {
-      throw ArgumentError(
-        'Incompatible vector dimensions for 1D dot product in matmul: ${a.shape} and ${b.shape}',
+      throw ArgumentError.value(
+        [a.shape, b.shape],
+        'a, b',
+        'Must have compatible vector dimensions for 1D dot product in matmul: ${a.shape} and ${b.shape}',
       );
     }
     if (targetDType.isFloating || targetDType.isComplex) {
@@ -344,8 +349,10 @@ NDArray<T> matmul<T extends DTypeTag>(
     final kA = a.shape[a.shape.length - 1];
     final kB = b.shape.length == 1 ? b.shape[0] : b.shape[b.shape.length - 2];
     if (kA != kB) {
-      throw ArgumentError(
-        'Incompatible inner matrix dimensions for matmul: kA($kA) != kB($kB). Shapes: ${a.shape} and ${b.shape}',
+      throw ArgumentError.value(
+        [a.shape, b.shape],
+        'a, b',
+        'Must have compatible inner matrix dimensions for matmul: kA($kA) != kB($kB). Shapes: ${a.shape} and ${b.shape}',
       );
     }
     if (targetDType.isFloating || targetDType.isComplex) {
@@ -379,8 +386,10 @@ NDArray<T> matmul<T extends DTypeTag>(
         final res = castNDArray<T>(resF32, targetDType);
         if (out != null) {
           if (!listEquals(out.shape, res.shape) || out.dtype != targetDType) {
-            throw ArgumentError(
-              'Provided out buffer has incompatible shape or dtype (expected shape ${res.shape} and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).',
+            throw ArgumentError.value(
+              out,
+              'out',
+              'Must have compatible shape ${res.shape} and dtype $targetDType (provided out buffer has incompatible shape or dtype, got shape ${out.shape} and dtype ${out.dtype}).',
             );
           }
           res.copy(out: out);
@@ -408,14 +417,18 @@ NDArray<T> matmul<T extends DTypeTag>(
     if (aCast.shape.length == 1 && bCast.shape.length == 1) {
       final n = aCast.shape[0];
       if (n != bCast.shape[0]) {
-        throw ArgumentError(
-          'Incompatible vector dimensions for 1D dot product in matmul: ${aCast.shape} and ${bCast.shape}',
+        throw ArgumentError.value(
+          [aCast.shape, bCast.shape],
+          'a, b',
+          'Must have compatible vector dimensions for 1D dot product in matmul: ${aCast.shape} and ${bCast.shape}',
         );
       }
       if (out != null) {
         if (!listEquals(out.shape, []) || out.dtype != targetDType) {
-          throw ArgumentError(
-            'Provided out buffer has incompatible shape or dtype (expected shape [] and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).',
+          throw ArgumentError.value(
+            out,
+            'out',
+            'Must have compatible shape [] and dtype $targetDType (provided out buffer has incompatible shape or dtype, got shape ${out.shape} and dtype ${out.dtype}).',
           );
         }
       }
@@ -583,8 +596,10 @@ NDArray<T> matmul<T extends DTypeTag>(
     final n = bView.shape[rankB - 1];
 
     if (kA != kB) {
-      throw ArgumentError(
-        'Incompatible inner matrix dimensions for matmul: kA($kA) != kB($kB). Shapes: ${aCast.shape} and ${bCast.shape}',
+      throw ArgumentError.value(
+        [aCast.shape, bCast.shape],
+        'a, b',
+        'Must have compatible inner matrix dimensions for matmul: kA($kA) != kB($kB). Shapes: ${aCast.shape} and ${bCast.shape}',
       );
     }
 
@@ -606,8 +621,10 @@ NDArray<T> matmul<T extends DTypeTag>(
     if (out != null) {
       if (!listEquals(out.shape, expectedFinalShape) ||
           out.dtype != targetDType) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype (expected shape $expectedFinalShape and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape $expectedFinalShape and dtype $targetDType (provided out buffer has incompatible shape or dtype, got shape ${out.shape} and dtype ${out.dtype}).',
         );
       }
     }
@@ -1347,14 +1364,19 @@ NDArray<T> multi_dot<T extends DTypeTag>(
       );
     }
   }
-  if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write multi_dot result to a disposed output array.',
-    );
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError(
+        'Cannot write multi_dot result to a disposed output array.',
+      );
+    }
+    validateOutBuffer(out);
   }
   if (arrays.length < 2) {
-    throw ArgumentError(
-      'multi_dot requires at least 2 arrays (got ${arrays.length}).',
+    throw ArgumentError.value(
+      arrays.length,
+      'arrays',
+      'Must contain at least 2 arrays (multi_dot requires at least 2 arrays, got ${arrays.length}).',
     );
   }
 
@@ -1365,14 +1387,18 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     final rank = arrays[i].shape.length;
     if (i == 0 || i == n - 1) {
       if (rank != 1 && rank != 2) {
-        throw ArgumentError(
-          'First and last arrays in multi_dot must be 1D or 2D (array $i was shape ${arrays[i].shape}).',
+        throw ArgumentError.value(
+          arrays[i].shape,
+          'arrays[$i]',
+          'Must be 1D or 2D (first and last arrays in multi_dot must be 1D or 2D, array $i was shape ${arrays[i].shape}).',
         );
       }
     } else {
       if (rank != 2) {
-        throw ArgumentError(
-          'All intermediate arrays in multi_dot must be 2D (array $i was shape ${arrays[i].shape}).',
+        throw ArgumentError.value(
+          arrays[i].shape,
+          'arrays[$i]',
+          'Must be 2D (all intermediate arrays in multi_dot must be 2D, array $i was shape ${arrays[i].shape}).',
         );
       }
     }
@@ -1391,8 +1417,10 @@ NDArray<T> multi_dot<T extends DTypeTag>(
   for (var i = 1; i < n - 1; i++) {
     final shape = arrays[i].shape;
     if (shape[0] != p[i]) {
-      throw ArgumentError(
-        'Incompatible matrix dimensions in multi_dot: array $i first dimension (${shape[0]}) must match previous dimension (${p[i]}).',
+      throw ArgumentError.value(
+        shape[0],
+        'arrays[$i].shape[0]',
+        'Must match previous dimension (${p[i]}) (incompatible matrix dimensions in multi_dot: array $i first dimension (${shape[0]}) must match previous dimension (${p[i]})).',
       );
     }
     p[i + 1] = shape[1];
@@ -1402,8 +1430,10 @@ NDArray<T> multi_dot<T extends DTypeTag>(
   final lastIdx = n - 1;
   final lastShape = arrays[lastIdx].shape;
   if (lastShape[0] != p[lastIdx]) {
-    throw ArgumentError(
-      'Incompatible matrix dimensions in multi_dot: last array first dimension (${lastShape[0]}) must match previous dimension (${p[lastIdx]}).',
+    throw ArgumentError.value(
+      lastShape[0],
+      'arrays[lastIdx].shape[0]',
+      'Must match previous dimension (${p[lastIdx]}) (incompatible matrix dimensions in multi_dot: last array first dimension (${lastShape[0]}) must match previous dimension (${p[lastIdx]})).',
     );
   }
   if (lastShape.length == 1) {
@@ -1427,7 +1457,9 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     targetDType = resolveDType(targetDType, arrays[i].dtype);
   }
   if (!targetDType.isFloating && !targetDType.isComplex) {
-    targetDType = DType.float64;
+    if (T == Float64 || (out != null && out.dtype == DType.float64)) {
+      targetDType = DType.float64;
+    }
   }
 
   // If out is provided, validate it
@@ -1447,8 +1479,10 @@ NDArray<T> multi_dot<T extends DTypeTag>(
   if (out != null) {
     if (!listEquals(out.shape, expectedFinalShape) ||
         out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out recycler has incompatible shape or dtype (expected shape $expectedFinalShape and dtype $targetDType, got shape ${out.shape} and dtype ${out.dtype}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $expectedFinalShape and dtype $targetDType (provided out recycler has incompatible shape or dtype, got shape ${out.shape} and dtype ${out.dtype}).',
       );
     }
   }
@@ -1461,10 +1495,11 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     for (var l = 2; l <= n; l++) {
       for (var i = 1; i <= n - l + 1; i++) {
         final j = i + l - 1;
-        m[i][j] = 99999999999999; // large number as infinity
+        m[i][j] = -1;
+        s[i][j] = i;
         for (var k = i; k < j; k++) {
           final cost = m[i][k] + m[k + 1][j] + p[i - 1] * p[k] * p[j];
-          if (cost < m[i][j]) {
+          if (m[i][j] < 0 || cost < m[i][j]) {
             m[i][j] = cost;
             s[i][j] = k;
           }
@@ -1473,7 +1508,7 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     }
 
     // Helper function to recursively evaluate matrix multiplication chain
-    NDArray eval(int i, int j) {
+    NDArray<DTypeTag> eval(int i, int j) {
       if (i == j) {
         // Return a contiguous copy of arrays[i-1] casted to the correct targetDType
         final src = arrays[i - 1];
@@ -1489,7 +1524,7 @@ NDArray<T> multi_dot<T extends DTypeTag>(
       final right = eval(k + 1, j);
 
       // Perform matrix multiplication
-      final res = matmul(left, right);
+      final res = matmul<DTypeTag>(left, right);
       left.dispose();
       right.dispose();
       return res;
@@ -1500,16 +1535,12 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     final left = eval(1, k);
     final right = eval(k + 1, n);
 
-    final finalResult = matmul<T>(
-      left as NDArray<T>,
-      right as NDArray<T>,
-      out: out,
-    );
+    final finalResult = matmul<DTypeTag>(left, right, out: out);
     left.dispose();
     right.dispose();
 
     if (out != null) return out;
-    return finalResult.detachToParentScope();
+    return (finalResult as NDArray<T>).detachToParentScope();
   });
 }
 
@@ -1535,11 +1566,7 @@ NDArray<T> multi_dot<T extends DTypeTag>(
 ///   where safe to minimize heap churn.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([4.0, 7.0, 2.0, 6.0], [2, 2], DType.float64);
-/// final b = inv(a);
-/// print(b.toList()); // [0.6, -0.7, -0.2, 0.4]
-/// ```
+/// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [Matrix Inversion](https://en.wikipedia.org/wiki/Invertible_matrix)
 NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
@@ -1551,8 +1578,10 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 2] != a.shape[rank - 1]) {
-    throw ArgumentError(
-      'Matrix must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
     );
   }
 
@@ -1565,8 +1594,10 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     case DType.complex128:
       break;
     default:
-      throw ArgumentError(
-        'Matrix inversion only supports float or complex dtypes (got ${a.dtype}).',
+      throw ArgumentError.value(
+        a.dtype,
+        'a.dtype',
+        'Must be float or complex (matrix inversion only supports float or complex dtypes, got ${a.dtype}).',
       );
   }
   checkBlasIntDim(a.shape[rank - 1], 'n', 'inv');
@@ -1574,10 +1605,13 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'inv');
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, a.shape) ||
           (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype for matrix inversion.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape ${a.shape} and float64 or ${a.dtype} dtype for matrix inversion (provided out buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -1600,9 +1634,12 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   final DType<T> targetDType = a.dtype;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for matrix inversion.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape ${a.shape} and dtype $targetDType for matrix inversion (provided out buffer has incompatible shape or dtype).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
@@ -1838,11 +1875,7 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// - Fully vectorized and batched in native C for float64, complex64, and complex128, minimizing FFI transitions.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-/// final d = det(a);
-/// print(d.scalar); // -2.0 (0-D array)
-/// ```
+/// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Refer to the [determinant](https://en.wikipedia.org/wiki/Determinant)
 /// and [LAPACK LU solver](https://en.wikipedia.org/wiki/LU_decomposition) for additional details.
@@ -1861,12 +1894,18 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
       a.dtype != DType.bfloat16 &&
       a.dtype != DType.complex128 &&
       a.dtype != DType.complex64) {
-    throw ArgumentError('det only supports float and complex dtypes');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (det only supports float and complex dtypes)',
+    );
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
-    throw ArgumentError(
-      'Matrix must be square and at least 2D (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square and at least 2D (was ${a.shape})',
     );
   }
   checkBlasIntDim(a.shape[rank - 1], 'n', 'det');
@@ -1875,10 +1914,13 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   final stackShape = a.shape.sublist(0, rank - 2);
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, stackShape) ||
           (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape $stackShape and float64 or ${a.dtype} dtype (provided out buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -1899,9 +1941,12 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   final expectedDType = a.dtype;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, stackShape) || out.dtype != expectedDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $stackShape and dtype $expectedDType (provided out buffer has incompatible shape or dtype).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
@@ -1953,6 +1998,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
             cIpiv,
             get_dgetrf_ptr().cast(),
           );
+          checkNativeOom();
         } finally {
           ScratchArena.reset(marker);
         }
@@ -1988,6 +2034,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
             cIpiv,
             get_zgetrf_ptr().cast(),
           );
+          checkNativeOom();
         } finally {
           ScratchArena.reset(marker);
         }
@@ -2023,6 +2070,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
             cIpiv,
             get_cgetrf_ptr().cast(),
           );
+          checkNativeOom();
         } finally {
           ScratchArena.reset(marker);
         }
@@ -2058,6 +2106,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
             cIpiv,
             get_sgetrf_ptr().cast(),
           );
+          checkNativeOom();
         } finally {
           ScratchArena.reset(marker);
         }
@@ -2066,7 +2115,11 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
         }
         return result;
       default:
-        throw ArgumentError('Unsupported dtype for determinant');
+        throw ArgumentError.value(
+          a.dtype,
+          'a.dtype',
+          'Must be a supported float or complex dtype (unsupported dtype for determinant)',
+        );
     }
   });
 }
@@ -2104,12 +2157,18 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) != DType.bfloat16 &&
       (a.dtype as DType<DTypeTag>) != DType.complex128 &&
       (a.dtype as DType<DTypeTag>) != DType.complex64) {
-    throw ArgumentError('slogdet only supports float and complex dtypes');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (slogdet only supports float and complex dtypes)',
+    );
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
-    throw ArgumentError(
-      'Matrix must be square and at least 2D (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square and at least 2D (was ${a.shape})',
     );
   }
   checkBlasIntDim(a.shape[rank - 1], 'n', 'slogdet');
@@ -2117,21 +2176,37 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'slogdet');
   final stackShape = a.shape.sublist(0, rank - 2);
 
+  if (outSign != null &&
+      outLogdet != null &&
+      sharesMemory(outSign, outLogdet)) {
+    throw ArgumentError.value(
+      outLogdet,
+      'outLogdet',
+      'Must not share memory with outSign.',
+    );
+  }
+
   if ((a.dtype as DType<DTypeTag>) == DType.float16 ||
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     if (outSign != null) {
+      validateOutBuffer(outSign, 'outSign');
       if (!listEquals(outSign.shape, stackShape) ||
           (outSign.dtype != DType.float64 && outSign.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided outSign buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          outSign,
+          'outSign',
+          'Must have compatible shape $stackShape and float64 or ${a.dtype} dtype (provided outSign buffer has incompatible shape or dtype).',
         );
       }
     }
     if (outLogdet != null) {
+      validateOutBuffer(outLogdet, 'outLogdet');
       if (!listEquals(outLogdet.shape, stackShape) ||
           (outLogdet.dtype != DType.float64 && outLogdet.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided outLogdet buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          outLogdet,
+          'outLogdet',
+          'Must have compatible shape $stackShape and float64 or ${a.dtype} dtype (provided outLogdet buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -2178,18 +2253,24 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
       : DType.float64 as DType<R>;
 
   if (outSign != null) {
+    validateOutBuffer(outSign, 'outSign');
     if (!listEquals(outSign.shape, stackShape) || outSign.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided outSign buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        outSign,
+        'outSign',
+        'Must have compatible shape $stackShape and dtype ${a.dtype} (provided outSign buffer has incompatible shape or dtype).',
       );
     }
   }
 
   if (outLogdet != null) {
+    validateOutBuffer(outLogdet, 'outLogdet');
     if (!listEquals(outLogdet.shape, stackShape) ||
         outLogdet.dtype != logdetDType) {
-      throw ArgumentError(
-        'Provided outLogdet buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        outLogdet,
+        'outLogdet',
+        'Must have compatible shape $stackShape and dtype $logdetDType (provided outLogdet buffer has incompatible shape or dtype).',
       );
     }
   }
@@ -2198,9 +2279,7 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
       outSign != null && (!outSign.isContiguous || sharesMemory(a, outSign));
   final bool needTempLogdet =
       outLogdet != null &&
-      (!outLogdet.isContiguous ||
-          sharesMemory(a, outLogdet) ||
-          (outSign != null && sharesMemory(outSign, outLogdet)));
+      (!outLogdet.isContiguous || sharesMemory(a, outLogdet));
   if (needTempSign || needTempLogdet) {
     return NDArray.scope(() {
       final res = slogdet<T, R>(
@@ -2324,6 +2403,7 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
         default:
           throw UnsupportedError('Unsupported dtype ${a.dtype}');
       }
+      checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
@@ -2367,12 +2447,7 @@ extension SlogdetRecordDispose<T extends DTypeTag, R extends DTypeTag>
 /// - Algorithmic complexity is $O(N^3)$ executed natively.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<Float64>.fromList([3.0, 1.0, 1.0, 2.0], [2, 2], DType.float64);
-/// final b = NDArray<Float64>.fromList([9.0, 8.0], [2], DType.float64);
-/// final x = solve(a, b);
-/// print(x.toList()); // [2.0, 3.0]
-/// ```
+/// {@example /example/linalg_example.dart lang=dart}
 void _copyStrided2DMatrix(
   ffi.Pointer<ffi.Void> src,
   List<int> strides,
@@ -2421,6 +2496,7 @@ void _copyStrided2DMatrix(
         default:
           throw UnsupportedError('Unsupported type: $dtype');
       }
+      checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
@@ -2534,8 +2610,10 @@ NDArray<T> solve<T extends DTypeTag>(
   }
   final rankA = a.shape.length;
   if (rankA < 2 || a.shape[rankA - 2] != a.shape[rankA - 1]) {
-    throw ArgumentError(
-      'Matrix a must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
     );
   }
   final n = a.shape[rankA - 1];
@@ -2544,39 +2622,51 @@ NDArray<T> solve<T extends DTypeTag>(
   if (rankA == 2) {
     if (rankB == 1) {
       if (b.shape[0] != n) {
-        throw ArgumentError(
-          'Dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape})',
+        throw ArgumentError.value(
+          b.shape,
+          'b.shape',
+          'Must match matrix dimension $n of a (${a.shape}) (dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape}))',
         );
       }
     } else if (rankB == 2) {
       if (b.shape[0] != n) {
-        throw ArgumentError(
-          'Dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape})',
+        throw ArgumentError.value(
+          b.shape,
+          'b.shape',
+          'Must match matrix dimension $n of a (${a.shape}) (dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape}))',
         );
       }
     } else {
-      throw ArgumentError(
-        'Dimensions of b (${b.shape}) are incompatible with a (${a.shape}). Expected rank 1 or 2.',
+      throw ArgumentError.value(
+        b.shape,
+        'b.shape',
+        'Must have rank 1 or 2 (dimensions of b (${b.shape}) are incompatible with a (${a.shape}). Expected rank 1 or 2.)',
       );
     }
   } else {
     final stackShapeA = a.shape.sublist(0, rankA - 2);
     if (rankB == 1) {
       if (b.shape[0] != n) {
-        throw ArgumentError(
-          'Dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape})',
+        throw ArgumentError.value(
+          b.shape,
+          'b.shape',
+          'Must match matrix dimension $n of a (${a.shape}) (dimensions of b (${b.shape}) must match matrix dimension $n of a (${a.shape}))',
         );
       }
     } else if (rankB == rankA) {
       if (!listEquals(b.shape.sublist(0, rankA - 2), stackShapeA) ||
           b.shape[rankB - 2] != n) {
-        throw ArgumentError(
-          'Dimensions of b (${b.shape}) must match stack shape $stackShapeA and matrix dimension $n of a (${a.shape})',
+        throw ArgumentError.value(
+          b.shape,
+          'b.shape',
+          'Must match stack shape $stackShapeA and matrix dimension $n of a (${a.shape}) (dimensions of b (${b.shape}) must match stack shape $stackShapeA and matrix dimension $n of a (${a.shape}))',
         );
       }
     } else {
-      throw ArgumentError(
-        'Dimensions of b (${b.shape}) are incompatible with a (${a.shape}). Expected rank 1 or $rankA.',
+      throw ArgumentError.value(
+        b.shape,
+        'b.shape',
+        'Must have rank 1 or $rankA (dimensions of b (${b.shape}) are incompatible with a (${a.shape}). Expected rank 1 or $rankA.)',
       );
     }
   }
@@ -2586,8 +2676,10 @@ NDArray<T> solve<T extends DTypeTag>(
       : b.shape;
 
   if (a.dtype != b.dtype) {
-    throw ArgumentError(
-      'Mismatched dtypes for solve: a has dtype ${a.dtype}, b has dtype ${b.dtype}.',
+    throw ArgumentError.value(
+      b.dtype,
+      'b.dtype',
+      'Must match dtype of a (${a.dtype}) (mismatched dtypes for solve: a has dtype ${a.dtype}, b has dtype ${b.dtype}).',
     );
   }
 
@@ -2597,8 +2689,10 @@ NDArray<T> solve<T extends DTypeTag>(
       a.dtype != DType.bfloat16 &&
       a.dtype != DType.complex128 &&
       a.dtype != DType.complex64) {
-    throw ArgumentError(
-      'solve only supports float64, float32, float16, bfloat16, complex128, or complex64 dtypes (got ${a.dtype}).',
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (solve only supports float64, float32, float16, bfloat16, complex128, or complex64 dtypes, got ${a.dtype}).',
     );
   }
 
@@ -2616,10 +2710,13 @@ NDArray<T> solve<T extends DTypeTag>(
 
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, expectedOutShape) ||
           (out.dtype != DType.float64 && out.dtype != b.dtype)) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype (expected shape $expectedOutShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape $expectedOutShape and dtype ${DType.float64} (provided out buffer has incompatible shape or dtype, expected shape $expectedOutShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
         );
       }
     }
@@ -2640,9 +2737,12 @@ NDArray<T> solve<T extends DTypeTag>(
   }
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, expectedOutShape) || out.dtype != b.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype (expected shape $expectedOutShape and dtype ${b.dtype}, got shape ${out.shape} and dtype ${out.dtype}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $expectedOutShape and dtype ${b.dtype} (provided out buffer has incompatible shape or dtype, expected shape $expectedOutShape and dtype ${b.dtype}, got shape ${out.shape} and dtype ${out.dtype}).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
@@ -2794,8 +2894,10 @@ NDArray<T> solve<T extends DTypeTag>(
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
-    throw ArgumentError(
-      'Matrix must be square and at least 2D (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square and at least 2D (was ${a.shape})',
     );
   }
   final n = a.shape[rank - 1];
@@ -2820,21 +2922,33 @@ NDArray<T> solve<T extends DTypeTag>(
     if (out != null) {
       w = out.eigenvalues;
       vr = out.eigenvectors;
+      validateOutBuffer(w, 'out.eigenvalues');
+      validateOutBuffer(vr, 'out.eigenvectors');
       if (!listEquals(w.shape, wShape) || w.dtype != compDType) {
-        throw ArgumentError(
-          'Provided out eigenvalues buffer has incompatible shape or dtype (expected shape $wShape and dtype $compDType, got shape ${w.shape} and dtype ${w.dtype}).',
+        throw ArgumentError.value(
+          w,
+          'out.eigenvalues',
+          'Must have compatible shape $wShape and dtype $compDType (provided out eigenvalues buffer has incompatible shape or dtype, got shape ${w.shape} and dtype ${w.dtype}).',
         );
       }
       if (!listEquals(vr.shape, vrShape) || vr.dtype != compDType) {
-        throw ArgumentError(
-          'Provided out eigenvectors buffer has incompatible shape or dtype (expected shape $vrShape and dtype $compDType, got shape ${vr.shape} and dtype ${vr.dtype}).',
+        throw ArgumentError.value(
+          vr,
+          'out.eigenvectors',
+          'Must have compatible shape $vrShape and dtype $compDType (provided out eigenvectors buffer has incompatible shape or dtype, got shape ${vr.shape} and dtype ${vr.dtype}).',
+        );
+      }
+      if (sharesMemory(w, vr)) {
+        throw ArgumentError.value(
+          vr,
+          'out.eigenvectors',
+          'Must not share memory with out.eigenvalues.',
         );
       }
       if (!w.isContiguous ||
           !vr.isContiguous ||
           sharesMemory(a, w) ||
-          sharesMemory(a, vr) ||
-          sharesMemory(w, vr)) {
+          sharesMemory(a, vr)) {
         final temp = eig<R>(a);
         temp.eigenvalues.copy(out: w);
         temp.eigenvectors.copy(out: vr);
@@ -3147,8 +3261,10 @@ NDArray<R> eigvals<R extends DTypeTag>(
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
-    throw ArgumentError(
-      'Matrix must be square and at least 2D (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square and at least 2D (was ${a.shape})',
     );
   }
   final n = a.shape[rank - 1];
@@ -3169,10 +3285,13 @@ NDArray<R> eigvals<R extends DTypeTag>(
     final NDArray<R> w;
 
     if (out != null) {
+      validateOutBuffer(out);
       w = out;
       if (!listEquals(w.shape, wShape) || w.dtype != compDType) {
-        throw ArgumentError(
-          'Provided out eigenvalues buffer has incompatible shape or dtype (expected shape $wShape and dtype $compDType, got shape ${w.shape} and dtype ${w.dtype}).',
+        throw ArgumentError.value(
+          w,
+          'out',
+          'Must have compatible shape $wShape and dtype $compDType (provided out eigenvalues buffer has incompatible shape or dtype, got shape ${w.shape} and dtype ${w.dtype}).',
         );
       }
       if (!w.isContiguous || sharesMemory(a, w)) {
@@ -3435,8 +3554,10 @@ NDArray<T> pinv<T extends DTypeTag>(
     throw StateError('Cannot write pinv result to a disposed output array.');
   }
   if (a.shape.length != 2) {
-    throw ArgumentError(
-      'Moore-Penrose pseudo-inverse is only defined for 2D matrices (was shape ${a.shape}).',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be a 2D matrix (Moore-Penrose pseudo-inverse is only defined for 2D matrices, was shape ${a.shape}).',
     );
   }
   final m = a.shape[0];
@@ -3449,10 +3570,13 @@ NDArray<T> pinv<T extends DTypeTag>(
   final targetShape = [n, m];
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, targetShape) ||
           (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape $targetShape and float64 or ${a.dtype} dtype (provided out buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -3471,9 +3595,12 @@ NDArray<T> pinv<T extends DTypeTag>(
     });
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, targetShape) || out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $targetShape and dtype ${a.dtype} (provided out buffer has incompatible shape or dtype).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
@@ -3557,14 +3684,17 @@ NDArray<T> matrix_power<T extends DTypeTag>(
     );
   }
   if (a.shape.length != 2 || a.shape[0] != a.shape[1]) {
-    throw ArgumentError(
-      'matrix_power is only defined for 2D square matrices (was shape ${a.shape}).',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be a 2D square matrix (matrix_power is only defined for 2D square matrices, was shape ${a.shape}).',
     );
   }
   if (n < 0 && a.dtype.isInteger) {
-    throw ArgumentError(
-      'Integer matrices cannot be raised to negative powers because matrix inversion '
-      'requires floating point types. Please convert the matrix to float64 or float32 first.',
+    throw ArgumentError.value(
+      n,
+      'n',
+      'Must be non-negative for integer matrices (integer matrices cannot be raised to negative powers because matrix inversion requires floating point types. Please convert the matrix to float64 or float32 first).',
     );
   }
 
@@ -3575,9 +3705,12 @@ NDArray<T> matrix_power<T extends DTypeTag>(
     checkBlasIntStride(a.strides[1], 'lda', 'matrix_power');
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape ${a.shape} and dtype ${a.dtype} (provided out buffer has incompatible shape or dtype).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
@@ -3692,13 +3825,17 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 2] != a.shape[rank - 1]) {
-    throw ArgumentError(
-      'Matrix must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
     );
   }
   if (!a.dtype.isFloating && !a.dtype.isComplex) {
-    throw ArgumentError(
-      'Cholesky decomposition is only supported for float and complex dtypes (was ${a.dtype})',
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (Cholesky decomposition is only supported for float and complex dtypes, was ${a.dtype})',
     );
   }
   checkBlasIntDim(a.shape[rank - 1], 'n', 'cholesky');
@@ -3706,10 +3843,13 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'cholesky');
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out);
       if (!listEquals(out.shape, a.shape) ||
           (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out L buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape ${a.shape} and float64 or ${a.dtype} dtype (provided out L buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -3732,9 +3872,12 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   final targetDType = a.dtype;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out L buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape ${a.shape} and dtype ${a.dtype} (provided out L buffer has incompatible shape or dtype).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
@@ -3883,12 +4026,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// - It is an error if [out] has incompatible shape or dtype.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<Float64>.fromList([12.0, -51.0, 4.0, 6.0, 167.0, -68.0, -4.0, 24.0, -41.0], [3, 3], DType.float64);
-/// final res = qr(a);
-/// final q = res.q;
-/// final r = res.r;
-/// ```
+/// {@example /example/linalg_example.dart lang=dart}
 ({NDArray<T> q, NDArray<T> r}) qr<T extends DTypeTag>(
   NDArray<T> a, {
   ({NDArray<T> q, NDArray<T> r})? out,
@@ -3901,11 +4039,17 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   }
   final rank = a.shape.length;
   if (rank < 2) {
-    throw ArgumentError('Matrix must be at least 2D (was ${a.shape})');
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be at least 2D (matrix must be at least 2D, was ${a.shape})',
+    );
   }
   if (!a.dtype.isFloating && !a.dtype.isComplex) {
-    throw ArgumentError(
-      'QR decomposition is only supported for float and complex dtypes (was ${a.dtype})',
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (QR decomposition is only supported for float and complex dtypes, was ${a.dtype})',
     );
   }
   final m = a.shape[rank - 2];
@@ -3920,18 +4064,32 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   final qShape = [...stackShape, m, k];
   final rShape = [...stackShape, k, n];
 
+  if (out != null && sharesMemory(out.q, out.r)) {
+    throw ArgumentError.value(
+      out.r,
+      'out.r',
+      'Must not share memory with out.q.',
+    );
+  }
+
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out.q, 'out.q');
+      validateOutBuffer(out.r, 'out.r');
       if (!listEquals(out.q.shape, qShape) ||
           (out.q.dtype != DType.float64 && out.q.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out Q buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out.q,
+          'out.q',
+          'Must have compatible shape $qShape and float64 or ${a.dtype} dtype (provided out Q buffer has incompatible shape or dtype).',
         );
       }
       if (!listEquals(out.r.shape, rShape) ||
           (out.r.dtype != DType.float64 && out.r.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out R buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out.r,
+          'out.r',
+          'Must have compatible shape $rShape and float64 or ${a.dtype} dtype (provided out R buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -3966,21 +4124,26 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     if (out != null) {
       qMat = out.q;
       rMat = out.r;
+      validateOutBuffer(qMat, 'out.q');
+      validateOutBuffer(rMat, 'out.r');
       if (!listEquals(qMat.shape, qShape) || qMat.dtype != targetDType) {
-        throw ArgumentError(
-          'Provided out Q buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          qMat,
+          'out.q',
+          'Must have compatible shape $qShape and dtype $targetDType (provided out Q buffer has incompatible shape or dtype).',
         );
       }
       if (!listEquals(rMat.shape, rShape) || rMat.dtype != targetDType) {
-        throw ArgumentError(
-          'Provided out R buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          rMat,
+          'out.r',
+          'Must have compatible shape $rShape and dtype $targetDType (provided out R buffer has incompatible shape or dtype).',
         );
       }
       if (!qMat.isContiguous ||
           !rMat.isContiguous ||
           sharesMemory(a, qMat) ||
-          sharesMemory(a, rMat) ||
-          sharesMemory(qMat, rMat)) {
+          sharesMemory(a, rMat)) {
         final temp = qr<T>(a);
         temp.q.copy(out: qMat);
         temp.r.copy(out: rMat);
@@ -4252,13 +4415,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// - Throws a [LinAlgException] if [a] contains non-finite values (`NaN` or `±Infinity`).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray<Float64>.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0], [3, 2], DType.float64);
-/// final res = svd(a);
-/// final u = res.u;
-/// final s = res.s;
-/// final vh = res.vh;
-/// ```
+/// {@example /example/linalg_example.dart lang=dart}
 ({NDArray<T> u, NDArray<R> s, NDArray<T> vh})
 svd<T extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag>> a, {
@@ -4273,13 +4430,19 @@ svd<T extends DTypeTag, R extends DTypeTag>(
     }
   }
   if (!a.dtype.isFloating && !a.dtype.isComplex) {
-    throw ArgumentError(
-      'SVD decomposition is only supported for float and complex dtypes (was ${a.dtype})',
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (SVD decomposition is only supported for float and complex dtypes, was ${a.dtype})',
     );
   }
   final rank = a.shape.length;
   if (rank < 2) {
-    throw ArgumentError('Matrix must be at least 2D (was ${a.shape})');
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be at least 2D (matrix must be at least 2D, was ${a.shape})',
+    );
   }
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
@@ -4293,25 +4456,45 @@ svd<T extends DTypeTag, R extends DTypeTag>(
   final sShape = m < n ? [...stackShape, m] : [...stackShape, n];
   final vtShape = [...stackShape, n, n];
 
+  if (out != null &&
+      (sharesMemory(out.u, out.s) ||
+          sharesMemory(out.u, out.vh) ||
+          sharesMemory(out.s, out.vh))) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must not have overlapping output buffers (u, s, vh must not share memory).',
+    );
+  }
+
   if ((a.dtype as DType<DTypeTag>) == DType.float16 ||
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     if (out != null) {
+      validateOutBuffer(out.u, 'out.u');
+      validateOutBuffer(out.s, 'out.s');
+      validateOutBuffer(out.vh, 'out.vh');
       if (!listEquals(out.u.shape, uShape) ||
           (out.u.dtype != DType.float64 && out.u.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out U buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out.u,
+          'out.u',
+          'Must have compatible shape $uShape and float64 or ${a.dtype} dtype (provided out U buffer has incompatible shape or dtype).',
         );
       }
       if (!listEquals(out.s.shape, sShape) ||
           (out.s.dtype != DType.float64 && out.s.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out S buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out.s,
+          'out.s',
+          'Must have compatible shape $sShape and float64 or ${a.dtype} dtype (provided out S buffer has incompatible shape or dtype).',
         );
       }
       if (!listEquals(out.vh.shape, vtShape) ||
           (out.vh.dtype != DType.float64 && out.vh.dtype != a.dtype)) {
-        throw ArgumentError(
-          'Provided out Vh buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out.vh,
+          'out.vh',
+          'Must have compatible shape $vtShape and float64 or ${a.dtype} dtype (provided out Vh buffer has incompatible shape or dtype).',
         );
       }
     }
@@ -4354,19 +4537,28 @@ svd<T extends DTypeTag, R extends DTypeTag>(
       : a.dtype;
 
   if (out != null) {
+    validateOutBuffer(out.u, 'out.u');
+    validateOutBuffer(out.s, 'out.s');
+    validateOutBuffer(out.vh, 'out.vh');
     if (!listEquals(out.u.shape, uShape) || out.u.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out U buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out.u,
+        'out.u',
+        'Must have compatible shape $uShape and dtype ${a.dtype} (provided out U buffer has incompatible shape or dtype).',
       );
     }
     if (!listEquals(out.s.shape, sShape) || out.s.dtype != dtypeS) {
-      throw ArgumentError(
-        'Provided out S buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out.s,
+        'out.s',
+        'Must have compatible shape $sShape and dtype $dtypeS (provided out S buffer has incompatible shape or dtype).',
       );
     }
     if (!listEquals(out.vh.shape, vtShape) || out.vh.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out Vh buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out.vh,
+        'out.vh',
+        'Must have compatible shape $vtShape and dtype ${a.dtype} (provided out Vh buffer has incompatible shape or dtype).',
       );
     }
     if (!out.u.isContiguous ||
@@ -4374,10 +4566,7 @@ svd<T extends DTypeTag, R extends DTypeTag>(
         !out.vh.isContiguous ||
         sharesMemory(a, out.u) ||
         sharesMemory(a, out.s) ||
-        sharesMemory(a, out.vh) ||
-        sharesMemory(out.u, out.s) ||
-        sharesMemory(out.u, out.vh) ||
-        sharesMemory(out.s, out.vh)) {
+        sharesMemory(a, out.vh)) {
       return NDArray.scope(() {
         final temp = _svd<T>(a as NDArray<T>);
         temp.u.copy(out: out.u);
@@ -4657,7 +4846,11 @@ svd<T extends DTypeTag, R extends DTypeTag>(
             s2D.dispose();
             u2D.dispose();
             vt2D.dispose();
-            throw ArgumentError('Unsupported dtype for SVD: ${a.dtype}');
+            throw ArgumentError.value(
+              a.dtype,
+              'a.dtype',
+              'Must be float or complex (unsupported dtype for SVD: ${a.dtype})',
+            );
         }
         if (info != 0) {
           s2D.dispose();
@@ -4903,7 +5096,11 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
               );
             default:
               s2D.dispose();
-              throw ArgumentError('Unsupported dtype for SVD: ${a.dtype}');
+              throw ArgumentError.value(
+                a.dtype,
+                'a.dtype',
+                'Must be float or complex (unsupported dtype for SVD: ${a.dtype})',
+              );
           }
           if (info != 0) {
             s2D.dispose();
@@ -4961,19 +5158,27 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
 eigh<F extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeSpec<DTypeTag, Object?, F, DTypeTag, R, DTypeTag, DTypeTag>> a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
-  NDArray<DTypeTag>? outEigenvalues,
-  NDArray<DTypeTag>? outEigenvectors,
+  NDArray<F>? outEigenvalues,
+  NDArray<R>? outEigenvectors,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate eigh on a disposed array.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('Array must be at least 2-dimensional.');
+    throw ArgumentError.value(
+      a.rank,
+      'a.rank',
+      'Must be at least 2-dimensional (array must be at least 2-dimensional).',
+    );
   }
   final m = a.shape[a.rank - 2];
   final n = a.shape[a.rank - 1];
   if (m != n) {
-    throw ArgumentError('Last two dimensions must be square (got $m x $n).');
+    throw ArgumentError.value(
+      [m, n],
+      'a.shape',
+      'Must be square in the last two dimensions (last two dimensions must be square, got $m x $n).',
+    );
   }
   checkBlasIntDim(n, 'n', 'eigh');
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigh');
@@ -4992,13 +5197,21 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
       targetDType != DType.float32 &&
       targetDType != DType.complex128 &&
       targetDType != DType.complex64) {
-    throw ArgumentError('Unsupported dtype: ${a.dtype}');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (unsupported dtype: ${a.dtype})',
+    );
   }
 
   final DType<DTypeTag> eigenvalueDType = switch (targetDType) {
     DType.float32 || DType.complex64 => DType.float32,
     DType.float64 || DType.complex128 => DType.float64,
-    _ => throw ArgumentError('Unsupported dtype: ${a.dtype}'),
+    _ => throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (unsupported dtype: ${a.dtype})',
+    ),
   };
 
   final stackShape = a.shape.sublist(0, a.rank - 2);
@@ -5010,11 +5223,16 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
     if (outEigenvalues.isDisposed) {
       throw StateError('outEigenvalues is disposed.');
     }
+    validateOutBuffer(outEigenvalues, 'outEigenvalues');
     if (!listEquals(outEigenvalues.shape, eigenvaluesShape) ||
         (outEigenvalues.dtype != eigenvalueDType &&
-            (!promoted || outEigenvalues.dtype != a.dtype))) {
-      throw ArgumentError(
-        'Incompatible outEigenvalues (expected shape $eigenvaluesShape and dtype $eigenvalueDType, got shape ${outEigenvalues.shape} and dtype ${outEigenvalues.dtype}).',
+            (!promoted ||
+                (outEigenvalues.dtype as DType<DTypeTag>) !=
+                    (a.dtype as DType<DTypeTag>)))) {
+      throw ArgumentError.value(
+        outEigenvalues,
+        'outEigenvalues',
+        'Must have compatible shape $eigenvaluesShape and dtype $eigenvalueDType (incompatible outEigenvalues, expected shape $eigenvaluesShape and dtype $eigenvalueDType, got shape ${outEigenvalues.shape} and dtype ${outEigenvalues.dtype}).',
       );
     }
   }
@@ -5023,13 +5241,28 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
     if (outEigenvectors.isDisposed) {
       throw StateError('outEigenvectors is disposed.');
     }
+    validateOutBuffer(outEigenvectors, 'outEigenvectors');
     if (!listEquals(outEigenvectors.shape, eigenvectorsShape) ||
         (outEigenvectors.dtype != targetDType &&
-            (!promoted || outEigenvectors.dtype != a.dtype))) {
-      throw ArgumentError(
-        'Incompatible outEigenvectors (expected shape $eigenvectorsShape and dtype $targetDType, got shape ${outEigenvectors.shape} and dtype ${outEigenvectors.dtype}).',
+            (!promoted ||
+                (outEigenvectors.dtype as DType<DTypeTag>) !=
+                    (a.dtype as DType<DTypeTag>)))) {
+      throw ArgumentError.value(
+        outEigenvectors,
+        'outEigenvectors',
+        'Must have compatible shape $eigenvectorsShape and dtype $targetDType (incompatible outEigenvectors, expected shape $eigenvectorsShape and dtype $targetDType, got shape ${outEigenvectors.shape} and dtype ${outEigenvectors.dtype}).',
       );
     }
+  }
+
+  if (outEigenvalues != null &&
+      outEigenvectors != null &&
+      sharesMemory(outEigenvalues, outEigenvectors)) {
+    throw ArgumentError.value(
+      outEigenvectors,
+      'outEigenvectors',
+      'Must not share memory with outEigenvalues.',
+    );
   }
 
   final bool needTempVal =
@@ -5041,9 +5274,7 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
       outEigenvectors != null &&
       (outEigenvectors.dtype != targetDType ||
           !outEigenvectors.isContiguous ||
-          sharesMemory(a, outEigenvectors) ||
-          (outEigenvalues != null &&
-              sharesMemory(outEigenvalues, outEigenvectors)));
+          sharesMemory(a, outEigenvectors));
   if (needTempVal || needTempVec) {
     return NDArray.scope(() {
       final res = eigh<F, R>(
@@ -5054,7 +5285,7 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
       );
       if (needTempVal) {
         if (outEigenvalues.dtype == res.eigenvalues.dtype) {
-          res.eigenvalues.copy(out: outEigenvalues as NDArray<F>);
+          res.eigenvalues.copy(out: outEigenvalues);
         } else {
           castNDArray(
             res.eigenvalues,
@@ -5064,7 +5295,7 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
       }
       if (needTempVec) {
         if (outEigenvectors.dtype == res.eigenvectors.dtype) {
-          res.eigenvectors.copy(out: outEigenvectors as NDArray<R>);
+          res.eigenvectors.copy(out: outEigenvectors);
         } else {
           castNDArray(
             res.eigenvectors,
@@ -5072,12 +5303,9 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
           ).copy(out: outEigenvectors);
         }
       }
-      final finalVal =
-          (outEigenvalues as NDArray<F>?) ??
-          res.eigenvalues.detachToParentScope();
+      final finalVal = outEigenvalues ?? res.eigenvalues.detachToParentScope();
       final finalVec =
-          (outEigenvectors as NDArray<R>?) ??
-          res.eigenvectors.detachToParentScope();
+          outEigenvectors ?? res.eigenvectors.detachToParentScope();
       return (eigenvalues: finalVal, eigenvectors: finalVec);
     });
   }
@@ -5098,11 +5326,27 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
     }
 
     if (n == 0) {
-      if (outEigenvalues == null) wMat.detachToParentScope();
-      if (outEigenvectors == null) vMat.detachToParentScope();
+      NDArray<DTypeTag> finalW = wMat;
+      if (outEigenvalues == null) {
+        if (F == Float16 && finalW.dtype != DType.float16) {
+          finalW = castNDArray<Float16>(finalW, DType.float16);
+        } else if (F == BFloat16 && finalW.dtype != DType.bfloat16) {
+          finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
+        }
+        finalW.detachToParentScope();
+      }
+      NDArray<DTypeTag> finalV = vMat;
+      if (outEigenvectors == null) {
+        if (R == Float16 && finalV.dtype != DType.float16) {
+          finalV = castNDArray<Float16>(finalV, DType.float16);
+        } else if (R == BFloat16 && finalV.dtype != DType.bfloat16) {
+          finalV = castNDArray<BFloat16>(finalV, DType.bfloat16);
+        }
+        finalV.detachToParentScope();
+      }
       return (
-        eigenvalues: wMat as NDArray<F>,
-        eigenvectors: vMat as NDArray<R>,
+        eigenvalues: finalW as NDArray<F>,
+        eigenvectors: finalV as NDArray<R>,
       );
     }
 
@@ -5216,9 +5460,28 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
       w2D.dispose();
     }
 
-    if (outEigenvalues == null) wMat.detachToParentScope();
-    if (outEigenvectors == null) vMat.detachToParentScope();
-    return (eigenvalues: wMat as NDArray<F>, eigenvectors: vMat as NDArray<R>);
+    NDArray<DTypeTag> finalW = wMat;
+    if (outEigenvalues == null) {
+      if (F == Float16 && finalW.dtype != DType.float16) {
+        finalW = castNDArray<Float16>(finalW, DType.float16);
+      } else if (F == BFloat16 && finalW.dtype != DType.bfloat16) {
+        finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
+      }
+      finalW.detachToParentScope();
+    }
+    NDArray<DTypeTag> finalV = vMat;
+    if (outEigenvectors == null) {
+      if (R == Float16 && finalV.dtype != DType.float16) {
+        finalV = castNDArray<Float16>(finalV, DType.float16);
+      } else if (R == BFloat16 && finalV.dtype != DType.bfloat16) {
+        finalV = castNDArray<BFloat16>(finalV, DType.bfloat16);
+      }
+      finalV.detachToParentScope();
+    }
+    return (
+      eigenvalues: finalW as NDArray<F>,
+      eigenvectors: finalV as NDArray<R>,
+    );
   });
 }
 
@@ -5252,18 +5515,26 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   >
   a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
-  NDArray<DTypeTag>? out,
+  NDArray<R>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate eigvalsh on a disposed array.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('Array must be at least 2-dimensional.');
+    throw ArgumentError.value(
+      a.rank,
+      'a.rank',
+      'Must be at least 2-dimensional (array must be at least 2-dimensional).',
+    );
   }
   final m = a.shape[a.rank - 2];
   final n = a.shape[a.rank - 1];
   if (m != n) {
-    throw ArgumentError('Last two dimensions must be square (got $m x $n).');
+    throw ArgumentError.value(
+      [m, n],
+      'a.shape',
+      'Must be square in the last two dimensions (last two dimensions must be square, got $m x $n).',
+    );
   }
   checkBlasIntDim(n, 'n', 'eigvalsh');
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigvalsh');
@@ -5282,13 +5553,21 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       targetDType != DType.float32 &&
       targetDType != DType.complex128 &&
       targetDType != DType.complex64) {
-    throw ArgumentError('Unsupported dtype: ${a.dtype}');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (unsupported dtype: ${a.dtype})',
+    );
   }
 
   final DType<DTypeTag> eigenvalueDType = switch (targetDType) {
     DType.float32 || DType.complex64 => DType.float32,
     DType.float64 || DType.complex128 => DType.float64,
-    _ => throw ArgumentError('Unsupported dtype: ${a.dtype}'),
+    _ => throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (unsupported dtype: ${a.dtype})',
+    ),
   };
 
   final stackShape = a.shape.sublist(0, a.rank - 2);
@@ -5298,10 +5577,16 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     if (out.isDisposed) {
       throw StateError('out is disposed.');
     }
+    validateOutBuffer(out);
     if (!listEquals(out.shape, eigenvaluesShape) ||
-        (out.dtype != eigenvalueDType && (!promoted || out.dtype != a.dtype))) {
-      throw ArgumentError(
-        'Incompatible out (expected shape $eigenvaluesShape and dtype $eigenvalueDType, got shape ${out.shape} and dtype ${out.dtype}).',
+        (out.dtype != eigenvalueDType &&
+            (!promoted ||
+                (out.dtype as DType<DTypeTag>) !=
+                    (a.dtype as DType<DTypeTag>)))) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $eigenvaluesShape and dtype $eigenvalueDType (incompatible out, expected shape $eigenvaluesShape and dtype $eigenvalueDType, got shape ${out.shape} and dtype ${out.dtype}).',
       );
     }
     if (out.dtype != eigenvalueDType ||
@@ -5310,11 +5595,11 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       return NDArray.scope(() {
         final temp = eigvalsh<R>(a, uplo: uplo);
         if (out.dtype == temp.dtype) {
-          temp.copy(out: out as NDArray<R>);
+          temp.copy(out: out);
         } else {
           castNDArray(temp, out.dtype).copy(out: out);
         }
-        return out as NDArray<R>;
+        return out;
       });
     }
   }
@@ -5328,10 +5613,16 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     }
 
     if (n == 0) {
+      NDArray<DTypeTag> finalW = wMat;
       if (out == null) {
-        wMat.detachToParentScope();
+        if (R == Float16 && finalW.dtype != DType.float16) {
+          finalW = castNDArray<Float16>(finalW, DType.float16);
+        } else if (R == BFloat16 && finalW.dtype != DType.bfloat16) {
+          finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
+        }
+        finalW.detachToParentScope();
       }
-      return wMat as NDArray<R>;
+      return finalW as NDArray<R>;
     }
 
     final uploVal = uplo == MatrixTriangle.lower ? 76 : 85;
@@ -5436,10 +5727,16 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       w2D.dispose();
     }
 
+    NDArray<DTypeTag> finalW = wMat;
     if (out == null) {
-      wMat.detachToParentScope();
+      if (R == Float16 && finalW.dtype != DType.float16) {
+        finalW = castNDArray<Float16>(finalW, DType.float16);
+      } else if (R == BFloat16 && finalW.dtype != DType.bfloat16) {
+        finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
+      }
+      finalW.detachToParentScope();
     }
-    return wMat as NDArray<R>;
+    return finalW as NDArray<R>;
   });
 }
 
@@ -5471,12 +5768,20 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     throw StateError('Cannot calculate schur on a disposed array.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('Array must be at least 2-dimensional.');
+    throw ArgumentError.value(
+      a.rank,
+      'a.rank',
+      'Must be at least 2-dimensional (array must be at least 2-dimensional).',
+    );
   }
   final m = a.shape[a.rank - 2];
   final n = a.shape[a.rank - 1];
   if (m != n) {
-    throw ArgumentError('Last two dimensions must be square (got $m x $n).');
+    throw ArgumentError.value(
+      [m, n],
+      'a.shape',
+      'Must be square in the last two dimensions (last two dimensions must be square, got $m x $n).',
+    );
   }
   checkBlasIntDim(n, 'n', 'schur');
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'schur');
@@ -5495,7 +5800,11 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       targetDType != DType.float32 &&
       targetDType != DType.complex128 &&
       targetDType != DType.complex64) {
-    throw ArgumentError('Unsupported dtype: ${a.dtype}');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (unsupported dtype: ${a.dtype})',
+    );
   }
 
   if (output == SchurForm.complex && !targetDType.isComplex) {
@@ -5511,20 +5820,34 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 
   if (outT != null) {
     if (outT.isDisposed) throw StateError('outT is disposed.');
+    validateOutBuffer(outT, 'outT');
     if (!listEquals(outT.shape, schurShape) ||
         (outT.dtype != targetDType &&
             (!promoted || output != SchurForm.real || outT.dtype != a.dtype))) {
-      throw ArgumentError('Incompatible outT.');
+      throw ArgumentError.value(
+        outT,
+        'outT',
+        'Must have compatible shape $schurShape and dtype $targetDType (incompatible outT).',
+      );
     }
   }
 
   if (outZ != null) {
     if (outZ.isDisposed) throw StateError('outZ is disposed.');
+    validateOutBuffer(outZ, 'outZ');
     if (!listEquals(outZ.shape, schurShape) ||
         (outZ.dtype != targetDType &&
             (!promoted || output != SchurForm.real || outZ.dtype != a.dtype))) {
-      throw ArgumentError('Incompatible outZ.');
+      throw ArgumentError.value(
+        outZ,
+        'outZ',
+        'Must have compatible shape $schurShape and dtype $targetDType (incompatible outZ).',
+      );
     }
+  }
+
+  if (outT != null && outZ != null && sharesMemory(outT, outZ)) {
+    throw ArgumentError.value(outZ, 'outZ', 'Must not share memory with outT.');
   }
 
   final bool needTempT =
@@ -5536,8 +5859,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       outZ != null &&
       (outZ.dtype != targetDType ||
           !outZ.isContiguous ||
-          sharesMemory(a, outZ) ||
-          (outT != null && sharesMemory(outT, outZ)));
+          sharesMemory(a, outZ));
   if (needTempT || needTempZ) {
     return NDArray.scope(() {
       final res = schur<T, R>(
@@ -5567,13 +5889,29 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final NDArray tMat = outT ?? _zerosTyped(schurShape, targetDType);
-    final NDArray zMat = outZ ?? _zerosTyped(schurShape, targetDType);
+    final NDArray<DTypeTag> tMat = outT ?? _zerosTyped(schurShape, targetDType);
+    final NDArray<DTypeTag> zMat = outZ ?? _zerosTyped(schurShape, targetDType);
 
     if (n == 0) {
-      if (outT == null) tMat.detachToParentScope();
-      if (outZ == null) zMat.detachToParentScope();
-      return (t: tMat as NDArray<R>, z: zMat as NDArray<R>);
+      NDArray<DTypeTag> finalT = tMat;
+      if (outT == null) {
+        if (R == Float16 && finalT.dtype != DType.float16) {
+          finalT = castNDArray<Float16>(finalT, DType.float16);
+        } else if (R == BFloat16 && finalT.dtype != DType.bfloat16) {
+          finalT = castNDArray<BFloat16>(finalT, DType.bfloat16);
+        }
+        finalT.detachToParentScope();
+      }
+      NDArray<DTypeTag> finalZ = zMat;
+      if (outZ == null) {
+        if (R == Float16 && finalZ.dtype != DType.float16) {
+          finalZ = castNDArray<Float16>(finalZ, DType.float16);
+        } else if (R == BFloat16 && finalZ.dtype != DType.bfloat16) {
+          finalZ = castNDArray<BFloat16>(finalZ, DType.bfloat16);
+        }
+        finalZ.detachToParentScope();
+      }
+      return (t: finalT as NDArray<R>, z: finalZ as NDArray<R>);
     }
 
     final jobvsVal = 86; // 'V'
@@ -5752,9 +6090,25 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       z2D.dispose();
     }
 
-    if (outT == null) tMat.detachToParentScope();
-    if (outZ == null) zMat.detachToParentScope();
-    return (t: tMat as NDArray<R>, z: zMat as NDArray<R>);
+    NDArray<DTypeTag> finalT = tMat;
+    if (outT == null) {
+      if (R == Float16 && finalT.dtype != DType.float16) {
+        finalT = castNDArray<Float16>(finalT, DType.float16);
+      } else if (R == BFloat16 && finalT.dtype != DType.bfloat16) {
+        finalT = castNDArray<BFloat16>(finalT, DType.bfloat16);
+      }
+      finalT.detachToParentScope();
+    }
+    NDArray<DTypeTag> finalZ = zMat;
+    if (outZ == null) {
+      if (R == Float16 && finalZ.dtype != DType.float16) {
+        finalZ = castNDArray<Float16>(finalZ, DType.float16);
+      } else if (R == BFloat16 && finalZ.dtype != DType.bfloat16) {
+        finalZ = castNDArray<BFloat16>(finalZ, DType.bfloat16);
+      }
+      finalZ.detachToParentScope();
+    }
+    return (t: finalT as NDArray<R>, z: finalZ as NDArray<R>);
   });
 }
 
@@ -5785,12 +6139,20 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     throw StateError('Cannot calculate hessenberg on a disposed array.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('Array must be at least 2-dimensional.');
+    throw ArgumentError.value(
+      a.rank,
+      'a.rank',
+      'Must be at least 2-dimensional (array must be at least 2-dimensional).',
+    );
   }
   final m = a.shape[a.rank - 2];
   final n = a.shape[a.rank - 1];
   if (m != n) {
-    throw ArgumentError('Last two dimensions must be square (got $m x $n).');
+    throw ArgumentError.value(
+      [m, n],
+      'a.shape',
+      'Must be square in the last two dimensions (last two dimensions must be square, got $m x $n).',
+    );
   }
   checkBlasIntDim(n, 'n', 'hessenberg');
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'hessenberg');
@@ -5809,7 +6171,11 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       targetDType != DType.float32 &&
       targetDType != DType.complex128 &&
       targetDType != DType.complex64) {
-    throw ArgumentError('Unsupported dtype: ${a.dtype}');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be float or complex (unsupported dtype: ${a.dtype})',
+    );
   }
 
   final stackShape = a.shape.sublist(0, a.rank - 2);
@@ -5817,16 +6183,32 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 
   if (outH != null) {
     if (outH.isDisposed) throw StateError('outH is disposed.');
-    if (!listEquals(outH.shape, hessenbergShape) || outH.dtype != targetDType) {
-      throw ArgumentError('Incompatible outH.');
+    validateOutBuffer(outH, 'outH');
+    if (!listEquals(outH.shape, hessenbergShape) ||
+        (outH.dtype != targetDType && (!promoted || outH.dtype != a.dtype))) {
+      throw ArgumentError.value(
+        outH,
+        'outH',
+        'Must have compatible shape $hessenbergShape and dtype $targetDType (incompatible outH).',
+      );
     }
   }
 
   if (outQ != null) {
     if (outQ.isDisposed) throw StateError('outQ is disposed.');
-    if (!listEquals(outQ.shape, hessenbergShape) || outQ.dtype != targetDType) {
-      throw ArgumentError('Incompatible outQ.');
+    validateOutBuffer(outQ, 'outQ');
+    if (!listEquals(outQ.shape, hessenbergShape) ||
+        (outQ.dtype != targetDType && (!promoted || outQ.dtype != a.dtype))) {
+      throw ArgumentError.value(
+        outQ,
+        'outQ',
+        'Must have compatible shape $hessenbergShape and dtype $targetDType (incompatible outQ).',
+      );
     }
+  }
+
+  if (outH != null && outQ != null && sharesMemory(outH, outQ)) {
+    throw ArgumentError.value(outQ, 'outQ', 'Must not share memory with outH.');
   }
 
   final bool needTempH =
@@ -5838,8 +6220,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       outQ != null &&
       (outQ.dtype != targetDType ||
           !outQ.isContiguous ||
-          sharesMemory(a, outQ) ||
-          (outH != null && sharesMemory(outH, outQ)));
+          sharesMemory(a, outQ));
   if (needTempH || needTempQ) {
     return NDArray.scope(() {
       final res = hessenberg<R>(
@@ -5848,10 +6229,18 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
         outQ: needTempQ ? null : outQ,
       );
       if (needTempH) {
-        res.h.copy(out: outH);
+        if (outH.dtype == res.h.dtype) {
+          res.h.copy(out: outH);
+        } else {
+          castNDArray(res.h, outH.dtype).copy(out: outH);
+        }
       }
       if (needTempQ) {
-        res.q.copy(out: outQ);
+        if (outQ.dtype == res.q.dtype) {
+          res.q.copy(out: outQ);
+        } else {
+          castNDArray(res.q, outQ.dtype).copy(out: outQ);
+        }
       }
       final finalH = outH ?? res.h.detachToParentScope();
       final finalQ = outQ ?? res.q.detachToParentScope();
@@ -5860,13 +6249,31 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final NDArray hMat = outH ?? _zerosTyped(hessenbergShape, targetDType);
-    final NDArray qMat = outQ ?? _zerosTyped(hessenbergShape, targetDType);
+    final NDArray<DTypeTag> hMat =
+        outH ?? _zerosTyped(hessenbergShape, targetDType);
+    final NDArray<DTypeTag> qMat =
+        outQ ?? _zerosTyped(hessenbergShape, targetDType);
 
     if (n == 0) {
-      if (outH == null) hMat.detachToParentScope();
-      if (outQ == null) qMat.detachToParentScope();
-      return (h: hMat as NDArray<R>, q: qMat as NDArray<R>);
+      NDArray<DTypeTag> finalH = hMat;
+      if (outH == null) {
+        if (R == Float16 && finalH.dtype != DType.float16) {
+          finalH = castNDArray<Float16>(finalH, DType.float16);
+        } else if (R == BFloat16 && finalH.dtype != DType.bfloat16) {
+          finalH = castNDArray<BFloat16>(finalH, DType.bfloat16);
+        }
+        finalH.detachToParentScope();
+      }
+      NDArray<DTypeTag> finalQ = qMat;
+      if (outQ == null) {
+        if (R == Float16 && finalQ.dtype != DType.float16) {
+          finalQ = castNDArray<Float16>(finalQ, DType.float16);
+        } else if (R == BFloat16 && finalQ.dtype != DType.bfloat16) {
+          finalQ = castNDArray<BFloat16>(finalQ, DType.bfloat16);
+        }
+        finalQ.detachToParentScope();
+      }
+      return (h: finalH as NDArray<R>, q: finalQ as NDArray<R>);
     }
 
     final aCopy2D = _createTyped2D(n, n, targetDType);
@@ -5874,7 +6281,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 
     final marker = ScratchArena.marker;
     try {
-      final int elements = (n - 1) * (targetDType.isComplex ? 2 : 1);
+      final int elements = math.max(1, n - 1) * (targetDType.isComplex ? 2 : 1);
       final ffi.Pointer<ffi.Void> tau = switch (targetDType) {
         DType.float64 || DType.complex128 => ScratchArena.allocate<ffi.Double>(
           elements * ffi.sizeOf<ffi.Double>(),
@@ -6073,9 +6480,25 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       q2D.dispose();
     }
 
-    if (outH == null) hMat.detachToParentScope();
-    if (outQ == null) qMat.detachToParentScope();
-    return (h: hMat as NDArray<R>, q: qMat as NDArray<R>);
+    NDArray<DTypeTag> finalH = hMat;
+    if (outH == null) {
+      if (R == Float16 && finalH.dtype != DType.float16) {
+        finalH = castNDArray<Float16>(finalH, DType.float16);
+      } else if (R == BFloat16 && finalH.dtype != DType.bfloat16) {
+        finalH = castNDArray<BFloat16>(finalH, DType.bfloat16);
+      }
+      finalH.detachToParentScope();
+    }
+    NDArray<DTypeTag> finalQ = qMat;
+    if (outQ == null) {
+      if (R == Float16 && finalQ.dtype != DType.float16) {
+        finalQ = castNDArray<Float16>(finalQ, DType.float16);
+      } else if (R == BFloat16 && finalQ.dtype != DType.bfloat16) {
+        finalQ = castNDArray<BFloat16>(finalQ, DType.bfloat16);
+      }
+      finalQ.detachToParentScope();
+    }
+    return (h: finalH as NDArray<R>, q: finalQ as NDArray<R>);
   });
 }
 
@@ -6150,9 +6573,12 @@ NDArray<T> outer<T extends DTypeTag>(
   final targetDType = a.dtype;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, expectedShape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out recycler has incompatible shape or dtype (expected shape $expectedShape and dtype $targetDType).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $expectedShape and dtype $targetDType (provided out recycler has incompatible shape or dtype, expected shape $expectedShape and dtype $targetDType).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
@@ -6380,13 +6806,17 @@ NDArray<T> cross<T extends DTypeTag>(
   final lenB = b.shape[axisB];
 
   if ((lenA != 2 && lenA != 3) || (lenB != 2 && lenB != 3)) {
-    throw ArgumentError(
-      'Cross product axes sizes must be 2 or 3 (got axisa size $lenA and axisb size $lenB).',
+    throw ArgumentError.value(
+      [lenA, lenB],
+      'axisa, axisb',
+      'Must have axis sizes of 2 or 3 (cross product axes sizes must be 2 or 3, got axisa size $lenA and axisb size $lenB).',
     );
   }
   if (lenA != lenB) {
-    throw ArgumentError(
-      'Mismatched cross product axes sizes: axisa size $lenA != axisb size $lenB.',
+    throw ArgumentError.value(
+      lenB,
+      'axisb',
+      'Must match axisa size $lenA (mismatched cross product axes sizes: axisa size $lenA != axisb size $lenB).',
     );
   }
 
@@ -6398,10 +6828,17 @@ NDArray<T> cross<T extends DTypeTag>(
 
   final expectedShape = List<int>.from(broadcastStack);
   if (is3D) {
+    final origAxisC = axisC;
     var finalAxisC = axisC;
     if (finalAxisC < 0) finalAxisC = expectedShape.length + 1 + finalAxisC;
     if (finalAxisC < 0 || finalAxisC > expectedShape.length) {
-      finalAxisC = expectedShape.length;
+      throw RangeError.range(
+        origAxisC,
+        -(expectedShape.length + 1),
+        expectedShape.length,
+        axis != null ? 'axis' : 'axisc',
+        'Must be within valid rank range',
+      );
     }
     expectedShape.insert(finalAxisC, 3);
     axisC = finalAxisC;
@@ -6409,9 +6846,12 @@ NDArray<T> cross<T extends DTypeTag>(
 
   final targetDType = a.dtype;
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, expectedShape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out recycler has incompatible shape or dtype (expected shape $expectedShape and dtype $targetDType).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $expectedShape and dtype $targetDType (provided out recycler has incompatible shape or dtype, expected shape $expectedShape and dtype $targetDType).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
@@ -6433,23 +6873,26 @@ NDArray<T> cross<T extends DTypeTag>(
   final result = out ?? NDArray<T>.create(expectedShape, targetDType);
 
   if (targetDType == DType.float16 || targetDType == DType.bfloat16) {
-    final doubleA = castNDArray(a, DType.float64);
-    final doubleB = castNDArray(b, DType.float64);
-    final doubleRes = cross(
-      doubleA,
-      doubleB,
-      axisa: axisa,
-      axisb: axisb,
-      axisc: axisc,
-      axis: axis,
-    );
-    final casted = castNDArray(doubleRes, targetDType);
-    casted.copy(out: result);
-    doubleA.dispose();
-    doubleB.dispose();
-    doubleRes.dispose();
-    casted.dispose();
-    return result;
+    return NDArray.scope(() {
+      try {
+        final doubleA = castNDArray(a, DType.float64);
+        final doubleB = castNDArray(b, DType.float64);
+        final doubleRes = cross(
+          doubleA,
+          doubleB,
+          axisa: axisa,
+          axisb: axisb,
+          axisc: axisc,
+          axis: axis,
+        );
+        final casted = castNDArray(doubleRes, targetDType);
+        casted.copy(out: result);
+        return result;
+      } catch (_) {
+        if (out == null) result.dispose();
+        rethrow;
+      }
+    });
   }
 
   final aCast = a;
@@ -6774,8 +7217,10 @@ NDArray<R> norm<R extends DTypeTag>(
   List<int> targetAxes;
   if (axis == null) {
     if (rank > 2) {
-      throw ArgumentError(
-        'Improper axis specification: If axis is null, input must be 1D or 2D.',
+      throw ArgumentError.value(
+        rank,
+        'rank',
+        'Must be 1D or 2D if axis is null (improper axis specification: if axis is null, input must be 1D or 2D).',
       );
     }
     targetAxes = List<int>.generate(rank, (i) => i);
@@ -6794,7 +7239,11 @@ NDArray<R> norm<R extends DTypeTag>(
     targetAxes = [normAx];
   } else if (axis is List<int>) {
     if (axis.length != 1 && axis.length != 2) {
-      throw ArgumentError('axis list must contain exactly 1 or 2 elements.');
+      throw ArgumentError.value(
+        axis.length,
+        'axis.length',
+        'Must contain exactly 1 or 2 elements (axis list must contain exactly 1 or 2 elements).',
+      );
     }
     final normAxes = List<int>.from(axis);
     for (var i = 0; i < normAxes.length; i++) {
@@ -6814,7 +7263,11 @@ NDArray<R> norm<R extends DTypeTag>(
     }
     targetAxes = normAxes;
   } else {
-    throw ArgumentError('axis must be null, int, or List<int>.');
+    throw ArgumentError.value(
+      axis,
+      'axis',
+      'Must be null, int, or List<int> (axis must be null, int, or List<int>).',
+    );
   }
 
   final isVecNorm = targetAxes.length == 1;
@@ -6840,9 +7293,12 @@ NDArray<R> norm<R extends DTypeTag>(
   }
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, expectedShape) || out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $expectedShape and dtype $targetDType (provided out buffer has incompatible shape or dtype).',
       );
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
@@ -6994,8 +7450,10 @@ double _vectorNorm<T extends DTypeTag>(
       NormKind.negL2 => -2,
       NormKind.infinity => double.infinity,
       NormKind.negInfinity => double.negativeInfinity,
-      NormKind.frobenius || NormKind.nuclear => throw ArgumentError(
-        'NormKind.${ord.name} is not valid for vectors',
+      NormKind.frobenius || NormKind.nuclear => throw ArgumentError.value(
+        ord,
+        'ord',
+        'Must be a valid vector norm (NormKind.${ord.name} is not valid for vectors)',
       ),
     };
   }
@@ -7101,7 +7559,11 @@ double _vectorNorm<T extends DTypeTag>(
       }
       return math.pow(sum, 1.0 / p).toDouble();
     } else {
-      throw ArgumentError('Invalid vector norm order: $ord');
+      throw ArgumentError.value(
+        ord,
+        'ord',
+        'Must be a valid vector norm order (invalid vector norm order: $ord)',
+      );
     }
   } finally {
     if (needsCast) castedA.dispose();
@@ -7230,7 +7692,11 @@ double _matrixNorm<T extends DTypeTag>(
     s.dispose();
     return sumS;
   } else {
-    throw ArgumentError('Invalid matrix norm order: $ord');
+    throw ArgumentError.value(
+      ord,
+      'ord',
+      'Must be a valid matrix norm order (invalid matrix norm order: $ord)',
+    );
   }
 }
 
@@ -7334,30 +7800,43 @@ LstsqResult<R> lstsq<
             : (b.dtype.isInteger
                   ? (a.dtype == DType.float32 ? DType.float32 : DType.float64)
                   : resolveDType(a.dtype, b.dtype)));
-  if (rawTargetDType == DType.float16 || rawTargetDType == DType.bfloat16) {
+  final origResolvedDType = rawTargetDType;
+  final bool promotedHalf =
+      rawTargetDType == DType.float16 || rawTargetDType == DType.bfloat16;
+  if (promotedHalf) {
     rawTargetDType = DType.float64;
   }
   final targetDType = rawTargetDType;
 
   if (!targetDType.isFloating && !targetDType.isComplex) {
-    throw ArgumentError('lstsq requires floating-point or complex inputs.');
+    throw ArgumentError.value(
+      targetDType,
+      'dtype',
+      'Must be floating-point or complex (lstsq requires floating-point or complex inputs).',
+    );
   }
 
   if (a.shape.length != 2) {
-    throw ArgumentError(
-      'Input matrix a must be 2-dimensional (was shape ${a.shape}).',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be 2-dimensional (input matrix a must be 2-dimensional, was shape ${a.shape}).',
     );
   }
   if (b.shape.length != 1 && b.shape.length != 2) {
-    throw ArgumentError(
-      'Input right-hand side b must be 1D or 2D (was shape ${b.shape}).',
+    throw ArgumentError.value(
+      b.shape,
+      'b.shape',
+      'Must be 1D or 2D (input right-hand side b must be 1D or 2D, was shape ${b.shape}).',
     );
   }
   final m = a.shape[0];
   final n = a.shape[1];
   if (b.shape[0] != m) {
-    throw ArgumentError(
-      'First dimension of b (${b.shape[0]}) must match first dimension of a ($m).',
+    throw ArgumentError.value(
+      b.shape[0],
+      'b.shape[0]',
+      'Must match first dimension of a ($m) (first dimension of b (${b.shape[0]}) must match first dimension of a ($m)).',
     );
   }
 
@@ -7376,9 +7855,16 @@ LstsqResult<R> lstsq<
     if (out.isDisposed) {
       throw StateError('Cannot write to a disposed out buffer.');
     }
+    validateOutBuffer(out);
     final expectedXShape = b.shape.length > 1 ? [n, nrhs] : [n];
-    if (!listEquals(out.shape, expectedXShape) || out.dtype != targetDType) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+    if (!listEquals(out.shape, expectedXShape) ||
+        (out.dtype != targetDType &&
+            (!promotedHalf || out.dtype != origResolvedDType))) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $expectedXShape and dtype $targetDType (incompatible out buffer shape or dtype).',
+      );
     }
   }
 
@@ -7388,20 +7874,24 @@ LstsqResult<R> lstsq<
       final NDArray<R> x;
       if (out != null) {
         if (out.size > 0) {
-          out.fill((targetDType.isComplex ? Complex(0, 0) : 0.0));
+          out.fill((out.dtype.isComplex ? const Complex(0, 0) : 0.0));
         }
         x = out;
       } else {
-        x = NDArray<R>.zeros(xShape, targetDType as DType<R>);
+        final DType<R> outXDType = R == Float16
+            ? DType.float16 as DType<R>
+            : R == BFloat16
+            ? DType.bfloat16 as DType<R>
+            : targetDType as DType<R>;
+        x = NDArray<R>.zeros(xShape, outXDType);
         x.detachToParentScope();
       }
-      final DType<Float64> sDType =
-          ((targetDType == DType.complex64 || targetDType == DType.float32)
-                  ? DType.float32
-                  : DType.float64)
-              as DType<Float64>;
-      final s = NDArray<Float64>.zeros([0], sDType);
-      final residuals = NDArray<Float64>.zeros([0], sDType);
+      final DType<DTypeTag> sDType =
+          (targetDType == DType.complex64 || targetDType == DType.float32)
+          ? DType.float32
+          : DType.float64;
+      final s = _zerosTyped([0], sDType);
+      final residuals = _zerosTyped([0], sDType);
       s.detachToParentScope();
       residuals.detachToParentScope();
       return (x: x, residuals: residuals, rank: 0, s: s);
@@ -7452,7 +7942,7 @@ LstsqResult<R> lstsq<
         (targetDType == DType.complex64 || targetDType == DType.float32)
         ? DType.float32
         : DType.float64;
-    final s = NDArray<DTypeTag>.zeros([minMN], sDType);
+    final s = _zerosTyped([minMN], sDType);
     final marker = ScratchArena.marker;
     try {
       final nfA = _analyzeNonFinitePtr(aCopy.pointer, m * n, targetDType);
@@ -7549,22 +8039,35 @@ LstsqResult<R> lstsq<
 
       // Extract solution x: first n rows of bCopy
       final xShape = bUse.shape.length > 1 ? [n, nrhs] : [n];
-      final NDArray<R> x =
-          (out ?? NDArray<R>.zeros(xShape, targetDType as DType<R>));
       final bCopySlice = NDArray.view(
         bCopy,
         shape: xShape,
         strides: bCopy.strides.sublist(bCopy.shape.length - xShape.length),
         offsetElements: 0,
       );
-      bCopySlice.copy(out: x);
+      final NDArray<R> x;
+      if (out != null) {
+        if (out.dtype == targetDType) {
+          bCopySlice.copy(out: out);
+        } else {
+          castNDArray(bCopySlice, out.dtype).copy(out: out);
+        }
+        x = out;
+      } else if (R == Float16 && targetDType != DType.float16) {
+        x = castNDArray<Float16>(bCopySlice, DType.float16) as NDArray<R>;
+      } else if (R == BFloat16 && targetDType != DType.bfloat16) {
+        x = castNDArray<BFloat16>(bCopySlice, DType.bfloat16) as NDArray<R>;
+      } else {
+        x = NDArray<R>.zeros(xShape, targetDType as DType<R>);
+        bCopySlice.copy(out: x);
+      }
       bCopySlice.dispose();
 
       // Extract residuals: sum of squares of elements from row n to m-1 for each column
       final NDArray<DTypeTag> residuals;
       if (m > n && rank == n) {
         final resShape = bUse.shape.length > 1 ? [nrhs] : [1];
-        residuals = NDArray<DTypeTag>.zeros(resShape, sDType);
+        residuals = _zerosTyped(resShape, sDType);
         if (targetDType == DType.complex128) {
           final bPtr = bCopy.pointer.cast<ffi.Double>();
           final resPtr = residuals.pointer.cast<ffi.Double>();
@@ -7613,7 +8116,7 @@ LstsqResult<R> lstsq<
           }
         }
       } else {
-        residuals = NDArray<DTypeTag>.zeros([0], sDType);
+        residuals = _zerosTyped([0], sDType);
       }
 
       if (out == null) {
@@ -7679,8 +8182,10 @@ NDArray<R> cond<R extends DTypeTag>(
   }
   final rank = a.rank;
   if (rank < 2) {
-    throw ArgumentError(
-      'Array must be at least two-dimensional (got rank $rank).',
+    throw ArgumentError.value(
+      rank,
+      'a.rank',
+      'Must be at least two-dimensional (array must be at least two-dimensional, got rank $rank).',
     );
   }
 
@@ -7711,21 +8216,31 @@ NDArray<R> cond<R extends DTypeTag>(
       ord == NormKind.frobenius;
 
   if (!isSvdNorm && !isInvNorm) {
-    throw ArgumentError('Invalid norm order for cond: $p');
+    throw ArgumentError.value(
+      p,
+      'p',
+      'Must be a valid norm order for cond (invalid norm order for cond: $p)',
+    );
   }
 
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
 
   if (!isSvdNorm && m != n) {
-    throw ArgumentError(
-      'Matrix must be square for p = $p (got shape ${a.shape}).',
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square for p = $p (matrix must be square for p = $p, got shape ${a.shape}).',
     );
   }
 
   final k = math.min(m, n);
   if (k == 0) {
-    throw ArgumentError('Cannot compute condition number of an empty matrix.');
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must not be an empty matrix (cannot compute condition number of an empty matrix).',
+    );
   }
   checkBlasIntDim(m, 'm', 'cond');
   checkBlasIntDim(n, 'n', 'cond');
@@ -7740,9 +8255,12 @@ NDArray<R> cond<R extends DTypeTag>(
   final stackShape = a.shape.sublist(0, rank - 2);
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, stackShape) || out.dtype != resDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype (expected shape $stackShape and dtype $resDType, got shape ${out.shape} and dtype ${out.dtype}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $stackShape and dtype $resDType (provided out buffer has incompatible shape or dtype, expected shape $stackShape and dtype $resDType, got shape ${out.shape} and dtype ${out.dtype}).',
       );
     }
   }

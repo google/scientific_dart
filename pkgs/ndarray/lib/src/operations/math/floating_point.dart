@@ -30,10 +30,7 @@ import '../../nditer.dart';
 /// It is an error if the array has been disposed (throws [StateError]), or if [out] has incompatible shape or dtype (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, double.nan, 3.0], [3], DType.float64);
-/// final mask = isnan(a); // [false, true, false]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<Boolean> isnan<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
@@ -45,12 +42,23 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
     throw StateError('Cannot execute isnan() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for isnan.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for isnan',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<Boolean>.create(a.shape, DType.boolean);
+        isnan<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -222,10 +230,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
 /// It is an error if the array has been disposed (throws [StateError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, double.infinity, 3.0], [3], DType.float64);
-/// final mask = isinf(a); // [false, true, false]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<Boolean> isinf<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
@@ -237,12 +242,23 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
     throw StateError('Cannot execute isinf() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for isinf.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for isinf',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<Boolean>.create(a.shape, DType.boolean);
+        isinf<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -406,7 +422,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
   }
 }
 
-/// Returns an element-wise boolean mask indicating which elements of the array are finite (neither NaN nor infinite).
+/// Returns an element-wise boolean mask indicating which elements of the array are finite (neither NaN nor infinity).
 ///
 /// **Preconditions:**
 /// - The array must not be disposed.
@@ -414,10 +430,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
 /// It is an error if the array has been disposed (throws [StateError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, double.nan, double.infinity], [3], DType.float64);
-/// final mask = isfinite(a); // [true, false, false]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<Boolean> isfinite<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
@@ -429,12 +442,23 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
     throw StateError('Cannot execute isfinite() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for isfinite.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for isfinite',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<Boolean>.create(a.shape, DType.boolean);
+        isfinite<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -603,9 +627,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
 /// It is an error if either array has been disposed (throws [StateError]), or if either array is complex (throws [UnsupportedError]).
 ///
 /// **Example:**
-/// ```dart
-/// final res = copysign(x1, x2);
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> copysign<T extends DTypeTag>(
   NDArray<T> x1,
   NDArray<T> x2, {
@@ -637,12 +659,25 @@ NDArray<T> copysign<T extends DTypeTag>(
   final DType<T> targetDType = x1.dtype;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for copysign.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for copysign',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(shape, targetDType);
+        copysign<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, shape);
@@ -754,8 +789,12 @@ NDArray<T> copysign<T extends DTypeTag>(
       return b < 0.0 ? -a.abs() : a.abs();
     }
 
-    double toDbl(Object? v) =>
-        v is bool ? (v ? 1.0 : 0.0) : (v as num).toDouble();
+    double toDblA(Object? v) => (x1.dtype as DType<DTypeTag>) == DType.uint64
+        ? uint64ToDouble(v as int)
+        : (v is bool ? (v ? 1.0 : 0.0) : (v as num).toDouble());
+    double toDblB(Object? v) => x2.dtype == DType.uint64
+        ? uint64ToDouble(v as int)
+        : (v is bool ? (v ? 1.0 : 0.0) : (v as num).toDouble());
 
     if (targetDType.isFloating) {
       elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
@@ -770,7 +809,7 @@ NDArray<T> copysign<T extends DTypeTag>(
         x1.offsetElements,
         x2.offsetElements,
         result.offsetElements,
-        (x, y) => castValue(copysignOp(toDbl(x), toDbl(y)), targetDType),
+        (x, y) => castValue(copysignOp(toDblA(x), toDblB(y)), targetDType),
         maskHolder.pointer,
       );
     } else if (targetDType == DType.uint64 ||
@@ -854,11 +893,12 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
   final commonShape = broadcastResult.shape;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for isClose.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for isClose',
       );
     }
   }
@@ -868,9 +908,34 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
   bool isInf(Object? v) =>
       (v is num && v.isInfinite) ||
       (v is Complex && (v.real.isInfinite || v.imag.isInfinite));
-  double abs(Object? v) =>
-      v is num ? v.toDouble().abs() : (v is Complex ? v.abs : 0.0);
-  double diff(Object? v1, Object? v2) {
+  double absVal(Object? v, DType dtype) {
+    if (dtype == DType.uint64) {
+      return _numToUnsignedDouble(v, dtype);
+    }
+    return v is num ? v.toDouble().abs() : (v is Complex ? v.abs : 0.0);
+  }
+
+  double diff(Object? v1, DType dtype1, Object? v2, DType dtype2) {
+    if (dtype1 == DType.uint64 && dtype2 == DType.uint64) {
+      final u1 = v1 as int;
+      final u2 = v2 as int;
+      if (u1 == u2) return 0.0;
+      final cmp = uint64Compare(u1, u2);
+      final diffBits = cmp >= 0 ? (u1 - u2) : (u2 - u1);
+      return _numToUnsignedDouble(diffBits, DType.uint64);
+    }
+    if (dtype1 == DType.uint64 || dtype2 == DType.uint64) {
+      final d1 = v1 is Complex ? v1 : _numToUnsignedDouble(v1, dtype1);
+      final d2 = v2 is Complex ? v2 : _numToUnsignedDouble(v2, dtype2);
+      if (d1 is num && d2 is num) return (d1 - d2).abs().toDouble();
+      if (d1 is num && d2 is Complex) {
+        return (Complex(d1.toDouble(), 0.0) - d2).abs;
+      }
+      if (d1 is Complex && d2 is num) {
+        return (d1 - Complex(d2.toDouble(), 0.0)).abs;
+      }
+      return 0.0;
+    }
     if (v1 is int && v2 is int) {
       return ((v1 ^ v2) >= 0)
           ? (v1 - v2).abs().toDouble()
@@ -1116,8 +1181,8 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
         } else if (isInf(valA) || isInf(valB)) {
           match = valA == valB;
         } else {
-          final d = diff(valA, valB);
-          final limit = atol + rtol * abs(valB);
+          final d = diff(valA, a.dtype, valB, b.dtype);
+          final limit = atol + rtol * absVal(valB, b.dtype);
           match = d <= limit;
         }
 
@@ -1135,6 +1200,17 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
   } finally {
     maskHolder.dispose();
   }
+}
+
+@pragma('vm:prefer-inline')
+double _numToUnsignedDouble(Object? v, DType dtype) {
+  if (dtype == DType.uint64) {
+    final u = v as int;
+    return u >= 0
+        ? u.toDouble()
+        : (u & 0x7fffffffffffffff).toDouble() + 9223372036854775808.0;
+  }
+  return (v as num).toDouble();
 }
 
 @pragma('vm:prefer-inline')
@@ -1384,31 +1460,48 @@ extension FrexpRecordExtension<R extends DTypeTag>
   if (x.dtype.isComplex) {
     throw UnsupportedError('Complex numbers are not supported for modf.');
   }
-  final DType<R> targetDType =
-      (out1?.dtype ??
-              out2?.dtype ??
-              ((x.dtype as DType<DTypeTag>) == DType.float32
-                  ? DType.float32
-                  : DType.float64))
-          as DType<R>;
-  if (!targetDType.isFloating) {
-    throw ArgumentError('modf output dtype must be floating-point.');
-  }
-  if (out1 != null &&
-      (!listEquals(out1.shape, x.shape) || out1.dtype != targetDType)) {
-    throw ArgumentError(
-      'Provided out1 buffer has incompatible shape or dtype for modf.',
+  final DType<DTypeTag> defaultDType =
+      (x.dtype as DType<DTypeTag>) == DType.float32
+      ? DType.float32
+      : DType.float64;
+  final DType<DTypeTag> resolvedDType =
+      out1?.dtype ?? out2?.dtype ?? defaultDType;
+  if (!resolvedDType.isFloating ||
+      (resolvedDType != defaultDType && resolvedDType != x.dtype)) {
+    throw ArgumentError.value(
+      out1 ?? out2 ?? resolvedDType,
+      out1 != null ? 'out1' : (out2 != null ? 'out2' : 'targetDType'),
+      'Must have compatible shape and dtype for modf',
     );
   }
-  if (out2 != null &&
-      (!listEquals(out2.shape, x.shape) || out2.dtype != targetDType)) {
-    throw ArgumentError(
-      'Provided out2 buffer has incompatible shape or dtype for modf.',
-    );
+  if (out1 != null) {
+    validateOutBuffer(out1, 'out1');
+    if (!listEquals(out1.shape, x.shape) || out1.dtype != resolvedDType) {
+      throw ArgumentError.value(
+        out1,
+        'out1',
+        'Must have compatible shape and dtype for modf',
+      );
+    }
+  }
+  if (out2 != null) {
+    validateOutBuffer(out2, 'out2');
+    if (!listEquals(out2.shape, x.shape) || out2.dtype != resolvedDType) {
+      throw ArgumentError.value(
+        out2,
+        'out2',
+        'Must have compatible shape and dtype for modf',
+      );
+    }
   }
   if (out1 != null && out2 != null && sharesMemory(out1, out2)) {
-    throw ArgumentError('out1 and out2 cannot share memory in modf.');
+    throw ArgumentError.value(
+      out2,
+      'out2',
+      'Must not share memory with out1 in modf',
+    );
   }
+  final DType<R> targetDType = resolvedDType as DType<R>;
 
   final maskHolder = prepareMask(where, x.shape);
   try {
@@ -1526,30 +1619,47 @@ extension FrexpRecordExtension<R extends DTypeTag>
   if (x.dtype.isComplex) {
     throw UnsupportedError('Complex numbers are not supported for frexp.');
   }
-  final DType<R> targetDType =
-      (out1?.dtype ??
-              ((x.dtype as DType<DTypeTag>) == DType.float32
-                  ? DType.float32
-                  : DType.float64))
-          as DType<R>;
-  if (!targetDType.isFloating) {
-    throw ArgumentError('frexp mantissa output dtype must be floating-point.');
-  }
-  if (out1 != null &&
-      (!listEquals(out1.shape, x.shape) || out1.dtype != targetDType)) {
-    throw ArgumentError(
-      'Provided out1 buffer has incompatible shape or dtype for frexp.',
+  final DType<DTypeTag> defaultDType =
+      (x.dtype as DType<DTypeTag>) == DType.float32
+      ? DType.float32
+      : DType.float64;
+  final DType<DTypeTag> resolvedDType = out1?.dtype ?? defaultDType;
+  if (!resolvedDType.isFloating ||
+      (resolvedDType != defaultDType && resolvedDType != x.dtype)) {
+    throw ArgumentError.value(
+      out1 ?? resolvedDType,
+      out1 != null ? 'out1' : 'targetDType',
+      'Must have compatible shape and dtype for frexp',
     );
   }
-  if (out2 != null &&
-      (!listEquals(out2.shape, x.shape) || out2.dtype != DType.int32)) {
-    throw ArgumentError(
-      'Provided out2 buffer has incompatible shape or dtype for frexp.',
-    );
+  if (out1 != null) {
+    validateOutBuffer(out1, 'out1');
+    if (!listEquals(out1.shape, x.shape) || out1.dtype != resolvedDType) {
+      throw ArgumentError.value(
+        out1,
+        'out1',
+        'Must have compatible shape and dtype for frexp',
+      );
+    }
+  }
+  if (out2 != null) {
+    validateOutBuffer(out2, 'out2');
+    if (!listEquals(out2.shape, x.shape) || out2.dtype != DType.int32) {
+      throw ArgumentError.value(
+        out2,
+        'out2',
+        'Must have compatible shape and dtype for frexp',
+      );
+    }
   }
   if (out1 != null && out2 != null && sharesMemory(out1, out2)) {
-    throw ArgumentError('out1 and out2 cannot share memory in frexp.');
+    throw ArgumentError.value(
+      out2,
+      'out2',
+      'Must not share memory with out1 in frexp',
+    );
   }
+  final DType<R> targetDType = resolvedDType as DType<R>;
 
   final maskHolder = prepareMask(where, x.shape);
   try {
@@ -1679,7 +1789,23 @@ bool arrayEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
   while (iter.moveNext()) {
     final va = a.getCellRaw(iter.getIndex(0));
     final vb = b.getCellRaw(iter.getIndex(1));
-    if (va == vb) continue;
+    if (a.dtype == DType.uint64 && b.dtype != DType.uint64) {
+      final ua = va as int;
+      if (b.dtype.isInteger) {
+        final ib = vb as int;
+        if (ua < 0 || ib < 0 || ua != ib) return false;
+        continue;
+      }
+    } else if (b.dtype == DType.uint64 && a.dtype != DType.uint64) {
+      final ub = vb as int;
+      if (a.dtype.isInteger) {
+        final ia = va as int;
+        if (ub < 0 || ia < 0 || ia != ub) return false;
+        continue;
+      }
+    } else if (va == vb) {
+      continue;
+    }
     if (va is Complex && vb is Complex) {
       final rEq =
           va.real == vb.real || (equalNan && va.real.isNaN && vb.real.isNaN);
@@ -1689,8 +1815,8 @@ bool arrayEqual<Ta extends DTypeTag, Tb extends DTypeTag>(
       return false;
     }
     if (va is num && vb is num) {
-      final da = va.toDouble();
-      final db = vb.toDouble();
+      final da = _numToUnsignedDouble(va, a.dtype);
+      final db = _numToUnsignedDouble(vb, b.dtype);
       if (da == db || (equalNan && da.isNaN && db.isNaN)) continue;
       return false;
     }

@@ -1027,14 +1027,25 @@ void main() {
       expect(samples.shape, [1000, 3]);
       expect(samples.dtype, DType.int64);
 
-      // Test multinomial with pvals requiring normalization (does not sum to 1.0)
+      // Test multinomial with pvals within floating-point tolerance of 1.0
+      final nearOnePvals = NDArray.fromList(
+        [0.2, 0.5, 0.300001],
+        [3],
+        DType.float64,
+      );
+      final samplesNearOne = multinomial(10, nearOnePvals, size: [5]);
+      expect(samplesNearOne.shape, [5, 3]);
+
+      // Test multinomial with pvals whose sum differs significantly from 1.0 throws ArgumentError
       final nonNormalizedPvals = NDArray.fromList(
         [0.2, 0.6, 0.3],
         [3],
         DType.float64,
       );
-      final samplesNonNorm = multinomial(10, nonNormalizedPvals, size: [5]);
-      expect(samplesNonNorm.shape, [5, 3]);
+      expect(
+        () => multinomial(10, nonNormalizedPvals, size: [5]),
+        throwsArgumentError,
+      );
 
       // For every sample, the sum of category counts must exactly equal the trials 'n' (10)!
       for (var i = 0; i < 1000; i++) {

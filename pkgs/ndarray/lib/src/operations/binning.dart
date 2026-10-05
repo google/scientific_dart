@@ -87,18 +87,22 @@ NDArray<T> bincount<T extends DTypeTag>(
     throw ArgumentError.value(x.dtype, 'x', 'Must be an integer DType.');
   }
   if (x.shape.length != 1) {
-    throw ArgumentError('Input array x must be 1D.');
+    throw ArgumentError.value(x, 'x', 'Input array x must be 1D');
   }
   if (minlength != null && minlength < 0) {
-    throw ArgumentError('minlength must be non-negative.');
+    throw ArgumentError.value(minlength, 'minlength', 'Must be non-negative');
   }
   if (weights != null && !_listEquals(weights.shape, x.shape)) {
-    throw ArgumentError('Weights must have the same shape as x.');
+    throw ArgumentError.value(
+      weights,
+      'weights',
+      'Weights must have the same shape as x',
+    );
   }
   if (out != null) {
     validateOutBuffer(out);
     if (out.shape.length != 1) {
-      throw ArgumentError('Output array must be 1D.');
+      throw ArgumentError.value(out, 'out', 'Output array must be 1D');
     }
   }
 
@@ -107,8 +111,10 @@ NDArray<T> bincount<T extends DTypeTag>(
       final outSize = minlength ?? 0;
       if (out != null) {
         if (out.shape[0] < outSize) {
-          throw ArgumentError(
-            'Output array must be 1D and have size at least $outSize.',
+          throw ArgumentError.value(
+            out,
+            'out',
+            'Output array must be 1D and have size at least $outSize',
           );
         }
         out.fill(normalizeScalar(0, out.dtype) as num);
@@ -128,7 +134,7 @@ NDArray<T> bincount<T extends DTypeTag>(
         throw RangeError('uint64 bin value exceeds maximum supported size.');
       }
     } else if (minVal < 0) {
-      throw ArgumentError('Input array x must be non-negative.');
+      throw ArgumentError.value(x, 'x', 'Input array x must be non-negative');
     }
 
     final minRequiredSize = math.max(maxVal + 1, minlength ?? 0);
@@ -139,8 +145,10 @@ NDArray<T> bincount<T extends DTypeTag>(
 
     if (out != null) {
       if (out.shape[0] < minRequiredSize) {
-        throw ArgumentError(
-          'Output array must be 1D and have size at least $minRequiredSize.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Output array must be 1D and have size at least $minRequiredSize',
         );
       }
     }
@@ -260,8 +268,8 @@ NDArray<T> bincount<T extends DTypeTag>(
       }
     } else {
       // Weighted bincount. Target DType must be float32 or float64.
-      final DType<DTypeTag> wDType = targetDType.isFloating
-          ? targetDType
+      final DType<DTypeTag> wDType = targetDType == DType.float32
+          ? DType.float32
           : DType.float64;
       NDArray<DTypeTag> wCast = weights;
       if (weights.dtype != wDType) {
@@ -426,10 +434,10 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute digitize() on disposed array(s).');
   }
   if (bins.shape.length != 1) {
-    throw ArgumentError('bins must be a 1-D array.');
+    throw ArgumentError.value(bins, 'bins', 'bins must be a 1-D array');
   }
   if (bins.size == 0) {
-    throw ArgumentError('bins must not be empty.');
+    throw ArgumentError.value(bins, 'bins', 'bins must not be empty');
   }
   if (out != null && out.isDisposed) {
     throw StateError(
@@ -437,10 +445,18 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     );
   }
   if (!dtype.isInteger) {
-    throw ArgumentError('dtype must be an integer DType, got $dtype.');
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be an integer DType, got $dtype',
+    );
   }
   if (x.dtype.isComplex || bins.dtype.isComplex) {
-    throw ArgumentError('Complex arrays are not supported in digitize.');
+    throw ArgumentError.value(
+      x,
+      'x',
+      'Complex arrays are not supported in digitize',
+    );
   }
   if (out != null) {
     validateOutBuffer(out);
@@ -486,15 +502,19 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
             v is num ? v.toDouble() : (v as dynamic).value as double;
         var prev = toDoubleVal(bins.getCell([0]));
         if (prev.isNaN) {
-          throw ArgumentError(
-            'bins must be monotonic and must not contain NaN.',
+          throw ArgumentError.value(
+            bins,
+            'bins',
+            'bins must be monotonic and must not contain NaN',
           );
         }
         for (var i = 1; i < len; i++) {
           final curr = toDoubleVal(bins.getCell([i]));
           if (curr.isNaN) {
-            throw ArgumentError(
-              'bins must be monotonic and must not contain NaN.',
+            throw ArgumentError.value(
+              bins,
+              'bins',
+              'bins must be monotonic and must not contain NaN',
             );
           }
           if (curr < prev) increasing = false;
@@ -503,7 +523,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         }
     }
     if (!increasing && !decreasing) {
-      throw ArgumentError('bins must be monotonic.');
+      throw ArgumentError.value(bins, 'bins', 'bins must be monotonic');
     }
 
     final commonDType = resolveDType(bins.dtype, x.dtype);
@@ -528,7 +548,11 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 
     if (out != null) {
       if (!listEquals(out.shape, res.shape) || out.dtype != dtype) {
-        throw ArgumentError('Incompatible out buffer shape or dtype.');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Incompatible out buffer shape or dtype',
+        );
       }
       _fastCopyAndCast(res, out);
       return out;
@@ -580,7 +604,11 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Weights array is disposed.');
   }
   if (x.dtype.isComplex || (weights != null && weights.dtype.isComplex)) {
-    throw ArgumentError('Complex arrays are not supported in histogram.');
+    throw ArgumentError.value(
+      x,
+      'x',
+      'Complex arrays are not supported in histogram',
+    );
   }
 
   return NDArray.scope(() {
@@ -588,7 +616,11 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         ? x
         : (x.rank == 1 ? x : x.ravel());
     if (weights != null && !listEquals(weights.shape, x.shape)) {
-      throw ArgumentError('Weights must have the same shape as x.');
+      throw ArgumentError.value(
+        weights,
+        'weights',
+        'Weights must have the same shape as x',
+      );
     }
     final rawFlatWeights = weights == null
         ? null
@@ -617,13 +649,17 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (isUniform) {
       nbins = bins;
       if (nbins <= 0) {
-        throw ArgumentError('bins must be positive.');
+        throw ArgumentError.value(bins, 'bins', 'bins must be positive');
       }
       if (range != null) {
         minX = range.$1;
         maxX = range.$2;
         if (!minX.isFinite || !maxX.isFinite || minX > maxX) {
-          throw ArgumentError('range must be finite and min <= max.');
+          throw ArgumentError.value(
+            range,
+            'range',
+            'range must be finite and min <= max',
+          );
         }
         if (minX == maxX) {
           minX -= 0.5;
@@ -644,7 +680,11 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
             maxX = (maxRes as num).toDouble();
           }
           if (!minX.isFinite || !maxX.isFinite || minX > maxX) {
-            throw ArgumentError('range must be finite and min <= max.');
+            throw ArgumentError.value(
+              range,
+              'range',
+              'range must be finite and min <= max',
+            );
           }
           if (minX == maxX) {
             minX -= 0.5;
@@ -664,29 +704,45 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         throw StateError('bins array is disposed.');
       }
       if (bins.shape.length != 1) {
-        throw ArgumentError('bins must be a 1-D array.');
+        throw ArgumentError.value(bins, 'bins', 'bins must be a 1-D array');
       }
       resolvedBinEdges = bins.dtype == DType.float64
           ? (bins as NDArray<Float64>).copy()
           : castNDArray<Float64>(bins, DType.float64);
       final M = resolvedBinEdges.size;
       if (M < 2) {
-        throw ArgumentError('bins must have at least 2 edges (1 bin).');
+        throw ArgumentError.value(
+          bins,
+          'bins',
+          'bins must have at least 2 edges (1 bin)',
+        );
       }
       // Check monotonicity
       final cEdges = resolvedBinEdges.pointer.cast<ffi.Double>();
       final strideEdges = resolvedBinEdges.strides[0];
       if (M > 0 && cEdges[0].isNaN) {
-        throw ArgumentError('bins must increase monotonically.');
+        throw ArgumentError.value(
+          bins,
+          'bins',
+          'bins must increase monotonically',
+        );
       }
       for (var i = 1; i < M; i++) {
         if (!(cEdges[i * strideEdges] > cEdges[(i - 1) * strideEdges])) {
-          throw ArgumentError('bins must increase monotonically.');
+          throw ArgumentError.value(
+            bins,
+            'bins',
+            'bins must increase monotonically',
+          );
         }
       }
       nbins = M - 1;
     } else {
-      throw ArgumentError('bins must be an int or an NDArray.');
+      throw ArgumentError.value(
+        bins,
+        'bins',
+        'bins must be an int or an NDArray',
+      );
     }
 
     final DType<AnySpec> targetHistDType = switch (rawFlatWeights?.dtype) {

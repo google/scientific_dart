@@ -14,6 +14,7 @@
 
 import 'dart:io';
 
+import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analysis_server_plugin/registry.dart';
 import 'package:analysis_server_plugin/src/correction/fix_generators.dart';
 import 'package:analyzer/analysis_rule/analysis_rule.dart';
@@ -22,6 +23,8 @@ import 'package:analyzer/dart/analysis/results.dart';
 import 'package:analyzer/diagnostic/diagnostic.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/src/lint/config.dart';
+import 'package:analyzer_plugin/protocol/protocol_common.dart' show SourceEdit;
+import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:scientific_dart_analysis_plugin/scientific_dart_analysis_plugin.dart';
 import 'package:test/test.dart';
 
@@ -652,5 +655,430 @@ double goodSymbolicHoisted(Expr expr, Expr x) {
         expectOnly(diagnostics, 'symbolic_lambdify_in_loop', 1);
       },
     );
+
+    test(
+      'Round 3 regression: conditional/coalescing/aliased scope returns, '
+      'uint64 getCell/data/compareTo, expanded 0D reductions, and copy mutations',
+      () async {
+        final scopeDiagnostics = await analyzeCode(
+          '''
+import 'package:ndarray/ndarray.dart';
+
+NDArray<Float64> badConditionalReturn(bool flag, NDArray<Float64> outer) {
+  return NDArray.scope(() {
+    final a = NDArray.zeros([4], DType.float64);
+    return flag ? a : outer; // VIOLATION 1
+  });
+}
+
+NDArray<Float64> badCoalescingReturn(NDArray<Float64>? maybeOuter) {
+  return NDArray.scope(() {
+    final a = NDArray.ones([4], DType.float64);
+    return maybeOuter ?? a; // VIOLATION 2
+  });
+}
+
+NDArray<Float64> badAliasedLocalReturn() {
+  return NDArray.scope(() {
+    final a = NDArray.ones([4], DType.float64);
+    final b = a;
+    return b; // VIOLATION 3
+  });
+}
+
+NDArray<Float64> badCascadeReturn() {
+  return NDArray.scope(() {
+    final a = NDArray.ones([4], DType.float64);
+    return a..fill(2.0); // VIOLATION 4
+  });
+}
+
+NDArray<Float64> goodCascadeDetachedReturn() {
+  return NDArray.scope(() {
+    final a = NDArray.ones([4], DType.float64);
+    return a..fill(2.0)..detachToParentScope(); // OK
+  });
+}
+''',
+          rules: [UnescapedScopeReturnRule()],
+        );
+        expectOnly(scopeDiagnostics, 'ndarray_unescaped_scope_return', 4);
+
+        final uint64Diagnostics = await analyzeCode(
+          '''
+import 'package:ndarray/ndarray.dart';
+
+bool checkUint64More(NDArray<Uint64> u64) {
+  final c1 = (u64.getCellFlat(0) as int) < 10; // VIOLATION 1
+  final c2 = (u64.getCell([0]) as int) >= 5; // VIOLATION 2
+  final c3 = (u64.data[0] as int) > 1; // VIOLATION 3
+  final c4 = u64.scalar.compareTo(0) < 0; // VIOLATION 4
+  return c1 && c2 && c3 && c4;
+}
+''',
+          rules: [Uint64SignedComparisonRule()],
+        );
+        expectOnly(uint64Diagnostics, 'ndarray_uint64_signed_comparison', 4);
+
+        final zeroDimDiagnostics = await analyzeCode(
+          '''
+import 'package:ndarray/ndarray.dart';
+
+double checkZeroDimMore(NDArray<Float64> a) {
+  final q0 = quantile(a, 0.5)[[0]] as double; // VIOLATION 1
+  final idx0 = argmax(a)[[0]] as int; // VIOLATION 2
+  final cnt0 = count_nonzero(a)[[0]] as int; // VIOLATION 3
+  final sumNullAxis = sum(a, axis: null)[[0]] as double; // VIOLATION 4
+  final sumKeepFalse = sum(a, keepdims: false)[[0]] as double; // VIOLATION 5
+  return q0 + idx0 + cnt0 + sumNullAxis + sumKeepFalse;
+}
+''',
+          rules: [ZeroDimReductionIndexingRule()],
+        );
+        expectOnly(zeroDimDiagnostics, 'ndarray_0d_reduction_indexing', 5);
+
+        final copyMutDiagnostics = await analyzeCode(
+          '''
+import 'package:ndarray/ndarray.dart';
+
+void checkCopyMutationsMore(NDArray<Float64> a) {
+  a.copy().setCell([0], 1.0); // VIOLATION 1
+  a.flatten().setCellFlat(0, 2.0); // VIOLATION 2
+  a.copy().sliceAssign([Slice.all()], a); // VIOLATION 3
+  a.copy()..fill(0.0); // VIOLATION 4
+}
+''',
+          rules: [LostMutationOnCopyRule()],
+        );
+        expectOnly(copyMutDiagnostics, 'ndarray_lost_mutation_on_copy', 4);
+      },
+    );
+
+    test(
+      'Quick fixes handle operator precedence, view lifecycle, and compareTo',
+      () async {
+        Future<String> applyFix(
+          String source,
+          AnalysisRule rule,
+          ProducerGenerator generator,
+        ) async {
+          final file = File('${scratchDir.path}/case_${counter++}.dart');
+          file.writeAsStringSync(source);
+          final context = collection.contextFor(file.path);
+          context.changeFile(file.path);
+          await context.applyPendingFileChanges();
+          final unitResult =
+              await context.currentSession.getResolvedUnit(file.path)
+                  as ResolvedUnitResult;
+          final libResult =
+              await context.currentSession.getResolvedLibrary(file.path)
+                  as ResolvedLibraryResult;
+          final diagnostics = runScientificDartLintsOnUnit(
+            unitResult,
+            rules: [rule],
+          );
+          expect(diagnostics, hasLength(1));
+          final diag = diagnostics.first;
+          final producerContext = CorrectionProducerContext.createResolved(
+            libraryResult: libResult,
+            unitResult: unitResult,
+            diagnostic: diag,
+            selectionOffset: diag.offset,
+            selectionLength: diag.length,
+          );
+          final producer = generator(context: producerContext);
+          final builder = ChangeBuilder(session: context.currentSession);
+          await producer.compute(builder);
+          final edits = builder.sourceChange.edits;
+          if (edits.isEmpty) return source;
+          return SourceEdit.applySequence(source, edits.first.edits);
+        }
+
+        // 1. ReplaceWithEqualsFix parenthesizes binary left operand:
+        final fixedEq = await applyFix(
+          '''
+import 'package:ndarray/ndarray.dart';
+bool f(NDArray<Float64> a, NDArray<Float64> b, NDArray<Float64> c) => a + b == c;
+''',
+          EqualityOperatorRule(),
+          ReplaceWithEqualsFix.new,
+        );
+        expect(fixedEq, contains('(a + b).equals(c)'));
+
+        // 2. AddDetachToParentScopeFix parenthesizes binary expression:
+        final fixedDetach = await applyFix(
+          '''
+import 'package:ndarray/ndarray.dart';
+NDArray<Float64> f(NDArray<Float64> a, NDArray<Float64> b) =>
+    NDArray.scope(() => a + b);
+''',
+          UnescapedScopeReturnRule(),
+          AddDetachToParentScopeFix.new,
+        );
+        expect(fixedDetach, contains('(a + b).detachToParentScope()'));
+
+        // 3. AddCopyBeforeViewLifecycleFix inserts .copy() before .detachToParentScope():
+        final fixedViewCopy = await applyFix(
+          '''
+import 'package:ndarray/ndarray.dart';
+NDArray<Float64> f() => NDArray.scope(() {
+  final a = NDArray.ones([3, 3], DType.float64);
+  final t = a.transpose();
+  return t.detachToParentScope();
+});
+''',
+          ViewLifecycleMisuseRule(),
+          AddCopyBeforeViewLifecycleFix.new,
+        );
+        expect(fixedViewCopy, contains('t.copy().detachToParentScope()'));
+
+        // 4. ReplaceWithUint64CompareFix replaces compareTo without nesting:
+        final fixedUint64CompareTo = await applyFix(
+          '''
+import 'package:ndarray/ndarray.dart';
+bool f(NDArray<Uint64> a, NDArray<Uint64> b) => a.scalar.compareTo(b.scalar) < 0;
+''',
+          Uint64SignedComparisonRule(),
+          ReplaceWithUint64CompareFix.new,
+        );
+        expect(
+          fixedUint64CompareTo,
+          contains('uint64Compare(a.scalar, b.scalar) < 0'),
+        );
+      },
+    );
+
+    test('Round 4 regression: .transposed view tracking, outer index/property '
+        'assignment escapes, fromPointer nativeFinalizer/views/nested closures, '
+        'and quick fix cursor/boundary edge cases', () async {
+      // 1. `.transposed` tracked as a view in UnescapedScopeReturnRule and
+      // ViewLifecycleMisuseRule, plus outer IndexExpression and
+      // PropertyAccess / PrefixedIdentifier LHS escapes:
+      final scopeAndAssignDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+class _Holder {
+  NDArray<Float64>? arr;
+}
+
+NDArray<Float64> badTransposedScopeReturn() {
+  return NDArray.scope(() {
+    final a = NDArray.zeros([3, 3], DType.float64);
+    return a.transposed; // VIOLATION 1: PrefixedIdentifier .transposed
+  });
+}
+
+NDArray<Float64> badInlineTransposedScopeReturn() {
+  return NDArray.scope(() {
+    return NDArray.zeros([3, 3], DType.float64).transposed; // VIOLATION 2: PropertyAccess .transposed
+  });
+}
+
+void badOuterAssignmentEscapes(
+  List<NDArray<Float64>> outerList,
+  _Holder holder,
+) {
+  NDArray.scope(() {
+    final a = NDArray.ones([4], DType.float64);
+    outerList[0] = a; // VIOLATION 3: IndexExpression on outer list
+    holder.arr = a; // VIOLATION 4: PrefixedIdentifier on outer holder
+    (holder).arr = a; // VIOLATION 5: PropertyAccess on outer holder
+
+    final localList = <NDArray<Float64>>[a];
+    localList[0] = a; // OK: localList declared inside scope
+    final localHolder = _Holder();
+    localHolder.arr = a; // OK: localHolder declared inside scope
+    outerList[0] = a.detachToParentScope(); // OK: explicitly detached
+  });
+}
+''',
+        rules: [UnescapedScopeReturnRule()],
+      );
+      expectOnly(
+        scopeAndAssignDiagnostics,
+        'ndarray_unescaped_scope_return',
+        5,
+      );
+
+      final viewMisuseDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+NDArray<Float64> badReturningTransposed() {
+  return NDArray.returning(() {
+    final a = NDArray.zeros([3, 3], DType.float64);
+    return a.transposed; // VIOLATION 1
+  });
+}
+
+NDArray<Float64> badDetachInlineTransposed() {
+  return NDArray.scope(() {
+    return NDArray.ones([3, 3], DType.float64).transposed.detachToParentScope(); // VIOLATION 2
+  });
+}
+''',
+        rules: [ViewLifecycleMisuseRule()],
+      );
+      expectOnly(viewMisuseDiagnostics, 'ndarray_view_lifecycle_misuse', 2);
+
+      // 4. FromPointerDanglingArenaRule: nativeFinalizer exemption, views of
+      // fromPointer variables, and nested closures in try/finally:
+      final fromPtrDiagnostics = await analyzeCode(
+        '''
+import 'dart:ffi' as ffi;
+import 'package:ndarray/ndarray.dart';
+
+NDArray<Float64> badArenaViewReturn() {
+  final marker = ScratchArena.marker;
+  try {
+    final ptr = ScratchArena.allocate<ffi.Double>(32);
+    final raw = NDArray.fromPointer(ptr.cast(), [4], DType.float64);
+    final view = raw.slice([Slice(start: 0, stop: 2)]);
+    return view; // VIOLATION 1: view of fromPointer variable
+  } finally {
+    ScratchArena.reset(marker);
+  }
+}
+
+NDArray<Float64> badArenaTransposedReturn() {
+  final marker = ScratchArena.marker;
+  try {
+    final ptr = ScratchArena.allocate<ffi.Double>(32);
+    final raw = NDArray.fromPointer(ptr.cast(), [2, 2], DType.float64);
+    final t = raw.transposed;
+    return t; // VIOLATION 2: transposed view of fromPointer variable
+  } finally {
+    ScratchArena.reset(marker);
+  }
+}
+
+NDArray<Float64> goodWithNativeFinalizer(ffi.Pointer<ffi.NativeFinalizerFunction> fn) {
+  final marker = ScratchArena.marker;
+  try {
+    final ptr = ScratchArena.allocate<ffi.Double>(32);
+    return NDArray.fromPointer(
+      ptr.cast(),
+      [4],
+      DType.float64,
+      nativeFinalizer: fn,
+    ); // OK: explicit non-null nativeFinalizer
+  } finally {
+    ScratchArena.reset(marker);
+  }
+}
+
+int goodNestedClosureInsideArena() {
+  final marker = ScratchArena.marker;
+  try {
+    final ptr = ScratchArena.allocate<ffi.Double>(32);
+    final helper = () {
+      return NDArray.fromPointer(ptr.cast(), [4], DType.float64); // OK: nested closure return
+    };
+    final arr = helper();
+    return arr.size;
+  } finally {
+    ScratchArena.reset(marker);
+  }
+}
+''',
+        rules: [FromPointerDanglingArenaRule()],
+      );
+      expectOnly(fromPtrDiagnostics, 'ndarray_from_pointer_dangling_arena', 2);
+
+      // Quick-fix helper allowing custom selectionOffset / diagnostic node:
+      Future<String> applyFixAtOffset(
+        String source,
+        AnalysisRule rule,
+        ProducerGenerator generator, {
+        int? selectionOffset,
+        int selectionLength = 0,
+      }) async {
+        final file = File('${scratchDir.path}/case_${counter++}.dart');
+        file.writeAsStringSync(source);
+        final context = collection.contextFor(file.path);
+        context.changeFile(file.path);
+        await context.applyPendingFileChanges();
+        final unitResult =
+            await context.currentSession.getResolvedUnit(file.path)
+                as ResolvedUnitResult;
+        final libResult =
+            await context.currentSession.getResolvedLibrary(file.path)
+                as ResolvedLibraryResult;
+        final diagnostics = runScientificDartLintsOnUnit(
+          unitResult,
+          rules: [rule],
+        );
+        expect(diagnostics, isNotEmpty);
+        final diag = diagnostics.first;
+        final producerContext = CorrectionProducerContext.createResolved(
+          libraryResult: libResult,
+          unitResult: unitResult,
+          diagnostic: diag,
+          selectionOffset: selectionOffset ?? diag.offset,
+          selectionLength: selectionOffset != null
+              ? selectionLength
+              : diag.length,
+        );
+        final producer = generator(context: producerContext);
+        final builder = ChangeBuilder(session: context.currentSession);
+        await producer.compute(builder);
+        final edits = builder.sourceChange.edits;
+        if (edits.isEmpty) return source;
+        return SourceEdit.applySequence(source, edits.first.edits);
+      }
+
+      // 2. ReplaceWithUint64CompareFix when cursor is inside `a.getCell([0])`
+      // of `a.getCell([0]).compareTo(b) < 0`:
+      const cmpSrc = '''
+import 'package:ndarray/ndarray.dart';
+bool f(NDArray<Uint64> a, int b) => (a.getCell([0]) as int).compareTo(b) < 0;
+''';
+      final getCellOffset = cmpSrc.indexOf('getCell');
+      final fixedCmp = await applyFixAtOffset(
+        cmpSrc,
+        Uint64SignedComparisonRule(),
+        ReplaceWithUint64CompareFix.new,
+        selectionOffset: getCellOffset,
+      );
+      expect(
+        fixedCmp,
+        contains('uint64Compare((a.getCell([0]) as int), b) < 0'),
+      );
+
+      // 3a. AddCopyBeforeViewLifecycleFix stops at FunctionExpression
+      // boundary when outer .detachToParentScope() wraps NDArray.returning:
+      const nestedReturningSrc = '''
+import 'package:ndarray/ndarray.dart';
+NDArray<Float64> f() => NDArray.scope(() {
+  return NDArray.returning(() {
+    final a = NDArray.ones([3, 3], DType.float64);
+    final view = a.transposed;
+    return view;
+  }).detachToParentScope();
+});
+''';
+      final fixedNestedReturning = await applyFixAtOffset(
+        nestedReturningSrc,
+        ViewLifecycleMisuseRule(),
+        AddCopyBeforeViewLifecycleFix.new,
+      );
+      expect(fixedNestedReturning, contains('return view.copy();'));
+      expect(
+        fixedNestedReturning,
+        isNot(contains('.copy().detachToParentScope()')),
+      );
+
+      // 3b. AddCopyBeforeViewLifecycleFix when selection is on the outer
+      // NDArray.returning(...) call itself:
+      final returningOffset = nestedReturningSrc.indexOf('NDArray.returning');
+      final fixedFromOuterCall = await applyFixAtOffset(
+        nestedReturningSrc,
+        ViewLifecycleMisuseRule(),
+        AddCopyBeforeViewLifecycleFix.new,
+        selectionOffset: returningOffset,
+      );
+      expect(fixedFromOuterCall, contains('return view.copy();'));
+    });
   });
 }

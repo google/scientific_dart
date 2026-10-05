@@ -16,6 +16,7 @@ import 'dart:ffi' as ffi;
 import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/wgsl.dart';
 import 'package:gpuarray/src/backend/native/wgpu_bindings.dart';
 
 void main() {

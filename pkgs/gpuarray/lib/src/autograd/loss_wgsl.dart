@@ -406,3 +406,143 @@ void dispatchBceBackward({
   let p = clamp(in_val, 1e-7, 1.0 - 1e-7);
   store_out(thread_index, (p - tgt_val) / (p * (1.0 - p)));''',
 );
+
+/// Dispatches the `mseLoss` forward elementwise squared-difference kernel on the GPU.
+void dispatchMseForward({
+  required GpuArray<DTypeTag> input,
+  required GpuArray<DTypeTag> targetTensor,
+  required GpuArray<DTypeTag> output,
+}) => _dispatchBinaryFloatLossKernel(
+  input: input,
+  targetTensor: targetTensor,
+  output: output,
+  kernelPrefix: 'nn_mse_forward',
+  bodyWgsl: '''
+  let diff = in_val - tgt_val;
+  store_out(thread_index, diff * diff);''',
+);
+
+/// Dispatches the `MseLossBackward` fused elementwise gradient kernel on the GPU.
+void dispatchMseBackward({
+  required GpuArray<DTypeTag> input,
+  required GpuArray<DTypeTag> targetTensor,
+  required GpuArray<DTypeTag> gradOutput,
+  required GpuArray<DTypeTag> gradResult,
+  required double scale,
+}) {
+  final totalElements = gradResult.size;
+  if (totalElements == 0) return;
+
+  final contiguousInput = input.isContiguous ? input : input.copy();
+  final contiguousTarget = targetTensor.isContiguous
+      ? targetTensor
+      : targetTensor.copy();
+  final contiguousGradOut = gradOutput.isContiguous
+      ? gradOutput
+      : gradOutput.copy();
+
+  try {
+    final bindings = [
+      storageBinding(0, 'in_buf', contiguousInput.dtype, WgslBufferAccess.read),
+      storageBinding(
+        1,
+        'tgt_buf',
+        contiguousTarget.dtype,
+        WgslBufferAccess.read,
+      ),
+      storageBinding(
+        2,
+        'grad_out_buf',
+        contiguousGradOut.dtype,
+        WgslBufferAccess.read,
+      ),
+      storageBinding(
+        3,
+        'out_buf',
+        gradResult.dtype,
+        WgslBufferAccess.readWrite,
+      ),
+      const WgslBinding(
+        group: 0,
+        binding: 4,
+        name: 'uniforms',
+        isUniform: true,
+        customTypeName: 'MseBackwardUniforms',
+      ),
+    ];
+
+    final loadInFn = wgslLoadFloat(contiguousInput.dtype, 'in_buf', 'load_in');
+    final loadTgtFn = wgslLoadFloat(
+      contiguousTarget.dtype,
+      'tgt_buf',
+      'load_tgt',
+    );
+    final loadGradOutFn = wgslLoadFloat(
+      contiguousGradOut.dtype,
+      'grad_out_buf',
+      'load_grad_out',
+    );
+    final storeOutFn = wgslStoreFloat(gradResult.dtype, 'out_buf', 'store_out');
+
+    final gradOutStride = contiguousGradOut.size == 1 ? 0 : 1;
+
+    final code =
+        '''
+$wgslF64ConversionHelpers
+struct MseBackwardUniforms {
+  total_elements: u32, in_offset: u32, tgt_offset: u32, grad_out_offset: u32,
+  grad_out_stride: u32, scale_bits: u32, pad0: u32, pad1: u32,
+}
+${bindings.map((b) => b.toWgslDeclaration()).join('\n')}
+$loadInFn
+$loadTgtFn
+$loadGradOutFn
+$storeOutFn
+@compute @workgroup_size(256)
+fn main(@builtin(global_invocation_id) global_id: vec3<u32>, @builtin(num_workgroups) num_wg: vec3<u32>) {
+  let thread_index = global_id.x + global_id.y * (num_wg.x * 256u);
+  if (thread_index >= uniforms.total_elements) { return; }
+  let in_val = load_in(uniforms.in_offset + thread_index);
+  let tgt_val = load_tgt(uniforms.tgt_offset + thread_index);
+  let go_val = load_grad_out(uniforms.grad_out_offset + thread_index * uniforms.grad_out_stride);
+  let scale_val = bitcast<f32>(uniforms.scale_bits);
+  store_out(thread_index, go_val * scale_val * (in_val - tgt_val));
+}
+''';
+
+    dispatch1DKernel(
+      device: gradResult.device,
+      name:
+          'autograd_mse_backward_${gradResult.dtype.name}_${contiguousGradOut.dtype.name}',
+      code: code,
+      bindings: bindings,
+      buffers: [
+        contiguousInput.buffer,
+        contiguousTarget.buffer,
+        contiguousGradOut.buffer,
+        gradResult.buffer,
+      ],
+      uniforms: [
+        totalElements,
+        contiguousInput.offsetElements,
+        contiguousTarget.offsetElements,
+        contiguousGradOut.offsetElements,
+        gradOutStride,
+        float32ToBits(scale),
+        0,
+        0,
+      ],
+      totalElements: totalElements,
+    );
+  } finally {
+    if (!identical(contiguousInput, input)) {
+      contiguousInput.dispose();
+    }
+    if (!identical(contiguousTarget, targetTensor)) {
+      contiguousTarget.dispose();
+    }
+    if (!identical(contiguousGradOut, gradOutput)) {
+      contiguousGradOut.dispose();
+    }
+  }
+}

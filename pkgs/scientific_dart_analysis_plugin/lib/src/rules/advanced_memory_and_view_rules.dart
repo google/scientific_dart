@@ -234,6 +234,25 @@ final class LostMutationOnCopyRule extends AnalysisRule {
 }
 
 final class _LostMutationOnCopyVisitor extends SimpleAstVisitor<void> {
+  static const Set<String> _mutatingMethodNames = {
+    'fill',
+    'sliceAssign',
+    'setSlice',
+    'setCell',
+    'setCell1D',
+    'setCell2D',
+    'setCell3D',
+    'setCellFlat',
+    'setCellRaw',
+    'setByMask',
+    'setByMask1D',
+    'setIndices',
+    'setIndices1D',
+    'sort',
+    'partition',
+    'byteswap',
+  };
+
   final LostMutationOnCopyRule rule;
 
   _LostMutationOnCopyVisitor(this.rule);
@@ -242,10 +261,10 @@ final class _LostMutationOnCopyVisitor extends SimpleAstVisitor<void> {
   void visitExpressionStatement(ExpressionStatement node) {
     final expr = unwrapParenthesized(node.expression);
 
-    // Case 1: `a.flatten().fill(0)` or `a.copy().setSlice(...)`
+    // Case 1: `a.flatten().fill(0)`, `a.copy().sliceAssign(...)`, etc.
     if (expr is MethodInvocation) {
       final methodName = expr.methodName.name;
-      if (methodName == 'fill' || methodName == 'setSlice') {
+      if (_mutatingMethodNames.contains(methodName)) {
         final target = expr.realTarget;
         if (target != null && _isInlineCopyInvocation(target)) {
           rule.reportAtNode(expr);
@@ -257,6 +276,22 @@ final class _LostMutationOnCopyVisitor extends SimpleAstVisitor<void> {
     if (expr is AssignmentExpression) {
       final lhs = expr.leftHandSide;
       if (lhs is IndexExpression && _isInlineCopyInvocation(lhs.realTarget)) {
+        rule.reportAtNode(expr);
+      }
+    }
+
+    // Case 3: `a.copy()..fill(0)` where the cascade result is discarded.
+    if (expr is CascadeExpression && _isInlineCopyInvocation(expr.target)) {
+      final hasMutation = expr.cascadeSections.any((section) {
+        if (section is MethodInvocation) {
+          return _mutatingMethodNames.contains(section.methodName.name);
+        }
+        if (section is AssignmentExpression) {
+          return section.leftHandSide is IndexExpression;
+        }
+        return false;
+      });
+      if (hasMutation) {
         rule.reportAtNode(expr);
       }
     }
@@ -356,6 +391,16 @@ final class _TryReturnFromPointerFinder extends RecursiveAstVisitor<void> {
   _TryReturnFromPointerFinder(this.rule, this.decls);
 
   @override
+  void visitFunctionExpression(FunctionExpression node) {
+    // Do not descend into nested closures inside try/finally or using().
+  }
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {
+    // Do not descend into nested local functions.
+  }
+
+  @override
   void visitReturnStatement(ReturnStatement node) {
     final expr = node.expression;
     if (expr != null && _isFromPointerWithoutCopy(expr, decls)) {
@@ -371,26 +416,74 @@ final class _TryReturnFromPointerFinder extends RecursiveAstVisitor<void> {
     }
   }
 
+  bool _hasNonNullNativeFinalizer(ArgumentList argumentList) {
+    for (final arg in argumentList.arguments) {
+      if (arg is NamedArgument && arg.name.lexeme == 'nativeFinalizer') {
+        final value = unwrapParenthesized(arg.argumentExpression);
+        if (value is! NullLiteral) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   bool _isFromPointerWithoutCopy(
     Expression expr,
     SubtreeDeclarations decls, {
     int depth = 0,
   }) {
-    if (depth > 4) return false;
+    if (depth > 6) return false;
     final unwrapped = unwrapParenthesized(expr);
     if (unwrapped is MethodInvocation) {
-      if (unwrapped.methodName.name == 'copy') return false;
-      if (unwrapped.methodName.name == 'fromPointer') return true;
-      if (unwrapped.methodName.name == 'detachToParentScope' ||
-          unwrapped.methodName.name == 'detachFromScope') {
+      final name = unwrapped.methodName.name;
+      if (name == 'copy') return false;
+      if (name == 'fromPointer') {
+        return !_hasNonNullNativeFinalizer(unwrapped.argumentList);
+      }
+      if (name == 'detachToParentScope' || name == 'detachFromScope') {
         final target = unwrapped.realTarget;
         if (target != null) {
           return _isFromPointerWithoutCopy(target, decls, depth: depth + 1);
         }
       }
+      if (kAlwaysViewNames.contains(name) || kMaybeViewNames.contains(name)) {
+        final target =
+            unwrapped.realTarget ??
+            (unwrapped.argumentList.arguments.isNotEmpty
+                ? unwrapped.argumentList.arguments.first.argumentExpression
+                : null);
+        if (target != null) {
+          return _isFromPointerWithoutCopy(target, decls, depth: depth + 1);
+        }
+      }
+    } else if (unwrapped is PropertyAccess) {
+      final propName = unwrapped.propertyName.name;
+      if (propName == 'T' || propName == 'transposed') {
+        return _isFromPointerWithoutCopy(
+          unwrapped.realTarget,
+          decls,
+          depth: depth + 1,
+        );
+      }
+    } else if (unwrapped is PrefixedIdentifier) {
+      final propName = unwrapped.identifier.name;
+      if (propName == 'T' || propName == 'transposed') {
+        return _isFromPointerWithoutCopy(
+          unwrapped.prefix,
+          decls,
+          depth: depth + 1,
+        );
+      }
+    } else if (unwrapped is CascadeExpression) {
+      return _isFromPointerWithoutCopy(
+        unwrapped.target,
+        decls,
+        depth: depth + 1,
+      );
     } else if (unwrapped is InstanceCreationExpression) {
       if (unwrapped.constructorName.name?.name == 'fromPointer') {
-        return true;
+        return !_hasNonNullNativeFinalizer(unwrapped.argumentList);
       }
     } else if (unwrapped is SimpleIdentifier) {
       final element = unwrapped.element;

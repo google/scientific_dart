@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "npz_io.h"
+#include "ndarray_common.h"
 #include "third_party/miniz/miniz.h"
 #include <stdlib.h>
 #include <string.h>
@@ -161,13 +162,29 @@ static uint32_t npz_fast_crc32(uint32_t initial_crc, const void* buf, size_t len
 // Memory Allocation Hooks for Miniz Fallback
 // ---------------------------------------------------------------------------
 static void* npz_alloc(void* opaque, size_t items, size_t size) {
-    return malloc(items * size);
+    if (items != 0 && size > SIZE_MAX / items) {
+        ndarray_set_oom_flag();
+        return NULL;
+    }
+    void* ptr = malloc(items * size);
+    if (!ptr) {
+        ndarray_set_oom_flag();
+    }
+    return ptr;
 }
 static void npz_free(void* opaque, void* address) {
     free(address);
 }
 static void* npz_realloc(void* opaque, void* address, size_t items, size_t size) {
-    return realloc(address, items * size);
+    if (items != 0 && size > SIZE_MAX / items) {
+        ndarray_set_oom_flag();
+        return NULL;
+    }
+    void* ptr = realloc(address, items * size);
+    if (!ptr) {
+        ndarray_set_oom_flag();
+    }
+    return ptr;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,8 +211,8 @@ static int npz_save_stored(
     FILE* fp = fopen(filepath, "wb");
     if (!fp) return -2;
 
-    ZipEntryMeta* meta = (ZipEntryMeta*)malloc(num_arrays * sizeof(ZipEntryMeta));
-    if (!meta) {
+    NoThrowBuffer<ZipEntryMeta> meta(num_arrays);
+    if (!meta.ok()) {
         fclose(fp);
         return -6;
     }
@@ -209,7 +226,6 @@ static int npz_save_stored(
     for (size_t i = 0; i < num_arrays; i++) {
         size_t nlen = strlen(entry_names[i]);
         if (nlen > 0xFFFFULL) {
-            free(meta);
             fclose(fp);
             return -7;
         }
@@ -235,15 +251,13 @@ static int npz_save_stored(
 
         size_t prefix_len = 30 + nlen + lfh_extra_len + hlen;
         uint8_t* p_buf = lfh_buf;
-        uint8_t* p_heap = NULL;
+        NoThrowBuffer<uint8_t> p_heap;
         if (prefix_len > sizeof(lfh_buf)) {
-            p_heap = (uint8_t*)malloc(prefix_len);
-            if (!p_heap) {
-                free(meta);
+            if (!p_heap.resize(prefix_len)) {
                 fclose(fp);
                 return -6;
             }
-            p_buf = p_heap;
+            p_buf = p_heap.data();
         }
 
         write_u32_le(p_buf + 0, 0x04034b50);
@@ -268,11 +282,9 @@ static int npz_save_stored(
         memcpy(p_buf + 30 + nlen + lfh_extra_len, header_bytes[i], hlen);
 
         size_t written_prefix = fwrite(p_buf, 1, prefix_len, fp);
-        if (p_heap) free(p_heap);
 
         if (written_prefix != prefix_len ||
             (dlen > 0 && fwrite(data_ptrs[i], 1, dlen, fp) != dlen)) {
-            free(meta);
             fclose(fp);
             return -3;
         }
@@ -295,14 +307,13 @@ static int npz_save_stored(
         (cd_offset >= 0xFFFFFFFFULL);
 
     size_t total_tail_size = (size_t)cd_size + (archive_zip64 ? (56 + 20) : 0) + 22;
-    uint8_t* tail_buf = (uint8_t*)malloc(total_tail_size);
-    if (!tail_buf) {
-        free(meta);
+    NoThrowBuffer<uint8_t> tail_buf(total_tail_size);
+    if (!tail_buf.ok()) {
         fclose(fp);
         return -6;
     }
 
-    uint8_t* p_cd = tail_buf;
+    uint8_t* p_cd = tail_buf.data();
     for (size_t i = 0; i < num_arrays; i++) {
         bool ez64 = meta[i].is_zip64;
         uint16_t cdh_extra_len = ez64 ? 28 : 0;
@@ -367,15 +378,11 @@ static int npz_save_stored(
     write_u32_le(p_cd + 16, (archive_zip64 || cd_offset >= 0xFFFFFFFFULL) ? 0xFFFFFFFFU : (uint32_t)cd_offset);
     write_u16_le(p_cd + 20, 0);
 
-    if (fwrite(tail_buf, 1, total_tail_size, fp) != total_tail_size) {
-        free(tail_buf);
-        free(meta);
+    if (fwrite(tail_buf.data(), 1, total_tail_size, fp) != total_tail_size) {
         fclose(fp);
         return -5;
     }
 
-    free(tail_buf);
-    free(meta);
     if (fclose(fp) != 0) {
         return -5;
     }
@@ -629,7 +636,7 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
 
     npz_fseek64(fp, 0, SEEK_END);
     int64_t sz = npz_ftell64(fp);
-    if (sz < 22) {
+    if (sz < 22 || (uint64_t)sz > (uint64_t)SIZE_MAX) {
         fclose(fp);
         return NULL;
     }
@@ -652,6 +659,9 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
 #endif
 
     if (!mmap_data) {
+#if defined(_WIN32)
+        if (hMapping) CloseHandle(hMapping);
+#endif
         fclose(fp);
         return NULL;
     }
@@ -712,7 +722,8 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
         cd_offset = read_u64_le(z64_eocd + 48);
     }
 
-    if (cd_offset > file_size || cd_size > file_size - cd_offset) {
+    if (cd_offset > file_size || cd_size > file_size - cd_offset ||
+        total_entries > SIZE_MAX / sizeof(NpzEntryInfo)) {
         npz_close_reader(reader);
         return NULL;
     }
@@ -888,6 +899,10 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
                     continue;
                 }
                 uint32_t hlen = read_u32_le(npy + 8);
+                if ((uint64_t)hlen > (uint64_t)(SIZE_MAX - 12)) {
+                    e->header_status = -11;
+                    continue;
+                }
                 total_header_len = 12 + (size_t)hlen;
             } else {
                 uint16_t hlen = read_u16_le(npy + 8);
@@ -918,7 +933,8 @@ NDARRAY_EXPORT int npz_reader_get_entry_info(
     size_t* out_header_len,
     size_t* out_data_len) {
     struct NpzReader* reader = (struct NpzReader*)handle;
-    if (!reader || index >= reader->num_files) return -1;
+    if (!reader || index >= reader->num_files || index > (size_t)MZ_UINT32_MAX) return -1;
+    if (!header_buf && header_buf_len > 0) return -1;
 
     NpzEntryInfo* e = &reader->entries[index];
     if (name_buf && name_buf_len > 0) {
@@ -939,6 +955,7 @@ NDARRAY_EXPORT int npz_reader_get_entry_info(
         if (header_buf_len < total_header_len) {
             return -9;
         }
+        if (!header_buf) return -1;
         if (reader->mmap_data) {
             if (e->data_offset > reader->file_size ||
                 e->uncomp_size > reader->file_size - e->data_offset) {
@@ -980,7 +997,7 @@ NDARRAY_EXPORT int npz_reader_get_entry_info(
         mz_zip_reader_extract_iter_state* iter = mz_zip_reader_extract_iter_new(&reader->zip, (mz_uint)index, 0);
         if (!iter) return -5;
 
-        if (header_buf_len < 10) {
+        if (!header_buf || header_buf_len < 10) {
             mz_zip_reader_extract_iter_free(iter);
             return -6;
         }
@@ -1007,6 +1024,10 @@ NDARRAY_EXPORT int npz_reader_get_entry_info(
                 return -7;
             }
             uint32_t hlen = read_u32_le(npy_prefix + 8);
+            if ((uint64_t)hlen > (uint64_t)(SIZE_MAX - 12)) {
+                mz_zip_reader_extract_iter_free(iter);
+                return -11;
+            }
             prefix_len = 12;
             total_header_len = 12 + (size_t)hlen;
         } else {
@@ -1051,7 +1072,7 @@ NDARRAY_EXPORT int npz_reader_extract_data(
     size_t dest_capacity,
     size_t data_len) {
     struct NpzReader* reader = (struct NpzReader*)handle;
-    if (!reader || index >= reader->num_files || !dest_ptr) return -1;
+    if (!reader || index >= reader->num_files || index > (size_t)MZ_UINT32_MAX || !dest_ptr) return -1;
     if (data_len > dest_capacity) return -5;
 
     NpzEntryInfo* e = &reader->entries[index];

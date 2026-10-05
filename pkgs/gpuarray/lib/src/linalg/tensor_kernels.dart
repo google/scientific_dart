@@ -476,6 +476,436 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 ''';
 
+const String _batchedMatmulF32Shader = '''
+struct MatmulParams {
+  batch_count: u32,
+  m: u32,
+  k: u32,
+  n: u32,
+  batch_ndim: u32,
+  transpose_b: u32,
+  pad0: u32,
+  pad1: u32,
+  batch_shape0: vec4<u32>,
+  batch_shape1: vec4<u32>,
+  a_batch_shape0: vec4<u32>,
+  a_batch_shape1: vec4<u32>,
+  b_batch_shape0: vec4<u32>,
+  b_batch_shape1: vec4<u32>,
+};
+
+fn get_vec8(v0: vec4<u32>, v1: vec4<u32>, d: u32) -> u32 {
+  switch (d) {
+    case 0u: { return v0.x; }
+    case 1u: { return v0.y; }
+    case 2u: { return v0.z; }
+    case 3u: { return v0.w; }
+    case 4u: { return v1.x; }
+    case 5u: { return v1.y; }
+    case 6u: { return v1.z; }
+    default: { return v1.w; }
+  }
+}
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read> in_b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_c: array<f32>;
+@group(0) @binding(3) var<uniform> params: MatmulParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let mn = params.m * params.n;
+  let total = params.batch_count * mn;
+  if (idx >= total) { return; }
+
+  let batch_idx = idx / mn;
+  let rem_mn = idx % mn;
+  let row = rem_mn / params.n;
+  let col = rem_mn % params.n;
+
+  var a_batch = 0u;
+  var b_batch = 0u;
+  var a_stride = 1u;
+  var b_stride = 1u;
+  var b_rem = batch_idx;
+  if (params.batch_ndim > 0u) {
+    var d = i32(params.batch_ndim) - 1;
+    loop {
+      if (d < 0) { break; }
+      let ud = u32(d);
+      let b_sz = max(1u, get_vec8(params.batch_shape0, params.batch_shape1, ud));
+      let a_sz = max(1u, get_vec8(params.a_batch_shape0, params.a_batch_shape1, ud));
+      let bb_sz = max(1u, get_vec8(params.b_batch_shape0, params.b_batch_shape1, ud));
+      let coord = b_rem % b_sz;
+      b_rem = b_rem / b_sz;
+      a_batch = a_batch + (coord % a_sz) * a_stride;
+      b_batch = b_batch + (coord % bb_sz) * b_stride;
+      a_stride = a_stride * a_sz;
+      b_stride = b_stride * bb_sz;
+      d = d - 1;
+    }
+  }
+
+  let a_base = (a_batch * params.m + row) * params.k;
+  let b_mat_base = b_batch * params.k * params.n;
+  var acc = 0.0;
+  for (var p = 0u; p < params.k; p = p + 1u) {
+    var b_idx = b_mat_base + p * params.n + col;
+    if (params.transpose_b != 0u) {
+      b_idx = b_mat_base + col * params.k + p;
+    }
+    acc = acc + in_a[a_base + p] * in_b[b_idx];
+  }
+  out_c[idx] = acc;
+}
+''';
+
+const String _batchedMatmulC64Shader = '''
+struct MatmulParams {
+  batch_count: u32,
+  m: u32,
+  k: u32,
+  n: u32,
+  batch_ndim: u32,
+  transpose_b: u32,
+  conjugate_a: u32,
+  pad1: u32,
+  batch_shape0: vec4<u32>,
+  batch_shape1: vec4<u32>,
+  a_batch_shape0: vec4<u32>,
+  a_batch_shape1: vec4<u32>,
+  b_batch_shape0: vec4<u32>,
+  b_batch_shape1: vec4<u32>,
+};
+
+fn get_vec8(v0: vec4<u32>, v1: vec4<u32>, d: u32) -> u32 {
+  switch (d) {
+    case 0u: { return v0.x; }
+    case 1u: { return v0.y; }
+    case 2u: { return v0.z; }
+    case 3u: { return v0.w; }
+    case 4u: { return v1.x; }
+    case 5u: { return v1.y; }
+    case 6u: { return v1.z; }
+    default: { return v1.w; }
+  }
+}
+
+@group(0) @binding(0) var<storage, read> in_a: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read> in_b: array<vec2<f32>>;
+@group(0) @binding(2) var<storage, read_write> out_c: array<vec2<f32>>;
+@group(0) @binding(3) var<uniform> params: MatmulParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let mn = params.m * params.n;
+  let total = params.batch_count * mn;
+  if (idx >= total) { return; }
+
+  let batch_idx = idx / mn;
+  let rem_mn = idx % mn;
+  let row = rem_mn / params.n;
+  let col = rem_mn % params.n;
+
+  var a_batch = 0u;
+  var b_batch = 0u;
+  var a_stride = 1u;
+  var b_stride = 1u;
+  var b_rem = batch_idx;
+  if (params.batch_ndim > 0u) {
+    var d = i32(params.batch_ndim) - 1;
+    loop {
+      if (d < 0) { break; }
+      let ud = u32(d);
+      let b_sz = max(1u, get_vec8(params.batch_shape0, params.batch_shape1, ud));
+      let a_sz = max(1u, get_vec8(params.a_batch_shape0, params.a_batch_shape1, ud));
+      let bb_sz = max(1u, get_vec8(params.b_batch_shape0, params.b_batch_shape1, ud));
+      let coord = b_rem % b_sz;
+      b_rem = b_rem / b_sz;
+      a_batch = a_batch + (coord % a_sz) * a_stride;
+      b_batch = b_batch + (coord % bb_sz) * b_stride;
+      a_stride = a_stride * a_sz;
+      b_stride = b_stride * bb_sz;
+      d = d - 1;
+    }
+  }
+
+  let a_base = (a_batch * params.m + row) * params.k;
+  let b_mat_base = b_batch * params.k * params.n;
+  var acc = vec2<f32>(0.0, 0.0);
+  for (var p = 0u; p < params.k; p = p + 1u) {
+    var av = in_a[a_base + p];
+    if (params.conjugate_a != 0u) {
+      av = vec2<f32>(av.x, -av.y);
+    }
+    var b_elem = b_mat_base + p * params.n + col;
+    if (params.transpose_b != 0u) {
+      b_elem = b_mat_base + col * params.k + p;
+    }
+    let bv = in_b[b_elem];
+    acc = acc + vec2<f32>(av.x * bv.x - av.y * bv.y, av.x * bv.y + av.y * bv.x);
+  }
+  out_c[idx] = acc;
+}
+''';
+
+const String _kronF32Shader = '''
+struct KronParams {
+  total_elements: u32,
+  ndim: u32,
+  pad0: u32,
+  pad1: u32,
+  out_shape0: vec4<u32>,
+  out_shape1: vec4<u32>,
+  a_shape0: vec4<u32>,
+  a_shape1: vec4<u32>,
+  b_shape0: vec4<u32>,
+  b_shape1: vec4<u32>,
+};
+
+fn get_vec8(v0: vec4<u32>, v1: vec4<u32>, d: u32) -> u32 {
+  switch (d) {
+    case 0u: { return v0.x; }
+    case 1u: { return v0.y; }
+    case 2u: { return v0.z; }
+    case 3u: { return v0.w; }
+    case 4u: { return v1.x; }
+    case 5u: { return v1.y; }
+    case 6u: { return v1.z; }
+    default: { return v1.w; }
+  }
+}
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read> in_b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_c: array<f32>;
+@group(0) @binding(3) var<uniform> params: KronParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  if (idx >= params.total_elements) { return; }
+
+  var rem = idx;
+  var a_idx = 0u;
+  var b_idx = 0u;
+  var a_stride = 1u;
+  var b_stride = 1u;
+  if (params.ndim > 0u) {
+    var d = i32(params.ndim) - 1;
+    loop {
+      if (d < 0) { break; }
+      let ud = u32(d);
+      let o_sz = max(1u, get_vec8(params.out_shape0, params.out_shape1, ud));
+      let a_sz = max(1u, get_vec8(params.a_shape0, params.a_shape1, ud));
+      let b_sz = max(1u, get_vec8(params.b_shape0, params.b_shape1, ud));
+      let coord = rem % o_sz;
+      rem = rem / o_sz;
+      let ca = coord / b_sz;
+      let cb = coord % b_sz;
+      a_idx = a_idx + ca * a_stride;
+      b_idx = b_idx + cb * b_stride;
+      a_stride = a_stride * a_sz;
+      b_stride = b_stride * b_sz;
+      d = d - 1;
+    }
+  }
+  out_c[idx] = in_a[a_idx] * in_b[b_idx];
+}
+''';
+
+const String _crossF32Shader = '''
+struct CrossParams {
+  batch_count: u32,
+  dim_a: u32,
+  dim_b: u32,
+  batch_ndim: u32,
+  batch_shape0: vec4<u32>,
+  batch_shape1: vec4<u32>,
+  a_batch_shape0: vec4<u32>,
+  a_batch_shape1: vec4<u32>,
+  b_batch_shape0: vec4<u32>,
+  b_batch_shape1: vec4<u32>,
+};
+
+fn get_vec8(v0: vec4<u32>, v1: vec4<u32>, d: u32) -> u32 {
+  switch (d) {
+    case 0u: { return v0.x; }
+    case 1u: { return v0.y; }
+    case 2u: { return v0.z; }
+    case 3u: { return v0.w; }
+    case 4u: { return v1.x; }
+    case 5u: { return v1.y; }
+    case 6u: { return v1.z; }
+    default: { return v1.w; }
+  }
+}
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read> in_b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_c: array<f32>;
+@group(0) @binding(3) var<uniform> params: CrossParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let batch_idx = gid.x;
+  if (batch_idx >= params.batch_count) { return; }
+
+  var a_batch = 0u;
+  var b_batch = 0u;
+  var a_stride = 1u;
+  var b_stride = 1u;
+  var rem = batch_idx;
+  if (params.batch_ndim > 0u) {
+    var d = i32(params.batch_ndim) - 1;
+    loop {
+      if (d < 0) { break; }
+      let ud = u32(d);
+      let b_sz = max(1u, get_vec8(params.batch_shape0, params.batch_shape1, ud));
+      let a_sz = max(1u, get_vec8(params.a_batch_shape0, params.a_batch_shape1, ud));
+      let bb_sz = max(1u, get_vec8(params.b_batch_shape0, params.b_batch_shape1, ud));
+      let coord = rem % b_sz;
+      rem = rem / b_sz;
+      a_batch = a_batch + (coord % a_sz) * a_stride;
+      b_batch = b_batch + (coord % bb_sz) * b_stride;
+      a_stride = a_stride * a_sz;
+      b_stride = b_stride * bb_sz;
+      d = d - 1;
+    }
+  }
+
+  let a_base = a_batch * params.dim_a;
+  let b_base = b_batch * params.dim_b;
+  let u0 = in_a[a_base];
+  let u1 = in_a[a_base + 1u];
+  var u2 = 0.0;
+  if (params.dim_a == 3u) {
+    u2 = in_a[a_base + 2u];
+  }
+  let v0 = in_b[b_base];
+  let v1 = in_b[b_base + 1u];
+  var v2 = 0.0;
+  if (params.dim_b == 3u) {
+    v2 = in_b[b_base + 2u];
+  }
+
+  let c2 = u0 * v1 - u1 * v0;
+  if (params.dim_a == 2u && params.dim_b == 2u) {
+    out_c[batch_idx] = c2;
+  } else {
+    out_c[batch_idx * 3u] = u1 * v2 - u2 * v1;
+    out_c[batch_idx * 3u + 1u] = u2 * v0 - u0 * v2;
+    out_c[batch_idx * 3u + 2u] = c2;
+  }
+}
+''';
+
+const String _einsumF32Shader = '''
+struct EinsumParams {
+  out_size: u32,
+  contract_size: u32,
+  num_out_labels: u32,
+  num_total_labels: u32,
+  num_operands: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
+  label_sizes0: vec4<u32>,
+  label_sizes1: vec4<u32>,
+  label_sizes2: vec4<u32>,
+  op0_strides0: vec4<u32>,
+  op0_strides1: vec4<u32>,
+  op0_strides2: vec4<u32>,
+  op1_strides0: vec4<u32>,
+  op1_strides1: vec4<u32>,
+  op1_strides2: vec4<u32>,
+  op2_strides0: vec4<u32>,
+  op2_strides1: vec4<u32>,
+  op2_strides2: vec4<u32>,
+};
+
+fn get_vec12(v0: vec4<u32>, v1: vec4<u32>, v2: vec4<u32>, d: u32) -> u32 {
+  switch (d) {
+    case 0u: { return v0.x; }
+    case 1u: { return v0.y; }
+    case 2u: { return v0.z; }
+    case 3u: { return v0.w; }
+    case 4u: { return v1.x; }
+    case 5u: { return v1.y; }
+    case 6u: { return v1.z; }
+    case 7u: { return v1.w; }
+    case 8u: { return v2.x; }
+    case 9u: { return v2.y; }
+    case 10u: { return v2.z; }
+    default: { return v2.w; }
+  }
+}
+
+@group(0) @binding(0) var<storage, read> in_op0: array<f32>;
+@group(0) @binding(1) var<storage, read> in_op1: array<f32>;
+@group(0) @binding(2) var<storage, read> in_op2: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_res: array<f32>;
+@group(0) @binding(4) var<uniform> params: EinsumParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let out_idx = gid.x;
+  if (out_idx >= params.out_size) { return; }
+
+  var base0 = 0u;
+  var base1 = 0u;
+  var base2 = 0u;
+  var rem_out = out_idx;
+  if (params.num_out_labels > 0u) {
+    var d = i32(params.num_out_labels) - 1;
+    loop {
+      if (d < 0) { break; }
+      let ud = u32(d);
+      let sz = max(1u, get_vec12(params.label_sizes0, params.label_sizes1, params.label_sizes2, ud));
+      let coord = rem_out % sz;
+      rem_out = rem_out / sz;
+      base0 = base0 + coord * get_vec12(params.op0_strides0, params.op0_strides1, params.op0_strides2, ud);
+      base1 = base1 + coord * get_vec12(params.op1_strides0, params.op1_strides1, params.op1_strides2, ud);
+      base2 = base2 + coord * get_vec12(params.op2_strides0, params.op2_strides1, params.op2_strides2, ud);
+      d = d - 1;
+    }
+  }
+
+  var acc = 0.0;
+  for (var c_idx = 0u; c_idx < params.contract_size; c_idx = c_idx + 1u) {
+    var idx0 = base0;
+    var idx1 = base1;
+    var idx2 = base2;
+    var rem_c = c_idx;
+    if (params.num_total_labels > params.num_out_labels) {
+      var d = i32(params.num_total_labels) - 1;
+      loop {
+        if (d < i32(params.num_out_labels)) { break; }
+        let ud = u32(d);
+        let sz = max(1u, get_vec12(params.label_sizes0, params.label_sizes1, params.label_sizes2, ud));
+        let coord = rem_c % sz;
+        rem_c = rem_c / sz;
+        idx0 = idx0 + coord * get_vec12(params.op0_strides0, params.op0_strides1, params.op0_strides2, ud);
+        idx1 = idx1 + coord * get_vec12(params.op1_strides0, params.op1_strides1, params.op1_strides2, ud);
+        idx2 = idx2 + coord * get_vec12(params.op2_strides0, params.op2_strides1, params.op2_strides2, ud);
+        d = d - 1;
+      }
+    }
+    var prod = in_op0[idx0];
+    if (params.num_operands >= 2u) {
+      prod = prod * in_op1[idx1];
+    }
+    if (params.num_operands >= 3u) {
+      prod = prod * in_op2[idx2];
+    }
+    acc = acc + prod;
+  }
+  out_res[out_idx] = acc;
+}
+''';
+
 List<int> _packMatmulUniforms({
   required int batchCount,
   required int m,
@@ -503,11 +933,11 @@ List<int> _packMatmulUniforms({
   return uniforms;
 }
 
-/// Dispatches a batched high-precision real (`Float64`) matrix multiplication.
+/// Dispatches a batched real (`Float32` or `Float64`) matrix multiplication.
 GpuBuffer dispatchBatchedMatmulF64Gpu(
   GpuDevice device,
-  GpuBuffer aF64,
-  GpuBuffer bF64, {
+  GpuBuffer aBuffer,
+  GpuBuffer bBuffer, {
   required int batchCount,
   required int m,
   required int k,
@@ -516,16 +946,24 @@ GpuBuffer dispatchBatchedMatmulF64Gpu(
   List<int> aBatchShape = const [],
   List<int> bBatchShape = const [],
   bool transposeB = false,
+  bool singlePrecision = false,
 }) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final total = batchCount * m * n;
-  final outC = device.createBuffer(sizeInBytes: math.max(1, total) * 8);
+  final outC = device.createBuffer(sizeInBytes: math.max(1, total) * elemBytes);
   if (total == 0) return outC;
 
-  final module = getOrCreateLinalgShader(
-    'linalg_batched_matmul_f64',
-    () => _batchedMatmulRealShader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_batched_matmul_f32',
+          () => _batchedMatmulF32Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_batched_matmul_f64',
+          () => _batchedMatmulRealShader,
+          workgroupSize: 64,
+        );
   final uniforms = _packMatmulUniforms(
     batchCount: batchCount,
     m: m,
@@ -539,19 +977,19 @@ GpuBuffer dispatchBatchedMatmulF64Gpu(
   );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [aF64, bF64, outC],
+    buffers: [aBuffer, bBuffer, outC],
     uniforms: uniforms,
     workgroupsX: (total + 63) ~/ 64,
   );
   return outC;
 }
 
-/// Dispatches a batched high-precision complex (`Complex128`) matrix
+/// Dispatches a batched complex (`Complex64` or `Complex128`) matrix
 /// multiplication, with optional complex conjugation of the first operand.
 GpuBuffer dispatchBatchedMatmulC128Gpu(
   GpuDevice device,
-  GpuBuffer aC128,
-  GpuBuffer bC128, {
+  GpuBuffer aBuffer,
+  GpuBuffer bBuffer, {
   required int batchCount,
   required int m,
   required int k,
@@ -561,16 +999,24 @@ GpuBuffer dispatchBatchedMatmulC128Gpu(
   List<int> bBatchShape = const [],
   bool transposeB = false,
   bool conjugateA = false,
+  bool singlePrecision = false,
 }) {
+  final elemBytes = singlePrecision ? 8 : 16;
   final total = batchCount * m * n;
-  final outC = device.createBuffer(sizeInBytes: math.max(1, total) * 16);
+  final outC = device.createBuffer(sizeInBytes: math.max(1, total) * elemBytes);
   if (total == 0) return outC;
 
-  final module = getOrCreateLinalgShader(
-    'linalg_batched_matmul_c128',
-    () => _batchedMatmulComplexShader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_batched_matmul_c64',
+          () => _batchedMatmulC64Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_batched_matmul_c128',
+          () => _batchedMatmulComplexShader,
+          workgroupSize: 64,
+        );
   final uniforms = _packMatmulUniforms(
     batchCount: batchCount,
     m: m,
@@ -584,7 +1030,7 @@ GpuBuffer dispatchBatchedMatmulC128Gpu(
   );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [aC128, bC128, outC],
+    buffers: [aBuffer, bBuffer, outC],
     uniforms: uniforms,
     workgroupsX: (total + 63) ~/ 64,
   );
@@ -594,14 +1040,16 @@ GpuBuffer dispatchBatchedMatmulC128Gpu(
 /// Dispatches the Kronecker product kernel on [device].
 GpuBuffer dispatchKronF64Gpu(
   GpuDevice device,
-  GpuBuffer aF64,
-  GpuBuffer bF64, {
+  GpuBuffer aBuffer,
+  GpuBuffer bBuffer, {
   required List<int> outShape,
   required List<int> aShapePadded,
   required List<int> bShapePadded,
+  bool singlePrecision = false,
 }) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final total = outShape.isEmpty ? 1 : outShape.reduce((a, b) => a * b);
-  final outC = device.createBuffer(sizeInBytes: math.max(1, total) * 8);
+  final outC = device.createBuffer(sizeInBytes: math.max(1, total) * elemBytes);
   if (total == 0) return outC;
 
   final uniforms = List<int>.filled(28, 0);
@@ -613,14 +1061,20 @@ GpuBuffer dispatchKronF64Gpu(
     uniforms[20 + i] = bShapePadded[i];
   }
 
-  final module = getOrCreateLinalgShader(
-    'linalg_kron_f64',
-    () => _kronRealShader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_kron_f32',
+          () => _kronF32Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_kron_f64',
+          () => _kronRealShader,
+          workgroupSize: 64,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [aF64, bF64, outC],
+    buffers: [aBuffer, bBuffer, outC],
     uniforms: uniforms,
     workgroupsX: (total + 63) ~/ 64,
   );
@@ -630,18 +1084,22 @@ GpuBuffer dispatchKronF64Gpu(
 /// Dispatches the vector cross product kernel on [device].
 GpuBuffer dispatchCrossF64Gpu(
   GpuDevice device,
-  GpuBuffer aF64,
-  GpuBuffer bF64, {
+  GpuBuffer aBuffer,
+  GpuBuffer bBuffer, {
   required int batchCount,
   required int dimA,
   required int dimB,
   required List<int> batchShape,
   required List<int> aBatchShape,
   required List<int> bBatchShape,
+  bool singlePrecision = false,
 }) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final outVecDim = (dimA == 2 && dimB == 2) ? 1 : 3;
   final totalElements = batchCount * outVecDim;
-  final outC = device.createBuffer(sizeInBytes: math.max(1, totalElements) * 8);
+  final outC = device.createBuffer(
+    sizeInBytes: math.max(1, totalElements) * elemBytes,
+  );
   if (batchCount == 0) return outC;
 
   final uniforms = List<int>.filled(28, 0);
@@ -655,14 +1113,20 @@ GpuBuffer dispatchCrossF64Gpu(
     uniforms[20 + i] = bBatchShape[i];
   }
 
-  final module = getOrCreateLinalgShader(
-    'linalg_cross_f64',
-    () => _crossRealShader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_cross_f32',
+          () => _crossF32Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_cross_f64',
+          () => _crossRealShader,
+          workgroupSize: 64,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [aF64, bF64, outC],
+    buffers: [aBuffer, bBuffer, outC],
     uniforms: uniforms,
     workgroupsX: (batchCount + 63) ~/ 64,
   );
@@ -679,8 +1143,12 @@ GpuBuffer dispatchEinsumF64Gpu(
   required int numTotalLabels,
   required List<int> labelSizes,
   required List<List<int>> operandLabelStrides,
+  bool singlePrecision = false,
 }) {
-  final outRes = device.createBuffer(sizeInBytes: math.max(1, outSize) * 8);
+  final elemBytes = singlePrecision ? 4 : 8;
+  final outRes = device.createBuffer(
+    sizeInBytes: math.max(1, outSize) * elemBytes,
+  );
   if (outSize == 0) return outRes;
 
   final op0 = operandBuffers[0];
@@ -704,11 +1172,17 @@ GpuBuffer dispatchEinsumF64Gpu(
     }
   }
 
-  final module = getOrCreateLinalgShader(
-    'linalg_einsum_f64',
-    () => _einsumRealShader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_einsum_f32',
+          () => _einsumF32Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_einsum_f64',
+          () => _einsumRealShader,
+          workgroupSize: 64,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
     buffers: [op0, op1, op2, outRes],
