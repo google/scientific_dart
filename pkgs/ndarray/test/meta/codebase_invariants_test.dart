@@ -2269,6 +2269,7 @@ void main() {
           'src/operations/manipulation.dart',
           'src/operations/padding.dart',
           'src/operations/set_operations.dart',
+          'src/operations/io.dart',
         ]) {
           final content = File('${libDir.path}/$relPath').readAsStringSync();
           expect(

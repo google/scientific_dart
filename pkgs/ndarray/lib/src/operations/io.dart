@@ -20,6 +20,7 @@ import 'package:meta/meta.dart';
 import '../ndarray.dart';
 import '../ndarray_extensions_bindings.dart';
 import '../scratch_arena.dart';
+import 'helpers.dart' show checkNativeOom;
 import 'dart:ffi' as ffi;
 
 ffi.Pointer<ffi.Char> _toNativeUtf8InScratchArena(String s) {
@@ -691,6 +692,11 @@ void savez(
       compressLevel,
     );
 
+    if (status != 0) {
+      // The native encoder flags allocation failures through the thread-local
+      // OOM flag; consume it here so it cannot leak into a later operation.
+      checkNativeOom();
+    }
     if (status == -2) {
       throw _nativeFileException('Cannot open .npz file for writing', filepath);
     }
@@ -750,6 +756,7 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
 
     final handle = npz_open_reader(cFilepath, pNumEntries);
     if (handle.address == 0) {
+      checkNativeOom();
       throw FormatException('Invalid or corrupted .npz ZIP archive: $filepath');
     }
 
@@ -900,6 +907,7 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
 
           if (extractStatus != 0) {
             loadedArray.dispose();
+            checkNativeOom();
             throw FormatException(
               'Failed to extract .npy array data from .npz entry (index: $i, key: $key, code: $extractStatus)',
             );
