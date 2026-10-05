@@ -30,6 +30,16 @@ external void ndarray_set_oom_flag();
 @ffi.Native<ffi.Int Function()>()
 external int ndarray_consume_oom_flag();
 
+/// Test support: increments a process-global atomic counter. Safe as a
+/// [ffi.NativeFinalizer] callback, which the VM may run on a GC helper thread.
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void ndarray_test_finalizer_hit(ffi.Pointer<ffi.Void> token);
+
+/// Test support: returns the number of [ndarray_test_finalizer_hit] calls
+/// since the previous call and resets the counter.
+@ffi.Native<ffi.Int Function()>()
+external int ndarray_test_consume_finalizer_hits();
+
 @ffi.Native<
   ffi.Int64 Function(
     ffi.Pointer<ffi.Uint8>,

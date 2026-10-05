@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "custom_sorting.h"
+#include <atomic>
 #include <stdlib.h>
 #include <math.h>
 #include <stdio.h>
@@ -29,6 +30,11 @@
 
 static thread_local int g_ndarray_oom_flag = 0;
 
+// Process-global counter for tests that observe `NativeFinalizer` callbacks.
+// The VM may run those on a GC helper thread rather than the mutator, so a
+// thread-local flag written there would be invisible to the test.
+static std::atomic<int> g_ndarray_finalizer_hits{0};
+
 extern "C" {
 void ndarray_set_oom_flag(void) {
     g_ndarray_oom_flag = 1;
@@ -38,6 +44,15 @@ int ndarray_consume_oom_flag(void) {
     int prev = g_ndarray_oom_flag;
     g_ndarray_oom_flag = 0;
     return prev;
+}
+
+void ndarray_test_finalizer_hit(void *token) {
+    (void)token;
+    g_ndarray_finalizer_hits.fetch_add(1, std::memory_order_relaxed);
+}
+
+int ndarray_test_consume_finalizer_hits(void) {
+    return g_ndarray_finalizer_hits.exchange(0, std::memory_order_relaxed);
 }
 }
 
