@@ -1918,4 +1918,334 @@ void main() {
       );
     },
   );
+
+  group(
+    '4. Independent Dart Oracle: Unsigned 64-bit (MSB-set) Ordering Kernels',
+    () {
+      // Bit patterns >= 2^63 are negative Dart ints. The oracle orders them
+      // with uint64Compare, so it cannot share a signed-comparison bug with
+      // the native scalar fallback that the other groups compare against.
+      const raw = <int>[
+        5,
+        -1, // 2^64 - 1
+        0,
+        -9223372036854775808, // 2^63
+        42,
+        -2, // 2^64 - 2
+        9223372036854775807, // 2^63 - 1
+        7,
+        -100,
+        1,
+        3,
+        -9223372036854775807, // 2^63 + 1
+        11,
+        2,
+        9,
+        -50,
+        6,
+        8,
+        4,
+        10,
+        0,
+        12,
+        -3,
+        13,
+        14,
+      ];
+      const n = 25;
+
+      int ucmp(int a, int b) => uint64Compare(a, b);
+      int umax(Iterable<int> xs) =>
+          xs.reduce((a, b) => ucmp(a, b) >= 0 ? a : b);
+      int umin(Iterable<int> xs) =>
+          xs.reduce((a, b) => ucmp(a, b) <= 0 ? a : b);
+      int uargmax(List<int> xs) {
+        var best = 0;
+        for (var i = 1; i < xs.length; i++) {
+          if (ucmp(xs[i], xs[best]) > 0) best = i;
+        }
+        return best;
+      }
+
+      int uargmin(List<int> xs) {
+        var best = 0;
+        for (var i = 1; i < xs.length; i++) {
+          if (ucmp(xs[i], xs[best]) < 0) best = i;
+        }
+        return best;
+      }
+
+      final expectedSorted = List<int>.of(raw)..sort(ucmp);
+      final expectedUnique = expectedSorted.toSet().toList()..sort(ucmp);
+
+      NDArray<Uint64> contiguous() =>
+          NDArray<Uint64>.fromList(raw, [n], DType.uint64);
+
+      Map<String, NDArray<Uint64>> layouts(NDArray<Uint64> c) => {
+        'contiguous': c,
+        'step:2': makeStep2View(c),
+        'step:-1': makeNegativeStrideView(c),
+        'rank-3 [1,3,N] row 0': makeRank3StridedView(
+          c,
+        ).slice([const Index(0), const Index(0), const Slice.all()]),
+      };
+
+      test(
+        'sort / argsort / partition / argpartition / unique / searchsorted',
+        () {
+          NDArray.scope(() {
+            final c = contiguous();
+            final ref = NDArray<Uint64>.fromList(expectedUnique, [
+              expectedUnique.length,
+            ], DType.uint64);
+            for (final entry in layouts(c).entries) {
+              final label = entry.key;
+              final x = entry.value;
+
+              expect(
+                sort(x).toList(),
+                equals(expectedSorted),
+                reason: 'sort(uint64) $label',
+              );
+
+              final order = argsort(x).toList().cast<int>();
+              expect(
+                order.toSet().length,
+                equals(n),
+                reason: 'argsort(uint64) $label must be a permutation',
+              );
+              expect(
+                [for (final i in order) raw[i]],
+                equals(expectedSorted),
+                reason: 'argsort(uint64) $label gathers into sorted order',
+              );
+
+              for (final kth in [0, 12, 24]) {
+                final p = partition(x, kth).toList().cast<int>();
+                expect(
+                  p[kth],
+                  equals(expectedSorted[kth]),
+                  reason: 'partition(uint64, kth: $kth) $label pivot',
+                );
+                for (var i = 0; i < kth; i++) {
+                  expect(
+                    ucmp(p[i], p[kth]) <= 0,
+                    isTrue,
+                    reason:
+                        'partition(uint64, kth: $kth) $label: p[$i] > pivot',
+                  );
+                }
+                for (var i = kth + 1; i < n; i++) {
+                  expect(
+                    ucmp(p[i], p[kth]) >= 0,
+                    isTrue,
+                    reason:
+                        'partition(uint64, kth: $kth) $label: p[$i] < pivot',
+                  );
+                }
+                final ap = argpartition(x, kth).toList().cast<int>();
+                expect(
+                  raw[ap[kth]],
+                  equals(expectedSorted[kth]),
+                  reason: 'argpartition(uint64, kth: $kth) $label pivot',
+                );
+              }
+
+              expect(
+                unique(x).toList(),
+                equals(expectedUnique),
+                reason: 'unique(uint64) $label',
+              );
+
+              final left = searchsorted(ref, x).toList().cast<int>();
+              final right = searchsorted(
+                ref,
+                x,
+                side: SearchSide.right,
+              ).toList().cast<int>();
+              for (var i = 0; i < n; i++) {
+                final v = raw[i];
+                var expLeft = expectedUnique.indexWhere((u) => ucmp(u, v) >= 0);
+                var expRight = expectedUnique.indexWhere((u) => ucmp(u, v) > 0);
+                if (expLeft < 0) expLeft = expectedUnique.length;
+                if (expRight < 0) expRight = expectedUnique.length;
+                expect(
+                  left[i],
+                  equals(expLeft),
+                  reason: 'searchsorted(uint64, left) $label at $i',
+                );
+                expect(
+                  right[i],
+                  equals(expRight),
+                  reason: 'searchsorted(uint64, right) $label at $i',
+                );
+              }
+            }
+          });
+        },
+      );
+
+      test(
+        'max / min / argmax / argmin / ptp / cummax / cummin / maximum / minimum / greater / less',
+        () {
+          NDArray.scope(() {
+            final c = contiguous();
+            final rawRev = raw.reversed.toList();
+            final expectedCummax = <int>[];
+            final expectedCummin = <int>[];
+            var runMax = raw[0];
+            var runMin = raw[0];
+            for (final v in raw) {
+              if (ucmp(v, runMax) > 0) runMax = v;
+              if (ucmp(v, runMin) < 0) runMin = v;
+              expectedCummax.add(runMax);
+              expectedCummin.add(runMin);
+            }
+
+            for (final entry in layouts(c).entries) {
+              final label = entry.key;
+              final x = entry.value;
+
+              expect(
+                max(x).scalar,
+                equals(umax(raw)),
+                reason: 'max(uint64) $label',
+              );
+              expect(
+                min(x).scalar,
+                equals(umin(raw)),
+                reason: 'min(uint64) $label',
+              );
+              expect(
+                argmax(x).scalar,
+                equals(uargmax(raw)),
+                reason: 'argmax(uint64) $label',
+              );
+              expect(
+                argmin(x).scalar,
+                equals(uargmin(raw)),
+                reason: 'argmin(uint64) $label',
+              );
+              // Unsigned max - min wraps modulo 2^64 exactly like Dart ints.
+              expect(
+                ptp(x).scalar,
+                equals(umax(raw) - umin(raw)),
+                reason: 'ptp(uint64) $label',
+              );
+              expect(
+                cummax(x).toList(),
+                equals(expectedCummax),
+                reason: 'cummax(uint64) $label',
+              );
+              expect(
+                cummin(x).toList(),
+                equals(expectedCummin),
+                reason: 'cummin(uint64) $label',
+              );
+
+              final y = flip(x, axis: 0).copy(); // logical rawRev, contiguous
+              expect(
+                binaryUfunc(x, y, op: BinaryOp.maximum).toList(),
+                equals([
+                  for (var i = 0; i < n; i++)
+                    ucmp(raw[i], rawRev[i]) >= 0 ? raw[i] : rawRev[i],
+                ]),
+                reason: 'maximum(uint64) $label',
+              );
+              expect(
+                binaryUfunc(x, y, op: BinaryOp.minimum).toList(),
+                equals([
+                  for (var i = 0; i < n; i++)
+                    ucmp(raw[i], rawRev[i]) <= 0 ? raw[i] : rawRev[i],
+                ]),
+                reason: 'minimum(uint64) $label',
+              );
+              expect(
+                greater(x, y).toList(),
+                equals([
+                  for (var i = 0; i < n; i++) ucmp(raw[i], rawRev[i]) > 0,
+                ]),
+                reason: 'greater(uint64) $label',
+              );
+              expect(
+                less(x, y).toList(),
+                equals([
+                  for (var i = 0; i < n; i++) ucmp(raw[i], rawRev[i]) < 0,
+                ]),
+                reason: 'less(uint64) $label',
+              );
+            }
+          });
+        },
+      );
+
+      test('axis reductions and axis sort on a transposed [5, 5] view', () {
+        NDArray.scope(() {
+          // tView[i][j] = raw[j * 5 + i].
+          final tView = contiguous().reshape([5, 5]).transpose();
+          List<int> column(int j) => [
+            for (var i = 0; i < 5; i++) raw[j * 5 + i],
+          ];
+          List<int> row(int i) => [for (var j = 0; j < 5; j++) raw[j * 5 + i]];
+
+          // axis 0 reduces over i (result index j); axis 1 over j (index i).
+          expect(
+            max(tView, axis: 0).toList(),
+            equals([for (var j = 0; j < 5; j++) umax(column(j))]),
+            reason: 'max(uint64, axis: 0) transposed',
+          );
+          expect(
+            max(tView, axis: 1).toList(),
+            equals([for (var i = 0; i < 5; i++) umax(row(i))]),
+            reason: 'max(uint64, axis: 1) transposed',
+          );
+          expect(
+            min(tView, axis: 0).toList(),
+            equals([for (var j = 0; j < 5; j++) umin(column(j))]),
+            reason: 'min(uint64, axis: 0) transposed',
+          );
+          expect(
+            min(tView, axis: 1).toList(),
+            equals([for (var i = 0; i < 5; i++) umin(row(i))]),
+            reason: 'min(uint64, axis: 1) transposed',
+          );
+          expect(
+            argmax(tView, axis: 0).toList(),
+            equals([for (var j = 0; j < 5; j++) uargmax(column(j))]),
+            reason: 'argmax(uint64, axis: 0) transposed',
+          );
+          expect(
+            argmin(tView, axis: 1).toList(),
+            equals([for (var i = 0; i < 5; i++) uargmin(row(i))]),
+            reason: 'argmin(uint64, axis: 1) transposed',
+          );
+
+          // sort along axis 0: column j of the result is column(j) sorted.
+          final sorted0 = sort(tView, axis: 0);
+          for (var j = 0; j < 5; j++) {
+            final col = column(j)..sort(ucmp);
+            expect(
+              [
+                for (var i = 0; i < 5; i++) sorted0[[i, j]],
+              ],
+              equals(col),
+              reason: 'sort(uint64, axis: 0) transposed column $j',
+            );
+          }
+          // sort along axis 1: row i of the result is row(i) sorted.
+          final sorted1 = sort(tView, axis: 1);
+          for (var i = 0; i < 5; i++) {
+            final r = row(i)..sort(ucmp);
+            expect(
+              [
+                for (var j = 0; j < 5; j++) sorted1[[i, j]],
+              ],
+              equals(r),
+              reason: 'sort(uint64, axis: 1) transposed row $i',
+            );
+          }
+        });
+      });
+    },
+  );
 }

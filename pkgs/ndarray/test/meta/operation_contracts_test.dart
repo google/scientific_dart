@@ -94,6 +94,51 @@ final class ShapeViewOrCopyOpSpec {
   });
 }
 
+/// Descriptor for a square-matrix operation `f(a, {out})` on a symmetric
+/// positive-definite `NDArray<Float64>` input.
+///
+/// The result shape is derived by calling the operation once, so matrix-valued
+/// (`[n, n]`), vector-valued (`[n]`) and scalar-valued (`[]`) operations share
+/// the same strided-input, strided-`out`, aliasing and lifecycle contracts.
+final class MatrixOpSpec {
+  final String name;
+  final NDArray<Float64> Function(NDArray<Float64> a, {NDArray<Float64>? out})
+  call;
+  final bool supportsInPlace;
+
+  const MatrixOpSpec(this.name, this.call, {this.supportsInPlace = true});
+}
+
+/// Descriptor for an index-valued operation `f(a, {out})` on `NDArray<Int64>`
+/// input producing `NDArray<Int64>` positions, counts, or bin indices.
+final class IndexResultOpSpec {
+  final String name;
+  final NDArray<Int64> Function(NDArray<Int64> a, {NDArray<Int64>? out}) call;
+
+  /// Whether the operation accepts rank-2 input (`bincount` is 1-D only).
+  final bool supports2D;
+
+  const IndexResultOpSpec(this.name, this.call, {this.supports2D = true});
+}
+
+/// Descriptor for an operation without an `out:` parameter (record- or
+/// list-returning) whose result arrays must not depend on the memory layout
+/// of the input.
+final class LayoutIndependentOpSpec {
+  final String name;
+  final List<NDArray<DTypeTag>> Function(NDArray<Float64> a) call;
+
+  const LayoutIndependentOpSpec(this.name, this.call);
+}
+
+bool _sameShape(List<int> a, List<int> b) {
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
 void main() {
   final unaryOps = <UnaryOpSpec>[
     UnaryOpSpec('sin', (a, {out}) => sin(a, out: out)),
@@ -147,6 +192,42 @@ void main() {
       (a, {out}) => roll(a, 2, out: out),
       supportsInPlace: false,
     ),
+    UnaryOpSpec(
+      'cummin',
+      (a, {out}) => cummin(a, axis: -1, out: out),
+      supports0DAndEmpty: false,
+    ),
+    UnaryOpSpec(
+      'cummax',
+      (a, {out}) => cummax(a, axis: -1, out: out),
+      supports0DAndEmpty: false,
+    ),
+    UnaryOpSpec(
+      'unique (values)',
+      (a, {out}) => unique(a, out: out),
+      supports0DAndEmpty: false,
+    ),
+    // Shape-changing: the contract group derives the `out` shape from the
+    // result and additionally checks `out` aliasing an interior slice of the
+    // source buffer (the pad_1d/pad_2d overlap path).
+    UnaryOpSpec(
+      'pad(constant, 2)',
+      (a, {out}) => pad(a, PadWidth.all(2), out: out),
+      supportsInPlace: false,
+      supports0DAndEmpty: false,
+    ),
+    UnaryOpSpec(
+      'pad(reflect, 1)',
+      (a, {out}) => pad(a, PadWidth.all(1), mode: PadMode.reflect, out: out),
+      supportsInPlace: false,
+      supports0DAndEmpty: false,
+    ),
+    UnaryOpSpec(
+      'pad(edge, 3)',
+      (a, {out}) => pad(a, PadWidth.all(3), mode: PadMode.edge, out: out),
+      supportsInPlace: false,
+      supports0DAndEmpty: false,
+    ),
   ];
 
   final binaryOps = <BinaryOpSpec>[
@@ -178,6 +259,14 @@ void main() {
       'fmax',
       (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.fmax, out: out),
     ),
+    BinaryOpSpec('where(greater(a, b), a, b)', (a, b, {out}) {
+      final mask = greater(a, b);
+      try {
+        return where(mask, a, b, out);
+      } finally {
+        mask.dispose();
+      }
+    }),
   ];
 
   final reductionOps = <ReductionOpSpec>[
@@ -325,6 +414,69 @@ void main() {
     ),
   ];
 
+  final matrixOps = <MatrixOpSpec>[
+    MatrixOpSpec('matmul(a, a)', (a, {out}) => matmul(a, a, out: out)),
+    MatrixOpSpec('inv', (a, {out}) => inv(a, out: out)),
+    MatrixOpSpec('solve(a, a)', (a, {out}) => solve(a, a, out: out)),
+    MatrixOpSpec('cholesky', (a, {out}) => cholesky(a, out: out)),
+    MatrixOpSpec('det', (a, {out}) => det(a, out: out)),
+    MatrixOpSpec('eigvalsh', (a, {out}) => eigvalsh(a, out: out)),
+    MatrixOpSpec(
+      'eigh (eigenvalues)',
+      (a, {out}) => eigh(a, outEigenvalues: out).eigenvalues,
+    ),
+  ];
+
+  final indexResultOps = <IndexResultOpSpec>[
+    IndexResultOpSpec('argsort', (a, {out}) => argsort(a, out: out)),
+    IndexResultOpSpec(
+      'argpartition(kth: 1)',
+      (a, {out}) => argpartition(a, 1, out: out),
+    ),
+    IndexResultOpSpec('flatnonzero', (a, {out}) => flatnonzero(a, out: out)),
+    IndexResultOpSpec(
+      'bincount',
+      (a, {out}) => bincount(a, out: out),
+      supports2D: false,
+    ),
+    IndexResultOpSpec('searchsorted(sorted ref, a)', (a, {out}) {
+      final ref = NDArray<Int64>.fromList(
+        [0, 2, 4, 6, 8, 10],
+        [6],
+        DType.int64,
+      );
+      try {
+        return searchsorted(ref, a, out: out);
+      } finally {
+        ref.dispose();
+      }
+    }),
+    IndexResultOpSpec('digitize(a, bins)', (a, {out}) {
+      final bins = NDArray<Int64>.fromList([0, 3, 6, 9], [4], DType.int64);
+      try {
+        return digitize(a, bins, out: out);
+      } finally {
+        bins.dispose();
+      }
+    }),
+  ];
+
+  final layoutIndependentOps = <LayoutIndependentOpSpec>[
+    LayoutIndependentOpSpec('histogram(bins: 4)', (a) {
+      final h = histogram(a, bins: 4);
+      return [h.hist, h.binEdges];
+    }),
+    LayoutIndependentOpSpec('uniqueWithCounts', (a) {
+      final u = uniqueWithCounts(a);
+      return [u.values, u.counts];
+    }),
+    LayoutIndependentOpSpec('uniqueWithIndex', (a) {
+      final u = uniqueWithIndex(a);
+      return [u.values, u.index];
+    }),
+    LayoutIndependentOpSpec('nonzero', (a) => nonzero(a)),
+  ];
+
   group('Unary Operation Contracts', () {
     for (final op in unaryOps) {
       group(op.name, () {
@@ -381,19 +533,32 @@ void main() {
                 DType.float64,
               );
               final expected = op.call(a);
+              // Shape-changing operations (pad, unique) derive the `out`
+              // shape from the result instead of the input.
+              expect(
+                expected.rank,
+                equals(1),
+                reason: '${op.name} must map 1-D input to 1-D output',
+              );
+              final outShape = expected.shape;
+              final outSize = expected.size;
 
               // 1. Non-contiguous out view (step: 2)
-              final carrier = NDArray.full([12], 99.0, dtype: DType.float64);
+              final carrier = NDArray.full(
+                [2 * outSize],
+                99.0,
+                dtype: DType.float64,
+              );
               final outSlice = carrier.slice([
-                Slice(start: 0, stop: 12, step: 2),
+                Slice(start: 0, stop: 2 * outSize, step: 2),
               ]);
               final returned = op.call(a, out: outSlice);
               expect(sameId(returned, outSlice), isTrue);
               expect(allClose(outSlice, expected), isTrue);
               final untouched = carrier.slice([
-                Slice(start: 1, stop: 12, step: 2),
+                Slice(start: 1, stop: 2 * outSize, step: 2),
               ]);
-              for (var i = 0; i < 6; i++) {
+              for (var i = 0; i < outSize; i++) {
                 expect(
                   untouched[[i]],
                   equals(99.0),
@@ -405,8 +570,11 @@ void main() {
               // 2. 2D transposed out view
               final a2d = a.reshape([2, 3]);
               final expected2d = op.call(a2d);
-              final tOutCarrier = NDArray.zeros([3, 2], DType.float64);
-              final tOutView = tOutCarrier.transpose(); // shape [2, 3]
+              final tOutCarrier = NDArray.zeros(
+                expected2d.shape.reversed.toList(),
+                DType.float64,
+              );
+              final tOutView = tOutCarrier.transpose(); // expected2d.shape
               op.call(a2d, out: tOutView);
               expect(
                 allClose(tOutView, expected2d),
@@ -416,7 +584,7 @@ void main() {
 
               // 3. Read-only broadcast out view (stride == 0) must throw ArgumentError
               final bcastSource = NDArray.fromList([99.0], [1], DType.float64);
-              final bcastOut = broadcastTo(bcastSource, [6]);
+              final bcastOut = broadcastTo(bcastSource, outShape);
               expect(
                 () => op.call(a, out: bcastOut),
                 throwsArgumentError,
@@ -425,7 +593,7 @@ void main() {
               expect(bcastSource[[0]], equals(99.0));
 
               // Read-only out buffer rejection (isWriteable = false)
-              final roOut = NDArray.zeros([6], DType.float64)
+              final roOut = NDArray.zeros(outShape, DType.float64)
                 ..isWriteable = false;
               expect(
                 () => op.call(a, out: roOut),
@@ -433,16 +601,38 @@ void main() {
                 reason: '${op.name} must reject read-only out buffer',
               );
 
-              // Aliased non-contiguous out safety: reversed view
-              final revCarrier = linspace(0.5, 3.0, 6, dtype: DType.float64);
-              final revView = revCarrier.slice([Slice(step: -1)]);
-              final revExpected = op.call(revView.copy());
-              op.call(revView, out: revView);
-              expect(
-                allClose(revView, revExpected),
-                isTrue,
-                reason: '${op.name} failed aliased reversed out view safety',
-              );
+              if (_sameShape(outShape, a.shape)) {
+                // Aliased non-contiguous out safety: reversed view
+                final revCarrier = linspace(0.5, 3.0, 6, dtype: DType.float64);
+                final revView = revCarrier.slice([Slice(step: -1)]);
+                final revExpected = op.call(revView.copy());
+                op.call(revView, out: revView);
+                expect(
+                  allClose(revView, revExpected),
+                  isTrue,
+                  reason: '${op.name} failed aliased reversed out view safety',
+                );
+              } else if (outSize > a.size) {
+                // Shape-changing op: `out` is a buffer whose interior slice is
+                // the source (partial overlap, distinct shapes).
+                final aliasCarrier = NDArray.full(
+                  [outSize],
+                  99.0,
+                  dtype: DType.float64,
+                );
+                final srcView = aliasCarrier.slice([
+                  Slice(start: 1, stop: 1 + a.size),
+                ]);
+                a.copy(out: srcView);
+                final aliasExpected = op.call(srcView.copy());
+                op.call(srcView, out: aliasCarrier);
+                expect(
+                  allClose(aliasCarrier, aliasExpected),
+                  isTrue,
+                  reason:
+                      '${op.name} failed out aliasing an interior slice of the source',
+                );
+              }
 
               // 4. In-place out: a
               if (op.supportsInPlace) {
@@ -756,6 +946,558 @@ void main() {
           );
         });
       });
+    }
+  });
+
+  group('Matrix Operation Contracts (SPD input)', () {
+    // 4x4 symmetric positive-definite base. Every view below is a principal
+    // submatrix or a symmetric permutation of it, so it stays SPD.
+    NDArray<Float64> makeSpd() => NDArray.fromList(
+      <double>[
+        4.0, 1.0, 0.5, 0.25, //
+        1.0, 5.0, 1.0, 0.5, //
+        0.5, 1.0, 6.0, 1.0, //
+        0.25, 0.5, 1.0, 7.0, //
+      ],
+      [4, 4],
+      DType.float64,
+    );
+
+    for (final op in matrixOps) {
+      group(op.name, () {
+        test(
+          'transposed, interior principal, step-2 principal, and reversed-axes equivalence',
+          () {
+            NDArray.scope(() {
+              final a = makeSpd();
+
+              final tView = a.transpose();
+              expect(
+                allClose(op.call(tView), op.call(tView.copy())),
+                isTrue,
+                reason: '${op.name} failed transposed-view equivalence',
+              );
+
+              final interior = a.slice([
+                Slice(start: 1, stop: 3),
+                Slice(start: 1, stop: 3),
+              ]);
+              expect(
+                allClose(op.call(interior), op.call(interior.copy())),
+                isTrue,
+                reason: '${op.name} failed interior principal submatrix',
+              );
+
+              final carrier = NDArray.zeros([8, 8], DType.float64);
+              final step2 = carrier.slice([Slice(step: 2), Slice(step: 2)]);
+              a.copy(out: step2);
+              expect(
+                allClose(op.call(step2), op.call(step2.copy())),
+                isTrue,
+                reason: '${op.name} failed step-2 strided submatrix',
+              );
+
+              final reversed = a.slice([Slice(step: -1), Slice(step: -1)]);
+              expect(
+                allClose(op.call(reversed), op.call(reversed.copy())),
+                isTrue,
+                reason: '${op.name} failed negative-stride (both axes) view',
+              );
+            });
+          },
+        );
+
+        test(
+          'non-contiguous out, transposed out, self-aliased out, and read-only out rejection',
+          () {
+            NDArray.scope(() {
+              final a = makeSpd();
+              final expected = op.call(a);
+              final outShape = expected.shape;
+
+              if (expected.rank >= 1) {
+                // 1. Step-2 view along axis 0 of a doubled carrier.
+                final doubled = [outShape[0] * 2, ...outShape.sublist(1)];
+                final carrier = NDArray.full(
+                  doubled,
+                  99.0,
+                  dtype: DType.float64,
+                );
+                final rest = [
+                  for (var d = 1; d < outShape.length; d++) const Slice.all(),
+                ];
+                final outView = carrier.slice([
+                  Slice(start: 0, stop: doubled[0], step: 2),
+                  ...rest,
+                ]);
+                final returned = op.call(a, out: outView);
+                expect(
+                  sameId(returned, outView),
+                  isTrue,
+                  reason: '${op.name} must return the provided out view',
+                );
+                expect(
+                  allClose(outView, expected),
+                  isTrue,
+                  reason: '${op.name} failed writing to step-2 out view',
+                );
+                final untouched = carrier.slice([
+                  Slice(start: 1, stop: doubled[0], step: 2),
+                  ...rest,
+                ]);
+                expect(
+                  allClose(
+                    untouched,
+                    NDArray.full(untouched.shape, 99.0, dtype: DType.float64),
+                  ),
+                  isTrue,
+                  reason:
+                      '${op.name} corrupted interstitial elements of strided out',
+                );
+              }
+
+              if (expected.rank == 2) {
+                // 2. Transposed out view.
+                final tCarrier = NDArray.zeros([
+                  outShape[1],
+                  outShape[0],
+                ], DType.float64);
+                final tOut = tCarrier.transpose();
+                op.call(a, out: tOut);
+                expect(
+                  allClose(tOut, expected),
+                  isTrue,
+                  reason: '${op.name} failed writing to transposed out view',
+                );
+              }
+
+              if (op.supportsInPlace && _sameShape(outShape, a.shape)) {
+                // 3. out aliases the input (matmul(x, x, out: x), inv(a, out: a)).
+                final inPlace = a.copy();
+                op.call(inPlace, out: inPlace);
+                expect(
+                  allClose(inPlace, expected),
+                  isTrue,
+                  reason: '${op.name} failed in-place out: a aliasing',
+                );
+
+                final aliasT = a.copy();
+                op.call(aliasT, out: aliasT.transpose());
+                expect(
+                  allClose(aliasT.transpose(), expected),
+                  isTrue,
+                  reason: '${op.name} failed transposed self-aliased out',
+                );
+              }
+
+              // 4. Read-only out rejection.
+              final roOut = NDArray.zeros(outShape, DType.float64)
+                ..isWriteable = false;
+              expect(
+                () => op.call(a, out: roOut),
+                throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+                reason: '${op.name} must reject read-only out buffer',
+              );
+              if (expected.rank >= 1) {
+                final bcastSrc = NDArray.fromList([99.0], [1], DType.float64);
+                final bcastOut = broadcastTo(bcastSrc, outShape);
+                expect(
+                  () => op.call(a, out: bcastOut),
+                  throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+                  reason: '${op.name} must reject read-only broadcast out view',
+                );
+                expect(bcastSrc[[0]], equals(99.0));
+              }
+            });
+          },
+        );
+
+        test(
+          'disposed input or disposed out throws StateError and preserves ScratchArena',
+          () {
+            final markerBefore = ScratchArena.marker;
+            final disposed = makeSpd()..dispose();
+            final valid = makeSpd();
+            try {
+              expect(() => op.call(disposed), throwsStateError);
+              expect(() => op.call(valid, out: disposed), throwsStateError);
+            } finally {
+              valid.dispose();
+            }
+            expect(ScratchArena.marker, equals(markerBefore));
+          },
+        );
+      });
+    }
+  });
+
+  group('Index-Valued Operation Contracts (Int64 input -> NDArray<Int64>)', () {
+    NDArray<Int64> makeInts() => NDArray<Int64>.fromList(
+      [5, 0, 11, 3, 8, 1, 9, 2, 7, 10, 4, 6],
+      [12],
+      DType.int64,
+    );
+
+    for (final op in indexResultOps) {
+      group(op.name, () {
+        test('negative-stride, interior, and transposed equivalence', () {
+          NDArray.scope(() {
+            final a = makeInts();
+            final rev = a.slice([Slice(step: -1)]);
+            final expectedRev = op.call(rev.copy());
+            final actualRev = op.call(rev);
+            expect(actualRev.dtype, equals(DType.int64));
+            expect(
+              actualRev.toList(),
+              equals(expectedRev.toList()),
+              reason: '${op.name} failed negative-stride equivalence',
+            );
+
+            if (op.supports2D) {
+              final grid = a.reshape([3, 4]);
+              final interior = grid.slice([
+                Slice(start: 1, stop: 3),
+                Slice(start: 1, stop: 3),
+              ]);
+              expect(
+                op.call(interior).toList(),
+                equals(op.call(interior.copy()).toList()),
+                reason: '${op.name} failed interior offset subview',
+              );
+              final tView = grid.transpose();
+              expect(
+                op.call(tView).toList(),
+                equals(op.call(tView.copy()).toList()),
+                reason: '${op.name} failed transposed 2D view',
+              );
+            }
+          });
+        });
+
+        test(
+          'non-contiguous Int64 out view, read-only out rejection, and disposed input',
+          () {
+            NDArray.scope(() {
+              final a = makeInts();
+              final expected = op.call(a);
+              final n = expected.size;
+
+              final carrier = NDArray<Int64>.full(
+                [2 * n],
+                -1,
+                dtype: DType.int64,
+              );
+              final outView = carrier.slice([
+                Slice(start: 0, stop: 2 * n, step: 2),
+              ]);
+              final returned = op.call(a, out: outView);
+              expect(
+                sameId(returned, outView),
+                isTrue,
+                reason: '${op.name} must return the provided out view',
+              );
+              expect(
+                outView.toList(),
+                equals(expected.toList()),
+                reason: '${op.name} failed writing to step-2 Int64 out',
+              );
+              final untouched = carrier.slice([
+                Slice(start: 1, stop: 2 * n, step: 2),
+              ]);
+              expect(
+                untouched.toList(),
+                everyElement(equals(-1)),
+                reason:
+                    '${op.name} corrupted interstitial elements of strided out',
+              );
+
+              final roOut = NDArray<Int64>.zeros([n], DType.int64)
+                ..isWriteable = false;
+              expect(
+                () => op.call(a, out: roOut),
+                throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
+                reason: '${op.name} must reject read-only out buffer',
+              );
+            });
+
+            final disposed = makeInts()..dispose();
+            expect(
+              () => op.call(disposed),
+              throwsStateError,
+              reason: '${op.name} must reject a disposed input',
+            );
+          },
+        );
+      });
+    }
+  });
+
+  group('Layout-Independent Result Contracts (record/list-returning ops)', () {
+    for (final op in layoutIndependentOps) {
+      test(
+        '${op.name} negative-stride, step-2, and transposed equivalence',
+        () {
+          NDArray.scope(() {
+            final a = NDArray.fromList(
+              <double>[2.0, 0.5, 2.0, 1.5, 0.5, 3.0, 0.0, 2.0],
+              [8],
+              DType.float64,
+            );
+
+            void check(NDArray<Float64> view, String label) {
+              final actual = op.call(view);
+              final expected = op.call(view.copy());
+              expect(
+                actual.length,
+                equals(expected.length),
+                reason: '${op.name} result count differs for $label input',
+              );
+              for (var k = 0; k < actual.length; k++) {
+                expect(
+                  actual[k].dtype,
+                  equals(expected[k].dtype),
+                  reason:
+                      '${op.name} result #$k dtype differs for $label input',
+                );
+                expect(
+                  actual[k].shape,
+                  equals(expected[k].shape),
+                  reason:
+                      '${op.name} result #$k shape differs for $label input',
+                );
+                expect(
+                  allClose(actual[k], expected[k]),
+                  isTrue,
+                  reason: '${op.name} result #$k differs for $label input',
+                );
+              }
+            }
+
+            check(a.slice([Slice(step: -1)]), 'negative-stride');
+
+            final carrier = NDArray.zeros([16], DType.float64);
+            final step2 = carrier.slice([Slice(start: 0, stop: 16, step: 2)]);
+            a.copy(out: step2);
+            check(step2, 'step-2');
+
+            check(a.reshape([2, 4]).transpose(), 'transposed 2-D');
+          });
+        },
+      );
+
+      test('${op.name} disposed input throws StateError', () {
+        final disposed = NDArray.zeros([4], DType.float64)..dispose();
+        expect(() => op.call(disposed), throwsStateError);
+      });
+    }
+  });
+
+  group('Indexed Ufunc Contracts (atUfunc / reduceatUfunc) with a Dart oracle', () {
+    // Expected values are folded in pure Dart so the oracle shares no code
+    // with the native binary kernels.
+    double fold(BinaryOp op, double x, double y) => switch (op) {
+      BinaryOp.add => x + y,
+      BinaryOp.subtract => x - y,
+      BinaryOp.multiply => x * y,
+      BinaryOp.maximum => x > y ? x : y,
+      BinaryOp.minimum => x < y ? x : y,
+      _ => throw UnsupportedError('No Dart fold for $op'),
+    };
+    const ops = [
+      BinaryOp.add,
+      BinaryOp.subtract,
+      BinaryOp.multiply,
+      BinaryOp.maximum,
+      BinaryOp.minimum,
+    ];
+    const base = <double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0];
+
+    NDArray<Float64> arr(List<double> values) =>
+        NDArray.fromList(values, [values.length], DType.float64);
+
+    for (final op in ops) {
+      test(
+        'atUfunc($op): contiguous, step-2, reversed targets; repeated/negative indices; b aliasing a; scalar b',
+        () {
+          NDArray.scope(() {
+            const idx = <int>[0, 2, 2, -1, 5, 0];
+            final indices = NDArray<Int64>.fromList(idx, [6], DType.int64);
+            const bVals = <double>[0.5, 1.5, 2.5, 3.5, 4.5, 5.5];
+
+            List<double> oracle(List<double> start, List<double> bs) {
+              final r = List<double>.of(start);
+              for (var k = 0; k < idx.length; k++) {
+                final i = idx[k] < 0 ? idx[k] + r.length : idx[k];
+                r[i] = fold(op, r[i], bs[k]);
+              }
+              return r;
+            }
+
+            final expected = arr(oracle(base, bVals));
+            final b = arr(bVals);
+
+            // 1. Contiguous target.
+            final contig = arr(base);
+            atUfunc(contig, indices, b, op: op);
+            expect(
+              allClose(contig, expected),
+              isTrue,
+              reason: 'atUfunc($op) contiguous target',
+            );
+
+            // 2. Step-2 target inside a carrier; interstitials untouched.
+            final carrier = NDArray.full([16], 99.0, dtype: DType.float64);
+            final strided = carrier.slice([Slice(start: 0, stop: 16, step: 2)]);
+            arr(base).copy(out: strided);
+            atUfunc(strided, indices, b, op: op);
+            expect(
+              allClose(strided, expected),
+              isTrue,
+              reason: 'atUfunc($op) step-2 target',
+            );
+            final gaps = carrier.slice([Slice(start: 1, stop: 16, step: 2)]);
+            for (var i = 0; i < 8; i++) {
+              expect(
+                gaps[[i]],
+                equals(99.0),
+                reason: 'atUfunc($op) corrupted interstitial element $i',
+              );
+            }
+
+            // 3. Reversed (negative-stride) target.
+            final rev = arr(base.reversed.toList()).slice([Slice(step: -1)]);
+            atUfunc(rev, indices, b, op: op);
+            expect(
+              allClose(rev, expected),
+              isTrue,
+              reason: 'atUfunc($op) negative-stride target',
+            );
+
+            // 4. b aliases a: NumPy copies an overlapping operand first, so
+            //    the fold must see the original values of a.
+            final aliasTarget = arr(base);
+            final bAlias = aliasTarget.slice([Slice(start: 0, stop: 6)]);
+            final expectedAlias = arr(oracle(base, base.sublist(0, 6)));
+            atUfunc(aliasTarget, indices, bAlias, op: op);
+            expect(
+              allClose(aliasTarget, expectedAlias),
+              isTrue,
+              reason: 'atUfunc($op) b aliasing a (snapshot semantics)',
+            );
+
+            // 5. 0-D broadcast b.
+            final scalarTarget = arr(base);
+            final bScalar = NDArray.scalar(2.0, dtype: DType.float64);
+            final expectedScalar = arr(oracle(base, List.filled(6, 2.0)));
+            atUfunc(scalarTarget, indices, bScalar, op: op);
+            expect(
+              allClose(scalarTarget, expectedScalar),
+              isTrue,
+              reason: 'atUfunc($op) 0-D broadcast b',
+            );
+          });
+        },
+      );
+
+      // reduceatUfunc only accepts associative (reducible) operations.
+      if (op == BinaryOp.subtract) continue;
+
+      test(
+        'reduceatUfunc($op): contiguous, step-2, reversed input; strided out; axis 1 on a transposed view',
+        () {
+          NDArray.scope(() {
+            const idx = <int>[0, 3, 6];
+            final indices = NDArray<Int64>.fromList(idx, [3], DType.int64);
+
+            List<double> oracle(List<double> v) {
+              final r = <double>[];
+              for (var k = 0; k < idx.length; k++) {
+                final start = idx[k];
+                final end = k + 1 < idx.length ? idx[k + 1] : v.length;
+                var acc = v[start];
+                for (var i = start + 1; i < end; i++) {
+                  acc = fold(op, acc, v[i]);
+                }
+                r.add(acc);
+              }
+              return r;
+            }
+
+            final expected = arr(oracle(base));
+            final contig = arr(base);
+            expect(
+              allClose(reduceatUfunc(contig, indices, op: op), expected),
+              isTrue,
+              reason: 'reduceatUfunc($op) contiguous input',
+            );
+
+            final carrier = NDArray.zeros([16], DType.float64);
+            final strided = carrier.slice([Slice(start: 0, stop: 16, step: 2)]);
+            contig.copy(out: strided);
+            expect(
+              allClose(reduceatUfunc(strided, indices, op: op), expected),
+              isTrue,
+              reason: 'reduceatUfunc($op) step-2 input',
+            );
+
+            final rev = arr(base.reversed.toList()).slice([Slice(step: -1)]);
+            expect(
+              allClose(reduceatUfunc(rev, indices, op: op), expected),
+              isTrue,
+              reason: 'reduceatUfunc($op) negative-stride input',
+            );
+
+            final outCarrier = NDArray.full([6], 99.0, dtype: DType.float64);
+            final outView = outCarrier.slice([
+              Slice(start: 0, stop: 6, step: 2),
+            ]);
+            final returned = reduceatUfunc(
+              contig,
+              indices,
+              op: op,
+              out: outView,
+            );
+            expect(sameId(returned, outView), isTrue);
+            expect(
+              allClose(outView, expected),
+              isTrue,
+              reason: 'reduceatUfunc($op) step-2 out view',
+            );
+            final gaps = outCarrier.slice([Slice(start: 1, stop: 6, step: 2)]);
+            for (var i = 0; i < 3; i++) {
+              expect(
+                gaps[[i]],
+                equals(99.0),
+                reason: 'reduceatUfunc($op) corrupted interstitial element $i',
+              );
+            }
+
+            // axis: 1 on a transposed (non-contiguous) [2, 4] view.
+            // grid = base as [4, 2]; tView[i][j] = base[2 * j + i].
+            final tView = arr(base).reshape([4, 2]).transpose();
+            final idx2 = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
+            final res2 = reduceatUfunc(tView, idx2, op: op, axis: 1);
+            expect(res2.shape, equals([2, 2]));
+            for (var i = 0; i < 2; i++) {
+              final row = [for (var j = 0; j < 4; j++) base[2 * j + i]];
+              final expectedRow = [
+                fold(op, row[0], row[1]),
+                fold(op, row[2], row[3]),
+              ];
+              expect(
+                res2[[i, 0]],
+                closeTo(expectedRow[0], 1e-12),
+                reason: 'reduceatUfunc($op, axis: 1) row $i segment 0',
+              );
+              expect(
+                res2[[i, 1]],
+                closeTo(expectedRow[1], 1e-12),
+                reason: 'reduceatUfunc($op, axis: 1) row $i segment 1',
+              );
+            }
+          });
+        },
+      );
     }
   });
 
