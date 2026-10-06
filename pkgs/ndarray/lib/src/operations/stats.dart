@@ -6219,14 +6219,28 @@ NDArray<R> nanmedian<R extends DTypeTag>(
           result.setCellFlat(0, resVal);
           return result;
         case DType.complex128:
-          final res = r_nanmedian_complex128(a.pointer.cast(), size);
-          checkNativeOom();
-          result.setCellFlat(0, Complex(res.r, res.i));
+          final marker = ScratchArena.marker;
+          try {
+            final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+            r_nanmedian_complex128(a.pointer.cast(), size, outPtr);
+            checkNativeOom();
+            result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
+          } finally {
+            ScratchArena.reset(marker);
+          }
           return result;
         case DType.complex64:
-          final res = r_nanmedian_complex64(a.pointer.cast(), size);
-          checkNativeOom();
-          result.setCellFlat(0, Complex(res.r, res.i));
+          final marker = ScratchArena.marker;
+          try {
+            final outPtr = ScratchArena.allocate<cpx_f_t>(
+              ffi.sizeOf<cpx_f_t>(),
+            );
+            r_nanmedian_complex64(a.pointer.cast(), size, outPtr);
+            checkNativeOom();
+            result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
+          } finally {
+            ScratchArena.reset(marker);
+          }
           return result;
         case DType.float16:
         case DType.bfloat16:
@@ -6269,14 +6283,28 @@ NDArray<R> nanmedian<R extends DTypeTag>(
             result.setCellFlat(0, resVal);
             return result;
           case DType.complex128:
-            final res = r_nanmedian_complex128(flat.pointer.cast(), flat.size);
-            checkNativeOom();
-            result.setCellFlat(0, Complex(res.r, res.i));
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+              r_nanmedian_complex128(flat.pointer.cast(), flat.size, outPtr);
+              checkNativeOom();
+              result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
+            } finally {
+              ScratchArena.reset(marker);
+            }
             return result;
           case DType.complex64:
-            final res = r_nanmedian_complex64(flat.pointer.cast(), flat.size);
-            checkNativeOom();
-            result.setCellFlat(0, Complex(res.r, res.i));
+            final marker = ScratchArena.marker;
+            try {
+              final outPtr = ScratchArena.allocate<cpx_f_t>(
+                ffi.sizeOf<cpx_f_t>(),
+              );
+              r_nanmedian_complex64(flat.pointer.cast(), flat.size, outPtr);
+              checkNativeOom();
+              result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
+            } finally {
+              ScratchArena.reset(marker);
+            }
             return result;
           case DType.float16:
           case DType.bfloat16:

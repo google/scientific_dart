@@ -1556,8 +1556,8 @@ void s_quantile_uint8(const uint8_t *src, const int64_t *stridesSrc, double *des
 /* Nanmedian global reductions (contiguous) */
 double r_nanmedian_double(const double *src, int64_t size);
 float r_nanmedian_float(const float *src, int64_t size);
-cpx_t r_nanmedian_complex128(const cpx_t *src, int64_t size);
-cpx_f_t r_nanmedian_complex64(const cpx_f_t *src, int64_t size);
+void r_nanmedian_complex128(const cpx_t *src, int64_t size, cpx_t *out);
+void r_nanmedian_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out);
 
 /* Nanmedian axis reductions (strided) */
 void s_nanmedian_double(const double *src, const int64_t *stridesSrc, double *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis);

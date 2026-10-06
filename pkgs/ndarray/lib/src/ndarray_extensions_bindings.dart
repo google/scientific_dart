@@ -537,12 +537,24 @@ external double r_nanmedian_double(ffi.Pointer<ffi.Double> src, int size);
 external double r_nanmedian_float(ffi.Pointer<ffi.Float> src, int size);
 
 /// Nanmedian contiguous reduction for Complex128.
-@ffi.Native<cpx_t Function(ffi.Pointer<cpx_t>, ffi.Int64)>()
-external cpx_t r_nanmedian_complex128(ffi.Pointer<cpx_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_t>, ffi.Int64, ffi.Pointer<cpx_t>)
+>()
+external void r_nanmedian_complex128(
+  ffi.Pointer<cpx_t> src,
+  int size,
+  ffi.Pointer<cpx_t> out,
+);
 
 /// Nanmedian contiguous reduction for Complex64.
-@ffi.Native<cpx_f_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
-external cpx_f_t r_nanmedian_complex64(ffi.Pointer<cpx_f_t> src, int size);
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<cpx_f_t>, ffi.Int64, ffi.Pointer<cpx_f_t>)
+>()
+external void r_nanmedian_complex64(
+  ffi.Pointer<cpx_f_t> src,
+  int size,
+  ffi.Pointer<cpx_f_t> out,
+);
 
 /// Nanmedian strided axis reduction for Float64.
 @ffi.Native<
