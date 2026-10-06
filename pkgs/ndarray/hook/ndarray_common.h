@@ -254,26 +254,32 @@ static inline bool strided_buffers_any_overlap(
 }
 
 template <typename T>
+using ndarray_unsigned_arith_t = typename std::conditional<
+    (sizeof(T) < sizeof(uint32_t)),
+    uint32_t,
+    typename std::make_unsigned<T>::type>::type;
+
+template <typename T>
 static inline T ndarray_wrapping_add(T a, T b) noexcept {
-    using UT = typename std::make_unsigned<T>::type;
+    using UT = ndarray_unsigned_arith_t<T>;
     return static_cast<T>(static_cast<UT>(a) + static_cast<UT>(b));
 }
 
 template <typename T>
 static inline T ndarray_wrapping_sub(T a, T b) noexcept {
-    using UT = typename std::make_unsigned<T>::type;
+    using UT = ndarray_unsigned_arith_t<T>;
     return static_cast<T>(static_cast<UT>(a) - static_cast<UT>(b));
 }
 
 template <typename T>
 static inline T ndarray_wrapping_mul(T a, T b) noexcept {
-    using UT = typename std::make_unsigned<T>::type;
+    using UT = ndarray_unsigned_arith_t<T>;
     return static_cast<T>(static_cast<UT>(a) * static_cast<UT>(b));
 }
 
 template <typename T>
 static inline T ndarray_wrapping_neg(T a) noexcept {
-    using UT = typename std::make_unsigned<T>::type;
+    using UT = ndarray_unsigned_arith_t<T>;
     return static_cast<T>(static_cast<UT>(0) - static_cast<UT>(a));
 }
 

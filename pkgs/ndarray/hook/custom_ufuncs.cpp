@@ -116,13 +116,14 @@ struct ipow_helper {
                 return 0;
             }
         }
-        using UT = typename std::make_unsigned<T>::type;
+        using UT = ndarray_unsigned_arith_t<T>;
+        using UExp = typename std::make_unsigned<T>::type;
         UT result = 1;
         UT b = static_cast<UT>(base);
-        UT e = static_cast<UT>(exp);
+        UExp e = static_cast<UExp>(exp);
         while (e > 0) {
-            if (e & 1) result = static_cast<UT>(result * b);
-            b = static_cast<UT>(b * b);
+            if (e & 1) result = result * b;
+            b = b * b;
             e >>= 1;
         }
         return static_cast<T>(result);
@@ -5770,7 +5771,7 @@ void FUNCNAME(const T *src, const int64_t *stridesSrc, \
 #define OP_ADD_I16(x, y) ((int16_t)((uint16_t)(x) + (uint16_t)(y)))
 #define OP_MUL_I64(x, y) ((int64_t)((uint64_t)(x) * (uint64_t)(y)))
 #define OP_MUL_I32(x, y) ((int32_t)((uint32_t)(x) * (uint32_t)(y)))
-#define OP_MUL_I16(x, y) ((int16_t)((uint16_t)(x) * (uint16_t)(y)))
+#define OP_MUL_I16(x, y) ((int16_t)((uint32_t)(uint16_t)(x) * (uint32_t)(uint16_t)(y)))
 #define OP_MIN(x, y) (((x) < (y)) ? (x) : (y))
 #define OP_MAX(x, y) (((x) > (y)) ? (x) : (y))
 #define OP_MIN_FLOAT(x, y) ((std::isnan(x) || std::isnan(y)) ? ((x) + (y)) : (((x) < (y)) ? (x) : (y)))
@@ -7798,11 +7799,11 @@ static inline void kron_row_int16(
         }
 #endif
         for (; c < q; c++) {
-            dest_ptr[c] = (int16_t)((uint16_t)a_val * (uint16_t)b_row[c]);
+            dest_ptr[c] = (int16_t)((uint32_t)(uint16_t)a_val * (uint32_t)(uint16_t)b_row[c]);
         }
     } else {
         for (int64_t c = 0; c < q; c++) {
-            dest_ptr[c * strideRes_1] = (int16_t)((uint16_t)a_val * (uint16_t)b_row[c * strideB_1]);
+            dest_ptr[c * strideRes_1] = (int16_t)((uint32_t)(uint16_t)a_val * (uint32_t)(uint16_t)b_row[c * strideB_1]);
         }
     }
 }
@@ -8254,7 +8255,7 @@ void s_kron_boolean(const uint8_t *a, const int64_t *stridesA, const int64_t *sh
 #define NUM_MUL_OP(x, y) ((x) * (y))
 #define INT64_MUL_OP(x, y) ((int64_t)((uint64_t)(x) * (uint64_t)(y)))
 #define INT32_MUL_OP(x, y) ((int32_t)((uint32_t)(x) * (uint32_t)(y)))
-#define INT16_MUL_OP(x, y) ((int16_t)((uint16_t)(x) * (uint16_t)(y)))
+#define INT16_MUL_OP(x, y) ((int16_t)((uint32_t)(uint16_t)(x) * (uint32_t)(uint16_t)(y)))
 #define BOOL_AND_OP(x, y) (((x) != 0 && (y) != 0) ? 1 : 0)
 #define DEFINE_OUTER_IMPL(name, type, op) \
 void name(const type *a, int64_t strideA, int64_t sizeA, \
@@ -14145,22 +14146,22 @@ DEFINE_STRIDED_BINARY_IMPL(s_pow_bfloat16, uint16_t, uint16_t, uint16_t, encode_
 DEFINE_STRIDED_BINARY_IMPL(s_pow_boolean, uint8_t, uint8_t, uint8_t, (y == 0 || x != 0) ? (uint8_t)1 : (uint8_t)0)
 
 // Extended DType Square Implementations (Contiguous & Strided)
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_int16, int16_t, int16_t, (int16_t)((uint16_t)x * (uint16_t)x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_int8, int8_t, int8_t, (int8_t)((uint8_t)x * (uint8_t)x))
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_int16, int16_t, int16_t, ndarray_wrapping_mul<int16_t>(x, x))
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_int8, int8_t, int8_t, ndarray_wrapping_mul<int8_t>(x, x))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_uint64, uint64_t, uint64_t, x * x)
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_uint32, uint32_t, uint32_t, x * x)
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_uint16, uint16_t, uint16_t, (uint16_t)(x * x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_uint8, uint8_t, uint8_t, (uint8_t)(x * x))
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_uint16, uint16_t, uint16_t, ndarray_wrapping_mul<uint16_t>(x, x))
+DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_uint8, uint8_t, uint8_t, ndarray_wrapping_mul<uint8_t>(x, x))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_float16, uint16_t, uint16_t, encode_float16(decode_float16(x) * decode_float16(x)))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_bfloat16, uint16_t, uint16_t, encode_bfloat16(decode_bfloat16(x) * decode_bfloat16(x)))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_square_boolean, uint8_t, uint8_t, (x != 0) ? (uint8_t)1 : (uint8_t)0)
 
-DEFINE_STRIDED_UNARY_IMPL(s_square_int16, int16_t, int16_t, (int16_t)((uint16_t)x * (uint16_t)x))
-DEFINE_STRIDED_UNARY_IMPL(s_square_int8, int8_t, int8_t, (int8_t)((uint8_t)x * (uint8_t)x))
+DEFINE_STRIDED_UNARY_IMPL(s_square_int16, int16_t, int16_t, ndarray_wrapping_mul<int16_t>(x, x))
+DEFINE_STRIDED_UNARY_IMPL(s_square_int8, int8_t, int8_t, ndarray_wrapping_mul<int8_t>(x, x))
 DEFINE_STRIDED_UNARY_IMPL(s_square_uint64, uint64_t, uint64_t, x * x)
 DEFINE_STRIDED_UNARY_IMPL(s_square_uint32, uint32_t, uint32_t, x * x)
-DEFINE_STRIDED_UNARY_IMPL(s_square_uint16, uint16_t, uint16_t, (uint16_t)(x * x))
-DEFINE_STRIDED_UNARY_IMPL(s_square_uint8, uint8_t, uint8_t, (uint8_t)(x * x))
+DEFINE_STRIDED_UNARY_IMPL(s_square_uint16, uint16_t, uint16_t, ndarray_wrapping_mul<uint16_t>(x, x))
+DEFINE_STRIDED_UNARY_IMPL(s_square_uint8, uint8_t, uint8_t, ndarray_wrapping_mul<uint8_t>(x, x))
 DEFINE_STRIDED_UNARY_IMPL(s_square_float16, uint16_t, uint16_t, encode_float16(decode_float16(x) * decode_float16(x)))
 DEFINE_STRIDED_UNARY_IMPL(s_square_bfloat16, uint16_t, uint16_t, encode_bfloat16(decode_bfloat16(x) * decode_bfloat16(x)))
 DEFINE_STRIDED_UNARY_IMPL(s_square_boolean, uint8_t, uint8_t, (x != 0) ? (uint8_t)1 : (uint8_t)0)
@@ -14875,7 +14876,7 @@ void s_sum_int16(const int16_t *src, const int64_t *stridesSrc, int16_t *dest, c
 int64_t r_prod_int64(const int64_t *src, int64_t size) { return r_reduce_op_impl(src, size, (int64_t)1, [](int64_t a, int64_t b) { return (int64_t)((uint64_t)a * (uint64_t)b); }); }
 int32_t r_prod_int32(const int32_t *src, int64_t size) { return r_reduce_op_impl(src, size, (int32_t)1, [](int32_t a, int32_t b) { return (int32_t)((uint32_t)a * (uint32_t)b); }); }
 uint8_t r_prod_uint8(const uint8_t *src, int64_t size) { return r_reduce_op_impl(src, size, (uint8_t)1, [](uint8_t a, uint8_t b) { return (uint8_t)(a * b); }); }
-int16_t r_prod_int16(const int16_t *src, int64_t size) { return r_reduce_op_impl(src, size, (int16_t)1, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a * (uint16_t)b); }); }
+int16_t r_prod_int16(const int16_t *src, int64_t size) { return r_reduce_op_impl(src, size, (int16_t)1, [](int16_t a, int16_t b) { return ndarray_wrapping_mul<int16_t>(a, b); }); }
 void r_prod_complex128(const cpx_t *src, int64_t size, cpx_t *out) { if (out != nullptr) *out = r_reduce_op_impl(src, size, cpx_t{1.0, 0.0}, cpx_mul); }
 void r_prod_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out) { if (out != nullptr) *out = r_reduce_op_impl(src, size, cpx_f_t{1.0f, 0.0f}, cpx_mul_f); }
 
@@ -14895,7 +14896,7 @@ void s_prod_uint8(const uint8_t *src, const int64_t *stridesSrc, uint8_t *dest, 
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](uint8_t a, uint8_t b) { return (uint8_t)(a * b); });
 }
 void s_prod_int16(const int16_t *src, const int64_t *stridesSrc, int16_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis) {
-    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int16_t a, int16_t b) { return (int16_t)((uint16_t)a * (uint16_t)b); });
+    s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, [](int16_t a, int16_t b) { return ndarray_wrapping_mul<int16_t>(a, b); });
 }
 void s_prod_complex128(const cpx_t *src, const int64_t *stridesSrc, cpx_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis) {
     s_reduce_op_impl(src, stridesSrc, dest, stridesDest, shape, rank, axis, cpx_mul);

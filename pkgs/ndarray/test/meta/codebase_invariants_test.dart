@@ -2225,6 +2225,27 @@ void main() {
           reason:
               'round_to_even_integer in custom_ufuncs.cpp must use fixed-width uint64_t instead of unsigned long long',
         );
+        final commonHeaderSrc = File(
+          '${hookDir.path}/ndarray_common.h',
+        ).readAsStringSync();
+        expect(
+          commonHeaderSrc,
+          contains('using ndarray_unsigned_arith_t ='),
+          reason:
+              'ndarray_common.h must promote narrow (<32-bit) integers to uint32_t in wrapping helpers to avoid C++ integral promotion to signed int',
+        );
+        expect(
+          customUfuncsCpp,
+          isNot(contains('((uint16_t)x * (uint16_t)x)')),
+          reason:
+              'custom_ufuncs.cpp must not multiply uint16_t values without uint32_t promotion (causes signed int overflow UB when >= 46341)',
+        );
+        expect(
+          customUfuncsCpp,
+          isNot(contains('(uint16_t)(x * x)')),
+          reason:
+              'custom_ufuncs.cpp must not multiply uint16_t x * x without uint32_t promotion (causes signed int overflow UB when >= 46341)',
+        );
 
         // 2. nativeSourceFiles() in hashes.dart must include miniz.c and miniz.h
         final sourceFiles = nativeSourceFiles(

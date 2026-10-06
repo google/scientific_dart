@@ -4780,6 +4780,47 @@ void main() {
             final idx2 = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
             view.setIndicesScalar(idx2, 77.0);
             expect(carrier.toList(), equals([0.0, 77.0, 0.0, 0.0, 0.0, 77.0]));
+
+            // 8. 16-bit integer wrapping multiplication without signed int promotion UB (values whose uint16 bits >= 46341)
+            final i16 = NDArray<Int16>.fromList(
+              [-4, -300, 2],
+              [3],
+              DType.int16,
+            );
+            final u16 = NDArray<Uint16>.fromList(
+              [65532, 50000, 2],
+              [3],
+              DType.uint16,
+            );
+            expect(square(i16)[[0]], equals(16));
+            expect(square(flip(i16))[[2]], equals(16));
+            expect(square(u16)[[0]], equals(16));
+            expect(square(flip(u16))[[2]], equals(16));
+            expect(multiply(i16, i16)[[0]], equals(16));
+            expect(multiply(u16, u16)[[0]], equals(16));
+            expect(prod(i16).scalar, equals(2400));
+            expect(prod(flip(i16)).scalar, equals(2400));
+            expect(cumprod(i16).toList(), equals([-4, 1200, 2400]));
+            expect(kron(i16, i16)[[0]], equals(16));
+            expect(kron(flip(i16), flip(i16))[[8]], equals(16));
+            expect(outer(i16, i16)[[0, 0]], equals(16));
+            expect(cross(i16, flip(i16)).shape, equals([3]));
+            final exp16 = NDArray<Int16>.fromList([2, 2, 2], [3], DType.int16);
+            final uexp16 = NDArray<Uint16>.fromList(
+              [2, 2, 2],
+              [3],
+              DType.uint16,
+            );
+            expect(power(i16, exp16)[[0]], equals(16));
+            expect(power(u16, uexp16)[[0]], equals(16));
+            expect(
+              reduceatUfunc(
+                i16,
+                NDArray<Int64>.fromList([0], [1], DType.int64),
+                op: BinaryOp.multiply,
+              )[[0]],
+              equals(2400),
+            );
           });
         },
       );
