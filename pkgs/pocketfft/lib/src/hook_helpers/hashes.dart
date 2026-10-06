@@ -32,7 +32,7 @@ const version = 'artifacts-v0.2.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
-    'd903d66961bf24b31c786cb8b0caa9edfa68fadd08d27ab1777fdf10ee371d83';
+    '75e074691c4d751b31c1bff0004d275b6d3ea835d06f158157b6c4a128761d81';
 
 /// ASCII marker prefix embedded in compiled `pocketfft` binaries.
 const sourceHashMarkerPrefix = 'POCKETFFT_SOURCE_HASH=';
@@ -111,6 +111,15 @@ List<File> nativeSourceFiles(Uri packageRoot) {
         name.endsWith('.h') ||
         name.endsWith('.def');
   }).toList();
+  for (final relPath in const [
+    'third_party/miniz/miniz.c',
+    'third_party/miniz/miniz.h',
+  ]) {
+    final extra = File.fromUri(packageRoot.resolve(relPath));
+    if (extra.existsSync()) {
+      files.add(extra);
+    }
+  }
   files.sort(
     (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
   );
@@ -142,13 +151,13 @@ String pocketfftArtifactName(OS os, Architecture arch) {
 /// SHA-256 digests for prebuilt `pocketfft` binaries indexed by `(OS, Architecture)`.
 final fileHashes = <(OS, Architecture), String>{
   (OS.linux, Architecture.x64):
-      'a2f25d0cf8af5f34ec41a30ebca8dee26bb2d66cc9cb384961d496a619bc4aad',
+      '25427edf4e095e844e30e8a563ad36c43173b2153196746204523b2ff2bc0315',
   (OS.linux, Architecture.arm64):
-      '65b8067ccdab9c252f4bd4d86d03c298257e219da5bc84d259492f692a987b14',
+      '85efe3238e7ed956c3da6f54c2282d26f59a19d016801f3db55b00f5268513e7',
   (OS.macOS, Architecture.arm64):
-      '7824f1e28d548219cde5844c3d10ce518b31fbf804f3ff5e6a7953f083dc0870',
+      '4f7beda3de31d02abc9dad57aed2d405a9b8b5e42bcd7b22e8f4a7b05e914256',
   (OS.macOS, Architecture.x64):
-      '435b4d928a49dd0b86309ddb16163187e73bc382f8fed5724b1d1af88d1750f3',
+      'd9fb2ad122c825997a63cc84138d137c411e0d65c373787ff59754ede577b0e9',
   (OS.windows, Architecture.x64):
-      '6dca3a5a60d8cfbf5e14eea21ee0cf4668590a69000ad790ca7f989b95766550',
+      '39a55d5c1c53ca5ae63b6d683bc5cccdc8274fc0121feb506e145c989a190198',
 };

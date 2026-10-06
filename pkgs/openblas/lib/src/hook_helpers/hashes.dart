@@ -32,7 +32,7 @@ const version = 'artifacts-v0.2.0';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
-    '4b7f2d5c6fb05d4977d6641c63dca911acb67547e15344d5d88e85d7672d3a0d';
+    '6b163b812db590ff4bfd362ae4be624a35bfb60f290a608e246dcfd5d28415b5';
 
 /// ASCII marker prefix embedded in compiled `openblas` extension binaries.
 const sourceHashMarkerPrefix = 'OPENBLAS_SOURCE_HASH=';
@@ -99,7 +99,8 @@ void verifyArtifactSourceHash(
   }
 }
 
-/// Lists the tracked native source files in `hook/` under [packageRoot].
+/// Lists the tracked native source files in `hook/` (and `third_party/miniz/`)
+/// under [packageRoot].
 List<File> nativeSourceFiles(Uri packageRoot) {
   final hookDir = Directory.fromUri(packageRoot.resolve('hook/'));
   if (!hookDir.existsSync()) return const [];
@@ -111,6 +112,15 @@ List<File> nativeSourceFiles(Uri packageRoot) {
         name.endsWith('.h') ||
         name.endsWith('.def');
   }).toList();
+  for (final relPath in const [
+    'third_party/miniz/miniz.c',
+    'third_party/miniz/miniz.h',
+  ]) {
+    final file = File.fromUri(packageRoot.resolve(relPath));
+    if (file.existsSync()) {
+      files.add(file);
+    }
+  }
   files.sort(
     (a, b) => a.uri.pathSegments.last.compareTo(b.uri.pathSegments.last),
   );
@@ -146,21 +156,21 @@ final fileHashes = <(OS, Architecture, String), String>{
   (OS.linux, Architecture.x64, 'openblas'):
       '89a5bd9a56f29babae59c73f1d37cd961036664ba0b9d7fa55b1dcc29321d535',
   (OS.linux, Architecture.x64, 'openblas_extensions'):
-      '046259f033276e79792749e293c27784510e91e71335e197379eb7675a9cafc4',
+      '7d9b42bfe43efcf2f2492d639b0523b7100153c47388c477862513b261deb8ff',
   (OS.linux, Architecture.arm64, 'openblas'):
       'df645117ecf5aadc53aa2d99a6fc72b7fff1bb7efbb3af4c91e8d743c1b3fb06',
   (OS.linux, Architecture.arm64, 'openblas_extensions'):
-      '68a0b3b80039e4094323d9bacb4c7612a80b7bb1b58a3fd41c5d849944371584',
+      '237a488830b5c83be69a2a722508a3de68c80e744a63ef045dc3c17eddab879b',
   (OS.macOS, Architecture.arm64, 'openblas'):
-      '02eba7b23489e640f376c2d27f0ed6e55c40a6f19e792b49973fd2858cadda78',
+      'f2db3cbc31fa0cdeaf9e4a119123c513973ac11bb950fd0ae7aa6351e7bcfc4b',
   (OS.macOS, Architecture.arm64, 'openblas_extensions'):
-      '8fb6cfef5d079ded35a8ede40e5e07c17647006ab06c8bd5549b3d37f44a034d',
+      '84647a092b5c53edcecdedcb847cd6fa2ffe768b270c8238bf5506e79a2b2f7e',
   (OS.macOS, Architecture.x64, 'openblas'):
-      '46d32d61c8e9f97a5c759802c75eb1e9f2af1010fb092f98d61f39275c0342e0',
+      'a3eb9fd839d8d215c1fa258009a7438dc8f92343b812ce7267e0d6199db6b399',
   (OS.macOS, Architecture.x64, 'openblas_extensions'):
-      '6a59534f0a871598296fc898df411dd9ca9a454a2d2e890eed4dec92475bacae',
+      '8403bb8519bdc1a0c67f42b911e2e4f26d4b58a750e41f30fe61e1fbaff5b582',
   (OS.windows, Architecture.x64, 'openblas'):
       'c8b6f93012b81eb5775955006a1a363d720ba2013b5262052944763e0a736346',
   (OS.windows, Architecture.x64, 'openblas_extensions'):
-      '80d84126c57346c5f32e3cc73af88eb92d4636385f97fd8450ef07fe643affaf',
+      'c6498fd3a89c88ac9e258af363f073e2b6d21da6aacefb59abc3c697760d12b0',
 };
