@@ -232,32 +232,99 @@ void main() {
 
   final binaryOps = <BinaryOpSpec>[
     BinaryOpSpec('add', (a, b, {out}) => add(a, b, out: out)),
+    BinaryOpSpec(
+      'addAs',
+      (a, b, {out}) => addAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('subtract', (a, b, {out}) => subtract(a, b, out: out)),
+    BinaryOpSpec(
+      'subtractAs',
+      (a, b, {out}) => subtractAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('multiply', (a, b, {out}) => multiply(a, b, out: out)),
+    BinaryOpSpec(
+      'multiplyAs',
+      (a, b, {out}) => multiplyAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('divide', (a, b, {out}) => divide(a, b, out: out)),
+    BinaryOpSpec(
+      'divideAs',
+      (a, b, {out}) => divideAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('floorDivide', (a, b, {out}) => floorDivide(a, b, out: out)),
+    BinaryOpSpec(
+      'floorDivideAs',
+      (a, b, {out}) => floorDivideAs(a, b, DType.float64, out: out),
+    ),
+    BinaryOpSpec('remainder', (a, b, {out}) => remainder(a, b, out: out)),
+    BinaryOpSpec(
+      'remainderAs',
+      (a, b, {out}) => remainderAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('power', (a, b, {out}) => power(a, b, out: out)),
+    BinaryOpSpec(
+      'powerAs',
+      (a, b, {out}) => powerAs(a, b, DType.float64, out: out),
+    ),
+    BinaryOpSpec('floatPower', (a, b, {out}) => floatPower(a, b, out: out)),
+    BinaryOpSpec(
+      'floatPowerAs',
+      (a, b, {out}) => floatPowerAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('atan2', (a, b, {out}) => atan2(a, b, out: out)),
+    BinaryOpSpec(
+      'atan2As',
+      (a, b, {out}) => atan2As(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('hypot', (a, b, {out}) => hypot(a, b, out: out)),
+    BinaryOpSpec(
+      'hypotAs',
+      (a, b, {out}) => hypotAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('copysign', (a, b, {out}) => copysign(a, b, out: out)),
+    BinaryOpSpec(
+      'copysignAs',
+      (a, b, {out}) => copysignAs(a, b, DType.float64, out: out),
+    ),
+    BinaryOpSpec('heaviside', (a, b, {out}) => heaviside(a, b, out: out)),
+    BinaryOpSpec(
+      'heavisideAs',
+      (a, b, {out}) => heavisideAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('fmod', (a, b, {out}) => fmod(a, b, out: out)),
+    BinaryOpSpec(
+      'fmodAs',
+      (a, b, {out}) => fmodAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('logaddexp', (a, b, {out}) => logaddexp(a, b, out: out)),
+    BinaryOpSpec(
+      'logaddexpAs',
+      (a, b, {out}) => logaddexpAs(a, b, DType.float64, out: out),
+    ),
     BinaryOpSpec('logaddexp2', (a, b, {out}) => logaddexp2(a, b, out: out)),
     BinaryOpSpec(
-      'minimum',
-      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.minimum, out: out),
+      'logaddexp2As',
+      (a, b, {out}) => logaddexp2As(a, b, DType.float64, out: out),
     ),
+    BinaryOpSpec('minimum', (a, b, {out}) => minimum(a, b, out: out)),
     BinaryOpSpec(
-      'maximum',
-      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.maximum, out: out),
+      'minimumAs',
+      (a, b, {out}) => minimumAs(a, b, DType.float64, out: out),
     ),
+    BinaryOpSpec('maximum', (a, b, {out}) => maximum(a, b, out: out)),
     BinaryOpSpec(
-      'fmin',
-      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.fmin, out: out),
+      'maximumAs',
+      (a, b, {out}) => maximumAs(a, b, DType.float64, out: out),
     ),
+    BinaryOpSpec('fmin', (a, b, {out}) => fmin(a, b, out: out)),
     BinaryOpSpec(
-      'fmax',
-      (a, b, {out}) => binaryUfunc(a, b, op: BinaryOp.fmax, out: out),
+      'fminAs',
+      (a, b, {out}) => fminAs(a, b, DType.float64, out: out),
+    ),
+    BinaryOpSpec('fmax', (a, b, {out}) => fmax(a, b, out: out)),
+    BinaryOpSpec(
+      'fmaxAs',
+      (a, b, {out}) => fmaxAs(a, b, DType.float64, out: out),
     ),
     BinaryOpSpec('where(greater(a, b), a, b)', (a, b, {out}) {
       final mask = greater(a, b);

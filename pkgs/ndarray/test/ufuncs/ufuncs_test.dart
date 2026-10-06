@@ -1113,8 +1113,7 @@ void main() {
         final b = NDArray.fromList([2.0], [1], DType.float64);
 
         expect(() => add<DTypeTag>(a, b), throwsArgumentError);
-        expect(() => addAs(a, b, DType.complex128), throwsArgumentError);
-        final c = add(a.astype(DType.complex128), b.astype(DType.complex128));
+        final c = addAs(a, b, DType.complex128);
         expect(c.dtype, DType.complex128);
         expect(c.getCell([0]).real, 3.0);
         expect(c.getCell([0]).imag, 1.0);
@@ -1156,26 +1155,29 @@ void main() {
         final i64 = NDArray.fromList([3], [1], DType.int64);
         final i32 = NDArray.fromList([4], [1], DType.int32);
 
-        // Mixed dtypes are rejected on add() and addAs(); explicit astype works
+        // Mixed dtypes are rejected on add(); addAs() and explicit astype work
         expect(() => add<DTypeTag>(f64, f32), throwsArgumentError);
-        expect(() => addAs(f64, f32, DType.float64), throwsArgumentError);
-        final r1 = add(f64, f32.astype(DType.float64));
+        final r1 = addAs(f64, f32, DType.float64);
         expect(r1.dtype, DType.float64);
+        expect(r1.toList(), [3.0]);
 
         expect(() => add<DTypeTag>(f32, i64), throwsArgumentError);
-        final r2 = add(f32.astype(DType.float64), i64.astype(DType.float64));
+        final r2 = addAs(f32, i64, DType.float64);
         expect(r2.dtype, DType.float64);
+        expect(r2.toList(), [5.0]);
 
         expect(() => add<DTypeTag>(f32, i32), throwsArgumentError);
-        final r2b = add(f32.astype(DType.float64), i32.astype(DType.float64));
+        final r2b = addAs(f32, i32, DType.float64);
         expect(r2b.dtype, DType.float64);
+        expect(r2b.toList(), [6.0]);
 
         expect(() => add<DTypeTag>(i64, i32), throwsArgumentError);
-        final r3 = add(i64, i32.astype(DType.int64));
+        final r3 = addAs(i64, i32, DType.int64);
         expect(r3.dtype, DType.int64);
+        expect(r3.toList(), [7]);
 
         expect(() => add<DTypeTag>(i32, f64), throwsArgumentError);
-        final r4 = add(i32.astype(DType.float64), f64);
+        final r4 = addAs(i32, f64, DType.float64);
         expect(r4.dtype, DType.float64);
         expect(r4.toList(), [5.0]);
       }),

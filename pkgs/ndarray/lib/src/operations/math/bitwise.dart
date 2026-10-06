@@ -1260,6 +1260,235 @@ NDArray<T> invert<T extends DTypeTag>(
   return result;
 }
 
+/// Computes the element-wise bitwise AND of [a] and [b] into the specified target integer [dtype].
+///
+/// Casts integer operands [a] and [b] to [dtype] and computes [bitwiseAnd].
+///
+/// **Preconditions:**
+/// - [a], [b], and [dtype] must be integer data types.
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, match the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/bitwise_example.dart lang=dart}
+///
+/// Reference: [NumPy bitwise_and](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_and.html)
+NDArray<R>
+bitwiseAndAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute bitwiseAndAs() on a disposed array.');
+  }
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return bitwiseAnd<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = bitwiseAnd<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the element-wise bitwise OR of [a] and [b] into the specified target integer [dtype].
+///
+/// Casts integer operands [a] and [b] to [dtype] and computes [bitwiseOr].
+///
+/// **Preconditions:**
+/// - [a], [b], and [dtype] must be integer data types.
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, match the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/bitwise_example.dart lang=dart}
+///
+/// Reference: [NumPy bitwise_or](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_or.html)
+NDArray<R>
+bitwiseOrAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute bitwiseOrAs() on a disposed array.');
+  }
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return bitwiseOr<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = bitwiseOr<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the element-wise bitwise XOR of [a] and [b] into the specified target integer [dtype].
+///
+/// Casts integer operands [a] and [b] to [dtype] and computes [bitwiseXor].
+///
+/// **Preconditions:**
+/// - [a], [b], and [dtype] must be integer data types.
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, match the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/bitwise_example.dart lang=dart}
+///
+/// Reference: [NumPy bitwise_xor](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_xor.html)
+NDArray<R>
+bitwiseXorAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute bitwiseXorAs() on a disposed array.');
+  }
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return bitwiseXor<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = bitwiseXor<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Shifts the bits of [a] to the left by [b] element-wise, computed into the specified target integer [dtype].
+///
+/// Casts integer operands [a] and [b] to [dtype] and computes [leftShift].
+///
+/// **Preconditions:**
+/// - [a], [b], and [dtype] must be integer data types.
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, match the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/bitwise_example.dart lang=dart}
+///
+/// Reference: [NumPy left_shift](https://numpy.org/doc/stable/reference/generated/numpy.left_shift.html)
+NDArray<R>
+leftShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute leftShiftAs() on a disposed array.');
+  }
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return leftShift<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = leftShift<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Shifts the bits of [a] to the right by [b] element-wise, computed into the specified target integer [dtype].
+///
+/// Casts integer operands [a] and [b] to [dtype] and computes [rightShift].
+///
+/// **Preconditions:**
+/// - [a], [b], and [dtype] must be integer data types.
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, match the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/bitwise_example.dart lang=dart}
+///
+/// Reference: [NumPy right_shift](https://numpy.org/doc/stable/reference/generated/numpy.right_shift.html)
+NDArray<R>
+rightShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute rightShiftAs() on a disposed array.');
+  }
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return rightShift<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = rightShift<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+void _validateBitwiseAsDTypes(
+  DType<DTypeTag> aDType,
+  DType<DTypeTag> bDType,
+  DType<DTypeTag> targetDType,
+) {
+  if (!aDType.isInteger || !bDType.isInteger || !targetDType.isInteger) {
+    throw ArgumentError.value(
+      !aDType.isInteger ? aDType : (!bDType.isInteger ? bDType : targetDType),
+      !aDType.isInteger ? 'a.dtype' : (!bDType.isInteger ? 'b.dtype' : 'dtype'),
+      'Must be integer data type for bitwise operations',
+    );
+  }
+}
+
 ({
   NDArray aCast,
   NDArray bCast,

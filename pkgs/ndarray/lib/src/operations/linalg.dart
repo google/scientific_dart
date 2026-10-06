@@ -7137,6 +7137,140 @@ NDArray<T> cross<T extends DTypeTag>(
   return result;
 }
 
+/// Matrix product of two arrays [a] and [b] computed into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [matmul], returning an
+/// [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - Neither [a] nor [b] may be a 0-D scalar array.
+/// - Inner matrix dimensions must be compatible.
+/// - If [out] is provided, it must be writeable, have the output shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Dispatches 2-D and batched floating-point and complex matrix products to OpenBLAS.
+///
+/// **Example:**
+/// {@example /example/linalg_example.dart lang=dart}
+///
+/// Reference: [NumPy matmul](https://numpy.org/doc/stable/reference/generated/numpy.matmul.html)
+NDArray<R> matmulAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<R>? out}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute matmulAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return matmul<DTypeTag>(a, b, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = matmul<R>(aCast, bCast, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the outer product of two vectors [a] and [b] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [outer], returning an
+/// [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, have shape `[a.size, b.size]`, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(M \cdot N)$ where $M = \text{a.size}$ and $N = \text{b.size}$.
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy outer](https://numpy.org/doc/stable/reference/generated/numpy.outer.html)
+NDArray<R> outerAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<R>? out}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute outerAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return outer<DTypeTag>(a, b, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = outer<R>(aCast, bCast, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the cross product of two (arrays of) vectors [a] and [b] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [cross], returning an
+/// [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - Cross product axes sizes must be 2 or 3 and match.
+/// - If [out] is provided, it must be writeable, have the output shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Uses native C vector cross loops.
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy cross](https://numpy.org/doc/stable/reference/generated/numpy.cross.html)
+NDArray<R>
+crossAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  int? axisa,
+  int? axisb,
+  int? axisc,
+  int? axis,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute crossAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return cross<DTypeTag>(
+          a,
+          b,
+          axisa: axisa,
+          axisb: axisb,
+          axisc: axisc,
+          axis: axis,
+          out: out,
+        )
+        as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = cross<R>(
+      aCast,
+      bCast,
+      axisa: axisa,
+      axisb: axisb,
+      axisc: axisc,
+      axis: axis,
+      out: out,
+    );
+    return out ?? res.detachToParentScope();
+  });
+}
+
 /// Matrix triangle selection for symmetric/Hermitian operations.
 enum MatrixTriangle {
   /// Lower triangular part.

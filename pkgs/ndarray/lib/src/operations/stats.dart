@@ -6934,7 +6934,7 @@ NDArray<R> cov<R extends DTypeTag>(
       final wComplexReshaped = wComplex.reshape([1, N]);
       final XTimesW = multiply<Complex128>(X, wComplexReshaped);
       final sumXW = sum<Complex128>(XTimesW, axis: 1);
-      final meanVal = divide<Complex128, Complex128, Complex128>(
+      final meanVal = divide<Complex128, Complex128>(
         sumXW,
         NDArray<Complex128>.scalar(
           Complex((v1 as num).toDouble(), 0.0),
@@ -7114,7 +7114,7 @@ NDArray<R> cov<R extends DTypeTag>(
     final wReshaped = w.reshape([1, N]);
     final XTimesW = multiply<Float64>(X, wReshaped);
     final sumXW = sum<Float64>(XTimesW, axis: 1);
-    final meanVal = divide<Float64, Float64, Float64>(
+    final meanVal = divide<Float64, Float64>(
       sumXW,
       NDArray<Float64>.scalar(v1, dtype: DType.float64),
     );
@@ -7231,7 +7231,7 @@ NDArray<R> corrcoef<R extends DTypeTag>(
       final stdRow = std.reshape([1, K]);
       final stdOuter = multiply<Complex128>(stdCol, stdRow);
 
-      final R_arr = divide<Complex128, Complex128, Complex128>(
+      final R_arr = divide<Complex128, Complex128>(
         C_cpx,
         stdOuter,
         out: out as NDArray<Complex128>?,
@@ -7286,7 +7286,7 @@ NDArray<R> corrcoef<R extends DTypeTag>(
     final stdRow = std.reshape([1, K]);
     final stdOuter = multiply<Float64>(stdCol, stdRow);
 
-    final R_arr = divide<Float64, Float64, Float64>(
+    final R_arr = divide<Float64, Float64>(
       C_f64,
       stdOuter,
       out: out as NDArray<Float64>?,

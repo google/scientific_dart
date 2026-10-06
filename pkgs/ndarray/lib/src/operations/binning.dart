@@ -860,7 +860,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       final histF64 = hist.dtype == DType.float64
           ? hist as NDArray<Float64>
           : castNDArray<Float64>(hist, DType.float64);
-      finalHist = divide<Float64, Float64, Float64>(histF64, divisor);
+      finalHist = divide<Float64, Float64>(histF64, divisor);
     } else if (targetHistDType != computeHistDType) {
       finalHist = castNDArray<AnySpec>(hist, targetHistDType);
     }

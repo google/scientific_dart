@@ -99,7 +99,7 @@ void main() {
 
         // Normalize using L1 norm (sum) to handle potential numerical drift
         final s = sum<Float64>(rawNext);
-        final normalized = divide<Float64, Float64, Float64>(rawNext, s);
+        final normalized = divide<Float64, Float64>(rawNext, s);
 
         // We must detach the result from the scope so it survives when the scope exits.
         return normalized.detachFromScope();

@@ -36,7 +36,7 @@ void main() {
               [length],
               DType.complex64,
             );
-            final res64 = divide<Complex64, Complex64, Complex64>(num64, den64);
+            final res64 = divide<Complex64, Complex64>(num64, den64);
             for (var i = 0; i < length; i++) {
               final val = res64.getCell([i]);
               expect(val.real.isNaN, isFalse, reason: 'len=$length idx=$i');
@@ -84,10 +84,7 @@ void main() {
               [length],
               DType.complex128,
             );
-            final res128 = divide<Complex128, Complex128, Complex128>(
-              num128,
-              den128,
-            );
+            final res128 = divide<Complex128, Complex128>(num128, den128);
             for (var i = 0; i < length; i++) {
               final val = res128.getCell([i]);
               expect(val.real.isNaN, isFalse, reason: 'len=$length idx=$i');

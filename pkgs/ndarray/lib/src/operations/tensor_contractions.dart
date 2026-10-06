@@ -1705,3 +1705,247 @@ NDArray<T> kron<T extends DTypeTag>(
     return result;
   });
 }
+
+/// Computes the dot product of two arrays [a] and [b].
+///
+/// Specifically:
+/// - If both [a] and [b] are 1-D arrays, it is the inner product of vectors
+///   (without complex conjugation).
+/// - If both [a] and [b] are 2-D arrays, it is matrix multiplication ([matmul]).
+/// - If either [a] or [b] is 0-D (scalar), it is equivalent to [multiply].
+/// - If [a] is an N-D array and [b] is a 1-D array, it is a sum product over
+///   the last axis of [a] and [b].
+/// - If [a] is an N-D array and [b] is an M-D array ($M \ge 2$), it is a sum
+///   product over the last axis of [a] and the second-to-last axis of [b].
+///
+/// **Preconditions:**
+/// - Both [a] and [b] must have the same [DType] and must not be disposed.
+/// - Contracted dimensions must have equal length.
+/// - If [out] is provided, it must be writeable, have the output shape, and match `a.dtype`.
+///
+/// **Performance considerations:**
+/// - Delegates 1-D and 2-D cases to [matmul] (OpenBLAS / SIMD C kernels) and
+///   higher-rank cases to [tensordot].
+///
+/// **Example:**
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
+///
+/// Reference: [NumPy dot](https://numpy.org/doc/stable/reference/generated/numpy.dot.html)
+NDArray<T> dot<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
+  NDArray<T>? out,
+}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute dot() on a disposed array.');
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b',
+      'Must have the same dtype as a (${a.dtype})',
+    );
+  }
+  if (a.rank == 0 || b.rank == 0) {
+    return multiply<T>(a, b, out: out);
+  }
+  if (b.rank == 1 || (a.rank == 2 && b.rank == 2)) {
+    return matmul<T>(a, b, out: out);
+  }
+  return tensordot<T>(
+    a,
+    b,
+    axes: TensordotAxes.pair(a.rank - 1, b.rank - 2),
+    out: out,
+  );
+}
+
+/// Computes the dot product of [a] and [b] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [dot], returning an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - Contracted dimensions must have equal length.
+/// - If [out] is provided, it must be writeable, have the output shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Delegates to [dot] after casting operands to [dtype].
+///
+/// **Example:**
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
+///
+/// Reference: [NumPy dot](https://numpy.org/doc/stable/reference/generated/numpy.dot.html)
+NDArray<R> dotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute dotAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return dot<DTypeTag>(a, b, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = dot<R>(aCast, bCast, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the tensor dot product of [a] and [b] along specified [axes] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [tensordot], returning an
+/// [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - Contracted axes must have matching sizes.
+/// - If [out] is provided, it must be writeable, have the output shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Converted to an optimized matrix multiplication ([matmul] / BLAS GEMM) via axis transposition and reshaping.
+///
+/// **Example:**
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
+///
+/// Reference: [NumPy tensordot](https://numpy.org/doc/stable/reference/generated/numpy.tensordot.html)
+NDArray<R>
+tensordotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  Object axes = const TensordotAxes.count(2),
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute tensordotAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return tensordot<DTypeTag>(a, b, axes: axes, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = tensordot<R>(aCast, bCast, axes: axes, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the inner product of two arrays [a] and [b] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [inner], returning an
+/// [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - For non-scalar arrays, the last dimension of [a] and [b] must match.
+/// - If [out] is provided, it must be writeable, have the output shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Delegates to [inner] after casting operands to [dtype].
+///
+/// **Example:**
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
+///
+/// Reference: [NumPy inner](https://numpy.org/doc/stable/reference/generated/numpy.inner.html)
+NDArray<R> innerAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<R>? out}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute innerAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return inner<DTypeTag>(a, b, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = inner<R>(aCast, bCast, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the flattened vector dot product of [a] and [b] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [vdot] (conjugating [a] if [dtype]
+/// is complex), returning an [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - `a.size` and `b.size` must be equal.
+/// - If [out] is provided, it must be writeable, have shape `[]`, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Delegates to [vdot] after casting operands to [dtype].
+///
+/// **Example:**
+/// {@example /example/linalg_multi_dot_example.dart lang=dart}
+///
+/// Reference: [NumPy vdot](https://numpy.org/doc/stable/reference/generated/numpy.vdot.html)
+NDArray<R> vdotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute vdotAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return vdot<DTypeTag>(a, b, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = vdot<R>(aCast, bCast, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the Kronecker product of two arrays [a] and [b] into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes [kron], returning an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], or [out] is disposed.
+/// - If [out] is provided, it must be writeable, have the output shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Delegates to [kron] (AVX2 SIMD C++ kernels) after casting operands to [dtype].
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy kron](https://numpy.org/doc/stable/reference/generated/numpy.kron.html)
+NDArray<R> kronAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
+    throw StateError('Cannot execute kronAs() on a disposed array.');
+  }
+  if ((a.dtype as DType<DTypeTag>) == dtype &&
+      (b.dtype as DType<DTypeTag>) == dtype) {
+    return kron<DTypeTag>(a, b, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = kron<R>(aCast, bCast, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}

@@ -861,6 +861,52 @@ NDArray<T> copysign<T extends DTypeTag>(
   }
 }
 
+/// Changes the sign of [x1] to that of [x2] element-wise, computed into the specified target [dtype].
+///
+/// Casts [x1] and [x2] to [dtype] and computes [copysign], returning an
+/// [NDArray<R>] whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - Complex numbers are not supported for [x1], [x2], or [dtype].
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy copysign](https://numpy.org/doc/stable/reference/generated/numpy.copysign.html)
+NDArray<R>
+copysignAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute copysignAs() on a disposed array.');
+  }
+  if (x1.dtype.isComplex || x2.dtype.isComplex || dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for copysign');
+  }
+  if ((x1.dtype as DType<DTypeTag>) == dtype &&
+      (x2.dtype as DType<DTypeTag>) == dtype) {
+    return copysign<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = copysign<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
 /// Returns a boolean [NDArray] where two arrays are element-wise equal within a tolerance.
 ///
 /// The tolerance relation is defined as:

@@ -1100,11 +1100,11 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
       return res;
     }
 
-    final logStart = divide<T, T, T>(
+    final logStart = divide<T, T>(
       log(startBroad as NDArray<AnySpec>) as NDArray<T>,
       toNDArray<T>(math.ln10, resolvedDType),
     );
-    final logStop = divide<T, T, T>(
+    final logStop = divide<T, T>(
       log(stopBroad as NDArray<AnySpec>) as NDArray<T>,
       toNDArray<T>(math.ln10, resolvedDType),
     );

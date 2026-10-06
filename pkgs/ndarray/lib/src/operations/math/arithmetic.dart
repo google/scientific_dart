@@ -771,14 +771,9 @@ NDArray<R> log1p<R extends DTypeTag>(
 }
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
-NDArray<R> logaddexp<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
-  x1,
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
+NDArray<R> logaddexp<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> x1,
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>>
   x2, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
@@ -828,7 +823,7 @@ NDArray<R> logaddexp<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(shape, targetDType);
-        logaddexp<R>(x1, x2, where: where, out: temp);
+        logaddexp<T, R>(x1, x2, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -974,14 +969,9 @@ NDArray<R> logaddexp<R extends DTypeTag>(
 }
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
-NDArray<R> logaddexp2<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
-  x1,
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
+NDArray<R> logaddexp2<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> x1,
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>>
   x2, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
@@ -1031,7 +1021,7 @@ NDArray<R> logaddexp2<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(shape, targetDType);
-        logaddexp2<R>(x1, x2, where: where, out: temp);
+        logaddexp2<T, R>(x1, x2, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -5835,7 +5825,17 @@ NDArray<T> add<T extends DTypeTag>(
       'Must have the same dtype as a (${a.dtype})',
     );
   }
-  final targetDType = a.dtype;
+  return _addKernel<T, T, T>(a, b, a.dtype, where: where, out: out);
+}
+
+NDArray<R>
+_addKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> targetDType, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
   final stridesA = broadcastResult.stridesA;
@@ -5856,34 +5856,46 @@ NDArray<T> add<T extends DTypeTag>(
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()
-            : NDArray<T>.create(commonShape, targetDType);
-        add<T>(a, b, where: where, out: temp);
+            : NDArray<R>.create(commonShape, targetDType);
+        _addKernel<Ta, Tb, R>(a, b, targetDType, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
     }
   }
-  if (a.dtype == DType.boolean) {
+  if (a.dtype == DType.boolean &&
+      b.dtype == DType.boolean &&
+      targetDType == DType.boolean) {
     if (out != null) {
       final outView = NDArray<Boolean>.view(
         out,
         shape: out.shape,
         strides: out.strides,
       );
-      logicalOr(a, b, where: where, out: outView);
+      logicalOr<Boolean>(
+        a as NDArray<Boolean>,
+        b as NDArray<Boolean>,
+        where: where,
+        out: outView,
+      );
       return out;
     }
-    return logicalOr(a, b, where: where) as NDArray<T>;
+    return logicalOr<Boolean>(
+          a as NDArray<Boolean>,
+          b as NDArray<Boolean>,
+          where: where,
+        )
+        as NDArray<R>;
   }
   final maskHolder = prepareMask(where, commonShape);
-  late final NDArray<T> result;
+  late final NDArray<R> result;
 
   final ndim = commonShape.length;
   final marker = ScratchArena.marker;
   try {
     result =
         out ??
-        NDArray<T>.create(commonShape, targetDType, zeroInit: where != null);
+        NDArray<R>.create(commonShape, targetDType, zeroInit: where != null);
     // Specialized paths for Float64 (as in original extensions.dart)
     final isContig =
         a.isContiguous &&
@@ -7508,12 +7520,22 @@ NDArray<T> subtract<T extends DTypeTag>(
       'Must have the same dtype as a (${a.dtype})',
     );
   }
-  if (a.dtype == DType.boolean) {
+  return _subtractKernel<T, T, T>(a, b, a.dtype, where: where, out: out);
+}
+
+NDArray<R>
+_subtractKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> targetDType, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (targetDType == DType.boolean) {
     throw UnsupportedError(
       "Boolean subtract, the '-' operator, is not supported; use logicalXor or bitwiseXor instead.",
     );
   }
-  final targetDType = resolveDType(a.dtype, b.dtype);
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
   final stridesA = broadcastResult.stridesA;
@@ -7534,25 +7556,21 @@ NDArray<T> subtract<T extends DTypeTag>(
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()
-            : NDArray<T>.create(commonShape, out.dtype);
-        subtract<T>(a, b, where: where, out: temp);
+            : NDArray<R>.create(commonShape, out.dtype);
+        _subtractKernel<Ta, Tb, R>(a, b, targetDType, where: where, out: temp);
         return temp.copy(out: out);
       });
     }
   }
   final maskHolder = prepareMask(where, commonShape);
-  late final NDArray<T> result;
+  late final NDArray<R> result;
 
   final ndim = commonShape.length;
   final marker = ScratchArena.marker;
   try {
     result =
         out ??
-        NDArray<T>.create(
-          commonShape,
-          targetDType as DType<T>,
-          zeroInit: where != null,
-        );
+        NDArray<R>.create(commonShape, targetDType, zeroInit: where != null);
     final isContig =
         a.isContiguous &&
         b.isContiguous &&
@@ -9183,7 +9201,17 @@ NDArray<T> multiply<T extends DTypeTag>(
       'Must have the same dtype as a (${a.dtype})',
     );
   }
-  final targetDType = a.dtype;
+  return _multiplyKernel<T, T, T>(a, b, a.dtype, where: where, out: out);
+}
+
+NDArray<R>
+_multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> targetDType, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
   final stridesA = broadcastResult.stridesA;
@@ -9204,33 +9232,45 @@ NDArray<T> multiply<T extends DTypeTag>(
       return NDArray.scope(() {
         final temp = where != null
             ? out.copy()
-            : NDArray<T>.create(commonShape, out.dtype);
-        multiply<T>(a, b, where: where, out: temp);
+            : NDArray<R>.create(commonShape, out.dtype);
+        _multiplyKernel<Ta, Tb, R>(a, b, targetDType, where: where, out: temp);
         return temp.copy(out: out);
       });
     }
   }
-  if (a.dtype == DType.boolean) {
+  if (a.dtype == DType.boolean &&
+      b.dtype == DType.boolean &&
+      targetDType == DType.boolean) {
     if (out != null) {
       final outView = NDArray<Boolean>.view(
         out,
         shape: out.shape,
         strides: out.strides,
       );
-      logicalAnd(a, b, where: where, out: outView);
+      logicalAnd<Boolean>(
+        a as NDArray<Boolean>,
+        b as NDArray<Boolean>,
+        where: where,
+        out: outView,
+      );
       return out;
     }
-    return logicalAnd(a, b, where: where) as NDArray<T>;
+    return logicalAnd<Boolean>(
+          a as NDArray<Boolean>,
+          b as NDArray<Boolean>,
+          where: where,
+        )
+        as NDArray<R>;
   }
   final maskHolder = prepareMask(where, commonShape);
-  late final NDArray<T> result;
+  late final NDArray<R> result;
 
   final ndim = commonShape.length;
   final marker = ScratchArena.marker;
   try {
     result =
         out ??
-        NDArray<T>.create(commonShape, targetDType, zeroInit: where != null);
+        NDArray<R>.create(commonShape, targetDType, zeroInit: where != null);
     final isContig =
         a.isContiguous &&
         b.isContiguous &&
@@ -10853,9 +10893,9 @@ NDArray<T> multiply<T extends DTypeTag>(
 /// - [a], [b], or [out] is disposed (throws [StateError]).
 /// - [a] and [b] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
-NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<R> divide<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -10876,6 +10916,23 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   if (targetDType.isInteger || targetDType == DType.boolean) {
     targetDType = DType.float64;
   }
+  return _divideKernel<T, T, R>(
+    a,
+    b,
+    targetDType as DType<R>,
+    where: where,
+    out: out,
+  );
+}
+
+NDArray<R>
+_divideKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> targetDType, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
   final stridesA = broadcastResult.stridesA;
@@ -10897,7 +10954,7 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(commonShape, out.dtype);
-        divide<Ta, Tb, R>(a, b, where: where, out: temp);
+        _divideKernel<Ta, Tb, R>(a, b, targetDType, where: where, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -10910,11 +10967,7 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   try {
     result =
         out ??
-        NDArray<R>.create(
-          commonShape,
-          targetDType as DType<R>,
-          zeroInit: where != null,
-        );
+        NDArray<R>.create(commonShape, targetDType, zeroInit: where != null);
     final isContig =
         a.isContiguous &&
         b.isContiguous &&
@@ -12393,7 +12446,7 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         if (result.dtype.isComplex || a.dtype.isComplex || b.dtype.isComplex) {
           final cpxA = castNDArray(a, DType.complex128);
           final cpxB = castNDArray(b, DType.complex128);
-          final cpxRes = divide<Complex128, Complex128, Complex128>(
+          final cpxRes = divide<Complex128, Complex128>(
             cpxA,
             cpxB,
             where: where,
@@ -12408,7 +12461,7 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         } else {
           final doubleA = castNDArray(a, DType.float64);
           final doubleB = castNDArray(b, DType.float64);
-          final doubleRes = divide<Float64, Float64, Float64>(
+          final doubleRes = divide<Float64, Float64>(
             doubleA,
             doubleB,
             where: where,
@@ -12452,14 +12505,82 @@ void _copyMaskedResult(NDArray src, NDArray dest, NDArray<DTypeTag>? where) {
   }
 }
 
+bool _isNativeMixedKernelInput(DType<DTypeTag> dt) => switch (dt) {
+  DType.float64 ||
+  DType.float32 ||
+  DType.int64 ||
+  DType.int32 ||
+  DType.int16 ||
+  DType.uint8 ||
+  DType.boolean ||
+  DType.complex128 ||
+  DType.complex64 => true,
+  DType.float16 ||
+  DType.bfloat16 ||
+  DType.int8 ||
+  DType.uint64 ||
+  DType.uint32 ||
+  DType.uint16 => false,
+};
+
+DType<DTypeTag>? _nativeMixedKernelOutputDType(
+  DType<DTypeTag> a,
+  DType<DTypeTag> b, {
+  required bool isDivide,
+}) {
+  if (!isDivide &&
+      a == b &&
+      (a == DType.uint64 ||
+          a == DType.uint32 ||
+          a == DType.uint16 ||
+          a == DType.int8)) {
+    return a;
+  }
+  if (!_isNativeMixedKernelInput(a) || !_isNativeMixedKernelInput(b)) {
+    return null;
+  }
+  if (a == DType.boolean && b == DType.boolean) {
+    return isDivide ? DType.float64 : DType.boolean;
+  }
+  if (a == DType.complex128 || b == DType.complex128) {
+    return DType.complex128;
+  }
+  if (a == DType.complex64 || b == DType.complex64) {
+    return (a == DType.float64 || b == DType.float64)
+        ? DType.complex128
+        : DType.complex64;
+  }
+  if (a == DType.float64 || b == DType.float64) {
+    return DType.float64;
+  }
+  if (a == DType.float32 || b == DType.float32) {
+    return DType.float32;
+  }
+  if (isDivide) {
+    return DType.float64;
+  }
+  if (a == DType.int64 || b == DType.int64) {
+    return DType.int64;
+  }
+  if (a == DType.int32 || b == DType.int32) {
+    return DType.int32;
+  }
+  if (a == DType.int16 || b == DType.int16) {
+    return DType.int16;
+  }
+  return DType.uint8;
+}
+
 /// Element-wise addition of [a] and [b] computed into the specified target [dtype].
 ///
-/// Both [a] and [b] must have the same [DType]. Casts operands to [dtype] and
-/// returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
+/// Accepts operands [a] and [b] of any compatible [DType] (including mixed
+/// dtypes), dispatching directly to single-pass mixed-type SIMD kernels when
+/// available or casting operands to [dtype]. Returns an [NDArray<R>] whose
+/// static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
+/// - [a] and [b] must have broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -12480,32 +12601,34 @@ NDArray<R> addAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute addAs() on a disposed array.');
   }
-  if (a.dtype != b.dtype) {
-    throw ArgumentError.value(
-      b.dtype,
-      'b',
-      'Must have the same dtype as a (${a.dtype})',
-    );
-  }
-  if (a.dtype == dtype) {
-    return add<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  if (_nativeMixedKernelOutputDType(a.dtype, b.dtype, isDivide: false) ==
+      dtype) {
+    return _addKernel<Ta, Tb, R>(a, b, dtype, where: where, out: out);
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = add<R>(aCast, bCast, where: where, out: out);
+    final res = _addKernel<R, R, R>(
+      aCast,
+      bCast,
+      dtype,
+      where: where,
+      out: out,
+    );
     return out ?? res.detachToParentScope();
   });
 }
 
 /// Element-wise subtraction of [a] and [b] computed into the specified target [dtype].
 ///
-/// Both [a] and [b] must have the same [DType]. Casts operands to [dtype] and
-/// returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
+/// Accepts operands [a] and [b] of any compatible [DType] (including mixed
+/// dtypes), dispatching directly to single-pass mixed-type SIMD kernels when
+/// available or casting operands to [dtype]. Returns an [NDArray<R>] whose
+/// static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
+/// - [a] and [b] must have broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -12527,32 +12650,34 @@ subtractAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute subtractAs() on a disposed array.');
   }
-  if (a.dtype != b.dtype) {
-    throw ArgumentError.value(
-      b.dtype,
-      'b',
-      'Must have the same dtype as a (${a.dtype})',
-    );
-  }
-  if (a.dtype == dtype) {
-    return subtract<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  if (_nativeMixedKernelOutputDType(a.dtype, b.dtype, isDivide: false) ==
+      dtype) {
+    return _subtractKernel<Ta, Tb, R>(a, b, dtype, where: where, out: out);
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = subtract<R>(aCast, bCast, where: where, out: out);
+    final res = _subtractKernel<R, R, R>(
+      aCast,
+      bCast,
+      dtype,
+      where: where,
+      out: out,
+    );
     return out ?? res.detachToParentScope();
   });
 }
 
 /// Element-wise multiplication of [a] and [b] computed into the specified target [dtype].
 ///
-/// Both [a] and [b] must have the same [DType]. Casts operands to [dtype] and
-/// returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
+/// Accepts operands [a] and [b] of any compatible [DType] (including mixed
+/// dtypes), dispatching directly to single-pass mixed-type SIMD kernels when
+/// available or casting operands to [dtype]. Returns an [NDArray<R>] whose
+/// static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
+/// - [a] and [b] must have broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -12574,32 +12699,34 @@ multiplyAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute multiplyAs() on a disposed array.');
   }
-  if (a.dtype != b.dtype) {
-    throw ArgumentError.value(
-      b.dtype,
-      'b',
-      'Must have the same dtype as a (${a.dtype})',
-    );
-  }
-  if (a.dtype == dtype) {
-    return multiply<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+  if (_nativeMixedKernelOutputDType(a.dtype, b.dtype, isDivide: false) ==
+      dtype) {
+    return _multiplyKernel<Ta, Tb, R>(a, b, dtype, where: where, out: out);
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = multiply<R>(aCast, bCast, where: where, out: out);
+    final res = _multiplyKernel<R, R, R>(
+      aCast,
+      bCast,
+      dtype,
+      where: where,
+      out: out,
+    );
     return out ?? res.detachToParentScope();
   });
 }
 
 /// Element-wise true division of [a] by [b] computed into the specified target [dtype].
 ///
-/// Both [a] and [b] must have the same [DType]. Casts operands or result to [dtype]
-/// and returns an [NDArray<R>] whose static type [R] is inferred from [dtype].
+/// Accepts operands [a] and [b] of any compatible [DType] (including mixed
+/// dtypes), dispatching directly to single-pass mixed-type SIMD kernels when
+/// available or casting operands/result to [dtype]. Returns an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [b], [where], or [out] is disposed.
-/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
+/// - [a] and [b] must have broadcast-compatible shapes.
 /// - If [out] is provided, its shape must match the broadcasted shape and its
 ///   dtype must equal [dtype].
 ///
@@ -12621,6 +12748,302 @@ divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute divideAs() on a disposed array.');
   }
+  if (_nativeMixedKernelOutputDType(a.dtype, b.dtype, isDivide: true) ==
+      dtype) {
+    return _divideKernel<Ta, Tb, R>(a, b, dtype, where: where, out: out);
+  }
+  return NDArray.scope(() {
+    if (!dtype.isInteger && dtype != DType.boolean) {
+      final aCast = castNDArray<R>(a, dtype);
+      final bCast = castNDArray<R>(b, dtype);
+      final res = _divideKernel<R, R, R>(
+        aCast,
+        bCast,
+        dtype,
+        where: where,
+        out: out,
+      );
+      return out ?? res.detachToParentScope();
+    }
+    final broadcastResult = broadcast(a, b);
+    if (out != null) {
+      validateOutBuffer(out);
+      if (!listEquals(out.shape, broadcastResult.shape) || out.dtype != dtype) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape and dtype',
+        );
+      }
+    }
+    final NDArray<DTypeTag> divRes;
+    if (a.dtype.isComplex || b.dtype.isComplex) {
+      final aCast = castNDArray<Complex128>(a, DType.complex128);
+      final bCast = castNDArray<Complex128>(b, DType.complex128);
+      divRes = _divideKernel<Complex128, Complex128, Complex128>(
+        aCast,
+        bCast,
+        DType.complex128,
+        where: where,
+      );
+    } else {
+      final aCast = castNDArray<Float64>(a, DType.float64);
+      final bCast = castNDArray<Float64>(b, DType.float64);
+      divRes = _divideKernel<Float64, Float64, Float64>(
+        aCast,
+        bCast,
+        DType.float64,
+        where: where,
+      );
+    }
+    final casted = castNDArray<R>(divRes, dtype);
+    if (out != null) {
+      _copyMaskedResult(casted, out, where);
+      return out;
+    }
+    return casted.detachToParentScope();
+  });
+}
+
+/// Element-wise floor division of [a] by [b] computed into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes `floorDivide` into [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - [a] and [b] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy floor_divide](https://numpy.org/doc/stable/reference/generated/numpy.floor_divide.html)
+NDArray<R>
+floorDivideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute floorDivideAs() on a disposed array.');
+  }
+  if (a.dtype == dtype && b.dtype == dtype) {
+    return floorDivide<R>(
+      a as NDArray<R>,
+      b as NDArray<R>,
+      where: where,
+      out: out,
+    );
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = floorDivide<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Element-wise remainder (modulo) of [a] divided by [b] computed into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes `remainder` into [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - [a] and [b] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy remainder](https://numpy.org/doc/stable/reference/generated/numpy.remainder.html)
+NDArray<R>
+remainderAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute remainderAs() on a disposed array.');
+  }
+  if (a.dtype == dtype && b.dtype == dtype) {
+    return remainder<R>(
+      a as NDArray<R>,
+      b as NDArray<R>,
+      where: where,
+      out: out,
+    );
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = remainder<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Alias for [remainderAs] matching `numpy.mod`.
+///
+/// Reference: [NumPy mod](https://numpy.org/doc/stable/reference/generated/numpy.mod.html)
+NDArray<R> modAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) => remainderAs<Ta, Tb, R>(a, b, dtype, where: where, out: out);
+
+/// Element-wise C-style `fmod` remainder of [x1] divided by [x2] computed into the specified target [dtype].
+///
+/// Casts [x1] and [x2] to [dtype] and computes `fmod` into [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy fmod](https://numpy.org/doc/stable/reference/generated/numpy.fmod.html)
+NDArray<R> fmodAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute fmodAs() on a disposed array.');
+  }
+  if (x1.dtype == dtype && x2.dtype == dtype) {
+    return fmod<R>(x1 as NDArray<R>, x2 as NDArray<R>, where: where, out: out);
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = fmod<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes element-wise quotient and remainder simultaneously into the specified target [dtype].
+///
+/// Casts [x1] and [x2] to [dtype] and returns `({NDArray<R> quotient, NDArray<R> remainder})`.
+///
+/// **Preconditions:**
+/// - It is an error if [x1] or [x2] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy divmod](https://numpy.org/doc/stable/reference/generated/numpy.divmod.html)
+({NDArray<R> quotient, NDArray<R> remainder}) divmodAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag
+>(NDArray<Ta> x1, NDArray<Tb> x2, DType<R> dtype) {
+  if (x1.isDisposed || x2.isDisposed) {
+    throw StateError('Cannot execute divmodAs() on a disposed array.');
+  }
+  if (x1.dtype == dtype && x2.dtype == dtype) {
+    return divmod<R>(x1 as NDArray<R>, x2 as NDArray<R>);
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = divmod<R>(x1Cast, x2Cast);
+    return (
+      quotient: res.quotient.detachToParentScope(),
+      remainder: res.remainder.detachToParentScope(),
+    );
+  });
+}
+
+/// Element-wise exponentiation $a^b$ computed into the specified target [dtype].
+///
+/// Casts [a] and [b] to [dtype] and computes `power` into [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - [a] and [b] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy power](https://numpy.org/doc/stable/reference/generated/numpy.power.html)
+NDArray<R>
+powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute powerAs() on a disposed array.');
+  }
+  if (a.dtype == dtype && b.dtype == dtype) {
+    return power<R>(a as NDArray<R>, b as NDArray<R>, where: where, out: out);
+  }
+  return NDArray.scope(() {
+    final aCast = castNDArray<R>(a, dtype);
+    final bCast = castNDArray<R>(b, dtype);
+    final res = power<R>(aCast, bCast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// First array elements raised to powers from second array, element-wise,
+/// promoting to at least double precision ([DType.float64] or [DType.complex128]).
+///
+/// Both [a] and [b] must have the same [DType]. Real and integer inputs are
+/// promoted to [DType.float64]; complex inputs are promoted to [DType.complex128],
+/// matching `numpy.float_power`.
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - [a] and [b] must have the same [DType] and broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal the promoted output dtype ([DType.float64] or [DType.complex128]).
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
+NDArray<R> floatPower<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>> a,
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>> b, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute floatPower() on a disposed array.');
+  }
   if (a.dtype != b.dtype) {
     throw ArgumentError.value(
       b.dtype,
@@ -12628,32 +13051,360 @@ divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       'Must have the same dtype as a (${a.dtype})',
     );
   }
-  var resolved = resolveDType(a.dtype, b.dtype);
-  if (resolved.isInteger) {
-    resolved = DType.float64;
+  final targetDType =
+      (a.dtype.isComplex ? DType.complex128 : DType.float64) as DType<R>;
+  return floatPowerAs<DTypeTag, DTypeTag, R>(
+    a,
+    b,
+    targetDType,
+    where: where,
+    out: out,
+  );
+}
+
+/// Element-wise float exponentiation of [a] to [b] computed in double precision
+/// ([DType.float64] or [DType.complex128]) and converted to the specified target [dtype].
+///
+/// Accepts operands [a] and [b] of any compatible [DType] (including mixed
+/// dtypes).
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - [a] and [b] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
+NDArray<R>
+floatPowerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute floatPowerAs() on a disposed array.');
   }
-  if (resolved == dtype) {
-    return divide<Ta, Tb, R>(a, b, where: where, out: out);
+  final computeDType =
+      (a.dtype.isComplex || b.dtype.isComplex || dtype.isComplex)
+      ? DType.complex128
+      : DType.float64;
+  if (computeDType == dtype) {
+    return powerAs<Ta, Tb, R>(a, b, dtype, where: where, out: out);
+  }
+  final broadcastResult = broadcast(a, b);
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, broadcastResult.shape) || out.dtype != dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
+      );
+    }
   }
   return NDArray.scope(() {
-    if (!dtype.isInteger && dtype != DType.boolean) {
-      final aCast = castNDArray<R>(a, dtype);
-      final bCast = castNDArray<R>(b, dtype);
-      final res = divide<R, R, R>(aCast, bCast, where: where, out: out);
-      return out ?? res.detachToParentScope();
-    }
-    final divRes = divide<Ta, Tb, DTypeTag>(a, b, where: where);
-    final casted = castNDArray<R>(divRes, dtype);
+    final computed = powerAs<Ta, Tb, DTypeTag>(
+      a,
+      b,
+      computeDType,
+      where: where,
+    );
+    final casted = castNDArray<R>(computed, dtype);
     if (out != null) {
-      if (!out.isWriteable ||
-          !listEquals(out.shape, casted.shape) ||
-          out.dtype != dtype) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must have compatible shape and dtype',
-        );
-      }
+      _copyMaskedResult(casted, out, where);
+      return out;
+    }
+    return casted.detachToParentScope();
+  });
+}
+
+/// Element-wise greatest common divisor of [x1] and [x2] computed into the specified target [dtype].
+///
+/// [dtype] must be an integer [DType]. Casts [x1] and [x2] to [dtype] and
+/// computes `gcd` into [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [dtype] must be an integer [DType].
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N \log(\min(|x_1|, |x_2|)))$.
+///
+/// Reference: [NumPy gcd](https://numpy.org/doc/stable/reference/generated/numpy.gcd.html)
+NDArray<R> gcdAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute gcdAs() on a disposed array.');
+  }
+  if (!dtype.isInteger) {
+    throw UnsupportedError('gcdAs requires an integer target DType');
+  }
+  if (x1.dtype == dtype && x2.dtype == dtype) {
+    return gcd<R>(x1 as NDArray<R>, x2 as NDArray<R>, where: where, out: out);
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = gcd<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Element-wise least common multiple of [x1] and [x2] computed into the specified target [dtype].
+///
+/// [dtype] must be an integer [DType]. Casts [x1] and [x2] to [dtype] and
+/// computes `lcm` into [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [dtype] must be an integer [DType].
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N \log(\min(|x_1|, |x_2|)))$.
+///
+/// Reference: [NumPy lcm](https://numpy.org/doc/stable/reference/generated/numpy.lcm.html)
+NDArray<R> lcmAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute lcmAs() on a disposed array.');
+  }
+  if (!dtype.isInteger) {
+    throw UnsupportedError('lcmAs requires an integer target DType');
+  }
+  if (x1.dtype == dtype && x2.dtype == dtype) {
+    return lcm<R>(x1 as NDArray<R>, x2 as NDArray<R>, where: where, out: out);
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = lcm<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes the Heaviside step function of [x1] with step value [x2] into the specified target [dtype].
+///
+/// Casts [x1] and [x2] to [dtype] (or [DType.float64] when [dtype] is not
+/// [DType.float32] or [DType.float64]) and returns an [NDArray<R>].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy heaviside](https://numpy.org/doc/stable/reference/generated/numpy.heaviside.html)
+NDArray<R>
+heavisideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute heavisideAs() on a disposed array.');
+  }
+  if (x1.dtype.isComplex || x2.dtype.isComplex || dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for heaviside');
+  }
+  if (x1.dtype == dtype && x2.dtype == dtype) {
+    return heaviside<R>(
+      x1 as NDArray<R>,
+      x2 as NDArray<R>,
+      where: where,
+      out: out,
+    );
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = heaviside<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Computes $\log(e^{x_1} + e^{x_2})$ element-wise into the specified target [dtype].
+///
+/// Accepts operands [x1] and [x2] of any real or integer [DType] (including
+/// mixed dtypes).
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy logaddexp](https://numpy.org/doc/stable/reference/generated/numpy.logaddexp.html)
+NDArray<R>
+logaddexpAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute logaddexpAs() on a disposed array.');
+  }
+  if (x1.dtype.isComplex || x2.dtype.isComplex || dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for logaddexp');
+  }
+  final broadcastResult = broadcast(x1, x2);
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, broadcastResult.shape) || out.dtype != dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for logaddexpAs',
+      );
+    }
+  }
+  return NDArray.scope(() {
+    if (dtype == DType.float32) {
+      final aCast = castNDArray<Float32>(x1, DType.float32);
+      final bCast = castNDArray<Float32>(x2, DType.float32);
+      final res = logaddexp<Float32, Float32>(
+        aCast,
+        bCast,
+        where: where,
+        out: out as NDArray<Float32>?,
+      );
+      return out ?? (res.detachToParentScope() as NDArray<R>);
+    }
+    final aCast = castNDArray<Float64>(x1, DType.float64);
+    final bCast = castNDArray<Float64>(x2, DType.float64);
+    if (dtype == DType.float64) {
+      final res = logaddexp<Float64, Float64>(
+        aCast,
+        bCast,
+        where: where,
+        out: out as NDArray<Float64>?,
+      );
+      return out ?? (res.detachToParentScope() as NDArray<R>);
+    }
+    final res = logaddexp<Float64, Float64>(aCast, bCast, where: where);
+    final casted = castNDArray<R>(res, dtype);
+    if (out != null) {
+      _copyMaskedResult(casted, out, where);
+      return out;
+    }
+    return casted.detachToParentScope();
+  });
+}
+
+/// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise into the specified target [dtype].
+///
+/// Accepts operands [x1] and [x2] of any real or integer [DType] (including
+/// mixed dtypes).
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, its shape must match the broadcasted shape and its
+///   dtype must equal [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// Reference: [NumPy logaddexp2](https://numpy.org/doc/stable/reference/generated/numpy.logaddexp2.html)
+NDArray<R>
+logaddexp2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute logaddexp2As() on a disposed array.');
+  }
+  if (x1.dtype.isComplex || x2.dtype.isComplex || dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for logaddexp2');
+  }
+  final broadcastResult = broadcast(x1, x2);
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, broadcastResult.shape) || out.dtype != dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for logaddexp2As',
+      );
+    }
+  }
+  return NDArray.scope(() {
+    if (dtype == DType.float32) {
+      final aCast = castNDArray<Float32>(x1, DType.float32);
+      final bCast = castNDArray<Float32>(x2, DType.float32);
+      final res = logaddexp2<Float32, Float32>(
+        aCast,
+        bCast,
+        where: where,
+        out: out as NDArray<Float32>?,
+      );
+      return out ?? (res.detachToParentScope() as NDArray<R>);
+    }
+    final aCast = castNDArray<Float64>(x1, DType.float64);
+    final bCast = castNDArray<Float64>(x2, DType.float64);
+    if (dtype == DType.float64) {
+      final res = logaddexp2<Float64, Float64>(
+        aCast,
+        bCast,
+        where: where,
+        out: out as NDArray<Float64>?,
+      );
+      return out ?? (res.detachToParentScope() as NDArray<R>);
+    }
+    final res = logaddexp2<Float64, Float64>(aCast, bCast, where: where);
+    final casted = castNDArray<R>(res, dtype);
+    if (out != null) {
       _copyMaskedResult(casted, out, where);
       return out;
     }

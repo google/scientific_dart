@@ -801,9 +801,9 @@ NDArray<Boolean> _compareHelper(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_and](https://numpy.org/doc/stable/reference/generated/numpy.logical_and.html)
-NDArray<Boolean> logicalAnd<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> logicalAnd<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -845,9 +845,9 @@ NDArray<Boolean> logicalAnd<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_or](https://numpy.org/doc/stable/reference/generated/numpy.logical_or.html)
-NDArray<Boolean> logicalOr<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> logicalOr<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
@@ -889,9 +889,9 @@ NDArray<Boolean> logicalOr<Ta extends DTypeTag, Tb extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_xor](https://numpy.org/doc/stable/reference/generated/numpy.logical_xor.html)
-NDArray<Boolean> logicalXor<Ta extends DTypeTag, Tb extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+NDArray<Boolean> logicalXor<T extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
 }) {
