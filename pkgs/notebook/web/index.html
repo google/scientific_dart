@@ -37,7 +37,6 @@
     }
     initWasm();
   </script>
-  <script src="editor_client.js"></script>
   <style>
     :root {
       --bg-color: #1e1e2e;
@@ -527,6 +526,11 @@
       </div>
     </div>
     <div class="toolbar">
+      <label for="runtimeModeSelect" style="font-size: 13px; color: #a6adc8; margin-right: 4px;">Runtime:</label>
+      <select id="runtimeModeSelect" onchange="switchRuntimeMode(this.value)" style="background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 6px 10px; border-radius: 6px; font-size: 13px; cursor: pointer; margin-right: 8px;">
+        <option value="ws">Local Server (VM)</option>
+        <option value="wasm">Serverless Wasm (Browser)</option>
+      </select>
       <label for="editorEngineSelect" style="font-size: 13px; color: #a6adc8; margin-right: 4px;">Editor Engine:</label>
       <select id="editorEngineSelect" onchange="switchEditorEngine(this.value)" style="background: #313244; color: #cdd6f4; border: 1px solid #45475a; padding: 6px 12px; border-radius: 6px; font-size: 13px; cursor: pointer; margin-right: 12px;">
         <option value="codemirror" selected>CodeMirror 5</option>
@@ -561,8 +565,17 @@
     </div>
   </main>
 
+  <script src="wasm_notebook_runtime.js"></script>
   <script>
     let ws;
+    let wasmRuntime = null;
+    let wsEverConnected = false;
+    const urlParams = new URLSearchParams(window.location.search);
+    const requestedMode = urlParams.get('mode');
+    let currentRuntimeMode =
+      requestedMode === 'wasm' || window.NOTEBOOK_SERVERLESS_DEFAULT === true
+        ? 'wasm'
+        : 'ws';
     let cellCount = 0;
     const pendingEvaluations = new Map();
     const pendingCompletions = new Map();
@@ -572,16 +585,99 @@
     let hoverTimeout = null;
     let selectedIndex = 0;
 
+    function populateDefaultStarterCellsIfEmpty() {
+      if (document.querySelectorAll('.cell').length === 0) {
+        addCellWithState("# Dart NDArray & Symbolic Notebook\nInteractive scientific computing in Dart with native acceleration.", "", false, false, null, 'markdown');
+        addCell("// Welcome to Dart NDArray Notebook!\n// Type 'Ctrl+Space' or '.' to test autocompletion.\nvar a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)");
+        addCell("// Multiply by scalar or matrix:\na * 2");
+      }
+    }
+
+    function collectNotebookCells() {
+      const cellsData = [];
+      document.querySelectorAll('.cell').forEach(cell => {
+        const code = cell._cm ? cell._cm.getValue() : (cell.querySelector('textarea') ? cell.querySelector('textarea').value : '');
+        const output = cell.querySelector('.output-container');
+        const type = cell.getAttribute('data-cell-type') || 'code';
+        cellsData.push({
+          id: cell.id,
+          type: type,
+          code: code,
+          output: output ? output.innerText : '',
+          outputs: cell._outputsList || [],
+          isError: output ? output.classList.contains('error') : false,
+          evaluated: cell.classList.contains('evaluated')
+        });
+      });
+      return cellsData;
+    }
+
+    function initWasmMode() {
+      currentRuntimeMode = 'wasm';
+      const runtimeSelect = document.getElementById('runtimeModeSelect');
+      if (runtimeSelect) runtimeSelect.value = 'wasm';
+      if (ws) {
+        try {
+          ws.onclose = null;
+          ws.close();
+        } catch (_) {}
+        ws = null;
+      }
+      if (!wasmRuntime && typeof window.WasmNotebookRuntime === 'function') {
+        wasmRuntime = new window.WasmNotebookRuntime({
+          onStatusChange: (state, text) => updateStatus(state, text)
+        });
+        window.wasmRuntime = wasmRuntime;
+      }
+      if (document.querySelectorAll('.cell').length === 0) {
+        const saved = wasmRuntime ? wasmRuntime.loadSessionFromLocalStorage() : null;
+        if (saved && saved.length > 0) {
+          saved.forEach(c => {
+            addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
+          });
+        } else {
+          populateDefaultStarterCellsIfEmpty();
+        }
+      }
+      if (wasmRuntime) {
+        wasmRuntime.init().catch(err => {
+          console.error('Wasm runtime init failed:', err);
+        });
+      }
+    }
+
+    function switchRuntimeMode(mode) {
+      if (mode === 'wasm') {
+        initWasmMode();
+      } else {
+        currentRuntimeMode = 'ws';
+        const runtimeSelect = document.getElementById('runtimeModeSelect');
+        if (runtimeSelect) runtimeSelect.value = 'ws';
+        initWebSocket();
+      }
+    }
+
     function initWebSocket() {
+      if (currentRuntimeMode === 'wasm') {
+        initWasmMode();
+        return;
+      }
       const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
       const wsUrl = `${protocol}//${window.location.host}/ws`;
       ws = new WebSocket(wsUrl);
 
       ws.onopen = () => {
+        wsEverConnected = true;
         updateStatus('connected', 'Kernel Ready');
       };
 
       ws.onclose = () => {
+        if (currentRuntimeMode === 'wasm') return;
+        if (!wsEverConnected && requestedMode !== 'ws' && typeof window.WasmNotebookRuntime === 'function') {
+          // Static server with no /ws endpoint -> automatically switch to Serverless Wasm mode.
+          initWasmMode();
+          return;
+        }
         updateStatus('disconnected', 'Disconnected (Reconnecting...)');
         setTimeout(initWebSocket, 2000);
       };
@@ -627,10 +723,8 @@
             msg.cells.forEach(c => {
               addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
             });
-          } else if (document.querySelectorAll('.cell').length === 0) {
-            addCellWithState("# Dart NDArray & Symbolic Notebook\nInteractive scientific computing in Dart with native acceleration.", "", false, false, null, 'markdown');
-            addCell("// Welcome to Dart NDArray Notebook!\n// Type 'Ctrl+Space' or '.' to test autocompletion.\nvar a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)");
-            addCell("// Multiply by scalar or matrix:\na * 2");
+          } else {
+            populateDefaultStarterCellsIfEmpty();
           }
         } else if (msg.type === 'hover') {
           const callback = pendingHovers.get(msg.id);
@@ -643,22 +737,14 @@
     }
 
     function autoSaveSession() {
+      const cellsData = collectNotebookCells();
+      if (currentRuntimeMode === 'wasm') {
+        if (wasmRuntime) {
+          wasmRuntime.saveSessionToLocalStorage(cellsData);
+        }
+        return;
+      }
       if (!ws || ws.readyState !== WebSocket.OPEN) return;
-      const cellsData = [];
-      document.querySelectorAll('.cell').forEach(cell => {
-        const code = cell._cm ? cell._cm.getValue() : (cell.querySelector('textarea') ? cell.querySelector('textarea').value : '');
-        const output = cell.querySelector('.output-container');
-        const type = cell.getAttribute('data-cell-type') || 'code';
-        cellsData.push({
-          id: cell.id,
-          type: type,
-          code: code,
-          output: output ? output.innerText : '',
-          outputs: cell._outputsList || [],
-          isError: output ? output.classList.contains('error') : false,
-          evaluated: cell.classList.contains('evaluated')
-        });
-      });
       ws.send(JSON.stringify({
         type: 'save_session',
         cells: cellsData
@@ -700,6 +786,12 @@
       const code = cm.getValue();
       const cursor = cm.getCursor();
       const offset = cm.indexFromPos(cursor);
+      if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+        wasmRuntime.getCompletions(collectNotebookCells(), cellId, code, offset).then((completions) => {
+          showCompletionPopupCm(cm, completions);
+        });
+        return;
+      }
       const reqId = `comp-${Date.now()}`;
 
       pendingCompletions.set(reqId, (completions) => {
@@ -761,6 +853,16 @@
 
     function requestHoverCm(cm, cellId, offset, x, y) {
       const code = cm.getValue();
+      if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+        wasmRuntime.getHover(code, offset).then(({ hover, hoverHtml }) => {
+          if (hoverHtml || hover) {
+            showHoverPopup(x + 12, y + 16, hover, hoverHtml);
+          } else {
+            scheduleCloseHoverPopup(300);
+          }
+        });
+        return;
+      }
       const reqId = `hover-${Date.now()}`;
 
       pendingHovers.set(reqId, (hoverText, hoverHtml) => {
@@ -1042,7 +1144,22 @@
     }
 
     function exportIpynb() {
+      if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+        return wasmRuntime.exportIpynbClientSide(collectNotebookCells());
+      }
       window.location.href = '/api/export/ipynb';
+    }
+
+    function importIpynbContentClientSide(content) {
+      if (!wasmRuntime) return;
+      const cells = wasmRuntime.parseIpynbJsonToSessionCells(content);
+      const notebook = document.getElementById('notebook');
+      notebook.innerHTML = '';
+      cellCount = 0;
+      cells.forEach(c => {
+        addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
+      });
+      autoSaveSession();
     }
 
     function triggerImportIpynb() {
@@ -1061,6 +1178,10 @@
         const content = e.target.result;
         try {
           JSON.parse(content); // validate JSON
+          if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+            importIpynbContentClientSide(content);
+            return;
+          }
           const res = await fetch('/api/import/ipynb', {
             method: 'POST',
             headers: { 'Content-Type': 'application/x-ipynb+json' },
@@ -1211,8 +1332,67 @@
         cell.remove();
         if (ws && ws.readyState === WebSocket.OPEN) {
           ws.send(JSON.stringify({ type: 'delete_cell', id: cellId }));
+        } else {
+          autoSaveSession();
         }
       }
+    }
+
+    function applyWasmBatchRunResult(res, targetCellId) {
+      if (!res.ok) {
+        const targetId =
+          targetCellId ||
+          Array.from(document.querySelectorAll('.cell[data-cell-type="code"]')).pop()?.id;
+        if (targetId) {
+          const outEl = document.getElementById(`output-${targetId}`);
+          const cellEl = document.getElementById(targetId);
+          if (outEl) {
+            renderOutputElement(outEl, res.error || 'Error', true, []);
+          }
+          if (
+            cellEl &&
+            currentEditorEngine === 'dart_editor' &&
+            cellEl._cm &&
+            typeof cellEl._cm.setDiagnostic === 'function'
+          ) {
+            let errLine = 0;
+            const lineMatch = /:(\d+):\d+:\s*Error:/i.exec(res.error || '');
+            if (lineMatch) {
+              errLine = Math.max(0, parseInt(lineMatch[1], 10) - 1);
+            }
+            cellEl._cm.setDiagnostic(errLine, 0, 12, String(res.error || '').substring(0, 120));
+          }
+        }
+        autoSaveSession();
+        return;
+      }
+
+      if (res.variables) {
+        renderVariableInspector(res.variables);
+      }
+
+      for (const cr of res.cells || []) {
+        const cEl = document.getElementById(cr.cellId);
+        const oEl = document.getElementById(`output-${cr.cellId}`);
+        if (!cEl || !oEl) continue;
+        const shouldRender =
+          !targetCellId ||
+          cr.cellId === targetCellId ||
+          !cEl.classList.contains('evaluated') ||
+          cr.isError;
+        if (shouldRender) {
+          renderOutputElement(oEl, cr.output, cr.isError, cr.outputs);
+          if (!cr.isError) {
+            cEl.classList.add('evaluated');
+          } else {
+            cEl.classList.remove('evaluated');
+          }
+          if (cr.outputs && cr.outputs.length > 0) {
+            cEl._outputsList = cr.outputs;
+          }
+        }
+      }
+      autoSaveSession();
     }
 
     function runCell(cellId, onComplete) {
@@ -1244,6 +1424,18 @@
       output.innerText = 'Running...';
       if (cell && cell._cm && typeof cell._cm.clearDiagnostics === 'function') {
         cell._cm.clearDiagnostics();
+      }
+
+      if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+        if (isLastCell) {
+          addCell();
+        }
+        const snapshotCells = collectNotebookCells();
+        wasmRuntime.executeCells(snapshotCells, cellId).then((res) => {
+          applyWasmBatchRunResult(res, cellId);
+          if (onComplete) onComplete();
+        });
+        return;
       }
 
       const reqId = `${cellId}-${Date.now()}`;
@@ -1289,6 +1481,23 @@
       const targetIndex = cells.findIndex(c => c.id === targetCellId);
       if (targetIndex === -1) return;
 
+      if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+        for (let i = 0; i <= targetIndex; i++) {
+          if (cells[i].getAttribute('data-cell-type') === 'markdown') {
+            renderMarkdownCell(cells[i].id);
+          } else {
+            const oEl = document.getElementById(`output-${cells[i].id}`);
+            if (oEl) {
+              oEl.className = 'output-container';
+              oEl.innerText = 'Running...';
+            }
+          }
+        }
+        const res = await wasmRuntime.executeCells(collectNotebookCells(), targetCellId);
+        applyWasmBatchRunResult(res, null);
+        return;
+      }
+
       for (let i = 0; i <= targetIndex; i++) {
         const cellId = cells[i].id;
         await new Promise((resolve) => {
@@ -1297,8 +1506,27 @@
       }
     }
 
-    function runAllCells() {
-      const cells = document.querySelectorAll('.cell');
+    async function runAllCells() {
+      const cells = Array.from(document.querySelectorAll('.cell'));
+      if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+        for (const c of cells) {
+          if (c.getAttribute('data-cell-type') === 'markdown') {
+            renderMarkdownCell(c.id);
+          } else {
+            const code = (c._cm ? c._cm.getValue() : '').trim();
+            if (code) {
+              const oEl = document.getElementById(`output-${c.id}`);
+              if (oEl) {
+                oEl.className = 'output-container';
+                oEl.innerText = 'Running...';
+              }
+            }
+          }
+        }
+        const res = await wasmRuntime.executeCells(collectNotebookCells(), null);
+        applyWasmBatchRunResult(res, null);
+        return;
+      }
       cells.forEach(cell => runCell(cell.id));
     }
 
@@ -1331,8 +1559,12 @@
     function toggleVariableInspector() {
       const drawer = document.getElementById('inspectorDrawer');
       drawer.classList.toggle('open');
-      if (drawer.classList.contains('open') && ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'inspect_variables' }));
+      if (drawer.classList.contains('open')) {
+        if (currentRuntimeMode === 'wasm' && wasmRuntime) {
+          renderVariableInspector(wasmRuntime.knownVariables);
+        } else if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'inspect_variables' }));
+        }
       }
     }
 
@@ -1356,8 +1588,10 @@
 
     window.runCell = runCell;
     window.runUntilCell = runUntilCell;
+    window.runAllCells = runAllCells;
     window.deleteCell = deleteCell;
     window.switchEditorEngine = switchEditorEngine;
+    window.switchRuntimeMode = switchRuntimeMode;
     window.formatCell = formatCell;
     window.toggleVariableInspector = toggleVariableInspector;
     window.addCell = addCell;
@@ -1365,6 +1599,8 @@
     window.renderMarkdownCell = renderMarkdownCell;
     window.editMarkdownCell = editMarkdownCell;
     window.exportIpynb = exportIpynb;
+    window.importIpynbContentClientSide = importIpynbContentClientSide;
+    window.collectNotebookCells = collectNotebookCells;
     window.triggerImportIpynb = triggerImportIpynb;
     window.handleImportIpynb = handleImportIpynb;
 
@@ -1372,6 +1608,8 @@
     window.addEventListener('DOMContentLoaded', () => {
       const select = document.getElementById('editorEngineSelect');
       if (select) select.value = currentEditorEngine;
+      const runtimeSelect = document.getElementById('runtimeModeSelect');
+      if (runtimeSelect) runtimeSelect.value = currentRuntimeMode;
       initWebSocket();
 
       window.addEventListener('scroll', () => {

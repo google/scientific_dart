@@ -1,0 +1,88 @@
+# Copyright 2026 Google LLC
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+name: Deploy Serverless Wasm Notebook to GitHub Pages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Serverless Wasm Notebook Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Dart SDK (main channel for dart2wasm experimental FFI)
+        uses: dart-lang/setup-dart@v1
+        with:
+          sdk: main
+
+      - name: Install LLVM 21 & Wasm32-WASI Toolchain Prerequisites
+        run: |
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
+          CODENAME=$(lsb_release -cs)
+          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
+          sudo apt-get update
+          sudo apt-get install -y clang-21 lld-21 llvm-21 wasi-libc
+
+      - name: Cache Wasm Sysroot & OpenBLAS Wasm128 Archive
+        uses: actions/cache@v4
+        with:
+          path: |
+            .dart_tool/wasm_sysroot
+            .dart_tool/wasm_build/libopenblas_wasm128.a
+            .dart_tool/wasm_build/libopenblas_wasm128.stamp
+            .dart_tool/wasm_build/objs
+          key: Linux-wasm-notebook-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h') }}
+          restore-keys: |
+            Linux-wasm-notebook-
+
+      - name: Install Dart Dependencies
+        run: dart pub get
+
+      - name: Build Serverless Wasm Notebook Static Bundle
+        run: dart run pkgs/notebook/bin/build_wasm_notebook.dart -o _site
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload GitHub Pages Artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

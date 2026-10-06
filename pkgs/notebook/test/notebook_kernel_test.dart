@@ -45,7 +45,7 @@ var a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)
     expect(result, contains('Declared variable a'));
 
     final evalResult = await kernel.execute('a * 2');
-    expect(evalResult, contains('NDArray'));
+    expect(evalResult, contains('[[2., 4.]'));
   });
 
   test('captures prints', () async {
@@ -90,7 +90,7 @@ Image(gradientArray)
       final code = '''
 import 'package:gpuarray/gpuarray.dart';
 
-final dev = GpuDevice.cpu();
+final dev = GpuDevice.create();
 final arr = GpuArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float32, device: dev);
 arr.sum().scalar
 ''';
@@ -104,7 +104,7 @@ arr.sum().scalar
     final code = '''
 import 'package:gpuarray/gpuarray.dart';
 
-final dev = GpuDevice.cpu();
+final dev = GpuDevice.create();
 final arr = GpuArray.fromList([1.0, 2.0, 3.0], [3], DType.float32, device: dev);
 display(arr.toWebGpuWidget());
 ''';
@@ -208,7 +208,7 @@ display(descriptor.createBrowserWidget(
   renderToCanvas: true,
   canvasWidth: size,
   canvasHeight: size,
-  colorMap: 'turbo',
+  colorMap: ColorMap.turbo,
   title: '🌊 2D GPUArray Fused Radial Ripple (WebGPU)',
 ));
 ''';
@@ -306,7 +306,7 @@ display(descriptor.createBrowserWidget(
   renderToCanvas: true,
   canvasWidth: size,
   canvasHeight: size,
-  colorMap: 'turbo',
+  colorMap: ColorMap.turbo,
   title: '🌀 Mandelbrot Loop (GPUArray Fused AST)',
 ));
 ''';
@@ -361,7 +361,7 @@ display(descriptor.createBrowserWidget(
   renderToCanvas: true,
   canvasWidth: size,
   canvasHeight: size,
-  colorMap: 'turbo',
+  colorMap: ColorMap.turbo,
   title: '⚡ Zero-Input Mandelbrot (Coordinate AST)',
 ));
 ''';

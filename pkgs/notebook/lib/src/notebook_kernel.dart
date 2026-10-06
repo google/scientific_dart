@@ -56,6 +56,9 @@ class NotebookKernel {
 
   LspClient? _lspClient;
   int _workspaceVersion = 1;
+  File? _savedNativeAssetsFile;
+  String? _savedNativeAssetsContent;
+  String? _savedWorkspaceContent;
 
   final Set<String> _imports = {
     "import 'package:ndarray/ndarray.dart';",
@@ -65,7 +68,44 @@ class NotebookKernel {
   final Map<String, String> _definitions = {};
 
   NotebookKernel({required this.workspaceDir, required this.dartSdkPath}) {
+    final wf = _getWorkspaceFile();
+    if (wf.existsSync()) {
+      _savedWorkspaceContent = wf.readAsStringSync();
+    }
     _writeWorkspace();
+  }
+
+  File? _findNativeAssetsYaml() {
+    var dir = Directory(workspaceDir).absolute;
+    for (var i = 0; i < 4; i++) {
+      final candidate = File(
+        p.join(dir.path, '.dart_tool', 'native_assets.yaml'),
+      );
+      if (candidate.existsSync()) return candidate;
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+    return null;
+  }
+
+  void _saveNativeAssetsYaml() {
+    if (_savedNativeAssetsContent != null) return;
+    final file = _findNativeAssetsYaml();
+    if (file != null && file.existsSync()) {
+      _savedNativeAssetsFile = file;
+      _savedNativeAssetsContent = file.readAsStringSync();
+    }
+  }
+
+  void _restoreNativeAssetsYaml() {
+    final file = _savedNativeAssetsFile;
+    final content = _savedNativeAssetsContent;
+    if (file != null && content != null) {
+      try {
+        file.writeAsStringSync(content);
+      } catch (_) {}
+    }
   }
 
   File _getWorkspaceFile() {
@@ -99,6 +139,7 @@ class NotebookKernel {
   }
 
   Future<void> _startKernelOnly() async {
+    _saveNativeAssetsYaml();
     final dartExecutable = p.join(dartSdkPath, 'bin', 'dart');
     var kernelScriptPath = p.join(workspaceDir, 'bin', 'kernel.dart');
     if (!File(kernelScriptPath).existsSync()) {
@@ -148,6 +189,7 @@ class NotebookKernel {
         'Failed to find VM Service URI from kernel process',
       ),
     );
+    _restoreNativeAssetsYaml();
 
     final wsUri = '${vmServiceUri.replaceFirst('http://', 'ws://')}ws';
     _service = await vmServiceConnectUri(wsUri);
@@ -194,7 +236,14 @@ class NotebookKernel {
 
   Future<void> _restartKernelProcess() async {
     await _service?.dispose();
-    _process?.kill();
+    final proc = _process;
+    if (proc != null) {
+      proc.kill();
+      try {
+        await proc.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
+    _restoreNativeAssetsYaml();
     _process = null;
     _service = null;
 
@@ -262,7 +311,19 @@ class NotebookKernel {
   Future<void> stop() async {
     await _lspClient?.stop();
     await _service?.dispose();
-    _process?.kill();
+    final proc = _process;
+    if (proc != null) {
+      proc.kill();
+      try {
+        await proc.exitCode.timeout(const Duration(seconds: 2));
+      } catch (_) {}
+    }
+    _restoreNativeAssetsYaml();
+    if (_savedWorkspaceContent != null) {
+      try {
+        _getWorkspaceFile().writeAsStringSync(_savedWorkspaceContent!);
+      } catch (_) {}
+    }
   }
 
   /// Formats Dart [code] using dartfmt ([DartFormatter]).
@@ -1072,8 +1133,13 @@ class NotebookKernel {
       }
     }
     buffer.writeln();
-    for (final def in _definitions.values) {
+    for (final entry in _definitions.entries) {
+      final sym = entry.key;
+      final def = entry.value;
       buffer.writeln(def);
+      if (def.startsWith('dynamic ') || def.startsWith('var ')) {
+        buffer.writeln('void _set_ws_$sym(dynamic v) { $sym = v; }');
+      }
       buffer.writeln();
     }
     final content = buffer.toString();
@@ -1171,19 +1237,26 @@ class NotebookKernel {
     final statements = body.block.statements;
     final topLevelDefs = <String>[];
     final bodyBuffer = StringBuffer();
+    final seenLocalVars = <String>{};
 
     for (var i = 0; i < statements.length; i++) {
       final stmt = statements[i];
       final isLast = (i == statements.length - 1);
 
       if (stmt is VariableDeclarationStatement) {
+        final typeAnnotation = stmt.variables.type?.toSource();
         for (final v in stmt.variables.variables) {
           final varName = v.name.lexeme;
           topLevelDefs.add('dynamic $varName;');
+          final isFirstInCell = seenLocalVars.add(varName);
+          final declPrefix = isFirstInCell ? '${typeAnnotation ?? 'var'} ' : '';
           if (v.initializer != null) {
-            bodyBuffer.writeln('$varName = ${v.initializer!.toSource()};');
-          } else {
-            bodyBuffer.writeln('// $varName');
+            bodyBuffer.writeln(
+              '$declPrefix$varName = ${v.initializer!.toSource()};',
+            );
+            bodyBuffer.writeln('_set_ws_$varName($varName);');
+          } else if (isFirstInCell) {
+            bodyBuffer.writeln('${typeAnnotation ?? 'dynamic'} $varName;');
           }
         }
       } else if (isLast && stmt is ExpressionStatement) {

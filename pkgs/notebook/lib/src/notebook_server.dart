@@ -24,6 +24,8 @@ class NotebookServer {
   final String workspaceDir;
   final String dartSdkPath;
   final int port;
+  final bool serverlessWasm;
+  final String? staticBundleDir;
 
   HttpServer? _server;
   NotebookKernel? _kernel;
@@ -33,6 +35,8 @@ class NotebookServer {
     required this.workspaceDir,
     required this.dartSdkPath,
     this.port = 8080,
+    this.serverlessWasm = false,
+    this.staticBundleDir,
   });
 
   int get actualPort => _server?.port ?? port;
@@ -127,24 +131,30 @@ class NotebookServer {
   }
 
   Future<void> start() async {
-    _loadSessionData();
+    if (!serverlessWasm) {
+      _loadSessionData();
 
-    _kernel = NotebookKernel(
-      workspaceDir: workspaceDir,
-      dartSdkPath: dartSdkPath,
-    );
+      _kernel = NotebookKernel(
+        workspaceDir: workspaceDir,
+        dartSdkPath: dartSdkPath,
+      );
 
-    print('Starting notebook kernel...');
-    await _kernel!.start();
-    print('Kernel started successfully.');
+      print('Starting notebook kernel...');
+      await _kernel!.start();
+      print('Kernel started successfully.');
+    } else {
+      print(
+        'Starting in Serverless Wasm mode (static files only, no active VM kernel)...',
+      );
+    }
 
     _server = await HttpServer.bind(InternetAddress.anyIPv4, port);
-    print('Server listening on http://localhost:$port');
+    print('Server listening on http://localhost:$actualPort');
 
     _server!.listen((HttpRequest request) async {
       final path = request.uri.path;
 
-      if (path == '/ws') {
+      if (!serverlessWasm && path == '/ws') {
         if (WebSocketTransformer.isUpgradeRequest(request)) {
           final socket = await WebSocketTransformer.upgrade(request);
           _handleWebSocket(socket);
@@ -152,7 +162,7 @@ class NotebookServer {
           request.response.statusCode = HttpStatus.badRequest;
           await request.response.close();
         }
-      } else if (path == '/api/export/ipynb') {
+      } else if (!serverlessWasm && path == '/api/export/ipynb') {
         final ipynbJson = IpynbNotebook.fromSessionCells(
           _sessionCells,
         ).toJsonString(pretty: true);
@@ -166,7 +176,9 @@ class NotebookServer {
         );
         request.response.write(ipynbJson);
         await request.response.close();
-      } else if (path == '/api/import/ipynb' && request.method == 'POST') {
+      } else if (!serverlessWasm &&
+          path == '/api/import/ipynb' &&
+          request.method == 'POST') {
         try {
           final body = await utf8.decoder.bind(request).join();
           final nb = IpynbNotebook.fromJsonString(body);
@@ -185,15 +197,42 @@ class NotebookServer {
           );
         }
         await request.response.close();
+      } else if (path == '/favicon.ico') {
+        request.response.statusCode = HttpStatus.noContent;
+        await request.response.close();
       } else {
         var requestedPath = request.uri.path;
         if (requestedPath == '/') requestedPath = '/index.html';
         final relativePath = requestedPath.startsWith('/')
             ? requestedPath.substring(1)
             : requestedPath;
-        final targetFile = File(p.join(workspaceDir, 'web', relativePath));
 
-        if (await targetFile.exists()) {
+        File? targetFile;
+        if (staticBundleDir != null) {
+          final f = File(p.join(staticBundleDir!, relativePath));
+          if (await f.exists()) targetFile = f;
+        }
+        if (targetFile == null) {
+          final webFile = File(p.join(workspaceDir, 'web', relativePath));
+          if (await webFile.exists()) {
+            targetFile = webFile;
+          } else {
+            final repoRoot = p.normalize(p.join(workspaceDir, '..', '..'));
+            final bundleFile = File(
+              p.join(
+                repoRoot,
+                '.dart_tool',
+                'wasm_notebook_bundle',
+                relativePath,
+              ),
+            );
+            if (await bundleFile.exists()) {
+              targetFile = bundleFile;
+            }
+          }
+        }
+
+        if (targetFile != null) {
           final ext = p.extension(targetFile.path).toLowerCase();
           switch (ext) {
             case '.wasm':
@@ -202,6 +241,9 @@ class NotebookServer {
             case '.mjs':
             case '.js':
               request.response.headers.set('content-type', 'text/javascript');
+              break;
+            case '.json':
+              request.response.headers.set('content-type', 'application/json');
               break;
             case '.html':
               request.response.headers.contentType = ContentType.html;
