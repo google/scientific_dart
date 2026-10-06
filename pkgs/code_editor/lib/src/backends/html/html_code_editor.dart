@@ -1168,6 +1168,21 @@ final class HtmlCodeEditor {
       );
     }
 
+    // Highlight matching brackets when focused
+    if (_isFocused) {
+      final bracketMatch = controller.getMatchingBracket();
+      if (bracketMatch != null) {
+        for (final pos in [bracketMatch.source, bracketMatch.match]) {
+          if (controller.foldingManager.isLineHidden(pos.line)) continue;
+          final top = pos.line * lineHeight;
+          final left = pos.column * charWidth;
+          selHtml.write(
+            '<div style="position: absolute; top: ${top}px; left: ${left}px; width: ${charWidth}px; height: ${lineHeight}px; background-color: rgba(249, 226, 175, 0.16); border: 1px solid rgba(249, 226, 175, 0.65); border-radius: 2px; box-sizing: border-box;"></div>',
+          );
+        }
+      }
+    }
+
     _selectionsLayer.innerHTML = selHtml.toString().toJS;
 
     // 4. Render Lines Text & Syntax Tokens
@@ -1190,11 +1205,8 @@ final class HtmlCodeEditor {
         linesHtml.write(_escapeHtml(lineStr.isEmpty ? ' ' : lineStr));
       } else {
         for (final t in tokens) {
-          final color = _getScopeColor(t.type, t.text);
-          final fontWeight = (t.type == TokenType.keyword) ? 'bold' : 'normal';
-          linesHtml.write(
-            '<span style="color: $color; font-weight: $fontWeight;">${_escapeHtml(t.text)}</span>',
-          );
+          final css = _buildTokenStyleCss(t);
+          linesHtml.write('<span style="$css">${_escapeHtml(t.text)}</span>');
         }
       }
 
@@ -1237,6 +1249,28 @@ final class HtmlCodeEditor {
         .replaceAll("'", '&#39;');
   }
 
+  String _buildTokenStyleCss(SyntaxToken token) {
+    final style = token.style;
+    final fg = style.foreground != null
+        ? '#${(style.foreground! & 0xFFFFFF).toRadixString(16).padLeft(6, '0')}'
+        : _getScopeColor(token.type, token.text);
+    final sb = StringBuffer('color: $fg;');
+    if (style.bold) {
+      sb.write(' font-weight: 600;');
+    }
+    if (style.italic) {
+      sb.write(' font-style: italic;');
+    }
+    if (style.underline && style.strikethrough) {
+      sb.write(' text-decoration: underline line-through;');
+    } else if (style.underline) {
+      sb.write(' text-decoration: underline;');
+    } else if (style.strikethrough) {
+      sb.write(' text-decoration: line-through;');
+    }
+    return sb.toString();
+  }
+
   String _getScopeColor(TokenType type, String text) {
     switch (type) {
       case TokenType.keyword:
@@ -1245,7 +1279,7 @@ final class HtmlCodeEditor {
         if (RegExp(r'^[A-Z]').hasMatch(text)) {
           return '#f9e2af'; // Type / Class Gold
         }
-        return '#89b4fa'; // Identifier Soft Blue
+        return '#cdd6f4'; // Identifier Text
       case TokenType.number:
         return '#fab387'; // Peach / Orange
       case TokenType.string:

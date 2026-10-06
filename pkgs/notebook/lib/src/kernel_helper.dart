@@ -169,8 +169,36 @@ final class Markdown extends Displayable {
   static String _simpleMarkdownToHtml(String text) {
     final lines = text.split('\n');
     final sb = StringBuffer();
+    var inCodeBlock = false;
+    var codeLang = 'dart';
+    final codeBuffer = StringBuffer();
+
     for (final line in lines) {
       final l = line.trimRight();
+      if (l.startsWith('```')) {
+        if (!inCodeBlock) {
+          inCodeBlock = true;
+          final langSpec = l.substring(3).trim();
+          codeLang = langSpec.isEmpty ? 'dart' : langSpec;
+          codeBuffer.clear();
+        } else {
+          inCodeBlock = false;
+          final escaped = codeBuffer
+              .toString()
+              .replaceAll('&', '&amp;')
+              .replaceAll('<', '&lt;')
+              .replaceAll('>', '&gt;');
+          sb.writeln(
+            '<pre style="background: #11111b; padding: 10px 14px; border-radius: 6px; overflow-x: auto; margin: 8px 0;"><code class="language-$codeLang" style="font-family: \'Fira Code\', monospace; font-size: 0.9em;">$escaped</code></pre>',
+          );
+        }
+        continue;
+      }
+      if (inCodeBlock) {
+        if (codeBuffer.isNotEmpty) codeBuffer.writeln();
+        codeBuffer.write(line);
+        continue;
+      }
       if (l.startsWith('# ')) {
         sb.writeln(
           '<h1 style="font-size: 1.6em; margin: 12px 0 6px 0; color: #89b4fa;">${_formatInlineMd(l.substring(2))}</h1>',
@@ -192,6 +220,16 @@ final class Markdown extends Displayable {
           '<p style="margin: 4px 0; color: #cdd6f4;">${_formatInlineMd(l)}</p>',
         );
       }
+    }
+    if (inCodeBlock && codeBuffer.isNotEmpty) {
+      final escaped = codeBuffer
+          .toString()
+          .replaceAll('&', '&amp;')
+          .replaceAll('<', '&lt;')
+          .replaceAll('>', '&gt;');
+      sb.writeln(
+        '<pre style="background: #11111b; padding: 10px 14px; border-radius: 6px; overflow-x: auto; margin: 8px 0;"><code class="language-$codeLang" style="font-family: \'Fira Code\', monospace; font-size: 0.9em;">$escaped</code></pre>',
+      );
     }
     return sb.toString();
   }

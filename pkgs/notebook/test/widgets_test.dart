@@ -90,6 +90,15 @@ void main() {
     expect(html, contains('<strong>Bold</strong>'));
   });
 
+  test('Markdown renders fenced code blocks with language class', () {
+    final md = Md('```dart\nfinal a = NDArray<Float64>.zeros([2, 2]);\n```');
+    final html = md.toHtml();
+
+    expect(html, contains('<pre'));
+    expect(html, contains('class="language-dart"'));
+    expect(html, contains('NDArray&lt;Float64&gt;.zeros([2, 2]);'));
+  });
+
   test('display function captures multiple outputs', () {
     clearCapturedOutput();
     display(LaTeX(r'E=mc^2'));

@@ -60,7 +60,7 @@ final class ScopeMatcher {
   ) {
     int partIdx = parts.length - 2;
     int scopeIdx = targetScopeIdx - 1;
-    int totalScore = targetScore * 10;
+    int totalScore = (targetScopeIdx + 1) * 100 + targetScore * 10;
 
     while (partIdx >= 0 && scopeIdx >= 0) {
       final part = parts[partIdx];

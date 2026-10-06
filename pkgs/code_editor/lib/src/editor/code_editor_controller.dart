@@ -29,6 +29,7 @@ import '../features/smart_editing/smart_indent_engine.dart';
 import '../features/snippets/snippet_engine.dart';
 import '../lsp/lsp_diagnostic_adapter.dart';
 import '../lsp/lsp_sync_manager.dart';
+import '../syntax/color_theme.dart';
 import '../syntax/grammars/dart_grammar.dart';
 import '../syntax/incremental_tokenizer.dart';
 import '../syntax/syntax_token.dart';
@@ -80,6 +81,7 @@ final class CodeEditorController {
     String initialText = '',
     EditorOptions options = const EditorOptions(),
     IncrementalTokenizer? tokenizer,
+    ColorTheme? theme,
     AutoCloseEngine? autoCloseEngine,
     SmartIndentEngine? smartIndentEngine,
     BracketMatcher? bracketMatcher,
@@ -94,7 +96,10 @@ final class CodeEditorController {
        _undoManager = UndoManager(),
        _tokenizer =
            tokenizer ??
-           IncrementalTokenizer(tokenizer: DartGrammar.createLexer()),
+           IncrementalTokenizer(
+             tokenizer: DartGrammar.createLexer(),
+             styleCache: StyleCache(theme ?? ColorTheme.catppuccinMocha()),
+           ),
        _autoCloseEngine = autoCloseEngine ?? const AutoCloseEngine(),
        _smartIndentEngine =
            smartIndentEngine ?? SmartIndentEngine(tabSize: options.tabSize),
