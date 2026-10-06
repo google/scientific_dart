@@ -76,3 +76,6 @@ hooks:
 ## License
 This package is licensed under the **[Apache License, Version 2.0](https://github.com/google/scientific_dart/blob/main/pkgs/pocketfft/LICENSE)**.
 
+## Disclaimer
+
+This is not an official Google product.

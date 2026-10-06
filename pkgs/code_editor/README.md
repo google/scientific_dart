@@ -10,3 +10,7 @@ A multi-backend code editor component in Dart supporting syntax highlighting, LS
 ## License
 
 This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+## Disclaimer
+
+This is not an official Google product.

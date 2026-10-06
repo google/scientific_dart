@@ -166,3 +166,13 @@ Markdown('# Scientific Dart Notebook\n\nInteractive **NDArray** computation kern
 ```
 
 ![Markdown Widget](doc/images/media__markdown_widget.png)
+
+---
+
+## License
+
+This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+## Disclaimer
+
+This is not an official Google product.

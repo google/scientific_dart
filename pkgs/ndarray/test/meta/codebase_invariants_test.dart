@@ -1541,6 +1541,26 @@ void main() {
           }
         }
 
+        // 1b. Check that root README.md and every package README.md in pkgs/* has the Google product disclaimer
+        final readmeFiles = <File>[
+          File('${workspaceRoot.path}/README.md'),
+          for (final dir in pkgsDir.listSync().whereType<Directory>())
+            if (File('${dir.path}/pubspec.yaml').existsSync())
+              File('${dir.path}/README.md'),
+        ];
+        for (final rf in readmeFiles) {
+          if (!rf.existsSync()) {
+            violations.add('${_posix(rf.path)} — missing README.md.');
+            continue;
+          }
+          final text = rf.readAsStringSync();
+          if (!text.contains('This is not an official Google product.')) {
+            violations.add(
+              '${_posix(rf.path)} — missing "This is not an official Google product." disclaimer.',
+            );
+          }
+        }
+
         // 2. Check all first-party .dart, .c, .cpp, .h files across pkgs/ and tool/
         const excludedSubpaths = [
           '/third_party/',
