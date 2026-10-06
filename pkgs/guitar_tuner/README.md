@@ -10,3 +10,7 @@ A real-time CLI guitar tuner using `package:ndarray` and ALSA/miniaudio for live
 ## License
 
 This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+## Disclaimer
+
+This is not an official Google product.

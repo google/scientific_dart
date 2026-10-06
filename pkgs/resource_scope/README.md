@@ -63,3 +63,11 @@ void main() {
   });
 }
 ```
+
+## License
+
+This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+## Disclaimer
+
+This is not an official Google product.

@@ -168,3 +168,7 @@ See **[ROADMAP.md](ROADMAP.md)** for our phased milestones toward full **CuPy** 
 ## License
 
 This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+## Disclaimer
+
+This is not an official Google product.

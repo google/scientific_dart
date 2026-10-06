@@ -31,3 +31,10 @@ hooks:
       # localExtensionsPath: /path/to/dist/openblas_extensions-linux-x64.so
 ```
 
+## License
+
+This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+
+## Disclaimer
+
+This is not an official Google product.
