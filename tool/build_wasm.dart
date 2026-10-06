@@ -653,12 +653,41 @@ final class _WasmWorkspaceBuilder {
   ///
   /// Returns whether the archive was (re)built.
   Future<bool> ensureOpenBlasArchive() async {
+    final openBlasBuildRoot = openBlasSourceDir;
+    final treeStampFile = File(
+      '${openBlasBuildRoot.path}/.wasm_normalization_stamp',
+    );
+    final lapackeHeader = File(
+      '${openBlasBuildRoot.path}/lapack-netlib/LAPACKE/include/lapacke.h',
+    );
+    final makefile = File('${openBlasBuildRoot.path}/Makefile');
+    final stampMatches =
+        treeStampFile.existsSync() &&
+        treeStampFile.readAsStringSync().trim() ==
+            _openBlasNormalizationStampVersion;
+
     final expectedStamp =
         '$_openBlasNormalizationStampVersion\n$_toolchainIdentity\n';
     if (!forceRebuild &&
         openBlasArchiveFile.existsSync() &&
         _openBlasStampFile.existsSync() &&
         _openBlasStampFile.readAsStringSync() == expectedStamp) {
+      // Even when the archive is restored from cache, compiling
+      // `pkgs/openblas/hook/*.c` requires the normalized LAPACKE headers in
+      // `openBlasBuildRoot`.
+      if (!lapackeHeader.existsSync() || !stampMatches) {
+        if (openBlasBuildRoot.existsSync()) {
+          openBlasBuildRoot.deleteSync(recursive: true);
+        }
+        await _stageOpenBlasSource(openBlasBuildRoot);
+        stdout.writeln(
+          'Normalizing OpenBLAS Fortran SUBROUTINE return types to void...',
+        );
+        _normalizeOpenBlasSubroutines(openBlasBuildRoot);
+        treeStampFile.writeAsStringSync(
+          '$_openBlasNormalizationStampVersion\n',
+        );
+      }
       stdout.writeln(
         'OpenBLAS archive ${openBlasArchiveFile.path} is up to date.',
       );
@@ -670,21 +699,18 @@ final class _WasmWorkspaceBuilder {
       _openBlasStampFile.deleteSync();
     }
 
-    final openBlasBuildRoot = openBlasSourceDir;
-    final treeStampFile = File(
-      '${openBlasBuildRoot.path}/.wasm_normalization_stamp',
-    );
     final treeIsCurrent =
         openBlasBuildRoot.existsSync() &&
-        treeStampFile.existsSync() &&
-        treeStampFile.readAsStringSync().trim() ==
-            _openBlasNormalizationStampVersion;
+        makefile.existsSync() &&
+        lapackeHeader.existsSync() &&
+        stampMatches;
     if (openBlasBuildRoot.existsSync() && !treeIsCurrent) {
       // Source normalization is not reversible, so a tree normalized by a
-      // different schema is replaced by a pristine extraction.
+      // different schema (or a header-only cache restore) is replaced by a
+      // pristine extraction.
       stdout.writeln(
         'Discarding ${openBlasBuildRoot.path} (normalized by a different '
-        'schema); re-staging pristine sources...',
+        'schema or incomplete); re-staging pristine sources...',
       );
       openBlasBuildRoot.deleteSync(recursive: true);
     }

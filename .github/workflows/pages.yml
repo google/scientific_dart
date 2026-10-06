@@ -56,6 +56,8 @@ jobs:
             .dart_tool/wasm_sysroot
             .dart_tool/wasm_build/libopenblas_wasm128.a
             .dart_tool/wasm_build/libopenblas_wasm128.stamp
+            .dart_tool/wasm_build/OpenBLAS-0.3.33/.wasm_normalization_stamp
+            .dart_tool/wasm_build/OpenBLAS-0.3.33/lapack-netlib/LAPACKE/include
             .dart_tool/wasm_build/objs
             .dart_tool/wasm_build/compiler_worker
             .dart_tool/wasm_build/sdk_3_14
