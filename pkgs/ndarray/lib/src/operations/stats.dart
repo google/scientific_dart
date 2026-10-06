@@ -6207,129 +6207,15 @@ NDArray<R> nanmedian<R extends DTypeTag>(
     final size = a.shape.isEmpty ? 1 : a.shape.reduce((x, y) => x * y);
     final result = out ?? NDArray<R>.create(targetShape, targetDType);
     if (a.isContiguous) {
-      switch (a.dtype) {
-        case DType.float64:
-          final resVal = r_nanmedian_double(a.pointer.cast(), size);
-          checkNativeOom();
-          result.setCellFlat(0, resVal);
-          return result;
-        case DType.float32:
-          final resVal = r_nanmedian_float(a.pointer.cast(), size);
-          checkNativeOom();
-          result.setCellFlat(0, resVal);
-          return result;
-        case DType.complex128:
-          final marker = ScratchArena.marker;
-          try {
-            final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
-            r_nanmedian_complex128(a.pointer.cast(), size, outPtr);
-            checkNativeOom();
-            result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
-          } finally {
-            ScratchArena.reset(marker);
-          }
-          return result;
-        case DType.complex64:
-          final marker = ScratchArena.marker;
-          try {
-            final outPtr = ScratchArena.allocate<cpx_f_t>(
-              ffi.sizeOf<cpx_f_t>(),
-            );
-            r_nanmedian_complex64(a.pointer.cast(), size, outPtr);
-            checkNativeOom();
-            result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
-          } finally {
-            ScratchArena.reset(marker);
-          }
-          return result;
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int64:
-        case DType.int32:
-        case DType.int16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
-        case DType.uint8:
-        case DType.boolean:
-          final flat = a.flatten();
-          try {
-            final f64 = castNDArray<Float64>(flat, DType.float64);
-            try {
-              final res = r_nanmedian_double(f64.pointer.cast(), f64.size);
-              checkNativeOom();
-              result.setCellFlat(0, res);
-              return result;
-            } finally {
-              f64.dispose();
-            }
-          } finally {
-            flat.dispose();
-          }
-      }
-    } else {
-      final flat = a.flatten();
-      try {
-        switch (a.dtype) {
-          case DType.float64:
-            final resVal = r_nanmedian_double(flat.pointer.cast(), flat.size);
-            checkNativeOom();
-            result.setCellFlat(0, resVal);
-            return result;
-          case DType.float32:
-            final resVal = r_nanmedian_float(flat.pointer.cast(), flat.size);
-            checkNativeOom();
-            result.setCellFlat(0, resVal);
-            return result;
-          case DType.complex128:
-            final marker = ScratchArena.marker;
-            try {
-              final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
-              r_nanmedian_complex128(flat.pointer.cast(), flat.size, outPtr);
-              checkNativeOom();
-              result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
-            } finally {
-              ScratchArena.reset(marker);
-            }
-            return result;
-          case DType.complex64:
-            final marker = ScratchArena.marker;
-            try {
-              final outPtr = ScratchArena.allocate<cpx_f_t>(
-                ffi.sizeOf<cpx_f_t>(),
-              );
-              r_nanmedian_complex64(flat.pointer.cast(), flat.size, outPtr);
-              checkNativeOom();
-              result.setCellFlat(0, Complex(outPtr.ref.r, outPtr.ref.i));
-            } finally {
-              ScratchArena.reset(marker);
-            }
-            return result;
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int64:
-          case DType.int32:
-          case DType.int16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-          case DType.uint8:
-          case DType.boolean:
-            final f64 = castNDArray<Float64>(flat, DType.float64);
-            try {
-              final res = r_nanmedian_double(f64.pointer.cast(), f64.size);
-              checkNativeOom();
-              result.setCellFlat(0, res);
-              return result;
-            } finally {
-              f64.dispose();
-            }
-        }
-      } finally {
-        flat.dispose();
-      }
+      result.setCellFlat(0, _rNanmedianContiguous(a, size));
+      return result;
+    }
+    final flat = a.flatten();
+    try {
+      result.setCellFlat(0, _rNanmedianContiguous(flat, flat.size));
+      return result;
+    } finally {
+      flat.dispose();
     }
   }
 
@@ -6421,6 +6307,48 @@ NDArray<R> nanmedian<R extends DTypeTag>(
   }
 
   return result;
+}
+
+Object _rNanmedianContiguous<T extends DTypeTag>(NDArray<T> a, int size) {
+  final Object res;
+  switch (a.dtype) {
+    case DType.float64:
+      res = r_nanmedian_double(a.pointer.cast(), size);
+    case DType.float32:
+      res = r_nanmedian_float(a.pointer.cast(), size);
+    case DType.complex128:
+      final marker = ScratchArena.marker;
+      try {
+        final outPtr = ScratchArena.allocate<cpx_t>(ffi.sizeOf<cpx_t>());
+        r_nanmedian_complex128(a.pointer.cast(), size, outPtr);
+        res = Complex(outPtr.ref.r, outPtr.ref.i);
+      } finally {
+        ScratchArena.reset(marker);
+      }
+    case DType.complex64:
+      final marker = ScratchArena.marker;
+      try {
+        final outPtr = ScratchArena.allocate<cpx_f_t>(ffi.sizeOf<cpx_f_t>());
+        r_nanmedian_complex64(a.pointer.cast(), size, outPtr);
+        res = Complex(outPtr.ref.r, outPtr.ref.i);
+      } finally {
+        ScratchArena.reset(marker);
+      }
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+      throw StateError('Unreachable');
+  }
+  checkNativeOom();
+  return res;
 }
 
 /// Computes the range of values (maximum - minimum) along the specified axis.
