@@ -2209,15 +2209,15 @@ void main() {
     test(
       'Round 4 Invariants: __int128 portability guards in C++, miniz.c/h in nativeSourceFiles, exhaustive BinaryOp switch in binaryUfunc, and checkNativeOom coverage',
       () {
-        // 1. Every __int128 in hook/ C++ sources must be guarded by #if defined(__SIZEOF_INT128__)
+        // 1. Every __int128 in hook/ C++ sources must be guarded by #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
         final customUfuncsCpp = File(
           '${hookDir.path}/custom_ufuncs.cpp',
         ).readAsStringSync();
         expect(
           customUfuncsCpp,
-          contains('#if defined(__SIZEOF_INT128__)'),
+          contains('#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)'),
           reason:
-              'custom_ufuncs.cpp must guard __int128 behind #if defined(__SIZEOF_INT128__) for MSVC/32-bit portability',
+              'custom_ufuncs.cpp must guard __int128 behind #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER) for MSVC/clang-cl/32-bit portability',
         );
         expect(
           customUfuncsCpp,

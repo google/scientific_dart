@@ -10614,11 +10614,40 @@ static inline float interpolate_float(float start, float end, int64_t step, int6
     if (total_steps <= 0) return end;
     return start + (end - start) * (float)step / total_steps;
 }
+static inline uint64_t mul_div_u64_exact(uint64_t r, uint64_t w, uint64_t d) {
+    if (d <= 0xFFFFFFFFULL) {
+        return (r * w) / d;
+    }
+    uint64_t q = 0;
+    uint64_t rem = 0;
+    uint64_t a = r;
+    uint64_t b = w;
+    while (b > 0) {
+        if (b & 1) {
+            if (rem >= d - a) {
+                q += 1;
+                rem -= (d - a);
+            } else {
+                rem += a;
+            }
+        }
+        b >>= 1;
+        if (b > 0) {
+            if (a >= d - a) {
+                q += b;
+                a -= (d - a);
+            } else {
+                a += a;
+            }
+        }
+    }
+    return q;
+}
 static inline int64_t interpolate_int64(int64_t start, int64_t end, int64_t step, int64_t total_steps) {
     if (total_steps <= 0) return end;
     if (step <= 0 || start == end) return start;
     if (step >= total_steps) return end;
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
     __int128 d = (__int128)total_steps;
     __int128 num = (__int128)start * (d - (__int128)step) + (__int128)end * (__int128)step;
     __int128 q = num / d;
@@ -10626,22 +10655,34 @@ static inline int64_t interpolate_int64(int64_t start, int64_t end, int64_t step
     if (r < 0) q -= 1;
     return (int64_t)q;
 #else
-    double val = (double)start + ((double)end - (double)start) * ((double)step / (double)total_steps);
-    return saturating_float_to_int<int64_t>(std::floor(val));
+    uint64_t d = (uint64_t)total_steps;
+    uint64_t s = (uint64_t)step;
+    int64_t base = (end >= start) ? start : end;
+    uint64_t diff = (end >= start)
+        ? ((uint64_t)end - (uint64_t)start)
+        : ((uint64_t)start - (uint64_t)end);
+    uint64_t w = (end >= start) ? s : (d - s);
+    uint64_t offset = (diff / d) * w + mul_div_u64_exact(diff % d, w, d);
+    return (int64_t)((uint64_t)base + offset);
 #endif
 }
 static inline uint64_t interpolate_uint64(uint64_t start, uint64_t end, int64_t step, int64_t total_steps) {
     if (total_steps <= 0) return end;
     if (step <= 0 || start == end) return start;
     if (step >= total_steps) return end;
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
     unsigned __int128 d = (unsigned __int128)total_steps;
     unsigned __int128 num = (unsigned __int128)start * (d - (unsigned __int128)step) + (unsigned __int128)end * (unsigned __int128)step;
     unsigned __int128 q = num / d;
     return (uint64_t)q;
 #else
-    double val = (double)start + ((double)end - (double)start) * ((double)step / (double)total_steps);
-    return saturating_float_to_int<uint64_t>(std::floor(val));
+    uint64_t d = (uint64_t)total_steps;
+    uint64_t s = (uint64_t)step;
+    uint64_t base = (end >= start) ? start : end;
+    uint64_t diff = (end >= start) ? (end - start) : (start - end);
+    uint64_t w = (end >= start) ? s : (d - s);
+    uint64_t offset = (diff / d) * w + mul_div_u64_exact(diff % d, w, d);
+    return base + offset;
 #endif
 }
 static inline int32_t interpolate_int32(int32_t start, int32_t end, int64_t step, int64_t total_steps) {
@@ -10697,7 +10738,7 @@ static inline void invoke_sorter(void (*sorter)(PtrT, int64_t, int), T *buf, int
 }
 
 static inline int64_t stats_mean_int64_impl(const int64_t *base, int64_t stride, int64_t len) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
     __int128 sum = 0;
     for (int64_t i = 0; i < len; i++) {
         sum += (__int128)*(base + i * stride);
@@ -10727,7 +10768,7 @@ static inline int64_t stats_mean_int64_impl(const int64_t *base, int64_t stride,
 }
 
 static inline int64_t stats_median_midpoint_int64_impl(int64_t a, int64_t b) {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
     __int128 sum = (__int128)a + (__int128)b;
     __int128 q = sum / 2;
     __int128 r = sum % 2;
@@ -10774,7 +10815,7 @@ static inline uint64_t stats_max_uint64(const uint64_t *base, int64_t stride, in
 }
 static inline uint64_t stats_mean_uint64(const uint64_t *base, int64_t stride, int64_t len) {
     if (len <= 0) return 0;
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
     unsigned __int128 sum = 0;
     for (int64_t i = 0; i < len; i++) {
         sum += (unsigned __int128)*(base + i * stride);
@@ -10818,7 +10859,7 @@ static inline uint64_t stats_median_uint64(const uint64_t *base, int64_t _stride
     if (len % 2 == 1) {
         res = buf[len / 2];
     } else {
-#if defined(__SIZEOF_INT128__)
+#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
         unsigned __int128 sum = (unsigned __int128)buf[len / 2 - 1] + (unsigned __int128)buf[len / 2];
         unsigned __int128 q = sum / 2;
         unsigned __int128 r = sum % 2;

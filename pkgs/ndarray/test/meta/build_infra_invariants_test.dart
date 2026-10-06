@@ -648,6 +648,12 @@ void main() {
               'sanitizer-test job in dart.yml must not suppress failures with continue-on-error: true',
         );
         expect(
+          sanitizerJobSection,
+          contains('allocator_may_return_null=1'),
+          reason:
+              'sanitizer-test job in dart.yml must include allocator_may_return_null=1 in ASAN_OPTIONS so intentional OOM tests return nullptr instead of aborting',
+        );
+        expect(
           workflowContent,
           contains('NDARRAY_X86_FLAGS'),
           reason:
