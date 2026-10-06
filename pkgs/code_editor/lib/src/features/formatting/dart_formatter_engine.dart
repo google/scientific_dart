@@ -19,11 +19,17 @@ import 'package:meta/meta.dart';
 final class DartFormatterEngine {
   final int tabSize;
 
-  const DartFormatterEngine({this.tabSize = 2});
+  /// Optional custom formatting function (for example, `package:dart_style`).
+  final String Function(String source)? customFormatter;
+
+  const DartFormatterEngine({this.tabSize = 2, this.customFormatter});
 
   /// Formats Dart code [source] with consistent indentation, brace placement,
   /// operator spacing, and argument wrapping.
   String formatCode(String source) {
+    if (customFormatter case final custom?) {
+      return custom(source);
+    }
     if (source.trim().isEmpty) return '';
 
     final lines = source.split(RegExp(r'\r?\n'));
@@ -118,18 +124,38 @@ final class DartFormatterEngine {
   }
 
   String _normalizeLineSpacing(String line) {
-    // Preserve string literals or single-line comments verbatim
+    // Preserve single-line comments verbatim
     if (line.startsWith('//') || line.startsWith('///')) {
       return line;
     }
 
-    // Space after commas (if not already spaced or inside string)
-    String res = line.replaceAllMapped(RegExp(r',([^\s])'), (m) => ', ${m[1]}');
+    // Protect string literals and trailing single-line comments from operator/comma regexes.
+    final placeholders = <String>[];
+    final protectedLine = line.replaceAllMapped(
+      RegExp(
+        r"""(?:r?'''[\s\S]*?'''|r?\"\"\"[\s\S]*?\"\"\"|r?'(?:\\.|[^'\\])*'|r?"(?:\\.|[^"\\])*")|//.*$""",
+      ),
+      (m) {
+        final idx = placeholders.length;
+        placeholders.add(m[0]!);
+        return '__FMT_LIT_${idx}__';
+      },
+    );
+
+    // Space after commas (if not already spaced)
+    String res = protectedLine.replaceAllMapped(
+      RegExp(r',([^\s])'),
+      (m) => ', ${m[1]}',
+    );
 
     // Space after semicolons in for-loop headers
     res = res.replaceAllMapped(RegExp(r';([^\s])'), (m) => '; ${m[1]}');
 
-    // Space around comparison and compound assignment operators first
+    // Space around arrow =>, comparison, and compound assignment operators first
+    res = res.replaceAllMapped(
+      RegExp(r'(\S)\s*=>\s*(\S)'),
+      (m) => '${m[1]} => ${m[2]}',
+    );
     res = res.replaceAllMapped(
       RegExp(r'(\S)\s*==\s*(\S)'),
       (m) => '${m[1]} == ${m[2]}',
@@ -164,23 +190,23 @@ final class DartFormatterEngine {
       (m) => '${m[1]} /= ${m[2]}',
     );
 
-    // Space around plain assignment operator = (when not preceded by comparison/compound char)
+    // Space around plain assignment operator = (when not part of ==, !=, <=, >=, +=, -=, *=, /=, =>)
     res = res.replaceAllMapped(
-      RegExp(r'([^\s=!<>+\-*/])\s*=\s*(\S)'),
+      RegExp(r'([^\s=!<>+\-*/~%&|^?])\s*=(?![=>])\s*([^\s=>])'),
       (m) => '${m[1]} = ${m[2]}',
     );
 
     // Space around comparison < (never space generic type parameters like <Float64>)
     res = res.replaceAllMapped(
       RegExp(
-        r'(\S)\s*<\s*(?!(Float64|Float32|Int32|Int64|Complex64|Complex128|int|double|bool|num|void|String|List|Map|Set|Future|[A-Z])\b)(\S)',
+        r'(\S)\s*<(?!=)\s*(?!(Float64|Float32|Int32|Int64|Complex64|Complex128|int|double|bool|num|void|String|List|Map|Set|Future|[A-Z])\b)([^\s=])',
       ),
       (m) => '${m[1]} < ${m[3]}',
     );
 
-    // Space around comparison > (never space generic closing > followed by ( ) , ; >)
+    // Space around comparison > (never space generic closing > or => or >=)
     res = res.replaceAllMapped(
-      RegExp(r'([a-zA-Z0-9_)\]])\s*>\s*([a-zA-Z0-9_\-])'),
+      RegExp(r'([a-zA-Z0-9_)\]])\s*>(?!=)\s*([a-zA-Z0-9_\-])'),
       (m) => '${m[1]} > ${m[2]}',
     );
 
@@ -210,7 +236,11 @@ final class DartFormatterEngine {
       );
     }
 
-    // Trim double spaces not in string literals
+    res = res.replaceAllMapped(
+      RegExp(r'__FMT_LIT_(\d+)__'),
+      (m) => placeholders[int.parse(m[1]!)],
+    );
+
     return res.trim();
   }
 

@@ -562,15 +562,30 @@ class DryRunSummarizer {
     final notebookDir = p.join(workspaceRoot, 'pkgs', 'notebook');
     final webDir = Directory(p.join(notebookDir, 'web'));
 
-    // Ensure editor_client.wasm is compiled.
+    // Ensure editor_client.wasm is compiled and up to date with its sources.
     final editorWasm = File(p.join(webDir.path, 'editor_client.wasm'));
     final editorMjs = File(p.join(webDir.path, 'editor_client.mjs'));
     final editorDart = File(p.join(webDir.path, 'editor_client.dart'));
-    if ((!editorWasm.existsSync() || !editorMjs.existsSync()) &&
-        editorDart.existsSync()) {
+    final cellFormatterDart = File(
+      p.join(notebookDir, 'lib', 'src', 'cell_formatter.dart'),
+    );
+    var needsCompile = !editorWasm.existsSync() || !editorMjs.existsSync();
+    if (!needsCompile && editorDart.existsSync()) {
+      final wasmModified = editorWasm.lastModifiedSync();
+      if (editorDart.lastModifiedSync().isAfter(wasmModified) ||
+          (cellFormatterDart.existsSync() &&
+              cellFormatterDart.lastModifiedSync().isAfter(wasmModified))) {
+        needsCompile = true;
+      }
+    }
+    if (needsCompile && editorDart.existsSync()) {
+      final pkgConfig = File(
+        p.join(workspaceRoot, '.dart_tool', 'package_config.json'),
+      );
       await Process.run(_dartExecutable, [
         'compile',
         'wasm',
+        if (pkgConfig.existsSync()) '--packages=${pkgConfig.path}',
         editorDart.path,
         '-o',
         editorWasm.path,

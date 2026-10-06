@@ -16,6 +16,7 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 import 'package:code_editor/code_editor.dart';
 import 'package:code_editor/backends/html.dart';
+import 'package:notebook/src/cell_formatter.dart';
 
 @JS('globalThis')
 external JSObject get globalThis;
@@ -29,6 +30,7 @@ external void _requestCompletion(JSObject cm, JSString cellId);
 extension type _GlobalScope(JSObject _) implements JSObject {
   // ignore: non_constant_identifier_names
   external set DartEditor(JSFunction fn);
+  external set dartFormatCode(JSFunction fn);
 }
 
 extension type _CursorPos(JSObject _) implements JSObject {
@@ -94,6 +96,9 @@ void main() {
 
       final controller = CodeEditorController(
         initialText: initialCode,
+        formatter: const DartFormatterEngine(
+          customFormatter: formatNotebookCellCode,
+        ),
         options: const EditorOptions(
           fontFamily: "'Fira Code', 'JetBrains Mono', 'Consolas', monospace",
           fontSize: 14.0,
@@ -261,8 +266,12 @@ void main() {
     }
   }
 
-  final fn = createEditor.toJS;
-  _GlobalScope(globalThis).DartEditor = fn;
+  JSString formatCodeForJs(JSString source) =>
+      formatNotebookCellCode(source.toDart).toJS;
+
+  final scope = _GlobalScope(globalThis);
+  scope.DartEditor = createEditor.toJS;
+  scope.dartFormatCode = formatCodeForJs.toJS;
 }
 
 @JS()

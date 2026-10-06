@@ -17,10 +17,17 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
   <script type="module">
-    import { compileStreaming } from './editor_client.mjs';
+    import { compileStreaming, compile } from './editor_client.mjs';
     async function initWasm() {
       try {
-        const compiledApp = await compileStreaming(fetch('editor_client.wasm?v=' + Date.now()));
+        const wasmUrl = 'editor_client.wasm?v=' + Date.now();
+        let compiledApp;
+        try {
+          compiledApp = await compileStreaming(fetch(wasmUrl));
+        } catch (_) {
+          const res = await fetch(wasmUrl);
+          compiledApp = await compile(await res.arrayBuffer());
+        }
         const instantiatedApp = await compiledApp.instantiate({});
         instantiatedApp.invokeMain();
         console.log('Dart CodeEditor WebAssembly module loaded successfully. DartEditor type:', typeof window.DartEditor);
@@ -37,7 +44,7 @@
         console.warn('Wasm initialization error:', e);
       }
     }
-    initWasm();
+    window.__editorClientReadyPromise = initWasm();
   </script>
   <style>
     :root {
@@ -1896,6 +1903,21 @@
               closeCompletionPopup();
               runCell(cellId);
             },
+            'Shift-Alt-F': function(cm) {
+              if (!isMarkdown) formatCell(cellId);
+            },
+            'Ctrl-Shift-I': function(cm) {
+              if (!isMarkdown) formatCell(cellId);
+            },
+            'Cmd-Shift-I': function(cm) {
+              if (!isMarkdown) formatCell(cellId);
+            },
+            'Ctrl-Alt-L': function(cm) {
+              if (!isMarkdown) formatCell(cellId);
+            },
+            'Cmd-Option-L': function(cm) {
+              if (!isMarkdown) formatCell(cellId);
+            },
             'Ctrl-Space': function(cm) {
               if (!isMarkdown) requestCompletionCm(cm, cellId);
             },
@@ -2189,18 +2211,55 @@
       autoSaveSession();
     }
 
+    function applyFormattedCodeToCell(cell, formattedCode) {
+      if (!cell || !cell._cm || !formattedCode) return;
+      const currentCode = cell._cm.getValue();
+      if (currentCode === formattedCode) return;
+      const cursor = cell._cm.getCursor ? cell._cm.getCursor() : null;
+      cell._cm.setValue(formattedCode);
+      if (cursor && cell._cm.setCursor) cell._cm.setCursor(cursor);
+      autoSaveSession();
+    }
+
     function formatCell(cellId) {
       const cell = document.getElementById(cellId);
-      if (cell && cell._cm) {
-        if (typeof cell._cm.formatCode === 'function') {
-          cell._cm.formatCode();
-        } else if (ws && ws.readyState === WebSocket.OPEN) {
-          ws.send(JSON.stringify({
-            type: 'format_code',
-            cellId: cellId,
-            code: cell._cm.getValue()
-          }));
+      if (!cell || !cell._cm) return;
+      if (cell.getAttribute('data-cell-type') === 'markdown') return;
+
+      if (typeof cell._cm.formatCode === 'function') {
+        cell._cm.formatCode();
+        autoSaveSession();
+        return;
+      }
+
+      const currentCode = cell._cm.getValue();
+      if (!currentCode || !currentCode.trim()) return;
+
+      if (typeof window.dartFormatCode === 'function') {
+        try {
+          const formatted = window.dartFormatCode(currentCode);
+          if (typeof formatted === 'string' && formatted.length > 0) {
+            applyFormattedCodeToCell(cell, formatted);
+            return;
+          }
+        } catch (err) {
+          console.warn('Local Wasm format error:', err);
         }
+      }
+
+      if (currentRuntimeMode === 'wasm' && wasmRuntime && typeof wasmRuntime.formatCode === 'function') {
+        wasmRuntime.formatCode(currentCode).then((formatted) => {
+          applyFormattedCodeToCell(cell, formatted);
+        });
+        return;
+      }
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'format_code',
+          cellId: cellId,
+          code: currentCode
+        }));
       }
     }
 

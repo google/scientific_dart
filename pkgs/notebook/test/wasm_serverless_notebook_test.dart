@@ -187,6 +187,68 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
     );
   });
 
+  group('formatNotebookCellCode unit tests', () {
+    test('formats single-variable declaration with and without semicolon', () {
+      expect(
+        formatNotebookCellCode(
+          'var a=NDArray.fromList([1.0,2.0,3.0,4.0],[2,2],DType.float64);',
+        ),
+        'var a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);',
+      );
+      expect(
+        formatNotebookCellCode(
+          'var a=NDArray.fromList([1.0,2.0,3.0,4.0],[2,2],DType.float64)',
+        ),
+        'var a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64)',
+      );
+    });
+
+    test('formats standalone expression without trailing semicolon', () {
+      expect(formatNotebookCellCode('a*2+1'), 'a * 2 + 1');
+      expect(
+        formatNotebookCellCode('// Multiply every element by 2\na*2'),
+        '// Multiply every element by 2\na * 2',
+      );
+    });
+
+    test('formats multi-statement cell with trailing expression', () {
+      const input = '''
+final v=NDArray.arange(0.0,5.0);
+for(var i=0;i<3;i++){
+print(i);
+}
+sum(v)*2
+''';
+      expect(formatNotebookCellCode(input), '''
+final v = NDArray.arange(0.0, 5.0);
+for (var i = 0; i < 3; i++) {
+  print(i);
+}
+sum(v) * 2''');
+    });
+
+    test('formats cell mixing imports, class declaration, and statements', () {
+      const input = '''
+import 'dart:math' as math;
+
+class Point{final double x;Point(this.x);}
+
+final p=Point(math.pi);
+p.x*2
+''';
+      expect(formatNotebookCellCode(input), '''
+import 'dart:math' as math;
+
+class Point {
+  final double x;
+  Point(this.x);
+}
+
+final p = Point(math.pi);
+p.x * 2''');
+    });
+  });
+
   group('Serverless Wasm Notebook E2E (no active backend)', () {
     late String repoRoot;
     late WasmNotebookBundleResult bundleResult;
@@ -420,6 +482,35 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
             "() => document.querySelectorAll('.cell').length",
           );
           expect(importedCellCount, 1);
+
+          // 9. Test cell formatting (✨ Format button / window.formatCell) in Serverless Wasm mode
+          // across both CodeMirror 5 and Custom Wasm DartEditor engines.
+          final formattedInCm = await page.evaluate<String>('''async () => {
+            if (window.__editorClientReadyPromise) {
+              await window.__editorClientReadyPromise;
+            }
+            const id = window.addCell("final v=NDArray.arange(0.0,5.0);\\nsum(v)*2");
+            window.formatCell(id);
+            const cell = document.getElementById(id);
+            return cell && cell._cm ? cell._cm.getValue() : '';
+          }''');
+          expect(
+            formattedInCm,
+            'final v = NDArray.arange(0.0, 5.0);\nsum(v) * 2',
+          );
+
+          final formattedInDartEditor = await page.evaluate<String>(
+            '''async () => {
+            window.switchEditorEngine('dart_editor');
+            const id = window.addCell("var x=1+2;\\nx*3");
+            window.formatCell(id);
+            const cell = document.getElementById(id);
+            const val = cell && cell._cm ? cell._cm.getValue() : '';
+            window.switchEditorEngine('codemirror');
+            return val;
+          }''',
+          );
+          expect(formattedInDartEditor, 'var x = 1 + 2;\nx * 3');
 
           expect(pageErrors, isEmpty);
         } catch (e) {
