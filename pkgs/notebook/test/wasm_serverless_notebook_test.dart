@@ -15,6 +15,9 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
+import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/diagnostic/diagnostic.dart';
 import 'package:notebook/notebook.dart';
 import 'package:path/path.dart' as p;
 import 'package:puppeteer/puppeteer.dart';
@@ -79,7 +82,9 @@ void main() {
         );
         expect(
           bundled.mainDartSource,
-          contains('_cellValue = await (() async => (\na * 2\n))();'),
+          contains(
+            '_cellValue = await _evaluateCellExpression(() async => (\na * 2\n));',
+          ),
         );
       },
     );
@@ -123,11 +128,82 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
         expect(
           bundled.mainDartSource,
           contains(
-            '_cellValue = await (() async => (\n'
+            '_cellValue = await _evaluateCellExpression(() async => (\n'
             'display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))\n'
-            '))();',
+            '));',
           ),
         );
+      },
+    );
+
+    test('captures a trailing void expression so the cell runs for effect', () {
+      final cells = [
+        const WasmNotebookCell(id: 'c1', code: 'final xs = [1, 2];'),
+        const WasmNotebookCell(id: 'c2', code: 'xs.forEach(print)'),
+      ];
+
+      final bundled = WasmCellBundler.bundleCells(cells);
+      expect(
+        bundled.mainDartSource,
+        contains(
+          'Future<dynamic> _evaluateCellExpression(Future<dynamic> Function() thunk)',
+        ),
+      );
+      expect(
+        bundled.mainDartSource,
+        contains(
+          '_cellValue = await _evaluateCellExpression(() async => (\n'
+          'xs.forEach(print)\n'
+          '));',
+        ),
+      );
+    });
+
+    test(
+      'generated program has no static errors for void trailing expressions',
+      () async {
+        final cells = [
+          const WasmNotebookCell(id: 'c1', code: "print('hi')"),
+          const WasmNotebookCell(
+            id: 'c2',
+            code: 'final xs = [1, 2];\nxs.forEach(print)',
+          ),
+          const WasmNotebookCell(id: 'c3', code: "display(Html('<b>x</b>'))"),
+          const WasmNotebookCell(id: 'c4', code: 'xs.add(3)'),
+          const WasmNotebookCell(id: 'c5', code: 'xs.length'),
+          const WasmNotebookCell(id: 'c6', code: 'await Future<int>.value(3)'),
+        ];
+        final bundled = WasmCellBundler.bundleCells(cells);
+
+        // The program is written inside the package so that its `package:`
+        // imports resolve through the workspace package config.
+        final scratchDir = Directory(
+          p.join(
+            _findRepoRoot(),
+            'pkgs',
+            'notebook',
+            '.dart_tool',
+            'wasm_cell_bundler_test',
+          ),
+        )..createSync(recursive: true);
+        final programDir = scratchDir.createTempSync();
+        addTearDown(() => programDir.deleteSync(recursive: true));
+        final mainFile = File(p.join(programDir.path, 'cell_main.dart'))
+          ..writeAsStringSync(bundled.mainDartSource);
+
+        final collection = AnalysisContextCollection(
+          includedPaths: [mainFile.path],
+        );
+        addTearDown(collection.dispose);
+        final result = await collection
+            .contextFor(mainFile.path)
+            .currentSession
+            .getErrors(mainFile.path);
+        final errors = (result as ErrorsResult).diagnostics
+            .where((d) => d.severity == Severity.error)
+            .map((d) => '${d.diagnosticCode.lowerCaseName}: ${d.message}')
+            .toList();
+        expect(errors, isEmpty);
       },
     );
 
@@ -150,6 +226,55 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
           analysis.mappedOffset,
         ),
         'a.resh',
+      );
+    });
+
+    test('ParsedNotebookCell aligns Wasm bundler and VM kernel transformation', () {
+      // 1. Single variable declaration with await.
+      final asyncVar = ParsedNotebookCell.parse('final x = await seven();');
+      expect(asyncVar.singleDeclaredVariable?.name, 'x');
+      final asyncVarTx = asyncVar.transformForKernel();
+      expect(asyncVarTx.declaredVariables, ['x']);
+      expect(
+        asyncVarTx.cellBodyCode,
+        contains('final x = __set_x(await seven());'),
+      );
+      expect(asyncVarTx.cellBodyCode, contains('Declared variable x'));
+
+      // 2. Cell mixing a class declaration, typed variable with generics, and trailing expression.
+      final mixed = ParsedNotebookCell.parse('''
+class Box {
+  final int v;
+  Box(this.v);
+}
+final Map<String, int> m = <String, int>{'a': 21};
+Box(m['a']!).v * 2
+''');
+      final mixedTx = mixed.transformForKernel();
+      expect(mixedTx.namedDefinitions.keys, containsAll(['Box', 'm']));
+      expect(mixedTx.declaredVariables, ['m']);
+      expect(
+        mixedTx.namedDefinitions['m'],
+        contains('Map<String, int> get m => __slot_m as Map<String, int>;'),
+      );
+      expect(
+        mixedTx.cellBodyCode,
+        contains(
+          "return await evaluateCellExpression(() async => (\nBox(m['a']!).v * 2\n));",
+        ),
+      );
+
+      // 3. Function declaration with simple return type (`void`) followed by a call.
+      final fnAndCall = ParsedNotebookCell.parse(
+        "void greet() {\n  print('hello');\n}\ngreet()",
+      );
+      final fnTx = fnAndCall.transformForKernel();
+      expect(fnTx.namedDefinitions.keys, ['greet']);
+      expect(
+        fnTx.cellBodyCode,
+        contains(
+          'return await evaluateCellExpression(() async => (\ngreet()\n));',
+        ),
       );
     });
   });

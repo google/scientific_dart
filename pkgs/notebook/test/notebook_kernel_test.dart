@@ -372,4 +372,144 @@ display(descriptor.createBrowserWidget(
       expect(result, contains('zero_input_mandelbrot'));
     },
   );
+
+  test('runs a cell ending in a void expression for its side effects', () async {
+    // A typed declaration keeps `xs.forEach(...)` and `xs.add(...)` statically
+    // `void`; a `dynamic` workspace variable would hide the void-ness.
+    final forEachResult = await kernel.execute(
+      'final List<int> xs = [1, 2];\nxs.forEach(print)',
+    );
+    expect(forEachResult, contains('"data":"1"'));
+    expect(forEachResult, contains('"data":"2"'));
+    expect(forEachResult, isNot(contains('Instance of')));
+
+    final declaredResult = await kernel.execute(
+      "void greet() {\n  print('hello');\n}\ngreet()",
+    );
+    expect(declaredResult, contains('"data":"hello"'));
+
+    // No value and no captured output: the cell produces no output items.
+    expect(await kernel.execute('xs.add(3)'), '[]');
+    expect(await kernel.execute('xs.length'), contains('"data":"3"'));
+  });
+
+  test('supports await in cells and awaits a trailing Future', () async {
+    expect(
+      await kernel.execute('await Future<int>.value(41) + 1'),
+      contains('"data":"42"'),
+    );
+
+    expect(
+      await kernel.execute('''
+Future<int> seven() async {
+  await Future<void>.delayed(const Duration(milliseconds: 20));
+  print('seven ran');
+  return 7;
+}'''),
+      contains('Declared: seven'),
+    );
+
+    // Output printed after an `await` belongs to the same cell.
+    final awaited = await kernel.execute('final x = await seven();\nx + 1');
+    expect(awaited, contains('"data":"seven ran"'));
+    expect(awaited, contains('"data":"8"'));
+
+    // A trailing Future is awaited rather than displayed as an instance.
+    final trailing = await kernel.execute('seven()');
+    expect(trailing, contains('"data":"seven ran"'));
+    expect(trailing, contains('"data":"7"'));
+    expect(trailing, isNot(contains('Instance of')));
+
+    // A trailing void future runs for its side effects.
+    expect(
+      await kernel.execute(
+        "Future<void>.delayed(const Duration(milliseconds: 10), () => print('late'))",
+      ),
+      contains('"data":"late"'),
+    );
+  });
+
+  test('reports errors thrown from async code', () async {
+    final result = await kernel.execute('''
+print('before');
+await Future<void>.delayed(const Duration(milliseconds: 10));
+throw StateError('async boom');
+''');
+    expect(result, contains('"data":"before"'));
+    expect(result, contains('Error: Bad state: async boom'));
+  });
+
+  test('survives an unawaited async error', () async {
+    expect(
+      await kernel.execute(
+        "Future<void>.delayed(const Duration(milliseconds: 10), () => throw StateError('late boom'));\n"
+        '1 + 1',
+      ),
+      contains('"data":"2"'),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    expect(await kernel.execute('3 + 3'), contains('"data":"6"'));
+  });
+
+  test('serializes concurrent execute calls', () async {
+    final slow = kernel.execute(
+      "await Future<void>.delayed(const Duration(milliseconds: 300));\n'slow'",
+    );
+    final fast = kernel.execute("'fast'");
+    final order = <String>[];
+    await Future.wait([
+      slow.then((r) => order.add(r)),
+      fast.then((r) => order.add(r)),
+    ]);
+    expect(order[0], contains('"data":"slow"'));
+    expect(order[1], contains('"data":"fast"'));
+  });
+
+  test(
+    'aligns cell transformation with Wasm mode (async var decl, mixed class + expr, redeclared types)',
+    () async {
+      // Single-variable declaration using `await` works and prints side effects.
+      final asyncDecl = await kernel.execute('''
+final awaitedSeven = await (() async {
+  await Future<void>.delayed(const Duration(milliseconds: 10));
+  print('computing seven');
+  return 7;
+})();
+''');
+      expect(
+        asyncDecl,
+        contains(
+          '"data":"computing seven\\nDeclared variable awaitedSeven\\nValue: 7"',
+        ),
+      );
+      expect(await kernel.execute('awaitedSeven * 6'), contains('"data":"42"'));
+
+      // Mixing a class declaration, a generic map variable with commas, and a
+      // trailing expression in a single cell.
+      final mixed = await kernel.execute('''
+class Box {
+  final int v;
+  Box(this.v);
+}
+final Map<String, int> counts = <String, int>{'a': 20, 'b': 22};
+Box(counts['a']! + counts['b']!).v
+''');
+      expect(mixed, contains('"data":"42"'));
+
+      // Redeclaring a typed variable with a different type across cells reloads
+      // cleanly without hot-reload field type conflicts.
+      expect(
+        await kernel.execute('int redeclared = 10;'),
+        contains('Declared variable redeclared\\nValue: 10'),
+      );
+      expect(
+        await kernel.execute("String redeclared = 'ten';"),
+        contains('Declared variable redeclared\\nValue: ten'),
+      );
+      expect(
+        await kernel.execute('redeclared.toUpperCase()'),
+        contains('"data":"TEN"'),
+      );
+    },
+  );
 }

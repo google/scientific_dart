@@ -128,6 +128,18 @@ CellOutputItem? formatEvaluationValue(dynamic value) {
   return CellOutputItem('text/plain', strVal);
 }
 
+/// Evaluates the trailing expression of a cell and awaits its value.
+///
+/// Taking [thunk] as a `Future<dynamic> Function()` lets a cell end in a
+/// `void` expression such as `print(...)`, `display(...)`, or `list.add(...)`:
+/// the closure's return type `Future<void>` is a subtype of
+/// `Future<dynamic>`, so awaiting the call yields `null` typed as `dynamic`.
+/// Awaiting the closure directly would instead yield a `void` value, which is
+/// a compile-time error to assign or return alongside non-void returns.
+/// A trailing `Future` is also awaited.
+Future<dynamic> evaluateCellExpression(Future<dynamic> Function() thunk) =>
+    thunk();
+
 /// Describes a live variable for the notebook Variable Inspector drawer.
 Map<String, String> describeVariableForInspector(String name, dynamic val) {
   try {

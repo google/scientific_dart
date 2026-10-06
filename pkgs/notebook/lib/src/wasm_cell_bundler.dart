@@ -73,8 +73,187 @@ final class WasmAnalysisBundle {
   const WasmAnalysisBundle({required this.source, required this.mappedOffset});
 }
 
+/// Classification of a top-level item inside a parsed notebook cell.
+enum ParsedCellItemType {
+  /// A `class`, `enum`, `mixin`, `extension`, `typedef`, or function declaration.
+  typeOrFunctionDeclaration,
+
+  /// A cell-level variable declaration (`var`, `final`, `const`, or typed).
+  variableDeclaration,
+
+  /// A control-flow, jump, or pattern-declaration statement.
+  statement,
+
+  /// An expression statement (whose value is captured when it is the trailing item).
+  expression,
+}
+
+/// An `import` directive extracted from a notebook cell.
+final class ParsedCellImport {
+  /// The trimmed `import '...';` directive source.
+  final String statement;
+
+  /// Short package or library name (for example `'path'` for `package:path/...`
+  /// or `'math'` for `dart:math`).
+  final String name;
+
+  /// Constructs a [ParsedCellImport].
+  const ParsedCellImport({required this.statement, required this.name});
+}
+
+/// A single variable declarator (`name` and optional `initializer`) within a
+/// cell variable declaration.
+final class ParsedVarDeclarator {
+  /// The declared variable identifier.
+  final String name;
+
+  /// The initializer expression source, or `null` if uninitialized.
+  final String? initializer;
+
+  /// Constructs a [ParsedVarDeclarator].
+  const ParsedVarDeclarator({required this.name, this.initializer});
+}
+
+/// A single classified top-level item from a notebook cell body.
+final class ParsedCellItem {
+  /// The classification of this item.
+  final ParsedCellItemType type;
+
+  /// Normalized source text of this item.
+  ///
+  /// For [ParsedCellItemType.typeOrFunctionDeclaration] and
+  /// [ParsedCellItemType.statement], ends with `;` or `}`.
+  /// For [ParsedCellItemType.variableDeclaration] and
+  /// [ParsedCellItemType.expression], any trailing `;` is stripped.
+  final String source;
+
+  /// Declared symbol name for [ParsedCellItemType.typeOrFunctionDeclaration], if named.
+  final String? symbolName;
+
+  /// Whether a [ParsedCellItemType.variableDeclaration] uses `const`.
+  final bool isConst;
+
+  /// Whether a [ParsedCellItemType.variableDeclaration] uses `final`.
+  final bool isFinal;
+
+  /// Explicit type annotation on a [ParsedCellItemType.variableDeclaration], if any.
+  final String? typeAnnotation;
+
+  /// Declarators for [ParsedCellItemType.variableDeclaration].
+  final List<ParsedVarDeclarator> variables;
+
+  /// Constructs a [ParsedCellItem].
+  const ParsedCellItem({
+    required this.type,
+    required this.source,
+    this.symbolName,
+    this.isConst = false,
+    this.isFinal = false,
+    this.typeAnnotation,
+    this.variables = const [],
+  });
+}
+
+/// Result of transforming notebook cell code into top-level workspace
+/// definitions and an executable cell body.
+final class CellTransformationResult {
+  /// Top-level definitions to register in the workspace.
+  final List<String> topLevelDefinitions;
+
+  /// Top-level definitions keyed by symbol name.
+  final Map<String, String> namedDefinitions;
+
+  /// Variable names declared in this cell.
+  final List<String> declaredVariables;
+
+  /// The transformed body code for `async` cell execution.
+  final String cellBodyCode;
+
+  /// Constructs a [CellTransformationResult].
+  const CellTransformationResult(
+    this.topLevelDefinitions,
+    this.cellBodyCode, {
+    this.namedDefinitions = const {},
+    this.declaredVariables = const [],
+  });
+}
+
+/// Parsed and classified representation of a single notebook code cell,
+/// shared between [WasmCellBundler] (serverless Wasm mode) and
+/// `NotebookKernel` (VM-service kernel mode).
+final class ParsedNotebookCell {
+  /// Package name if this cell is a `%pub add <pkg>` / `pub add <pkg>` magic command.
+  final String? pubAddPackage;
+
+  /// `import` directives extracted from the cell.
+  final List<ParsedCellImport> imports;
+
+  /// Ordered top-level statements, declarations, and expressions in the cell body.
+  final List<ParsedCellItem> items;
+
+  /// Constructs a [ParsedNotebookCell].
+  const ParsedNotebookCell({
+    this.pubAddPackage,
+    this.imports = const [],
+    this.items = const [],
+  });
+
+  /// Parses [code] into a [ParsedNotebookCell].
+  factory ParsedNotebookCell.parse(String code) =>
+      WasmCellBundler._parseCell(code);
+
+  /// Whether the cell contains no magic command, imports, or body items.
+  bool get isEmpty => pubAddPackage == null && imports.isEmpty && items.isEmpty;
+
+  /// Whether the cell consists solely of `import` directives.
+  bool get isPureImport =>
+      pubAddPackage == null && imports.isNotEmpty && items.isEmpty;
+
+  /// Human-readable status string for a pure-import cell (`'Imported ...'`).
+  String get importedNamesSummary =>
+      'Imported ${imports.map((i) => i.name).join(', ')}';
+
+  /// Whether the cell body contains only type or function declarations.
+  bool get onlyDeclarations =>
+      items.isNotEmpty &&
+      items.every(
+        (i) => i.type == ParsedCellItemType.typeOrFunctionDeclaration,
+      );
+
+  /// The last named symbol among [ParsedCellItemType.typeOrFunctionDeclaration] items.
+  String? get lastDeclaredSymbol {
+    for (var i = items.length - 1; i >= 0; i--) {
+      final item = items[i];
+      if (item.type == ParsedCellItemType.typeOrFunctionDeclaration &&
+          item.symbolName != null) {
+        return item.symbolName;
+      }
+    }
+    return null;
+  }
+
+  /// If the cell body consists of a single variable declaration of a single
+  /// variable, returns that [ParsedVarDeclarator]; otherwise `null`.
+  ParsedVarDeclarator? get singleDeclaredVariable {
+    if (items.length == 1) {
+      final item = items.first;
+      if (item.type == ParsedCellItemType.variableDeclaration &&
+          item.variables.length == 1) {
+        return item.variables.first;
+      }
+    }
+    return null;
+  }
+
+  /// Transforms this cell's items into top-level workspace definitions and an
+  /// `async` function body for execution in `NotebookKernel`.
+  CellTransformationResult transformForKernel() =>
+      WasmCellBundler._transformForKernel(this);
+}
+
 /// Bundles multi-cell notebook sessions into a single compilable Dart program
-/// for serverless Wasm execution (re-run-from-top state model) and LSP analysis.
+/// for serverless Wasm execution (re-run-from-top state model) and LSP analysis,
+/// and provides the shared cell parser/transformer used by `NotebookKernel`.
 final class WasmCellBundler {
   const WasmCellBundler._();
 
@@ -142,23 +321,20 @@ final class WasmCellBundler {
     final varDeclCounts = <String, int>{};
     final includedCellIds = <String>[];
 
+    final parsedCells = <({WasmNotebookCell cell, ParsedNotebookCell parsed})>[
+      for (final cell in selectedCells)
+        if (cell.code.trim().isNotEmpty)
+          (cell: cell, parsed: _parseCell(cell.code)),
+    ];
+
     // Pre-pass: count variable declarations across cells so uniquely declared
     // variables keep their exact Dart static type inference (e.g. NDArray<Float64>)
     // in the shared main() scope, while variables re-declared across multiple
     // cells fall back to a shared `dynamic` slot.
-    for (final cell in selectedCells) {
-      final rawTrimmed = cell.code.trim();
-      if (rawTrimmed.isEmpty) continue;
-      if (RegExp(
-        r'^(?:%)?(?:pub\s+add|add)\s+([\w\d_\-]+)\s*;?$',
-      ).hasMatch(rawTrimmed)) {
-        continue;
-      }
-      final extracted = _extractImportsAndBody(cell.code);
-      for (final item in _splitTopLevelItems(extracted.body)) {
-        final kind = _classifyItem(item);
-        if (kind.type == _ItemType.variableDeclaration) {
-          for (final v in kind.variables) {
+    for (final (:parsed, cell: _) in parsedCells) {
+      for (final item in parsed.items) {
+        if (item.type == ParsedCellItemType.variableDeclaration) {
+          for (final v in item.variables) {
             varDeclCounts[v.name] = (varDeclCounts[v.name] ?? 0) + 1;
           }
         }
@@ -172,20 +348,12 @@ final class WasmCellBundler {
 
     final cellBlocks = <String>[];
 
-    for (var cellIdx = 0; cellIdx < selectedCells.length; cellIdx++) {
-      final cell = selectedCells[cellIdx];
-      final rawTrimmed = cell.code.trim();
-      if (rawTrimmed.isEmpty) continue;
-
+    for (var cellIdx = 0; cellIdx < parsedCells.length; cellIdx++) {
+      final (:cell, :parsed) = parsedCells[cellIdx];
       final runIdx = includedCellIds.length;
       includedCellIds.add(cell.id);
 
-      // Check for %pub add or pub add magic commands.
-      final pubAddMatch = RegExp(
-        r'^(?:%)?(?:pub\s+add|add)\s+([\w\d_\-]+)\s*;?$',
-      ).firstMatch(rawTrimmed);
-      if (pubAddMatch != null) {
-        final pkgName = pubAddMatch.group(1)!;
+      if (parsed.pubAddPackage case final pkgName?) {
         final escapedPkg = _escapeDartString(pkgName);
         cellBlocks.add('''
       // --- Cell $runIdx ---
@@ -196,35 +364,19 @@ final class WasmCellBundler {
         continue;
       }
 
-      final extracted = _extractImportsAndBody(cell.code);
-      final newlyImportedPkgs = <String>[];
-      for (final imp in extracted.imports) {
-        var normalized = imp.trim();
+      for (final imp in parsed.imports) {
+        var normalized = imp.statement;
         if (normalized.contains('package:notebook/src/kernel_helper.dart')) {
           normalized = "import 'package:notebook/src/notebook_widgets.dart';";
         }
         if (seenImports.add(normalized)) {
           userImports.add(normalized);
         }
-        final pkgMatch = RegExp(
-          r'''^import\s+['"]package:([\w\d_\-]+)/''',
-        ).firstMatch(normalized);
-        if (pkgMatch != null) {
-          newlyImportedPkgs.add(pkgMatch.group(1)!);
-        } else {
-          final dartMatch = RegExp(
-            r'''^import\s+['"]dart:([\w\d_\-]+)''',
-          ).firstMatch(normalized);
-          newlyImportedPkgs.add(dartMatch?.group(1) ?? 'library');
-        }
       }
 
-      final items = _splitTopLevelItems(extracted.body);
-      if (items.isEmpty) {
-        if (newlyImportedPkgs.isNotEmpty) {
-          final msg = _escapeDartString(
-            'Imported ${newlyImportedPkgs.join(', ')}',
-          );
+      if (parsed.items.isEmpty) {
+        if (parsed.isPureImport) {
+          final msg = _escapeDartString(parsed.importedNamesSummary);
           cellBlocks.add('''
       // --- Cell $runIdx ---
       _currentCellIdx = $runIdx;
@@ -248,41 +400,30 @@ final class WasmCellBundler {
         'clearCapturedOutput();',
         '_cellValue = null;',
       ];
-      String? singleDeclaredVar;
-      String? lastDeclaredSymbol;
-      var onlyDeclarations = true;
 
-      for (var i = 0; i < items.length; i++) {
-        final item = items[i];
-        final isLast = i == items.length - 1;
-        final kind = _classifyItem(item);
+      for (var i = 0; i < parsed.items.length; i++) {
+        final item = parsed.items[i];
+        final isLast = i == parsed.items.length - 1;
 
-        switch (kind.type) {
-          case _ItemType.typeOrFunctionDeclaration:
-            final symName = kind.symbolName ?? 'decl_${cellIdx}_$i';
-            var declSource = item.trim();
-            if (!declSource.endsWith('}') && !declSource.endsWith(';')) {
-              declSource = '$declSource;';
-            }
-            topLevelDeclarations[symName] = declSource;
-            lastDeclaredSymbol = kind.symbolName;
-          case _ItemType.variableDeclaration:
-            onlyDeclarations = false;
-            final anyRedeclarations = kind.variables.any(
+        switch (item.type) {
+          case ParsedCellItemType.typeOrFunctionDeclaration:
+            final symName = item.symbolName ?? 'decl_${cellIdx}_$i';
+            topLevelDeclarations[symName] = item.source;
+          case ParsedCellItemType.variableDeclaration:
+            final anyRedeclarations = item.variables.any(
               (v) => redeclaredVars.contains(v.name),
             );
             if (!anyRedeclarations) {
-              final declStmt = _stripTrailingSemicolon(item.trim());
-              bodyLines.add('$declStmt;');
+              bodyLines.add('${item.source};');
             } else {
-              for (final v in kind.variables) {
+              for (final v in item.variables) {
                 if (v.initializer != null) {
                   bodyLines.add('${v.name} = ${v.initializer};');
                 }
                 bodyLines.add('_has_${v.name} = true;');
               }
             }
-            for (final v in kind.variables) {
+            for (final v in item.variables) {
               if (seenVariables.add(v.name)) {
                 declaredVariables.add(v.name);
               }
@@ -291,41 +432,29 @@ final class WasmCellBundler {
                 "variableSnapshots['$escapedName'] = describeVariableForInspector('$escapedName', ${v.name});",
               );
             }
-            if (items.length == 1 && kind.variables.length == 1) {
-              singleDeclaredVar = kind.variables.first.name;
-            }
-          case _ItemType.statement:
-            onlyDeclarations = false;
-            var stmtSource = item.trim();
-            if (!stmtSource.endsWith('}') && !stmtSource.endsWith(';')) {
-              stmtSource = '$stmtSource;';
-            }
-            bodyLines.add(stmtSource);
-          case _ItemType.expression:
-            onlyDeclarations = false;
-            final exprSource = _stripTrailingSemicolon(item.trim());
+          case ParsedCellItemType.statement:
+            bodyLines.add(item.source);
+          case ParsedCellItemType.expression:
             if (isLast) {
+              // The thunk goes through `_evaluateCellExpression` rather than
+              // being awaited directly so that a trailing `void` expression
+              // (`print(...)`, `display(...)`, `list.add(...)`, ...) compiles;
+              // see the helper's documentation in the generated program.
               bodyLines.add(
-                '_cellValue = await (() async => (\n$exprSource\n))();',
+                '_cellValue = await _evaluateCellExpression(() async => (\n${item.source}\n));',
               );
             } else {
-              bodyLines.add('$exprSource;');
+              bodyLines.add('${item.source};');
             }
         }
       }
 
-      if (singleDeclaredVar != null) {
-        final escapedName = _escapeDartString(singleDeclaredVar);
-        bodyLines.add('''
-{
-  final _valStr = prettyFormat($singleDeclaredVar);
-  final _printed = getCapturedOutput().trim();
-  clearCapturedOutput();
-  final _header = 'Declared variable $escapedName\\nValue: \$_valStr';
-  _cellValue = _printed.isNotEmpty ? '\$_printed\\n\$_header' : _header;
-}''');
-      } else if (onlyDeclarations && lastDeclaredSymbol != null) {
-        final escapedSym = _escapeDartString(lastDeclaredSymbol);
+      if (parsed.singleDeclaredVariable case final singleVar?) {
+        bodyLines.add(
+          _buildSingleDeclaredVariableBlock(singleVar, assignToCellValue: true),
+        );
+      } else if (parsed.onlyDeclarations && parsed.lastDeclaredSymbol != null) {
+        final escapedSym = _escapeDartString(parsed.lastDeclaredSymbol!);
         bodyLines.add("_cellValue = 'Declared: $escapedSym';");
       }
 
@@ -356,6 +485,17 @@ final class WasmCellBundler {
     }
 
     sb.writeln('''
+/// Evaluates the trailing expression of a cell and awaits its value.
+///
+/// Taking the thunk as a `Future<dynamic> Function()` lets a cell end in a
+/// `void` expression such as `print(...)`, `display(...)` or `list.add(...)`:
+/// the closure's return type `Future<void>` is a subtype of
+/// `Future<dynamic>`, so awaiting the call yields `null` typed as `dynamic`.
+/// Awaiting the closure directly would instead yield a `void` value, which is
+/// a compile-time error to assign. A trailing `Future` is still awaited.
+Future<dynamic> _evaluateCellExpression(Future<dynamic> Function() thunk) =>
+    thunk();
+
 void _recordCellSuccess(
   String cellId,
   dynamic value,
@@ -459,23 +599,17 @@ void _recordCellSuccess(
         activeCellCode = cell.code;
         break;
       }
-      final extracted = _extractImportsAndBody(cell.code);
-      for (final imp in extracted.imports) {
-        final norm = imp.trim();
-        if (seenImports.add(norm)) {
-          sb.writeln(norm);
+      final parsed = _parseCell(cell.code);
+      for (final imp in parsed.imports) {
+        if (seenImports.add(imp.statement)) {
+          sb.writeln(imp.statement);
         }
       }
-      for (final item in _splitTopLevelItems(extracted.body)) {
-        final kind = _classifyItem(item);
-        if (kind.type == _ItemType.typeOrFunctionDeclaration) {
-          var d = item.trim();
-          if (!d.endsWith('}') && !d.endsWith(';')) d = '$d;';
-          priorTopDecls.add(d);
-        } else if (kind.type == _ItemType.variableDeclaration) {
-          var d = item.trim();
-          if (!d.endsWith(';')) d = '$d;';
-          priorVarDecls.add(d);
+      for (final item in parsed.items) {
+        if (item.type == ParsedCellItemType.typeOrFunctionDeclaration) {
+          priorTopDecls.add(item.source);
+        } else if (item.type == ParsedCellItemType.variableDeclaration) {
+          priorVarDecls.add('${item.source};');
         }
       }
     }
@@ -499,24 +633,167 @@ void _recordCellSuccess(
     );
   }
 
-  static ({List<String> imports, String body}) _extractImportsAndBody(
+  /// Transforms [cell] into workspace top-level definitions and an `async`
+  /// cell body for execution in `NotebookKernel`.
+  static CellTransformationResult _transformForKernel(ParsedNotebookCell cell) {
+    final topLevelDefs = <String>[];
+    final namedDefs = <String, String>{};
+    final declaredVars = <String>[];
+    final bodyLines = <String>[];
+
+    for (var i = 0; i < cell.items.length; i++) {
+      final item = cell.items[i];
+      final isLast = i == cell.items.length - 1;
+
+      switch (item.type) {
+        case ParsedCellItemType.typeOrFunctionDeclaration:
+          final symName = item.symbolName ?? 'decl_$i';
+          topLevelDefs.add(item.source);
+          namedDefs[symName] = item.source;
+        case ParsedCellItemType.variableDeclaration:
+          final typeAnnotation = item.typeAnnotation;
+          for (final v in item.variables) {
+            final varName = v.name;
+            declaredVars.add(varName);
+            final String def;
+            if (typeAnnotation != null) {
+              def =
+                  'dynamic __slot_$varName;\n'
+                  '$typeAnnotation get $varName => __slot_$varName as $typeAnnotation;\n'
+                  'set $varName($typeAnnotation v) {\n'
+                  '  __slot_$varName = v;\n'
+                  '}\n'
+                  'T __set_$varName<T extends $typeAnnotation>(T v) {\n'
+                  '  __slot_$varName = v;\n'
+                  '  return v;\n'
+                  '}';
+            } else {
+              def =
+                  'dynamic $varName;\n'
+                  'T __set_$varName<T>(T v) {\n'
+                  '  $varName = v;\n'
+                  '  return v;\n'
+                  '}';
+            }
+            topLevelDefs.add(def);
+            namedDefs[varName] = def;
+            if (v.initializer != null) {
+              if (item.isConst) {
+                bodyLines.add('const $varName = ${v.initializer};');
+                bodyLines.add('__set_$varName($varName);');
+              } else {
+                final kw = item.isFinal ? 'final' : 'var';
+                bodyLines.add(
+                  '$kw $varName = __set_$varName(${v.initializer});',
+                );
+              }
+            } else {
+              bodyLines.add('// $varName');
+            }
+          }
+        case ParsedCellItemType.statement:
+          bodyLines.add(item.source);
+        case ParsedCellItemType.expression:
+          if (isLast) {
+            bodyLines.add(
+              'return await evaluateCellExpression(() async => (\n${item.source}\n));',
+            );
+          } else {
+            bodyLines.add('${item.source};');
+          }
+      }
+    }
+
+    if (cell.singleDeclaredVariable case final singleVar?) {
+      bodyLines.add(
+        _buildSingleDeclaredVariableBlock(singleVar, assignToCellValue: false),
+      );
+    } else if (cell.onlyDeclarations && cell.lastDeclaredSymbol != null) {
+      final escapedSym = _escapeDartString(cell.lastDeclaredSymbol!);
+      bodyLines.add("return 'Declared: $escapedSym';");
+    }
+
+    return CellTransformationResult(
+      topLevelDefs,
+      bodyLines.join('\n'),
+      namedDefinitions: namedDefs,
+      declaredVariables: declaredVars,
+    );
+  }
+
+  static String _buildSingleDeclaredVariableBlock(
+    ParsedVarDeclarator variable, {
+    required bool assignToCellValue,
+  }) {
+    final escapedName = _escapeDartString(variable.name);
+    if (variable.initializer == null) {
+      return assignToCellValue
+          ? "_cellValue = 'Declared variable $escapedName';"
+          : "return 'Declared variable $escapedName';";
+    }
+    final sink = assignToCellValue ? '_cellValue =' : 'return';
+    return '''
+{
+  final _valStr = prettyFormat(${variable.name});
+  final _printed = getCapturedOutput().trim();
+  clearCapturedOutput();
+  final _header = 'Declared variable $escapedName\\nValue: \$_valStr';
+  $sink _printed.isNotEmpty ? '\$_printed\\n\$_header' : _header;
+}''';
+  }
+
+  static ParsedNotebookCell _parseCell(String code) {
+    final rawTrimmed = code.trim();
+    if (rawTrimmed.isEmpty) {
+      return const ParsedNotebookCell();
+    }
+
+    final pubAddMatch = RegExp(
+      r'^(?:%)?(?:pub\s+add|add)\s+([\w\d_\-]+)\s*;?$',
+    ).firstMatch(rawTrimmed);
+    if (pubAddMatch != null) {
+      return ParsedNotebookCell(pubAddPackage: pubAddMatch.group(1));
+    }
+
+    final extracted = _extractImportsAndBody(code);
+    final rawItems = _splitTopLevelItems(extracted.body);
+    final items = <ParsedCellItem>[
+      for (final rawItem in rawItems) _classifyItem(rawItem),
+    ];
+    return ParsedNotebookCell(imports: extracted.imports, items: items);
+  }
+
+  static ({List<ParsedCellImport> imports, String body}) _extractImportsAndBody(
     String code,
   ) {
-    final imports = <String>[];
+    final imports = <ParsedCellImport>[];
     final importRegex = RegExp(
       r'''^\s*import\s+['"][^;]+;\s*''',
       multiLine: true,
     );
     for (final match in importRegex.allMatches(code)) {
-      imports.add(match.group(0)!.trim());
+      final stmt = match.group(0)!.trim();
+      final pkgMatch = RegExp(
+        r'''^import\s+['"]package:([\w\d_\-]+)/''',
+      ).firstMatch(stmt);
+      final String name;
+      if (pkgMatch != null) {
+        name = pkgMatch.group(1)!;
+      } else {
+        final dartMatch = RegExp(
+          r'''^import\s+['"]dart:([\w\d_\-]+)''',
+        ).firstMatch(stmt);
+        name = dartMatch?.group(1) ?? 'library';
+      }
+      imports.add(ParsedCellImport(statement: stmt, name: name));
     }
     final body = code.replaceAll(importRegex, '');
     return (imports: imports, body: body);
   }
 
   /// Splits [source] into top-level statements and declarations while respecting
-  /// comments, string literals (including triple-quoted and raw strings), and
-  /// nested `()`, `[]`, `{}` blocks.
+  /// comments, string literals (including triple-quoted, raw, and interpolated
+  /// strings), and nested `()`, `[]`, `{}` blocks.
   static List<String> _splitTopLevelItems(String source) {
     final items = <String>[];
     final len = source.length;
@@ -535,71 +812,19 @@ void _recordCellSuccess(
     }
 
     while (i < len) {
+      final nextAfterComment = _skipComment(source, i);
+      if (nextAfterComment != i) {
+        i = nextAfterComment;
+        continue;
+      }
+
+      final nextAfterString = _skipStringLiteral(source, i);
+      if (nextAfterString != i) {
+        i = nextAfterString;
+        continue;
+      }
+
       final ch = source.codeUnitAt(i);
-
-      // Line comment //
-      if (ch == 0x2F /* / */ &&
-          i + 1 < len &&
-          source.codeUnitAt(i + 1) == 0x2F) {
-        i += 2;
-        while (i < len && source.codeUnitAt(i) != 0x0A) {
-          i++;
-        }
-        continue;
-      }
-
-      // Block comment /* ... */
-      if (ch == 0x2F /* / */ &&
-          i + 1 < len &&
-          source.codeUnitAt(i + 1) == 0x2A) {
-        i += 2;
-        while (i + 1 < len &&
-            !(source.codeUnitAt(i) == 0x2A &&
-                source.codeUnitAt(i + 1) == 0x2F)) {
-          i++;
-        }
-        i += 2;
-        continue;
-      }
-
-      // Raw or normal string literal
-      if (ch == 0x27 /* ' */ ||
-          ch == 0x22 /* " */ ||
-          (ch == 0x72 /* r */ &&
-              i + 1 < len &&
-              (source.codeUnitAt(i + 1) == 0x27 ||
-                  source.codeUnitAt(i + 1) == 0x22))) {
-        final isRaw = ch == 0x72;
-        if (isRaw) i++;
-        final quote = source.codeUnitAt(i);
-        final isTriple =
-            i + 2 < len &&
-            source.codeUnitAt(i + 1) == quote &&
-            source.codeUnitAt(i + 2) == quote;
-        i += isTriple ? 3 : 1;
-        while (i < len) {
-          final c = source.codeUnitAt(i);
-          if (!isRaw && c == 0x5C /* \ */ ) {
-            i += 2;
-            continue;
-          }
-          if (isTriple) {
-            if (i + 2 < len &&
-                source.codeUnitAt(i) == quote &&
-                source.codeUnitAt(i + 1) == quote &&
-                source.codeUnitAt(i + 2) == quote) {
-              i += 3;
-              break;
-            }
-          } else if (c == quote) {
-            i++;
-            break;
-          }
-          i++;
-        }
-        continue;
-      }
-
       if (ch == 0x28 /* ( */ ) {
         parenDepth++;
       } else if (ch == 0x29 /* ) */ ) {
@@ -622,7 +847,10 @@ void _recordCellSuccess(
               nextWord == 'catch' ||
               nextWord == 'on' ||
               nextWord == 'finally' ||
-              (nextWord == 'while' && RegExp(r'^do\b').hasMatch(currentText));
+              (nextWord == 'while' &&
+                  RegExp(
+                    r'^(?:[A-Za-z_$][\w$]*\s*:\s*)?do\b',
+                  ).hasMatch(currentText));
           if (!continuesBlock && _isBlockStatementOrDeclaration(currentText)) {
             flushItem(i + 1);
           }
@@ -651,40 +879,69 @@ void _recordCellSuccess(
       return true;
     }
     if (RegExp(
-      r'^(?:if|for|while|switch|try|await\s+for)\b',
+      r'^(?:[A-Za-z_$][\w$]*\s*:\s*)?(?:if|for|while|switch|try|await\s+for)\b',
     ).hasMatch(strippedText)) {
       return true;
     }
     return _matchFunctionDeclarationName(strippedText) != null;
   }
 
-  static _ClassifiedItem _classifyItem(String rawItem) {
-    final stripped = _stripLeadingTrivia(rawItem).trim();
+  static ParsedCellItem _classifyItem(String rawItem) {
+    final trimmedItem = rawItem.trim();
+    final stripped = _stripLeadingTrivia(trimmedItem).trim();
+
+    String ensureStatementTerminated(String s) {
+      if (!s.endsWith('}') && !s.endsWith(';')) {
+        return '$s;';
+      }
+      return s;
+    }
 
     // 1. class / enum / mixin / extension / typedef
     final typeMatch = RegExp(
       r'^(?:abstract\s+|base\s+|final\s+|interface\s+|sealed\s+|mixin\s+)*(?:class|enum|mixin|extension|typedef)\s+([A-Za-z_$][\w$]*)',
     ).firstMatch(stripped);
     if (typeMatch != null) {
-      return _ClassifiedItem(
-        type: _ItemType.typeOrFunctionDeclaration,
+      return ParsedCellItem(
+        type: ParsedCellItemType.typeOrFunctionDeclaration,
+        source: ensureStatementTerminated(trimmedItem),
         symbolName: typeMatch.group(1),
       );
     }
     if (RegExp(r'^extension\s+on\b').hasMatch(stripped)) {
-      return const _ClassifiedItem(type: _ItemType.typeOrFunctionDeclaration);
+      return ParsedCellItem(
+        type: ParsedCellItemType.typeOrFunctionDeclaration,
+        source: ensureStatementTerminated(trimmedItem),
+      );
     }
 
     // 2. Top-level function declaration: [returnType] name([params]) [async] { or =>
     final fnName = _matchFunctionDeclarationName(stripped);
     if (fnName != null) {
-      return _ClassifiedItem(
-        type: _ItemType.typeOrFunctionDeclaration,
+      return ParsedCellItem(
+        type: ParsedCellItemType.typeOrFunctionDeclaration,
+        source: ensureStatementTerminated(trimmedItem),
         symbolName: fnName,
       );
     }
 
-    // 3. Control-flow / jump / block statement
+    // 3. Control-flow / jump / labeled / `await for` statement
+    if (RegExp(
+      r'^(?:[A-Za-z_$][\w$]*\s*:\s*)?await\s+for\b',
+    ).hasMatch(stripped)) {
+      return ParsedCellItem(
+        type: ParsedCellItemType.statement,
+        source: ensureStatementTerminated(trimmedItem),
+      );
+    }
+    if (RegExp(
+      r'^[A-Za-z_$][\w$]*\s*:\s*(?:for|while|do|switch|if|try)\b',
+    ).hasMatch(stripped)) {
+      return ParsedCellItem(
+        type: ParsedCellItemType.statement,
+        source: ensureStatementTerminated(trimmedItem),
+      );
+    }
     final firstWordMatch = RegExp(
       r'^([A-Za-z_$][\w$]*)\b',
     ).firstMatch(stripped);
@@ -692,42 +949,109 @@ void _recordCellSuccess(
     if (firstWord != null &&
         _statementKeywords.contains(firstWord) &&
         firstWord != 'await') {
-      return const _ClassifiedItem(type: _ItemType.statement);
+      return ParsedCellItem(
+        type: ParsedCellItemType.statement,
+        source: ensureStatementTerminated(trimmedItem),
+      );
     }
 
     // 4. Variable declaration: (late)? (var|final|const|<Type>) name = ...
-    final varDecls = _tryParseVariableDeclaration(stripped);
-    if (varDecls != null && varDecls.isNotEmpty) {
-      return _ClassifiedItem(
-        type: _ItemType.variableDeclaration,
-        variables: varDecls,
+    final varDecl = _tryParseVariableDeclaration(stripped);
+    if (varDecl != null && varDecl.variables.isNotEmpty) {
+      return ParsedCellItem(
+        type: ParsedCellItemType.variableDeclaration,
+        source: _stripTrailingSemicolon(trimmedItem),
+        isConst: varDecl.isConst,
+        isFinal: varDecl.isFinal,
+        typeAnnotation: varDecl.typeAnnotation,
+        variables: varDecl.variables,
+      );
+    }
+
+    // Pattern variable declarations such as `final (a, b) = (1, 2);` are
+    // statements, not expressions.
+    if (RegExp(r'^(?:late\s+)?(?:var|final|const)\b').hasMatch(stripped)) {
+      return ParsedCellItem(
+        type: ParsedCellItemType.statement,
+        source: ensureStatementTerminated(trimmedItem),
       );
     }
 
     // 5. Otherwise it is an expression statement.
-    return const _ClassifiedItem(type: _ItemType.expression);
+    return ParsedCellItem(
+      type: ParsedCellItemType.expression,
+      source: _stripTrailingSemicolon(trimmedItem),
+    );
   }
 
   static String? _matchFunctionDeclarationName(String stripped) {
-    final headerMatch = RegExp(
-      r'^(?:[A-Za-z_$][\w$]*(?:\s*<[^>]+>)?\??\s+)?([A-Za-z_$][\w$]*)\s*(?:<[^>]+>)?\s*\(',
-    ).firstMatch(stripped);
-    if (headerMatch == null) return null;
-    final name = headerMatch.group(1)!;
-    if (_statementKeywords.contains(name) ||
-        name == 'var' ||
-        name == 'final' ||
-        name == 'const' ||
-        name == 'print' ||
-        name == 'display') {
+    // Either `[returnType] name[<TypeParams>](` or `name[<TypeParams>](`.
+    String? candidateName;
+    int? openParenIdx;
+
+    if (_consumeTypeAnnotation(stripped) case final consumed?) {
+      final rest = consumed.rest;
+      final nameMatch = RegExp(r'^([A-Za-z_$][\w$]*)').firstMatch(rest);
+      if (nameMatch != null) {
+        final name = nameMatch.group(1)!;
+        var idx = nameMatch.end;
+        idx = _skipSpaces(rest, idx);
+        if (idx < rest.length && rest.codeUnitAt(idx) == 0x3C /* < */ ) {
+          final afterTypeParams = _skipBalancedAngles(rest, idx);
+          if (afterTypeParams != -1) {
+            idx = _skipSpaces(rest, afterTypeParams);
+          }
+        }
+        if (idx < rest.length && rest.codeUnitAt(idx) == 0x28 /* ( */ ) {
+          candidateName = name;
+          openParenIdx = stripped.length - rest.length + idx;
+        }
+      }
+    }
+
+    if (candidateName == null) {
+      final nameMatch = RegExp(r'^([A-Za-z_$][\w$]*)').firstMatch(stripped);
+      if (nameMatch == null) return null;
+      final name = nameMatch.group(1)!;
+      var idx = nameMatch.end;
+      idx = _skipSpaces(stripped, idx);
+      if (idx < stripped.length && stripped.codeUnitAt(idx) == 0x3C /* < */ ) {
+        final afterTypeParams = _skipBalancedAngles(stripped, idx);
+        if (afterTypeParams != -1) {
+          idx = _skipSpaces(stripped, afterTypeParams);
+        }
+      }
+      if (idx < stripped.length && stripped.codeUnitAt(idx) == 0x28 /* ( */ ) {
+        candidateName = name;
+        openParenIdx = idx;
+      }
+    }
+
+    if (candidateName == null || openParenIdx == null) return null;
+    if (_statementKeywords.contains(candidateName) ||
+        candidateName == 'var' ||
+        candidateName == 'final' ||
+        candidateName == 'const' ||
+        candidateName == 'print' ||
+        candidateName == 'display') {
       return null;
     }
-    // Find matching ')' for the parameter list '('
-    final openParenIdx = stripped.indexOf('(', headerMatch.start);
-    if (openParenIdx == -1) return null;
+
+    // Find matching ')' for the parameter list '(' while skipping strings/comments.
     var depth = 0;
     var closeParenIdx = -1;
-    for (var i = openParenIdx; i < stripped.length; i++) {
+    var i = openParenIdx;
+    while (i < stripped.length) {
+      final nextComment = _skipComment(stripped, i);
+      if (nextComment != i) {
+        i = nextComment;
+        continue;
+      }
+      final nextStr = _skipStringLiteral(stripped, i);
+      if (nextStr != i) {
+        i = nextStr;
+        continue;
+      }
       final c = stripped.codeUnitAt(i);
       if (c == 0x28 /* ( */ ) {
         depth++;
@@ -738,53 +1062,70 @@ void _recordCellSuccess(
           break;
         }
       }
+      i++;
     }
     if (closeParenIdx == -1) return null;
     final afterParams = stripped.substring(closeParenIdx + 1).trimLeft();
     if (RegExp(
       r'^(?:(?:async|sync)\s*\*?\s*)?(?:\{|=>)',
     ).hasMatch(afterParams)) {
-      return name;
+      return candidateName;
     }
     return null;
   }
 
-  static List<_ParsedVarDecl>? _tryParseVariableDeclaration(String stripped) {
-    final withoutSemi = _stripTrailingSemicolon(stripped).trim();
-    String? declaratorsPart;
-
-    final kwMatch = RegExp(
-      r'^(?:late\s+)?(?:var|(?:final|const)(?:\s+[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?(?:\s*<[^>]+>)?\??(?=\s+[A-Za-z_$]))?)\s+(.+)$',
-      dotAll: true,
-    ).firstMatch(withoutSemi);
-    if (kwMatch != null) {
-      declaratorsPart = kwMatch.group(1)!;
-    } else {
-      final typedMatch = RegExp(
-        r'^(?:late\s+)?([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?(?:\s*<[^>]+>)?\??)\s+([A-Za-z_$][\w$]*\s*(?:=.*)?)$',
-        dotAll: true,
-      ).firstMatch(withoutSemi);
-      if (typedMatch != null) {
-        final typeToken = typedMatch.group(1)!.split(RegExp(r'[\s<]')).first;
-        if (!_statementKeywords.contains(typeToken)) {
-          declaratorsPart = typedMatch.group(2)!;
-        }
-      }
+  static ({
+    bool isConst,
+    bool isFinal,
+    String? typeAnnotation,
+    List<ParsedVarDeclarator> variables,
+  })?
+  _tryParseVariableDeclaration(String stripped) {
+    var rest = _stripTrailingSemicolon(stripped).trim();
+    final lateMatch = RegExp(r'^late\s+').firstMatch(rest);
+    if (lateMatch != null) {
+      rest = rest.substring(lateMatch.end).trimLeft();
     }
 
-    if (declaratorsPart == null) return null;
-    // Reject record destructuring patterns like `final (a, b) = ...` here so they
-    // stay as statements or handle simple identifier declarators.
-    if (declaratorsPart.trimLeft().startsWith('(')) return null;
+    var isConst = false;
+    var isFinal = false;
+    String? typeAnnotation;
+    String? declaratorsPart;
 
-    final parts = _splitTopLevelComma(declaratorsPart);
-    final result = <_ParsedVarDecl>[];
+    final kwMatch = RegExp(r'^(var|final|const)\s+').firstMatch(rest);
+    if (kwMatch != null) {
+      final kw = kwMatch.group(1)!;
+      isConst = kw == 'const';
+      isFinal = kw == 'final';
+      final afterKw = rest.substring(kwMatch.end).trimLeft();
+      if (kw == 'var' ||
+          RegExp(r'^[A-Za-z_$][\w$]*\s*(?:=|,|$)').hasMatch(afterKw)) {
+        declaratorsPart = afterKw;
+      } else if (_consumeTypeAnnotation(afterKw) case final consumed?) {
+        typeAnnotation = consumed.typeAnnotation;
+        declaratorsPart = consumed.rest;
+      }
+    } else if (_consumeTypeAnnotation(rest) case final consumed?) {
+      typeAnnotation = consumed.typeAnnotation;
+      declaratorsPart = consumed.rest;
+    }
+
+    if (declaratorsPart == null || declaratorsPart.isEmpty) return null;
+    final trimmedDecls = declaratorsPart.trimLeft();
+    if (trimmedDecls.startsWith('(') ||
+        trimmedDecls.startsWith('[') ||
+        trimmedDecls.startsWith('{')) {
+      return null;
+    }
+
+    final parts = _splitTopLevelDeclaratorCommas(declaratorsPart);
+    final variables = <ParsedVarDeclarator>[];
     for (final part in parts) {
       final trimmed = part.trim();
       final eqIdx = _findTopLevelEquals(trimmed);
       if (eqIdx == -1) {
         if (RegExp(r'^[A-Za-z_$][\w$]*$').hasMatch(trimmed)) {
-          result.add(_ParsedVarDecl(name: trimmed));
+          variables.add(ParsedVarDeclarator(name: trimmed));
         } else {
           return null;
         }
@@ -794,26 +1135,124 @@ void _recordCellSuccess(
         if (!RegExp(r'^[A-Za-z_$][\w$]*$').hasMatch(lhs) || rhs.isEmpty) {
           return null;
         }
-        result.add(_ParsedVarDecl(name: lhs, initializer: rhs));
+        variables.add(ParsedVarDeclarator(name: lhs, initializer: rhs));
       }
     }
-    return result;
+    return (
+      isConst: isConst,
+      isFinal: isFinal,
+      typeAnnotation: typeAnnotation,
+      variables: variables,
+    );
   }
 
-  static List<String> _splitTopLevelComma(String s) {
+  /// Attempts to consume a leading type annotation (such as `int`, `math.Point`,
+  /// `List<int>`, or `Map<String, List<int>>?`) from [s], returning the
+  /// consumed type annotation and the remaining text starting with an identifier.
+  static ({String typeAnnotation, String rest})? _consumeTypeAnnotation(
+    String s,
+  ) {
+    final headMatch = RegExp(
+      r'^([A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)?)',
+    ).firstMatch(s);
+    if (headMatch == null) return null;
+    final fullHead = headMatch.group(1)!;
+    final firstId = fullHead.split('.').first;
+    if (_statementKeywords.contains(firstId) ||
+        firstId == 'var' ||
+        firstId == 'final' ||
+        firstId == 'const' ||
+        firstId == 'late') {
+      return null;
+    }
+
+    var idx = headMatch.end;
+    final afterHead = _skipSpaces(s, idx);
+    if (afterHead < s.length && s.codeUnitAt(afterHead) == 0x3C /* < */ ) {
+      final afterAngles = _skipBalancedAngles(s, afterHead);
+      if (afterAngles == -1) return null;
+      idx = afterAngles;
+    }
+    if (idx < s.length && s.codeUnitAt(idx) == 0x3F /* ? */ ) {
+      idx++;
+    }
+    // Must be followed by whitespace and then an identifier start.
+    if (idx >= s.length) return null;
+    final afterType = _skipSpaces(s, idx);
+    if (afterType == idx || afterType >= s.length) return null;
+    if (!RegExp(r'^[A-Za-z_$]').hasMatch(s.substring(afterType))) {
+      return null;
+    }
+    return (
+      typeAnnotation: s.substring(0, idx).trim(),
+      rest: s.substring(afterType),
+    );
+  }
+
+  static int _skipSpaces(String s, int index) {
+    var i = index;
+    while (i < s.length) {
+      final c = s.codeUnitAt(i);
+      if (c == 0x20 || c == 0x09 || c == 0x0A || c == 0x0D) {
+        i++;
+      } else {
+        break;
+      }
+    }
+    return i;
+  }
+
+  /// Scans balanced `<...>` starting at `s[openAngleIndex] == '<'`, returning
+  /// the index immediately after the matching `>`, or `-1` if unbalanced.
+  static int _skipBalancedAngles(String s, int openAngleIndex) {
+    var depth = 0;
+    for (var i = openAngleIndex; i < s.length; i++) {
+      final c = s.codeUnitAt(i);
+      if (c == 0x3C /* < */ ) {
+        depth++;
+      } else if (c == 0x3E /* > */ ) {
+        depth--;
+        if (depth == 0) return i + 1;
+      } else if (c == 0x3B /* ; */ || c == 0x7B /* { */ || c == 0x7D /* } */ ) {
+        return -1;
+      }
+    }
+    return -1;
+  }
+
+  /// Splits a variable declarator list `a = 1, b = 2` on top-level commas that
+  /// precede a subsequent declarator identifier (`id (= | , | $)`), while
+  /// skipping string literals, comments, `()`, `[]`, `{}`, and `<TypeA, TypeB>`
+  /// type argument commas.
+  static List<String> _splitTopLevelDeclaratorCommas(String s) {
     final parts = <String>[];
     var start = 0;
     var depth = 0;
-    for (var i = 0; i < s.length; i++) {
+    var i = 0;
+    while (i < s.length) {
+      final nextComment = _skipComment(s, i);
+      if (nextComment != i) {
+        i = nextComment;
+        continue;
+      }
+      final nextStr = _skipStringLiteral(s, i);
+      if (nextStr != i) {
+        i = nextStr;
+        continue;
+      }
       final c = s.codeUnitAt(i);
       if (c == 0x28 || c == 0x5B || c == 0x7B) {
         depth++;
       } else if (c == 0x29 || c == 0x5D || c == 0x7D) {
         if (depth > 0) depth--;
       } else if (c == 0x2C /* , */ && depth == 0) {
-        parts.add(s.substring(start, i));
-        start = i + 1;
+        final afterComma = _stripLeadingTrivia(s.substring(i + 1));
+        if (RegExp(r'^[A-Za-z_$][\w$]*\s*(?:=|,|$)').hasMatch(afterComma)) {
+          parts.add(s.substring(start, i));
+          start = i + 1;
+        }
       }
+      i++;
     }
     parts.add(s.substring(start));
     return parts;
@@ -821,7 +1260,18 @@ void _recordCellSuccess(
 
   static int _findTopLevelEquals(String s) {
     var depth = 0;
-    for (var i = 0; i < s.length; i++) {
+    var i = 0;
+    while (i < s.length) {
+      final nextComment = _skipComment(s, i);
+      if (nextComment != i) {
+        i = nextComment;
+        continue;
+      }
+      final nextStr = _skipStringLiteral(s, i);
+      if (nextStr != i) {
+        i = nextStr;
+        continue;
+      }
       final c = s.codeUnitAt(i);
       if (c == 0x28 || c == 0x5B || c == 0x7B) {
         depth++;
@@ -838,8 +1288,106 @@ void _recordCellSuccess(
           return i;
         }
       }
+      i++;
     }
     return -1;
+  }
+
+  /// If [s] at [index] begins a `//` or `/* ... */` comment, returns the index
+  /// after the comment; otherwise returns [index].
+  static int _skipComment(String s, int index) {
+    final len = s.length;
+    if (index + 1 >= len || s.codeUnitAt(index) != 0x2F /* / */ ) {
+      return index;
+    }
+    final next = s.codeUnitAt(index + 1);
+    if (next == 0x2F /* / */ ) {
+      var i = index + 2;
+      while (i < len && s.codeUnitAt(i) != 0x0A) {
+        i++;
+      }
+      return i;
+    }
+    if (next == 0x2A /* * */ ) {
+      var i = index + 2;
+      while (i + 1 < len &&
+          !(s.codeUnitAt(i) == 0x2A && s.codeUnitAt(i + 1) == 0x2F)) {
+        i++;
+      }
+      return (i + 2 <= len) ? i + 2 : len;
+    }
+    return index;
+  }
+
+  /// If [s] at [index] begins a string literal (single, double, triple-quoted,
+  /// or raw `r'...'`/`r"..."`), returns the index after the closing quote,
+  /// recursively skipping `${...}` interpolations in non-raw strings.
+  static int _skipStringLiteral(String s, int index) {
+    final len = s.length;
+    if (index >= len) return index;
+    final ch = s.codeUnitAt(index);
+    final isRaw =
+        ch == 0x72 /* r */ &&
+        index + 1 < len &&
+        (s.codeUnitAt(index + 1) == 0x27 || s.codeUnitAt(index + 1) == 0x22);
+    if (!isRaw && ch != 0x27 /* ' */ && ch != 0x22 /* " */ ) {
+      return index;
+    }
+
+    var i = isRaw ? index + 1 : index;
+    final quote = s.codeUnitAt(i);
+    final isTriple =
+        i + 2 < len &&
+        s.codeUnitAt(i + 1) == quote &&
+        s.codeUnitAt(i + 2) == quote;
+    i += isTriple ? 3 : 1;
+
+    while (i < len) {
+      final c = s.codeUnitAt(i);
+      if (!isRaw && c == 0x5C /* \ */ ) {
+        i += 2;
+        continue;
+      }
+      if (!isRaw &&
+          c == 0x24 /* $ */ &&
+          i + 1 < len &&
+          s.codeUnitAt(i + 1) == 0x7B /* { */ ) {
+        i += 2;
+        var interpDepth = 1;
+        while (i < len && interpDepth > 0) {
+          final nextComment = _skipComment(s, i);
+          if (nextComment != i) {
+            i = nextComment;
+            continue;
+          }
+          final nextStr = _skipStringLiteral(s, i);
+          if (nextStr != i) {
+            i = nextStr;
+            continue;
+          }
+          final ic = s.codeUnitAt(i);
+          if (ic == 0x7B /* { */ ) {
+            interpDepth++;
+          } else if (ic == 0x7D /* } */ ) {
+            interpDepth--;
+          }
+          i++;
+        }
+        continue;
+      }
+      if (isTriple) {
+        if (i + 2 < len &&
+            s.codeUnitAt(i) == quote &&
+            s.codeUnitAt(i + 1) == quote &&
+            s.codeUnitAt(i + 2) == quote) {
+          return i + 3;
+        }
+      } else if (c == quote) {
+        return i + 1;
+      }
+      i++;
+    }
+    return len;
   }
 
   static String _stripLeadingTrivia(String s) {
@@ -851,20 +1399,9 @@ void _recordCellSuccess(
         i++;
         continue;
       }
-      if (c == 0x2F && i + 1 < len && s.codeUnitAt(i + 1) == 0x2F) {
-        i += 2;
-        while (i < len && s.codeUnitAt(i) != 0x0A) {
-          i++;
-        }
-        continue;
-      }
-      if (c == 0x2F && i + 1 < len && s.codeUnitAt(i + 1) == 0x2A) {
-        i += 2;
-        while (i + 1 < len &&
-            !(s.codeUnitAt(i) == 0x2A && s.codeUnitAt(i + 1) == 0x2F)) {
-          i++;
-        }
-        i += 2;
+      final nextComment = _skipComment(s, i);
+      if (nextComment != i) {
+        i = nextComment;
         continue;
       }
       break;
@@ -892,28 +1429,4 @@ void _recordCellSuccess(
       .replaceAll(r'$', r'\$')
       .replaceAll('\n', r'\n')
       .replaceAll('\r', r'\r');
-}
-
-enum _ItemType {
-  typeOrFunctionDeclaration,
-  variableDeclaration,
-  statement,
-  expression,
-}
-
-final class _ParsedVarDecl {
-  final String name;
-  final String? initializer;
-  const _ParsedVarDecl({required this.name, this.initializer});
-}
-
-final class _ClassifiedItem {
-  final _ItemType type;
-  final String? symbolName;
-  final List<_ParsedVarDecl> variables;
-  const _ClassifiedItem({
-    required this.type,
-    this.symbolName,
-    this.variables = const [],
-  });
 }
