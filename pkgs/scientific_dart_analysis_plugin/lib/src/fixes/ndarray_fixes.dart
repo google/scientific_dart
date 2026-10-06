@@ -15,6 +15,7 @@
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/dart/ast/token.dart';
+import 'package:analyzer/dart/ast/visitor.dart';
 import 'package:analyzer/source/source_range.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
@@ -43,7 +44,10 @@ final class ReplaceWithEqualsFix extends ResolvedCorrectionProducer {
   Future<void> compute(ChangeBuilder builder) async {
     final targetNode = node.thisOrAncestorOfType<BinaryExpression>();
     if (targetNode == null) return;
-    final leftSrc = targetNode.leftOperand.toSource();
+    final leftOperand = targetNode.leftOperand;
+    final leftSrc = _needsReceiverParentheses(leftOperand)
+        ? '(${leftOperand.toSource()})'
+        : leftOperand.toSource();
     final rightSrc = targetNode.rightOperand.toSource();
     final isNegated = targetNode.operator.type == TokenType.BANG_EQ;
     final replacement = isNegated
@@ -58,6 +62,16 @@ final class ReplaceWithEqualsFix extends ResolvedCorrectionProducer {
     });
   }
 }
+
+bool _needsReceiverParentheses(Expression expr) =>
+    expr is BinaryExpression ||
+    expr is PrefixExpression ||
+    expr is ConditionalExpression ||
+    expr is AsExpression ||
+    expr is IsExpression ||
+    expr is CascadeExpression ||
+    expr is AwaitExpression ||
+    expr is AssignmentExpression;
 
 /// Quick fix that replaces `a == b` with `identical(a, b)` (or `!identical(a, b)`
 /// for `a != b`).
@@ -122,18 +136,29 @@ final class AddDetachToParentScopeFix extends ResolvedCorrectionProducer {
         ? node as Expression
         : node.thisOrAncestorOfType<Expression>();
     if (expr == null) return;
+    final unwrapped = unwrapParenthesized(expr);
+    if (unwrapped is RecordLiteral || unwrapped is ListLiteral) return;
 
     final body = expr.thisOrAncestorOfType<FunctionBody>();
     final decls = body != null
         ? SubtreeDeclarations.collect(body)
         : SubtreeDeclarations();
-    final isView = traceRootArrayAndView(expr, decls).throughView;
+    final isView =
+        traceRootArrayAndView(expr, decls).throughView ||
+        isViewProducingExpression(expr, decls);
     final insertion = isView
         ? '.copy().detachToParentScope()'
         : '.detachToParentScope()';
 
     await builder.addDartFileEdit(file, (builder) {
-      builder.addSimpleInsertion(expr.end, insertion);
+      if (_needsReceiverParentheses(expr)) {
+        builder.addSimpleReplacement(
+          SourceRange(expr.offset, expr.length),
+          '(${expr.toSource()})$insertion',
+        );
+      } else {
+        builder.addSimpleInsertion(expr.end, insertion);
+      }
     });
   }
 }
@@ -158,28 +183,145 @@ final class AddCopyBeforeViewLifecycleFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
-    final target = node;
-    if (target is MethodInvocation &&
-        (target.methodName.name == 'detachToParentScope' ||
-            target.methodName.name == 'detachFromScope')) {
-      final receiver = target.realTarget;
-      if (receiver != null) {
-        await builder.addDartFileEdit(file, (builder) {
-          builder.addSimpleInsertion(receiver.end, '.copy()');
-        });
+    final returningOrScope = _findEnclosingInvocationInSameFunction(
+      node,
+      (inv) => isReturningInvocation(inv) || isScopeInvocation(inv),
+    );
+    if (returningOrScope != null) {
+      final returnedView = _findReturnedViewInScopeCall(returningOrScope);
+      if (returnedView != null) {
+        await _appendCopyToExpression(builder, returnedView);
         return;
       }
     }
-    if (target is Expression) {
-      await builder.addDartFileEdit(file, (builder) {
-        builder.addSimpleInsertion(target.end, '.copy()');
-      });
+
+    final detachInvocation = _findEnclosingInvocationInSameFunction(
+      node,
+      (inv) =>
+          inv.methodName.name == 'detachToParentScope' ||
+          inv.methodName.name == 'detachFromScope',
+    );
+    if (detachInvocation != null) {
+      final receiver = detachInvocation.realTarget;
+      if (receiver != null) {
+        await _appendCopyToExpression(builder, receiver);
+        return;
+      }
     }
+
+    final returnStmt = _findEnclosingReturnInSameFunction(node);
+    final target =
+        returnStmt?.expression ??
+        (node is Expression
+            ? node as Expression
+            : node.thisOrAncestorOfType<Expression>());
+    if (target != null) {
+      await _appendCopyToExpression(builder, target);
+    }
+  }
+
+  Future<void> _appendCopyToExpression(
+    ChangeBuilder builder,
+    Expression target,
+  ) async {
+    await builder.addDartFileEdit(file, (builder) {
+      if (_needsReceiverParentheses(target)) {
+        builder.addSimpleReplacement(
+          SourceRange(target.offset, target.length),
+          '(${target.toSource()}).copy()',
+        );
+      } else {
+        builder.addSimpleInsertion(target.end, '.copy()');
+      }
+    });
+  }
+
+  MethodInvocation? _findEnclosingInvocationInSameFunction(
+    AstNode start,
+    bool Function(MethodInvocation) predicate,
+  ) {
+    AstNode? current = start;
+    while (current != null) {
+      if (current is FunctionExpression ||
+          current is FunctionDeclaration ||
+          current is MethodDeclaration) {
+        return null;
+      }
+      if (current is MethodInvocation && predicate(current)) {
+        return current;
+      }
+      current = current.parent;
+    }
+    return null;
+  }
+
+  ReturnStatement? _findEnclosingReturnInSameFunction(AstNode start) {
+    AstNode? current = start;
+    while (current != null) {
+      if (current is FunctionExpression ||
+          current is FunctionDeclaration ||
+          current is MethodDeclaration) {
+        return null;
+      }
+      if (current is ReturnStatement) {
+        return current;
+      }
+      current = current.parent;
+    }
+    return null;
+  }
+
+  Expression? _findReturnedViewInScopeCall(MethodInvocation invocation) {
+    final args = invocation.argumentList.arguments;
+    if (args.isEmpty) return null;
+    final callback = unwrapParenthesized(args.first.argumentExpression);
+    if (callback is! FunctionExpression) return null;
+    final decls = SubtreeDeclarations.collect(callback);
+    final body = callback.body;
+    if (body is ExpressionFunctionBody) {
+      return body.expression;
+    }
+    if (body is BlockFunctionBody) {
+      final finder = _ReturnedViewExpressionFinder(callback, decls);
+      body.block.accept(finder);
+      return finder.foundView ?? finder.firstReturned;
+    }
+    return null;
+  }
+}
+
+final class _ReturnedViewExpressionFinder extends RecursiveAstVisitor<void> {
+  final FunctionExpression callback;
+  final SubtreeDeclarations decls;
+  Expression? foundView;
+  Expression? firstReturned;
+
+  _ReturnedViewExpressionFinder(this.callback, this.decls);
+
+  @override
+  void visitFunctionExpression(FunctionExpression node) {
+    if (!identical(node, callback)) return;
+    super.visitFunctionExpression(node);
+  }
+
+  @override
+  void visitFunctionDeclaration(FunctionDeclaration node) {}
+
+  @override
+  void visitReturnStatement(ReturnStatement node) {
+    final expr = node.expression;
+    if (expr != null) {
+      firstReturned ??= expr;
+      if (foundView == null && isViewProducingExpression(expr, decls)) {
+        foundView = expr;
+      }
+    }
+    super.visitReturnStatement(node);
   }
 }
 
 /// Quick fix that rewrites `a < b` on `NDArray<Uint64>` elements to
-/// `uint64Compare(a, b) < 0`.
+/// `uint64Compare(a, b) < 0`, or `a.compareTo(b)` to `uint64Compare(a, b)`.
 final class ReplaceWithUint64CompareFix extends ResolvedCorrectionProducer {
   static const FixKind _uint64CompareKind = FixKind(
     'scientific_dart_analysis_plugin.fix.replaceWithUint64Compare',
@@ -198,6 +340,30 @@ final class ReplaceWithUint64CompareFix extends ResolvedCorrectionProducer {
 
   @override
   Future<void> compute(ChangeBuilder builder) async {
+    final compareToNode = node.thisOrAncestorMatching(
+      (n) =>
+          n is MethodInvocation &&
+          n.methodName.name == 'compareTo' &&
+          n.target != null &&
+          n.argumentList.arguments.length == 1,
+    );
+    if (compareToNode is MethodInvocation) {
+      final leftSrc = compareToNode.realTarget!.toSource();
+      final rightSrc = compareToNode
+          .argumentList
+          .arguments
+          .first
+          .argumentExpression
+          .toSource();
+      await builder.addDartFileEdit(file, (builder) {
+        builder.addSimpleReplacement(
+          SourceRange(compareToNode.offset, compareToNode.length),
+          'uint64Compare($leftSrc, $rightSrc)',
+        );
+      });
+      return;
+    }
+
     final binary = node.thisOrAncestorOfType<BinaryExpression>();
     if (binary == null) return;
     final leftSrc = binary.leftOperand.toSource();

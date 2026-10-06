@@ -12,6 +12,8 @@
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/clike/clike.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/dart/dart.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
   <script type="module">
@@ -248,6 +250,186 @@
       color: #6c7086 !important;
     }
 
+    .CodeMirror-cursor {
+      border-left: 2px solid #f5e0dc !important;
+    }
+
+    .CodeMirror-selected {
+      background: rgba(137, 180, 250, 0.22) !important;
+    }
+
+    .CodeMirror-focused .CodeMirror-selected {
+      background: rgba(137, 180, 250, 0.28) !important;
+    }
+
+    .CodeMirror-matchingbracket {
+      color: #f9e2af !important;
+      background-color: rgba(249, 226, 175, 0.18);
+      border-bottom: 1px solid #f9e2af;
+      font-weight: 600;
+    }
+
+    .CodeMirror-nonmatchingbracket {
+      color: #f38ba8 !important;
+      background-color: rgba(243, 139, 168, 0.2);
+      border-bottom: 1px solid #f38ba8;
+    }
+
+    /* Catppuccin Mocha Syntax Highlighting Palette (CodeMirror & Rendered Code Blocks) */
+    .cm-s-dracula .cm-keyword,
+    .cm-highlighted-code .cm-keyword {
+      color: #cba6f7 !important;
+    }
+
+    .cm-s-dracula .cm-def-keyword,
+    .cm-highlighted-code .cm-def-keyword {
+      color: #cba6f7 !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-type,
+    .cm-highlighted-code .cm-type {
+      color: #f9e2af !important;
+    }
+
+    .cm-s-dracula .cm-callee,
+    .cm-s-dracula .cm-def,
+    .cm-highlighted-code .cm-callee,
+    .cm-highlighted-code .cm-def {
+      color: #89b4fa !important;
+    }
+
+    .cm-s-dracula .cm-attribute,
+    .cm-highlighted-code .cm-attribute {
+      color: #fab387 !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-property,
+    .cm-highlighted-code .cm-property {
+      color: #94e2d5 !important;
+    }
+
+    .cm-s-dracula .cm-variable,
+    .cm-highlighted-code .cm-variable {
+      color: #cdd6f4 !important;
+    }
+
+    .cm-s-dracula .cm-variable-2,
+    .cm-highlighted-code .cm-variable-2 {
+      color: #f5e0dc !important;
+    }
+
+    .cm-s-dracula .cm-variable-language,
+    .cm-highlighted-code .cm-variable-language {
+      color: #f38ba8 !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-string,
+    .cm-highlighted-code .cm-string {
+      color: #a6e3a1 !important;
+    }
+
+    .cm-s-dracula .cm-string-2,
+    .cm-highlighted-code .cm-string-2 {
+      color: #f5c2e7 !important;
+    }
+
+    .cm-s-dracula .cm-interpolation,
+    .cm-highlighted-code .cm-interpolation {
+      color: #f38ba8 !important;
+    }
+
+    .cm-s-dracula .cm-number,
+    .cm-s-dracula .cm-atom,
+    .cm-highlighted-code .cm-number,
+    .cm-highlighted-code .cm-atom {
+      color: #fab387 !important;
+    }
+
+    .cm-s-dracula .cm-operator,
+    .cm-highlighted-code .cm-operator {
+      color: #89dceb !important;
+    }
+
+    .cm-s-dracula .cm-punctuation,
+    .cm-highlighted-code .cm-punctuation {
+      color: #9399b2 !important;
+    }
+
+    .cm-s-dracula .cm-meta,
+    .cm-highlighted-code .cm-meta {
+      color: #f9e2af !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-comment,
+    .cm-highlighted-code .cm-comment {
+      color: #6c7086 !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-comment.cm-doc,
+    .cm-highlighted-code .cm-comment.cm-doc {
+      color: #7f849c !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-comment.cm-doc-ref,
+    .cm-highlighted-code .cm-comment.cm-doc-ref {
+      color: #89b4fa !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-comment.cm-doc-code,
+    .cm-highlighted-code .cm-comment.cm-doc-code {
+      color: #a6e3a1 !important;
+      font-style: normal;
+    }
+
+    .cm-s-dracula .cm-header,
+    .cm-highlighted-code .cm-header {
+      color: #89b4fa !important;
+      font-weight: 700;
+    }
+
+    .cm-s-dracula .cm-quote,
+    .cm-highlighted-code .cm-quote {
+      color: #a6adc8 !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-math,
+    .cm-highlighted-code .cm-math {
+      color: #f9e2af !important;
+    }
+
+    .cm-s-dracula .cm-inline-code,
+    .cm-highlighted-code .cm-inline-code {
+      color: #a6e3a1 !important;
+      background-color: rgba(49, 50, 68, 0.65);
+      border-radius: 3px;
+    }
+
+    .cm-s-dracula .cm-strong,
+    .cm-highlighted-code .cm-strong {
+      color: #f5e0dc !important;
+      font-weight: 700;
+    }
+
+    .cm-s-dracula .cm-em,
+    .cm-highlighted-code .cm-em {
+      color: #f5c2e7 !important;
+      font-style: italic;
+    }
+
+    .cm-s-dracula .cm-link,
+    .cm-highlighted-code .cm-link {
+      color: #89dceb !important;
+      text-decoration: underline;
+    }
+
     .output-container {
       border-top: 1px solid var(--border-color);
       background-color: rgba(0,0,0,0.2);
@@ -306,16 +488,23 @@
       background: var(--code-bg);
       padding: 2px 6px;
       border-radius: 4px;
-      font-family: monospace;
+      font-family: 'Fira Code', monospace;
       font-size: 0.9em;
     }
 
     .markdown-rendered-view pre {
       background: var(--code-bg);
-      padding: 10px;
+      padding: 10px 14px;
       border-radius: 6px;
       margin-bottom: 8px;
       overflow-x: auto;
+      border: 1px solid rgba(69, 71, 90, 0.45);
+    }
+
+    .markdown-rendered-view pre code {
+      background: transparent;
+      padding: 0;
+      color: var(--text-color);
     }
 
     .markdown-rendered-view blockquote {
@@ -411,12 +600,13 @@
       border-radius: 6px;
       overflow-x: auto;
       margin: 6px 0;
+      border: 1px solid rgba(69, 71, 90, 0.45);
     }
 
     .hover-popup pre code {
       background-color: transparent;
       padding: 0;
-      color: #a6e3a1;
+      color: #cdd6f4;
     }
 
     .hover-popup ul, .hover-popup ol {
@@ -567,6 +757,422 @@
 
   <script src="wasm_notebook_runtime.js"></script>
   <script>
+    (function registerNotebookSyntaxModes() {
+      if (typeof CodeMirror === 'undefined') return;
+
+      const controlKeywords = new Set([
+        'if', 'else', 'for', 'while', 'do', 'switch', 'case', 'default',
+        'break', 'continue', 'return', 'try', 'catch', 'finally', 'throw',
+        'rethrow', 'assert', 'yield', 'await', 'async', 'sync', 'when',
+        'in', 'is', 'as', 'on', 'import', 'export', 'library', 'part',
+        'of', 'show', 'hide', 'deferred'
+      ]);
+
+      const declarationKeywords = new Set([
+        'var', 'final', 'const', 'late', 'required', 'covariant', 'static',
+        'abstract', 'base', 'interface', 'sealed', 'mixin', 'class', 'enum',
+        'extension', 'typedef', 'implements', 'extends', 'with', 'operator',
+        'get', 'set', 'external', 'factory', 'new', 'augment', 'macro'
+      ]);
+
+      const atoms = new Set(['true', 'false', 'null']);
+      const languageVars = new Set(['this', 'super', 'self']);
+
+      const builtinTypes = new Set([
+        'void', 'dynamic', 'Never', 'Object', 'String', 'int', 'double',
+        'num', 'bool', 'List', 'Map', 'Set', 'Iterable', 'Future', 'FutureOr',
+        'Stream', 'Record', 'Function', 'Symbol', 'Type', 'BigInt', 'RegExp',
+        'DateTime', 'Duration', 'Uri', 'Pattern', 'Match', 'Error', 'Exception',
+        'StackTrace', 'Comparable', 'Iterator', 'Runes', 'StringBuffer',
+        'StringSink', 'Uint8List', 'Int32List', 'Int64List', 'Float32List',
+        'Float64List', 'ByteData', 'ByteBuffer', 'Endian',
+        'NDArray', 'DType', 'DTypeTag', 'DTypeSpec', 'Float64', 'Float32',
+        'Float16', 'BFloat16', 'Complex128', 'Complex64', 'Int64', 'Int32',
+        'Int16', 'Int8', 'Uint64', 'Uint32', 'Uint16', 'Uint8', 'Boolean',
+        'Complex', 'Slice', 'NDIter', 'ScratchArena', 'Expr', 'SymbolicMatrix',
+        'FlintRationalPoly', 'Markdown', 'Md', 'LaTeX', 'Latex', 'Html',
+        'Image', 'Audio', 'Displayable'
+      ]);
+
+      const builtinFunctions = new Set([
+        'print', 'display', 'prettyFormat', 'identical', 'identityHashCode'
+      ]);
+
+      function readBlockComment(stream, state, ctx) {
+        while (!stream.eol()) {
+          if (stream.match('/*')) {
+            ctx.depth++;
+          } else if (stream.match('*/')) {
+            ctx.depth--;
+            if (ctx.depth <= 0) {
+              state.stack.pop();
+              break;
+            }
+          } else {
+            stream.next();
+          }
+        }
+        return 'comment';
+      }
+
+      function readString(stream, state, ctx) {
+        if (stream.match(ctx.quote)) {
+          state.stack.pop();
+          return 'string';
+        }
+        if (!ctx.raw) {
+          if (stream.match(/^\\(?:u\{[0-9a-fA-F]+\}|u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|.)/)) {
+            return 'string-2';
+          }
+          if (stream.match('${')) {
+            state.stack.push({ type: 'interp', braceDepth: 1 });
+            state.afterDot = false;
+            return 'interpolation';
+          }
+          if (stream.match(/^\$[a-zA-Z_]\w*/)) {
+            return 'variable-2';
+          }
+        }
+        stream.next();
+        while (!stream.eol()) {
+          if (stream.match(ctx.quote, false)) break;
+          if (!ctx.raw) {
+            const ch = stream.peek();
+            if (ch === '\\' || ch === '$') break;
+          }
+          stream.next();
+        }
+        return 'string';
+      }
+
+      CodeMirror.defineMode('dart', function() {
+        return {
+          startState: function() {
+            return {
+              stack: [],
+              afterDot: false,
+              inDocComment: false
+            };
+          },
+          copyState: function(state) {
+            return {
+              stack: state.stack.map(item => Object.assign({}, item)),
+              afterDot: state.afterDot,
+              inDocComment: state.inDocComment
+            };
+          },
+          token: function(stream, state) {
+            if (stream.sol()) {
+              state.inDocComment = false;
+              while (state.stack.length > 0 && state.stack[state.stack.length - 1].singleLine) {
+                state.stack.pop();
+              }
+            }
+
+            if (state.inDocComment) {
+              if (stream.match(/^\[[^\]]+\]/)) return 'comment doc-ref';
+              if (stream.match(/^`[^`]+`/)) return 'comment doc-code';
+              stream.next();
+              while (!stream.eol() && stream.peek() !== '[' && stream.peek() !== '`') {
+                stream.next();
+              }
+              return 'comment doc';
+            }
+
+            const top = state.stack.length > 0 ? state.stack[state.stack.length - 1] : null;
+            if (top && top.type === 'blockComment') {
+              return readBlockComment(stream, state, top);
+            }
+            if (top && top.type === 'string') {
+              return readString(stream, state, top);
+            }
+
+            if (stream.eatSpace()) return null;
+
+            // Comments
+            if (stream.match('///')) {
+              state.inDocComment = true;
+              state.afterDot = false;
+              return 'comment doc';
+            }
+            if (stream.match('//')) {
+              stream.skipToEnd();
+              state.afterDot = false;
+              return 'comment';
+            }
+            if (stream.match('/*')) {
+              const ctx = { type: 'blockComment', depth: 1 };
+              state.stack.push(ctx);
+              state.afterDot = false;
+              return readBlockComment(stream, state, ctx);
+            }
+
+            // Annotations (@override, @pragma, etc.)
+            if (stream.match(/^@[a-zA-Z_]\w*(?:\.[a-zA-Z_]\w*)?/)) {
+              state.afterDot = false;
+              return 'meta';
+            }
+
+            // Strings (raw and standard, triple and single)
+            if (stream.match('r"""') || stream.match("r'''")) {
+              const q = stream.current().slice(1);
+              state.stack.push({ type: 'string', quote: q, raw: true, singleLine: false });
+              state.afterDot = false;
+              return 'string';
+            }
+            if (stream.match('"""') || stream.match("'''")) {
+              const q = stream.current();
+              state.stack.push({ type: 'string', quote: q, raw: false, singleLine: false });
+              state.afterDot = false;
+              return 'string';
+            }
+            if (stream.match('r"') || stream.match("r'")) {
+              const q = stream.current().slice(1);
+              state.stack.push({ type: 'string', quote: q, raw: true, singleLine: true });
+              state.afterDot = false;
+              return 'string';
+            }
+            if (stream.match('"') || stream.match("'")) {
+              const q = stream.current();
+              state.stack.push({ type: 'string', quote: q, raw: false, singleLine: true });
+              state.afterDot = false;
+              return 'string';
+            }
+
+            // Numbers (hex, float, scientific, integer with _ separators)
+            if (stream.match(/^0[xX][0-9a-fA-F_]+/) ||
+                stream.match(/^\d[\d_]*\.[\d_]+(?:[eE][+-]?[\d_]+)?/) ||
+                stream.match(/^\.\d[\d_]*(?:[eE][+-]?[\d_]+)?/) ||
+                stream.match(/^\d[\d_]*[eE][+-]?[\d_]+/) ||
+                stream.match(/^\d[\d_]*/)) {
+              state.afterDot = false;
+              return 'number';
+            }
+
+            // Member access dots
+            if (stream.match(/^(?:\?\.\.|\.\.|\?\.|\.)/)) {
+              state.afterDot = true;
+              return 'punctuation';
+            }
+
+            // Interpolation braces
+            if (top && top.type === 'interp') {
+              if (stream.eat('{')) {
+                top.braceDepth++;
+                state.afterDot = false;
+                return 'punctuation';
+              }
+              if (stream.eat('}')) {
+                top.braceDepth--;
+                state.afterDot = false;
+                if (top.braceDepth <= 0) {
+                  state.stack.pop();
+                  return 'interpolation';
+                }
+                return 'punctuation';
+              }
+            }
+
+            // Identifiers, keywords, types, functions, properties, named args
+            if (stream.match(/^[a-zA-Z_$][a-zA-Z0-9_$]*/)) {
+              const word = stream.current();
+              const rest = stream.string.slice(stream.pos);
+              const wasAfterDot = state.afterDot;
+              state.afterDot = false;
+
+              const isCall = /^\s*(?:<[^>()\n]+>\s*)?\(/.test(rest);
+              const isNamedArg = !wasAfterDot && /^\s*:(?![=:])/.test(rest);
+
+              if (wasAfterDot) {
+                if (isCall) return 'callee';
+                if (/^[A-Z]/.test(word)) return 'type';
+                return 'property';
+              }
+
+              if (isNamedArg && word !== 'case' && word !== 'default') {
+                return 'attribute';
+              }
+
+              if (controlKeywords.has(word)) return 'keyword';
+              if (declarationKeywords.has(word)) return 'def-keyword';
+              if (atoms.has(word)) return 'atom';
+              if (languageVars.has(word)) return 'variable-language';
+              if (builtinTypes.has(word)) return 'type';
+              if (builtinFunctions.has(word)) return 'callee';
+
+              if (/^[A-Z]/.test(word)) return 'type';
+              if (isCall) return 'callee';
+              return 'variable';
+            }
+
+            // Operators
+            if (stream.match(/^(?:>>>=|<<=|>>=|\?\?=|\+=|-=|\*=|\/=|~\/=|%=|&=|\^=|\|=|==|!=|<=|>=|&&|\|\||\?\?|<<|>>>|>>|~\/|=>|[+\-*\/%~<>=!&|^?])/)) {
+              state.afterDot = false;
+              return 'operator';
+            }
+
+            // Punctuation
+            if (stream.match(/^[()[\]{},;:]/)) {
+              state.afterDot = false;
+              return 'punctuation';
+            }
+
+            stream.next();
+            state.afterDot = false;
+            return null;
+          },
+          lineComment: '//',
+          blockCommentStart: '/*',
+          blockCommentEnd: '*/'
+        };
+      });
+
+      CodeMirror.defineMIME('application/dart', 'dart');
+      CodeMirror.defineMIME('text/x-dart', 'dart');
+      CodeMirror.defineMIME('application/x-dart', 'dart');
+
+      // Rich Markdown mode with fenced Dart code blocks & LaTeX math support
+      CodeMirror.defineMode('notebook-markdown', function(config) {
+        const dartMode = CodeMirror.getMode(config, 'dart');
+        return {
+          startState: function() {
+            return {
+              inCodeFence: false,
+              codeLang: '',
+              dartState: dartMode.startState(),
+              inMathBlock: false
+            };
+          },
+          copyState: function(state) {
+            return {
+              inCodeFence: state.inCodeFence,
+              codeLang: state.codeLang,
+              dartState: CodeMirror.copyState(dartMode, state.dartState),
+              inMathBlock: state.inMathBlock
+            };
+          },
+          token: function(stream, state) {
+            if (stream.sol()) {
+              if (stream.match(/^\s*```([\w+-]*).*$/)) {
+                if (!state.inCodeFence) {
+                  state.inCodeFence = true;
+                  state.codeLang = (stream.current().replace(/^\s*```/, '').trim() || 'dart').toLowerCase();
+                  state.dartState = dartMode.startState();
+                } else {
+                  state.inCodeFence = false;
+                  state.codeLang = '';
+                }
+                return 'meta';
+              }
+            }
+
+            if (state.inCodeFence) {
+              if (state.codeLang === 'dart' || state.codeLang === '') {
+                return dartMode.token(stream, state.dartState);
+              }
+              stream.skipToEnd();
+              return 'string';
+            }
+
+            if (state.inMathBlock) {
+              if (stream.match('$$')) {
+                state.inMathBlock = false;
+                return 'math';
+              }
+              stream.next();
+              while (!stream.eol() && !stream.match('$$', false)) {
+                stream.next();
+              }
+              return 'math';
+            }
+
+            if (stream.sol()) {
+              if (stream.match(/^#{1,6}\s+.*$/)) return 'header';
+              if (stream.match(/^\s*>\s+.*$/)) return 'quote';
+              if (stream.match(/^\s*(?:[-*+]|\d+\.)\s+/)) return 'keyword';
+            }
+
+            if (stream.match('$$')) {
+              state.inMathBlock = true;
+              return 'math';
+            }
+            if (stream.match(/^\$[^\$\n]+\$/)) return 'math';
+            if (stream.match(/^`[^`\n]+`/)) return 'inline-code';
+            if (stream.match(/^\*\*[^*\n]+\*\*/)) return 'strong';
+            if (stream.match(/^\*[^*\n]+\*/)) return 'em';
+            if (stream.match(/^\[[^\]]+\]\([^)]+\)/)) return 'link';
+
+            stream.next();
+            while (!stream.eol()) {
+              const ch = stream.peek();
+              if (ch === '$' || ch === '`' || ch === '*' || ch === '[') break;
+              stream.next();
+            }
+            return null;
+          }
+        };
+      });
+    })();
+
+    function escapeHtmlText(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function highlightDartCodeToHtml(code) {
+      if (typeof CodeMirror === 'undefined' || typeof CodeMirror.getMode !== 'function') {
+        return escapeHtmlText(code);
+      }
+      const mode = CodeMirror.getMode({}, 'dart');
+      if (!mode || typeof mode.token !== 'function') {
+        return escapeHtmlText(code);
+      }
+      const state = mode.startState();
+      const lines = code.split('\n');
+      const outLines = [];
+
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const stream = new CodeMirror.StringStream(line);
+        let lineHtml = '';
+        while (!stream.eol()) {
+          const style = mode.token(stream, state);
+          const text = escapeHtmlText(stream.current());
+          if (style) {
+            const classes = style
+              .split(/\s+/)
+              .filter(Boolean)
+              .map(c => `cm-${c}`)
+              .join(' ');
+            lineHtml += `<span class="${classes}">${text}</span>`;
+          } else {
+            lineHtml += text;
+          }
+          stream.start = stream.pos;
+        }
+        outLines.push(lineHtml);
+      }
+      return outLines.join('\n');
+    }
+
+    function highlightCodeBlocksIn(container) {
+      if (!container) return;
+      const blocks = container.querySelectorAll('pre code');
+      blocks.forEach(block => {
+        if (block.dataset.highlighted === 'true') return;
+        const langClass = Array.from(block.classList).find(c => c.startsWith('language-'));
+        const lang = langClass ? langClass.slice('language-'.length).toLowerCase() : 'dart';
+        if (lang === 'dart' || lang === '') {
+          const rawCode = block.textContent || '';
+          block.classList.add('cm-highlighted-code');
+          block.innerHTML = highlightDartCodeToHtml(rawCode);
+          block.dataset.highlighted = 'true';
+        }
+      });
+    }
+
     let ws;
     let wasmRuntime = null;
     let wsEverConnected = false;
@@ -584,6 +1190,8 @@
     let activeHoverPopup = null;
     let hoverTimeout = null;
     let selectedIndex = 0;
+
+    let isInitializingSession = false;
 
     function populateDefaultStarterCellsIfEmpty() {
       if (document.querySelectorAll('.cell').length === 0) {
@@ -630,13 +1238,18 @@
         window.wasmRuntime = wasmRuntime;
       }
       if (document.querySelectorAll('.cell').length === 0) {
-        const saved = wasmRuntime ? wasmRuntime.loadSessionFromLocalStorage() : null;
-        if (saved && saved.length > 0) {
-          saved.forEach(c => {
-            addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
-          });
-        } else {
-          populateDefaultStarterCellsIfEmpty();
+        isInitializingSession = true;
+        try {
+          const saved = wasmRuntime ? wasmRuntime.loadSessionFromLocalStorage() : null;
+          if (saved && saved.length > 0) {
+            saved.forEach(c => {
+              addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
+            });
+          } else {
+            populateDefaultStarterCellsIfEmpty();
+          }
+        } finally {
+          isInitializingSession = false;
         }
       }
       if (wasmRuntime) {
@@ -716,15 +1329,20 @@
             pendingCompletions.delete(msg.id);
           }
         } else if (msg.type === 'init_session') {
-          if (msg.cells && msg.cells.length > 0) {
-            const notebook = document.getElementById('notebook');
-            notebook.innerHTML = '';
-            cellCount = 0;
-            msg.cells.forEach(c => {
-              addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
-            });
-          } else {
-            populateDefaultStarterCellsIfEmpty();
+          isInitializingSession = true;
+          try {
+            if (msg.cells && msg.cells.length > 0) {
+              const notebook = document.getElementById('notebook');
+              notebook.innerHTML = '';
+              cellCount = 0;
+              msg.cells.forEach(c => {
+                addCellWithState(c.code, c.output, c.isError, c.evaluated, c.id, c.type || 'code', c.outputs);
+              });
+            } else {
+              populateDefaultStarterCellsIfEmpty();
+            }
+          } finally {
+            isInitializingSession = false;
           }
         } else if (msg.type === 'hover') {
           const callback = pendingHovers.get(msg.id);
@@ -737,6 +1355,7 @@
     }
 
     function autoSaveSession() {
+      if (isInitializingSession) return;
       const cellsData = collectNotebookCells();
       if (currentRuntimeMode === 'wasm') {
         if (wasmRuntime) {
@@ -897,6 +1516,7 @@
         popup.innerText = text;
       }
 
+      highlightCodeBlocksIn(popup);
       tryRenderKaTeX(popup);
 
       popup.addEventListener('mouseenter', () => {
@@ -910,6 +1530,13 @@
       document.body.appendChild(popup);
       activeHoverPopup = popup;
     }
+
+    const pendingKaTeXElements = [];
+    window.addEventListener('load', () => {
+      while (pendingKaTeXElements.length > 0) {
+        tryRenderKaTeX(pendingKaTeXElements.shift());
+      }
+    });
 
     function tryRenderKaTeX(element) {
       if (window.renderMathInElement) {
@@ -926,6 +1553,8 @@
         } catch (e) {
           console.warn('KaTeX render warning:', e);
         }
+      } else if (element) {
+        pendingKaTeXElements.push(element);
       }
     }
 
@@ -963,6 +1592,7 @@
             const wrapper = document.createElement('div');
             wrapper.className = 'output-html-wrapper';
             wrapper.innerHTML = payload;
+            highlightCodeBlocksIn(wrapper);
             tryRenderKaTeX(wrapper);
             outputElement.appendChild(wrapper);
             const scripts = Array.from(wrapper.getElementsByTagName('script'));
@@ -1004,6 +1634,7 @@
         const wrapper = document.createElement('div');
         wrapper.className = 'output-html-wrapper';
         wrapper.innerHTML = cleaned;
+        highlightCodeBlocksIn(wrapper);
         tryRenderKaTeX(wrapper);
         outputElement.appendChild(wrapper);
         const scripts = Array.from(wrapper.getElementsByTagName('script'));
@@ -1090,10 +1721,23 @@
       const renderedView = document.getElementById(`rendered-${cellId}`);
       if (renderedView) {
         if (window.marked && typeof window.marked.parse === 'function') {
-          renderedView.innerHTML = marked.parse(text);
+          const mathBlocks = [];
+          const protectedText = text
+            .replace(/\$\$[\s\S]+?\$\$/g, (m) => {
+              mathBlocks.push(m);
+              return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+            })
+            .replace(/\$(?!\$)([^\$\n]+?)\$/g, (m) => {
+              mathBlocks.push(m);
+              return `@@MATH_BLOCK_${mathBlocks.length - 1}@@`;
+            });
+          let html = marked.parse(protectedText);
+          html = html.replace(/@@MATH_BLOCK_(\d+)@@/g, (_, idx) => mathBlocks[Number(idx)]);
+          renderedView.innerHTML = html;
         } else {
           renderedView.innerText = text;
         }
+        highlightCodeBlocksIn(renderedView);
         tryRenderKaTeX(renderedView);
       }
       cell.classList.add('rendered');
@@ -1218,9 +1862,10 @@
 
     function setupEditorForCell(cell, textarea, cellId, initialCode) {
       let cm = null;
+      const isMarkdown = cell.getAttribute('data-cell-type') === 'markdown';
       const badge = cell.querySelector('.cell-engine-badge') || document.getElementById(`engine-badge-${cellId}`);
 
-      if (currentEditorEngine === 'dart_editor' && typeof window.DartEditor === 'function') {
+      if (!isMarkdown && currentEditorEngine === 'dart_editor' && typeof window.DartEditor === 'function') {
         try {
           cm = window.DartEditor(textarea);
           if (badge) {
@@ -1234,17 +1879,16 @@
       }
 
       if (!cm || typeof cm.getValue !== 'function') {
-        if (badge) {
+        if (badge && !isMarkdown) {
           badge.className = 'cell-engine-badge cm';
           badge.innerText = 'CM 5';
           badge.title = 'Using CodeMirror 5';
         }
         cm = CodeMirror.fromTextArea(textarea, {
-          mode: 'clike',
-          mime: 'application/x-dart',
+          mode: isMarkdown ? 'notebook-markdown' : 'dart',
           theme: 'dracula',
           lineNumbers: true,
-          matchBrackets: true,
+          matchBrackets: !isMarkdown,
           autoCloseBrackets: true,
           viewportMargin: Infinity,
           extraKeys: {
@@ -1253,10 +1897,10 @@
               runCell(cellId);
             },
             'Ctrl-Space': function(cm) {
-              requestCompletionCm(cm, cellId);
+              if (!isMarkdown) requestCompletionCm(cm, cellId);
             },
             'Cmd-Space': function(cm) {
-              requestCompletionCm(cm, cellId);
+              if (!isMarkdown) requestCompletionCm(cm, cellId);
             }
           }
         });
@@ -1395,7 +2039,7 @@
       autoSaveSession();
     }
 
-    function runCell(cellId, onComplete) {
+    function runCell(cellId, onComplete, appendIfLast = true) {
       const cell = document.getElementById(cellId);
       if (!cell) {
         if (onComplete) onComplete();
@@ -1417,7 +2061,7 @@
       }
 
       const allCells = document.querySelectorAll('.cell');
-      const isLastCell = allCells.length > 0 && allCells[allCells.length - 1].id === cellId;
+      const isLastCell = appendIfLast && allCells.length > 0 && allCells[allCells.length - 1].id === cellId;
 
       updateStatus('busy', 'Executing...');
       output.className = 'output-container';
@@ -1501,7 +2145,7 @@
       for (let i = 0; i <= targetIndex; i++) {
         const cellId = cells[i].id;
         await new Promise((resolve) => {
-          runCell(cellId, resolve);
+          runCell(cellId, resolve, false);
         });
       }
     }
@@ -1527,7 +2171,11 @@
         applyWasmBatchRunResult(res, null);
         return;
       }
-      cells.forEach(cell => runCell(cell.id));
+      for (const cell of cells) {
+        await new Promise((resolve) => {
+          runCell(cell.id, resolve, false);
+        });
+      }
     }
 
     function clearAllOutputs() {

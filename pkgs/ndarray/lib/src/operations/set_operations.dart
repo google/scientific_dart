@@ -155,15 +155,20 @@ _uniqueImpl<T extends DTypeTag>(
   if (ar.isDisposed) {
     throw StateError('Cannot execute unique on a disposed array.');
   }
-  if (out != null && out.isDisposed) {
-    throw StateError('Cannot write unique result to a disposed output array.');
-  }
-  if (out != null && out.dtype != ar.dtype) {
-    throw ArgumentError.value(
-      out.dtype,
-      'out',
-      'Must have the same dtype as ar (${ar.dtype})',
-    );
+  if (out != null) {
+    if (out.isDisposed) {
+      throw StateError(
+        'Cannot write unique result to a disposed output array.',
+      );
+    }
+    validateOutBuffer(out);
+    if (out.dtype != ar.dtype) {
+      throw ArgumentError.value(
+        out.dtype,
+        'out',
+        'Must have the same dtype as ar (${ar.dtype})',
+      );
+    }
   }
 
   return NDArray.scope(() {
@@ -219,6 +224,7 @@ _uniqueImpl<T extends DTypeTag>(
       pInverse,
       pCounts,
     );
+    checkNativeOom();
 
     if (uniqueCount < 0) {
       throw OutOfMemoryError();
@@ -317,8 +323,11 @@ NDArray<T> intersect1d<T extends DTypeTag>(
   final DType<T> commonDType =
       (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
           as DType<T>;
-  if (out != null && out.dtype != commonDType) {
-    throw ArgumentError('Incompatible out buffer dtype.');
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.dtype != commonDType) {
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer dtype');
+    }
   }
 
   return NDArray.scope(() {
@@ -342,7 +351,7 @@ NDArray<T> intersect1d<T extends DTypeTag>(
 
     if (maxDstSize == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
@@ -358,17 +367,20 @@ NDArray<T> intersect1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (intersectionCount < 0) {
+      throw StateError('Native intersect1d failed (code $intersectionCount).');
+    }
 
     if (intersectionCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [intersectionCount])) {
-      throw ArgumentError('Incompatible out buffer shape.');
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
     }
 
     final validView = dest.slice([Slice(start: 0, stop: intersectionCount)]);
@@ -405,8 +417,11 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
   final DType<T> commonDType =
       (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
           as DType<T>;
-  if (out != null && out.dtype != commonDType) {
-    throw ArgumentError('Incompatible out buffer dtype.');
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.dtype != commonDType) {
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer dtype');
+    }
   }
 
   return NDArray.scope(() {
@@ -430,7 +445,7 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
 
     if (maxDstSize == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
@@ -446,17 +461,20 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (diffCount < 0) {
+      throw StateError('Native setdiff1d failed (code $diffCount).');
+    }
 
     if (diffCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [diffCount])) {
-      throw ArgumentError('Incompatible out buffer shape.');
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
     }
 
     final validView = dest.slice([Slice(start: 0, stop: diffCount)]);
@@ -493,8 +511,11 @@ NDArray<T> setxor1d<T extends DTypeTag>(
   final DType<T> commonDType =
       (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
           as DType<T>;
-  if (out != null && out.dtype != commonDType) {
-    throw ArgumentError('Incompatible out buffer dtype.');
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.dtype != commonDType) {
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer dtype');
+    }
   }
 
   return NDArray.scope(() {
@@ -518,7 +539,7 @@ NDArray<T> setxor1d<T extends DTypeTag>(
 
     if (maxDstSize == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
@@ -534,17 +555,20 @@ NDArray<T> setxor1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (xorCount < 0) {
+      throw StateError('Native setxor1d failed (code $xorCount).');
+    }
 
     if (xorCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [xorCount])) {
-      throw ArgumentError('Incompatible out buffer shape.');
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
     }
 
     final validView = dest.slice([Slice(start: 0, stop: xorCount)]);
@@ -578,8 +602,11 @@ NDArray<T> union1d<T extends DTypeTag>(
   final DType<T> commonDType =
       (ar1.dtype == ar2.dtype ? ar1.dtype : resolveDType(ar1.dtype, ar2.dtype))
           as DType<T>;
-  if (out != null && out.dtype != commonDType) {
-    throw ArgumentError('Incompatible out buffer dtype.');
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.dtype != commonDType) {
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer dtype');
+    }
   }
 
   return NDArray.scope(() {
@@ -603,7 +630,7 @@ NDArray<T> union1d<T extends DTypeTag>(
 
     if (maxDstSize == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
@@ -619,17 +646,20 @@ NDArray<T> union1d<T extends DTypeTag>(
       dest.pointer.cast(),
       encodeDType(commonDType),
     );
+    if (unionCount < 0) {
+      throw StateError('Native union1d failed (code $unionCount).');
+    }
 
     if (unionCount == 0) {
       if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
       return out ??
           (NDArray<T>.create([0], commonDType)..detachToParentScope());
     }
 
     if (out != null && !listEquals(out.shape, [unionCount])) {
-      throw ArgumentError('Incompatible out buffer shape.');
+      throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
     }
 
     final validView = dest.slice([Slice(start: 0, stop: unionCount)]);
@@ -663,8 +693,13 @@ NDArray<Boolean> isin<T extends DTypeTag>(
     throw StateError('Cannot write isin result to a disposed output array.');
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, element.shape) || out.dtype != DType.boolean) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
   }
 
@@ -1214,7 +1249,7 @@ bool _tryIsinTable<T extends DTypeTag>(
       }
 
       if (out != null && !listEquals(out.shape, [uniqueCount])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
 
       final bool useTempOut =
@@ -1378,7 +1413,7 @@ bool _tryIsinTable<T extends DTypeTag>(
       }
 
       if (out != null && !listEquals(out.shape, [uniqueCount])) {
-        throw ArgumentError('Incompatible out buffer shape.');
+        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
       }
 
       final bool useTempOut =

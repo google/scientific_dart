@@ -132,9 +132,15 @@ void main() {
                 expect(resAdd.shape, [2, 3]);
                 expect(resAdd.dtype, dtA);
 
-                final resSub = subtract(a, b);
-                expect(resSub.shape, [2, 3]);
-                expect(resSub.dtype, expectedDType);
+                final NDArray<DTypeTag>? resSub;
+                if (dtA == DType.boolean) {
+                  expect(() => subtract(a, b), throwsUnsupportedError);
+                  resSub = null;
+                } else {
+                  resSub = subtract(a, b);
+                  expect(resSub.shape, [2, 3]);
+                  expect(resSub.dtype, expectedDType);
+                }
 
                 final resMul = multiply(a, b);
                 expect(resMul.shape, [2, 3]);
@@ -178,7 +184,7 @@ void main() {
                     final cb = toCpx(vb);
                     if (dtA.isComplex) {
                       final gotAdd = resAdd.getCell([r, c]) as Complex;
-                      final gotSub = resSub.getCell([r, c]) as Complex;
+                      final gotSub = resSub!.getCell([r, c]) as Complex;
                       final gotMul = resMul.getCell([r, c]) as Complex;
                       final gotDiv = resDiv.getCell([r, c]) as Complex;
                       expectCpxClose(gotAdd, ca + cb);
@@ -189,10 +195,6 @@ void main() {
                       final ba = va as bool;
                       final bb = vb as bool;
                       expect(resAdd.getCell([r, c]), ba || bb);
-                      expect(
-                        resSub.getCell([r, c]),
-                        ((ba ? 1 : 0) - (bb ? 1 : 0)).toUnsigned(8),
-                      );
                       expect(resMul.getCell([r, c]), ba && bb);
                       expectRealClose(
                         toDbl(resDiv.getCell([r, c])),
@@ -215,7 +217,7 @@ void main() {
                         wrapInt(ia + ib, expectedDType),
                       );
                       expect(
-                        resSub.getCell([r, c]),
+                        resSub!.getCell([r, c]),
                         wrapInt(ia - ib, expectedDType),
                       );
                       expect(
@@ -234,7 +236,7 @@ void main() {
                         toDbl(castValue(da + db, expectedDType)),
                       );
                       expectRealClose(
-                        toDbl(resSub.getCell([r, c])),
+                        toDbl(resSub!.getCell([r, c])),
                         toDbl(castValue(da - db, expectedDType)),
                       );
                       expectRealClose(

@@ -31,7 +31,11 @@ void main(List<String> args) async {
     try {
       buildOptions = BuildOptions.fromDefines(input.userDefines);
     } catch (e) {
-      throw ArgumentError(BuildOptions.usageError(e));
+      throw ArgumentError.value(
+        input.userDefines,
+        'userDefines',
+        BuildOptions.usageError(e),
+      );
     }
     print('ndarray build options: $buildOptions');
 
@@ -57,9 +61,13 @@ void main(List<String> args) async {
       ),
     };
 
+    final requirePrebuilt =
+        Platform.environment['NDARRAY_REQUIRE_PREBUILT'] == '1';
+
     Uri builtLibrary;
     if (buildOptions.buildMode == BuildModeEnum.fetch &&
         !buildOptions.isExplicit &&
+        !requirePrebuilt &&
         currentSourceHash != nativeSourceHash) {
       print(
         'Prebuilt ndarray binary for release $version differs from local '
@@ -72,7 +80,8 @@ void main(List<String> args) async {
         builtLibrary = await buildMode.build();
       } catch (e) {
         if (buildOptions.buildMode == BuildModeEnum.fetch &&
-            !buildOptions.isExplicit) {
+            !buildOptions.isExplicit &&
+            !requirePrebuilt) {
           print(
             'Prebuilt ndarray binary unavailable ($e); '
             'falling back to `buildMode: source`.',
@@ -159,6 +168,28 @@ int _requiredX86FeatureMask(
   return mask;
 }
 
+Future<T> _withSharedLock<T>(
+  Directory sharedDir,
+  Future<T> Function() action,
+) async {
+  if (!sharedDir.existsSync()) {
+    sharedDir.createSync(recursive: true);
+  }
+  final lockFile = File.fromUri(sharedDir.uri.resolve('.build.lock'));
+  final raf = lockFile.openSync(mode: FileMode.write);
+  try {
+    raf.lockSync(FileLock.blockingExclusive);
+    return await action();
+  } finally {
+    try {
+      raf.unlockSync();
+    } catch (_) {}
+    try {
+      raf.closeSync();
+    } catch (_) {}
+  }
+}
+
 Future<Uri?> _buildCpuCheckLibrary(
   BuildInput input,
   BuildOptions buildOptions, {
@@ -171,11 +202,19 @@ Future<Uri?> _buildCpuCheckLibrary(
   final compilerPath =
       cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
   final compilerLower = compilerPath.toLowerCase();
+  final isClangCl = compilerLower.contains('clang-cl');
   final isGNU =
-      compilerLower.contains('gcc') ||
-      compilerLower.contains('clang') ||
-      compilerLower.contains('g++');
-  final isMSVC = os == OS.windows && !isGNU;
+      !isClangCl &&
+      (compilerLower.contains('gcc') ||
+          compilerLower.contains('clang') ||
+          compilerLower.contains('g++'));
+  final isMSVC =
+      isClangCl ||
+      (os == OS.windows &&
+          (!isGNU ||
+              compilerLower.endsWith('cl.exe') ||
+              compilerLower == 'cl' ||
+              compilerLower.contains('msvc')));
 
   final requiredMask = _requiredX86FeatureMask(
     arch,
@@ -197,10 +236,8 @@ Future<Uri?> _buildCpuCheckLibrary(
   }
   final outLib = File.fromUri(outputDir.uri.resolve(libName));
 
-  if (!sharedLib.existsSync()) {
-    if (!sharedDir.existsSync()) {
-      sharedDir.createSync(recursive: true);
-    }
+  final builtOk = await _withSharedLock(sharedDir, () async {
+    if (sharedLib.existsSync()) return true;
     final srcFile = File.fromUri(sharedDir.uri.resolve('cpu_check.c'));
     await srcFile.writeAsString('''
 #include <stdint.h>
@@ -293,6 +330,9 @@ CPU_CHECK_EXPORT int32_t ndarray_x86_required_features(void) {
 }
 ''');
 
+    final tempLib = File(
+      '${sharedLib.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
     final runEnv = <String, String>{
       ...Platform.environment,
       if (isMSVC) ...await getMSVCEnvironment(arch),
@@ -304,7 +344,7 @@ CPU_CHECK_EXPORT int32_t ndarray_x86_required_features(void) {
             '/O2',
             '/DNDARRAY_REQUIRED_X86_FEATURES=$requiredMask',
             srcFile.path,
-            '/Fe:${sharedLib.path}',
+            '/Fe:${tempLib.path}',
             '/link',
             '/EXPORT:ndarray_x86_cpu_features',
             '/EXPORT:ndarray_x86_required_features',
@@ -329,7 +369,7 @@ CPU_CHECK_EXPORT int32_t ndarray_x86_required_features(void) {
             if (os == OS.android) '-Wl,-z,max-page-size=16384',
             srcFile.path,
             '-o',
-            sharedLib.path,
+            tempLib.path,
           ];
 
     try {
@@ -339,21 +379,38 @@ CPU_CHECK_EXPORT int32_t ndarray_x86_required_features(void) {
         environment: runEnv,
       );
       if (res.exitCode != 0) {
+        if (tempLib.existsSync()) {
+          try {
+            tempLib.deleteSync();
+          } catch (_) {}
+        }
         if (isSourceBuild) {
           throw StateError(
             'Failed to compile ndarray_cpu_check helper (exit ${res.exitCode}):\n'
             'stdout: ${res.stdout}\nstderr: ${res.stderr}',
           );
         }
-        return null;
+        return false;
       }
+      await tempLib.rename(sharedLib.path);
+      return true;
     } catch (_) {
+      if (tempLib.existsSync()) {
+        try {
+          tempLib.deleteSync();
+        } catch (_) {}
+      }
       if (isSourceBuild) rethrow;
-      return null;
+      return false;
     }
-  }
+  });
 
-  await sharedLib.copy(outLib.path);
+  if (!builtOk) return null;
+  final tempOutLib = File(
+    '${outLib.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+  );
+  await sharedLib.copy(tempOutLib.path);
+  await tempOutLib.rename(outLib.path);
   return outLib.uri;
 }
 
@@ -397,43 +454,58 @@ final class FetchMode extends BuildMode {
     }
 
     final libName = _canonicalLibName(os);
-    final cachedLibrary = File.fromUri(
-      input.outputDirectoryShared
-          .resolve('ndarray-$version/${os.name}-${arch.name}/')
-          .resolve(libName),
+    final sharedCacheDir = Directory.fromUri(
+      input.outputDirectoryShared.resolve(
+        'ndarray-$version/${os.name}-${arch.name}/',
+      ),
     );
+    final cachedLibrary = File.fromUri(sharedCacheDir.uri.resolve(libName));
 
-    if (await cachedLibrary.exists()) {
-      final cachedBytes = await cachedLibrary.readAsBytes();
-      final cachedHash = sha256.convert(cachedBytes).toString();
-      if (cachedHash == expectedHash) {
-        verifyArtifactSourceHash(
-          cachedBytes,
-          currentSourceHash: currentSourceHash,
-        );
-        print('Using cached ndarray binary from ${cachedLibrary.path}.');
-        return cachedLibrary.uri;
+    final cachedUri = await _withSharedLock(sharedCacheDir, () async {
+      if (await cachedLibrary.exists()) {
+        final cachedBytes = await cachedLibrary.readAsBytes();
+        final cachedHash = sha256.convert(cachedBytes).toString();
+        if (cachedHash == expectedHash) {
+          verifyArtifactSourceHash(
+            cachedBytes,
+            currentSourceHash: currentSourceHash,
+          );
+          print('Using cached ndarray binary from ${cachedLibrary.path}.');
+          return cachedLibrary.uri;
+        }
       }
-    }
 
-    final remoteUri = Uri.parse(
-      'https://github.com/$repository/releases/download/$version/$artifactName',
-    );
-    print('Fetching prebuilt ndarray binary from $remoteUri...');
-    final bytes = await _downloadBytesWithRedirects(remoteUri);
-    final actualHash = sha256.convert(bytes).toString();
-    if (actualHash != expectedHash) {
-      throw StateError(
-        'SHA-256 mismatch for prebuilt ndarray binary at $remoteUri:\n'
-        'Expected: $expectedHash\n'
-        'Actual:   $actualHash',
+      final remoteUri = Uri.parse(
+        'https://github.com/$repository/releases/download/$version/$artifactName',
       );
-    }
-    verifyArtifactSourceHash(bytes, currentSourceHash: currentSourceHash);
+      print('Fetching prebuilt ndarray binary from $remoteUri...');
+      final bytes = await _downloadBytesWithRedirects(remoteUri);
+      final actualHash = sha256.convert(bytes).toString();
+      if (actualHash != expectedHash) {
+        throw StateError(
+          'SHA-256 mismatch for prebuilt ndarray binary at $remoteUri:\n'
+          'Expected: $expectedHash\n'
+          'Actual:   $actualHash',
+        );
+      }
+      verifyArtifactSourceHash(bytes, currentSourceHash: currentSourceHash);
 
-    await cachedLibrary.parent.create(recursive: true);
-    await cachedLibrary.writeAsBytes(bytes, flush: true);
-    return cachedLibrary.uri;
+      final tempFile = File(
+        '${cachedLibrary.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+      );
+      await tempFile.writeAsBytes(bytes, flush: true);
+      await tempFile.rename(cachedLibrary.path);
+      return cachedLibrary.uri;
+    });
+
+    final targetFile = File.fromUri(input.outputDirectory.resolve(libName));
+    await targetFile.parent.create(recursive: true);
+    final tempOut = File(
+      '${targetFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await File.fromUri(cachedUri).copy(tempOut.path);
+    await tempOut.rename(targetFile.path);
+    return targetFile.uri;
   }
 
   @override
@@ -449,9 +521,11 @@ final class LocalMode extends BuildMode {
 
   File _resolveLocalFile() {
     if (localPath == null) {
-      throw ArgumentError(
-        '`localPath` is not set in `hooks.user_defines.ndarray` '
-        '(or `LOCAL_NDARRAY_BINARY` environment variable).',
+      throw ArgumentError.value(
+        localPath,
+        'localPath',
+        'Must be set in `hooks.user_defines.ndarray` '
+            '(or `LOCAL_NDARRAY_BINARY` environment variable).',
       );
     }
     final os = input.config.code.targetOS;
@@ -490,7 +564,11 @@ final class LocalMode extends BuildMode {
     );
     final targetFile = File.fromUri(targetUri);
     await targetFile.parent.create(recursive: true);
-    await sourceFile.copy(targetFile.path);
+    final tempFile = File(
+      '${targetFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+    );
+    await sourceFile.copy(tempFile.path);
+    await tempFile.rename(targetFile.path);
     return targetFile.uri;
   }
 
@@ -524,11 +602,19 @@ final class SourceMode extends BuildMode {
     final compilerPath =
         cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
     final compilerLower = compilerPath.toLowerCase();
+    final isClangCl = compilerLower.contains('clang-cl');
     final isGNU =
-        compilerLower.contains('gcc') ||
-        compilerLower.contains('clang') ||
-        compilerLower.contains('g++');
-    final isMSVC = os == OS.windows && !isGNU;
+        !isClangCl &&
+        (compilerLower.contains('gcc') ||
+            compilerLower.contains('clang') ||
+            compilerLower.contains('g++'));
+    final isMSVC =
+        isClangCl ||
+        (os == OS.windows &&
+            (!isGNU ||
+                compilerLower.endsWith('cl.exe') ||
+                compilerLower == 'cl' ||
+                compilerLower.contains('msvc')));
 
     options.validateTarget(targetOS: os, targetArch: arch, isMSVC: isMSVC);
 
@@ -538,7 +624,7 @@ final class SourceMode extends BuildMode {
     };
 
     var cppCompilerPath = compilerPath;
-    if (isMSVC) {
+    if (isMSVC && !isClangCl) {
       for (final candidate in const [
         r'C:\Program Files\LLVM\bin\clang-cl.exe',
         'clang-cl.exe',
@@ -553,7 +639,7 @@ final class SourceMode extends BuildMode {
           }
         } catch (_) {}
       }
-    } else if (compilerPath.endsWith('gcc')) {
+    } else if (!isMSVC && compilerPath.endsWith('gcc')) {
       cppCompilerPath =
           '${compilerPath.substring(0, compilerPath.length - 3)}g++';
     } else if (compilerPath.endsWith('clang')) {
@@ -601,77 +687,120 @@ final class SourceMode extends BuildMode {
       return direct;
     }
 
-    if (!resolveHwyLib(hwyLibName).existsSync() ||
-        !resolveHwyLib(hwyContribLibName).existsSync()) {
-      print('Highway static libraries not found. Compiling highway...');
-      if (!highwayBuildDir.existsSync()) {
-        highwayBuildDir.createSync(recursive: true);
-      }
+    await _withSharedLock(highwayBuildDir, () async {
+      if (!resolveHwyLib(hwyLibName).existsSync() ||
+          !resolveHwyLib(hwyContribLibName).existsSync()) {
+        print('Highway static libraries not found. Compiling highway...');
+        if (!highwayBuildDir.existsSync()) {
+          highwayBuildDir.createSync(recursive: true);
+        }
 
-      final cmakeCCompiler =
-          (isMSVC && cppCompilerPath.toLowerCase().contains('clang-cl'))
-          ? cppCompilerPath.replaceAll('\\', '/')
-          : compilerPath.replaceAll('\\', '/');
-      final cmakeCxxCompiler = cppCompilerPath.replaceAll('\\', '/');
+        final cmakeCCompiler =
+            (isMSVC && cppCompilerPath.toLowerCase().contains('clang-cl'))
+            ? cppCompilerPath.replaceAll('\\', '/')
+            : compilerPath.replaceAll('\\', '/');
+        final cmakeCxxCompiler = cppCompilerPath.replaceAll('\\', '/');
 
-      final cmakeRes = await Process.run(
-        'cmake',
-        [
-          if (isMSVC) ...['-G', 'NMake Makefiles'],
-          '-DCMAKE_BUILD_TYPE=Release',
-          '-DCMAKE_CXX_STANDARD=17',
-          '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
-          '-DHWY_ENABLE_TESTS=OFF',
-          '-DHWY_ENABLE_EXAMPLES=OFF',
-          if (arch == Architecture.x64 && x86Flags.isNotEmpty)
-            '-DCMAKE_CXX_FLAGS=${x86Flags.join(' ')}',
-          if (cCompiler != null ||
-              (isMSVC &&
-                  cppCompilerPath.toLowerCase().contains('clang-cl'))) ...[
-            '-DCMAKE_C_COMPILER=$cmakeCCompiler',
-            '-DCMAKE_CXX_COMPILER=$cmakeCxxCompiler',
+        final cmakeRes = await Process.run(
+          'cmake',
+          [
+            if (isMSVC) ...['-G', 'NMake Makefiles'],
+            '-DCMAKE_BUILD_TYPE=Release',
+            '-DCMAKE_CXX_STANDARD=17',
+            '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
+            '-DHWY_ENABLE_TESTS=OFF',
+            '-DHWY_ENABLE_EXAMPLES=OFF',
+            if (arch == Architecture.x64 && x86Flags.isNotEmpty)
+              '-DCMAKE_CXX_FLAGS=${x86Flags.join(' ')}',
+            if (cCompiler != null ||
+                (isMSVC &&
+                    cppCompilerPath.toLowerCase().contains('clang-cl'))) ...[
+              '-DCMAKE_C_COMPILER=$cmakeCCompiler',
+              '-DCMAKE_CXX_COMPILER=$cmakeCxxCompiler',
+            ],
+            if (os == OS.macOS || os == OS.iOS)
+              '-DCMAKE_OSX_ARCHITECTURES=${arch == Architecture.arm64 ? 'arm64' : 'x86_64'}',
+            highwayDir.toFilePath(),
           ],
-          if (os == OS.macOS || os == OS.iOS)
-            '-DCMAKE_OSX_ARCHITECTURES=${arch == Architecture.arm64 ? 'arm64' : 'x86_64'}',
-          highwayDir.toFilePath(),
-        ],
-        workingDirectory: highwayBuildDir.path,
-        environment: msvcEnv,
-      );
-
-      if (cmakeRes.exitCode != 0) {
-        throw StateError(
-          'CMake failed for highway (exit ${cmakeRes.exitCode}):\n'
-          'stdout: ${cmakeRes.stdout}\n'
-          'stderr: ${cmakeRes.stderr}',
+          workingDirectory: highwayBuildDir.path,
+          environment: msvcEnv,
         );
-      }
 
-      final buildRes = await Process.run(
-        'cmake',
-        [
-          '--build',
-          '.',
-          '--target',
-          'hwy',
-          'hwy_contrib',
-          if (!isMSVC) '--parallel',
-        ],
-        workingDirectory: highwayBuildDir.path,
-        environment: msvcEnv,
-      );
+        if (cmakeRes.exitCode != 0) {
+          throw StateError(
+            'CMake failed for highway (exit ${cmakeRes.exitCode}):\n'
+            'stdout: ${cmakeRes.stdout}\n'
+            'stderr: ${cmakeRes.stderr}',
+          );
+        }
 
-      if (buildRes.exitCode != 0) {
-        throw StateError(
-          'Build failed for highway (exit ${buildRes.exitCode}):\n'
-          'stdout: ${buildRes.stdout}\n'
-          'stderr: ${buildRes.stderr}',
+        final buildRes = await Process.run(
+          'cmake',
+          [
+            '--build',
+            '.',
+            '--target',
+            'hwy',
+            'hwy_contrib',
+            if (!isMSVC) '--parallel',
+          ],
+          workingDirectory: highwayBuildDir.path,
+          environment: msvcEnv,
         );
+
+        if (buildRes.exitCode != 0) {
+          throw StateError(
+            'Build failed for highway (exit ${buildRes.exitCode}):\n'
+            'stdout: ${buildRes.stdout}\n'
+            'stderr: ${buildRes.stderr}',
+          );
+        }
       }
-    }
+    });
 
     final libhwy = resolveHwyLib(hwyLibName);
     final libhwyContrib = resolveHwyLib(hwyContribLibName);
+
+    String computeInputDigest(String src, List<String> args) {
+      final bytes = BytesBuilder(copy: false);
+      bytes.add(cacheKey.codeUnits);
+      bytes.add(args.join(' ').codeUnits);
+      bytes.add(File(src).readAsBytesSync());
+      final headerPaths = <String>{
+        'hook/custom_indexing.h',
+        'hook/custom_sorting.h',
+        'hook/custom_ufuncs.h',
+        'hook/ndarray_common.h',
+        'hook/npz_io.h',
+        'third_party/miniz/miniz.h',
+      };
+      final hookDir = Directory.fromUri(_root.resolve('hook/'));
+      if (hookDir.existsSync()) {
+        final dynamicHeaders =
+            hookDir
+                .listSync(followLinks: false)
+                .whereType<File>()
+                .where((f) => f.path.endsWith('.h'))
+                .map((f) => 'hook/${f.uri.pathSegments.last}')
+                .toList()
+              ..sort();
+        headerPaths.addAll(dynamicHeaders);
+      }
+      final sortedHeaders = headerPaths.toList()..sort();
+      for (final header in sortedHeaders) {
+        final hF = File(_root.resolve(header).toFilePath());
+        if (hF.existsSync()) {
+          bytes.add(hF.readAsBytesSync());
+        }
+      }
+      return sha256.convert(bytes.takeBytes()).toString();
+    }
+
+    final ufuncsSrc = _root.resolve('hook/custom_ufuncs.cpp').toFilePath();
+    final sortingSrc = _root.resolve('hook/custom_sorting.cpp').toFilePath();
+    final indexingSrc = _root.resolve('hook/custom_indexing.cpp').toFilePath();
+    final minizSrc = _root.resolve('third_party/miniz/miniz.c').toFilePath();
+    final npzIoSrc = _root.resolve('hook/npz_io.cpp').toFilePath();
 
     if (isMSVC) {
       final sharedObjDir = Directory.fromUri(
@@ -693,12 +822,6 @@ final class SourceMode extends BuildMode {
           .toFilePath();
       final minizObj = sharedObjDir.uri.resolve('miniz.obj').toFilePath();
       final npzIoObj = sharedObjDir.uri.resolve('npz_io.obj').toFilePath();
-      final winBuiltinsSrc = sharedObjDir.uri
-          .resolve('win_builtins.c')
-          .toFilePath();
-      final winBuiltinsObj = sharedObjDir.uri
-          .resolve('win_builtins.obj')
-          .toFilePath();
       final stampSrc = sharedObjDir.uri
           .resolve('source_hash_stamp.c')
           .toFilePath();
@@ -706,7 +829,33 @@ final class SourceMode extends BuildMode {
           .resolve('source_hash_stamp.obj')
           .toFilePath();
 
-      await File(stampSrc).writeAsString('''
+      Future<bool> runMsvcCompile(
+        String label,
+        String src,
+        String obj,
+        String exe,
+        List<String> args,
+      ) async {
+        final objF = File(obj);
+        final hashF = File('$obj.sha256');
+        final digest = computeInputDigest(src, args);
+        if (objF.existsSync() &&
+            hashF.existsSync() &&
+            hashF.readAsStringSync().trim() == digest) {
+          return false;
+        }
+        final res = await Process.run(exe, args, environment: msvcEnv);
+        if (res.exitCode != 0) {
+          throw StateError(
+            '$label compilation failed:\nstdout: ${res.stdout}\nstderr: ${res.stderr}',
+          );
+        }
+        await hashF.writeAsString(digest);
+        return true;
+      }
+
+      await _withSharedLock(sharedObjDir, () async {
+        await File(stampSrc).writeAsString('''
 #define STAMP_EXPORT __declspec(dllexport)
 static const char _ndarray_source_hash_marker[] =
     "$sourceHashMarkerPrefix$currentSourceHash";
@@ -715,158 +864,154 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
 }
 ''');
 
-      await File(winBuiltinsSrc).writeAsString('''
-typedef unsigned __int128 uint128_t;
-typedef __int128 int128_t;
-
-uint128_t __udivti3(uint128_t n, uint128_t d) {
-  if (d == 0) return 0;
-  uint128_t q = 0;
-  uint128_t r = 0;
-  for (int i = 127; i >= 0; i--) {
-    r = (r << 1) | ((n >> i) & 1);
-    if (r >= d) {
-      r -= d;
-      q |= ((uint128_t)1 << i);
-    }
-  }
-  return q;
-}
-
-int128_t __divti3(int128_t a, int128_t b) {
-  int neg = 0;
-  uint128_t ua = (uint128_t)a;
-  uint128_t ub = (uint128_t)b;
-  if (a < 0) {
-    ua = -ua;
-    neg ^= 1;
-  }
-  if (b < 0) {
-    ub = -ub;
-    neg ^= 1;
-  }
-  uint128_t uq = __udivti3(ua, ub);
-  return neg ? -(int128_t)uq : (int128_t)uq;
-}
-''');
-
-      Future<void> runMsvcCompile(
-        String label,
-        String exe,
-        List<String> args,
-      ) async {
-        final res = await Process.run(exe, args, environment: msvcEnv);
-        if (res.exitCode != 0) {
-          throw StateError(
-            '$label compilation failed:\nstdout: ${res.stdout}\nstderr: ${res.stderr}',
-          );
+        var anyCompiled = false;
+        if (await runMsvcCompile(
+          'Ufuncs',
+          ufuncsSrc,
+          ufuncsObj,
+          cppCompilerPath,
+          [
+            '/c',
+            '/std:c++17',
+            '/bigobj',
+            '/O2',
+            '/MD',
+            '/EHsc',
+            '/Zc:strictStrings',
+            if (arch == Architecture.x64) ...x86Flags,
+            '/D_USE_MATH_DEFINES',
+            '/DNOMINMAX',
+            '/DVECTORIZED_TARGETS=',
+            '/I${_root.toFilePath()}',
+            ufuncsSrc,
+            '/Fo:$ufuncsObj',
+          ],
+        )) {
+          anyCompiled = true;
         }
-      }
-
-      await Future.wait([
-        runMsvcCompile('Ufuncs', cppCompilerPath, [
+        if (await runMsvcCompile(
+          'Sorting',
+          sortingSrc,
+          sortingObj,
+          cppCompilerPath,
+          [
+            '/c',
+            '/std:c++17',
+            '/bigobj',
+            '/O2',
+            '/MD',
+            '/EHsc',
+            '/Zc:strictStrings',
+            if (arch == Architecture.x64) ...x86Flags,
+            '/D_USE_MATH_DEFINES',
+            '/DNOMINMAX',
+            '/I${_root.toFilePath()}',
+            '/I${_root.resolve('third_party/highway/').toFilePath()}',
+            sortingSrc,
+            '/Fo:$sortingObj',
+          ],
+        )) {
+          anyCompiled = true;
+        }
+        if (await runMsvcCompile(
+          'Indexing',
+          indexingSrc,
+          indexingObj,
+          cppCompilerPath,
+          [
+            '/c',
+            '/std:c++17',
+            '/bigobj',
+            '/O2',
+            '/MD',
+            '/EHsc',
+            '/Zc:strictStrings',
+            if (arch == Architecture.x64) ...x86Flags,
+            '/D_USE_MATH_DEFINES',
+            '/DNOMINMAX',
+            '/I${_root.toFilePath()}',
+            indexingSrc,
+            '/Fo:$indexingObj',
+          ],
+        )) {
+          anyCompiled = true;
+        }
+        if (await runMsvcCompile('miniz', minizSrc, minizObj, compilerPath, [
           '/c',
-          '/std:c++17',
-          '/bigobj',
           '/O2',
           '/MD',
-          '/EHsc',
-          if (arch == Architecture.x64) ...x86Flags,
-          '/D_USE_MATH_DEFINES',
-          '/DNOMINMAX',
-          '/DVECTORIZED_TARGETS=',
           '/I${_root.toFilePath()}',
-          _root.resolve('hook/custom_ufuncs.cpp').toFilePath(),
-          '/Fo:$ufuncsObj',
-        ]),
-        runMsvcCompile('Sorting', cppCompilerPath, [
-          '/c',
-          '/std:c++17',
-          '/bigobj',
-          '/O2',
-          '/MD',
-          '/EHsc',
-          if (arch == Architecture.x64) ...x86Flags,
-          '/D_USE_MATH_DEFINES',
-          '/DNOMINMAX',
-          '/I${_root.toFilePath()}',
-          '/I${_root.resolve('third_party/highway/').toFilePath()}',
-          _root.resolve('hook/custom_sorting.cpp').toFilePath(),
-          '/Fo:$sortingObj',
-        ]),
-        runMsvcCompile('Indexing', cppCompilerPath, [
-          '/c',
-          '/std:c++17',
-          '/bigobj',
-          '/O2',
-          '/MD',
-          '/EHsc',
-          if (arch == Architecture.x64) ...x86Flags,
-          '/D_USE_MATH_DEFINES',
-          '/DNOMINMAX',
-          '/I${_root.toFilePath()}',
-          _root.resolve('hook/custom_indexing.cpp').toFilePath(),
-          '/Fo:$indexingObj',
-        ]),
-        runMsvcCompile('miniz', compilerPath, [
-          '/c',
-          '/O2',
-          '/MD',
-          '/I${_root.toFilePath()}',
-          _root.resolve('third_party/miniz/miniz.c').toFilePath(),
+          minizSrc,
           '/Fo:$minizObj',
-        ]),
-        runMsvcCompile('npz_io', cppCompilerPath, [
-          '/c',
-          '/std:c++17',
-          '/bigobj',
-          '/O2',
-          '/MD',
-          '/EHsc',
-          '/DNOMINMAX',
-          '/I${_root.toFilePath()}',
-          _root.resolve('hook/npz_io.cpp').toFilePath(),
-          '/Fo:$npzIoObj',
-        ]),
-        runMsvcCompile('win_builtins', cppCompilerPath, [
-          '/c',
-          '/O2',
-          '/MD',
-          winBuiltinsSrc,
-          '/Fo:$winBuiltinsObj',
-        ]),
-        runMsvcCompile('source_hash_stamp', compilerPath, [
-          '/c',
-          '/O2',
-          '/MD',
+        ])) {
+          anyCompiled = true;
+        }
+        if (await runMsvcCompile(
+          'npz_io',
+          npzIoSrc,
+          npzIoObj,
+          cppCompilerPath,
+          [
+            '/c',
+            '/std:c++17',
+            '/bigobj',
+            '/O2',
+            '/MD',
+            '/EHsc',
+            '/Zc:strictStrings',
+            '/DNOMINMAX',
+            '/I${_root.toFilePath()}',
+            npzIoSrc,
+            '/Fo:$npzIoObj',
+          ],
+        )) {
+          anyCompiled = true;
+        }
+        if (await runMsvcCompile(
+          'source_hash_stamp',
           stampSrc,
-          '/Fo:$stampObj',
-        ]),
-      ]);
+          stampObj,
+          compilerPath,
+          ['/c', '/O2', '/MD', stampSrc, '/Fo:$stampObj'],
+        )) {
+          anyCompiled = true;
+        }
 
-      final defFile = await _generateWindowsDefFile(_root, outputDir);
+        final libUri = libFile.uri;
+        if (anyCompiled || !File.fromUri(libUri).existsSync()) {
+          final defFile = await _generateWindowsDefFile(_root, outputDir);
+          final tempLibFile = File(
+            '${libFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+          );
 
-      final res = await Process.run(cppCompilerPath, [
-        '/LD',
-        '/MD',
-        ufuncsObj,
-        sortingObj,
-        indexingObj,
-        minizObj,
-        npzIoObj,
-        winBuiltinsObj,
-        stampObj,
-        libhwyContrib.path,
-        libhwy.path,
-        '/Fe:${libFile.path}',
-        '/link',
-        '/def:${defFile.path}',
-      ], environment: msvcEnv);
-      if (res.exitCode != 0) {
-        throw StateError(
-          'Linking failed:\nstdout: ${res.stdout}\nstderr: ${res.stderr}',
-        );
-      }
+          final res = await Process.run(cppCompilerPath, [
+            '/LD',
+            '/MD',
+            ufuncsObj,
+            sortingObj,
+            indexingObj,
+            minizObj,
+            npzIoObj,
+            stampObj,
+            libhwyContrib.path,
+            libhwy.path,
+            '/Fe:${tempLibFile.path}',
+            '/link',
+            '/def:${defFile.path}',
+          ], environment: msvcEnv);
+          if (res.exitCode != 0) {
+            if (tempLibFile.existsSync()) {
+              try {
+                tempLibFile.deleteSync();
+              } catch (_) {}
+            }
+            throw StateError(
+              'Linking failed:\nstdout: ${res.stdout}\nstderr: ${res.stderr}',
+            );
+          }
+          await tempLibFile.rename(libFile.path);
+        }
+      });
     } else {
       final sharedObjDir = Directory.fromUri(
         input.outputDirectoryShared.resolve(
@@ -894,37 +1039,17 @@ int128_t __divti3(int128_t a, int128_t b) {
           .resolve('source_hash_stamp.o')
           .toFilePath();
 
-      await File(stampSrc).writeAsString('''
-#define STAMP_EXPORT __attribute__((visibility("default"), used))
-#define STAMP_USED __attribute__((used))
-STAMP_USED static const char _ndarray_source_hash_marker[] =
-    "$sourceHashMarkerPrefix$currentSourceHash";
-STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
-  return _ndarray_source_hash_marker;
-}
-''');
-
       final sanitizeFlags = options.sanitizeFlags;
       final coverageFlags = options.coverageFlags;
-
-      String computeInputDigest(String src, List<String> args) {
-        final bytes = BytesBuilder(copy: false);
-        bytes.add(cacheKey.codeUnits);
-        bytes.add(args.join(' ').codeUnits);
-        bytes.add(File(src).readAsBytesSync());
-        for (final header in const [
-          'hook/custom_indexing.h',
-          'hook/custom_sorting.h',
-          'hook/custom_ufuncs.h',
-          'hook/npz_io.h',
-        ]) {
-          final hF = File(_root.resolve(header).toFilePath());
-          if (hF.existsSync()) {
-            bytes.add(hF.readAsBytesSync());
-          }
-        }
-        return sha256.convert(bytes.takeBytes()).toString();
-      }
+      const cppHardeningFlags = <String>[
+        '-Wall',
+        '-Wextra',
+        '-Wundef',
+        '-Wformat=2',
+        '-fno-strict-aliasing',
+        '-Wno-unused-parameter',
+        '-Wno-unused-function',
+      ];
 
       Future<bool> compileIfNeeded(
         String label,
@@ -949,181 +1074,213 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
         return true;
       }
 
-      final ufuncsSrc = _root.resolve('hook/custom_ufuncs.cpp').toFilePath();
-      final sortingSrc = _root.resolve('hook/custom_sorting.cpp').toFilePath();
-      final indexingSrc = _root
-          .resolve('hook/custom_indexing.cpp')
-          .toFilePath();
-      final minizSrc = _root.resolve('third_party/miniz/miniz.c').toFilePath();
-      final npzIoSrc = _root.resolve('hook/npz_io.cpp').toFilePath();
+      await _withSharedLock(sharedObjDir, () async {
+        await File(stampSrc).writeAsString('''
+#define STAMP_EXPORT __attribute__((visibility("default"), used))
+#define STAMP_USED __attribute__((used))
+STAMP_USED static const char _ndarray_source_hash_marker[] =
+    "$sourceHashMarkerPrefix$currentSourceHash";
+STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
+  return _ndarray_source_hash_marker;
+}
+''');
 
-      final compiledAny = await Future.wait([
-        compileIfNeeded('Ufuncs', ufuncsSrc, ufuncsObj, cppCompilerPath, [
+        final compiledAny = await Future.wait([
+          compileIfNeeded('Ufuncs', ufuncsSrc, ufuncsObj, cppCompilerPath, [
+            if (os == OS.macOS || os == OS.iOS) ...[
+              '-arch',
+              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            ],
+            '-std=c++17',
+            '-c',
+            '-fPIC',
+            '-O2',
+            '-fno-exceptions',
+            ...cppHardeningFlags,
+            ...sanitizeFlags,
+            ...coverageFlags,
+            if (arch == Architecture.x64) ...x86Flags,
+            '-DVECTORIZED_TARGETS=',
+            '-fno-math-errno',
+            '-I${_root.toFilePath()}',
+            ufuncsSrc,
+            '-o',
+            ufuncsObj,
+          ]),
+          compileIfNeeded('Sorting', sortingSrc, sortingObj, cppCompilerPath, [
+            if (os == OS.macOS || os == OS.iOS) ...[
+              '-arch',
+              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            ],
+            '-std=c++17',
+            '-c',
+            '-fPIC',
+            '-O2',
+            '-fno-exceptions',
+            ...cppHardeningFlags,
+            ...sanitizeFlags,
+            ...coverageFlags,
+            if (arch == Architecture.x64) ...x86Flags,
+            '-fno-math-errno',
+            '-I${_root.toFilePath()}',
+            '-I${_root.resolve('third_party/highway/').toFilePath()}',
+            sortingSrc,
+            '-o',
+            sortingObj,
+          ]),
+          compileIfNeeded(
+            'Indexing',
+            indexingSrc,
+            indexingObj,
+            cppCompilerPath,
+            [
+              if (os == OS.macOS || os == OS.iOS) ...[
+                '-arch',
+                arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+              ],
+              '-std=c++17',
+              '-c',
+              '-fPIC',
+              '-O2',
+              '-fno-exceptions',
+              ...cppHardeningFlags,
+              ...sanitizeFlags,
+              ...coverageFlags,
+              if (arch == Architecture.x64) ...x86Flags,
+              '-fno-math-errno',
+              '-I${_root.toFilePath()}',
+              indexingSrc,
+              '-o',
+              indexingObj,
+            ],
+          ),
+          compileIfNeeded('miniz', minizSrc, minizObj, compilerPath, [
+            if (os == OS.macOS || os == OS.iOS) ...[
+              '-arch',
+              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            ],
+            '-c',
+            '-fPIC',
+            '-O3',
+            '-fno-strict-aliasing',
+            ...sanitizeFlags,
+            if (sanitizeFlags.isNotEmpty) '-fno-sanitize=alignment',
+            ...coverageFlags,
+            '-I${_root.toFilePath()}',
+            minizSrc,
+            '-o',
+            minizObj,
+          ]),
+          compileIfNeeded('npz_io', npzIoSrc, npzIoObj, cppCompilerPath, [
+            if (os == OS.macOS || os == OS.iOS) ...[
+              '-arch',
+              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            ],
+            '-std=c++17',
+            '-c',
+            '-fPIC',
+            '-O3',
+            '-fno-exceptions',
+            ...cppHardeningFlags,
+            ...sanitizeFlags,
+            ...coverageFlags,
+            '-I${_root.toFilePath()}',
+            npzIoSrc,
+            '-o',
+            npzIoObj,
+          ]),
+          compileIfNeeded(
+            'source_hash_stamp',
+            stampSrc,
+            stampObj,
+            compilerPath,
+            [
+              if (os == OS.macOS || os == OS.iOS) ...[
+                '-arch',
+                arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+              ],
+              '-c',
+              '-fPIC',
+              '-O2',
+              stampSrc,
+              '-o',
+              stampObj,
+            ],
+          ),
+        ]);
+
+        final tempLibFile = File(
+          '${libFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
+        );
+        final linkArgs = <String>[
           if (os == OS.macOS || os == OS.iOS) ...[
             '-arch',
             arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+            '-Wl,-install_name,@rpath/$libName',
+            '-Wl,-headerpad_max_install_names',
           ],
-          '-std=c++17',
-          '-c',
+          '-shared',
           '-fPIC',
-          '-O2',
-          '-fno-exceptions',
           ...sanitizeFlags,
           ...coverageFlags,
-          if (arch == Architecture.x64) ...x86Flags,
-          '-DVECTORIZED_TARGETS=',
-          '-fno-math-errno',
-          '-I${_root.toFilePath()}',
-          ufuncsSrc,
-          '-o',
+          if (os == OS.android) '-Wl,-z,max-page-size=16384',
           ufuncsObj,
-        ]),
-        compileIfNeeded('Sorting', sortingSrc, sortingObj, cppCompilerPath, [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-          ],
-          '-std=c++17',
-          '-c',
-          '-fPIC',
-          '-O2',
-          '-fno-exceptions',
-          ...sanitizeFlags,
-          ...coverageFlags,
-          if (arch == Architecture.x64) ...x86Flags,
-          '-fno-math-errno',
-          '-I${_root.toFilePath()}',
-          '-I${_root.resolve('third_party/highway/').toFilePath()}',
-          sortingSrc,
-          '-o',
           sortingObj,
-        ]),
-        compileIfNeeded('Indexing', indexingSrc, indexingObj, cppCompilerPath, [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-          ],
-          '-std=c++17',
-          '-c',
-          '-fPIC',
-          '-O2',
-          '-fno-exceptions',
-          ...sanitizeFlags,
-          ...coverageFlags,
-          if (arch == Architecture.x64) ...x86Flags,
-          '-fno-math-errno',
-          '-I${_root.toFilePath()}',
-          indexingSrc,
-          '-o',
           indexingObj,
-        ]),
-        compileIfNeeded('miniz', minizSrc, minizObj, compilerPath, [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-          ],
-          '-c',
-          '-fPIC',
-          '-O3',
-          ...sanitizeFlags,
-          if (sanitizeFlags.isNotEmpty) '-fno-sanitize=alignment',
-          ...coverageFlags,
-          '-I${_root.toFilePath()}',
-          minizSrc,
-          '-o',
           minizObj,
-        ]),
-        compileIfNeeded('npz_io', npzIoSrc, npzIoObj, cppCompilerPath, [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-          ],
-          '-std=c++17',
-          '-c',
-          '-fPIC',
-          '-O3',
-          '-fno-exceptions',
-          ...sanitizeFlags,
-          ...coverageFlags,
-          '-I${_root.toFilePath()}',
-          npzIoSrc,
-          '-o',
           npzIoObj,
-        ]),
-        compileIfNeeded('source_hash_stamp', stampSrc, stampObj, compilerPath, [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-          ],
-          '-c',
-          '-fPIC',
-          '-O2',
-          stampSrc,
-          '-o',
           stampObj,
-        ]),
-      ]);
+          libhwyContrib.path,
+          libhwy.path,
+          '-o',
+          tempLibFile.path,
+          if (os != OS.windows) '-lm',
+        ];
 
-      final linkArgs = <String>[
-        if (os == OS.macOS || os == OS.iOS) ...[
-          '-arch',
-          arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-          '-Wl,-install_name,@rpath/$libName',
-          '-Wl,-headerpad_max_install_names',
-        ],
-        '-shared',
-        '-fPIC',
-        ...sanitizeFlags,
-        ...coverageFlags,
-        if (os == OS.android) '-Wl,-z,max-page-size=16384',
-        ufuncsObj,
-        sortingObj,
-        indexingObj,
-        minizObj,
-        npzIoObj,
-        stampObj,
-        libhwyContrib.path,
-        libhwy.path,
-        '-o',
-        libFile.path,
-        if (os != OS.windows) '-lm',
-      ];
-
-      final linkHashFile = File('${libFile.path}.sha256');
-      final linkDigestBuilder = BytesBuilder(copy: false)
-        ..add(cacheKey.codeUnits)
-        ..add(currentSourceHash.codeUnits)
-        ..add(linkArgs.join(' ').codeUnits);
-      for (final objPath in [
-        ufuncsObj,
-        sortingObj,
-        indexingObj,
-        minizObj,
-        npzIoObj,
-        stampObj,
-      ]) {
-        final hFile = File('$objPath.sha256');
-        if (hFile.existsSync()) {
-          linkDigestBuilder.add(hFile.readAsBytesSync());
+        final linkHashFile = File('${libFile.path}.sha256');
+        final linkDigestBuilder = BytesBuilder(copy: false)
+          ..add(cacheKey.codeUnits)
+          ..add(currentSourceHash.codeUnits)
+          ..add(libFile.path.codeUnits)
+          ..add(sanitizeFlags.join(' ').codeUnits)
+          ..add(coverageFlags.join(' ').codeUnits);
+        for (final objPath in [
+          ufuncsObj,
+          sortingObj,
+          indexingObj,
+          minizObj,
+          npzIoObj,
+          stampObj,
+        ]) {
+          final hFile = File('$objPath.sha256');
+          if (hFile.existsSync()) {
+            linkDigestBuilder.add(hFile.readAsBytesSync());
+          }
         }
-      }
-      final linkDigest = sha256
-          .convert(linkDigestBuilder.takeBytes())
-          .toString();
+        final linkDigest = sha256
+            .convert(linkDigestBuilder.takeBytes())
+            .toString();
 
-      final needsLink =
-          !libFile.existsSync() ||
-          compiledAny.any((c) => c) ||
-          !linkHashFile.existsSync() ||
-          linkHashFile.readAsStringSync().trim() != linkDigest;
+        final needsLink =
+            !libFile.existsSync() ||
+            compiledAny.any((c) => c) ||
+            !linkHashFile.existsSync() ||
+            linkHashFile.readAsStringSync().trim() != linkDigest;
 
-      if (needsLink) {
-        final res = await Process.run(cppCompilerPath, linkArgs);
-        if (res.exitCode != 0) {
-          throw StateError('Linking failed: ${res.stderr}');
+        if (needsLink) {
+          final res = await Process.run(cppCompilerPath, linkArgs);
+          if (res.exitCode != 0) {
+            if (tempLibFile.existsSync()) {
+              try {
+                tempLibFile.deleteSync();
+              } catch (_) {}
+            }
+            throw StateError('Linking failed: ${res.stderr}');
+          }
+          await tempLibFile.rename(libFile.path);
+          await linkHashFile.writeAsString(linkDigest);
         }
-        await linkHashFile.writeAsString(linkDigest);
-      }
+      });
 
       if (options.hasInstrumentation) {
         _verifyInstrumentationSymbols(libFile, options);
@@ -1163,32 +1320,76 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
     for (final file in nativeSourceFiles(_root)) file.uri,
     _root.resolve('third_party/miniz/miniz.c'),
     _root.resolve('third_party/miniz/miniz.h'),
-    _root.resolve('third_party/timsort/timsort.h'),
+    ..._highwayDependencies(_root),
   ];
 }
 
+List<Uri> _highwayDependencies(Uri root) {
+  final result = <Uri>[];
+  final cmakeFile = File.fromUri(
+    root.resolve('third_party/highway/CMakeLists.txt'),
+  );
+  if (cmakeFile.existsSync()) {
+    result.add(cmakeFile.uri);
+  }
+  final hwyDir = Directory.fromUri(root.resolve('third_party/highway/hwy/'));
+  if (hwyDir.existsSync()) {
+    final files =
+        hwyDir
+            .listSync(recursive: true, followLinks: false)
+            .whereType<File>()
+            .where((f) {
+              final p = f.path;
+              if (p.contains('/tests/') ||
+                  p.contains(r'\tests\') ||
+                  p.endsWith('_test.cc')) {
+                return false;
+              }
+              return p.endsWith('.h') ||
+                  p.endsWith('.cc') ||
+                  p.endsWith('.cpp') ||
+                  p.endsWith('.inc');
+            })
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
+    for (final f in files) {
+      result.add(f.uri);
+    }
+  }
+  return result;
+}
+
 Future<Uint8List> _downloadBytesWithRedirects(Uri url) async {
-  final client = HttpClient();
+  final client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
   try {
     var currentUrl = url;
     for (var redirectCount = 0; redirectCount < 5; redirectCount++) {
-      final request = await client.getUrl(currentUrl);
-      final response = await request.close();
+      final request = await client
+          .getUrl(currentUrl)
+          .timeout(const Duration(seconds: 60));
+      final response = await request.close().timeout(
+        const Duration(seconds: 60),
+      );
       if (response.statusCode >= 300 &&
           response.statusCode < 400 &&
           response.headers.value(HttpHeaders.locationHeader) != null) {
-        currentUrl = currentUrl.resolve(
-          response.headers.value(HttpHeaders.locationHeader)!,
-        );
+        final location = response.headers.value(HttpHeaders.locationHeader)!;
+        await response.drain<void>().timeout(const Duration(seconds: 30));
+        final nextUrl = currentUrl.resolve(location);
+        if (nextUrl.scheme != 'https') {
+          throw HttpException('Refusing redirect to non-HTTPS URL: $nextUrl');
+        }
+        currentUrl = nextUrl;
         continue;
       }
       if (response.statusCode != 200) {
+        await response.drain<void>().timeout(const Duration(seconds: 30));
         throw HttpException(
           'Failed to download $currentUrl (HTTP ${response.statusCode})',
         );
       }
       final builder = BytesBuilder(copy: false);
-      await for (final chunk in response) {
+      await for (final chunk in response.timeout(const Duration(seconds: 60))) {
         builder.add(chunk);
       }
       return builder.takeBytes();
@@ -1278,15 +1479,21 @@ Future<Map<String, String>> getMSVCEnvironment(Architecture targetArch) async {
 
     final tempDir = Directory.systemTemp;
     final tempFile = File(
-      '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}.bat',
+      '${tempDir.path}\\get_msvc_env_${DateTime.now().millisecondsSinceEpoch}_$pid.bat',
     );
-    await tempFile.writeAsString(
-      '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',
-    );
-    final envRes = await Process.run('cmd.exe', ['/c', tempFile.path]);
+    ProcessResult envRes;
     try {
-      await tempFile.delete();
-    } catch (_) {}
+      await tempFile.writeAsString(
+        '@echo off\ncall "$vcvarsPath" $vcvarsArch\nset\n',
+      );
+      envRes = await Process.run('cmd.exe', ['/c', tempFile.path]);
+    } finally {
+      try {
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      } catch (_) {}
+    }
 
     if (envRes.exitCode != 0) return {};
 

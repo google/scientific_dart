@@ -46,17 +46,12 @@ void main() {
         );
 
         // 1. Standard unmasked SDPA
-        final out = nn.scaled_dot_product_attention(q, k, v);
+        final out = nn.scaledDotProductAttention(q, k, v);
         expect(out.shape, equals([1, 1, 3, 2]));
         expect(out.requiresGrad, isTrue);
 
         // 2. Causal masked SDPA
-        final causalOut = nn.scaled_dot_product_attention(
-          q,
-          k,
-          v,
-          isCausal: true,
-        );
+        final causalOut = nn.scaledDotProductAttention(q, k, v, isCausal: true);
         expect(causalOut.shape, equals([1, 1, 3, 2]));
 
         final causalList = causalOut.toList().cast<double>();
@@ -95,12 +90,7 @@ void main() {
           DType.boolean,
         );
 
-        final out = nn.scaled_dot_product_attention(
-          q,
-          k,
-          v,
-          attnMask: boolMask,
-        );
+        final out = nn.scaledDotProductAttention(q, k, v, attnMask: boolMask);
         expect(out.shape, equals([2, 4]));
 
         final outList = out.toList().cast<double>();
@@ -146,9 +136,6 @@ void main() {
           expect(mha.outProj.weight.grad, isNotNull);
           expect(input.grad, isNotNull);
           expect(input.grad!.shape, equals([batchSize, seqLen, embedDim]));
-
-          final mhaAlias = nn.MultiHeadAttention(embedDim, numHeads);
-          expect(mhaAlias, isA<nn.MultiheadAttention>());
         });
       },
     );

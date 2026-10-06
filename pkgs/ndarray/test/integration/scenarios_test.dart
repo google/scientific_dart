@@ -320,7 +320,7 @@ void main() {
             [4],
             DType.float64,
           );
-          final y = polyval<Float64, Float64, Float64>(trueCoeffsDesc, x);
+          final y = polyval(trueCoeffsDesc, x);
 
           // 1. Design matrix with decreasing powers [x^3, x^2, x, 1] to match polyval
           final x2 = square(x);
@@ -344,7 +344,7 @@ void main() {
 
           // 3. Compare with lstsq and polyfit
           final wLstsq = lstsq<Float64, Float64, Float64>(X, y).x;
-          final wPolyfit = polyfit<Float64, Float64, Float64, Float64>(x, y, 3);
+          final wPolyfit = polyfit(x, y, 3);
           expect(allClose(wLstsq, trueCoeffsDesc, atol: 1e-11), isTrue);
           expect(allClose(wPolyfit, trueCoeffsDesc, atol: 1e-11), isTrue);
 
@@ -355,11 +355,10 @@ void main() {
             DType.float64,
           );
           final exactIntegral =
-              polyval<Float64, Float64, Float64>(
-                pIntCoeffs,
-                NDArray.fromList([2.0], [1], DType.float64),
-              )[[0]] -
-              polyval<Float64, Float64, Float64>(
+              polyval(pIntCoeffs, NDArray.fromList([2.0], [1], DType.float64))[[
+                0,
+              ]] -
+              polyval(
                 pIntCoeffs,
                 NDArray.fromList([-2.0], [1], DType.float64),
               )[[0]];

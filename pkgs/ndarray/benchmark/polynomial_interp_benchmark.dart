@@ -24,13 +24,8 @@ void main() async {
     'NDArray Polynomial Fitting & 1D Interpolation Benchmark Suite',
     (c) {
       final rand = math.Random(42);
-      final xPoints = linspace<DTypeTag>(
-        -10.0,
-        10.0,
-        size,
-        dtype: DType.float64,
-      );
-      final coeffs5 = NDArray<DTypeTag>.fromList(
+      final xPoints = linspace(-10.0, 10.0, size, dtype: DType.float64);
+      final coeffs5 = NDArray.fromList(
         [1.0, -2.5, 0.4, 3.2, -1.1, 0.5],
         [6],
         DType.float64,
@@ -43,12 +38,12 @@ void main() async {
           y.dispose();
         }, throughput: Throughput.elements(size));
 
-        final chebCoeffs = NDArray<DTypeTag>.fromList(
+        final chebCoeffs = NDArray.fromList(
           [0.5, 1.2, -0.8, 2.1, 0.3],
           [5],
           DType.float64,
         );
-        final xNorm = linspace<DTypeTag>(-1.0, 1.0, size, dtype: DType.float64);
+        final xNorm = linspace(-1.0, 1.0, size, dtype: DType.float64);
 
         c.bench('chebval(deg=4, x) [size=100,000]', () {
           final y = chebval(xNorm, chebCoeffs);
@@ -59,8 +54,8 @@ void main() async {
 
       c.group('2. Least-Squares Polynomial Fitting (polyfit)', () {
         const fitN = 10000;
-        final xFit = linspace<DTypeTag>(0.0, 10.0, fitN, dtype: DType.float64);
-        final yFit = NDArray<DTypeTag>.fromList(
+        final xFit = linspace(0.0, 10.0, fitN, dtype: DType.float64);
+        final yFit = NDArray.fromList(
           List.generate(
             fitN,
             (i) => (i * 0.1) * (i * 0.1) + rand.nextDouble() * 0.5,
@@ -84,23 +79,13 @@ void main() async {
 
       c.group('3. 1D Piecewise Linear Interpolation', () {
         const numKnots = 1000;
-        final xp = linspace<DTypeTag>(
-          0.0,
-          100.0,
-          numKnots,
-          dtype: DType.float64,
-        );
-        final fp = NDArray<DTypeTag>.fromList(
+        final xp = linspace(0.0, 100.0, numKnots, dtype: DType.float64);
+        final fp = NDArray.fromList(
           List.generate(numKnots, (i) => math.sin(i * 0.1)),
           [numKnots],
           DType.float64,
         );
-        final xQuery = linspace<DTypeTag>(
-          0.0,
-          100.0,
-          size,
-          dtype: DType.float64,
-        );
+        final xQuery = linspace(0.0, 100.0, size, dtype: DType.float64);
 
         c.bench(
           'interp(xQuery, xp, fp) [100,000 queries across 1,000 knots]',

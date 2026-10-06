@@ -23,9 +23,9 @@ void main() async {
   await criterion(
     'NDArray Calculus & Numerical Integration Benchmark Suite',
     (c) {
-      final vec1d = linspace<DTypeTag>(0.0, 100.0, size, dtype: DType.float64);
+      final vec1d = linspace<Float64>(0.0, 100.0, size, dtype: DType.float64);
 
-      final grid2d = linspace<DTypeTag>(
+      final grid2d = linspace<Float64>(
         0.0,
         100.0,
         gridDim * gridDim,

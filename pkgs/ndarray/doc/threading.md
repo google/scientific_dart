@@ -124,11 +124,11 @@ Future<void> main() async {
         setNumThreads(1);
 
         // Construct zero-copy non-owning view over shared C memory
-        final view = borrowedOutput.materializeView();
+        final a = borrowedOutput.materializeView();
 
         // Perform in-place mutation
-        for (var i = 0; i < view.shape[0]; i++) {
-          view[i] = (i * 2.5) as Float64;
+        for (var i = 0; i < a.shape[0]; i++) {
+          a.setCellFlat(i, i * 2.5);
         }
       });
     });

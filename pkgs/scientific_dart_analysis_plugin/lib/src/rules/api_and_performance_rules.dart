@@ -160,6 +160,15 @@ final class _Uint64SignedComparisonVisitor extends SimpleAstVisitor<void> {
         : SubtreeDeclarations();
   }
 
+  static const Set<String> _uint64CellGetters = {
+    'getCell',
+    'getCell1D',
+    'getCell2D',
+    'getCell3D',
+    'getCellFlat',
+    'getCellRaw',
+  };
+
   bool _isUint64ElementExpression(
     Expression expr,
     SubtreeDeclarations decls, {
@@ -171,7 +180,25 @@ final class _Uint64SignedComparisonVisitor extends SimpleAstVisitor<void> {
       unwrapped = unwrapParenthesized(unwrapped.expression);
     }
     if (unwrapped is IndexExpression) {
-      if (isNDArrayUint64Type(unwrapped.realTarget.staticType)) {
+      final target = unwrapParenthesized(unwrapped.realTarget);
+      if (isNDArrayUint64Type(target.staticType)) {
+        return true;
+      }
+      if (target is PropertyAccess &&
+          (target.propertyName.name == 'data' ||
+              target.propertyName.name == 'dataRaw') &&
+          isNDArrayUint64Type(target.realTarget.staticType)) {
+        return true;
+      }
+      if (target is PrefixedIdentifier &&
+          (target.identifier.name == 'data' ||
+              target.identifier.name == 'dataRaw') &&
+          isNDArrayUint64Type(target.prefix.staticType)) {
+        return true;
+      }
+    } else if (unwrapped is MethodInvocation) {
+      if (_uint64CellGetters.contains(unwrapped.methodName.name) &&
+          isNDArrayUint64Type(unwrapped.realTarget?.staticType)) {
         return true;
       }
     } else if (unwrapped is PropertyAccess) {

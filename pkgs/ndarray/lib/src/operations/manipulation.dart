@@ -42,11 +42,7 @@ export 'helpers.dart' show castNDArray, sharesMemory;
 /// - Space Complexity: $O(N)$ for newly allocated output (or $O(1)$ auxiliary if [out] is provided).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2], [2], DType.int32);
-/// final b = NDArray.fromList([3, 4], [2], DType.int32);
-/// final c = concatenate([a, b], axis: 0); // [1, 2, 3, 4]
-/// ```
+/// {@example /example/rearranging_example.dart lang=dart}
 ///
 /// Refer to the [NumPy concatenate reference](https://numpy.org/doc/stable/reference/generated/numpy.concatenate.html)
 /// for details.
@@ -56,7 +52,11 @@ NDArray<T> concatenate<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (arrays.isEmpty) {
-    throw ArgumentError('List of arrays must not be empty');
+    throw ArgumentError.value(
+      arrays,
+      'arrays',
+      'List of arrays must not be empty',
+    );
   }
 
   for (final arr in arrays) {
@@ -77,14 +77,26 @@ NDArray<T> concatenate<T extends DTypeTag>(
   for (var i = 1; i < arrays.length; i++) {
     final arr = arrays[i];
     if (arr.dtype != dtype) {
-      throw ArgumentError('All arrays must have the same DType');
+      throw ArgumentError.value(
+        arr.dtype,
+        'arrays',
+        'All arrays must have the same DType',
+      );
     }
     if (arr.shape.length != rank) {
-      throw ArgumentError('All arrays must have the same rank');
+      throw ArgumentError.value(
+        arr.rank,
+        'arrays',
+        'All arrays must have the same rank',
+      );
     }
     for (var j = 0; j < rank; j++) {
       if (j != normAxis && arr.shape[j] != first.shape[j]) {
-        throw ArgumentError('Shapes must match except in dimension $normAxis');
+        throw ArgumentError.value(
+          arr.shape,
+          'arrays',
+          'Shapes must match except in dimension $normAxis',
+        );
       }
     }
   }
@@ -100,10 +112,15 @@ NDArray<T> concatenate<T extends DTypeTag>(
     if (out.isDisposed) {
       throw StateError('Cannot concatenate into a disposed out array.');
     }
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, targetShape) ||
         out.dtype != dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
   }
 
@@ -198,11 +215,7 @@ NDArray<T> concatenate<T extends DTypeTag>(
 /// - Space Complexity: $O(N)$ for newly allocated output (or $O(1)$ auxiliary if [out] is provided).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2], [2], DType.int32);
-/// final b = NDArray.fromList([3, 4], [2], DType.int32);
-/// final s = stack([a, b], axis: 0); // shape [2, 2], values [[1, 2], [3, 4]]
-/// ```
+/// {@example /example/rearranging_example.dart lang=dart}
 ///
 /// Refer to the [NumPy stack reference](https://numpy.org/doc/stable/reference/generated/numpy.stack.html)
 /// for details.
@@ -212,7 +225,11 @@ NDArray<T> stack<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (arrays.isEmpty) {
-    throw ArgumentError('List of arrays to stack must not be empty.');
+    throw ArgumentError.value(
+      arrays,
+      'arrays',
+      'List of arrays to stack must not be empty',
+    );
   }
 
   for (final arr in arrays) {
@@ -229,10 +246,18 @@ NDArray<T> stack<T extends DTypeTag>(
   for (var i = 1; i < arrays.length; i++) {
     final arr = arrays[i];
     if (arr.dtype != dtype) {
-      throw ArgumentError('All arrays in stack must have identical DTypes.');
+      throw ArgumentError.value(
+        arr.dtype,
+        'arrays',
+        'All arrays in stack must have identical DTypes',
+      );
     }
     if (!listEquals(arr.shape, first.shape)) {
-      throw ArgumentError('All arrays in stack must have identical shapes.');
+      throw ArgumentError.value(
+        arr.shape,
+        'arrays',
+        'All arrays in stack must have identical shapes',
+      );
     }
   }
 
@@ -250,10 +275,15 @@ NDArray<T> stack<T extends DTypeTag>(
     if (out.isDisposed) {
       throw StateError('Cannot execute stack() with a disposed out array.');
     }
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, stackedShape) ||
         out.dtype != dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
   }
 
@@ -422,7 +452,9 @@ NDArray<T> squeeze<T extends DTypeTag>(NDArray<T> a, {List<int>? axis}) {
         );
       }
       if (shape[targetAx] != 1) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          ax,
+          'axis',
           'Cannot squeeze axis $ax because its dimension size is ${shape[targetAx]} (must be 1)',
         );
       }
@@ -475,12 +507,7 @@ NDArray<T> squeeze<T extends DTypeTag>(NDArray<T> a, {List<int>? axis}) {
 /// - It is an error if axes are out of range, shapes mismatch, or window dimensions exceed axis sizes.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0, 5.0], [5], DType.float64);
-/// final view = slidingWindowView(a, [3]);
-/// print(view.shape); // [3, 3]
-/// print(view.toList()); // [[1.0, 2.0, 3.0], [2.0, 3.0, 4.0], [3.0, 4.0, 5.0]]
-/// ```
+/// {@example /example/rearranging_example.dart lang=dart}
 ///
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
@@ -510,7 +537,9 @@ NDArray<T> slidingWindowView<T extends DTypeTag>(
         );
       }
       if (targetAxes.contains(resolved)) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          resolved,
+          'axis',
           'Duplicate axis specified in sliding window: $resolved',
         );
       }
@@ -524,7 +553,9 @@ NDArray<T> slidingWindowView<T extends DTypeTag>(
   }
 
   if (windowShape.length != targetAxes.length) {
-    throw ArgumentError(
+    throw ArgumentError.value(
+      windowShape,
+      'windowShape',
       'windowShape length (${windowShape.length}) must match axes length (${targetAxes.length})',
     );
   }
@@ -539,12 +570,16 @@ NDArray<T> slidingWindowView<T extends DTypeTag>(
     final aSize = a.shape[ax];
 
     if (wSize <= 0) {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        wSize,
+        'windowShape',
         'windowShape dimensions must be strictly positive (was $wSize)',
       );
     }
     if (wSize > aSize) {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        wSize,
+        'windowShape',
         'windowShape dimension ($wSize) cannot exceed axis size ($aSize) for axis $ax',
       );
     }
@@ -624,12 +659,16 @@ NDArray<T> flip<T extends DTypeTag>(NDArray<T> a, {Object? axis}) {
         );
       }
       if (!uniqueAxes.add(normAx)) {
-        throw ArgumentError('axes must be unique');
+        throw ArgumentError.value(axis, 'axis', 'axes must be unique');
       }
     }
     axesToFlip = uniqueAxes.toList();
   } else {
-    throw ArgumentError('axis must be null, an integer, or a list of integers');
+    throw ArgumentError.value(
+      axis,
+      'axis',
+      'axis must be null, an integer, or a list of integers',
+    );
   }
 
   final newStrides = List<int>.from(a.strides);
@@ -677,7 +716,7 @@ NDArray<T> fliplr<T extends DTypeTag>(NDArray<T> a) {
     throw StateError('Cannot fliplr a disposed array.');
   }
   if (a.rank < 2) {
-    throw ArgumentError('Input must be >= 2-D.');
+    throw ArgumentError.value(a, 'a', 'Input must be >= 2-D');
   }
   return flip(a, axis: 1);
 }
@@ -709,7 +748,7 @@ NDArray<T> flipud<T extends DTypeTag>(NDArray<T> a) {
     throw StateError('Cannot flipud a disposed array.');
   }
   if (a.rank < 1) {
-    throw ArgumentError('Input must be >= 1-D.');
+    throw ArgumentError.value(a, 'a', 'Input must be >= 1-D');
   }
   return flip(a, axis: 0);
 }
@@ -734,10 +773,10 @@ NDArray<T> rot90<T extends DTypeTag>(
   }
   final rank = a.rank;
   if (rank < 2) {
-    throw ArgumentError('Input must be >= 2-D (was rank $rank).');
+    throw ArgumentError.value(a, 'a', 'Must be >= 2-D (was rank $rank).');
   }
   if (axes.length != 2) {
-    throw ArgumentError('len(axes) must be 2.');
+    throw ArgumentError.value(axes, 'axes', 'len(axes) must be 2');
   }
   final ax0 = axes[0] < 0 ? rank + axes[0] : axes[0];
   final ax1 = axes[1] < 0 ? rank + axes[1] : axes[1];
@@ -745,7 +784,7 @@ NDArray<T> rot90<T extends DTypeTag>(
     throw RangeError('axes out of range for array of rank $rank.');
   }
   if (ax0 == ax1) {
-    throw ArgumentError('Axes must be different.');
+    throw ArgumentError.value(axes, 'axes', 'Axes must be different');
   }
 
   var rotK = k % 4;
@@ -795,7 +834,7 @@ NDArray<T> hstack<T extends DTypeTag>(
   NDArray<T>? out,
 }) {
   if (arrays.isEmpty) {
-    throw ArgumentError('arrays cannot be empty');
+    throw ArgumentError.value(arrays, 'arrays', 'arrays cannot be empty');
   }
   if (arrays.first.rank == 1) {
     return concatenate(arrays, axis: 0, out: out);
@@ -816,12 +855,7 @@ NDArray<T> hstack<T extends DTypeTag>(
 ///
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2], [2], DType.int32);
-/// final b = copy(a);
-/// b[0] = 99;
-/// print(a[0]); // 1 (decoupled memory!)
-/// ```
+/// {@example /example/rearranging_example.dart lang=dart}
 NDArray<T> copy<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute copy() on a disposed array.');
@@ -867,17 +901,25 @@ NDArray<T> diag<T extends DTypeTag>(
 
     if (len <= 0) {
       if (out != null) {
+        validateOutBuffer(out);
         if (!out.isWriteable ||
             !listEquals(out.shape, [0]) ||
             out.dtype != v.dtype) {
-          throw ArgumentError(
-            'Provided out buffer has incompatible shape or dtype.',
+          throw ArgumentError.value(
+            out,
+            'out',
+            'Provided out buffer has incompatible shape or dtype',
           );
         }
         out.fill(castValue(0, v.dtype));
         return out;
       }
-      return NDArray<T>.create([0], v.dtype);
+      return NDArray<T>.view(
+        v,
+        shape: [0],
+        strides: [v.strides[0] + v.strides[1]],
+        offsetElements: 0,
+      );
     }
 
     final offsetElements = startRow * v.strides[0] + startCol * v.strides[1];
@@ -890,6 +932,7 @@ NDArray<T> diag<T extends DTypeTag>(
       offsetElements: offsetElements,
     );
     if (out != null) {
+      validateOutBuffer(out);
       view.copy(out: out);
       view.dispose();
       return out;
@@ -901,11 +944,14 @@ NDArray<T> diag<T extends DTypeTag>(
     final targetShape = [size, size];
 
     if (out != null) {
+      validateOutBuffer(out);
       if (!out.isWriteable ||
           !listEquals(out.shape, targetShape) ||
           out.dtype != v.dtype) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Provided out buffer has incompatible shape or dtype',
         );
       }
     }
@@ -947,7 +993,11 @@ NDArray<T> diag<T extends DTypeTag>(
       return result.detachToParentScope();
     });
   } else {
-    throw ArgumentError('Input array must be 1- or 2-dimensional.');
+    throw ArgumentError.value(
+      v,
+      'v',
+      'Input array must be 1- or 2-dimensional',
+    );
   }
 }
 
@@ -971,14 +1021,17 @@ NDArray<T> tril<T extends DTypeTag>(
     throw StateError('Cannot execute tril() on a disposed array.');
   }
   if (a.shape.length < 2) {
-    throw ArgumentError('Input array must have rank >= 2.');
+    throw ArgumentError.value(a, 'a', 'Input array must have rank >= 2');
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, a.shape) ||
         out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Provided out buffer has incompatible shape or dtype',
       );
     }
   }
@@ -1097,14 +1150,17 @@ NDArray<T> triu<T extends DTypeTag>(
     throw StateError('Cannot execute triu() on a disposed array.');
   }
   if (a.shape.length < 2) {
-    throw ArgumentError('Input array must have rank >= 2.');
+    throw ArgumentError.value(a, 'a', 'Input array must have rank >= 2');
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, a.shape) ||
         out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Provided out buffer has incompatible shape or dtype',
       );
     }
   }
@@ -1214,10 +1270,7 @@ NDArray<T> triu<T extends DTypeTag>(
 /// - It is an error if [axis] is out of bounds.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2, 4, 7, 0], [5], DType.int32);
-/// final res = diff(a); // [1, 2, 3, -7]
-/// ```
+/// {@example /example/rearranging_example.dart lang=dart}
 NDArray<T> diff<T extends DTypeTag>(
   NDArray<T> a, {
   int n = 1,
@@ -1228,7 +1281,11 @@ NDArray<T> diff<T extends DTypeTag>(
     throw StateError('Cannot execute diff() on a disposed array.');
   }
   if (n < 0) {
-    throw ArgumentError('Order of difference n must be >= 0 (was $n).');
+    throw ArgumentError.value(
+      n,
+      'n',
+      'Order of difference n must be >= 0 (was $n)',
+    );
   }
   if (n == 0) {
     return a.copy(out: out);
@@ -1250,10 +1307,15 @@ NDArray<T> diff<T extends DTypeTag>(
     final emptyShape = List<int>.from(a.shape);
     emptyShape[targetAxis] = 0;
     if (out != null) {
+      validateOutBuffer(out);
       if (!out.isWriteable ||
           !listEquals(out.shape, emptyShape) ||
           out.dtype != a.dtype) {
-        throw ArgumentError('Incompatible out buffer shape or dtype for diff.');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Incompatible out buffer shape or dtype for diff',
+        );
       }
       return out;
     }
@@ -1264,11 +1326,14 @@ NDArray<T> diff<T extends DTypeTag>(
   targetShape[targetAxis] = a.shape[targetAxis] - n;
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, targetShape) ||
         out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Provided out buffer has incompatible shape or dtype',
       );
     }
   }
@@ -1331,6 +1396,76 @@ NDArray<T> diff<T extends DTypeTag>(
               rank,
               targetAxis,
             );
+          case DType.int16:
+            s_diff_int16(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.int8:
+            s_diff_int8(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.uint64:
+            s_diff_uint64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.uint32:
+            s_diff_uint32(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.uint16:
+            s_diff_uint16(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.uint8:
+            s_diff_uint8(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
+          case DType.boolean:
+            s_diff_boolean(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              targetAxis,
+            );
           case DType.complex128:
             s_diff_complex128(
               a.pointer.cast(),
@@ -1353,13 +1488,6 @@ NDArray<T> diff<T extends DTypeTag>(
             );
           case DType.float16:
           case DType.bfloat16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-          case DType.uint8:
-          case DType.int16:
-          case DType.boolean:
             final intA = castNDArray(a, DType.float64);
             final intRes = NDArray<Float64>.create(targetShape, DType.float64);
             final cStridesIntA = ScratchArena.copyInts(intA.strides);
@@ -1381,6 +1509,7 @@ NDArray<T> diff<T extends DTypeTag>(
             intA.dispose();
             intRes.dispose();
         }
+        checkNativeOom();
       } finally {
         ScratchArena.reset(marker);
       }
@@ -1439,12 +1568,20 @@ NDArray<T> roll<T extends DTypeTag>(
       axes = null;
     } else if (shift is List<int>) {
       if (shift.length != 1) {
-        throw ArgumentError('shift must be an integer when axis is null');
+        throw ArgumentError.value(
+          shift,
+          'shift',
+          'shift must be an integer when axis is null',
+        );
       }
       shifts = shift;
       axes = null;
     } else {
-      throw ArgumentError('shift must be an integer or a list of integers');
+      throw ArgumentError.value(
+        shift,
+        'shift',
+        'shift must be an integer or a list of integers',
+      );
     }
   } else if (axis is int) {
     if (shift is int) {
@@ -1452,14 +1589,20 @@ NDArray<T> roll<T extends DTypeTag>(
       axes = [axis];
     } else if (shift is List<int>) {
       if (shift.length != 1) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          shift,
+          'shift',
           'shift and axis must have the same number of elements',
         );
       }
       shifts = shift;
       axes = [axis];
     } else {
-      throw ArgumentError('shift must be an integer or a list of integers');
+      throw ArgumentError.value(
+        shift,
+        'shift',
+        'shift must be an integer or a list of integers',
+      );
     }
   } else if (axis is List<int>) {
     if (shift is int) {
@@ -1467,24 +1610,39 @@ NDArray<T> roll<T extends DTypeTag>(
       axes = axis;
     } else if (shift is List<int>) {
       if (shift.length != axis.length) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          shift,
+          'shift',
           'shift and axis must have the same number of elements',
         );
       }
       shifts = shift;
       axes = axis;
     } else {
-      throw ArgumentError('shift must be an integer or a list of integers');
+      throw ArgumentError.value(
+        shift,
+        'shift',
+        'shift must be an integer or a list of integers',
+      );
     }
   } else {
-    throw ArgumentError('axis must be null, an integer, or a list of integers');
+    throw ArgumentError.value(
+      axis,
+      'axis',
+      'axis must be null, an integer, or a list of integers',
+    );
   }
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!out.isWriteable ||
         !listEquals(out.shape, a.shape) ||
         out.dtype != a.dtype) {
-      throw ArgumentError('Incompatible out buffer shape or dtype.');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out buffer shape or dtype',
+      );
     }
   }
 
@@ -1816,11 +1974,7 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
 /// - It is an error if [a] is already disposed.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-/// final b = astype(a, DType.float64);
-/// print(b.dtype); // DType.float64
-/// ```
+/// {@example /example/rearranging_example.dart lang=dart}
 NDArray<R> astype<R extends DTypeTag>(
   NDArray<DTypeTag> a,
   DType<R> targetDType, {

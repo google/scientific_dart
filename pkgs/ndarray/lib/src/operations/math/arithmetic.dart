@@ -29,11 +29,7 @@ import 'logical.dart';
 /// Returns a new array with the results.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 4.0, 9.0], [3], DType.float64);
-/// final b = sqrt(a);
-/// print(b.toList()); // [1.0, 2.0, 3.0]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// **Edge cases:**
 /// - Negative values will result in [double.nan].
@@ -45,7 +41,9 @@ NDArray<R> sqrt<R extends DTypeTag>(
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
-  if (a.isDisposed || (out != null && out.isDisposed)) {
+  if (a.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
     throw StateError('Cannot execute sqrt() on a disposed array.');
   }
   final DType<R> targetDType;
@@ -61,12 +59,23 @@ NDArray<R> sqrt<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for sqrt.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for sqrt',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        sqrt<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -310,12 +319,23 @@ NDArray<R> expm1<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for expm1.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for expm1',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        expm1<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -537,12 +557,23 @@ NDArray<R> log1p<R extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for log1p.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for log1p',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        log1p<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -740,11 +771,17 @@ NDArray<R> log1p<R extends DTypeTag>(
 }
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
-NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
-  NDArray<T1> x1,
-  NDArray<T2> x2, {
+NDArray<R> logaddexp<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x1,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x2, {
   NDArray<DTypeTag>? where,
-  NDArray<DTypeTag>? out,
+  NDArray<R>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -752,13 +789,15 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute logaddexp() on a disposed array.');
   }
-  if (x1.dtype == DType.complex128 ||
-      x1.dtype == DType.complex64 ||
-      x2.dtype == DType.complex128 ||
-      x2.dtype == DType.complex64) {
+  final DType<DTypeTag> x1DType = x1.dtype;
+  final DType<DTypeTag> x2DType = x2.dtype;
+  if (x1DType == DType.complex128 ||
+      x1DType == DType.complex64 ||
+      x2DType == DType.complex128 ||
+      x2DType == DType.complex64) {
     throw UnsupportedError('Complex numbers are not supported for logaddexp');
   }
-  if (x1.dtype != x2.dtype) {
+  if (x1DType != x2DType) {
     throw ArgumentError.value(
       x2.dtype,
       'x2',
@@ -767,33 +806,46 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
   }
   final broadcastResult = broadcast(x1, x2);
   final shape = broadcastResult.shape;
-  final DType targetDType =
-      (x1.dtype == DType.float32 && x2.dtype == DType.float32)
-      ? DType.float32
-      : DType.float64;
+  final DType<R> targetDType =
+      ((x1DType == DType.float32 && x2DType == DType.float32)
+              ? DType.float32
+              : DType.float64)
+          as DType<R>;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for logaddexp.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for logaddexp',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(shape, targetDType);
+        logaddexp<R>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
   final maskHolder = prepareMask(where, shape);
   try {
-    final NDArray<DTypeTag> result =
-        out ??
-        NDArray<DTypeTag>.create(shape, targetDType, zeroInit: where != null);
+    final NDArray<R> result =
+        out ?? NDArray<R>.create(shape, targetDType, zeroInit: where != null);
     if (x1.isContiguous &&
         x2.isContiguous &&
         result.isContiguous &&
         listEquals(x1.shape, x2.shape)) {
       switch (targetDType) {
         case DType.float64:
-          if (x1.dtype == DType.float64 && x2.dtype == DType.float64) {
+          if (x1DType == DType.float64 && x2DType == DType.float64) {
             v_logaddexp_double(
               x1.typedPointer(),
               x2.typedPointer(),
@@ -804,7 +856,7 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
             return result;
           }
         case DType.float32:
-          if (x1.dtype == DType.float32 && x2.dtype == DType.float32) {
+          if (x1DType == DType.float32 && x2DType == DType.float32) {
             v_logaddexp_float(
               x1.typedPointer(),
               x2.typedPointer(),
@@ -843,7 +895,7 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
         final cStridesRes = ScratchArena.copyInts(result.strides);
         switch (targetDType) {
           case DType.float64:
-            if (x1.dtype == DType.float64 && x2.dtype == DType.float64) {
+            if (x1DType == DType.float64 && x2DType == DType.float64) {
               s_logaddexp_double(
                 x1.typedPointer(),
                 cStridesX1,
@@ -858,7 +910,7 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
               return result;
             }
           case DType.float32:
-            if (x1.dtype == DType.float32 && x2.dtype == DType.float32) {
+            if (x1DType == DType.float32 && x2DType == DType.float32) {
               s_logaddexp_float(
                 x1.typedPointer(),
                 cStridesX1,
@@ -892,7 +944,7 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
       }
     }
 
-    final isUint64 = x1.dtype == DType.uint64;
+    final isUint64 = x1DType == DType.uint64;
     elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
       result,
       x1,
@@ -922,11 +974,17 @@ NDArray<DTypeTag> logaddexp<T1 extends DTypeTag, T2 extends DTypeTag>(
 }
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
-NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
-  NDArray<T1> x1,
-  NDArray<T2> x2, {
+NDArray<R> logaddexp2<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x1,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x2, {
   NDArray<DTypeTag>? where,
-  NDArray<DTypeTag>? out,
+  NDArray<R>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -934,13 +992,15 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute logaddexp2() on a disposed array.');
   }
-  if (x1.dtype == DType.complex128 ||
-      x1.dtype == DType.complex64 ||
-      x2.dtype == DType.complex128 ||
-      x2.dtype == DType.complex64) {
+  final DType<DTypeTag> x1DType = x1.dtype;
+  final DType<DTypeTag> x2DType = x2.dtype;
+  if (x1DType == DType.complex128 ||
+      x1DType == DType.complex64 ||
+      x2DType == DType.complex128 ||
+      x2DType == DType.complex64) {
     throw UnsupportedError('Complex numbers are not supported for logaddexp2');
   }
-  if (x1.dtype != x2.dtype) {
+  if (x1DType != x2DType) {
     throw ArgumentError.value(
       x2.dtype,
       'x2',
@@ -949,33 +1009,46 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
   }
   final broadcastResult = broadcast(x1, x2);
   final shape = broadcastResult.shape;
-  final DType targetDType =
-      (x1.dtype == DType.float32 && x2.dtype == DType.float32)
-      ? DType.float32
-      : DType.float64;
+  final DType<R> targetDType =
+      ((x1DType == DType.float32 && x2DType == DType.float32)
+              ? DType.float32
+              : DType.float64)
+          as DType<R>;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for logaddexp2.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for logaddexp2',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(shape, targetDType);
+        logaddexp2<R>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
   final maskHolder = prepareMask(where, shape);
   try {
-    final NDArray<DTypeTag> result =
-        out ??
-        NDArray<DTypeTag>.create(shape, targetDType, zeroInit: where != null);
+    final NDArray<R> result =
+        out ?? NDArray<R>.create(shape, targetDType, zeroInit: where != null);
     if (x1.isContiguous &&
         x2.isContiguous &&
         result.isContiguous &&
         listEquals(x1.shape, x2.shape)) {
       switch (targetDType) {
         case DType.float64:
-          if (x1.dtype == DType.float64 && x2.dtype == DType.float64) {
+          if (x1DType == DType.float64 && x2DType == DType.float64) {
             v_logaddexp2_double(
               x1.typedPointer(),
               x2.typedPointer(),
@@ -986,7 +1059,7 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
             return result;
           }
         case DType.float32:
-          if (x1.dtype == DType.float32 && x2.dtype == DType.float32) {
+          if (x1DType == DType.float32 && x2DType == DType.float32) {
             v_logaddexp2_float(
               x1.typedPointer(),
               x2.typedPointer(),
@@ -1025,7 +1098,7 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
         final cStridesRes = ScratchArena.copyInts(result.strides);
         switch (targetDType) {
           case DType.float64:
-            if (x1.dtype == DType.float64 && x2.dtype == DType.float64) {
+            if (x1DType == DType.float64 && x2DType == DType.float64) {
               s_logaddexp2_double(
                 x1.typedPointer(),
                 cStridesX1,
@@ -1040,7 +1113,7 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
               return result;
             }
           case DType.float32:
-            if (x1.dtype == DType.float32 && x2.dtype == DType.float32) {
+            if (x1DType == DType.float32 && x2DType == DType.float32) {
               s_logaddexp2_float(
                 x1.typedPointer(),
                 cStridesX1,
@@ -1074,7 +1147,7 @@ NDArray<DTypeTag> logaddexp2<T1 extends DTypeTag, T2 extends DTypeTag>(
       }
     }
 
-    final isUint64 = x1.dtype == DType.uint64;
+    final isUint64 = x1DType == DType.uint64;
     elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
       result,
       x1,
@@ -1126,12 +1199,23 @@ NDArray<R> rint<R extends DTypeTag>(
       : DType.float64;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for rint.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for rint',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(a.shape, targetDType as DType<R>);
+        rint<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1301,12 +1385,23 @@ NDArray<R> trunc<R extends DTypeTag>(
       : DType.float64;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for trunc.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for trunc',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(a.shape, targetDType as DType<R>);
+        trunc<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1461,10 +1556,7 @@ NDArray<R> fix<R extends DTypeTag>(
 /// It is an error if the array has been disposed (throws [StateError]), or if the provided [out] buffer shape or dtype is incompatible (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([2.0, 3.0], [2], DType.float64);
-/// final b = square(a); // [4.0, 9.0]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> square<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
@@ -1476,12 +1568,23 @@ NDArray<T> square<T extends DTypeTag>(
     throw StateError('Cannot execute square() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for square.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for square',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        square<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1812,12 +1915,23 @@ NDArray<T> reciprocal<T extends DTypeTag>(
     throw StateError('Cannot execute reciprocal() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for reciprocal.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for reciprocal',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        reciprocal<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2092,12 +2206,23 @@ NDArray<T> positive<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for positive.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for positive',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        positive<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2371,8 +2496,10 @@ NDArray<T> power<T extends DTypeTag>(
     try {
       if (x2Num.rank == 0) {
         if ((x2Num.scalar as num) < 0) {
-          throw ArgumentError(
-            'Integers to negative integer powers are not allowed.',
+          throw ArgumentError.value(
+            x2Num.scalar,
+            'x2',
+            'Integers to negative integer powers are not allowed',
           );
         }
       } else {
@@ -2380,8 +2507,10 @@ NDArray<T> power<T extends DTypeTag>(
         final minVal = minArr.scalar as num;
         minArr.dispose();
         if (minVal < 0) {
-          throw ArgumentError(
-            'Integers to negative integer powers are not allowed.',
+          throw ArgumentError.value(
+            minVal,
+            'x2',
+            'Integers to negative integer powers are not allowed',
           );
         }
       }
@@ -2391,12 +2520,25 @@ NDArray<T> power<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, shape) ||
-        out.dtype != dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for power.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, shape) || out.dtype != dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for power',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(shape, dtype);
+        power<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, shape);
@@ -2786,13 +2928,27 @@ NDArray<T> negative<T extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute negative() on a disposed array.');
   }
+  if (a.dtype == DType.boolean) {
+    throw UnsupportedError('Boolean arrays do not support negative operator');
+  }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for negative.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for negative',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        negative<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2881,9 +3037,7 @@ NDArray<T> negative<T extends DTypeTag>(
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 ///
 /// **Example:**
-/// ```dart
-/// final c = floorDivide(a, b);
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> floorDivide<T extends DTypeTag>(
   NDArray<T> x1,
   NDArray<T> x2, {
@@ -2914,12 +3068,25 @@ NDArray<T> floorDivide<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for floorDivide.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for floorDivide',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType);
+        floorDivide<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -3251,12 +3418,25 @@ NDArray<T> remainder<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for remainder.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for remainder',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType);
+        remainder<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -3560,9 +3740,72 @@ NDArray<T> mod<T extends DTypeTag>(
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
 ({NDArray<T> quotient, NDArray<T> remainder}) divmod<T extends DTypeTag>(
   NDArray<T> x1,
-  NDArray<T> x2,
-) {
-  return (quotient: floorDivide<T>(x1, x2), remainder: remainder<T>(x1, x2));
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<T>? out1,
+  NDArray<T>? out2,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out1 != null && out1.isDisposed) ||
+      (out2 != null && out2.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute divmod() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
+  }
+  final broadcastResult = broadcast(x1, x2);
+  final commonShape = broadcastResult.shape;
+  final DType<T> targetDType = resolveDType(x1.dtype, x2.dtype) as DType<T>;
+  if (targetDType.isComplex) {
+    throw UnsupportedError('Complex numbers do not support divmod');
+  }
+  if (out1 != null) {
+    validateOutBuffer(out1, 'out1');
+    if (!listEquals(out1.shape, commonShape) || out1.dtype != targetDType) {
+      throw ArgumentError.value(
+        out1,
+        'out1',
+        'Must have compatible shape and dtype for divmod',
+      );
+    }
+  }
+  if (out2 != null) {
+    validateOutBuffer(out2, 'out2');
+    if (!listEquals(out2.shape, commonShape) || out2.dtype != targetDType) {
+      throw ArgumentError.value(
+        out2,
+        'out2',
+        'Must have compatible shape and dtype for divmod',
+      );
+    }
+  }
+  if (out1 != null && out2 != null && sharesMemory(out1, out2)) {
+    throw ArgumentError.value(out2, 'out2', 'Must not share memory with out1.');
+  }
+  if (out1 != null &&
+      (sharesMemory(x1, out1) ||
+          sharesMemory(x2, out1) ||
+          (where != null && sharesMemory(where, out1)))) {
+    return NDArray.scope(() {
+      final temp1 = where != null
+          ? out1.copy()
+          : NDArray<T>.create(commonShape, targetDType);
+      floorDivide<T>(x1, x2, where: where, out: temp1);
+      final rem = remainder<T>(x1, x2, where: where, out: out2);
+      temp1.copy(out: out1);
+      return (quotient: out1, remainder: out2 ?? rem.detachToParentScope());
+    });
+  }
+  return (
+    quotient: floorDivide<T>(x1, x2, where: where, out: out1),
+    remainder: remainder<T>(x1, x2, where: where, out: out2),
+  );
 }
 
 /// Element-wise C-style modulo / remainder of division (`x1 % x2`).
@@ -3613,12 +3856,25 @@ NDArray<T> fmod<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for fmod.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for fmod',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType);
+        fmod<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -3894,12 +4150,25 @@ NDArray<T> gcd<T extends DTypeTag>(
 
   final DType<T> targetDType = resolveDType(x1.dtype, x2.dtype) as DType<T>;
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for gcd.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for gcd',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType);
+        gcd<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -4063,12 +4332,7 @@ NDArray<T> gcd<T extends DTypeTag>(
 /// Returns the lowest common multiple of `|x1|` and `|x2|`.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([12, 15], [2], DType.int32);
-/// final b = NDArray.fromList([18, 20], [2], DType.int32);
-/// final c = lcm(a, b);
-/// print(c.toList()); // [36, 60]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> lcm<T extends DTypeTag>(
   NDArray<T> x1,
   NDArray<T> x2, {
@@ -4098,12 +4362,25 @@ NDArray<T> lcm<T extends DTypeTag>(
   final stridesB = broadcastResult.stridesB;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for lcm.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for lcm',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType as DType<T>);
+        lcm<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, commonShape);
@@ -4321,12 +4598,25 @@ NDArray<T> heaviside<T extends DTypeTag>(
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for heaviside.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for heaviside',
       );
+    }
+    if (sharesMemory(x1, out) ||
+        sharesMemory(x2, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType);
+        heaviside<T>(x1, x2, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -4554,6 +4844,9 @@ NDArray<R> abs<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute abs() on a disposed array.');
   }
+  if ((a.dtype as DType<DTypeTag>) == DType.boolean) {
+    throw UnsupportedError('Unsupported DType for abs: ${a.dtype}');
+  }
   final targetDType = switch (a.dtype) {
     DType.complex64 => DType.float32,
     DType.complex128 => DType.float64,
@@ -4561,12 +4854,23 @@ NDArray<R> abs<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for abs.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for abs',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(a.shape, targetDType as DType<R>);
+        abs<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -4915,9 +5219,7 @@ NDArray<R> abs<R extends DTypeTag>(
 /// For complex numbers, returns `x / |x|` (or 0 if x is 0).
 ///
 /// **Example:**
-/// ```dart
-/// final s = sign(a);
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> sign<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
@@ -4929,12 +5231,23 @@ NDArray<T> sign<T extends DTypeTag>(
     throw StateError('Cannot execute sign() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for sign.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for sign',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        sign<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -5062,12 +5375,23 @@ NDArray<T> ceil<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for ceil');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for ceil.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for ceil',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        ceil<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -5167,12 +5491,23 @@ NDArray<T> floor<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for floor');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for floor.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for floor',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        floor<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -5278,12 +5613,23 @@ NDArray<T> round<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for round');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for round.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for round',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        round<T>(a, decimals: decimals, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -5413,7 +5759,7 @@ NDArray<T> round<T extends DTypeTag>(
           (x) {
             if (a.dtype == DType.boolean) return false;
             final dx = a.dtype == DType.uint64
-                ? BigInt.from(x as int).toUnsigned(64).toDouble()
+                ? uint64ToDouble(x as int)
                 : (x as num).toDouble();
             if (invFactor.isInfinite) return castValue(0, a.dtype);
             final rounded = (roundHalfToEven(dx / invFactor) * invFactor)
@@ -5466,19 +5812,6 @@ NDArray<T> round<T extends DTypeTag>(
   }
 }
 
-/// Signature for C function strided binary operations.
-typedef StridedBinaryOp =
-    void Function(
-      ffi.Pointer<ffi.Void> a,
-      ffi.Pointer<ffi.Int64> stridesA,
-      ffi.Pointer<ffi.Void> b,
-      ffi.Pointer<ffi.Int64> stridesB,
-      ffi.Pointer<ffi.Void> result,
-      ffi.Pointer<ffi.Int64> stridesResult,
-      ffi.Pointer<ffi.Int64> shape,
-      int rank,
-    );
-
 /// Element-wise addition of two arrays.
 ///
 /// Both [a] and [b] must have the same [DType]. For [DType.boolean], computes
@@ -5509,12 +5842,25 @@ NDArray<T> add<T extends DTypeTag>(
   final stridesB = broadcastResult.stridesB;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
       );
+    }
+    if (sharesMemory(a, out) ||
+        sharesMemory(b, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType);
+        add<T>(a, b, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   if (a.dtype == DType.boolean) {
@@ -7162,6 +7508,11 @@ NDArray<T> subtract<T extends DTypeTag>(
       'Must have the same dtype as a (${a.dtype})',
     );
   }
+  if (a.dtype == DType.boolean) {
+    throw UnsupportedError(
+      "Boolean subtract, the '-' operator, is not supported; use logicalXor or bitwiseXor instead.",
+    );
+  }
   final targetDType = resolveDType(a.dtype, b.dtype);
   final broadcastResult = broadcast(a, b);
   final commonShape = broadcastResult.shape;
@@ -7169,12 +7520,24 @@ NDArray<T> subtract<T extends DTypeTag>(
   final stridesB = broadcastResult.stridesB;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
       );
+    }
+    if (sharesMemory(a, out) ||
+        sharesMemory(b, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, out.dtype);
+        subtract<T>(a, b, where: where, out: temp);
+        return temp.copy(out: out);
+      });
     }
   }
   final maskHolder = prepareMask(where, commonShape);
@@ -8827,12 +9190,24 @@ NDArray<T> multiply<T extends DTypeTag>(
   final stridesB = broadcastResult.stridesB;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
       );
+    }
+    if (sharesMemory(a, out) ||
+        sharesMemory(b, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, out.dtype);
+        multiply<T>(a, b, where: where, out: temp);
+        return temp.copy(out: out);
+      });
     }
   }
   if (a.dtype == DType.boolean) {
@@ -10498,7 +10873,7 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     );
   }
   var targetDType = resolveDType(a.dtype, b.dtype);
-  if (targetDType.isInteger) {
+  if (targetDType.isInteger || targetDType == DType.boolean) {
     targetDType = DType.float64;
   }
   final broadcastResult = broadcast(a, b);
@@ -10507,12 +10882,24 @@ NDArray<R> divide<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   final stridesB = broadcastResult.stridesB;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype',
       );
+    }
+    if (sharesMemory(a, out) ||
+        sharesMemory(b, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(commonShape, out.dtype);
+        divide<Ta, Tb, R>(a, b, where: where, out: temp);
+        return temp.copy(out: out);
+      });
     }
   }
   final maskHolder = prepareMask(where, commonShape);
@@ -12147,26 +12534,10 @@ subtractAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       'Must have the same dtype as a (${a.dtype})',
     );
   }
-  if (a.dtype == dtype && dtype != DType.boolean) {
+  if (a.dtype == dtype) {
     return subtract<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
   }
   return NDArray.scope(() {
-    if (dtype == DType.boolean) {
-      final subRes = subtract<DTypeTag>(a, b, where: where);
-      final casted = castNDArray<R>(subRes, dtype);
-      if (out != null) {
-        if (!out.isWriteable ||
-            !listEquals(out.shape, casted.shape) ||
-            out.dtype != dtype) {
-          throw ArgumentError(
-            'Provided out buffer has incompatible shape or dtype.',
-          );
-        }
-        _copyMaskedResult(casted, out, where);
-        return out;
-      }
-      return casted.detachToParentScope();
-    }
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
     final res = subtract<R>(aCast, bCast, where: where, out: out);
@@ -12277,8 +12648,10 @@ divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       if (!out.isWriteable ||
           !listEquals(out.shape, casted.shape) ||
           out.dtype != dtype) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype.',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape and dtype',
         );
       }
       _copyMaskedResult(casted, out, where);

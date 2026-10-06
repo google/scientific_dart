@@ -692,7 +692,8 @@ void main() {
           DType.boolean,
         );
         final resBool = where(cond, xBool, yBool) as NDArray;
-        expect(resBool.toList(), [1, 0, 1, 0]);
+        expect(resBool.dtype, DType.boolean);
+        expect(resBool.toList(), [true, false, true, false]);
       }),
     );
 

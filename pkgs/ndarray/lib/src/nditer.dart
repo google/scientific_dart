@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:meta/meta.dart';
+
 import 'ndarray.dart';
 
 /// A high-performance, zero-allocation multi-dimensional iterator for [NDArray].
@@ -35,13 +37,7 @@ import 'ndarray.dart';
 /// It is an error if the list of arrays is empty, or if shapes are incompatible.
 ///
 /// **Example:**
-/// ```dart
-/// final arr = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-/// final iter = NDIter(arr);
-/// while (iter.moveNext()) {
-///   print('Coords: ${iter.coords}, Index: ${iter.index}');
-/// }
-/// ```
+/// {@example /example/ndarray_example.dart lang=dart}
 final class NDIter {
   final List<int> _shape;
   final int _rank;
@@ -56,7 +52,7 @@ final class NDIter {
   bool _hasMore = true;
 
   /// Internal constructor holding the unified initialization logic.
-  NDIter._internal(List<NDArray> arrays, List<int> commonShape)
+  NDIter._internal(List<NDArray<DTypeTag>> arrays, List<int> commonShape)
     : _shape = List<int>.from(commonShape),
       _rank = commonShape.length,
       _coords = List<int>.filled(commonShape.length, 0),
@@ -70,7 +66,11 @@ final class NDIter {
         return NDIter._broadcastStrides(a.shape, a.strides, commonShape);
       }).toList() {
     if (arrays.isEmpty) {
-      throw ArgumentError('Must provide at least one array for NDIter');
+      throw ArgumentError.value(
+        arrays,
+        'arrays',
+        'Must provide at least one array for NDIter',
+      );
     }
     if (_shape.any((dim) => dim == 0)) {
       _hasMore = false;
@@ -83,7 +83,7 @@ final class NDIter {
   /// - Iteration (calling [moveNext]) is zero-allocation.
   /// - Construction allocates internal helper lists to track state.
   ///
-  NDIter(NDArray array) : this._internal([array], array.shape);
+  NDIter(NDArray<DTypeTag> array) : this._internal([array], array.shape);
 
   /// Creates an iterator that iterates over two arrays simultaneously,
   /// broadcasting their shapes to a common compatible shape.
@@ -92,13 +92,16 @@ final class NDIter {
   /// - Iteration (calling [moveNext]) is zero-allocation.
   /// - Construction allocates internal helper lists to track state.
   ///
-  NDIter.broadcast2(NDArray a, NDArray b)
+  NDIter.broadcast2(NDArray<DTypeTag> a, NDArray<DTypeTag> b)
     : this._internal([a, b], NDIter._broadcastShapes(a.shape, b.shape));
 
   /// Creates an iterator that iterates over three arrays simultaneously,
   /// broadcasting their shapes to a common compatible shape.
-  NDIter.broadcast3(NDArray a, NDArray b, NDArray c)
-    : this._internal(
+  NDIter.broadcast3(
+    NDArray<DTypeTag> a,
+    NDArray<DTypeTag> b,
+    NDArray<DTypeTag> c,
+  ) : this._internal(
         [a, b, c],
         NDIter._broadcastShapes(
           NDIter._broadcastShapes(a.shape, b.shape),
@@ -113,21 +116,16 @@ final class NDIter {
   /// - Iteration (calling [moveNext]) is zero-allocation.
   /// - Construction allocates internal helper lists to track state.
   ///
-  NDIter.broadcast(List<NDArray> arrays)
-    : this._internal(
-        arrays,
-        arrays.isEmpty
-            ? throw ArgumentError(
-                'Must provide at least one array for NDIter.broadcast',
-              )
-            : arrays
-                  .skip(1)
-                  .fold(
-                    arrays[0].shape,
-                    (current, next) =>
-                        NDIter._broadcastShapes(current, next.shape),
-                  ),
-      );
+  factory NDIter.broadcast(List<NDArray<DTypeTag>> arrays) {
+    final copy = List<NDArray<DTypeTag>>.of(arrays);
+    if (copy.isEmpty) {
+      throw ArgumentError.value(arrays, 'arrays', 'Must not be empty');
+    }
+    return NDIter._internal(
+      copy,
+      copy.map((a) => a.shape).reduce(NDIter._broadcastShapes),
+    );
+  }
 
   /// Moves the iterator to the next multi-dimensional element position.
   ///
@@ -157,6 +155,9 @@ final class NDIter {
     _hasMore = false;
     return false;
   }
+
+  /// The broadcasted shape of the iteration space.
+  List<int> get shape => List<int>.unmodifiable(_shape);
 
   /// The current multi-dimensional coordinates of the iteration.
   ///
@@ -201,8 +202,10 @@ final class NDIter {
       } else if (dimB == 1) {
         commonShape[maxLen - 1 - i] = dimA;
       } else {
-        throw ArgumentError(
-          'Shapes $shapeA and $shapeB are not compatible for broadcasting',
+        throw ArgumentError.value(
+          shapeB,
+          'shapeB',
+          'Must be compatible for broadcasting with $shapeA (got $shapeB)',
         );
       }
     }
@@ -216,8 +219,10 @@ final class NDIter {
     List<int> targetShape,
   ) {
     if (shape.length > targetShape.length) {
-      throw ArgumentError(
-        'Cannot broadcast shape $shape to targetShape $targetShape',
+      throw ArgumentError.value(
+        targetShape,
+        'targetShape',
+        'Must be compatible for broadcasting from shape $shape to targetShape $targetShape',
       );
     }
     final newStrides = List<int>.filled(targetShape.length, 0);
@@ -230,8 +235,10 @@ final class NDIter {
       } else if (dimSize == 1) {
         newStrides[targetDimIdx] = 0;
       } else {
-        throw ArgumentError(
-          'Cannot broadcast shape $shape to targetShape $targetShape',
+        throw ArgumentError.value(
+          shape,
+          'shape',
+          'Must be compatible for broadcasting from shape $shape to targetShape $targetShape',
         );
       }
     }
@@ -247,13 +254,7 @@ final class NDIter {
 /// It is an error if the array has been disposed.
 ///
 /// **Example:**
-/// ```dart
-/// final arr = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
-/// final en = NDEnumerate<Int32>(arr);
-/// while (en.moveNext()) {
-///   print('coords: ${en.coords}, value: ${en.value}');
-/// }
-/// ```
+/// {@example /example/ndarray_example.dart lang=dart}
 final class NDEnumerate<T extends DTypeTag> {
   final NDArray<T> _array;
   final NDIter _iter;
@@ -279,6 +280,7 @@ final class NDEnumerate<T extends DTypeTag> {
   /// The tag [T] does not name the element type, so this getter cannot be
   /// typed. Use [NDEnumerateElements.value] for the element type implied by
   /// the tag.
+  @internal
   Object? get valueRaw => _array.getCellRawUntyped(_iter.index);
 }
 

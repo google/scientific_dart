@@ -51,6 +51,33 @@ NDArray<R> sin<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute sin() on a disposed array.');
   }
+  final DType<DTypeTag> targetDType = switch (a.dtype) {
+    DType.complex128 || DType.complex64 => a.dtype,
+    DType.float32 => DType.float32,
+    _ => DType.float64,
+  };
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for sin',
+      );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        sin<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+
   if (a.dtype.isInteger ||
       (a.dtype as DType<DTypeTag>) == DType.boolean ||
       (a.dtype as DType<DTypeTag>) == DType.float16 ||
@@ -63,21 +90,6 @@ NDArray<R> sin<R extends DTypeTag>(
       return res;
     } finally {
       promoted.dispose();
-    }
-  }
-  final DType<DTypeTag> targetDType = switch (a.dtype) {
-    DType.complex128 || DType.complex64 => a.dtype,
-    DType.float32 => DType.float32,
-    _ => DType.float64,
-  };
-
-  if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for sin.',
-      );
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -255,6 +267,33 @@ NDArray<R> sinc<R extends DTypeTag>(
     throw StateError('Cannot execute sinc() on a disposed array.');
   }
 
+  final DType<DTypeTag> targetDType = switch (a.dtype) {
+    DType.complex128 || DType.complex64 => a.dtype,
+    DType.float32 => DType.float32,
+    _ => DType.float64,
+  };
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for sinc',
+      );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        sinc<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+
   if (a.dtype.isInteger ||
       (a.dtype as DType<DTypeTag>) == DType.boolean ||
       (a.dtype as DType<DTypeTag>) == DType.float16 ||
@@ -267,22 +306,6 @@ NDArray<R> sinc<R extends DTypeTag>(
       return res;
     } finally {
       promoted.dispose();
-    }
-  }
-
-  final DType<DTypeTag> targetDType = switch (a.dtype) {
-    DType.complex128 || DType.complex64 => a.dtype,
-    DType.float32 => DType.float32,
-    _ => DType.float64,
-  };
-
-  if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for sinc.',
-      );
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -420,7 +443,11 @@ NDArray<R> sinc<R extends DTypeTag>(
       }
     }
 
-    throw ArgumentError('Unsupported DType for sinc: ${a.dtype}');
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be a supported DType for sinc (got ${a.dtype})',
+    );
   } finally {
     maskHolder.dispose();
   }
@@ -456,6 +483,33 @@ NDArray<R> cos<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute cos() on a disposed array.');
   }
+  final DType<DTypeTag> targetDType = switch (a.dtype) {
+    DType.complex128 || DType.complex64 => a.dtype,
+    DType.float32 => DType.float32,
+    _ => DType.float64,
+  };
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for cos',
+      );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        cos<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+
   if (a.dtype.isInteger ||
       (a.dtype as DType<DTypeTag>) == DType.boolean ||
       (a.dtype as DType<DTypeTag>) == DType.float16 ||
@@ -468,21 +522,6 @@ NDArray<R> cos<R extends DTypeTag>(
       return res;
     } finally {
       promoted.dispose();
-    }
-  }
-  final DType<DTypeTag> targetDType = switch (a.dtype) {
-    DType.complex128 || DType.complex64 => a.dtype,
-    DType.float32 => DType.float32,
-    _ => DType.float64,
-  };
-
-  if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for cos.',
-      );
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -651,6 +690,33 @@ NDArray<R> tan<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute tan() on a disposed array.');
   }
+  final DType<DTypeTag> targetDType = switch (a.dtype) {
+    DType.complex128 || DType.complex64 => a.dtype,
+    DType.float32 => DType.float32,
+    _ => DType.float64,
+  };
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for tan',
+      );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        tan<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+
   if (a.dtype.isInteger ||
       (a.dtype as DType<DTypeTag>) == DType.boolean ||
       (a.dtype as DType<DTypeTag>) == DType.float16 ||
@@ -663,21 +729,6 @@ NDArray<R> tan<R extends DTypeTag>(
       return res;
     } finally {
       promoted.dispose();
-    }
-  }
-  final DType<DTypeTag> targetDType = switch (a.dtype) {
-    DType.complex128 || DType.complex64 => a.dtype,
-    DType.float32 => DType.float32,
-    _ => DType.float64,
-  };
-
-  if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for tan.',
-      );
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -838,10 +889,7 @@ NDArray<R> tan<R extends DTypeTag>(
 /// - [ArgumentError] if the provided [out] buffer has an incompatible shape.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([0.0, 1.0], [2], DType.float64);
-/// final b = asin(a); // [0.0, 1.570796...]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> asin<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -855,20 +903,6 @@ NDArray<R> asin<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute asin() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          asin<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -876,12 +910,50 @@ NDArray<R> asin<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for asin.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for asin',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        asin<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = asin<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1042,10 +1114,7 @@ NDArray<R> asin<R extends DTypeTag>(
 /// - [ArgumentError] if the provided [out] buffer has an incompatible shape.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 0.0], [2], DType.float64);
-/// final b = acos(a); // [0.0, 1.570796...]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> acos<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -1059,20 +1128,6 @@ NDArray<R> acos<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute acos() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          acos<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -1080,12 +1135,50 @@ NDArray<R> acos<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for acos.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for acos',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        acos<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = acos<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1246,10 +1339,7 @@ NDArray<R> acos<R extends DTypeTag>(
 /// - [ArgumentError] if the provided [out] buffer has an incompatible shape.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([0.0, 1.0], [2], DType.float64);
-/// final b = atan(a); // [0.0, 0.785398...]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> atan<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -1263,20 +1353,6 @@ NDArray<R> atan<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute atan() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          atan<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -1284,12 +1360,50 @@ NDArray<R> atan<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for atan.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for atan',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        atan<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = atan<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1465,20 +1579,6 @@ NDArray<R> sinh<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute sinh() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          sinh<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -1486,12 +1586,50 @@ NDArray<R> sinh<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for sinh.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for sinh',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        sinh<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = sinh<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1670,20 +1808,6 @@ NDArray<R> cosh<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute cosh() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          cosh<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -1691,12 +1815,50 @@ NDArray<R> cosh<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for cosh.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for cosh',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        cosh<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = cosh<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1875,20 +2037,6 @@ NDArray<R> tanh<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute tanh() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          tanh<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -1896,12 +2044,50 @@ NDArray<R> tanh<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for tanh.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for tanh',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        tanh<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = tanh<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2081,20 +2267,6 @@ NDArray<R> asinh<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute asinh() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          asinh<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -2102,12 +2274,50 @@ NDArray<R> asinh<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for asinh.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for asinh',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        asinh<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = asinh<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2286,20 +2496,6 @@ NDArray<R> acosh<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute acosh() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          acosh<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -2307,12 +2503,50 @@ NDArray<R> acosh<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for acosh.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for acosh',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        acosh<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = acosh<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2491,20 +2725,6 @@ NDArray<R> atanh<R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute atanh() on a disposed array.');
   }
-  if (a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.boolean ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
-    final promoted = promoteToDouble(a);
-    try {
-      final res =
-          atanh<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
-              as NDArray<R>;
-      return res;
-    } finally {
-      promoted.dispose();
-    }
-  }
   final DType<DTypeTag> targetDType = switch (a.dtype) {
     DType.complex128 || DType.complex64 => a.dtype,
     DType.float32 => DType.float32,
@@ -2512,12 +2732,50 @@ NDArray<R> atanh<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for atanh.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for atanh',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        atanh<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (a.dtype.isInteger ||
+      (a.dtype as DType<DTypeTag>) == DType.boolean ||
+      (a.dtype as DType<DTypeTag>) == DType.float16 ||
+      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+    final promoted = promoteToDouble(a);
+    try {
+      final res = atanh<R>(
+        promoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        where: where,
+        out: out,
+      );
+      return res;
+    } finally {
+      promoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -2676,11 +2934,17 @@ NDArray<R> atanh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
-  NDArray<Ty> y,
-  NDArray<Tx> x, {
+NDArray<R> atan2<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  y,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  x, {
   NDArray<DTypeTag>? where,
-  NDArray<DTypeTag>? out,
+  NDArray<R>? out,
 }) {
   if (y.isDisposed ||
       x.isDisposed ||
@@ -2688,27 +2952,87 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute atan2() on a disposed array.');
   }
-  if (y.dtype != x.dtype) {
+  final DType<DTypeTag> yDType = y.dtype;
+  final DType<DTypeTag> xDType = x.dtype;
+  if (yDType != xDType) {
     throw ArgumentError.value(
       x.dtype,
       'x',
       'Must have the same dtype as y (${y.dtype})',
     );
   }
-  if (y.dtype.isInteger ||
-      y.dtype == DType.boolean ||
-      x.dtype.isInteger ||
-      x.dtype == DType.boolean) {
-    final yPromoted = (y.dtype.isInteger || y.dtype == DType.boolean)
-        ? promoteToDouble(y)
-        : y;
-    final xPromoted = (x.dtype.isInteger || x.dtype == DType.boolean)
-        ? promoteToDouble(x)
-        : x;
+  if (yDType == DType.complex128 ||
+      yDType == DType.complex64 ||
+      xDType == DType.complex128 ||
+      xDType == DType.complex64) {
+    throw UnsupportedError('Complex numbers are not supported for atan2');
+  }
+  final broadcastResult = broadcast(y, x);
+  final shape = broadcastResult.shape;
+  final DType<R> targetDType =
+      ((yDType == DType.float32 && xDType == DType.float32)
+              ? DType.float32
+              : DType.float64)
+          as DType<R>;
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for atan2',
+      );
+    }
+    if (sharesMemory(y, out) ||
+        sharesMemory(x, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        atan2<R>(y, x, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
+    }
+  }
+  if (yDType.isInteger ||
+      yDType == DType.boolean ||
+      yDType == DType.float16 ||
+      yDType == DType.bfloat16 ||
+      xDType.isInteger ||
+      xDType == DType.boolean ||
+      xDType == DType.float16 ||
+      xDType == DType.bfloat16) {
+    final yPromoted = promoteToDouble(y);
+    final xPromoted = promoteToDouble(x);
     try {
-      final res = atan2<DTypeTag, DTypeTag>(
-        yPromoted,
-        xPromoted,
+      final res = atan2<R>(
+        yPromoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
+        xPromoted
+            as NDArray<
+              DTypeSpec<
+                DTypeTag,
+                Object?,
+                DTypeTag,
+                DTypeTag,
+                R,
+                DTypeTag,
+                DTypeTag
+              >
+            >,
         where: where,
         out: out,
       );
@@ -2718,34 +3042,11 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
       if (!identical(xPromoted, x)) xPromoted.dispose();
     }
   }
-  if (y.dtype == DType.complex128 ||
-      y.dtype == DType.complex64 ||
-      x.dtype == DType.complex128 ||
-      x.dtype == DType.complex64) {
-    throw UnsupportedError('Complex numbers are not supported for atan2');
-  }
-  final broadcastResult = broadcast(y, x);
-  final shape = broadcastResult.shape;
-  final DType targetDType =
-      (y.dtype == DType.float32 && x.dtype == DType.float32)
-      ? DType.float32
-      : DType.float64;
-
-  if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for atan2.',
-      );
-    }
-  }
   final maskHolder = prepareMask(where, shape);
 
   try {
-    final NDArray<DTypeTag> result =
-        out ??
-        NDArray<DTypeTag>.create(shape, targetDType, zeroInit: where != null);
+    final NDArray<R> result =
+        out ?? NDArray<R>.create(shape, targetDType, zeroInit: where != null);
     // 0. Native C Vector Extension Fast-Path Gate for Contiguous Same-Shape arrays
     if (y.isContiguous &&
         x.isContiguous &&
@@ -2753,7 +3054,7 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
         listEquals(y.shape, x.shape)) {
       switch (targetDType) {
         case DType.float64:
-          if (y.dtype == DType.float64 && x.dtype == DType.float64) {
+          if (yDType == DType.float64 && xDType == DType.float64) {
             v_atan2_double(
               y.pointer.cast(),
               x.pointer.cast(),
@@ -2764,7 +3065,7 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
             return result;
           }
         case DType.float32:
-          if (y.dtype == DType.float32 && x.dtype == DType.float32) {
+          if (yDType == DType.float32 && xDType == DType.float32) {
             v_atan2_float(
               y.pointer.cast(),
               x.pointer.cast(),
@@ -2803,7 +3104,7 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
         final cStridesRes = ScratchArena.copyInts(result.strides);
         switch (targetDType) {
           case DType.float64:
-            if (y.dtype == DType.float64 && x.dtype == DType.float64) {
+            if (yDType == DType.float64 && xDType == DType.float64) {
               s_atan2_double(
                 y.pointer.cast(),
                 cStridesY,
@@ -2818,7 +3119,7 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
               return result;
             }
           case DType.float32:
-            if (y.dtype == DType.float32 && x.dtype == DType.float32) {
+            if (yDType == DType.float32 && xDType == DType.float32) {
               s_atan2_float(
                 y.pointer.cast(),
                 cStridesY,
@@ -2879,12 +3180,16 @@ NDArray<DTypeTag> atan2<Ty extends DTypeTag, Tx extends DTypeTag>(
 /// Computes the element-wise hypotenuse `sqrt(x1**2 + x2**2)` with broadcasting support.
 ///
 /// **Example:**
-/// ```dart
-/// final h = hypot(a, b);
-/// ```
-NDArray<R> hypot<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b, {
+/// {@example /example/ufuncs_example.dart lang=dart}
+NDArray<R> hypot<R extends DTypeTag>(
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  a,
+  NDArray<
+    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+  >
+  b, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -2911,12 +3216,25 @@ NDArray<R> hypot<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (resType == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for hypot.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for hypot',
       );
+    }
+    if (sharesMemory(a, out) ||
+        sharesMemory(b, out) ||
+        (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        hypot<R>(a, b, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, shape);
@@ -2951,8 +3269,12 @@ NDArray<R> hypot<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       b.offsetElements,
       result.offsetElements,
       (valA, valB) {
-        final da = valA is bool ? (valA ? 1.0 : 0.0) : (valA as num).toDouble();
-        final db = valB is bool ? (valB ? 1.0 : 0.0) : (valB as num).toDouble();
+        final da = (a.dtype as DType<DTypeTag>) == DType.uint64
+            ? uint64ToDouble(valA as int)
+            : (valA is bool ? (valA ? 1.0 : 0.0) : (valA as num).toDouble());
+        final db = (b.dtype as DType<DTypeTag>) == DType.uint64
+            ? uint64ToDouble(valB as int)
+            : (valB is bool ? (valB ? 1.0 : 0.0) : (valB as num).toDouble());
         return castValue(hypotOp(da, db), result.dtype);
       },
       maskHolder.pointer,
@@ -2975,10 +3297,7 @@ NDArray<R> hypot<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - [UnsupportedError] if the array has a complex data type.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([180.0, 90.0, 45.0], [3], DType.float64);
-/// final r = deg2rad(a); // [pi, pi / 2.0, pi / 4.0]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> deg2rad<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -3002,12 +3321,23 @@ NDArray<R> deg2rad<R extends DTypeTag>(
       : DType.float64;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for deg2rad.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for deg2rad',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        deg2rad<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -3035,10 +3365,7 @@ NDArray<R> deg2rad<R extends DTypeTag>(
 /// - [UnsupportedError] if the array has a complex data type.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([math.pi, math.pi / 2.0], [2], DType.float64);
-/// final d = rad2deg(a); // [180.0, 90.0]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> rad2deg<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -3062,12 +3389,23 @@ NDArray<R> rad2deg<R extends DTypeTag>(
       : DType.float64;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for rad2deg.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for rad2deg',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        rad2deg<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 

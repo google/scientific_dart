@@ -17,6 +17,7 @@ import 'dart:ffi' as ffi;
 import 'package:ffi/ffi.dart';
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
+import 'package:gpuarray/wgsl.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
@@ -1352,5 +1353,113 @@ void main() {
         },
       );
     });
+
+    group(
+      'R1 & R4 Core Overhaul: DTypeTag Preservation, Statistical Reductions & Ufuncs',
+      () {
+        test(
+          'R1.1: GpuArray<Float32> binary and scalar ops preserve Float32 without casts',
+          () {
+            ResourceScope.scope(() {
+              final a = GpuArray<Float32>.fromList(
+                [4.0, 9.0, 16.0],
+                [3],
+                DType.float32,
+              );
+              final b = GpuArray<Float32>.fromList(
+                [2.0, 3.0, 4.0],
+                [3],
+                DType.float32,
+              );
+              final GpuArray<Float32> sumArr = a + b;
+              final GpuArray<Float32> scalarArr = a + 1.5;
+              final GpuArray<Float32> powArr = pow(b, 2.0);
+              final GpuArray<Float32> maxArr = maximum(a, 10.0);
+              final GpuArray<Float32> minArr = minimum(a, 10.0);
+              expect(sumArr.dtype, equals(DType.float32));
+              expect(scalarArr.dtype, equals(DType.float32));
+              expect(powArr.dtype, equals(DType.float32));
+              _expectCloseList(sumArr.toList(), <double>[6.0, 12.0, 20.0]);
+              _expectCloseList(scalarArr.toList(), <double>[5.5, 10.5, 17.5]);
+              _expectCloseList(powArr.toList(), <double>[4.0, 9.0, 16.0]);
+              _expectCloseList(maxArr.toList(), <double>[10.0, 10.0, 16.0]);
+              _expectCloseList(minArr.toList(), <double>[4.0, 9.0, 10.0]);
+            });
+          },
+        );
+
+        test(
+          'R1.2 & R1.3: mean() preserves float dtypes and argmin/argmax/countNonzero return Int64',
+          () {
+            ResourceScope.scope(() {
+              final f32 = GpuArray<Float32>.fromList(
+                [1.0, 0.0, 3.0, 4.0],
+                [4],
+                DType.float32,
+              );
+              final GpuArray<Float32> m32 = f32.mean();
+              final GpuArray<Int64> idxMin = f32.argmin();
+              final GpuArray<Int64> idxMax = f32.argmax();
+              final GpuArray<Int64> cnz = f32.countNonzero();
+              expect(m32.dtype, equals(DType.float32));
+              expect(m32.scalar, closeTo(2.0, 1e-5));
+              expect(idxMin.dtype, equals(DType.int64));
+              expect(idxMin.scalar, equals(1));
+              expect(idxMax.dtype, equals(DType.int64));
+              expect(idxMax.scalar, equals(3));
+              expect(cnz.dtype, equals(DType.int64));
+              expect(cnz.scalar, equals(3));
+            });
+          },
+        );
+
+        test(
+          'R4.3 & R4.4: variance, std, ptp, NaN reductions, bitwise & complex ufuncs',
+          () {
+            ResourceScope.scope(() {
+              final x = GpuArray<Float32>.fromList(
+                [1.0, 2.0, 3.0, 4.0],
+                [4],
+                DType.float32,
+              );
+              expect(variance(x).scalar, closeTo(1.25, 1e-5));
+              expect(std(x).scalar, closeTo(1.118034, 1e-4));
+              expect(ptp(x).scalar, closeTo(3.0, 1e-5));
+
+              final withNan = GpuArray<Float32>.fromList(
+                [2.0, double.nan, 4.0],
+                [3],
+                DType.float32,
+              );
+              expect(nansum(withNan).scalar, closeTo(6.0, 1e-5));
+              expect(nanmean(withNan).scalar, closeTo(3.0, 1e-5));
+              expect(nanmin(withNan).scalar, closeTo(2.0, 1e-5));
+              expect(nanmax(withNan).scalar, closeTo(4.0, 1e-5));
+              expect(isnan(withNan).toList(), equals([false, true, false]));
+              _expectCloseList(nanToNum(withNan, nan: 0.0).toList(), <double>[
+                2.0,
+                0.0,
+                4.0,
+              ]);
+
+              final bitsA = GpuArray<Int32>.fromList([6, 12], [2], DType.int32);
+              final bitsB = GpuArray<Int32>.fromList([3, 5], [2], DType.int32);
+              expect((bitsA & bitsB).toList(), equals([2, 4]));
+              expect((bitsA | bitsB).toList(), equals([7, 13]));
+              expect((bitsA ^ bitsB).toList(), equals([5, 9]));
+
+              final c = GpuArray<Complex64>.fromList(
+                [Complex(3.0, 4.0)],
+                [1],
+                DType.complex64,
+              );
+              expect(c.real().toList(), equals([3.0]));
+              expect(c.imag().toList(), equals([4.0]));
+              expect(c.conjugate().toList(), equals([Complex(3.0, -4.0)]));
+            });
+          },
+        );
+      },
+    );
   });
 }

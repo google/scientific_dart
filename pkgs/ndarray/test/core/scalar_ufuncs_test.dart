@@ -223,7 +223,7 @@ void main() {
           offsetElements: 1,
         );
 
-        atan2<Float64, Float64>(viewY, viewX, out: outAtan2);
+        atan2<Float64>(viewY, viewX, out: outAtan2);
         expect(
           (outAtan2.scalar as num).toDouble(),
           closeTo(math.pi / 4.0, 1e-12),
@@ -398,7 +398,7 @@ void main() {
       () {
         NDArray.scope(() {
           final emptyInt = NDArray<Int64>.zeros(<int>[2, 0, 3], DType.int64);
-          final m = mean<Float64, Int64>(emptyInt, axis: 1);
+          final m = mean(emptyInt, axis: 1);
           final v = var_<Int64>(emptyInt, axis: 1);
 
           expect(m.shape, <int>[2, 3]);
@@ -406,8 +406,8 @@ void main() {
 
           for (var i = 0; i < 2; i++) {
             for (var j = 0; j < 3; j++) {
-              final meanVal = (m.getCell(<int>[i, j]) as num).toDouble();
-              final varVal = (v.getCell(<int>[i, j]) as num).toDouble();
+              final meanVal = m.getCell(<int>[i, j]);
+              final varVal = v.getCell(<int>[i, j]);
               expect(meanVal.isNaN, isTrue);
               expect(varVal.isNaN, isTrue);
             }
@@ -415,7 +415,7 @@ void main() {
 
           // Verify with explicit zero-initialized out buffer
           final outBuf = NDArray<Float64>.zeros(<int>[2, 3], DType.float64);
-          mean<Float64, Int64>(emptyInt, axis: 1, out: outBuf);
+          mean(emptyInt, axis: 1, out: outBuf);
           for (var i = 0; i < 2; i++) {
             for (var j = 0; j < 3; j++) {
               expect(

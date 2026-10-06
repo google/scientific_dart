@@ -19,20 +19,34 @@ import 'syntax_tokenizer.dart';
 class TextMateRule {
   final String id;
   final String? name;
+  final String? beginName;
+  final String? endName;
   final TokenType type;
+  final TokenType? beginType;
+  final TokenType? endType;
   final RegExp? match;
   final RegExp? begin;
   final RegExp? end;
   final List<TextMateRule> patterns;
+  final bool includeRootRules;
+  final bool endAtLineEnd;
+  final bool clearAncestorScopes;
 
   TextMateRule({
     required this.id,
     this.name,
+    this.beginName,
+    this.endName,
     this.type = TokenType.custom,
+    this.beginType,
+    this.endType,
     this.match,
     this.begin,
     this.end,
     this.patterns = const [],
+    this.includeRootRules = false,
+    this.endAtLineEnd = false,
+    this.clearAncestorScopes = false,
   });
 
   bool get isBeginEnd => begin != null && end != null;
@@ -53,6 +67,24 @@ class TextMateLexer implements SyntaxTokenizer {
         _registerRules(rule.patterns);
       }
     }
+  }
+
+  List<StyleScope> _buildScopes(List<String> stack, [String? leafScope]) {
+    final result = <StyleScope>[];
+    for (final id in stack) {
+      final rule = ruleRegistry[id];
+      if (rule == null) continue;
+      if (rule.clearAncestorScopes) {
+        result.clear();
+      }
+      if (rule.name case final scopeName?) {
+        result.add(StyleScope(scopeName));
+      }
+    }
+    if (leafScope != null) {
+      result.add(StyleScope(leafScope));
+    }
+    return result;
   }
 
   @override
@@ -77,58 +109,58 @@ class TextMateLexer implements SyntaxTokenizer {
         final match = activeRule.end!.matchAsPrefix(lineText, offset);
         if (match != null) {
           final matchedText = match.group(0)!;
-          final scopes = stack
-              .map((id) => ruleRegistry[id]?.name)
-              .whereType<String>()
-              .map((s) => StyleScope(s))
-              .toList();
-
-          tokens.add(
-            SyntaxToken(
-              offset: offset,
-              length: matchedText.length,
-              type: activeRule.type,
-              scopes: scopes,
-              text: matchedText,
-            ),
-          );
-
-          offset += matchedText.length;
           stack.removeLast();
+          final scopes = activeRule.clearAncestorScopes
+              ? _buildScopes(stack, activeRule.endName ?? activeRule.name)
+              : _buildScopes([...stack, activeRule.id], activeRule.endName);
+
+          if (matchedText.isNotEmpty) {
+            tokens.add(
+              SyntaxToken(
+                offset: offset,
+                length: matchedText.length,
+                type: activeRule.endType ?? activeRule.type,
+                scopes: scopes,
+                text: matchedText,
+              ),
+            );
+            offset += matchedText.length;
+          }
           matched = true;
           continue;
         }
       }
 
       // 2. Check rules available in current scope (nested rules or root rules)
-      final availableRules =
-          activeRule != null && activeRule.patterns.isNotEmpty
-          ? activeRule.patterns
-          : rootRules;
+      final availableRules = activeRule == null
+          ? rootRules
+          : [
+              ...activeRule.patterns,
+              if (activeRule.includeRootRules) ...rootRules,
+            ];
 
       for (final rule in availableRules) {
         if (rule.isBeginEnd) {
           final match = rule.begin!.matchAsPrefix(lineText, offset);
           if (match != null) {
             final matchedText = match.group(0)!;
+            final scopes = rule.clearAncestorScopes
+                ? _buildScopes(stack, rule.beginName ?? rule.name)
+                : _buildScopes([...stack, rule.id], rule.beginName);
             stack.add(rule.id);
-            final scopes = stack
-                .map((id) => ruleRegistry[id]?.name)
-                .whereType<String>()
-                .map((s) => StyleScope(s))
-                .toList();
 
-            tokens.add(
-              SyntaxToken(
-                offset: offset,
-                length: matchedText.length,
-                type: rule.type,
-                scopes: scopes,
-                text: matchedText,
-              ),
-            );
-
-            offset += matchedText.length;
+            if (matchedText.isNotEmpty) {
+              tokens.add(
+                SyntaxToken(
+                  offset: offset,
+                  length: matchedText.length,
+                  type: rule.beginType ?? rule.type,
+                  scopes: scopes,
+                  text: matchedText,
+                ),
+              );
+              offset += matchedText.length;
+            }
             matched = true;
             break;
           }
@@ -136,27 +168,23 @@ class TextMateLexer implements SyntaxTokenizer {
           final match = rule.match!.matchAsPrefix(lineText, offset);
           if (match != null) {
             final matchedText = match.group(0)!;
-            final scopes = [
-              ...stack
-                  .map((id) => ruleRegistry[id]?.name)
-                  .whereType<String>()
-                  .map((s) => StyleScope(s)),
-              if (rule.name != null) StyleScope(rule.name!),
-            ];
+            if (matchedText.isNotEmpty) {
+              final scopes = _buildScopes(stack, rule.name);
 
-            tokens.add(
-              SyntaxToken(
-                offset: offset,
-                length: matchedText.length,
-                type: rule.type,
-                scopes: scopes,
-                text: matchedText,
-              ),
-            );
+              tokens.add(
+                SyntaxToken(
+                  offset: offset,
+                  length: matchedText.length,
+                  type: rule.type,
+                  scopes: scopes,
+                  text: matchedText,
+                ),
+              );
 
-            offset += matchedText.length;
-            matched = true;
-            break;
+              offset += matchedText.length;
+              matched = true;
+              break;
+            }
           }
         }
       }
@@ -164,22 +192,28 @@ class TextMateLexer implements SyntaxTokenizer {
       if (matched) continue;
 
       // 3. Fallback: single character unmatched token
-      final scopes = stack
-          .map((id) => ruleRegistry[id]?.name)
-          .whereType<String>()
-          .map((s) => StyleScope(s))
-          .toList();
+      final scopes = _buildScopes(stack);
+      final fallbackType = activeRule?.type ?? TokenType.unknown;
 
       tokens.add(
         SyntaxToken(
           offset: offset,
           length: 1,
-          type: TokenType.unknown,
+          type: fallbackType,
           scopes: scopes,
           text: lineText[offset],
         ),
       );
       offset++;
+    }
+
+    while (stack.isNotEmpty) {
+      final topRule = ruleRegistry[stack.last];
+      if (topRule != null && topRule.endAtLineEnd) {
+        stack.removeLast();
+      } else {
+        break;
+      }
     }
 
     final coalesced = _coalesceTokens(tokens);

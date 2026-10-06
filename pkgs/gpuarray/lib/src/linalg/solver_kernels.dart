@@ -446,41 +446,431 @@ fn main() {
 }
 ''';
 
+const String _detAndSlogdetF32Shader = '''
+struct DetParams {
+  n: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> work_lu: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_det: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_sign: array<f32>;
+@group(0) @binding(4) var<storage, read_write> out_logabsdet: array<f32>;
+@group(0) @binding(5) var<uniform> params: DetParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let n = params.n;
+  if (n == 0u) {
+    out_det[0] = 1.0;
+    out_sign[0] = 1.0;
+    out_logabsdet[0] = 0.0;
+    return;
+  }
+
+  for (var i = 0u; i < n * n; i = i + 1u) {
+    work_lu[i] = in_a[i];
+  }
+
+  var sign_val = 1.0;
+  for (var k = 0u; k < n; k = k + 1u) {
+    var pivot_row = k;
+    var max_val = abs(work_lu[k * n + k]);
+    for (var r = k + 1u; r < n; r = r + 1u) {
+      let cand = abs(work_lu[r * n + k]);
+      if (cand > max_val) {
+        max_val = cand;
+        pivot_row = r;
+      }
+    }
+    if (pivot_row != k) {
+      sign_val = -sign_val;
+      for (var c = 0u; c < n; c = c + 1u) {
+        let tmp = work_lu[k * n + c];
+        work_lu[k * n + c] = work_lu[pivot_row * n + c];
+        work_lu[pivot_row * n + c] = tmp;
+      }
+    }
+    let piv = work_lu[k * n + k];
+    if (abs(piv) <= 1e-7) {
+      out_det[0] = 0.0;
+      out_sign[0] = 0.0;
+      out_logabsdet[0] = bitcast<f32>(0xFF800000u);
+      return;
+    }
+    for (var i = k + 1u; i < n; i = i + 1u) {
+      let mult = work_lu[i * n + k] / piv;
+      for (var j = k + 1u; j < n; j = j + 1u) {
+        work_lu[i * n + j] = work_lu[i * n + j] - mult * work_lu[k * n + j];
+      }
+    }
+  }
+
+  var det_acc = sign_val;
+  var log_acc = 0.0;
+  for (var i = 0u; i < n; i = i + 1u) {
+    let diag = work_lu[i * n + i];
+    det_acc = det_acc * diag;
+    if (diag < 0.0) {
+      sign_val = -sign_val;
+    }
+    log_acc = log_acc + log(abs(diag));
+  }
+  out_det[0] = det_acc;
+  out_sign[0] = sign_val;
+  out_logabsdet[0] = log_acc;
+}
+''';
+
+const String _identityF32Shader = '''
+struct IdentityParams {
+  n: u32,
+  pad0: u32,
+  pad1: u32,
+  pad2: u32,
+};
+
+@group(0) @binding(0) var<storage, read_write> out_eye: array<f32>;
+@group(0) @binding(1) var<uniform> params: IdentityParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let n = params.n;
+  if (idx >= n * n) { return; }
+  let r = idx / n;
+  let c = idx % n;
+  out_eye[idx] = select(0.0, 1.0, r == c);
+}
+''';
+
+const String _pinvFromSvdF32Shader = '''
+struct PinvParams {
+  m: u32,
+  n: u32,
+  nrhs: u32,
+  rcond_hi_bits: u32,
+  rcond_lo_bits: u32,
+  compute_lstsq: u32,
+  pad0: u32,
+  pad1: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_u: array<f32>;
+@group(0) @binding(1) var<storage, read> in_s: array<f32>;
+@group(0) @binding(2) var<storage, read> in_vt: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_pinv: array<f32>;
+@group(0) @binding(4) var<storage, read_write> out_rank: array<f32>;
+@group(0) @binding(5) var<uniform> params: PinvParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let m = params.m;
+  let n = params.n;
+  let k_min = min(m, n);
+  let rcond = bitcast<f32>(params.rcond_hi_bits);
+  let s0 = select(0.0, in_s[0], k_min > 0u);
+  let cutoff = rcond * s0;
+
+  var rank_count = 0u;
+  for (var r = 0u; r < k_min; r = r + 1u) {
+    if (in_s[r] > cutoff) {
+      rank_count = rank_count + 1u;
+    }
+  }
+  out_rank[0] = f32(rank_count);
+
+  for (var i = 0u; i < n; i = i + 1u) {
+    for (var j = 0u; j < m; j = j + 1u) {
+      var acc = 0.0;
+      for (var r = 0u; r < k_min; r = r + 1u) {
+        let sr = in_s[r];
+        if (sr > cutoff) {
+          let v_ir = in_vt[r * n + i];
+          let u_jr = in_u[j * k_min + r];
+          acc = acc + (v_ir / sr) * u_jr;
+        }
+      }
+      out_pinv[i * m + j] = acc;
+    }
+  }
+}
+''';
+
+const String _lstsqFromPinvF32Shader = '''
+struct PinvParams {
+  m: u32,
+  n: u32,
+  nrhs: u32,
+  rcond_hi_bits: u32,
+  rcond_lo_bits: u32,
+  compute_lstsq: u32,
+  pad0: u32,
+  pad1: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read> in_pinv: array<f32>;
+@group(0) @binding(2) var<storage, read> in_b: array<f32>;
+@group(0) @binding(3) var<storage, read_write> out_sol: array<f32>;
+@group(0) @binding(4) var<storage, read_write> out_res: array<f32>;
+@group(0) @binding(5) var<uniform> params: PinvParams;
+
+@compute @workgroup_size(1)
+fn main() {
+  let m = params.m;
+  let n = params.n;
+  let nrhs = params.nrhs;
+  for (var i = 0u; i < n; i = i + 1u) {
+    for (var c = 0u; c < nrhs; c = c + 1u) {
+      var acc = 0.0;
+      for (var j = 0u; j < m; j = j + 1u) {
+        acc = acc + in_pinv[i * m + j] * in_b[j * nrhs + c];
+      }
+      out_sol[i * nrhs + c] = acc;
+    }
+  }
+  for (var c = 0u; c < nrhs; c = c + 1u) {
+    var res_sum = 0.0;
+    for (var i = 0u; i < m; i = i + 1u) {
+      var ax_ic = 0.0;
+      for (var j = 0u; j < n; j = j + 1u) {
+        ax_ic = ax_ic + in_a[i * n + j] * out_sol[j * nrhs + c];
+      }
+      let diff = in_b[i * nrhs + c] - ax_ic;
+      res_sum = res_sum + diff * diff;
+    }
+    out_res[c] = res_sum;
+  }
+}
+''';
+
+const String _vectorAndMatrixNormF32Shader = '''
+struct NormParams {
+  outer_size: u32,
+  axis_len: u32,
+  inner_size: u32,
+  norm_mode: u32,
+  p_hi_bits: u32,
+  p_lo_bits: u32,
+  rows: u32,
+  cols: u32,
+};
+
+@group(0) @binding(0) var<storage, read> in_a: array<f32>;
+@group(0) @binding(1) var<storage, read_write> out_norm: array<f32>;
+@group(0) @binding(2) var<uniform> params: NormParams;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let idx = gid.x;
+  let total_out = params.outer_size * params.inner_size;
+  if (idx >= total_out) { return; }
+
+  let mode = params.norm_mode;
+  if (mode >= 10u) {
+    let rows = params.rows;
+    let cols = params.cols;
+    if (mode == 10u || mode == 11u) {
+      var best = 0.0;
+      for (var c = 0u; c < cols; c = c + 1u) {
+        var col_sum = 0.0;
+        for (var r = 0u; r < rows; r = r + 1u) {
+          col_sum = col_sum + abs(in_a[r * cols + c]);
+        }
+        if (c == 0u) {
+          best = col_sum;
+        } else if (mode == 10u) {
+          best = max(best, col_sum);
+        } else {
+          best = min(best, col_sum);
+        }
+      }
+      out_norm[0] = best;
+      return;
+    }
+    if (mode == 12u || mode == 13u) {
+      var best = 0.0;
+      for (var r = 0u; r < rows; r = r + 1u) {
+        var row_sum = 0.0;
+        for (var c = 0u; c < cols; c = c + 1u) {
+          row_sum = row_sum + abs(in_a[r * cols + c]);
+        }
+        if (r == 0u) {
+          best = row_sum;
+        } else if (mode == 12u) {
+          best = max(best, row_sum);
+        } else {
+          best = min(best, row_sum);
+        }
+      }
+      out_norm[0] = best;
+      return;
+    }
+    if (mode == 14u) {
+      var sum_s = 0.0;
+      for (var i = 0u; i < params.axis_len; i = i + 1u) {
+        sum_s = sum_s + in_a[i];
+      }
+      out_norm[0] = sum_s;
+      return;
+    }
+    if (mode == 15u) {
+      out_norm[0] = in_a[0];
+      return;
+    }
+    if (mode == 16u) {
+      out_norm[0] = in_a[params.axis_len - 1u];
+      return;
+    }
+    if (mode == 17u) {
+      out_norm[0] = in_a[0] / in_a[params.axis_len - 1u];
+      return;
+    }
+    if (mode == 18u) {
+      out_norm[0] = in_a[params.axis_len - 1u] / in_a[0];
+      return;
+    }
+  }
+
+  let outer = idx / params.inner_size;
+  let inner = idx % params.inner_size;
+  let n_len = params.axis_len;
+
+  if (mode == 0u) {
+    var sum_sq = 0.0;
+    for (var k = 0u; k < n_len; k = k + 1u) {
+      let pos = (outer * n_len + k) * params.inner_size + inner;
+      let v = in_a[pos];
+      sum_sq = sum_sq + v * v;
+    }
+    out_norm[idx] = sqrt(sum_sq);
+  } else if (mode == 1u) {
+    var sum_abs = 0.0;
+    for (var k = 0u; k < n_len; k = k + 1u) {
+      let pos = (outer * n_len + k) * params.inner_size + inner;
+      sum_abs = sum_abs + abs(in_a[pos]);
+    }
+    out_norm[idx] = sum_abs;
+  } else if (mode == 2u) {
+    var max_v = 0.0;
+    for (var k = 0u; k < n_len; k = k + 1u) {
+      let pos = (outer * n_len + k) * params.inner_size + inner;
+      let v = abs(in_a[pos]);
+      if (k == 0u) {
+        max_v = v;
+      } else {
+        max_v = max(max_v, v);
+      }
+    }
+    out_norm[idx] = max_v;
+  } else if (mode == 3u) {
+    var min_v = 0.0;
+    for (var k = 0u; k < n_len; k = k + 1u) {
+      let pos = (outer * n_len + k) * params.inner_size + inner;
+      let v = abs(in_a[pos]);
+      if (k == 0u) {
+        min_v = v;
+      } else {
+        min_v = min(min_v, v);
+      }
+    }
+    out_norm[idx] = min_v;
+  } else if (mode == 4u) {
+    var nz = 0u;
+    for (var k = 0u; k < n_len; k = k + 1u) {
+      let pos = (outer * n_len + k) * params.inner_size + inner;
+      if (in_a[pos] != 0.0) {
+        nz = nz + 1u;
+      }
+    }
+    out_norm[idx] = f32(nz);
+  } else {
+    let p_val = bitcast<f32>(params.p_hi_bits);
+    var acc = 0.0;
+    for (var k = 0u; k < n_len; k = k + 1u) {
+      let pos = (outer * n_len + k) * params.inner_size + inner;
+      let av = abs(in_a[pos]);
+      if (av > 0.0) {
+        acc = acc + pow(av, p_val);
+      }
+    }
+    out_norm[idx] = select(0.0, pow(acc, 1.0 / p_val), acc > 0.0);
+  }
+}
+''';
+
+const String _scalarMulF32Shader = '''
+@group(0) @binding(0) var<storage, read> in_x: array<f32>;
+@group(0) @binding(1) var<storage, read> in_y: array<f32>;
+@group(0) @binding(2) var<storage, read_write> out_z: array<f32>;
+
+@compute @workgroup_size(1)
+fn main() {
+  out_z[0] = in_x[0] * in_y[0];
+}
+''';
+
 /// Dispatches the determinant and log-determinant kernel on [device].
 ({GpuBuffer det, GpuBuffer sign, GpuBuffer logabsdet}) dispatchDetAndSlogdetGpu(
   GpuDevice device,
-  GpuBuffer inputF64,
-  int n,
-) {
-  final workLu = device.createBuffer(sizeInBytes: math.max(1, n * n) * 8);
-  final outDet = device.createBuffer(sizeInBytes: 8);
-  final outSign = device.createBuffer(sizeInBytes: 8);
-  final outLogAbsDet = device.createBuffer(sizeInBytes: 8);
-
-  final module = getOrCreateLinalgShader(
-    'linalg_det_slogdet_f64',
-    () => _detAndSlogdetShader,
+  GpuBuffer inputBuffer,
+  int n, {
+  bool singlePrecision = false,
+}) {
+  final elemBytes = singlePrecision ? 4 : 8;
+  final workLu = device.createBuffer(
+    sizeInBytes: math.max(1, n * n) * elemBytes,
   );
+  final outDet = device.createBuffer(sizeInBytes: elemBytes);
+  final outSign = device.createBuffer(sizeInBytes: elemBytes);
+  final outLogAbsDet = device.createBuffer(sizeInBytes: elemBytes);
+
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_det_slogdet_f32',
+          () => _detAndSlogdetF32Shader,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_det_slogdet_f64',
+          () => _detAndSlogdetShader,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, workLu, outDet, outSign, outLogAbsDet],
+    buffers: [inputBuffer, workLu, outDet, outSign, outLogAbsDet],
     uniforms: [n, 0, 0, 0],
     workgroupsX: 1,
   );
   return (det: outDet, sign: outSign, logabsdet: outLogAbsDet);
 }
 
-/// Dispatches an `n x n` identity matrix `Float64` buffer kernel on [device].
-GpuBuffer dispatchIdentityF64Gpu(GpuDevice device, int n) {
+/// Dispatches an `n x n` identity matrix buffer kernel on [device].
+GpuBuffer dispatchIdentityF64Gpu(
+  GpuDevice device,
+  int n, {
+  bool singlePrecision = false,
+}) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final count = n * n;
-  final outEye = device.createBuffer(sizeInBytes: math.max(1, count) * 8);
+  final outEye = device.createBuffer(
+    sizeInBytes: math.max(1, count) * elemBytes,
+  );
   if (count == 0) return outEye;
 
-  final module = getOrCreateLinalgShader(
-    'linalg_identity_f64',
-    () => _identityF64Shader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_identity_f32',
+          () => _identityF32Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_identity_f64',
+          () => _identityF64Shader,
+          workgroupSize: 64,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
     buffers: [outEye],
@@ -504,11 +894,19 @@ dispatchPinvAndLstsqFromSvdGpu(
   required int nrhs,
   required double rcond,
   required bool computeLstsq,
+  bool singlePrecision = false,
 }) {
-  final outPinv = device.createBuffer(sizeInBytes: math.max(1, n * m) * 8);
-  final outSol = device.createBuffer(sizeInBytes: math.max(1, n * nrhs) * 8);
-  final outRes = device.createBuffer(sizeInBytes: math.max(1, nrhs) * 8);
-  final outRank = device.createBuffer(sizeInBytes: 8);
+  final elemBytes = singlePrecision ? 4 : 8;
+  final outPinv = device.createBuffer(
+    sizeInBytes: math.max(1, n * m) * elemBytes,
+  );
+  final outSol = device.createBuffer(
+    sizeInBytes: math.max(1, n * nrhs) * elemBytes,
+  );
+  final outRes = device.createBuffer(
+    sizeInBytes: math.max(1, nrhs) * elemBytes,
+  );
+  final outRank = device.createBuffer(sizeInBytes: elemBytes);
 
   final hi = rcond;
   final lo = rcond - hi;
@@ -529,10 +927,9 @@ dispatchPinvAndLstsqFromSvdGpu(
     0,
   ];
 
-  final pinvModule = getOrCreateLinalgShader(
-    'linalg_pinv_f64',
-    () => _pinvFromSvdShader,
-  );
+  final pinvModule = singlePrecision
+      ? getOrCreateLinalgShader('linalg_pinv_f32', () => _pinvFromSvdF32Shader)
+      : getOrCreateLinalgShader('linalg_pinv_f64', () => _pinvFromSvdShader);
   device.backend.dispatchComputePipeline(
     shaderModule: pinvModule,
     buffers: [uF64, sF64, vtF64, outPinv, outRank],
@@ -541,10 +938,15 @@ dispatchPinvAndLstsqFromSvdGpu(
   );
 
   if (computeLstsq) {
-    final lstsqModule = getOrCreateLinalgShader(
-      'linalg_lstsq_f64',
-      () => _lstsqFromPinvShader,
-    );
+    final lstsqModule = singlePrecision
+        ? getOrCreateLinalgShader(
+            'linalg_lstsq_f32',
+            () => _lstsqFromPinvF32Shader,
+          )
+        : getOrCreateLinalgShader(
+            'linalg_lstsq_f64',
+            () => _lstsqFromPinvShader,
+          );
     device.backend.dispatchComputePipeline(
       shaderModule: lstsqModule,
       buffers: [aF64, outPinv, bF64, outSol, outRes],
@@ -558,7 +960,7 @@ dispatchPinvAndLstsqFromSvdGpu(
 /// Dispatches the vector/matrix norm reduction kernel on [device].
 GpuBuffer dispatchNormGpu(
   GpuDevice device,
-  GpuBuffer inputF64, {
+  GpuBuffer inputBuffer, {
   required int outerSize,
   required int axisLength,
   required int innerSize,
@@ -566,21 +968,29 @@ GpuBuffer dispatchNormGpu(
   double pValue = 2.0,
   int rows = 0,
   int cols = 0,
+  bool singlePrecision = false,
 }) {
+  final elemBytes = singlePrecision ? 4 : 8;
   final totalOut = math.max(1, outerSize * innerSize);
-  final outNorm = device.createBuffer(sizeInBytes: totalOut * 8);
+  final outNorm = device.createBuffer(sizeInBytes: totalOut * elemBytes);
 
   final bd = ByteData(8)..setFloat32(0, pValue, Endian.little);
   final pHiBits = bd.getUint32(0, Endian.little);
 
-  final module = getOrCreateLinalgShader(
-    'linalg_norm_f64',
-    () => _vectorAndMatrixNormShader,
-    workgroupSize: 64,
-  );
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_norm_f32',
+          () => _vectorAndMatrixNormF32Shader,
+          workgroupSize: 64,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_norm_f64',
+          () => _vectorAndMatrixNormShader,
+          workgroupSize: 64,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [inputF64, outNorm],
+    buffers: [inputBuffer, outNorm],
     uniforms: [
       outerSize,
       axisLength,
@@ -596,20 +1006,27 @@ GpuBuffer dispatchNormGpu(
   return outNorm;
 }
 
-/// Multiplies two 0D scalar `Float64` buffers on [device].
+/// Multiplies two 0D scalar buffers on [device].
 GpuBuffer dispatchScalarMulF64Gpu(
   GpuDevice device,
-  GpuBuffer xF64,
-  GpuBuffer yF64,
-) {
-  final outZ = device.createBuffer(sizeInBytes: 8);
-  final module = getOrCreateLinalgShader(
-    'linalg_scalar_mul_f64',
-    () => _scalarMulF64Shader,
-  );
+  GpuBuffer xBuffer,
+  GpuBuffer yBuffer, {
+  bool singlePrecision = false,
+}) {
+  final elemBytes = singlePrecision ? 4 : 8;
+  final outZ = device.createBuffer(sizeInBytes: elemBytes);
+  final module = singlePrecision
+      ? getOrCreateLinalgShader(
+          'linalg_scalar_mul_f32',
+          () => _scalarMulF32Shader,
+        )
+      : getOrCreateLinalgShader(
+          'linalg_scalar_mul_f64',
+          () => _scalarMulF64Shader,
+        );
   device.backend.dispatchComputePipeline(
     shaderModule: module,
-    buffers: [xF64, yF64, outZ],
+    buffers: [xBuffer, yBuffer, outZ],
     uniforms: const [],
     workgroupsX: 1,
   );

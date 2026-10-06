@@ -289,6 +289,14 @@ void main() {
           expect(bcastPair.length, equals(2));
           expect(bcastPair[0].shape, equals([2, 3]));
           expect(bcastPair[1].shape, equals([2, 3]));
+
+          final scalar = GpuArray.full(const <int>[], 42.0, DType.float64);
+          expect(atleast1d(scalar).shape, equals([1]));
+          expect(atleast2d(scalar).shape, equals([1, 1]));
+          expect(atleast3d(scalar).shape, equals([1, 1, 1]));
+          expect(atleast2d(b).shape, equals([1, 3]));
+          expect(atleast3d(b).shape, equals([1, 3, 1]));
+          expect(atleast3d(a).shape, equals([2, 3, 1]));
         });
       },
     );

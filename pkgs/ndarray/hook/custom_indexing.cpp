@@ -22,97 +22,12 @@
  */
 
 #include "custom_indexing.h"
+#include "ndarray_common.h"
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
 #include <algorithm>
 #include <type_traits>
-
-extern "C" void ndarray_set_oom_flag(void);
-
-template <typename T>
-struct NoThrowBuffer {
-    T *ptr_ = nullptr;
-    size_t size_ = 0;
-    size_t cap_ = 0;
-    bool ok_ = true;
-
-    NoThrowBuffer() noexcept = default;
-    explicit NoThrowBuffer(size_t n) noexcept {
-        resize(n);
-    }
-    NoThrowBuffer(size_t n, T val) noexcept {
-        assign(n, val);
-    }
-    ~NoThrowBuffer() noexcept {
-        std::free(ptr_);
-    }
-    NoThrowBuffer(const NoThrowBuffer &) = delete;
-    NoThrowBuffer &operator=(const NoThrowBuffer &) = delete;
-
-    bool resize(size_t n) noexcept {
-        std::free(ptr_);
-        ptr_ = nullptr;
-        size_ = 0;
-        cap_ = 0;
-        if (n == 0) {
-            ok_ = true;
-            return true;
-        }
-        if (n > static_cast<size_t>(-1) / sizeof(T)) {
-            ok_ = false;
-            ndarray_set_oom_flag();
-            return false;
-        }
-        ptr_ = static_cast<T *>(std::calloc(n, sizeof(T)));
-        if (!ptr_) {
-            ok_ = false;
-            ndarray_set_oom_flag();
-            return false;
-        }
-        size_ = n;
-        cap_ = n;
-        ok_ = true;
-        return true;
-    }
-
-    bool assign(size_t n, T val) noexcept {
-        if (!resize(n)) return false;
-        const unsigned char *bytes = reinterpret_cast<const unsigned char *>(&val);
-        bool is_zero = true;
-        for (size_t b = 0; b < sizeof(T); ++b) {
-            if (bytes[b] != 0) {
-                is_zero = false;
-                break;
-            }
-        }
-        if (!is_zero) {
-            for (size_t i = 0; i < n; ++i) {
-                ptr_[i] = val;
-            }
-        }
-        return true;
-    }
-
-    T *data() noexcept { return ptr_; }
-    const T *data() const noexcept { return ptr_; }
-    T *begin() noexcept { return ptr_; }
-    T *end() noexcept { return ptr_ + size_; }
-    const T *begin() const noexcept { return ptr_; }
-    const T *end() const noexcept { return ptr_ + size_; }
-    size_t size() const noexcept { return size_; }
-    bool ok() const noexcept { return ok_; }
-    T &operator[](size_t i) noexcept { return ptr_[i]; }
-    const T &operator[](size_t i) const noexcept { return ptr_[i]; }
-};
-
-#if defined(_MSC_VER)
-#define RESTRICT __restrict
-#elif defined(__GNUC__) || defined(__clang__)
-#define RESTRICT __restrict__
-#else
-#define RESTRICT restrict
-#endif
 
 typedef struct {
     double real;
@@ -1239,21 +1154,25 @@ static inline void fill_typed(T *RESTRICT dest, int64_t count, T val) {
 
 static inline int64_t pad_reflect_map(int64_t i, int64_t N) {
     if (N <= 1) return 0;
-    int64_t P = 2 * N - 2;
-    int64_t i_mod = (i < 0 ? -i : i) % P;
-    return i_mod < N ? i_mod : P - i_mod;
+    uint64_t uN = static_cast<uint64_t>(N);
+    uint64_t P = 2ULL * uN - 2ULL;
+    uint64_t abs_i = (i < 0) ? (0ULL - static_cast<uint64_t>(i)) : static_cast<uint64_t>(i);
+    uint64_t i_mod = abs_i % P;
+    return static_cast<int64_t>(i_mod < uN ? i_mod : P - i_mod);
 }
 
 static inline int64_t pad_symmetric_map(int64_t i, int64_t N) {
     if (N <= 0) return 0;
-    int64_t P = 2 * N;
-    int64_t i_mod;
+    uint64_t uN = static_cast<uint64_t>(N);
+    uint64_t P = 2ULL * uN;
+    uint64_t i_mod;
     if (i < 0) {
-        i_mod = (-i - 1) % P;
+        uint64_t neg_i_minus_1 = static_cast<uint64_t>(-(i + 1));
+        i_mod = neg_i_minus_1 % P;
     } else {
-        i_mod = i % P;
+        i_mod = static_cast<uint64_t>(i) % P;
     }
-    return i_mod < N ? i_mod : P - 1 - i_mod;
+    return static_cast<int64_t>(i_mod < uN ? i_mod : P - 1ULL - i_mod);
 }
 
 static inline int64_t pad_wrap_map(int64_t i, int64_t N) {
@@ -1294,6 +1213,25 @@ static int pad_1d_impl(
 ) {
     int64_t dest_len = pad_before + src_len + pad_after;
     if (dest_len <= 0) return 0;
+    if (src_len <= 0 && mode != 0) return 0;
+
+    if (src_len > 0) {
+        int64_t s_min = (src_stride < 0) ? (src_len - 1) * src_stride : 0;
+        int64_t s_max = (src_stride > 0) ? (src_len - 1) * src_stride : 0;
+        if (pad_ranges_overlap(src, s_min, s_max, dest, 0, dest_len - 1, sizeof(T))) {
+            NoThrowBuffer<T> tmp(static_cast<size_t>(dest_len));
+            if (!tmp.ok()) return -4;
+            int rc = pad_1d_impl<T>(
+                src, src_len, src_stride, tmp.data(),
+                pad_before, pad_after, mode,
+                const_before, const_after, is_uniform_constant
+            );
+            if (rc == 0) {
+                memcpy(dest, tmp.data(), static_cast<size_t>(dest_len) * sizeof(T));
+            }
+            return rc;
+        }
+    }
 
     T *dest_interior = dest + pad_before;
 
@@ -1378,6 +1316,27 @@ static int pad_2d_impl(
     if (dest_rows <= 0 || dest_cols <= 0) return 0;
 
     int64_t total_dest_elements = dest_rows * dest_cols;
+
+    if (src_rows > 0 && src_cols > 0) {
+        int64_t s_min = 0, s_max = 0;
+        if (src_stride_rows < 0) s_min += (src_rows - 1) * src_stride_rows;
+        else s_max += (src_rows - 1) * src_stride_rows;
+        if (src_stride_cols < 0) s_min += (src_cols - 1) * src_stride_cols;
+        else s_max += (src_cols - 1) * src_stride_cols;
+        if (pad_ranges_overlap(src, s_min, s_max, dest, 0, total_dest_elements - 1, sizeof(T))) {
+            NoThrowBuffer<T> tmp(static_cast<size_t>(total_dest_elements));
+            if (!tmp.ok()) return -4;
+            int rc = pad_2d_impl<T>(
+                src, src_rows, src_cols, src_stride_rows, src_stride_cols,
+                tmp.data(), pad_top, pad_bottom, pad_left, pad_right, mode,
+                const_before, const_after, is_uniform_constant
+            );
+            if (rc == 0) {
+                memcpy(dest, tmp.data(), static_cast<size_t>(total_dest_elements) * sizeof(T));
+            }
+            return rc;
+        }
+    }
 
     // Fast path: constant mode
     if (mode == 0) {
@@ -1585,6 +1544,7 @@ static int pad_nd_impl(
     const int64_t *RESTRICT src_strides,
     T *RESTRICT dest,
     const int64_t *RESTRICT dest_shape,
+    const int64_t *RESTRICT dest_strides_in,
     const int64_t *RESTRICT pad_before,
     const int64_t *RESTRICT pad_after,
     int64_t rank,
@@ -1594,6 +1554,85 @@ static int pad_nd_impl(
     int is_uniform_constant
 ) {
     if (rank <= 0) return 0;
+
+    int64_t total_dest_elements = 1;
+    for (int64_t d = 0; d < rank; d++) {
+        if (dest_shape[d] <= 0) return 0;
+        total_dest_elements *= dest_shape[d];
+    }
+
+    bool dest_is_contiguous = true;
+    if (dest_strides_in != nullptr) {
+        int64_t expected = 1;
+        for (int64_t d = rank - 1; d >= 0; d--) {
+            if (dest_shape[d] > 1 && dest_strides_in[d] != expected) {
+                dest_is_contiguous = false;
+                break;
+            }
+            expected *= dest_shape[d];
+        }
+    }
+
+    bool src_non_empty = true;
+    int64_t s_min = 0, s_max = 0;
+    for (int64_t d = 0; d < rank; d++) {
+        if (src_shape[d] <= 0) {
+            src_non_empty = false;
+            break;
+        }
+        int64_t ext = (src_shape[d] - 1) * src_strides[d];
+        if (ext < 0) s_min += ext;
+        else s_max += ext;
+    }
+    int64_t d_min = 0, d_max = total_dest_elements - 1;
+    if (!dest_is_contiguous && dest_strides_in != nullptr) {
+        d_min = 0;
+        d_max = 0;
+        for (int64_t d = 0; d < rank; d++) {
+            int64_t ext = (dest_shape[d] - 1) * dest_strides_in[d];
+            if (ext < 0) d_min += ext;
+            else d_max += ext;
+        }
+    }
+    bool overlaps = src_non_empty && pad_ranges_overlap(src, s_min, s_max, dest, d_min, d_max, sizeof(T));
+
+    if (!dest_is_contiguous || overlaps) {
+        NoThrowBuffer<T> tmp_dest(static_cast<size_t>(total_dest_elements));
+        if (!tmp_dest.ok()) return -4;
+        int rc = pad_nd_impl<T>(
+            src, src_shape, src_strides,
+            tmp_dest.data(), dest_shape, nullptr,
+            pad_before, pad_after, rank, mode,
+            const_before, const_after, is_uniform_constant
+        );
+        if (rc != 0) return rc;
+        if (dest_is_contiguous) {
+            memcpy(dest, tmp_dest.data(), static_cast<size_t>(total_dest_elements) * sizeof(T));
+            return 0;
+        }
+        int64_t coord_out_stack[32] = {0};
+        NoThrowBuffer<int64_t> coord_out_vec;
+        int64_t *p_coord_out = coord_out_stack;
+        if (rank > 32) {
+            if (!coord_out_vec.assign(rank, 0)) return -4;
+            p_coord_out = coord_out_vec.data();
+        }
+        int64_t off_dest = 0;
+        for (int64_t el = 0; el < total_dest_elements; el++) {
+            dest[off_dest] = tmp_dest[static_cast<size_t>(el)];
+            for (int64_t d = rank - 1; d >= 0; d--) {
+                p_coord_out[d]++;
+                if (p_coord_out[d] < dest_shape[d]) {
+                    off_dest += dest_strides_in[d];
+                    break;
+                }
+                p_coord_out[d] = 0;
+                off_dest -= (dest_shape[d] - 1) * dest_strides_in[d];
+            }
+        }
+        return 0;
+    }
+
     if (rank == 1) {
         return pad_1d_impl<T>(
             src, src_shape[0], src_strides[0],
@@ -1615,12 +1654,6 @@ static int pad_nd_impl(
             const_before, const_after,
             is_uniform_constant
         );
-    }
-
-    int64_t total_dest_elements = 1;
-    for (int64_t d = 0; d < rank; d++) {
-        if (dest_shape[d] <= 0) return 0;
-        total_dest_elements *= dest_shape[d];
     }
 
     // Fast path: uniform constant mode
@@ -1683,9 +1716,6 @@ static int pad_nd_impl(
             p_map_right[c] = pad_map_index(inner_len + c, inner_len, mode);
         }
     }
-
-    T cb_inner = const_before ? const_before[rank - 1] : T{};
-    T ca_inner = const_after ? const_after[rank - 1] : T{};
 
     int64_t src_offset = 0;
     int64_t dest_base_offset = 0;
@@ -1996,74 +2026,73 @@ extern "C" int native_pad_nd(
         dest_shape == nullptr || pad_before == nullptr || pad_after == nullptr) {
         return -3;
     }
-    (void)dest_strides;
     switch (dtype) {
         case DTYPE_FLOAT64:
             return pad_nd_impl<double>(
                 (const double *)src, src_shape, src_strides,
-                (double *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (double *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const double *)const_before, (const double *)const_after, is_uniform_constant);
         case DTYPE_FLOAT32:
             return pad_nd_impl<float>(
                 (const float *)src, src_shape, src_strides,
-                (float *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (float *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const float *)const_before, (const float *)const_after, is_uniform_constant);
         case DTYPE_INT64:
             return pad_nd_impl<int64_t>(
                 (const int64_t *)src, src_shape, src_strides,
-                (int64_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (int64_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const int64_t *)const_before, (const int64_t *)const_after, is_uniform_constant);
         case DTYPE_INT32:
             return pad_nd_impl<int32_t>(
                 (const int32_t *)src, src_shape, src_strides,
-                (int32_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (int32_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const int32_t *)const_before, (const int32_t *)const_after, is_uniform_constant);
         case DTYPE_UINT8:
         case DTYPE_BOOLEAN:
             return pad_nd_impl<uint8_t>(
                 (const uint8_t *)src, src_shape, src_strides,
-                (uint8_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (uint8_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const uint8_t *)const_before, (const uint8_t *)const_after, is_uniform_constant);
         case DTYPE_INT16:
             return pad_nd_impl<int16_t>(
                 (const int16_t *)src, src_shape, src_strides,
-                (int16_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (int16_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const int16_t *)const_before, (const int16_t *)const_after, is_uniform_constant);
         case DTYPE_UINT64:
             return pad_nd_impl<uint64_t>(
                 (const uint64_t *)src, src_shape, src_strides,
-                (uint64_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (uint64_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const uint64_t *)const_before, (const uint64_t *)const_after, is_uniform_constant);
         case DTYPE_UINT32:
             return pad_nd_impl<uint32_t>(
                 (const uint32_t *)src, src_shape, src_strides,
-                (uint32_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (uint32_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const uint32_t *)const_before, (const uint32_t *)const_after, is_uniform_constant);
         case DTYPE_UINT16:
             return pad_nd_impl<uint16_t>(
                 (const uint16_t *)src, src_shape, src_strides,
-                (uint16_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (uint16_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const uint16_t *)const_before, (const uint16_t *)const_after, is_uniform_constant);
         case DTYPE_INT8:
             return pad_nd_impl<int8_t>(
                 (const int8_t *)src, src_shape, src_strides,
-                (int8_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (int8_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const int8_t *)const_before, (const int8_t *)const_after, is_uniform_constant);
         case DTYPE_FLOAT16:
         case DTYPE_BFLOAT16:
             return pad_nd_impl<uint16_t>(
                 (const uint16_t *)src, src_shape, src_strides,
-                (uint16_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (uint16_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const uint16_t *)const_before, (const uint16_t *)const_after, is_uniform_constant);
         case DTYPE_COMPLEX128:
             return pad_nd_impl<complex128_t>(
                 (const complex128_t *)src, src_shape, src_strides,
-                (complex128_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (complex128_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const complex128_t *)const_before, (const complex128_t *)const_after, is_uniform_constant);
         case DTYPE_COMPLEX64:
             return pad_nd_impl<complex64_t>(
                 (const complex64_t *)src, src_shape, src_strides,
-                (complex64_t *)dest, dest_shape, pad_before, pad_after, rank, mode,
+                (complex64_t *)dest, dest_shape, dest_strides, pad_before, pad_after, rank, mode,
                 (const complex64_t *)const_before, (const complex64_t *)const_after, is_uniform_constant);
         default:
             return -2;
@@ -2074,7 +2103,7 @@ extern "C" int native_pad_nd(
 // ============================================================================
 // 4. ROLL KERNELS
 // ============================================================================
-static inline size_t get_roll_dtype_itemsize(int dtype) {
+static inline int get_roll_dtype_itemsize(int dtype) {
     switch (dtype) {
         case DTYPE_FLOAT64:
         case DTYPE_INT64:
@@ -2097,8 +2126,7 @@ static inline size_t get_roll_dtype_itemsize(int dtype) {
         case DTYPE_COMPLEX128:
             return 16;
         default:
-            abort();
-            return 0;
+            return -2;
     }
 }
 
@@ -2126,8 +2154,9 @@ extern "C" int native_roll_1d(
     }
     if (size <= 0) return 0;
 
-    size_t itemsize = get_roll_dtype_itemsize(dtype);
-    if (itemsize == 0) return -2;
+    int itemsize_raw = get_roll_dtype_itemsize(dtype);
+    if (itemsize_raw <= 0) return -2;
+    size_t itemsize = static_cast<size_t>(itemsize_raw);
 
     int64_t s = shift % size;
     if (s < 0) s += size;
@@ -2413,8 +2442,9 @@ extern "C" int native_roll_nd(
         return -1;
     }
 
-    size_t itemsize = get_roll_dtype_itemsize(dtype);
-    if (itemsize == 0) return -2;
+    int itemsize_raw = get_roll_dtype_itemsize(dtype);
+    if (itemsize_raw <= 0) return -2;
+    size_t itemsize = static_cast<size_t>(itemsize_raw);
 
     bool src_contig = is_c_contiguous(shape, src_strides, rank);
     bool dest_contig = is_c_contiguous(shape, dest_strides, rank);
@@ -2519,7 +2549,7 @@ int unravel_index_typed(
         return 0;
     }
 
-    NoThrowBuffer<int64_t> coord(static_cast<size_t>(indices_rank > 0 ? indices_rank : 1), true);
+    NoThrowBuffer<int64_t> coord(static_cast<size_t>(indices_rank > 0 ? indices_rank : 1), static_cast<int64_t>(0));
     if (!coord.ok()) return -4;
 
     for (int64_t i = 0; i < indices_size; ++i) {
@@ -2667,6 +2697,7 @@ extern "C" int native_ravel_multi_index(
     if (coords_ptrs == nullptr || dims == nullptr || modes == nullptr || out_ptr == nullptr || ndims <= 0) {
         return -3;
     }
+    int64_t dim_prod = 1;
     for (int64_t d = 0; d < ndims; ++d) {
         if (dims[d] <= 0) {
             if (total_size > 0) {
@@ -2675,6 +2706,10 @@ extern "C" int native_ravel_multi_index(
             }
             return 0;
         }
+        if (dim_prod > INT64_MAX / dims[d]) {
+            return -3;
+        }
+        dim_prod *= dims[d];
     }
     if (total_size == 0) {
         return 0;
@@ -2727,7 +2762,7 @@ extern "C" int native_ravel_multi_index(
         return 0;
     }
 
-    NoThrowBuffer<int64_t> iter_coord(static_cast<size_t>(target_rank > 0 ? target_rank : 1), true);
+    NoThrowBuffer<int64_t> iter_coord(static_cast<size_t>(target_rank > 0 ? target_rank : 1), static_cast<int64_t>(0));
     if (!iter_coord.ok()) return -4;
 
     for (int64_t i = 0; i < total_size; ++i) {
@@ -2843,6 +2878,8 @@ extern "C" int native_tril_indices(
     if (n <= 0 || m <= 0) {
         return 0;
     }
+    if (k > m) k = m;
+    if (k < -n) k = -n;
     int64_t idx = 0;
     for (int64_t i = 0; i < n; ++i) {
         int64_t max_j = i + k;
@@ -2869,6 +2906,8 @@ extern "C" int native_triu_indices(
     if (n <= 0 || m <= 0) {
         return 0;
     }
+    if (k > m) k = m;
+    if (k < -n) k = -n;
     int64_t idx = 0;
     for (int64_t i = 0; i < n; ++i) {
         int64_t min_j = i + k;

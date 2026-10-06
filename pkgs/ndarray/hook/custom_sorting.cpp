@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "custom_sorting.h"
+#include "ndarray_common.h"
 #include <atomic>
 #include <stdlib.h>
 #include <math.h>
@@ -23,9 +24,16 @@
 #include <cmath>
 #include <limits>
 #define VQSORT_ENABLED 1
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wundef"
+#endif
 #include "hwy/contrib/sort/vqsort.h"
 #include "hwy/highway.h"
 #include "hwy/per_target.h"
+#if defined(__GNUC__) || defined(__clang__)
+#pragma GCC diagnostic pop
+#endif
 #include <type_traits>
 
 static thread_local int g_ndarray_oom_flag = 0;
@@ -56,112 +64,6 @@ int ndarray_test_consume_finalizer_hits(void) {
 }
 }
 
-template <typename T>
-struct NoThrowBuffer {
-    T *ptr_ = nullptr;
-    size_t size_ = 0;
-    size_t cap_ = 0;
-    bool ok_ = true;
-
-    NoThrowBuffer() noexcept = default;
-    explicit NoThrowBuffer(size_t n) noexcept {
-        resize(n);
-    }
-    NoThrowBuffer(size_t n, T val) noexcept {
-        assign(n, val);
-    }
-    ~NoThrowBuffer() noexcept {
-        std::free(ptr_);
-    }
-    NoThrowBuffer(const NoThrowBuffer &) = delete;
-    NoThrowBuffer &operator=(const NoThrowBuffer &) = delete;
-
-    bool resize(size_t n) noexcept {
-        std::free(ptr_);
-        ptr_ = nullptr;
-        size_ = 0;
-        cap_ = 0;
-        if (n == 0) {
-            ok_ = true;
-            return true;
-        }
-        if (n > static_cast<size_t>(-1) / sizeof(T)) {
-            ok_ = false;
-            ndarray_set_oom_flag();
-            return false;
-        }
-        ptr_ = static_cast<T *>(std::calloc(n, sizeof(T)));
-        if (!ptr_) {
-            ok_ = false;
-            ndarray_set_oom_flag();
-            return false;
-        }
-        size_ = n;
-        cap_ = n;
-        ok_ = true;
-        return true;
-    }
-
-    bool assign(size_t n, T val) noexcept {
-        if (!resize(n)) return false;
-        const unsigned char *bytes = reinterpret_cast<const unsigned char *>(&val);
-        bool is_zero = true;
-        for (size_t b = 0; b < sizeof(T); ++b) {
-            if (bytes[b] != 0) {
-                is_zero = false;
-                break;
-            }
-        }
-        if (!is_zero) {
-            for (size_t i = 0; i < n; ++i) {
-                ptr_[i] = val;
-            }
-        }
-        return true;
-    }
-
-    bool assign(const T *first, const T *last) noexcept {
-        size_t n = static_cast<size_t>(last - first);
-        if (!resize(n)) return false;
-        if (n > 0 && first != nullptr) {
-            std::memcpy(ptr_, first, n * sizeof(T));
-        }
-        return true;
-    }
-
-    bool push_back(const T &val) noexcept {
-        if (size_ == cap_) {
-            size_t new_cap = cap_ == 0 ? 8 : (cap_ < 1024 ? cap_ * 2 : cap_ + cap_ / 2);
-            if (new_cap <= cap_ || new_cap > static_cast<size_t>(-1) / sizeof(T)) {
-                ok_ = false;
-                ndarray_set_oom_flag();
-                return false;
-            }
-            T *new_ptr = static_cast<T *>(std::realloc(ptr_, new_cap * sizeof(T)));
-            if (!new_ptr) {
-                ok_ = false;
-                ndarray_set_oom_flag();
-                return false;
-            }
-            ptr_ = new_ptr;
-            cap_ = new_cap;
-        }
-        ptr_[size_++] = val;
-        return true;
-    }
-
-    T *data() noexcept { return ptr_; }
-    const T *data() const noexcept { return ptr_; }
-    T *begin() noexcept { return ptr_; }
-    T *end() noexcept { return ptr_ + size_; }
-    const T *begin() const noexcept { return ptr_; }
-    const T *end() const noexcept { return ptr_ + size_; }
-    size_t size() const noexcept { return size_; }
-    bool ok() const noexcept { return ok_; }
-    T &operator[](size_t i) noexcept { return ptr_[i]; }
-    const T &operator[](size_t i) const noexcept { return ptr_[i]; }
-};
-
 // ----------------------------------------------------------------------------
 // Struct definitions for Complex number representations
 // ----------------------------------------------------------------------------
@@ -175,17 +77,6 @@ typedef struct {
     float real;
     float imag;
 } complex64_t;
-
-// ----------------------------------------------------------------------------
-// Thread-Local globals for Argsort (Indirect Sorting) data tracking
-// ----------------------------------------------------------------------------
-
-static thread_local const double *global_double_data = nullptr;
-static thread_local const float *global_float_data = nullptr;
-static thread_local const long long *global_int64_data = nullptr;
-static thread_local const int *global_int32_data = nullptr;
-static thread_local const int16_t *global_int16_data = nullptr;
-static thread_local const uint8_t *global_uint8_data = nullptr;
 
 // ----------------------------------------------------------------------------
 // Inlined Comparators for Direct Sorters
@@ -406,224 +297,6 @@ static inline bool eq_complex_impl(T a, T b) {
     bool eq_i = (a.imag == b.imag) || (std::isnan(a.imag) && std::isnan(b.imag));
     return eq_r && eq_i;
 }
-
-// ----------------------------------------------------------------------------
-// Instantiations of Christopher Swenson's TimSort from third_party/timsort
-// ----------------------------------------------------------------------------
-
-#define SORT_NAME tim_double
-#define SORT_TYPE double
-#define SORT_CMP(x, y) compare_double_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_fast_double
-#define SORT_TYPE double
-#define SORT_CMP(x, y) compare_double_fast(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_float
-#define SORT_TYPE float
-#define SORT_CMP(x, y) compare_float_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_fast_float
-#define SORT_TYPE float
-#define SORT_CMP(x, y) compare_float_fast(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_int64
-#define SORT_TYPE long long
-#define SORT_CMP(x, y) compare_int64_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_int32
-#define SORT_TYPE int
-#define SORT_CMP(x, y) compare_int32_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_int16
-#define SORT_TYPE int16_t
-#define SORT_CMP(x, y) compare_int16_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_uint8
-#define SORT_TYPE uint8_t
-#define SORT_CMP(x, y) compare_uint8_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_complex128
-#define SORT_TYPE complex128_t
-#define SORT_CMP(x, y) compare_complex128_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_complex64
-#define SORT_TYPE complex64_t
-#define SORT_CMP(x, y) compare_complex64_inline(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-// ----------------------------------------------------------------------------
-// Comparators for Stable Indirect Sorters (Argsort)
-// ----------------------------------------------------------------------------
-
-static inline int compare_indices_double_timsort(int64_t idx_a, int64_t idx_b) {
-    double val_a = global_double_data[idx_a];
-    double val_b = global_double_data[idx_b];
-    int nan_a = isnan(val_a);
-    int nan_b = isnan(val_b);
-    if (nan_a && nan_b) {
-        if (idx_a < idx_b) return -1;
-        if (idx_a > idx_b) return 1;
-        return 0;
-    }
-    if (nan_a) return 1;
-    if (nan_b) return -1;
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    if (idx_a < idx_b) return -1;
-    if (idx_a > idx_b) return 1;
-    return 0;
-}
-
-static inline int compare_indices_float_timsort(int64_t idx_a, int64_t idx_b) {
-    float val_a = global_float_data[idx_a];
-    float val_b = global_float_data[idx_b];
-    int nan_a = isnan(val_a);
-    int nan_b = isnan(val_b);
-    if (nan_a && nan_b) {
-        if (idx_a < idx_b) return -1;
-        if (idx_a > idx_b) return 1;
-        return 0;
-    }
-    if (nan_a) return 1;
-    if (nan_b) return -1;
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    if (idx_a < idx_b) return -1;
-    if (idx_a > idx_b) return 1;
-    return 0;
-}
-
-static inline int compare_indices_int64_timsort(int64_t idx_a, int64_t idx_b) {
-    long long val_a = global_int64_data[idx_a];
-    long long val_b = global_int64_data[idx_b];
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    if (idx_a < idx_b) return -1;
-    if (idx_a > idx_b) return 1;
-    return 0;
-}
-
-static inline int compare_indices_int32_timsort(int64_t idx_a, int64_t idx_b) {
-    int val_a = global_int32_data[idx_a];
-    int val_b = global_int32_data[idx_b];
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    if (idx_a < idx_b) return -1;
-    if (idx_a > idx_b) return 1;
-    return 0;
-}
-
-static inline int compare_indices_int16_timsort(int64_t idx_a, int64_t idx_b) {
-    int16_t val_a = global_int16_data[idx_a];
-    int16_t val_b = global_int16_data[idx_b];
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    if (idx_a < idx_b) return -1;
-    if (idx_a > idx_b) return 1;
-    return 0;
-}
-
-static inline int compare_indices_uint8_timsort(int64_t idx_a, int64_t idx_b) {
-    uint8_t val_a = global_uint8_data[idx_a];
-    uint8_t val_b = global_uint8_data[idx_b];
-    if (val_a < val_b) return -1;
-    if (val_a > val_b) return 1;
-    if (idx_a < idx_b) return -1;
-    if (idx_a > idx_b) return 1;
-    return 0;
-}
-
-// ----------------------------------------------------------------------------
-// Instantiations of Christopher Swenson's TimSort for Argsort
-// ----------------------------------------------------------------------------
-
-#define SORT_NAME tim_indices_double
-#define SORT_TYPE int64_t
-#define SORT_CMP(x, y) compare_indices_double_timsort(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_indices_float
-#define SORT_TYPE int64_t
-#define SORT_CMP(x, y) compare_indices_float_timsort(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_indices_int64
-#define SORT_TYPE int64_t
-#define SORT_CMP(x, y) compare_indices_int64_timsort(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_indices_int32
-#define SORT_TYPE int64_t
-#define SORT_CMP(x, y) compare_indices_int32_timsort(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_indices_int16
-#define SORT_TYPE int64_t
-#define SORT_CMP(x, y) compare_indices_int16_timsort(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
-
-#define SORT_NAME tim_indices_uint8
-#define SORT_TYPE int64_t
-#define SORT_CMP(x, y) compare_indices_uint8_timsort(x, y)
-#include "third_party/timsort/timsort.h"
-#undef SORT_NAME
-#undef SORT_TYPE
-#undef SORT_CMP
 
 // ----------------------------------------------------------------------------
 // C++ Templates for sorting, searching, etc.
@@ -1083,6 +756,7 @@ static void argminmax(
     if (src == nullptr || dest == nullptr || shape == nullptr || stridesSrc == nullptr || stridesDest == nullptr || rank <= 0) return;
     if (is_contiguous && axis == -1) {
         int64_t n = shape[0];
+        if (n <= 0) return;
         T val0 = src[0];
         if (is_nan_check(val0)) {
             dest[0] = 0;
@@ -1141,9 +815,13 @@ static void argminmax(
         dest[0] = idx0;
         return;
     }
+    if (axis < 0 || axis >= rank || shape[axis] <= 0) return;
     int64_t dest_size = 1;
     for (int d = 0; d < rank; d++) {
-        if (d != axis) dest_size *= shape[d];
+        if (d != axis) {
+            if (shape[d] <= 0) return;
+            dest_size *= shape[d];
+        }
     }
     NoThrowBuffer<int64_t> coord_dest_vec, strides_dest_vec, shape_dest_vec;
     int64_t coord_dest_stack[32] = {0};
@@ -1230,17 +908,55 @@ static void count_nonzero(
     int is_contiguous
 ) {
     if (src == nullptr || dest == nullptr || shape == nullptr || stridesSrc == nullptr || stridesDest == nullptr || rank <= 0) return;
-    if (is_contiguous && axis == -1) {
+    if (axis < 0) {
+        if (is_contiguous) {
+            int64_t count = 0;
+            for (int64_t i = 0; i < shape[0]; i++) {
+                if (is_nonzero(src[i])) count++;
+            }
+            dest[0] = count;
+            return;
+        }
+        int64_t total_size = 1;
+        for (int d = 0; d < rank; d++) {
+            if (shape[d] <= 0) {
+                dest[0] = 0;
+                return;
+            }
+            total_size *= shape[d];
+        }
+        NoThrowBuffer<int64_t> coord_vec;
+        int64_t coord_stack[32] = {0};
+        int64_t *coord = coord_stack;
+        if (rank > 32) {
+            coord_vec.assign(rank, 0);
+            if (!coord_vec.ok()) return;
+            coord = coord_vec.data();
+        }
         int64_t count = 0;
-        for (int64_t i = 0; i < shape[0]; i++) {
-            if (is_nonzero(src[i])) count++;
+        int64_t offset = 0;
+        for (int64_t el = 0; el < total_size; el++) {
+            if (is_nonzero(src[offset])) count++;
+            for (int d = rank - 1; d >= 0; d--) {
+                coord[d]++;
+                if (coord[d] < shape[d]) {
+                    offset += stridesSrc[d];
+                    break;
+                }
+                coord[d] = 0;
+                offset -= (shape[d] - 1) * stridesSrc[d];
+            }
         }
         dest[0] = count;
         return;
     }
+    if (axis >= rank) return;
     int64_t dest_size = 1;
     for (int d = 0; d < rank; d++) {
-        if (d != axis) dest_size *= shape[d];
+        if (d != axis) {
+            if (shape[d] <= 0) return;
+            dest_size *= shape[d];
+        }
     }
     NoThrowBuffer<int64_t> coord_dest_vec, strides_dest_vec, shape_dest_vec;
     int64_t coord_dest_stack[32] = {0};
@@ -2369,7 +2085,7 @@ namespace hwy {
 namespace HWY_NAMESPACE {
 namespace hn = hwy::HWY_NAMESPACE;
 
-int64_t UnpackMaskImpl(const uint8_t *mask_ptr, int64_t size, int64_t *out_indices) {
+static int64_t UnpackMaskImpl(const uint8_t *mask_ptr, int64_t size, int64_t *out_indices) {
     const hn::ScalableTag<int64_t> d;
     using Rebind8 = hn::Rebind<uint8_t, decltype(d)>;
     const Rebind8 d8;
@@ -2572,7 +2288,7 @@ void native_apply_mask(
             break;
         }
         default:
-            abort();
+            return;
     }
 }
 }
@@ -2592,7 +2308,7 @@ static inline bool eq_double_impl(double a, double b) {
 
 static int64_t unique_double_fast(const double *src, double *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(double));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(double));
     double *non_nan_end = std::partition(dest, dest + size, [](double x) {
         return !std::isnan(x);
     });
@@ -2618,7 +2334,7 @@ static int64_t unique_double_fast(const double *src, double *dest, int64_t size)
 
 static int64_t unique_float_fast(const float *src, float *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(float));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(float));
     float *non_nan_end = std::partition(dest, dest + size, [](float x) {
         return !std::isnan(x);
     });
@@ -2644,7 +2360,7 @@ static int64_t unique_float_fast(const float *src, float *dest, int64_t size) {
 
 static int64_t unique_int32_fast(const int32_t *src, int32_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(int32_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(int32_t));
     if (size > 1) {
         hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
     }
@@ -2660,7 +2376,7 @@ static int64_t unique_int32_fast(const int32_t *src, int32_t *dest, int64_t size
 
 static int64_t unique_int64_fast(const int64_t *src, int64_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(int64_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(int64_t));
     if (size > 1) {
         hwy::VQSort((int64_t *)dest, static_cast<size_t>(size), hwy::SortAscending());
     }
@@ -2676,7 +2392,7 @@ static int64_t unique_int64_fast(const int64_t *src, int64_t *dest, int64_t size
 
 static int64_t unique_int16_fast(const int16_t *src, int16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(int16_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(int16_t));
     if (size > 1) {
         hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
     }
@@ -2692,7 +2408,7 @@ static int64_t unique_int16_fast(const int16_t *src, int16_t *dest, int64_t size
 
 static int64_t unique_uint16_fast(const uint16_t *src, uint16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
     if (size > 1) {
         hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
     }
@@ -2708,7 +2424,7 @@ static int64_t unique_uint16_fast(const uint16_t *src, uint16_t *dest, int64_t s
 
 static int64_t unique_uint32_fast(const uint32_t *src, uint32_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint32_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(uint32_t));
     if (size > 1) {
         hwy::VQSort(dest, static_cast<size_t>(size), hwy::SortAscending());
     }
@@ -2724,7 +2440,7 @@ static int64_t unique_uint32_fast(const uint32_t *src, uint32_t *dest, int64_t s
 
 static int64_t unique_uint64_fast(const uint64_t *src, uint64_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint64_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(uint64_t));
     if (size > 1) {
         hwy::VQSort((uint64_t *)dest, static_cast<size_t>(size), hwy::SortAscending());
     }
@@ -2770,7 +2486,7 @@ static int64_t unique_int8_fast(const int8_t *src, int8_t *dest, int64_t size) {
 
 static int64_t unique_complex128_fast(const complex128_t *src, complex128_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(complex128_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(complex128_t));
     std::sort(dest, dest + size, comp_complex_impl<complex128_t>);
     int64_t write_idx = 0;
     for (int64_t read_idx = 1; read_idx < size; read_idx++) {
@@ -2784,7 +2500,7 @@ static int64_t unique_complex128_fast(const complex128_t *src, complex128_t *des
 
 static int64_t unique_complex64_fast(const complex64_t *src, complex64_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(complex64_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(complex64_t));
     std::sort(dest, dest + size, comp_complex_impl<complex64_t>);
     int64_t write_idx = 0;
     for (int64_t read_idx = 1; read_idx < size; read_idx++) {
@@ -2812,9 +2528,20 @@ static int64_t unique_template(const T *src, T *dest, int64_t size,
     std::stable_sort(idx.begin(), idx.end(), [&](int64_t a, int64_t b) {
         return comp(src[a], src[b]);
     });
+
+    const uint8_t *s_bytes = reinterpret_cast<const uint8_t *>(src);
+    const uint8_t *d_bytes = reinterpret_cast<const uint8_t *>(dest);
+    size_t byte_len = static_cast<size_t>(size) * sizeof(T);
+    bool overlaps = (d_bytes < s_bytes + byte_len) && (s_bytes < d_bytes + byte_len);
+    NoThrowBuffer<T> unique_buf(overlaps ? static_cast<size_t>(size) : 0);
+    if (overlaps && !unique_buf.ok()) {
+        ndarray_set_oom_flag();
+        return -4;
+    }
+    T *out_dest = overlaps ? unique_buf.data() : dest;
     
     int64_t write_idx = 0;
-    dest[0] = src[idx[0]];
+    out_dest[0] = src[idx[0]];
     if (out_index) out_index[0] = idx[0];
     if (out_inverse) out_inverse[idx[0]] = 0;
     
@@ -2824,7 +2551,7 @@ static int64_t unique_template(const T *src, T *dest, int64_t size,
         if (!eq(src[idx[static_cast<size_t>(read_idx)]], src[idx[static_cast<size_t>(read_idx - 1)]])) {
             if (out_counts) out_counts[write_idx] = current_count;
             write_idx++;
-            dest[write_idx] = src[idx[static_cast<size_t>(read_idx)]];
+            out_dest[write_idx] = src[idx[static_cast<size_t>(read_idx)]];
             if (out_index) out_index[write_idx] = idx[static_cast<size_t>(read_idx)];
             if (out_inverse) out_inverse[idx[static_cast<size_t>(read_idx)]] = write_idx;
             current_count = 1;
@@ -2834,6 +2561,9 @@ static int64_t unique_template(const T *src, T *dest, int64_t size,
         }
     }
     if (out_counts) out_counts[write_idx] = current_count;
+    if (overlaps) {
+        memcpy(dest, out_dest, static_cast<size_t>(write_idx + 1) * sizeof(T));
+    }
     
     return write_idx + 1;
 }
@@ -2887,7 +2617,7 @@ static inline bool eq_bf16_impl(uint16_t a, uint16_t b) {
 
 static int64_t unique_fp16_fast(const uint16_t *src, uint16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
     std::sort(dest, dest + size, comp_fp16_impl);
     int64_t write_idx = 0;
     for (int64_t read_idx = 1; read_idx < size; read_idx++) {
@@ -2901,7 +2631,7 @@ static int64_t unique_fp16_fast(const uint16_t *src, uint16_t *dest, int64_t siz
 
 static int64_t unique_bf16_fast(const uint16_t *src, uint16_t *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(uint16_t));
     std::sort(dest, dest + size, comp_bf16_impl);
     int64_t write_idx = 0;
     for (int64_t read_idx = 1; read_idx < size; read_idx++) {
@@ -2916,7 +2646,7 @@ static int64_t unique_bf16_fast(const uint16_t *src, uint16_t *dest, int64_t siz
 template<typename T>
 static int64_t unique_scalar_fast(const T *src, T *dest, int64_t size) {
     if (size <= 0) return 0;
-    memcpy(dest, src, static_cast<size_t>(size) * sizeof(T));
+    if (dest != src) memmove(dest, src, static_cast<size_t>(size) * sizeof(T));
     std::sort(dest, dest + size);
     int64_t write_idx = 0;
     for (int64_t read_idx = 1; read_idx < size; read_idx++) {
@@ -2966,7 +2696,7 @@ int64_t ndarray_unique(const void *src, void *dest, int64_t size, int dtype,
             case DTYPE_COMPLEX64:
                 return unique_complex64_fast((const complex64_t *)src, (complex64_t *)dest, size);
             default:
-                abort();
+                return -2;
         }
     }
     
@@ -3067,7 +2797,7 @@ int64_t ndarray_unique(const void *src, void *dest, int64_t size, int dtype,
                 comp_complex_impl<complex64_t>, eq_complex_impl<complex64_t>
             );
         default:
-            abort();
+            return -2;
     }
 }
 }

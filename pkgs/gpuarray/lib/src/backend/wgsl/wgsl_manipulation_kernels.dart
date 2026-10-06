@@ -646,10 +646,11 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>) {
     if (_nonZeroScatterCache[key] case final cached?) {
       return cached;
     }
-    final outDType = mode == 3 ? dtype : DType.int32;
+    final outDType = mode == 3 ? dtype : DType.int64;
     final String body;
     if (mode == 0) {
-      body = 'store_raw_dst(metadata.offset_out + out_pos, idx);';
+      body =
+          'store_raw_dst(metadata.offset_out + out_pos, vec2<u32>(idx, 0u));';
     } else if (mode == 1) {
       body = '''
   var rem = idx;
@@ -658,7 +659,7 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>) {
     let dim_sz = metadata.shape[d / 4u][d % 4u];
     let coord = rem % dim_sz;
     rem = rem / dim_sz;
-    store_raw_dst(metadata.offset_out + out_pos * metadata.rank + d, coord);
+    store_raw_dst(metadata.offset_out + out_pos * metadata.rank + d, vec2<u32>(coord, 0u));
   }''';
     } else if (mode == 2) {
       body = '''
@@ -673,7 +674,7 @@ fn main(@builtin(local_invocation_id) lid: vec3<u32>) {
       target_coord = coord;
     }
   }
-  store_raw_dst(metadata.offset_out + out_pos, target_coord);''';
+  store_raw_dst(metadata.offset_out + out_pos, vec2<u32>(target_coord, 0u));''';
     } else {
       body = '''
   var rem = idx;

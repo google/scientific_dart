@@ -18,6 +18,8 @@ library;
 
 import 'dart:ffi' as ffi;
 
+import 'ndarray_bindings.dart' show cpx_t, cpx_f_t;
+
 /// NPZ native zip archive serialization
 @ffi.Native<
   ffi.Int Function(
@@ -524,4 +526,182 @@ external int native_pad_nd(
   ffi.Pointer<ffi.Void> constBefore,
   ffi.Pointer<ffi.Void> constAfter,
   int isUniformConstant,
+);
+
+/// Nanmedian contiguous reduction for Float64.
+@ffi.Native<ffi.Double Function(ffi.Pointer<ffi.Double>, ffi.Int64)>()
+external double r_nanmedian_double(ffi.Pointer<ffi.Double> src, int size);
+
+/// Nanmedian contiguous reduction for Float32.
+@ffi.Native<ffi.Float Function(ffi.Pointer<ffi.Float>, ffi.Int64)>()
+external double r_nanmedian_float(ffi.Pointer<ffi.Float> src, int size);
+
+/// Nanmedian contiguous reduction for Complex128.
+@ffi.Native<cpx_t Function(ffi.Pointer<cpx_t>, ffi.Int64)>()
+external cpx_t r_nanmedian_complex128(ffi.Pointer<cpx_t> src, int size);
+
+/// Nanmedian contiguous reduction for Complex64.
+@ffi.Native<cpx_f_t Function(ffi.Pointer<cpx_f_t>, ffi.Int64)>()
+external cpx_f_t r_nanmedian_complex64(ffi.Pointer<cpx_f_t> src, int size);
+
+/// Nanmedian strided axis reduction for Float64.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanmedian_double(
+  ffi.Pointer<ffi.Double> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+/// Nanmedian strided axis reduction for Float32.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanmedian_float(
+  ffi.Pointer<ffi.Float> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Float> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+/// Nanmedian strided axis reduction for Complex128.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<cpx_t>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<cpx_t>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanmedian_complex128(
+  ffi.Pointer<cpx_t> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<cpx_t> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+/// Nanmedian strided axis reduction for Complex64.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<cpx_f_t>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<cpx_f_t>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+  )
+>()
+external void s_nanmedian_complex64(
+  ffi.Pointer<cpx_f_t> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<cpx_f_t> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+);
+
+/// Nanquantile contiguous reduction for Float64.
+@ffi.Native<
+  ffi.Double Function(ffi.Pointer<ffi.Double>, ffi.Int64, ffi.Double, ffi.Int)
+>()
+external double r_nanquantile_double(
+  ffi.Pointer<ffi.Double> src,
+  int size,
+  double q,
+  int method,
+);
+
+/// Nanquantile contiguous reduction for Float32.
+@ffi.Native<
+  ffi.Double Function(ffi.Pointer<ffi.Float>, ffi.Int64, ffi.Double, ffi.Int)
+>()
+external double r_nanquantile_float(
+  ffi.Pointer<ffi.Float> src,
+  int size,
+  double q,
+  int method,
+);
+
+/// Nanquantile strided axis reduction for Float64.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+    ffi.Double,
+    ffi.Int,
+  )
+>()
+external void s_nanquantile_double(
+  ffi.Pointer<ffi.Double> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Double> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+  double q,
+  int method,
+);
+
+/// Nanquantile strided axis reduction for Float32.
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Pointer<ffi.Int64>,
+    ffi.Int,
+    ffi.Int,
+    ffi.Double,
+    ffi.Int,
+  )
+>()
+external void s_nanquantile_float(
+  ffi.Pointer<ffi.Float> src,
+  ffi.Pointer<ffi.Int64> stridesSrc,
+  ffi.Pointer<ffi.Float> dest,
+  ffi.Pointer<ffi.Int64> stridesDest,
+  ffi.Pointer<ffi.Int64> shape,
+  int rank,
+  int axis,
+  double q,
+  int method,
 );

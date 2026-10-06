@@ -165,6 +165,7 @@ Future<void> main(List<String> args) async {
         'coverage:format_coverage',
         '--lcov',
         '--check-ignore',
+        '--workers=${Platform.numberOfProcessors}',
         '--in=${rawCovDir.path}',
         '--out=${lcovFile.path}',
         '--report-on=lib',

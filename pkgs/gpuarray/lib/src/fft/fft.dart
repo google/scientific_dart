@@ -212,8 +212,23 @@ List<int> _packVec8I32(List<int> values) {
   ];
 }
 
+bool _isSinglePrecisionFftDType(DType dtype) => switch (dtype) {
+  DType.float32 || DType.complex64 => true,
+  _ => false,
+};
+
+DType<C> _fftComplexDType<C extends DTypeTag>(DType dtype) => switch (dtype) {
+  DType.float32 || DType.complex64 => DType.complex64 as DType<C>,
+  _ => DType.complex128 as DType<C>,
+};
+
+DType<F> _fftFloatDType<F extends DTypeTag>(DType dtype) => switch (dtype) {
+  DType.float32 || DType.complex64 => DType.float32 as DType<F>,
+  _ => DType.float64 as DType<F>,
+};
+
 /// Executes a 1D complex DFT between contiguous `[batchCount, transformLength]`
-/// `Complex128` buffers on [device], returning the buffer holding the unscaled result.
+/// complex buffers on [device], returning the buffer holding the unscaled result.
 GpuBuffer _executeContiguous1dComplexDft({
   required GpuDevice device,
   required GpuBuffer inputBuffer,
@@ -221,6 +236,7 @@ GpuBuffer _executeContiguous1dComplexDft({
   required int batchCount,
   required int transformLength,
   required bool inverse,
+  bool singlePrecision = false,
 }) {
   final totalElements = batchCount * transformLength;
   if (totalElements == 0 || transformLength <= 1) {
@@ -232,14 +248,16 @@ GpuBuffer _executeContiguous1dComplexDft({
   if (_isPowerOfTwo(transformLength)) {
     final log2N = _log2Exact(transformLength);
     device.backend.dispatchComputePipeline(
-      shaderModule: buildFftBitReverseShader(),
+      shaderModule: buildFftBitReverseShader(singlePrecision: singlePrecision),
       buffers: [inputBuffer, scratchBuffer],
       uniforms: [batchCount, transformLength, log2N, 0],
       workgroupsX: _workgroupsFor(totalElements),
     );
     var currentSource = scratchBuffer;
     var currentTarget = inputBuffer;
-    final butterflyShader = buildFftButterflyStageShader();
+    final butterflyShader = buildFftButterflyStageShader(
+      singlePrecision: singlePrecision,
+    );
     final totalPairs = batchCount * (transformLength >> 1);
     final pairWorkgroups = _workgroupsFor(totalPairs);
 
@@ -260,7 +278,7 @@ GpuBuffer _executeContiguous1dComplexDft({
 
   if (transformLength <= _directDftMaxLength) {
     device.backend.dispatchComputePipeline(
-      shaderModule: buildFftDirectDftShader(),
+      shaderModule: buildFftDirectDftShader(singlePrecision: singlePrecision),
       buffers: [inputBuffer, scratchBuffer],
       uniforms: [batchCount, transformLength, signBits, 0],
       workgroupsX: _workgroupsFor(totalElements),
@@ -271,7 +289,10 @@ GpuBuffer _executeContiguous1dComplexDft({
   // Bluestein's Chirp-Z algorithm on GPU for large non-power-of-2 lengths.
   final chirpM = _nextPowerOfTwo(2 * transformLength - 1);
   final chirpElements = batchCount * chirpM;
-  final chirpBytes = chirpElements * DType.complex128.byteWidth;
+  final elemBytes = singlePrecision
+      ? DType.complex64.byteWidth
+      : DType.complex128.byteWidth;
+  final chirpBytes = chirpElements * elemBytes;
   final aPadBuffer = GpuBuffer.allocate(
     sizeInBytes: chirpBytes,
     device: device,
@@ -286,7 +307,9 @@ GpuBuffer _executeContiguous1dComplexDft({
   );
   try {
     device.backend.dispatchComputePipeline(
-      shaderModule: buildFftBluesteinPreShader(),
+      shaderModule: buildFftBluesteinPreShader(
+        singlePrecision: singlePrecision,
+      ),
       buffers: [inputBuffer, aPadBuffer, bPadBuffer],
       uniforms: [batchCount, transformLength, chirpM, signBits],
       workgroupsX: _workgroupsFor(chirpElements),
@@ -299,6 +322,7 @@ GpuBuffer _executeContiguous1dComplexDft({
       batchCount: batchCount,
       transformLength: chirpM,
       inverse: false,
+      singlePrecision: singlePrecision,
     );
     if (identical(aFftBuffer, workPadBuffer)) {
       device.backend.copyBufferToBuffer(workPadBuffer, aPadBuffer, chirpBytes);
@@ -311,13 +335,14 @@ GpuBuffer _executeContiguous1dComplexDft({
       batchCount: batchCount,
       transformLength: chirpM,
       inverse: false,
+      singlePrecision: singlePrecision,
     );
 
     final convFftTarget = identical(bFftBuffer, bPadBuffer)
         ? workPadBuffer
         : bPadBuffer;
     device.backend.dispatchComputePipeline(
-      shaderModule: buildFftComplexMulShader(),
+      shaderModule: buildFftComplexMulShader(singlePrecision: singlePrecision),
       buffers: [aPadBuffer, bFftBuffer, convFftTarget],
       uniforms: [chirpElements, 0, 0, 0],
       workgroupsX: _workgroupsFor(chirpElements),
@@ -330,11 +355,14 @@ GpuBuffer _executeContiguous1dComplexDft({
       batchCount: batchCount,
       transformLength: chirpM,
       inverse: true,
+      singlePrecision: singlePrecision,
     );
 
     final (invMHi, invMLo) = encodeDoubleFloatUniform(1.0 / chirpM);
     device.backend.dispatchComputePipeline(
-      shaderModule: buildFftBluesteinPostShader(),
+      shaderModule: buildFftBluesteinPostShader(
+        singlePrecision: singlePrecision,
+      ),
       buffers: [convTimeBuffer, scratchBuffer],
       uniforms: [
         batchCount,
@@ -356,7 +384,7 @@ GpuBuffer _executeContiguous1dComplexDft({
   }
 }
 
-GpuArray<Complex128> _fft1dComplexInternal(
+GpuArray<C> _fft1dComplexInternal<C extends DTypeTag>(
   GpuArray a, {
   required int? n,
   required int axis,
@@ -365,7 +393,7 @@ GpuArray<Complex128> _fft1dComplexInternal(
   required int? truncateBins,
   required bool conjugateInput,
   required bool conjugateOutput,
-  required GpuArray<Complex128>? out,
+  required GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a');
   final resolvedAxis = _resolveAxis(axis, a.ndim);
@@ -375,17 +403,19 @@ GpuArray<Complex128> _fft1dComplexInternal(
   }
   final outAxisLength = truncateBins ?? targetN;
   final outShape = List<int>.of(a.shape)..[resolvedAxis] = outAxisLength;
-  _validateOut(out, outShape, DType.complex128, a.device);
+  final single = _isSinglePrecisionFftDType(a.dtype);
+  final outDType = _fftComplexDType<C>(a.dtype);
+  _validateOut(out, outShape, outDType, a.device);
 
   final destination =
-      out ?? GpuArray.empty(outShape, DType.complex128, device: a.device);
+      out ?? GpuArray.empty(outShape, outDType, device: a.device);
   if (destination.size == 0) {
     return destination;
   }
 
   final layout = _computeAxisLayout(a, resolvedAxis);
   final workElements = layout.batchCount * targetN;
-  final workBytes = workElements * DType.complex128.byteWidth;
+  final workBytes = workElements * outDType.byteWidth;
 
   final gatheredBuffer = GpuBuffer.allocate(
     sizeInBytes: workBytes,
@@ -410,7 +440,7 @@ GpuArray<Complex128> _fft1dComplexInternal(
       ..._packVec8I32(layout.inputOuterStrides),
     ];
     a.device.backend.dispatchComputePipeline(
-      shaderModule: buildFftGatherShader(a.dtype),
+      shaderModule: buildFftGatherShader(a.dtype, singlePrecision: single),
       buffers: [a.buffer, gatheredBuffer],
       uniforms: gatherUniforms,
       workgroupsX: _workgroupsFor(workElements),
@@ -423,9 +453,12 @@ GpuArray<Complex128> _fft1dComplexInternal(
       batchCount: layout.batchCount,
       transformLength: targetN,
       inverse: inverse,
+      singlePrecision: single,
     );
 
-    final (scaleHi, scaleLo) = encodeDoubleFloatUniform(scaleFactor);
+    final (scaleHi, scaleLo) = single
+        ? (_float32Bits(scaleFactor), 0)
+        : encodeDoubleFloatUniform(scaleFactor);
     final outOuterStrides = _computeOutOuterStrides(destination, resolvedAxis);
     final scatterUniforms = <int>[
       layout.batchCount,
@@ -444,7 +477,7 @@ GpuArray<Complex128> _fft1dComplexInternal(
       ..._packVec8I32(outOuterStrides),
     ];
     a.device.backend.dispatchComputePipeline(
-      shaderModule: buildFftScatterComplexShader(),
+      shaderModule: buildFftScatterComplexShader(singlePrecision: single),
       buffers: [resultBuffer, destination.buffer],
       uniforms: scatterUniforms,
       workgroupsX: _workgroupsFor(layout.batchCount * outAxisLength),
@@ -456,13 +489,13 @@ GpuArray<Complex128> _fft1dComplexInternal(
   }
 }
 
-GpuArray<Float64> _hermitianToReal1dInternal(
+GpuArray<F> _hermitianToReal1dInternal<F extends DTypeTag>(
   GpuArray a, {
   required int? n,
   required int axis,
   required double scaleFactor,
   required bool conjugateInput,
-  required GpuArray<Float64>? out,
+  required GpuArray<F>? out,
 }) {
   _checkInputAlive(a, 'a');
   final resolvedAxis = _resolveAxis(axis, a.ndim);
@@ -472,10 +505,12 @@ GpuArray<Float64> _hermitianToReal1dInternal(
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
   final outShape = List<int>.of(a.shape)..[resolvedAxis] = targetN;
-  _validateOut(out, outShape, DType.float64, a.device);
+  final single = _isSinglePrecisionFftDType(a.dtype);
+  final outDType = _fftFloatDType<F>(a.dtype);
+  _validateOut(out, outShape, outDType, a.device);
 
   final destination =
-      out ?? GpuArray.empty(outShape, DType.float64, device: a.device);
+      out ?? GpuArray.empty(outShape, outDType, device: a.device);
   if (destination.size == 0) {
     return destination;
   }
@@ -486,17 +521,20 @@ GpuArray<Float64> _hermitianToReal1dInternal(
   final gatherBins = math.max(1, copyBins);
   final gatherElements = layout.batchCount * gatherBins;
   final workElements = layout.batchCount * targetN;
+  final complexBytes = single
+      ? DType.complex64.byteWidth
+      : DType.complex128.byteWidth;
 
   final gatherBuffer = GpuBuffer.allocate(
-    sizeInBytes: gatherElements * DType.complex128.byteWidth,
+    sizeInBytes: gatherElements * complexBytes,
     device: a.device,
   );
   final spectrumBuffer = GpuBuffer.allocate(
-    sizeInBytes: workElements * DType.complex128.byteWidth,
+    sizeInBytes: workElements * complexBytes,
     device: a.device,
   );
   final scratchBuffer = GpuBuffer.allocate(
-    sizeInBytes: workElements * DType.complex128.byteWidth,
+    sizeInBytes: workElements * complexBytes,
     device: a.device,
   );
   try {
@@ -513,14 +551,14 @@ GpuArray<Float64> _hermitianToReal1dInternal(
       ..._packVec8I32(layout.inputOuterStrides),
     ];
     a.device.backend.dispatchComputePipeline(
-      shaderModule: buildFftGatherShader(a.dtype),
+      shaderModule: buildFftGatherShader(a.dtype, singlePrecision: single),
       buffers: [a.buffer, gatherBuffer],
       uniforms: gatherUniforms,
       workgroupsX: _workgroupsFor(gatherElements),
     );
 
     a.device.backend.dispatchComputePipeline(
-      shaderModule: buildFftHermitianExpandShader(),
+      shaderModule: buildFftHermitianExpandShader(singlePrecision: single),
       buffers: [gatherBuffer, spectrumBuffer],
       uniforms: [layout.batchCount, gatherBins, targetN, halfN],
       workgroupsX: _workgroupsFor(workElements),
@@ -533,9 +571,12 @@ GpuArray<Float64> _hermitianToReal1dInternal(
       batchCount: layout.batchCount,
       transformLength: targetN,
       inverse: true,
+      singlePrecision: single,
     );
 
-    final (scaleHi, scaleLo) = encodeDoubleFloatUniform(scaleFactor);
+    final (scaleHi, scaleLo) = single
+        ? (_float32Bits(scaleFactor), 0)
+        : encodeDoubleFloatUniform(scaleFactor);
     final outOuterStrides = _computeOutOuterStrides(destination, resolvedAxis);
     final scatterUniforms = <int>[
       layout.batchCount,
@@ -550,7 +591,7 @@ GpuArray<Float64> _hermitianToReal1dInternal(
       ..._packVec8I32(outOuterStrides),
     ];
     a.device.backend.dispatchComputePipeline(
-      shaderModule: buildFftScatterRealShader(),
+      shaderModule: buildFftScatterRealShader(singlePrecision: single),
       buffers: [resultBuffer, destination.buffer],
       uniforms: scatterUniforms,
       workgroupsX: _workgroupsFor(workElements),
@@ -567,12 +608,20 @@ GpuArray<Float64> _hermitianToReal1dInternal(
 ///
 /// The transform length [n] must be positive when provided.
 /// If [out] is provided, the result is written into [out] and returned.
-GpuArray<Complex128> fft(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> fft<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final resolvedAxis = _resolveAxis(axis, a.ndim);
@@ -580,7 +629,7 @@ GpuArray<Complex128> fft(
   if (targetN <= 0) {
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  return _fft1dComplexInternal(
+  return _fft1dComplexInternal<C>(
     a,
     n: targetN,
     axis: resolvedAxis,
@@ -597,12 +646,20 @@ GpuArray<Complex128> fft(
 ///
 /// The transform length [n] must be positive when provided.
 /// If [out] is provided, the result is written into [out] and returned.
-GpuArray<Complex128> ifft(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> ifft<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final resolvedAxis = _resolveAxis(axis, a.ndim);
@@ -610,7 +667,7 @@ GpuArray<Complex128> ifft(
   if (targetN <= 0) {
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  return _fft1dComplexInternal(
+  return _fft1dComplexInternal<C>(
     a,
     n: targetN,
     axis: resolvedAxis,
@@ -627,12 +684,20 @@ GpuArray<Complex128> ifft(
 ///
 /// The input [a] must have a real-valued data type, and [n] must be positive when provided.
 /// Produces `(n ~/ 2) + 1` non-redundant Hermitian frequency bins along [axis].
-GpuArray<Complex128> rfft(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> rfft<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   if (a.dtype.isComplex) {
@@ -648,7 +713,7 @@ GpuArray<Complex128> rfft(
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
   final outBins = (targetN ~/ 2) + 1;
-  return _fft1dComplexInternal(
+  return _fft1dComplexInternal<C>(
     a,
     n: targetN,
     axis: resolvedAxis,
@@ -664,12 +729,20 @@ GpuArray<Complex128> rfft(
 /// Computes the inverse of [rfft], reconstructing a real-valued signal of length [n] along [axis].
 ///
 /// When [n] is omitted, defaults to `2 * (a.shape[axis] - 1)`. The resulting [n] must be positive.
-GpuArray<Float64> irfft(
-  GpuArray<DTypeTag> a, {
+GpuArray<F> irfft<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Float64>? out,
+  GpuArray<F>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final resolvedAxis = _resolveAxis(axis, a.ndim);
@@ -677,7 +750,7 @@ GpuArray<Float64> irfft(
   if (targetN <= 0) {
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  return _hermitianToReal1dInternal(
+  return _hermitianToReal1dInternal<F>(
     a,
     n: targetN,
     axis: resolvedAxis,
@@ -691,12 +764,20 @@ GpuArray<Float64> irfft(
 /// producing a real-valued spectrum of length [n] along [axis].
 ///
 /// When [n] is omitted, defaults to `2 * (a.shape[axis] - 1)`. The resulting [n] must be positive.
-GpuArray<Float64> hfft(
-  GpuArray<DTypeTag> a, {
+GpuArray<F> hfft<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Float64>? out,
+  GpuArray<F>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final resolvedAxis = _resolveAxis(axis, a.ndim);
@@ -704,7 +785,7 @@ GpuArray<Float64> hfft(
   if (targetN <= 0) {
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
-  return _hermitianToReal1dInternal(
+  return _hermitianToReal1dInternal<F>(
     a,
     n: targetN,
     axis: resolvedAxis,
@@ -718,12 +799,20 @@ GpuArray<Float64> hfft(
 /// Hermitian-symmetric complex coefficients along [axis].
 ///
 /// The input [a] must have a real-valued data type, and [n] must be positive when provided.
-GpuArray<Complex128> ihfft(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> ihfft<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   if (a.dtype.isComplex) {
@@ -739,7 +828,7 @@ GpuArray<Complex128> ihfft(
     throw ArgumentError.value(n, 'n', 'Must be positive');
   }
   final outBins = (targetN ~/ 2) + 1;
-  return _fft1dComplexInternal(
+  return _fft1dComplexInternal<C>(
     a,
     n: targetN,
     axis: resolvedAxis,
@@ -828,12 +917,20 @@ GpuArray<Complex128> ihfft(
 /// Computes the N-dimensional discrete Fourier Transform over [axes] on the GPU.
 ///
 /// When [axes] is omitted, transforms all axes (or the last `s.length` axes when [s] is given).
-GpuArray<Complex128> fftn(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> fftn<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final plan = _resolveNdTransformAxesAndLengths(
@@ -847,21 +944,26 @@ GpuArray<Complex128> fftn(
   for (var i = 0; i < plan.resolvedAxes.length; i++) {
     outShape[plan.resolvedAxes[i]] = plan.lengths[i];
   }
-  _validateOut(out, outShape, DType.complex128, a.device);
+  final outDType = _fftComplexDType<C>(a.dtype);
+  _validateOut(out, outShape, outDType, a.device);
 
   return ResourceScope.scope(() {
     GpuArray<DTypeTag> current = a;
     for (var i = 0; i < plan.resolvedAxes.length; i++) {
       final isLast = i == plan.resolvedAxes.length - 1;
-      current = fft(
+      current = _fft1dComplexInternal<C>(
         current,
         n: plan.lengths[i],
         axis: plan.resolvedAxes[i],
-        norm: norm,
+        scaleFactor: norm.forwardFactor(plan.lengths[i]),
+        inverse: false,
+        truncateBins: null,
+        conjugateInput: false,
+        conjugateOutput: false,
         out: isLast ? out : null,
       );
     }
-    final result = current as GpuArray<Complex128>;
+    final result = current as GpuArray<C>;
     if (out == null) {
       result.detachToParentScope();
     }
@@ -872,12 +974,20 @@ GpuArray<Complex128> fftn(
 /// Computes the N-dimensional inverse discrete Fourier Transform over [axes] on the GPU.
 ///
 /// When [axes] is omitted, transforms all axes (or the last `s.length` axes when [s] is given).
-GpuArray<Complex128> ifftn(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> ifftn<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final plan = _resolveNdTransformAxesAndLengths(
@@ -891,21 +1001,26 @@ GpuArray<Complex128> ifftn(
   for (var i = 0; i < plan.resolvedAxes.length; i++) {
     outShape[plan.resolvedAxes[i]] = plan.lengths[i];
   }
-  _validateOut(out, outShape, DType.complex128, a.device);
+  final outDType = _fftComplexDType<C>(a.dtype);
+  _validateOut(out, outShape, outDType, a.device);
 
   return ResourceScope.scope(() {
     GpuArray<DTypeTag> current = a;
     for (var i = 0; i < plan.resolvedAxes.length; i++) {
       final isLast = i == plan.resolvedAxes.length - 1;
-      current = ifft(
+      current = _fft1dComplexInternal<C>(
         current,
         n: plan.lengths[i],
         axis: plan.resolvedAxes[i],
-        norm: norm,
+        scaleFactor: norm.inverseFactor(plan.lengths[i]),
+        inverse: true,
+        truncateBins: null,
+        conjugateInput: false,
+        conjugateOutput: false,
         out: isLast ? out : null,
       );
     }
-    final result = current as GpuArray<Complex128>;
+    final result = current as GpuArray<C>;
     if (out == null) {
       result.detachToParentScope();
     }
@@ -916,12 +1031,20 @@ GpuArray<Complex128> ifftn(
 /// Computes the N-dimensional discrete Fourier Transform of a real-valued input [a] on the GPU.
 ///
 /// Transforms the last axis in [axes] via [rfft] and all preceding axes via [fft].
-GpuArray<Complex128> rfftn(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> rfftn<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   if (a.dtype.isComplex) {
@@ -945,10 +1068,11 @@ GpuArray<Complex128> rfftn(
   final lastAxisPosition = plan.resolvedAxes.length - 1;
   outShape[plan.resolvedAxes[lastAxisPosition]] =
       (plan.lengths[lastAxisPosition] ~/ 2) + 1;
-  _validateOut(out, outShape, DType.complex128, a.device);
+  final outDType = _fftComplexDType<C>(a.dtype);
+  _validateOut(out, outShape, outDType, a.device);
 
   return ResourceScope.scope(() {
-    GpuArray<Complex128> current = rfft(
+    GpuArray<C> current = rfft(
       a,
       n: plan.lengths[lastAxisPosition],
       axis: plan.resolvedAxes[lastAxisPosition],
@@ -957,11 +1081,15 @@ GpuArray<Complex128> rfftn(
     );
     for (var i = 0; i < lastAxisPosition; i++) {
       final isFinalPass = i == lastAxisPosition - 1;
-      current = fft(
+      current = _fft1dComplexInternal<C>(
         current,
         n: plan.lengths[i],
         axis: plan.resolvedAxes[i],
-        norm: norm,
+        scaleFactor: norm.forwardFactor(plan.lengths[i]),
+        inverse: false,
+        truncateBins: null,
+        conjugateInput: false,
+        conjugateOutput: false,
         out: isFinalPass ? out : null,
       );
     }
@@ -975,12 +1103,20 @@ GpuArray<Complex128> rfftn(
 /// Computes the inverse of [rfftn], reconstructing a real-valued N-D array on the GPU.
 ///
 /// Transforms all axes in [axes] except the last via [ifft], and the last axis via [irfft].
-GpuArray<Float64> irfftn(
-  GpuArray<DTypeTag> a, {
+GpuArray<F> irfftn<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
-  GpuArray<Float64>? out,
+  GpuArray<F>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   final plan = _resolveNdTransformAxesAndLengths(
@@ -994,24 +1130,31 @@ GpuArray<Float64> irfftn(
   for (var i = 0; i < plan.resolvedAxes.length; i++) {
     outShape[plan.resolvedAxes[i]] = plan.lengths[i];
   }
-  _validateOut(out, outShape, DType.float64, a.device);
+  final outDType = _fftFloatDType<F>(a.dtype);
+  _validateOut(out, outShape, outDType, a.device);
 
   return ResourceScope.scope(() {
     GpuArray<DTypeTag> current = a;
     final lastAxisPosition = plan.resolvedAxes.length - 1;
     for (var i = 0; i < lastAxisPosition; i++) {
-      current = ifft(
+      current = _fft1dComplexInternal<C>(
         current,
         n: plan.lengths[i],
         axis: plan.resolvedAxes[i],
-        norm: norm,
+        scaleFactor: norm.inverseFactor(plan.lengths[i]),
+        inverse: true,
+        truncateBins: null,
+        conjugateInput: false,
+        conjugateOutput: false,
+        out: null,
       );
     }
-    final result = irfft(
+    final result = _hermitianToReal1dInternal<F>(
       current,
       n: plan.lengths[lastAxisPosition],
       axis: plan.resolvedAxes[lastAxisPosition],
-      norm: norm,
+      scaleFactor: norm.inverseFactor(plan.lengths[lastAxisPosition]),
+      conjugateInput: false,
       out: out,
     );
     if (out == null) {
@@ -1024,12 +1167,20 @@ GpuArray<Float64> irfftn(
 /// Computes the 2D discrete Fourier Transform over [axes] on the GPU.
 ///
 /// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
-GpuArray<Complex128> fft2(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> fft2<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   _resolveNdTransformAxesAndLengths(
@@ -1045,12 +1196,20 @@ GpuArray<Complex128> fft2(
 /// Computes the 2D inverse discrete Fourier Transform over [axes] on the GPU.
 ///
 /// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
-GpuArray<Complex128> ifft2(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> ifft2<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   _resolveNdTransformAxesAndLengths(
@@ -1066,12 +1225,20 @@ GpuArray<Complex128> ifft2(
 /// Computes the 2D discrete Fourier Transform of a real-valued array [a] over [axes] on the GPU.
 ///
 /// The input [a] must be real-valued with at least 2 dimensions, and [axes] must contain 2 axes.
-GpuArray<Complex128> rfft2(
-  GpuArray<DTypeTag> a, {
+GpuArray<C> rfft2<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
-  GpuArray<Complex128>? out,
+  GpuArray<C>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   _resolveNdTransformAxesAndLengths(
@@ -1087,12 +1254,20 @@ GpuArray<Complex128> rfft2(
 /// Computes the inverse of [rfft2], reconstructing a 2D real-valued array over [axes] on the GPU.
 ///
 /// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
-GpuArray<Float64> irfft2(
-  GpuArray<DTypeTag> a, {
+GpuArray<F> irfft2<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
-  GpuArray<Float64>? out,
+  GpuArray<F>? out,
 }) {
   _checkInputAlive(a, 'a', out);
   _resolveNdTransformAxesAndLengths(

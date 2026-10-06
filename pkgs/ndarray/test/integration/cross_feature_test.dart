@@ -559,7 +559,7 @@ void main() {
             DType.float64,
           );
           final ev = sort(real(eigvals(comp)));
-          final rts = sort(real(roots(p) as NDArray<Complex128>));
+          final rts = sort(real(roots(p)));
           expect(allClose(ev, rts, atol: 1e-11), isTrue);
           expect(
             allClose(
@@ -572,13 +572,13 @@ void main() {
 
           // Vandermonde lstsq vs polyfit
           final x = linspace<Float64>(0.0, 3.0, 6, dtype: DType.float64);
-          final y = polyval<Float64, Float64, Float64>(p, x);
+          final y = polyval(p, x);
           final x2 = square(x);
           final x3 = multiply<Float64>(x2, x);
           final onesCol = NDArray.ones([6], DType.float64);
           final V = stack([x3, x2, x, onesCol], axis: 1);
           final lsCoeffs = lstsq<Float64, Float64, Float64>(V, y).x;
-          final pfCoeffs = polyfit<Float64, Float64, Float64, Float64>(x, y, 3);
+          final pfCoeffs = polyfit(x, y, 3);
           expect(allClose(lsCoeffs, pfCoeffs, atol: 1e-10), isTrue);
         });
       },
@@ -677,8 +677,8 @@ void main() {
         );
         final noisy = add<Float64>(clean, noise);
 
-        final coeffs = polyfit<Float64, Float64, Float64, Float64>(x, noisy, 6);
-        final fitted = polyval<Float64, Float64, Float64>(coeffs, x);
+        final coeffs = polyfit(x, noisy, 6);
+        final fitted = polyval(coeffs, x);
         expect(
           max(abs<Float64>(subtract<Float64>(fitted, clean))).scalar,
           lessThan(5e-3),

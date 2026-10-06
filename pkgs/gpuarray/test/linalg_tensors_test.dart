@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/linalg.dart' hide diagonal, trace;
 import 'package:test/test.dart';
 
 void main() {
@@ -173,6 +174,51 @@ void main() {
         outCross.dispose();
         vectorB.dispose();
         vectorA.dispose();
+      }
+    });
+
+    test('Float32 tensor contractions preserve Float32 dtype (F12)', () {
+      final a = GpuArray.fromList(<double>[1.0, 2.0, 3.0], [3], DType.float32);
+      final b = GpuArray.fromList(<double>[4.0, 5.0, 6.0], [3], DType.float32);
+      final m = GpuArray.fromList(
+        <double>[1.0, 2.0, 3.0, 4.0],
+        [2, 2],
+        DType.float32,
+      );
+      try {
+        final vdotRes = vdot(a, b);
+        final innerRes = inner(a, b);
+        final outerRes = outer(a, b);
+        final kronRes = kron(a, b);
+        final crossRes = cross(a, b);
+        final tdRes = tensordot(m, m, axes: 1);
+        final einRes = einsum('ij,jk->ik', <GpuArray<Float32>>[m, m]);
+        final mdRes = multiDot(<GpuArray<Float32>>[m, m]);
+        try {
+          expect(vdotRes.dtype, equals(DType.float32));
+          expect(vdotRes.scalar as double, closeTo(32.0, 1e-5));
+          expect(innerRes.dtype, equals(DType.float32));
+          expect(outerRes.dtype, equals(DType.float32));
+          expect(kronRes.dtype, equals(DType.float32));
+          expect(crossRes.dtype, equals(DType.float32));
+          expect(crossRes.toList(), equals(<double>[-3.0, 6.0, -3.0]));
+          expect(tdRes.dtype, equals(DType.float32));
+          expect(einRes.dtype, equals(DType.float32));
+          expect(mdRes.dtype, equals(DType.float32));
+        } finally {
+          vdotRes.dispose();
+          innerRes.dispose();
+          outerRes.dispose();
+          kronRes.dispose();
+          crossRes.dispose();
+          tdRes.dispose();
+          einRes.dispose();
+          mdRes.dispose();
+        }
+      } finally {
+        m.dispose();
+        b.dispose();
+        a.dispose();
       }
     });
   });

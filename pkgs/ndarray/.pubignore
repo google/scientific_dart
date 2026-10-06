@@ -4,6 +4,8 @@ build/
 pubspec.lock
 coverage/
 scratch/
+benchmark/
+test/meta/
 PRODUCTION_READINESS_REVIEW.md
 TODO.md
 third_party/highway/hwy_build/

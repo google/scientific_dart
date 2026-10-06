@@ -14,6 +14,7 @@
 
 import 'package:test/test.dart';
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/linalg.dart' hide diagonal, trace;
 import 'package:resource_scope/resource_scope.dart';
 
 void main() {
@@ -217,6 +218,38 @@ void main() {
           () => a.matmul(b, out: badOut),
           throwsA(isA<GpuShapeMismatchException>()),
         );
+      });
+    });
+
+    test('Float32 matmul and dot execute in single precision (F12)', () {
+      ResourceScope.scope(() {
+        final a = GpuArray.fromList(
+          <double>[1.0, 2.0, 3.0, 4.0],
+          [2, 2],
+          DType.float32,
+        );
+        final b = GpuArray.fromList(
+          <double>[2.0, 0.0, 1.0, 2.0],
+          [2, 2],
+          DType.float32,
+        );
+        final prod = matmul(a, b);
+        expect(prod.dtype, equals(DType.float32));
+        expect(prod.toList(), equals(<double>[4.0, 4.0, 10.0, 8.0]));
+
+        final v1 = GpuArray.fromList(
+          <double>[1.0, 2.0, 3.0],
+          [3],
+          DType.float32,
+        );
+        final v2 = GpuArray.fromList(
+          <double>[4.0, 5.0, 6.0],
+          [3],
+          DType.float32,
+        );
+        final d = dot(v1, v2);
+        expect(d.dtype, equals(DType.float32));
+        expect(d.scalar as double, closeTo(32.0, 1e-5));
       });
     });
   });

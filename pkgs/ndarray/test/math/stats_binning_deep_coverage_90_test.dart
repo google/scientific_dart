@@ -2161,7 +2161,7 @@ void main() {
           final sCpx = sum(emptyCpx);
           expect(sCpx.scalar, equals(Complex(0.0, 0.0)));
           final mCpx = mean(emptyCpx);
-          expect((mCpx.scalar as Complex).real.isNaN, isTrue);
+          expect(mCpx.scalar.real.isNaN, isTrue);
 
           // Boolean sum on empty
           final emptyBool = NDArray<Boolean>.fromList([], [0], DType.boolean);
@@ -2174,7 +2174,7 @@ void main() {
           final sFloat = sum(emptyFloat);
           expect(sFloat.scalar, equals(0.0));
           final mFloat = mean(emptyFloat);
-          expect((mFloat.scalar as double).isNaN, isTrue);
+          expect(mFloat.scalar.isNaN, isTrue);
 
           // Int sum on empty
           final emptyInt = NDArray.fromList([], [0], DType.int32);

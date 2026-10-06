@@ -13,7 +13,9 @@
 // limitations under the License.
 
 import 'package:gpuarray/nn.dart' as nn;
+import 'package:gpuarray/src/device.dart';
 import 'package:gpuarray/src/dtype.dart';
+import 'package:gpuarray/src/exceptions.dart';
 import 'package:gpuarray/src/gpu_array.dart' hide ResourceScope, ScopedResource;
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
@@ -442,5 +444,380 @@ void main() {
         });
       },
     );
+
+    test(
+      'F15: Generic <T extends DTypeTag> forward and Float32 support across all nn layers',
+      () {
+        ResourceScope.scope(() {
+          final linear = nn.Linear(4, 4, dtype: DType.float32);
+          final ln = nn.LayerNorm([4], dtype: DType.float32);
+          final rms = nn.RMSNorm([4], dtype: DType.float32);
+          final bn = nn.BatchNorm1d(4, dtype: DType.float32);
+          final swiglu = nn.SwiGLU(4, 8, dtype: DType.float32);
+          final geglu = nn.GeGLU(4, 8, dtype: DType.float32);
+          final seq = nn.Sequential([
+            linear,
+            ln,
+            nn.ReLU(),
+            nn.Sigmoid(),
+            nn.Tanh(),
+            nn.GELU(),
+            nn.SiLU(),
+            nn.Swish(),
+            nn.LeakyReLU(negativeSlope: 0.1),
+            nn.ELU(alpha: 1.0),
+            nn.Softplus(),
+            rms,
+            swiglu,
+            geglu,
+            nn.Softmax(),
+            nn.LogSoftmax(),
+          ]);
+
+          final x = GpuArray<Float32>.fromList(
+            [1.0, -1.0, 0.5, 2.0, -0.5, 1.5, -2.0, 0.25],
+            [2, 4],
+            DType.float32,
+            requiresGrad: true,
+          );
+
+          final GpuArray<Float32> out = seq(x);
+          expect(out.dtype, equals(DType.float32));
+          expect(out.shape, equals([2, 4]));
+
+          final GpuArray<Float32> bnOut = bn(out);
+          expect(bnOut.dtype, equals(DType.float32));
+          expect(bnOut.shape, equals([2, 4]));
+
+          final target = GpuArray<Float32>.zeros([2, 4], DType.float32);
+          final GpuArray<Float32> loss = nn.mseLoss(bnOut, target);
+          expect(loss.dtype, equals(DType.float32));
+          loss.backward();
+
+          expect(x.grad, isNotNull);
+          expect(x.grad!.dtype, equals(DType.float32));
+          expect(linear.weight.grad, isNotNull);
+          expect(linear.weight.grad!.dtype, equals(DType.float32));
+
+          // Conv2d Float32
+          final conv = nn.Conv2d(1, 2, 3, padding: 1, dtype: DType.float32);
+          final img = GpuArray<Float32>.ones(
+            [1, 1, 4, 4],
+            DType.float32,
+            requiresGrad: true,
+          );
+          final GpuArray<Float32> convOut = conv(img);
+          expect(convOut.dtype, equals(DType.float32));
+          expect(convOut.shape, equals([1, 2, 4, 4]));
+          convOut.sum().backward();
+          expect(conv.weight.grad!.dtype, equals(DType.float32));
+
+          // Embedding Float32
+          final emb = nn.Embedding(6, 4, dtype: DType.float32);
+          final idx = GpuArray<Int32>.fromList([1, 2, 1], [3], DType.int32);
+          final GpuArray<Float32> embOut = emb.forward<Float32>(idx);
+          expect(embOut.dtype, equals(DType.float32));
+          expect(embOut.shape, equals([3, 4]));
+          embOut.sum().backward();
+          expect(emb.weight.grad!.dtype, equals(DType.float32));
+
+          // MultiheadAttention, TransformerEncoderLayer, TransformerDecoderLayer Float32
+          final mha = nn.MultiheadAttention(4, 2, dtype: DType.float32);
+          final seqIn = GpuArray<Float32>.ones(
+            [1, 3, 4],
+            DType.float32,
+            requiresGrad: true,
+          );
+          final GpuArray<Float32> mhaOut = mha(seqIn);
+          expect(mhaOut.dtype, equals(DType.float32));
+          expect(mhaOut.shape, equals([1, 3, 4]));
+
+          final enc = nn.TransformerEncoderLayer(
+            4,
+            2,
+            dimFeedforward: 8,
+            dtype: DType.float32,
+          );
+          final GpuArray<Float32> encOut = enc(seqIn);
+          expect(encOut.dtype, equals(DType.float32));
+          expect(encOut.shape, equals([1, 3, 4]));
+
+          final dec = nn.TransformerDecoderLayer(
+            4,
+            2,
+            dimFeedforward: 8,
+            dtype: DType.float32,
+          );
+          final GpuArray<Float32> decOut = dec(seqIn, memory: encOut);
+          expect(decOut.dtype, equals(DType.float32));
+          expect(decOut.shape, equals([1, 3, 4]));
+          decOut.sum().backward();
+          expect(seqIn.grad, isNotNull);
+          expect(seqIn.grad!.dtype, equals(DType.float32));
+        });
+      },
+    );
+
+    test(
+      'F16: Single-pass fused WGSL activations and mseLoss with zero buffer leaks',
+      () {
+        final device = GpuDevice.defaultDevice;
+        final baselineBuffers = device.activeBufferCount;
+
+        ResourceScope.scope(() {
+          final x = GpuArray<Float64>.fromList(
+            [-1.5, -0.5, 0.0, 0.5, 1.5],
+            [5],
+            DType.float64,
+            requiresGrad: true,
+          );
+
+          // Test all fused activations forward + backward
+          final activations = <GpuArray<Float64> Function(GpuArray<Float64>)>[
+            (t) => nn.relu(t),
+            (t) => nn.sigmoid(t),
+            (t) => nn.tanh(t),
+            (t) => nn.gelu(t),
+            (t) => nn.silu(t),
+            (t) => nn.swish(t),
+            (t) => nn.leakyRelu(t, negativeSlope: 0.05),
+            (t) => nn.elu(t, alpha: 1.0),
+            (t) => nn.softplus(t, beta: 1.0),
+          ];
+
+          for (final act in activations) {
+            x.zeroGrad();
+            final y = act(x);
+            expect(y.shape, equals([5]));
+            expect(y.requiresGrad, isTrue);
+            final target = GpuArray<Float64>.zeros([5], DType.float64);
+            final loss = nn.mseLoss(y, target);
+            loss.backward();
+            expect(x.grad, isNotNull);
+            final grads = x.grad!.toList().cast<double>();
+            expect(grads.every((v) => v.isFinite), isTrue);
+          }
+
+          // Verify single-pass forward in noGrad allocates strictly 1 output buffer
+          nn.noGrad(() {
+            final beforeAct = device.activeBufferCount;
+            final y = nn.gelu(x);
+            expect(device.activeBufferCount, equals(beforeAct + 1));
+            y.dispose();
+            expect(device.activeBufferCount, equals(beforeAct));
+
+            // Contiguous out: parameter allocates 0 intermediate buffers
+            final preallocated = GpuArray<Float64>.empty([5], DType.float64);
+            final beforeOutAct = device.activeBufferCount;
+            final yOut = nn.silu(x, out: preallocated);
+            expect(identical(yOut, preallocated), isTrue);
+            expect(device.activeBufferCount, equals(beforeOutAct));
+            preallocated.dispose();
+          });
+
+          x.zeroGrad();
+        });
+
+        expect(device.activeBufferCount, equals(baselineBuffers));
+      },
+    );
+
+    test(
+      'F17: Single-pass in-place fused WGSL optimizers survive nested scopes with zero buffer leaks',
+      () {
+        final device = GpuDevice.defaultDevice;
+        final baselineBuffers = device.activeBufferCount;
+
+        ResourceScope.scope(() {
+          final w1 = GpuArray<Float32>.fromList(
+            [1.0, -2.0, 3.0, -4.0],
+            [4],
+            DType.float32,
+            requiresGrad: true,
+          );
+          final w2 = GpuArray<Float64>.fromList(
+            [2.0, -1.0, 0.5, -0.5],
+            [4],
+            DType.float64,
+            requiresGrad: true,
+          );
+
+          final sgd = nn.SGD(
+            [w1],
+            lr: 0.05,
+            momentum: 0.9,
+            weightDecay: 1e-4,
+            nesterov: true,
+          );
+          final adamw = nn.AdamW([w2], lr: 0.05, weightDecay: 0.01);
+
+          // Step 1 inside a nested scope: lazy state tensors must survive scope exit
+          ResourceScope.scope(() {
+            sgd.zeroGrad();
+            adamw.zeroGrad();
+            (w1 * w1).sum().backward();
+            (w2 * w2).sum().backward();
+            sgd.step();
+            adamw.step();
+          });
+
+          // Step 2 outside the nested scope: verify state buffers are still valid
+          // and zero new buffers are allocated on subsequent steps
+          ResourceScope.scope(() {
+            sgd.zeroGrad();
+            adamw.zeroGrad();
+            (w1 * w1).sum().backward();
+            (w2 * w2).sum().backward();
+            final beforeStep = device.activeBufferCount;
+            sgd.step();
+            adamw.step();
+            expect(device.activeBufferCount, equals(beforeStep));
+          });
+
+          expect(w1.toList().cast<double>()[0], lessThan(1.0));
+          expect(w2.toList().cast<double>()[0], lessThan(2.0));
+
+          sgd.dispose();
+          adamw.dispose();
+          w1.zeroGrad();
+          w2.zeroGrad();
+        });
+
+        expect(device.activeBufferCount, equals(baselineBuffers));
+      },
+    );
+
+    test(
+      'F19: Module lifecycle (buffers, stateDict, safetensors, to(device), dispose) and gradient clipping',
+      () {
+        ResourceScope.scope(() {
+          final model = nn.Sequential([
+            nn.Linear(3, 4, dtype: DType.float32),
+            nn.BatchNorm1d(4, dtype: DType.float32),
+            nn.Linear(4, 2, dtype: DType.float32),
+          ]);
+
+          // Verify buffers and namedBuffers from BatchNorm1d
+          expect(model.buffers.length, equals(2));
+          expect(
+            model.namedBuffers().keys,
+            containsAll(['1.runningMean', '1.runningVar']),
+          );
+
+          // Verify stateDict includes both parameters and buffers
+          final sd = model.stateDict();
+          expect(
+            sd.keys,
+            containsAll([
+              '0.weight',
+              '0.bias',
+              '1.weight',
+              '1.bias',
+              '1.runningMean',
+              '1.runningVar',
+              '2.weight',
+              '2.bias',
+            ]),
+          );
+
+          // Save to safetensors bytes and load into a fresh model
+          final bytes = model.saveToSafetensors();
+          final model2 = nn.Sequential([
+            nn.Linear(3, 4, dtype: DType.float32),
+            nn.BatchNorm1d(4, dtype: DType.float32),
+            nn.Linear(4, 2, dtype: DType.float32),
+          ]);
+          model2.loadFromSafetensors(bytes);
+
+          final x = GpuArray<Float32>.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [2, 3],
+            DType.float32,
+          );
+          model.eval();
+          model2.eval();
+          expect(model2(x).toList(), equals(model(x).toList()));
+
+          // Shape mismatch in loadStateDict throws GpuShapeMismatchException
+          final badSd = Map<String, GpuArray<DTypeTag>>.of(sd);
+          badSd['0.weight'] = GpuArray<Float32>.zeros([2, 2], DType.float32);
+          expect(
+            () => model2.loadStateDict(badSd),
+            throwsA(isA<GpuShapeMismatchException>()),
+          );
+
+          // Non-strict loadStateDict ignores unexpected/missing keys
+          final partialSd = <String, GpuArray<DTypeTag>>{
+            '0.weight': sd['0.weight']!,
+            'unexpected.key': GpuArray<Float32>.zeros([1], DType.float32),
+          };
+          model2.loadStateDict(partialSd, strict: false);
+
+          // In-place to(device) updates parameters and buffers in place
+          model2.to(GpuDevice.defaultDevice);
+
+          // Gradient clipping: clipGradNorm (L2 and L-inf) and clipGradValue
+          model.train();
+          final out = model(x);
+          (out * 100.0).sum().backward();
+          final totalNorm = nn.clipGradNorm(model.parameters, 1.0);
+          expect(totalNorm, greaterThan(1.0));
+          // Re-computing norm after clipping should be <= 1.0 + 1e-4
+          final clippedNorm = nn.clipGradNorm(model.parameters, 100.0);
+          expect(clippedNorm, closeTo(1.0, 1e-3));
+
+          // L-inf norm clipping
+          final infNorm = nn.clipGradNorm(
+            model.parameters,
+            0.1,
+            normType: double.infinity,
+          );
+          expect(infNorm, greaterThan(0.0));
+
+          // clipGradValue
+          nn.clipGradValue(model.parameters, 0.05);
+          for (final p in model.parameters) {
+            if (p.grad != null) {
+              for (final v in p.grad!.toList().cast<double>()) {
+                expect(v.abs(), lessThanOrEqualTo(0.05 + 1e-6));
+              }
+            }
+          }
+
+          // Module.dispose() marks module and submodules disposed and throws StateError on forward
+          expect(model2.isDisposed, isFalse);
+          model2.dispose();
+          expect(model2.isDisposed, isTrue);
+          expect(() => model2(x), throwsStateError);
+        });
+      },
+    );
+
+    test('F20: enableGrad re-enables autograd recording inside noGrad', () {
+      ResourceScope.scope(() {
+        final x = GpuArray<Float64>.fromList(
+          [2.0, 3.0],
+          [2],
+          DType.float64,
+          requiresGrad: true,
+        );
+        nn.noGrad(() {
+          expect(nn.isGradEnabled, isFalse);
+          final yNoGrad = nn.relu(x);
+          expect(yNoGrad.requiresGrad, isFalse);
+
+          nn.enableGrad(() {
+            expect(nn.isGradEnabled, isTrue);
+            final yGrad = (x * 3.0).sum();
+            expect(yGrad.requiresGrad, isTrue);
+            yGrad.backward();
+            expect(x.grad!.toList(), equals([3.0, 3.0]));
+          });
+
+          expect(nn.isGradEnabled, isFalse);
+        });
+        expect(nn.isGradEnabled, isTrue);
+      });
+    });
   });
 }

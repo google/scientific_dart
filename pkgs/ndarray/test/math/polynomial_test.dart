@@ -155,7 +155,7 @@ void main() {
       NDArray.scope(() {
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float64);
-        final y = chebval(c, x);
+        final y = chebval(x, c);
         expect(y.getCell([0]), closeTo(-2.0, 1e-5));
         expect(y.getCell([1]), closeTo(0.5, 1e-5));
         expect(y.getCell([2]), closeTo(6.0, 1e-5));
@@ -173,7 +173,7 @@ void main() {
       NDArray.scope(() {
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float64);
-        final y = legval(c, x);
+        final y = legval(x, c);
         expect(y.getCell([0]), closeTo(-0.5, 1e-5));
         expect(y.getCell([1]), closeTo(1.625, 1e-5));
         expect(y.getCell([2]), closeTo(6.0, 1e-5));
@@ -191,7 +191,7 @@ void main() {
       NDArray.scope(() {
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float64);
-        final y = hermval(c, x);
+        final y = hermval(x, c);
         expect(y.getCell([0]), closeTo(-5.0, 1e-5));
         expect(y.getCell([1]), closeTo(0.0, 1e-5));
         expect(y.getCell([2]), closeTo(11.0, 1e-5));
@@ -214,7 +214,7 @@ void main() {
         // p(1.0) = 1 + 0 + 3(-0.5) = -0.5
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final x = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float64);
-        final y = lagval(c, x);
+        final y = lagval(x, c);
         expect(y.getCell([0]), closeTo(6.0, 1e-5));
         expect(y.getCell([1]), closeTo(2.375, 1e-5));
         expect(y.getCell([2]), closeTo(-0.5, 1e-5));
@@ -236,25 +236,25 @@ void main() {
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float32);
         final x = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float32);
 
-        final yCheb = chebval(c, x);
+        final yCheb = chebval(x, c);
         expect(yCheb.dtype, equals(DType.float32));
         expect(yCheb.getCell([0]), closeTo(-2.0, 1e-4));
         expect(yCheb.getCell([1]), closeTo(0.5, 1e-4));
         expect(yCheb.getCell([2]), closeTo(6.0, 1e-4));
 
-        final yLeg = legval(c, x);
+        final yLeg = legval(x, c);
         expect(yLeg.dtype, equals(DType.float32));
         expect(yLeg.getCell([0]), closeTo(-0.5, 1e-4));
         expect(yLeg.getCell([1]), closeTo(1.625, 1e-4));
         expect(yLeg.getCell([2]), closeTo(6.0, 1e-4));
 
-        final yHerm = hermval(c, x);
+        final yHerm = hermval(x, c);
         expect(yHerm.dtype, equals(DType.float32));
         expect(yHerm.getCell([0]), closeTo(-5.0, 1e-4));
         expect(yHerm.getCell([1]), closeTo(0.0, 1e-4));
         expect(yHerm.getCell([2]), closeTo(11.0, 1e-4));
 
-        final yLag = lagval(c, x);
+        final yLag = lagval(x, c);
         expect(yLag.dtype, equals(DType.float32));
         expect(yLag.getCell([0]), closeTo(6.0, 1e-4));
         expect(yLag.getCell([1]), closeTo(2.375, 1e-4));
@@ -275,11 +275,11 @@ void main() {
           DType.complex128,
         );
 
-        final yCheb = chebval(c, x);
+        final yCheb = chebval(x, c);
         expect(yCheb.dtype, equals(DType.complex128));
         expect(yCheb.shape, equals([2]));
         // T_0(i) = 1, T_1(i) = i, T_2(i) = 2(i)^2 - 1 = -3
-        // chebval([1, 2, 3], i) = 1(1) + 2(i) + 3(-3) = -8 + 2i
+        // chebval(i, [1, 2, 3]) = 1(1) + 2(i) + 3(-3) = -8 + 2i
         expect(yCheb.getCell([0]).real, closeTo(-8.0, 1e-5));
         expect(yCheb.getCell([0]).imag, closeTo(2.0, 1e-5));
 
@@ -300,17 +300,12 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final yCheb2d = chebval(c, x2d);
+        final yCheb2d = chebval(x2d, c);
         expect(yCheb2d.shape, equals([2, 2]));
         expect(yCheb2d.getCell([0, 0]), closeTo(-2.0, 1e-5));
         expect(yCheb2d.getCell([0, 1]), closeTo(0.5, 1e-5));
         expect(yCheb2d.getCell([1, 0]), closeTo(6.0, 1e-5));
         expect(yCheb2d.getCell([1, 1]), closeTo(-2.0, 1e-5));
-
-        // Flexible argument ordering (x, c)
-        final yChebFlipped = chebval(x2d, c);
-        expect(yChebFlipped.shape, equals([2, 2]));
-        expect(yChebFlipped.getCell([0, 1]), closeTo(0.5, 1e-5));
 
         // Strided (non-contiguous) input
         final xFull = NDArray.fromList(
@@ -323,14 +318,14 @@ void main() {
         ]); // [0.0, 0.5, 1.0], stride = 2
         expect(xSlice.isContiguous, isFalse);
 
-        final yStrided = chebval(c, xSlice);
+        final yStrided = chebval(xSlice, c);
         expect(yStrided.getCell([0]), closeTo(-2.0, 1e-5));
         expect(yStrided.getCell([1]), closeTo(0.5, 1e-5));
         expect(yStrided.getCell([2]), closeTo(6.0, 1e-5));
 
         // Out buffer with strided array
         final outBuf = NDArray.zeros([3], DType.float64);
-        final res = chebval(c, xSlice, out: outBuf);
+        final res = chebval(xSlice, c, out: outBuf);
         expect(identical(res, outBuf), isTrue);
         expect(outBuf.getCell([0]), closeTo(-2.0, 1e-5));
         expect(outBuf.getCell([1]), closeTo(0.5, 1e-5));
@@ -343,22 +338,22 @@ void main() {
         // Degree 0 (single coefficient)
         final c0 = NDArray.fromList([42.0], [1], DType.float64);
         final x = NDArray.fromList([0.0, 0.5, 1.0], [3], DType.float64);
-        expect(chebval(c0, x).getCell([0]), equals(42.0));
-        expect(chebval(c0, x).getCell([1]), equals(42.0));
-        expect(legval(c0, x).getCell([0]), equals(42.0));
-        expect(hermval(c0, x).getCell([0]), equals(42.0));
-        expect(lagval(c0, x).getCell([0]), equals(42.0));
+        expect(chebval(x, c0).getCell([0]), equals(42.0));
+        expect(chebval(x, c0).getCell([1]), equals(42.0));
+        expect(legval(x, c0).getCell([0]), equals(42.0));
+        expect(hermval(x, c0).getCell([0]), equals(42.0));
+        expect(lagval(x, c0).getCell([0]), equals(42.0));
 
         // Degree 1 (two coefficients c0 + c1*Basis_1(x))
         final c1 = NDArray.fromList([3.0, 5.0], [2], DType.float64);
         // cheb: 3 + 5*x
-        expect(chebval(c1, x).getCell([1]), closeTo(5.5, 1e-5));
+        expect(chebval(x, c1).getCell([1]), closeTo(5.5, 1e-5));
         // leg: 3 + 5*x
-        expect(legval(c1, x).getCell([1]), closeTo(5.5, 1e-5));
+        expect(legval(x, c1).getCell([1]), closeTo(5.5, 1e-5));
         // herm: 3 + 5*(2x) = 3 + 10x
-        expect(hermval(c1, x).getCell([1]), closeTo(8.0, 1e-5));
+        expect(hermval(x, c1).getCell([1]), closeTo(8.0, 1e-5));
         // lag: 3 + 5*(1-x) = 3 + 2.5 = 5.5
-        expect(lagval(c1, x).getCell([1]), closeTo(5.5, 1e-5));
+        expect(lagval(x, c1).getCell([1]), closeTo(5.5, 1e-5));
       });
     });
   });

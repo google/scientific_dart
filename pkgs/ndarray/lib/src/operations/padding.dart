@@ -113,7 +113,9 @@ final class PadWidth {
     final axes = _axes;
     if (axes != null) {
       if (axes.length != rank) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          axes,
+          'padWidth',
           'Length of padding widths (${axes.length}) must match array rank ($rank)',
         );
       }
@@ -161,7 +163,9 @@ final class PadValues<T extends DTypeTag> {
     final axes = _axes;
     if (axes != null) {
       if (axes.length != rank) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          axes,
+          'constantValues',
           'Length of padding values (${axes.length}) must match array rank ($rank)',
         );
       }
@@ -232,7 +236,9 @@ final class StatLength {
     final axes = _axes;
     if (axes != null) {
       if (axes.length != rank) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          axes,
+          'statLength',
           'Length of stat lengths (${axes.length}) must match array rank ($rank)',
         );
       }
@@ -319,7 +325,11 @@ NDArray<T> pad<T extends DTypeTag>(
 
   final rank = array.rank;
   if (rank == 0) {
-    throw ArgumentError('Cannot pad a 0-dimensional array.');
+    throw ArgumentError.value(
+      array,
+      'array',
+      'Cannot pad a 0-dimensional array',
+    );
   }
 
   // Normalize parameters
@@ -342,20 +352,27 @@ NDArray<T> pad<T extends DTypeTag>(
   });
 
   if (out != null) {
+    validateOutBuffer(out);
     if (out.dtype != array.dtype) {
-      throw ArgumentError(
-        'Output array dtype (${out.dtype}) must match source array dtype (${array.dtype}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Output array dtype (${out.dtype}) must match source array dtype (${array.dtype})',
       );
     }
     if (out.rank != rank) {
-      throw ArgumentError(
-        'Output array rank (${out.rank}) must match expected rank ($rank).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Output array rank (${out.rank}) must match expected rank ($rank)',
       );
     }
     for (var i = 0; i < rank; i++) {
       if (out.shape[i] != finalShape[i]) {
-        throw ArgumentError(
-          'Output array shape at dim $i (${out.shape[i]}) must match expected shape (${finalShape[i]}).',
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Output array shape at dim $i (${out.shape[i]}) must match expected shape (${finalShape[i]})',
         );
       }
     }
@@ -366,8 +383,10 @@ NDArray<T> pad<T extends DTypeTag>(
     if ((before > 0 || after > 0) &&
         array.shape[i] == 0 &&
         mode != PadMode.constant) {
-      throw ArgumentError(
-        'Cannot pad empty axis $i of shape ${array.shape} with mode $mode.',
+      throw ArgumentError.value(
+        array,
+        'array',
+        'Cannot pad empty axis $i of shape ${array.shape} with mode $mode',
       );
     }
   }
@@ -429,6 +448,16 @@ ffi.Pointer<ffi.Int16> _copyInt16s(List<int> list) {
   return ptr;
 }
 
+ffi.Pointer<ffi.Uint32> _copyUint32s(List<int> list) {
+  final ptr = ScratchArena.allocate<ffi.Uint32>(
+    list.length * ffi.sizeOf<ffi.Uint32>(),
+  );
+  for (var i = 0; i < list.length; i++) {
+    ptr[i] = list[i];
+  }
+  return ptr;
+}
+
 ffi.Pointer<ffi.Uint8> _copyUint8s(List<int> list) {
   final ptr = ScratchArena.allocate<ffi.Uint8>(
     list.length * ffi.sizeOf<ffi.Uint8>(),
@@ -462,6 +491,11 @@ _prepareConstants(
   final beforeVals = [for (final v in normConstantValues) v.$1];
   final afterVals = [for (final v in normConstantValues) v.$2];
 
+  int toIntVal(Object? e) => e is int ? e : (e as num).toInt();
+  bool toBoolVal(Object? e) => e is bool ? e : (e as num) != 0;
+  Complex toComplexVal(Object? e) =>
+      e is Complex ? e : Complex((e as num).toDouble(), 0.0);
+
   final (cbPtr, caPtr) = switch (dtype) {
     DType.float64 => (
       ScratchArena.copyDoubles([
@@ -480,36 +514,52 @@ _prepareConstants(
       ]).cast<ffi.Void>(),
     ),
     DType.int64 => (
-      ScratchArena.copyInt64s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      ScratchArena.copyInt64s(afterVals.cast<int>()).cast<ffi.Void>(),
+      ScratchArena.copyInt64s([
+        for (final e in beforeVals) toIntVal(e),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyInt64s([
+        for (final e in afterVals) toIntVal(e),
+      ]).cast<ffi.Void>(),
     ),
     DType.int32 => (
-      ScratchArena.copyInt32s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      ScratchArena.copyInt32s(afterVals.cast<int>()).cast<ffi.Void>(),
+      ScratchArena.copyInt32s([
+        for (final e in beforeVals) toIntVal(e),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyInt32s([
+        for (final e in afterVals) toIntVal(e),
+      ]).cast<ffi.Void>(),
     ),
     DType.int16 => (
-      _copyInt16s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      _copyInt16s(afterVals.cast<int>()).cast<ffi.Void>(),
+      _copyInt16s([for (final e in beforeVals) toIntVal(e)]).cast<ffi.Void>(),
+      _copyInt16s([for (final e in afterVals) toIntVal(e)]).cast<ffi.Void>(),
     ),
     DType.uint8 => (
-      _copyUint8s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      _copyUint8s(afterVals.cast<int>()).cast<ffi.Void>(),
+      _copyUint8s([for (final e in beforeVals) toIntVal(e)]).cast<ffi.Void>(),
+      _copyUint8s([for (final e in afterVals) toIntVal(e)]).cast<ffi.Void>(),
     ),
     DType.boolean => (
-      ScratchArena.copyBools(beforeVals.cast<bool>()).cast<ffi.Void>(),
-      ScratchArena.copyBools(afterVals.cast<bool>()).cast<ffi.Void>(),
+      ScratchArena.copyBools([
+        for (final e in beforeVals) toBoolVal(e),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyBools([
+        for (final e in afterVals) toBoolVal(e),
+      ]).cast<ffi.Void>(),
     ),
     DType.complex128 => (
-      ScratchArena.copyComplexes(beforeVals.cast<Complex>()).cast<ffi.Void>(),
-      ScratchArena.copyComplexes(afterVals.cast<Complex>()).cast<ffi.Void>(),
+      ScratchArena.copyComplexes([
+        for (final e in beforeVals) toComplexVal(e),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyComplexes([
+        for (final e in afterVals) toComplexVal(e),
+      ]).cast<ffi.Void>(),
     ),
     DType.complex64 => (
-      ScratchArena.copyFloatComplexes(
-        beforeVals.cast<Complex>(),
-      ).cast<ffi.Void>(),
-      ScratchArena.copyFloatComplexes(
-        afterVals.cast<Complex>(),
-      ).cast<ffi.Void>(),
+      ScratchArena.copyFloatComplexes([
+        for (final e in beforeVals) toComplexVal(e),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyFloatComplexes([
+        for (final e in afterVals) toComplexVal(e),
+      ]).cast<ffi.Void>(),
     ),
     DType.float16 => (
       _copyInt16s([
@@ -532,20 +582,24 @@ _prepareConstants(
       ]).cast<ffi.Void>(),
     ),
     DType.int8 => (
-      _copyUint8s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      _copyUint8s(afterVals.cast<int>()).cast<ffi.Void>(),
+      _copyUint8s([for (final e in beforeVals) toIntVal(e)]).cast<ffi.Void>(),
+      _copyUint8s([for (final e in afterVals) toIntVal(e)]).cast<ffi.Void>(),
     ),
     DType.uint64 => (
-      ScratchArena.copyInt64s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      ScratchArena.copyInt64s(afterVals.cast<int>()).cast<ffi.Void>(),
+      ScratchArena.copyInt64s([
+        for (final e in beforeVals) toIntVal(e),
+      ]).cast<ffi.Void>(),
+      ScratchArena.copyInt64s([
+        for (final e in afterVals) toIntVal(e),
+      ]).cast<ffi.Void>(),
     ),
     DType.uint32 => (
-      ScratchArena.copyInt32s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      ScratchArena.copyInt32s(afterVals.cast<int>()).cast<ffi.Void>(),
+      _copyUint32s([for (final e in beforeVals) toIntVal(e)]).cast<ffi.Void>(),
+      _copyUint32s([for (final e in afterVals) toIntVal(e)]).cast<ffi.Void>(),
     ),
     DType.uint16 => (
-      _copyInt16s(beforeVals.cast<int>()).cast<ffi.Void>(),
-      _copyInt16s(afterVals.cast<int>()).cast<ffi.Void>(),
+      _copyInt16s([for (final e in beforeVals) toIntVal(e)]).cast<ffi.Void>(),
+      _copyInt16s([for (final e in afterVals) toIntVal(e)]).cast<ffi.Void>(),
     ),
   };
 
@@ -908,10 +962,12 @@ void _padAxis<T extends DTypeTag>(
           padBefore,
           padAfter,
           modeInt,
-          constantBefore as int,
-          constantAfter as int,
-          endBefore as int,
-          endAfter as int,
+          constantBefore is int
+              ? constantBefore
+              : (constantBefore as num).toInt(),
+          constantAfter is int ? constantAfter : (constantAfter as num).toInt(),
+          endBefore is int ? endBefore : (endBefore as num).toInt(),
+          endAfter is int ? endAfter : (endAfter as num).toInt(),
           statLengthBefore,
           statLengthAfter,
         );
@@ -927,10 +983,12 @@ void _padAxis<T extends DTypeTag>(
           padBefore,
           padAfter,
           modeInt,
-          constantBefore as int,
-          constantAfter as int,
-          endBefore as int,
-          endAfter as int,
+          constantBefore is int
+              ? constantBefore
+              : (constantBefore as num).toInt(),
+          constantAfter is int ? constantAfter : (constantAfter as num).toInt(),
+          endBefore is int ? endBefore : (endBefore as num).toInt(),
+          endAfter is int ? endAfter : (endAfter as num).toInt(),
           statLengthBefore,
           statLengthAfter,
         );
@@ -940,16 +998,19 @@ void _padAxis<T extends DTypeTag>(
         int ca = 0;
         int eb = 0;
         int ea = 0;
+        int toBoolBit(Object? v) =>
+            v is bool ? (v ? 1 : 0) : ((v as num) != 0 ? 1 : 0);
+        int toIntVal(Object? v) => v is int ? v : (v as num).toInt();
         if (src.dtype == DType.boolean) {
-          cb = (constantBefore as bool) ? 1 : 0;
-          ca = (constantAfter as bool) ? 1 : 0;
-          eb = (endBefore as bool) ? 1 : 0;
-          ea = (endAfter as bool) ? 1 : 0;
+          cb = toBoolBit(constantBefore);
+          ca = toBoolBit(constantAfter);
+          eb = toBoolBit(endBefore);
+          ea = toBoolBit(endAfter);
         } else {
-          cb = constantBefore as int;
-          ca = constantAfter as int;
-          eb = endBefore as int;
-          ea = endAfter as int;
+          cb = toIntVal(constantBefore);
+          ca = toIntVal(constantAfter);
+          eb = toIntVal(endBefore);
+          ea = toIntVal(endAfter);
         }
         bindings.pad_axis_uint8(
           src.pointer.cast(),
@@ -983,10 +1044,12 @@ void _padAxis<T extends DTypeTag>(
           ffi.sizeOf<bindings.cpx_t>(),
         );
 
-        final cb = constantBefore as Complex;
-        final ca = constantAfter as Complex;
-        final eb = endBefore as Complex;
-        final ea = endAfter as Complex;
+        Complex toComplexVal(Object? v) =>
+            v is Complex ? v : Complex((v as num).toDouble(), 0.0);
+        final cb = toComplexVal(constantBefore);
+        final ca = toComplexVal(constantAfter);
+        final eb = toComplexVal(endBefore);
+        final ea = toComplexVal(endAfter);
 
         cbPtr.ref.r = cb.real;
         cbPtr.ref.i = cb.imag;
@@ -1029,10 +1092,12 @@ void _padAxis<T extends DTypeTag>(
           ffi.sizeOf<bindings.cpx_f_t>(),
         );
 
-        final cb = constantBefore as Complex;
-        final ca = constantAfter as Complex;
-        final eb = endBefore as Complex;
-        final ea = endAfter as Complex;
+        Complex toComplexVal(Object? v) =>
+            v is Complex ? v : Complex((v as num).toDouble(), 0.0);
+        final cb = toComplexVal(constantBefore);
+        final ca = toComplexVal(constantAfter);
+        final eb = toComplexVal(endBefore);
+        final ea = toComplexVal(endAfter);
 
         cbPtr.ref.r = cb.real;
         cbPtr.ref.i = cb.imag;
@@ -1128,6 +1193,7 @@ void _padAxis<T extends DTypeTag>(
           castedDest.copy(out: dest);
         });
     }
+    checkNativeOom();
   } finally {
     ScratchArena.reset(marker);
   }

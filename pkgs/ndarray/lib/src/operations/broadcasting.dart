@@ -92,7 +92,9 @@ BroadcastResult broadcastBinaryStrides(
       }
       // newStridesB remains 0 for this dimension, effectively stretching it
     } else {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        shapeB,
+        'shapeB',
         'Shapes $shapeA and $shapeB are not compatible for broadcasting',
       );
     }
@@ -184,9 +186,11 @@ NDArray<T> broadcastTo<T extends DTypeTag>(
   }
 
   if (targetShape.length < shapeA.length) {
-    throw ArgumentError(
+    throw ArgumentError.value(
+      targetShape,
+      'targetShape',
       'Cannot broadcast to a shape with fewer dimensions: '
-      'input shape $shapeA, target shape $targetShape',
+          'input shape $shapeA, target shape $targetShape',
     );
   }
 
@@ -209,7 +213,9 @@ NDArray<T> broadcastTo<T extends DTypeTag>(
     } else if (dimA == 1) {
       newStrides[idxT] = 0;
     } else {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        targetShape,
+        'targetShape',
         'Shape $shapeA cannot be broadcast to target shape $targetShape',
       );
     }

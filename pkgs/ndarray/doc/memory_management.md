@@ -171,11 +171,11 @@ NDArray<Float64> getReshapedSamplesZeroCopy() {
 
 ---
 
-## Maximum Element Count Limit ($2^{31} - 1$)
+## Maximum Element Count Limit ($2^{63} - 1$)
 
-Individual `NDArray` allocations support up to **$2^{31} - 1$ (2,147,483,647) total elements**. Attempting to allocate an array whose total element count exceeds this limit throws an `UnsupportedError`.
+Individual `NDArray` allocations support up to **$2^{63} - 1$ (9,223,372,036,854,775,807) total elements** (bounded by 64-bit signed integer indexing and available physical/virtual memory). Attempting to allocate an array whose total byte size overflows or exceeds native allocator limits throws an `OutOfMemoryError` or `ArgumentError`.
 
-This limit is inherent to native SIMD and strided kernel indexing: C/C++ ufunc loops, Google Highway vectorization routines, and OpenBLAS/LAPACK matrix routines index strides, offsets, and loop dimensions using 32-bit signed integers (`ffi.Int` / `int32_t`).
+All native SIMD and strided kernels in `package:ndarray`—including C/C++ ufunc loops, Google Highway vectorization routines, and sorting/indexing routines—index shapes, strides, offsets, and loop dimensions using 64-bit signed integers (`ffi.Int64` / `int64_t`).
 
 ---
 

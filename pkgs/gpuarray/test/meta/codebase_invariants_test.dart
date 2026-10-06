@@ -230,11 +230,78 @@ void main() {
           'lib/random.dart',
           'lib/autograd.dart',
           'lib/nn.dart',
+          'lib/jit.dart',
+          'lib/wgsl.dart',
           'lib/serialization.dart',
+          'lib/safetensors.dart',
         ];
+        final coreBarrelParsed = parseString(
+          content: File('${pkgRoot.path}/lib/gpuarray.dart').readAsStringSync(),
+        );
+        final forbiddenCoreExportPattern = RegExp(
+          r'(?:^|/)(?:nn|linalg|fft|random|jit|wgsl|serialization|safetensors)(?:\.dart|/|$)',
+        );
+        for (final directive in coreBarrelParsed.unit.directives) {
+          if (directive is ExportDirective) {
+            final uri = directive.uri.stringValue ?? '';
+            if (forbiddenCoreExportPattern.hasMatch(uri)) {
+              violations.add(
+                'lib/gpuarray.dart: must not export domain module "$uri"',
+              );
+            }
+          }
+        }
         final libContext = collection.contextFor(
           Directory('${pkgRoot.path}/lib').absolute.path,
         );
+        const forbiddenCoreBarrelSymbols = <String>{
+          // Domain symbols that belong exclusively in their domain barrels
+          'Module',
+          'Linear',
+          'Conv2d',
+          'Optimizer',
+          'SGD',
+          'Adam',
+          'AdamW',
+          'relu',
+          'mseLoss',
+          'crossEntropy',
+          'svd',
+          'eigh',
+          'rfft',
+          'irfft',
+          'GpuRandom',
+          'SafetensorsFile',
+          'WgslJitCompiler',
+          'CompiledWgslKernel',
+          'Expr',
+        };
+        const removedLegacyAliases = <String>{
+          'no_grad',
+          'log_softmax',
+          'mse_loss',
+          'l1_loss',
+          'binary_cross_entropy',
+          'cross_entropy',
+          'batch_norm_1d',
+          'scaled_dot_product_attention',
+          'MultiHeadAttention',
+          'svdvals',
+          'standard_normal',
+          'take_along_axis',
+          'put_along_axis',
+          'column_stack',
+          'array_split',
+          'expand_dims',
+          'broadcast_to',
+          'broadcast_arrays',
+          'atleast_1d',
+          'atleast_2d',
+          'atleast_3d',
+          'var_',
+          'count_nonzero',
+          'nan_to_num',
+        };
         for (final barrelRel in barrels) {
           final barrelPath = File('${pkgRoot.path}/$barrelRel').absolute.path;
           final libRes = await libContext.currentSession.getResolvedLibrary(
@@ -250,7 +317,31 @@ void main() {
           }
           for (final entry in exportNames.entries) {
             final name = entry.key;
+            final cleanName = name.endsWith('=')
+                ? name.substring(0, name.length - 1)
+                : name;
             final el = entry.value;
+            if (barrelRel == 'lib/gpuarray.dart' &&
+                forbiddenCoreBarrelSymbols.contains(cleanName)) {
+              violations.add(
+                '$barrelRel: must not re-export domain symbol "$cleanName"',
+              );
+            }
+            if (removedLegacyAliases.contains(cleanName)) {
+              violations.add(
+                '$barrelRel: must not export removed legacy alias "$cleanName"',
+              );
+            }
+            if (cleanName.contains('_')) {
+              violations.add(
+                '$barrelRel: must not export snake_case symbol "$cleanName"',
+              );
+            }
+            if (el is ClassElement && cleanName.endsWith('Backward')) {
+              violations.add(
+                '$barrelRel: must not export internal autograd node "$cleanName"',
+              );
+            }
             if (el.metadata.annotations.any((a) => a.isInternal)) {
               violations.add(
                 '$barrelRel: exported symbol "$name" (${el.kind.displayName}) is annotated @internal',
@@ -267,6 +358,36 @@ void main() {
                 violations.add(
                   '$barrelRel: exported symbol "$name" (${el.kind.displayName}) is missing /// dartdoc',
                 );
+              }
+              if (el is InstanceElement) {
+                for (final method in el.methods) {
+                  if (method.isPublic &&
+                      !method.metadata.annotations.any((a) => a.isInternal) &&
+                      (method.name?.contains('_') ?? false)) {
+                    violations.add(
+                      '$barrelRel: exported ${el.displayName}.${method.name} uses snake_case',
+                    );
+                  }
+                }
+                for (final getter in el.getters) {
+                  if (getter.isPublic &&
+                      !getter.metadata.annotations.any((a) => a.isInternal) &&
+                      (getter.name?.contains('_') ?? false)) {
+                    violations.add(
+                      '$barrelRel: exported ${el.displayName}.${getter.name} uses snake_case',
+                    );
+                  }
+                }
+                for (final setter in el.setters) {
+                  final setterName = setter.name?.replaceAll('=', '') ?? '';
+                  if (setter.isPublic &&
+                      !setter.metadata.annotations.any((a) => a.isInternal) &&
+                      setterName.contains('_')) {
+                    violations.add(
+                      '$barrelRel: exported ${el.displayName}.$setterName= uses snake_case',
+                    );
+                  }
+                }
               }
             }
           }

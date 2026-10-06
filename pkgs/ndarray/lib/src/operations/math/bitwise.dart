@@ -195,8 +195,14 @@ NDArray<T> bitwiseAnd<T extends DTypeTag>(
         ScratchArena.reset(marker);
       }
     }
+    if (out != null && !identical(result, out)) {
+      result.copy(out: out);
+    }
   } finally {
     prep.maskHolder.dispose();
+    if (out != null && !identical(result, out)) {
+      result.dispose();
+    }
     if (aCast != a) {
       aCast.dispose();
     }
@@ -205,7 +211,7 @@ NDArray<T> bitwiseAnd<T extends DTypeTag>(
     }
   }
 
-  return result;
+  return out ?? result;
 }
 
 /// Computes the bitwise OR of two arrays, element-wise.
@@ -384,8 +390,14 @@ NDArray<T> bitwiseOr<T extends DTypeTag>(
         ScratchArena.reset(marker);
       }
     }
+    if (out != null && !identical(result, out)) {
+      result.copy(out: out);
+    }
   } finally {
     prep.maskHolder.dispose();
+    if (out != null && !identical(result, out)) {
+      result.dispose();
+    }
     if (aCast != a) {
       aCast.dispose();
     }
@@ -394,7 +406,7 @@ NDArray<T> bitwiseOr<T extends DTypeTag>(
     }
   }
 
-  return result;
+  return out ?? result;
 }
 
 /// Computes the bitwise XOR of two arrays, element-wise.
@@ -573,8 +585,14 @@ NDArray<T> bitwiseXor<T extends DTypeTag>(
         ScratchArena.reset(marker);
       }
     }
+    if (out != null && !identical(result, out)) {
+      result.copy(out: out);
+    }
   } finally {
     prep.maskHolder.dispose();
+    if (out != null && !identical(result, out)) {
+      result.dispose();
+    }
     if (aCast != a) {
       aCast.dispose();
     }
@@ -583,7 +601,7 @@ NDArray<T> bitwiseXor<T extends DTypeTag>(
     }
   }
 
-  return result;
+  return out ?? result;
 }
 
 /// Shift the bits of an integer to the left, element-wise.
@@ -762,8 +780,14 @@ NDArray<T> leftShift<T extends DTypeTag>(
         ScratchArena.reset(marker);
       }
     }
+    if (out != null && !identical(result, out)) {
+      result.copy(out: out);
+    }
   } finally {
     prep.maskHolder.dispose();
+    if (out != null && !identical(result, out)) {
+      result.dispose();
+    }
     if (aCast != a) {
       aCast.dispose();
     }
@@ -772,7 +796,7 @@ NDArray<T> leftShift<T extends DTypeTag>(
     }
   }
 
-  return result;
+  return out ?? result;
 }
 
 int _rightShiftScalar(int a, int b, DType dtype) {
@@ -1011,8 +1035,14 @@ NDArray<T> rightShift<T extends DTypeTag>(
         ScratchArena.reset(marker);
       }
     }
+    if (out != null && !identical(result, out)) {
+      result.copy(out: out);
+    }
   } finally {
     prep.maskHolder.dispose();
+    if (out != null && !identical(result, out)) {
+      result.dispose();
+    }
     if (aCast != a) {
       aCast.dispose();
     }
@@ -1021,7 +1051,7 @@ NDArray<T> rightShift<T extends DTypeTag>(
     }
   }
 
-  return result;
+  return out ?? result;
 }
 
 /// Computes bitwise inversion, or bitwise NOT, element-wise.
@@ -1059,18 +1089,31 @@ NDArray<T> invert<T extends DTypeTag>(
   }
 
   if (!a.dtype.isInteger && a.dtype != DType.boolean) {
-    throw ArgumentError(
-      'Bitwise operations are only supported for integer and boolean data types.',
+    throw ArgumentError.value(
+      a.dtype,
+      'a.dtype',
+      'Must be integer or boolean data type for bitwise operations',
     );
   }
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for invert.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for invert',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<T>.create(a.shape, a.dtype);
+        invert<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final maskHolder = prepareMask(where, a.shape);
@@ -1246,8 +1289,10 @@ _prepareBinaryBitwise<T extends DTypeTag>(
   }
 
   if (!a.dtype.isInteger || !b.dtype.isInteger) {
-    throw ArgumentError(
-      'Bitwise operations are only supported for integer data types.',
+    throw ArgumentError.value(
+      !a.dtype.isInteger ? a.dtype : b.dtype,
+      !a.dtype.isInteger ? 'a.dtype' : 'b.dtype',
+      'Must be integer data type for bitwise operations',
     );
   }
 
@@ -1256,11 +1301,12 @@ _prepareBinaryBitwise<T extends DTypeTag>(
   final commonShape = preBroadcast.shape;
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, commonShape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for $opName.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, commonShape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for $opName',
       );
     }
   }
@@ -1279,13 +1325,22 @@ _prepareBinaryBitwise<T extends DTypeTag>(
     final stridesA = broadcastResult.stridesA;
     final stridesB = broadcastResult.stridesB;
 
-    final NDArray<T> result =
-        out ??
-        NDArray<T>.create(
-          commonShape,
-          targetDType as DType<T>,
-          zeroInit: where != null,
-        );
+    final bool needsTempOut =
+        out != null &&
+        (sharesMemory(aCast, out) ||
+            sharesMemory(bCast, out) ||
+            (where != null && sharesMemory(where, out)));
+
+    final NDArray<T> result = needsTempOut
+        ? (where != null
+              ? out.copy()
+              : NDArray<T>.create(commonShape, targetDType as DType<T>))
+        : (out ??
+              NDArray<T>.create(
+                commonShape,
+                targetDType as DType<T>,
+                zeroInit: where != null,
+              ));
 
     final isContig =
         aCast.isContiguous &&

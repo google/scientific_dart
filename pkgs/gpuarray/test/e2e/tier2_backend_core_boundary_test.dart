@@ -805,6 +805,26 @@ void main() {
           });
         },
       );
+
+      test('F10.B6: R4 statistical reduction and ufunc boundary checks', () {
+        ResourceScope.scope(() {
+          final vec2 = GpuArray<Float32>.fromList(
+            [1.0, 2.0],
+            [2],
+            DType.float32,
+          );
+          expect((variance(vec2, ddof: 2).scalar as num).isNaN, isTrue);
+          expect((std(vec2, ddof: 2).scalar as num).isNaN, isTrue);
+          expect(() => variance(vec2, axis: 3), throwsA(isA<RangeError>()));
+          expect(() => vec2.clip(null, null), throwsArgumentError);
+          expect(() => isClose(vec2, 'invalid'), throwsArgumentError);
+
+          final empty = GpuArray<Float32>.zeros([0], DType.float32);
+          expect(() => ptp(empty), throwsStateError);
+          expect(() => nanmin(empty), throwsStateError);
+          expect(() => nanmax(empty), throwsStateError);
+        });
+      });
     });
   });
 }

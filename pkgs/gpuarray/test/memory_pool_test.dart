@@ -17,6 +17,7 @@ import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 import 'package:resource_scope/resource_scope.dart';
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/wgsl.dart';
 
 class TrackingBackend extends GpuBackend {
   final WgpuNativeBackend _inner = WgpuNativeBackend.createSync();

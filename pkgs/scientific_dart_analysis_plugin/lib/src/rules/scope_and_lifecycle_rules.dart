@@ -106,16 +106,81 @@ final class _UnescapedScopeReturnVisitor extends SimpleAstVisitor<void> {
 bool _isUnescapedLocalResource(
   Expression expr,
   FunctionExpression scopeCallback,
-  SubtreeDeclarations decls,
-) {
+  SubtreeDeclarations decls, {
+  int? escapeOffset,
+  int depth = 0,
+}) {
+  if (depth > 6) return false;
+  final effectiveOffset = escapeOffset ?? expr.offset;
   final unwrapped = unwrapParenthesized(expr);
   if (!containsScopedResourceType(unwrapped.staticType)) return false;
   if (isDirectlyDetachedExpression(unwrapped)) return false;
 
+  if (unwrapped is ConditionalExpression) {
+    return _isUnescapedLocalResource(
+          unwrapped.thenExpression,
+          scopeCallback,
+          decls,
+          escapeOffset: effectiveOffset,
+          depth: depth + 1,
+        ) ||
+        _isUnescapedLocalResource(
+          unwrapped.elseExpression,
+          scopeCallback,
+          decls,
+          escapeOffset: effectiveOffset,
+          depth: depth + 1,
+        );
+  }
+
+  if (unwrapped is BinaryExpression &&
+      unwrapped.operator.type == TokenType.QUESTION_QUESTION) {
+    return _isUnescapedLocalResource(
+          unwrapped.leftOperand,
+          scopeCallback,
+          decls,
+          escapeOffset: effectiveOffset,
+          depth: depth + 1,
+        ) ||
+        _isUnescapedLocalResource(
+          unwrapped.rightOperand,
+          scopeCallback,
+          decls,
+          escapeOffset: effectiveOffset,
+          depth: depth + 1,
+        );
+  }
+
+  if (unwrapped is AsExpression) {
+    return _isUnescapedLocalResource(
+      unwrapped.expression,
+      scopeCallback,
+      decls,
+      escapeOffset: effectiveOffset,
+      depth: depth + 1,
+    );
+  }
+
+  if (unwrapped is CascadeExpression) {
+    return _isUnescapedLocalResource(
+      unwrapped.target,
+      scopeCallback,
+      decls,
+      escapeOffset: effectiveOffset,
+      depth: depth + 1,
+    );
+  }
+
   if (unwrapped is RecordLiteral) {
     for (final field in unwrapped.fields) {
       final valueExpr = field.fieldExpression;
-      if (_isUnescapedLocalResource(valueExpr, scopeCallback, decls)) {
+      if (_isUnescapedLocalResource(
+        valueExpr,
+        scopeCallback,
+        decls,
+        escapeOffset: effectiveOffset,
+        depth: depth + 1,
+      )) {
         return true;
       }
     }
@@ -125,7 +190,13 @@ bool _isUnescapedLocalResource(
   if (unwrapped is ListLiteral) {
     for (final elem in unwrapped.elements) {
       if (elem is Expression &&
-          _isUnescapedLocalResource(elem, scopeCallback, decls)) {
+          _isUnescapedLocalResource(
+            elem,
+            scopeCallback,
+            decls,
+            escapeOffset: effectiveOffset,
+            depth: depth + 1,
+          )) {
         return true;
       }
     }
@@ -137,19 +208,65 @@ bool _isUnescapedLocalResource(
   final trace = traceRootArrayAndView(unwrapped, decls);
   if (trace.throughView) {
     final root = trace.rootElement;
-    if (root == null || !decls.elements.contains(root)) return false;
-    return _isUndetachedFreshLocal(root, scopeCallback, decls, expr.offset);
+    if (root != null) {
+      if (!decls.elements.contains(root)) return false;
+      return _isUndetachedFreshLocal(
+        root,
+        scopeCallback,
+        decls,
+        effectiveOffset,
+        depth: depth + 1,
+      );
+    }
+    // View directly over an inline allocation: e.g. `zeros([4]).slice(...)`.
+    return _isViewOverInlineAllocation(unwrapped);
   }
 
   if (unwrapped is SimpleIdentifier) {
     final element = unwrapped.element;
     if (element == null) return false;
-    return _isUndetachedFreshLocal(element, scopeCallback, decls, expr.offset);
+    return _isUndetachedFreshLocal(
+      element,
+      scopeCallback,
+      decls,
+      effectiveOffset,
+      depth: depth + 1,
+    );
   }
 
   // Direct allocations: constructors, operators, and non-view calls without
   // `out:`.
   return isFreshScopedResourceAllocation(unwrapped);
+}
+
+bool _isViewOverInlineAllocation(Expression expr, {int depth = 0}) {
+  if (depth > 5) return false;
+  final unwrapped = unwrapParenthesized(expr);
+  if (unwrapped is MethodInvocation) {
+    final name = unwrapped.methodName.name;
+    if (kAlwaysViewNames.contains(name)) {
+      final target =
+          unwrapped.realTarget ??
+          (unwrapped.argumentList.arguments.isNotEmpty
+              ? unwrapped.argumentList.arguments.first.argumentExpression
+              : null);
+      if (target != null) {
+        return isFreshScopedResourceAllocation(target) ||
+            _isViewOverInlineAllocation(target, depth: depth + 1);
+      }
+    }
+  } else if (unwrapped is PropertyAccess &&
+      (unwrapped.propertyName.name == 'T' ||
+          unwrapped.propertyName.name == 'transposed')) {
+    return isFreshScopedResourceAllocation(unwrapped.realTarget) ||
+        _isViewOverInlineAllocation(unwrapped.realTarget, depth: depth + 1);
+  } else if (unwrapped is PrefixedIdentifier &&
+      (unwrapped.identifier.name == 'T' ||
+          unwrapped.identifier.name == 'transposed')) {
+    return isFreshScopedResourceAllocation(unwrapped.prefix) ||
+        _isViewOverInlineAllocation(unwrapped.prefix, depth: depth + 1);
+  }
+  return false;
 }
 
 /// Whether [element] is a local of [scopeCallback] initialized with a fresh
@@ -158,16 +275,27 @@ bool _isUndetachedFreshLocal(
   Element element,
   FunctionExpression scopeCallback,
   SubtreeDeclarations decls,
-  int offset,
-) {
+  int offset, {
+  int depth = 0,
+}) {
+  if (depth > 6) return false;
   // Declared outside the scope callback (e.g. an `out` parameter or outer
   // variable): the inner scope does not dispose it.
   if (!decls.elements.contains(element)) return false;
   final init = decls.variableDeclarations[element]?.initializer;
   if (init == null) return false;
   if (isDirectlyDetachedExpression(init)) return false;
-  if (!isFreshScopedResourceAllocation(init)) return false;
-  return !wasElementDetachedBefore(element, scopeCallback.body, offset);
+  if (wasElementDetachedBefore(element, scopeCallback.body, offset)) {
+    return false;
+  }
+  if (isFreshScopedResourceAllocation(init)) return true;
+  return _isUnescapedLocalResource(
+    init,
+    scopeCallback,
+    decls,
+    escapeOffset: offset,
+    depth: depth + 1,
+  );
 }
 
 final class _ScopeBodyEscapeVisitor extends RecursiveAstVisitor<void> {
@@ -201,16 +329,37 @@ final class _ScopeBodyEscapeVisitor extends RecursiveAstVisitor<void> {
 
   @override
   void visitAssignmentExpression(AssignmentExpression node) {
-    final lhs = node.leftHandSide;
-    if (lhs is SimpleIdentifier) {
-      final lhsElement = lhs.element;
-      if (lhsElement != null &&
-          !decls.elements.contains(lhsElement) &&
-          _isUnescapedLocalResource(node.rightHandSide, scopeCallback, decls)) {
-        rule.reportAtNode(node.rightHandSide);
-      }
+    if (_isOuterAssignmentTarget(node.leftHandSide) &&
+        _isUnescapedLocalResource(node.rightHandSide, scopeCallback, decls)) {
+      rule.reportAtNode(node.rightHandSide);
     }
     super.visitAssignmentExpression(node);
+  }
+
+  bool _isOuterAssignmentTarget(Expression lhs) {
+    final root = _extractRootTarget(lhs);
+    if (root is ThisExpression) return true;
+    if (root is SimpleIdentifier) {
+      final rootElement = root.element;
+      if (rootElement == null) return false;
+      return !decls.elements.contains(rootElement);
+    }
+    return false;
+  }
+
+  Expression _extractRootTarget(Expression expr) {
+    var current = unwrapParenthesized(expr);
+    while (true) {
+      if (current is IndexExpression) {
+        current = unwrapParenthesized(current.realTarget);
+      } else if (current is PropertyAccess) {
+        current = unwrapParenthesized(current.realTarget);
+      } else if (current is PrefixedIdentifier) {
+        current = unwrapParenthesized(current.prefix);
+      } else {
+        return current;
+      }
+    }
   }
 }
 

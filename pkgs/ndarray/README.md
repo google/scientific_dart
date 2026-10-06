@@ -6,22 +6,50 @@
 [![Dart SDK](https://img.shields.io/badge/Dart-%5E3.10.0-blue.svg)](https://dart.dev)
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-**`package:ndarray`** is a high-performance, strongly-typed N-dimensional array and scientific computing library for Dart, inspired by NumPy and SciPy. Built on Dart Native Assets (`dart:ffi`), it combines an ergonomic, idiomatic Dart API with unmanaged C/C++ memory buffers, Google Highway SIMD vectorization, OpenBLAS/LAPACK linear algebra, and PocketFFT spectral transforms.
+A strongly-typed N-dimensional array and scientific computing library for Dart, inspired by NumPy.
+
+Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API over C/C++ memory buffers, Google Highway SIMD vectorization, OpenBLAS/LAPACK linear algebra, and PocketFFT spectral transforms.
 
 ---
 
 ## Highlights & Architecture
 
-- **Native C/C++ & SIMD Acceleration**: Tensors are stored in raw, contiguous or arbitrarily strided buffers on the unmanaged C heap. Universal element-wise functions (ufuncs), mathematical reductions, and indexing operations compile with an x86-64-v3 baseline (`AVX2`, `FMA`, `F16C`) on x86_64 (configurable via `hooks.user_defines.ndarray.x86Flags` in `pubspec.yaml` or the `NDARRAY_X86_FLAGS` environment variable) and `NEON` on ARM64, completely bypassing Dart VM loop and boxing overhead. On x86_64 hosts, a baseline-compiled CPU check verifies `AVX2`, `FMA`, `F16C`, and `OSXSAVE` support before loading AVX2-compiled kernels and throws an actionable `UnsupportedError` if any required feature is missing.
-- **OpenBLAS & LAPACK Linear Algebra**: Hardware-accelerated matrix multiplication (`matmul`), Cholesky factorization (`cholesky`), QR decomposition (`qr`), Singular Value Decomposition (`svd`), symmetric/Hermitian and general eigenvalue problems (`eigh`, `eig`), least-squares solvers (`lstsq`), Moore-Penrose pseudo-inverse (`pinv`), linear system solvers (`solve`), matrix norms, condition numbers (`cond`), and multi-matrix chain multiplication (`multi_dot`).
+- **Native C/C++ & SIMD Acceleration**: Tensors are stored in raw, contiguous or arbitrarily strided buffers on the unmanaged C heap. Universal element-wise functions (ufuncs), mathematical reductions, and indexing operations compile with an x86-64-v3 baseline (`AVX2`, `FMA`, `F16C`) on x86_64 (configurable via `hooks.user_defines.ndarray.x86Flags` in `pubspec.yaml` or the `NDARRAY_X86_FLAGS` environment variable) and `NEON` on ARM64. On x86_64 hosts, a baseline-compiled CPU check verifies `AVX2`, `FMA`, `F16C`, and `OSXSAVE` support before loading AVX2-compiled kernels and throws an actionable `UnsupportedError` if any required feature is missing.
+- **OpenBLAS & LAPACK Linear Algebra**: Hardware-accelerated:
+  - matrix multiplication (`matmul`),
+  - Cholesky factorization (`cholesky`),
+  - QR decomposition (`qr`),
+  - Singular Value Decomposition (`svd`),
+  - symmetric/Hermitian and general eigenvalue problems (`eigh`, `eig`),
+  - least-squares solvers (`lstsq`),
+  - Moore-Penrose pseudo-inverse (`pinv`),
+  - linear system solvers (`solve`),
+  - matrix norms, condition numbers (`cond`), and
+  - multi-matrix chain multiplication (`multi_dot`).
 - **Einstein Summation (`einsum`) & Tensor Contractions**: Express arbitrary multi-dimensional tensor contractions, trace reductions, and batch matrix multiplications concisely using `einsum` (supporting explicit indices and batch ellipsis `...` notation via `EinsumSubscripts.parse('bhid,bhjd->bhij')` or `'...id,...jd->...ij'`) and generalized tensor dot products (`tensordot`), automatically dispatching to optimized BLAS GEMM paths when possible.
-- **Google Highway SIMD Sorting & Dynamic Dispatch**: Vectorized sorting and order-statistics routines (`vqsort`) leveraging Google Highway with dynamic multi-target runtime SIMD dispatch (SSE4, AVX2, AVX-512, NEON, SVE) for in-place and out-of-place `sort`, indirect index sorting (`argsort`), and $O(N)$ selection (`partition`, `argpartition`).
-- **Spectral Transforms & DSP**: Mixed-radix 1D, 2D, and N-dimensional complex and real Fast Fourier Transforms (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `fftn`) powered by `package:pocketfft`, complete with frequency bin generators (`fftfreq`, `rfftfreq`), zero-frequency shifting (`fftshift`, `ifftshift`), 1D/2D convolution and cross-correlation (`convolve`, `correlate`), and spectral window functions (Hann, Hamming, Blackman, Bartlett, Kaiser).
-- **Numerical Optimization & Root Finding**: Multivariate nonlinear function minimization (`minimize`) supporting quasi-Newton **L-BFGS** (`MinimizeMethod.lbfgs`) and derivative-free **Nelder-Mead** simplex (`MinimizeMethod.nelderMead`), alongside 1D scalar root finding (`root_scalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
-- **Spatial Distance Metrics & Orthogonal Polynomials**: Pairwise distance matrix computations (`pdist`, `cdist`, `squareform`) across Euclidean, Manhattan, Cosine, Chebyshev, and Minkowski metrics, plus classical orthogonal polynomial evaluation, fitting, differentiation, integration, and root/quadrature generation (Chebyshev, Legendre, Hermite, Laguerre).
-- **Zero-Copy NumPy `.npy` & `.npz` Streaming I/O**: Native binary serialization and deserialization for single arrays (`save`, `load`) and multi-array ZIP archives (`savez`, `loadz` with optional compression), enabling zero-overhead data exchange with Python, NumPy, SciPy, and PyTorch pipelines.
-- **Zero-Copy Strided Views & 64-Bit Indexing**: Every `NDArray<T>` pairs an off-heap C buffer with 64-bit N-dimensional `shape` and element `strides` (`int64_t`), supporting large tensors and virtual broadcasted views beyond $2^{31} - 1$ elements with `NDArray<Int64>` index, coordinate, and count operations (`argsort`, `argpartition`, `searchsorted`, `argmax`, `argmin`, `nonzero`, `argwhere`, `count_nonzero`, `digitize`, `unravel_index`, `ravel_multi_index`, `indices`, `diag_indices`, `tril_indices`, `triu_indices`, `mask_indices`). Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapaxes`, `moveaxis`), reshaping (`reshape`), dimension expansion (`expand_dims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
-- **Deterministic Scoped Memory Management**: Zone-based lexical resource arenas (`NDArray.scope`) and explicit escape hatches (`detachToParentScope`) that automatically track and free unmanaged C-heap allocations deterministically when a computation block completes, eliminating GC pressure and out-of-memory stalls.
+- **Google Highway SIMD Sorting**: Vectorized sorting and order-statistics routines (`vqsort`) leveraging Google Highway with dynamic multi-target runtime SIMD dispatch (SSE4, AVX2, AVX-512, NEON, SVE) for:
+  - in-place and out-of-place `sort`,
+  - indirect index sorting (`argsort`), and
+  - $O(N)$ selection (`partition`, `argpartition`).
+- **Spectral Transforms & DSP**:
+  - Mixed-radix 1D, 2D, and N-dimensional complex and real Fast Fourier Transforms (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `fftn`) powered by `package:pocketfft`.
+  - Frequency bin generators (`fftfreq`, `rfftfreq`) and zero-frequency shifting (`fftshift`, `ifftshift`).
+  - 1D/2D convolution and cross-correlation (`convolve`, `correlate`).
+  - Spectral window functions (Hann, Hamming, Blackman, Bartlett, Kaiser).
+- **Numerical Optimization & Root Finding**:
+  - Multivariate nonlinear function minimization (`minimize`) supporting quasi-Newton **L-BFGS** (`MinimizeMethod.lbfgs`) and derivative-free **Nelder-Mead** simplex (`MinimizeMethod.nelderMead`).
+  - 1D scalar root finding (`root_scalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
+- **Spatial Distance Metrics & Orthogonal Polynomials**:
+  - Pairwise distance matrix computations (`pdist`, `cdist`, `squareform`) across Euclidean, Manhattan, Cosine, Chebyshev, and Minkowski metrics.
+  - Classical orthogonal polynomial evaluation, fitting, differentiation, integration, and root/quadrature generation (Chebyshev, Legendre, Hermite, Laguerre).
+- **Zero-Copy NumPy `.npy` & `.npz` Streaming I/O**:
+  - Native binary serialization and deserialization for single arrays (`save`, `load`).
+  - Multi-array ZIP archives (`savez`, `loadz` with optional compression), enabling data exchange with Python, NumPy, SciPy, and PyTorch pipelines.
+- **Zero-Copy Strided Views & 64-Bit Indexing**:
+  - `NDArray<T>` is backed by an off-heap C buffer with 64-bit N-dimensional `shape` and element `strides` (`int64_t`), supporting large tensors and virtual broadcasted views beyond $2^{31} - 1$ elements.
+  - Provides `NDArray<Int64>` index, coordinate, and count operations (`argsort`, `argpartition`, `searchsorted`, `argmax`, `argmin`, `nonzero`, `argwhere`, `count_nonzero`, `digitize`, `unravel_index`, `ravel_multi_index`, `indices`, `diag_indices`, `tril_indices`, `triu_indices`, `mask_indices`).
+  - Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapaxes`, `moveaxis`), reshaping (`reshape`), dimension expansion (`expand_dims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
+- **Deterministic Scoped Memory Management**: Zone-based lexical resource arenas (`NDArray.scope`) and explicit escape hatches (`detachToParentScope`) that track and free `NDArray` allocations deterministically when a computation block completes.
 
 ---
 
@@ -68,23 +96,24 @@ hooks:
       buildMode: source
 ```
 
-### Host Compiler Requirements (When Building from Source)
+### Host Compiler Requirements (If Building from Source)
 
-When `buildMode: source` is active (or when `fetch` falls back to source), ensure the following host build tools are installed:
+Default installs (`buildMode: fetch`) download prebuilt binaries and do not require a local C/C++ toolchain or CMake.
+
+If desired, `buildMode: source` can be explicitly configured to build from source. Ensure the following host build tools are installed:
 
 - **Linux**: `cmake`, `make`, and a C/C++ compiler (`gcc`/`g++` or `clang`/`clang++`).
   - *Ubuntu / Debian*: `sudo apt-get update && sudo apt-get install -y build-essential cmake gfortran`
-- **macOS**: Xcode Command Line Tools (`xcode-select --install`) and `cmake` (`brew install cmake gcc`).
+- **macOS**: Xcode Command Line Tools (`xcode-select --install`) and `cmake` (`brew install cmake`).
 - **Windows**: Visual Studio 2022 (with the *"Desktop development with C++"* workload / MSVC `cl.exe`) and `cmake` (`winget install Kitware.CMake`).
 
-> [!NOTE]
-> **First-Run Source Compilation Time**: When compiling from source for the first time, the build hooks compile OpenBLAS/LAPACK and Google Highway SIMD kernels for your target CPU architecture (approximately **1–2 minutes** depending on CPU core count). Subsequent runs reuse cached artifacts in `.dart_tool/` keyed by compiler flags and source hashes.
+When building from source for the first time, the build hooks compile Google Highway and the `ndarray` SIMD kernels (plus OpenBLAS/LAPACK from source on Linux; macOS links the system `Accelerate` framework and Windows uses precompiled OpenBLAS), taking approximately **30 seconds to 2 minutes** depending on OS and CPU core count. Subsequent runs reuse cached artifacts in `.dart_tool/` keyed by compiler flags and source hashes.
 
 ---
 
 ## Quickstart: Idiomatic Usage & Memory Management
 
-Because `NDArray` allocates raw memory on the native C heap, memory management is deterministic. Wrapping computations in `NDArray.scope(() { ... })` ensures all temporary arrays and intermediate results created inside the block are automatically freed when the scope exits.
+Because `NDArray` allocates memory on the native C heap, memory management is deterministic. Wrapping computations in `NDArray.scope(() { ... })` ensures all temporary arrays and intermediate results created inside the block are automatically freed when the scope exits.
 
 To return an array out of a scope without it being disposed, call `.detachToParentScope()` on the result.
 
@@ -127,7 +156,7 @@ void main() {
 > [!WARNING]
 > **Python / NumPy User Callout: Equality Comparisons (`equal` / `allClose` vs `==`)**
 >
-> In Dart, the `==` operator on `NDArray` checks **object identity / exact handle metadata**, and cannot return a boolean array due to Dart language type rules (`bool operator ==(Object other)`).
+> The `==` operator on `NDArray` checks **object identity**, and cannot return a boolean array due to Dart language type rules (`bool operator ==(Object other)`).
 > - To compute an element-wise boolean mask comparing two arrays (equivalent to NumPy's `a == b`), use **`equal(a, b)`**, which returns an `NDArray<Boolean>`.
 > - To check if two floating-point arrays are numerically equal within relative/absolute tolerances ($|a - b| \le \text{atol} + \text{rtol} \cdot |b|$, equivalent to `np.allclose(a, b)`), always use **`allClose(a, b, rtol: 1e-5, atol: 1e-8)`** or **`isClose(a, b)`**.
 
@@ -138,11 +167,14 @@ void main() {
 
 ---
 
-## Comprehensive Code Examples
+## Examples
 
-### Example 1: Signal Processing — Vectorized Real FFT Denoising
+### Signal Processing — Vectorized Real FFT Denoising
 
-This example generates a 10 Hz sine wave corrupted by Gaussian sensor noise using vectorized array operations (`NDArray.arange`, `sin`), transforms it to the frequency domain via `rfft`, applies a vectorized low-pass filter using boolean mask assignment (`setByMaskScalar`), and reconstructs the clean time-domain signal using `irfft` (eliminating all scalar `List.generate` loops and boxed list conversions):
+This example generates a 10 Hz sine wave corrupted by Gaussian sensor noise using vectorized array operations (`NDArray.arange`, `sin`), and then:
+- transforms it to the frequency domain via `rfft`,
+- applies a vectorized low-pass filter using boolean mask assignment (`setByMaskScalar`), and
+- reconstructs the clean time-domain signal using `irfft` (eliminating all scalar `List.generate` loops and boxed list conversions):
 
 ```dart
 import 'dart:math' as math;
@@ -198,7 +230,7 @@ void main() {
 }
 ```
 
-### Example 2: Machine Learning — Batched Attention & PCA via `einsum` and `svd`
+### Machine Learning — Batched Attention & PCA via `einsum` and `svd`
 
 This example demonstrates multi-head scaled dot-product attention scores computed via Einstein summation (`einsum` with `EinsumSubscripts.parse('bhid,bhjd->bhij')`) and Principal Component Analysis (PCA) dimensionality reduction powered by LAPACK Singular Value Decomposition (`svd`):
 
@@ -248,9 +280,9 @@ void main() {
 }
 ```
 
-### Example 3: Scientific Optimization & NumPy `.npz` Checkpointing
+### Scientific Optimization & NumPy `.npz` Checkpointing
 
-This example minimizes the non-convex Rosenbrock function using quasi-Newton **L-BFGS** (`minimize(..., method: MinimizeMethod.lbfgs)`) and checkpoints the optimization parameters into a compressed NumPy `.npz` archive (`savez` / `loadz`), cleaning up the temporary file in a `try ... finally` block:
+This example minimizes the non-convex Rosenbrock function using quasi-Newton **L-BFGS** (`minimize(..., method: MinimizeMethod.lbfgs)`) and checkpoints the optimization parameters into a compressed NumPy `.npz` archive (`savez` / `loadz`):
 
 ```dart
 import 'dart:io';

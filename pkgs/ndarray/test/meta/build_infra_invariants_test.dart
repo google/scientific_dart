@@ -94,9 +94,12 @@ void main() {
           for (final file in files) {
             expect(
               file.parent.uri.normalizePath(),
-              equals(pkgUri.resolve('hook/').normalizePath()),
+              anyOf(
+                equals(pkgUri.resolve('hook/').normalizePath()),
+                equals(pkgUri.resolve('third_party/miniz/').normalizePath()),
+              ),
               reason:
-                  '$pkgName nativeSourceFiles must only list direct files in hook/',
+                  '$pkgName nativeSourceFiles must only list direct files in hook/ or third_party/miniz/',
             );
           }
           final hash1 = computeFn(pkgUri);
@@ -295,6 +298,7 @@ void main() {
           contains('-fsanitize=address,undefined,float-cast-overflow'),
         );
         expect(opts.sanitizeFlags, contains('-fno-omit-frame-pointer'));
+        expect(opts.sanitizeFlags, contains('-fno-strict-aliasing'));
       },
     );
 
@@ -588,18 +592,18 @@ void main() {
     test(
       'C++ macro and OOM flag invariants: NoThrowBuffer sets OOM flag and VECTORIZED_TARGETS is guarded',
       () {
-        final indexingFile = File(
-          '${repoRoot.path}/pkgs/ndarray/hook/custom_indexing.cpp',
+        final commonHeader = File(
+          '${repoRoot.path}/pkgs/ndarray/hook/ndarray_common.h',
         );
-        expect(indexingFile.existsSync(), isTrue);
-        final indexingContent = indexingFile.readAsStringSync();
+        expect(commonHeader.existsSync(), isTrue);
+        final commonContent = commonHeader.readAsStringSync();
 
         // NoThrowBuffer calls ndarray_set_oom_flag() on allocation failure
         expect(
-          indexingContent,
+          commonContent,
           contains('ndarray_set_oom_flag()'),
           reason:
-              'custom_indexing.cpp NoThrowBuffer must call ndarray_set_oom_flag() on OOM',
+              'ndarray_common.h NoThrowBuffer must call ndarray_set_oom_flag() on OOM',
         );
 
         final ufuncsFile = File(
@@ -617,6 +621,87 @@ void main() {
           isTrue,
           reason:
               'custom_ufuncs.cpp #define VECTORIZED_TARGETS must be guarded by #ifndef VECTORIZED_TARGETS',
+        );
+      },
+    );
+
+    test(
+      'CI workflow enforces sanitizer failures and tests baseline scalar x86-64 (NDARRAY_X86_FLAGS)',
+      () {
+        final workflowFile = File(
+          '${repoRoot.path}/.github/workflows/dart.yml',
+        );
+        expect(workflowFile.existsSync(), isTrue);
+        final workflowContent = workflowFile.readAsStringSync();
+
+        final sanitizerIndex = workflowContent.indexOf('sanitizer-test:');
+        expect(
+          sanitizerIndex,
+          greaterThanOrEqualTo(0),
+          reason: 'dart.yml must define a sanitizer-test job',
+        );
+        final sanitizerJobSection = workflowContent.substring(sanitizerIndex);
+        expect(
+          sanitizerJobSection,
+          isNot(contains('continue-on-error: true')),
+          reason:
+              'sanitizer-test job in dart.yml must not suppress failures with continue-on-error: true',
+        );
+        expect(
+          sanitizerJobSection,
+          contains('allocator_may_return_null=1'),
+          reason:
+              'sanitizer-test job in dart.yml must include allocator_may_return_null=1 in ASAN_OPTIONS so intentional OOM tests return nullptr instead of aborting',
+        );
+        expect(
+          workflowContent,
+          contains('NDARRAY_X86_FLAGS'),
+          reason:
+              'dart.yml must exercise baseline scalar x86-64 builds via NDARRAY_X86_FLAGS',
+        );
+      },
+    );
+
+    test(
+      'pkgs/ndarray/hook/build.dart enforces C++ warning/strict-aliasing flags and hashes ndarray_common.h',
+      () {
+        final buildFile = File('${repoRoot.path}/pkgs/ndarray/hook/build.dart');
+        expect(buildFile.existsSync(), isTrue);
+        final buildContent = buildFile.readAsStringSync();
+
+        expect(
+          buildContent,
+          contains("'-fno-strict-aliasing'"),
+          reason: 'build.dart must compile with -fno-strict-aliasing',
+        );
+        expect(
+          buildContent,
+          contains("'-Wall'"),
+          reason: 'build.dart must compile C++ sources with -Wall',
+        );
+        expect(
+          buildContent,
+          contains("'-Wextra'"),
+          reason: 'build.dart must compile C++ sources with -Wextra',
+        );
+
+        final digestStart = buildContent.indexOf('computeInputDigest(');
+        expect(
+          digestStart,
+          greaterThanOrEqualTo(0),
+          reason: 'build.dart must define computeInputDigest',
+        );
+        final digestEnd = buildContent.indexOf(
+          'return sha256.convert',
+          digestStart,
+        );
+        expect(digestEnd, greaterThan(digestStart));
+        final digestBody = buildContent.substring(digestStart, digestEnd);
+        expect(
+          digestBody,
+          contains('ndarray_common.h'),
+          reason:
+              'computeInputDigest in build.dart must include ndarray_common.h',
         );
       },
     );

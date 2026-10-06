@@ -463,11 +463,123 @@ String _wgslLoadInputAsCdf(
     'vec4<u32>(f64_from_u32(($bufferName[($indexExpr) >> 2u] >> (((($indexExpr) & 3u) * 8u))) & 0xFFu), 0u, 0u)',
 };
 
+/// Core WGSL library for single-precision `Complex64` (`vec2<f32>`) arithmetic.
+const String wgslComplex64Lib = '''
+fn c64_add(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+  return a + b;
+}
+
+fn c64_sub(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+  return a - b;
+}
+
+fn c64_mul(a: vec2<f32>, b: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(a.x * b.x - a.y * b.y, a.x * b.y + a.y * b.x);
+}
+
+fn c64_conj(a: vec2<f32>) -> vec2<f32> {
+  return vec2<f32>(a.x, -a.y);
+}
+
+fn c64_twiddle_ratio(num_turns: u32, den_turns: u32, sign_dir: f32) -> vec2<f32> {
+  if (num_turns == 0u || den_turns == 0u) {
+    return vec2<f32>(1.0, 0.0);
+  }
+  let rem_turns = num_turns % den_turns;
+  if (rem_turns == 0u) {
+    return vec2<f32>(1.0, 0.0);
+  }
+  let angle = sign_dir * (6.283185307179586 * f32(rem_turns) / f32(den_turns));
+  return vec2<f32>(cos(angle), sin(angle));
+}
+''';
+
+String _wgslLoadInputAsC64(DType dtype, String bufferName, String indexExpr) =>
+    switch (dtype) {
+      DType.complex64 => '$bufferName[$indexExpr]',
+      DType.float32 => 'vec2<f32>($bufferName[$indexExpr], 0.0)',
+      _ => 'vec2<f32>(0.0, 0.0)',
+    };
+
 /// Builds a WGSL shader that gathers slices along an axis from an arbitrary-rank
 /// strided input of [sourceDType] into a contiguous `[batchCount, workLength]`
-/// buffer of `Complex128` (`vec4<u32>`), truncating or zero-padding as needed.
-WgslShaderModule buildFftGatherShader(DType sourceDType) {
+/// buffer of `Complex128` (`vec4<u32>`) or `Complex64` (`vec2<f32>`), truncating
+/// or zero-padding as needed.
+WgslShaderModule buildFftGatherShader(
+  DType sourceDType, {
+  bool singlePrecision = false,
+}) {
   final storageType = _wgslInputStorageType(sourceDType);
+  if (singlePrecision) {
+    final loadExpr = _wgslLoadInputAsC64(sourceDType, 'src_buf', 'phys_idx');
+    final code =
+        '''
+struct GatherUniforms {
+  batch_count: u32,
+  work_length: u32,
+  copy_length: u32,
+  outer_rank: u32,
+  src_offset: u32,
+  axis_stride: i32,
+  conjugate_input: u32,
+  pad0: u32,
+  outer_shape0: vec4<u32>,
+  outer_shape1: vec4<u32>,
+  outer_strides0: vec4<i32>,
+  outer_strides1: vec4<i32>,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<$storageType>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: GatherUniforms;
+
+fn get_outer_dim(d: u32) -> u32 {
+  if (d < 4u) { return params.outer_shape0[d]; }
+  return params.outer_shape1[d - 4u];
+}
+
+fn get_outer_stride(d: u32) -> i32 {
+  if (d < 4u) { return params.outer_strides0[d]; }
+  return params.outer_strides1[d - 4u];
+}
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.work_length;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.work_length;
+  let elem_idx = linear_idx % params.work_length;
+  if (elem_idx >= params.copy_length) {
+    dst_buf[linear_idx] = vec2<f32>(0.0, 0.0);
+    return;
+  }
+  var rem = batch_idx;
+  var base_offset = i32(params.src_offset);
+  for (var i = 0u; i < params.outer_rank; i = i + 1u) {
+    let d = params.outer_rank - 1u - i;
+    let dim_size = get_outer_dim(d);
+    let coord = rem % dim_size;
+    rem = rem / dim_size;
+    base_offset = base_offset + i32(coord) * get_outer_stride(d);
+  }
+  let phys_idx = u32(base_offset + i32(elem_idx) * params.axis_stride);
+  var val = $loadExpr;
+  if (params.conjugate_input != 0u) {
+    val = vec2<f32>(val.x, -val.y);
+  }
+  dst_buf[linear_idx] = val;
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_gather_f32_${sourceDType.name}',
+    );
+  }
+
   final loadExpr = _wgslLoadInputAsCdf(sourceDType, 'src_buf', 'phys_idx');
   final code =
       '''
@@ -541,7 +653,51 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 
 /// Builds a WGSL shader that expands `[batchCount, inputBins]` into a full
 /// Hermitian-symmetric spectrum `[batchCount, targetN]` for `irfft` / `hfft`.
-WgslShaderModule buildFftHermitianExpandShader() {
+WgslShaderModule buildFftHermitianExpandShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code = '''
+struct HermitianUniforms {
+  batch_count: u32,
+  input_bins: u32,
+  target_n: u32,
+  half_n: u32,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: HermitianUniforms;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.target_n;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.target_n;
+  let k = linear_idx % params.target_n;
+  let copy_bins = min(params.input_bins, params.half_n);
+  if (k < copy_bins) {
+    dst_buf[linear_idx] = src_buf[batch_idx * params.input_bins + k];
+  } else if (k >= params.half_n) {
+    let mirror = params.target_n - k;
+    if (mirror < copy_bins) {
+      let m_val = src_buf[batch_idx * params.input_bins + mirror];
+      dst_buf[linear_idx] = vec2<f32>(m_val.x, -m_val.y);
+    } else {
+      dst_buf[linear_idx] = vec2<f32>(0.0, 0.0);
+    }
+  } else {
+    dst_buf[linear_idx] = vec2<f32>(0.0, 0.0);
+  }
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_hermitian_expand_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib
@@ -590,8 +746,10 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 /// Builds a WGSL shader that bit-reverses indices along each row of `[batchCount, n]`.
-WgslShaderModule buildFftBitReverseShader() {
-  const code = '''
+WgslShaderModule buildFftBitReverseShader({bool singlePrecision = false}) {
+  final elemType = singlePrecision ? 'vec2<f32>' : 'vec4<u32>';
+  final code =
+      '''
 struct BitRevUniforms {
   batch_count: u32,
   n: u32,
@@ -599,8 +757,8 @@ struct BitRevUniforms {
   pad0: u32,
 }
 
-@group(0) @binding(0) var<storage, read> src_buf: array<vec4<u32>>;
-@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec4<u32>>;
+@group(0) @binding(0) var<storage, read> src_buf: array<$elemType>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<$elemType>;
 @group(0) @binding(2) var<uniform> params: BitRevUniforms;
 
 fn bit_reverse(v: u32, bits: u32) -> u32 {
@@ -626,13 +784,61 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
   return WgslShaderModule(
     code: code,
     entryPoint: 'main',
-    name: 'fft_bit_reverse',
+    name: singlePrecision ? 'fft_bit_reverse_f32' : 'fft_bit_reverse',
   );
 }
 
 /// Builds a WGSL shader that executes one Cooley-Tukey radix-2 butterfly stage
-/// across `[batchCount, n]` in 53-bit IEEE-754 Complex128 precision.
-WgslShaderModule buildFftButterflyStageShader() {
+/// across `[batchCount, n]` in Complex64 or 53-bit IEEE-754 Complex128 precision.
+WgslShaderModule buildFftButterflyStageShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code =
+        '''
+$wgslComplex64Lib
+
+struct ButterflyUniforms {
+  batch_count: u32,
+  n: u32,
+  half_span: u32,
+  sign_bits: u32,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: ButterflyUniforms;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let pairs_per_row = params.n >> 1u;
+  let total_pairs = params.batch_count * pairs_per_row;
+  let pair_idx = gid.x;
+  if (pair_idx >= total_pairs) {
+    return;
+  }
+  let batch_idx = pair_idx / pairs_per_row;
+  let within_row = pair_idx % pairs_per_row;
+  let span = params.half_span << 1u;
+  let group_idx = within_row / params.half_span;
+  let j = within_row % params.half_span;
+  let row_base = batch_idx * params.n;
+  let even_idx = row_base + group_idx * span + j;
+  let odd_idx = even_idx + params.half_span;
+
+  let sign_dir = bitcast<f32>(params.sign_bits);
+  let twiddle = c64_twiddle_ratio(j, span, sign_dir);
+  let u = src_buf[even_idx];
+  let v = c64_mul(src_buf[odd_idx], twiddle);
+
+  dst_buf[even_idx] = c64_add(u, v);
+  dst_buf[odd_idx] = c64_sub(u, v);
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_butterfly_stage_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib
@@ -682,8 +888,52 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 
 /// Builds a WGSL shader that computes a direct 1D DFT along each row of
-/// `[batchCount, n]` for arbitrary non-power-of-2 lengths in 53-bit Complex128 precision.
-WgslShaderModule buildFftDirectDftShader() {
+/// `[batchCount, n]` for arbitrary non-power-of-2 lengths in Complex64 or Complex128 precision.
+WgslShaderModule buildFftDirectDftShader({bool singlePrecision = false}) {
+  if (singlePrecision) {
+    const code =
+        '''
+$wgslComplex64Lib
+
+struct DirectDftUniforms {
+  batch_count: u32,
+  n: u32,
+  sign_bits: u32,
+  pad0: u32,
+}
+
+@group(0) @binding(0) var<storage, read> src_buf: array<vec2<f32>>;
+@group(0) @binding(1) var<storage, read_write> dst_buf: array<vec2<f32>>;
+@group(0) @binding(2) var<uniform> params: DirectDftUniforms;
+
+@compute @workgroup_size(64)
+fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
+  let total = params.batch_count * params.n;
+  let linear_idx = gid.x;
+  if (linear_idx >= total) {
+    return;
+  }
+  let batch_idx = linear_idx / params.n;
+  let k = linear_idx % params.n;
+  let row_base = batch_idx * params.n;
+  let sign_dir = bitcast<f32>(params.sign_bits);
+
+  var acc = vec2<f32>(0.0, 0.0);
+  for (var m = 0u; m < params.n; m = m + 1u) {
+    let x_m = src_buf[row_base + m];
+    let turn_num = (m * k) % params.n;
+    let w = c64_twiddle_ratio(turn_num, params.n, sign_dir);
+    acc = c64_add(acc, c64_mul(x_m, w));
+  }
+  dst_buf[linear_idx] = acc;
+}
+''';
+    return WgslShaderModule(
+      code: code,
+      entryPoint: 'main',
+      name: 'fft_direct_dft_f32',
+    );
+  }
   const code =
       '''
 $wgslDoubleFloatComplexLib

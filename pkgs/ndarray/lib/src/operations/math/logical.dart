@@ -48,12 +48,23 @@ NDArray<Boolean> logicalNot<T extends DTypeTag>(
     throw StateError('Cannot execute logicalNot() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != DType.boolean) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for logicalNot.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype for logicalNot',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<Boolean>.create(a.shape, DType.boolean);
+        logicalNot<T>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
   final marker = ScratchArena.marker;
@@ -290,11 +301,7 @@ NDArray<Boolean> logicalNot<T extends DTypeTag>(
 /// - It is an error if shapes of [a] and [b] cannot be broadcast together.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-/// final b = NDArray.fromList([1, 4, 3], [3], DType.int32);
-/// final eq = equal(a, b); // [true, false, true]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy equal](https://numpy.org/doc/stable/reference/generated/numpy.equal.html)
 NDArray<Boolean> equal<T extends DTypeTag>(
@@ -323,8 +330,10 @@ NDArray<Boolean> equal<T extends DTypeTag>(
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != DType.boolean) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype',
       );
     }
   }
@@ -349,11 +358,7 @@ NDArray<Boolean> equal<T extends DTypeTag>(
 /// - It is an error if shapes of [a] and [b] cannot be broadcast together.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-/// final b = NDArray.fromList([1, 4, 3], [3], DType.int32);
-/// final neq = notEqual(a, b); // [false, true, false]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy not_equal](https://numpy.org/doc/stable/reference/generated/numpy.not_equal.html)
 NDArray<Boolean> notEqual<T extends DTypeTag>(
@@ -382,8 +387,10 @@ NDArray<Boolean> notEqual<T extends DTypeTag>(
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != DType.boolean) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype',
       );
     }
   }
@@ -410,11 +417,7 @@ NDArray<Boolean> notEqual<T extends DTypeTag>(
 /// Throws [UnsupportedError] if either array contains complex numbers.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([5, 2, 8], [3], DType.int32);
-/// final b = NDArray.fromList([3, 4, 1], [3], DType.int32);
-/// final gt = greater(a, b); // [true, false, true]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy greater](https://numpy.org/doc/stable/reference/generated/numpy.greater.html)
 NDArray<Boolean> greater<T extends DTypeTag>(
@@ -448,8 +451,10 @@ NDArray<Boolean> greater<T extends DTypeTag>(
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != DType.boolean) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype',
       );
     }
   }
@@ -476,11 +481,7 @@ NDArray<Boolean> greater<T extends DTypeTag>(
 /// Throws [UnsupportedError] if either array contains complex numbers.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([5, 2, 8], [3], DType.int32);
-/// final b = NDArray.fromList([3, 2, 9], [3], DType.int32);
-/// final ge = greaterEqual(a, b); // [true, true, false]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy greater_equal](https://numpy.org/doc/stable/reference/generated/numpy.greater_equal.html)
 NDArray<Boolean> greaterEqual<T extends DTypeTag>(
@@ -514,8 +515,10 @@ NDArray<Boolean> greaterEqual<T extends DTypeTag>(
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != DType.boolean) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype',
       );
     }
   }
@@ -542,11 +545,7 @@ NDArray<Boolean> greaterEqual<T extends DTypeTag>(
 /// Throws [UnsupportedError] if either array contains complex numbers.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 5, 3], [3], DType.int32);
-/// final b = NDArray.fromList([3, 2, 4], [3], DType.int32);
-/// final lt = less(a, b); // [true, false, true]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy less](https://numpy.org/doc/stable/reference/generated/numpy.less.html)
 NDArray<Boolean> less<T extends DTypeTag>(
@@ -580,8 +579,10 @@ NDArray<Boolean> less<T extends DTypeTag>(
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != DType.boolean) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype',
       );
     }
   }
@@ -608,11 +609,7 @@ NDArray<Boolean> less<T extends DTypeTag>(
 /// Throws [UnsupportedError] if either array contains complex numbers.
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1, 2, 5], [3], DType.int32);
-/// final b = NDArray.fromList([3, 2, 4], [3], DType.int32);
-/// final le = lessEqual(a, b); // [true, true, false]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy less_equal](https://numpy.org/doc/stable/reference/generated/numpy.less_equal.html)
 NDArray<Boolean> lessEqual<T extends DTypeTag>(
@@ -646,8 +643,10 @@ NDArray<Boolean> lessEqual<T extends DTypeTag>(
     if (!out.isWriteable ||
         !listEquals(out.shape, commonShape) ||
         out.dtype != DType.boolean) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype.",
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and boolean dtype',
       );
     }
   }
@@ -950,7 +949,9 @@ BroadcastResult _broadcastBinaryStrides(
         newStridesA[maxLen - 1 - i] = stridesA[shapeA.length - 1 - i];
       }
     } else {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        shapeB,
+        'shapeB',
         'Shapes $shapeA and $shapeB are not compatible for broadcasting',
       );
     }
@@ -1202,12 +1203,33 @@ NDArray<Boolean> _runBinaryLogical<Ta extends DTypeTag, Tb extends DTypeTag>(
     final stridesB = broadcastResult.stridesB;
 
     if (out != null) {
-      if (!out.isWriteable ||
-          !listEquals(out.shape, commonShape) ||
-          out.dtype != DType.boolean) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype for $opName.',
+      validateOutBuffer(out);
+      if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape and boolean dtype for $opName',
         );
+      }
+      if (sharesMemory(a, out) ||
+          sharesMemory(b, out) ||
+          (where != null && sharesMemory(where, out))) {
+        return NDArray.scope(() {
+          final temp = where != null
+              ? out.copy()
+              : NDArray<Boolean>.create(commonShape, DType.boolean);
+          _runBinaryLogical<Ta, Tb>(
+            a,
+            b,
+            where,
+            temp,
+            contiguousFn,
+            stridedFn,
+            opName,
+          );
+          temp.copy(out: out);
+          return out;
+        });
       }
     }
 

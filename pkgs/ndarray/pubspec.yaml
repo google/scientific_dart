@@ -44,7 +44,7 @@ dependencies:
   resource_scope: ^0.1.0
 
 dev_dependencies:
-  analyzer: any
+  analyzer: ^13.0.0
   archive: ^3.6.1
   lints: ^6.1.0
   test: ^1.31.1

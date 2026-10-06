@@ -286,7 +286,7 @@ void main() {
           y,
           spacing: Spacing.coordinates([0.0, 1.0, 2.0, 3.0]),
         );
-        expect(result.scalar.toDouble(), closeTo(21.5, 1e-9));
+        expect(result.scalar, closeTo(21.5, 1e-9));
       });
 
       test('gradient with List<double> spacing', () {

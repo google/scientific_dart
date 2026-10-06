@@ -57,6 +57,104 @@ bool isComplexDType(DType dtype) {
   }
 }
 
+/// Whether [dtype] is a 32-bit single-precision real or complex floating-point
+/// type ([DType.float32] or [DType.complex64]).
+bool isSinglePrecisionDType(DType dtype) {
+  switch (dtype) {
+    case DType.float32:
+    case DType.complex64:
+      return true;
+    case DType.float64:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+    case DType.complex128:
+      return false;
+  }
+}
+
+/// Projects [dtype] to its inexact math `M` output dtype (`Float32 -> Float32`,
+/// `Complex64 -> Complex64`, `Complex128 -> Complex128`, others -> `Float64`).
+DType linalgMathDType(DType dtype) {
+  switch (dtype) {
+    case DType.float32:
+      return DType.float32;
+    case DType.complex64:
+      return DType.complex64;
+    case DType.complex128:
+      return DType.complex128;
+    case DType.float64:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+      return DType.float64;
+  }
+}
+
+/// Projects [dtype] to its real floating-point computation `F` output dtype
+/// (`Float32`/`Complex64 -> Float32`, others -> `Float64`).
+DType linalgFloatDType(DType dtype) {
+  switch (dtype) {
+    case DType.float32:
+    case DType.complex64:
+      return DType.float32;
+    case DType.float64:
+    case DType.complex128:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+      return DType.float64;
+  }
+}
+
+/// Projects [dtype] to its complex `C` output dtype
+/// (`Float32`/`Complex64 -> Complex64`, others -> `Complex128`).
+DType linalgComplexDType(DType dtype) {
+  switch (dtype) {
+    case DType.float32:
+    case DType.complex64:
+      return DType.complex64;
+    case DType.float64:
+    case DType.complex128:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+      return DType.complex128;
+  }
+}
+
 /// High-precision Dekker/Knuth double-float (`df64` as `vec2<f32>`) and
 /// complex double-float (`cdf64` as `vec4<f32>`) WGSL library with IEEE-754
 /// binary64 (`vec2<u32>`) pack/unpack routines.

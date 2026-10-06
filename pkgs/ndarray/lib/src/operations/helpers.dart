@@ -23,11 +23,15 @@ import 'spacers.dart';
 import 'broadcasting.dart';
 
 /// Throws [OutOfMemoryError] if a native C/C++ kernel signaled an allocation failure.
-void checkNativeOom() {
-  if (ndarray_consume_oom_flag() != 0) {
+void checkNativeOom([int? rc]) {
+  if (rc == -4 || ndarray_consume_oom_flag() != 0) {
     throw OutOfMemoryError();
   }
 }
+
+/// Converts a 64-bit Dart [int] interpreted as an unsigned `uint64` to [double].
+double uint64ToDouble(int v) =>
+    v < 0 ? v.toDouble() + 18446744073709551616.0 : v.toDouble();
 
 /// Validates that an output array [buffer] is writeable and not a 0-stride broadcast view.
 void validateOutBuffer(NDArray buffer, [String paramName = 'out']) {
@@ -354,15 +358,24 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
   required DType<T> dtype,
   NDArray<T>? out,
 }) {
-  if (numSamples < 0) throw ArgumentError('numSamples must be non-negative');
+  if (numSamples < 0) {
+    throw ArgumentError.value(numSamples, 'numSamples', 'Must be non-negative');
+  }
 
   final resolvedDType = dtype;
+  if (resolvedDType == DType.boolean) {
+    throw UnsupportedError('linspace not supported for boolean arrays');
+  }
 
   if (out != null) {
     if (out.isDisposed) throw StateError('Cannot write to disposed out array');
     validateOutBuffer(out);
     if (!listEquals(out.shape, [numSamples]) || out.dtype != resolvedDType) {
-      throw ArgumentError('Incompatible out array shape or dtype');
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Incompatible out array shape or dtype',
+      );
     }
   }
 
@@ -493,8 +506,28 @@ NDArray<T> toNDArray<T extends DTypeTag>(Object o, DType<T> dtype) {
         final casted = castNDArray(temp, resolvedDType);
         casted.copy(out: arr);
         step = normalizeScalar(stp, resolvedDType);
-      case DType.int8:
       case DType.uint64:
+        double toU64Double(Object? v) {
+          if (v is int && v < 0) {
+            return BigInt.from(v).toUnsigned(64).toDouble();
+          }
+          return (v as num).toDouble();
+        }
+        final s = toU64Double(start);
+        final e = toU64Double(stop);
+        final stp = numSamples <= 1 ? 0.0 : (e - s) / div;
+        final outPtr = arr.pointer.cast<ffi.Int64>();
+        for (var i = 0; i < numSamples; i++) {
+          final val = s + i * stp;
+          outPtr[i] = saturatingDoubleToInt(val.floorToDouble(), DType.uint64);
+        }
+        if (endpoint && numSamples > 1) {
+          outPtr[numSamples - 1] = stop is int
+              ? stop
+              : saturatingDoubleToInt(e.floorToDouble(), DType.uint64);
+        }
+        step = normalizeScalar(stp, resolvedDType);
+      case DType.int8:
       case DType.uint32:
       case DType.uint16:
         final s = (start as num).toDouble();
@@ -658,7 +691,9 @@ List<int> broadcastStackShapes(List<int> sA, List<int> sB) {
     } else if (dimB == 1) {
       result[maxLen - 1 - i] = dimA;
     } else {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        sB,
+        'sB',
         'Incompatible stack shapes for broadcasting in matmul: $sA and $sB',
       );
     }
@@ -695,6 +730,7 @@ NDArray<Float64> promoteToDouble(NDArray a) {
       cShape,
       ndim,
     );
+    checkNativeOom();
   } finally {
     ScratchArena.reset(marker);
   }
@@ -727,6 +763,7 @@ NDArray<DTypeTag> promoteToComplex(NDArray a) {
       cShape,
       ndim,
     );
+    checkNativeOom();
   } finally {
     ScratchArena.reset(marker);
   }
@@ -1103,7 +1140,11 @@ List<int> broadcastStrides(NDArray a, List<int> targetShape) {
     } else if (aDim == 1) {
       strides[i + offset] = 0;
     } else {
-      throw ArgumentError('Cannot broadcast shape ${a.shape} to $targetShape');
+      throw ArgumentError.value(
+        targetShape,
+        'targetShape',
+        'Cannot broadcast shape ${a.shape} to $targetShape',
+      );
     }
   }
   return strides;
@@ -1123,7 +1164,11 @@ List<int> broadcast3Shapes(List<int> s1, List<int> s2, List<int> s3) {
         if (target == 1) {
           target = d;
         } else if (target != d) {
-          throw ArgumentError('Incompatible shapes for broadcasting');
+          throw ArgumentError.value(
+            s3,
+            's3',
+            'Incompatible shapes for broadcasting ($s1, $s2, $s3)',
+          );
         }
       }
     }
@@ -1206,8 +1251,10 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
   CumOpType opType,
 ) {
   if (!result.isWriteable) {
-    throw ArgumentError(
-      'Assignment destination is a read-only broadcast view.',
+    throw ArgumentError.value(
+      result,
+      'result',
+      'Assignment destination is a read-only broadcast view',
     );
   }
   if (sharesMemory(a, result)) {
@@ -1464,8 +1511,10 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
             );
           case DType.complex128:
           case DType.complex64:
-            throw ArgumentError(
-              'Cumulative minimum is not defined for complex numbers.',
+            throw ArgumentError.value(
+              a.dtype,
+              'a.dtype',
+              'Cumulative minimum is not defined for complex numbers',
             );
         }
 
@@ -1530,11 +1579,14 @@ NDArray<R> cumOpFFI<T extends DTypeTag, R extends DTypeTag>(
             );
           case DType.complex128:
           case DType.complex64:
-            throw ArgumentError(
-              'Cumulative maximum is not defined for complex numbers.',
+            throw ArgumentError.value(
+              a.dtype,
+              'a.dtype',
+              'Cumulative maximum is not defined for complex numbers',
             );
         }
     }
+    checkNativeOom();
   } finally {
     ScratchArena.reset(marker);
   }
@@ -1621,6 +1673,7 @@ NDArray<R> castNDArray<R extends DTypeTag>(NDArray a, DType<R> targetDType) {
       cShape,
       rank,
     );
+    checkNativeOom();
   } finally {
     ScratchArena.reset(marker);
   }
@@ -1763,6 +1816,7 @@ void _cumOpFallbackHelper<T extends DTypeTag, R extends DTypeTag>(
         doubleA.shape.length,
         axis,
       );
+      checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
@@ -1811,7 +1865,11 @@ MaskHolder prepareMask(NDArray<DTypeTag>? where, List<int> targetShape) {
     throw StateError('Cannot execute operation with a disposed where array.');
   }
   if (where.dtype != DType.boolean && where.dtype != DType.uint8) {
-    throw ArgumentError('where mask must have boolean or uint8 dtype.');
+    throw ArgumentError.value(
+      where.dtype,
+      'where.dtype',
+      'where mask must have boolean or uint8 dtype',
+    );
   }
   final aligned = listEquals(where.shape, targetShape)
       ? where

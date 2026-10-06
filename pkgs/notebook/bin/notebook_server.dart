@@ -27,6 +27,7 @@ void main(List<String> args) async {
   var port = 8080;
   var serverlessWasm = false;
   String? staticBundleDir;
+  String? notebookPath;
 
   for (var i = 0; i < args.length; i++) {
     final arg = args[i];
@@ -47,15 +48,16 @@ void main(List<String> args) async {
       if (parsed != null) {
         port = parsed;
       } else {
-        stderr.writeln('Unknown argument: $arg');
-        exitCode = 2;
-        return;
+        notebookPath = arg;
       }
     }
   }
 
   print('SDK Path: $dartSdkPath');
   print('Workspace Dir: $workspaceDir');
+  if (notebookPath != null) {
+    print('Notebook File: $notebookPath');
+  }
 
   if (serverlessWasm && staticBundleDir == null) {
     final defaultBundleDir = p.join(
@@ -84,6 +86,7 @@ void main(List<String> args) async {
     port: port,
     serverlessWasm: serverlessWasm,
     staticBundleDir: staticBundleDir,
+    notebookPath: notebookPath,
   );
 
   try {

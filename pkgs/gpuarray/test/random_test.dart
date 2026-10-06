@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/random.dart';
 import 'package:gpuarray/src/gpu_array.dart' show ResourceScope;
 import 'package:test/test.dart';
 
@@ -79,6 +80,14 @@ void main() {
         expect(identical(stdSample, stdOut), isTrue);
         for (final element in stdSample.toList().cast<double>()) {
           expect(element.isFinite, isTrue);
+        }
+
+        final topStd = standardNormal(shape: <int>[8]);
+        try {
+          expect(topStd.dtype, equals(DType.float64));
+          expect(topStd.shape, equals(<int>[8]));
+        } finally {
+          topStd.dispose();
         }
       } finally {
         normalOut.dispose();

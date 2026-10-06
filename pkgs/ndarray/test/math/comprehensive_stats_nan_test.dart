@@ -298,7 +298,7 @@ void main() {
               [3],
               DType.complex128,
             );
-            final mC128 = mean<DTypeTag, DTypeTag>(c128);
+            final mC128 = mean(c128);
             expect(mC128.dtype, DType.complex128);
             expect(mC128.scalar.real, closeTo(3.0, 1e-9));
             expect(mC128.scalar.imag, closeTo(4.0, 1e-9));
@@ -308,7 +308,7 @@ void main() {
               [2],
               DType.complex64,
             );
-            final mC64 = mean<DTypeTag, DTypeTag>(c64);
+            final mC64 = mean(c64);
             expect(mC64.dtype, DType.complex128);
             expect(mC64.scalar.real, closeTo(3.0, 1e-6));
             expect(mC64.scalar.imag, closeTo(1.0, 1e-6));
@@ -323,7 +323,7 @@ void main() {
               DType.float64,
             );
             final out = NDArray<Float64>.zeros([2], DType.float64);
-            final res = mean<Float64, Float64>(a, axis: 0, out: out);
+            final res = mean(a, axis: 0, out: out);
             expect(identical(res, out), true);
             expect(out.toList(), [2.0, 3.0]);
           });

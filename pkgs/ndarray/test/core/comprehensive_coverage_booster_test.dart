@@ -104,8 +104,18 @@ void main() {
               final rAddMask = add(a, b, where: mask);
               expect(rAddMask.shape, [2, 3]);
 
-              final rSubMask = subtract(a, b, where: mask);
-              expect(rSubMask.shape, [2, 3]);
+              if (dt == DType.boolean) {
+                expect(
+                  () => subtract(a, b, where: mask),
+                  throwsUnsupportedError,
+                );
+              } else {
+                final rSubMask = subtract(a, b, where: mask);
+                expect(rSubMask.shape, [2, 3]);
+                final outSub = NDArray.create([2, 3], rSubMask.dtype);
+                subtract(a, b, out: outSub, where: mask);
+                expect(outSub.shape, [2, 3]);
+              }
 
               final rMulMask = multiply(a, b, where: mask);
               expect(rMulMask.shape, [2, 3]);
@@ -117,10 +127,6 @@ void main() {
               final outAdd = NDArray.create([2, 3], rAddMask.dtype);
               add(a, b, out: outAdd, where: mask);
               expect(outAdd.shape, [2, 3]);
-
-              final outSub = NDArray.create([2, 3], rSubMask.dtype);
-              subtract(a, b, out: outSub, where: mask);
-              expect(outSub.shape, [2, 3]);
 
               final outMul = NDArray.create([2, 3], rMulMask.dtype);
               multiply(a, b, out: outMul, where: mask);
@@ -368,28 +374,28 @@ void main() {
         );
 
         // Legendre
-        final legVal = legval(c, x);
+        final legVal = legval(x, c);
         expect(legVal.shape, [5]);
 
         final legRt = legroots(c);
         expect(legRt.shape, [2]);
 
         // Chebyshev
-        final chebVal = chebval(c, x);
+        final chebVal = chebval(x, c);
         expect(chebVal.shape, [5]);
 
         final chebRt = chebroots(c);
         expect(chebRt.shape, [2]);
 
         // Hermite
-        final hermVal = hermval(c, x);
+        final hermVal = hermval(x, c);
         expect(hermVal.shape, [5]);
 
         final hermRt = hermroots(c);
         expect(hermRt.shape, [2]);
 
         // Laguerre
-        final lagVal = lagval(c, x);
+        final lagVal = lagval(x, c);
         expect(lagVal.shape, [5]);
 
         final lagRt = lagroots(c);

@@ -28,14 +28,10 @@ import '../helpers.dart';
 /// It is an error if [numThreads] is less than 1 (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// setNumThreads(1); // Disable multi-threading to bypass overhead on small matrices
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 void setNumThreads(int numThreads) {
   if (numThreads < 1) {
-    throw ArgumentError(
-      'Number of threads must be at least 1 (was $numThreads)',
-    );
+    throw ArgumentError.value(numThreads, 'numThreads', 'Must be at least 1');
   }
   openblas_set_num_threads(numThreads);
 }
@@ -51,17 +47,7 @@ void setNumThreads(int numThreads) {
 /// It is an error if [a] has been disposed (throws [StateError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([10, 20, 30, 40], [2, 2], DType.int32);
-/// for (final entry in ndenumerate(a)) {
-///   print('coord: ${entry.coordinate}, value: ${entry.value}');
-/// }
-/// // Yields:
-/// // ([0, 0], 10)
-/// // ([0, 1], 20)
-/// // ([1, 0], 30)
-/// // ([1, 1], 40)
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 Iterable<({List<int> coordinate, Object value})>
 ndenumerate<T extends DTypeTag>(NDArray<T> a) sync* {
   if (a.isDisposed) {
@@ -129,11 +115,12 @@ NDArray<T> nan_to_num<T extends DTypeTag>(
     throw StateError('Cannot execute nan_to_num() on a disposed array.');
   }
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != a.dtype) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for nan_to_num.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for nan_to_num',
       );
     }
     if ((sharesMemory(a, out) &&
@@ -161,7 +148,9 @@ NDArray<T> nan_to_num<T extends DTypeTag>(
   }
 
   final maxLimit = switch (a.dtype) {
-    DType.float32 => 3.4028234663852886e+38,
+    DType.float16 => 65504.0,
+    DType.bfloat16 => 3.3895313892515355e+38,
+    DType.float32 || DType.complex64 => 3.4028234663852886e+38,
     _ => double.maxFinite,
   };
   final minLimit = -maxLimit;
@@ -196,8 +185,10 @@ NDArray<T> nan_to_num<T extends DTypeTag>(
           if (img == double.negativeInfinity) img = targetNegInf;
 
           resultCopy.setCellRaw(idxRes, Complex(r, img));
+        } else if (resDType.isInteger || resDType == DType.boolean) {
+          resultCopy.setCellRaw(idxRes, val);
         } else {
-          var dVal = val is bool ? (val ? 1.0 : 0.0) : (val as num).toDouble();
+          var dVal = (val as num).toDouble();
 
           if (dVal.isNaN) {
             dVal = nan;
@@ -231,9 +222,7 @@ NDArray<T> nan_to_num<T extends DTypeTag>(
 /// It is an error if [s1] and [s2] cannot be broadcast together (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final common = broadcastShapes([2, 1, 4], [3, 4]); // [2, 3, 4]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy broadcast_shapes](https://numpy.org/doc/stable/reference/generated/numpy.broadcast_shapes.html)
 List<int> broadcastShapes(List<int> s1, List<int> s2) {
@@ -251,7 +240,11 @@ List<int> broadcastShapes(List<int> s1, List<int> s2) {
     } else if (dim2 == 1) {
       target = dim1;
     } else {
-      throw ArgumentError('Incompatible shapes for broadcasting');
+      throw ArgumentError.value(
+        s2,
+        's2',
+        'Incompatible shapes for broadcasting ($s1 and $s2)',
+      );
     }
     common[len - 1 - i] = target;
   }

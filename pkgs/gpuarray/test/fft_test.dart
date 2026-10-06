@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'package:gpuarray/fft.dart';
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/src/gpu_array.dart' show ResourceScope;
 import 'package:test/test.dart';
@@ -273,5 +274,55 @@ void main() {
         valid.dispose();
       }
     });
+
+    test(
+      'Float32 and Complex64 FFT transforms preserve single-precision dtypes (F13)',
+      () {
+        ResourceScope.scope(() {
+          final sigF32 = GpuArray.fromList(
+            <double>[1.0, 2.0, 3.0, 4.0],
+            [4],
+            DType.float32,
+          );
+          final specC64 = fft(sigF32);
+          expect(specC64.dtype, equals(DType.complex64));
+          final recC64 = ifft(specC64);
+          expect(recC64.dtype, equals(DType.complex64));
+          final recVals = recC64.toList().cast<Complex>();
+          for (var i = 0; i < 4; i++) {
+            expect(recVals[i].real, closeTo(i + 1.0, 1e-5));
+            expect(recVals[i].imag, closeTo(0.0, 1e-5));
+          }
+
+          final rspecC64 = rfft(sigF32);
+          expect(rspecC64.dtype, equals(DType.complex64));
+          final irrecF32 = irfft(rspecC64, n: 4);
+          expect(irrecF32.dtype, equals(DType.float32));
+          final irVals = irrecF32.toList().cast<double>();
+          for (var i = 0; i < 4; i++) {
+            expect(irVals[i], closeTo(i + 1.0, 1e-5));
+          }
+
+          final ihSpecC64 = ihfft(sigF32);
+          expect(ihSpecC64.dtype, equals(DType.complex64));
+          final hrecF32 = hfft(ihSpecC64, n: 4);
+          expect(hrecF32.dtype, equals(DType.float32));
+
+          final gridF32 = GpuArray.fromList(
+            <double>[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            [2, 4],
+            DType.float32,
+          );
+          final f2 = fft2(gridF32);
+          expect(f2.dtype, equals(DType.complex64));
+          final if2 = ifft2(f2);
+          expect(if2.dtype, equals(DType.complex64));
+          final rf2 = rfft2(gridF32);
+          expect(rf2.dtype, equals(DType.complex64));
+          final irf2 = irfft2(rf2, s: <int>[2, 4]);
+          expect(irf2.dtype, equals(DType.float32));
+        });
+      },
+    );
   });
 }

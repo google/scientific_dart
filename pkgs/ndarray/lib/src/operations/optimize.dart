@@ -185,10 +185,18 @@ RootScalarResult brentq(
   int maxiter = 100,
 }) {
   if (maxiter <= 0) {
-    throw ArgumentError('maxiter must be positive.');
+    throw ArgumentError.value(
+      maxiter,
+      'maxiter',
+      'Must be positive (got $maxiter)',
+    );
   }
   if (xtol < 0 || rtol < 0) {
-    throw ArgumentError('Tolerances xtol and rtol must be non-negative.');
+    throw ArgumentError.value(
+      [xtol, rtol],
+      'xtol, rtol',
+      'Must be non-negative (tolerances xtol and rtol must be non-negative)',
+    );
   }
 
   var fa = f(a);
@@ -215,8 +223,10 @@ RootScalarResult brentq(
   }
 
   if (fa.isNaN || fb.isNaN || (fa > 0.0) == (fb > 0.0)) {
-    throw ArgumentError(
-      'f(a) and f(b) must have different signs. Got f(a)=$fa, f(b)=$fb.',
+    throw ArgumentError.value(
+      [fa, fb],
+      'a, b',
+      'Must have different signs for f(a) and f(b) (got f(a)=$fa, f(b)=$fb)',
     );
   }
 
@@ -344,10 +354,14 @@ RootScalarResult newton(
   int maxiter = 50,
 }) {
   if (maxiter <= 0) {
-    throw ArgumentError('maxiter must be positive.');
+    throw ArgumentError.value(
+      maxiter,
+      'maxiter',
+      'Must be positive (got $maxiter)',
+    );
   }
   if (tol <= 0) {
-    throw ArgumentError('Tolerance tol must be positive.');
+    throw ArgumentError.value(tol, 'tol', 'Must be positive (got $tol)');
   }
 
   var p0 = x0;
@@ -466,7 +480,11 @@ RootScalarResult root_scalar(
   switch (method) {
     case RootMethod.brentq:
       if (bracketA == null || bracketB == null) {
-        throw ArgumentError('brentq requires bracketA and bracketB.');
+        throw ArgumentError.value(
+          [bracketA, bracketB],
+          'bracketA, bracketB',
+          'Must be provided for brentq (brentq requires bracketA and bracketB)',
+        );
       }
       return brentq(
         f,
@@ -479,7 +497,11 @@ RootScalarResult root_scalar(
     case RootMethod.newton:
     case RootMethod.secant:
       if (x0 == null) {
-        throw ArgumentError('$method requires initial guess x0.');
+        throw ArgumentError.value(
+          x0,
+          'x0',
+          'Must be provided for $method ($method requires initial guess x0)',
+        );
       }
       return newton(
         f,
@@ -527,21 +549,37 @@ OptimizeResult nelder_mead(
     );
   }
   if (x0.shape.length != 1) {
-    throw ArgumentError('x0 must be a 1D vector for nelder_mead.');
-  }
-  if (x0.size == 0) {
-    throw ArgumentError('Initial vector x0 must not be empty.');
-  }
-  if (out != null &&
-      (out.shape.length != 1 ||
-          out.shape[0] != x0.shape[0] ||
-          out.dtype != DType.float64)) {
-    throw ArgumentError(
-      'out must be a 1D Float64 array of length ${x0.shape[0]}.',
+    throw ArgumentError.value(
+      x0.shape,
+      'x0',
+      'Must be a 1D vector for nelder_mead (got shape ${x0.shape})',
     );
   }
+  if (x0.size == 0) {
+    throw ArgumentError.value(
+      x0.size,
+      'x0',
+      'Must not be empty (initial vector x0 must not be empty)',
+    );
+  }
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.shape.length != 1 ||
+        out.shape[0] != x0.shape[0] ||
+        out.dtype != DType.float64) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must be a 1D Float64 array of length ${x0.shape[0]} (got shape ${out.shape}, dtype ${out.dtype})',
+      );
+    }
+  }
   if (xatol < 0 || fatol < 0) {
-    throw ArgumentError('Tolerances xatol and fatol must be non-negative.');
+    throw ArgumentError.value(
+      [xatol, fatol],
+      'xatol, fatol',
+      'Must be non-negative (tolerances xatol and fatol must be non-negative)',
+    );
   }
   checkBlasIntDim(x0.shape[0], 'n', 'nelder_mead');
   checkBlasIntStride(x0.strides[0], 'incx', 'nelder_mead');
@@ -788,32 +826,59 @@ OptimizeResult lbfgs(
     throw StateError('Cannot write lbfgs gradient to a disposed outJac array.');
   }
   if (x0.shape.length != 1) {
-    throw ArgumentError('x0 must be a 1D vector for lbfgs.');
-  }
-  if (x0.size == 0) {
-    throw ArgumentError('Initial vector x0 must not be empty.');
-  }
-  if (out != null &&
-      (out.shape.length != 1 ||
-          out.shape[0] != x0.shape[0] ||
-          out.dtype != DType.float64)) {
-    throw ArgumentError(
-      'out must be a 1D Float64 array of length ${x0.shape[0]}.',
+    throw ArgumentError.value(
+      x0.shape,
+      'x0',
+      'Must be a 1D vector for lbfgs (got shape ${x0.shape})',
     );
   }
-  if (outJac != null &&
-      (outJac.shape.length != 1 ||
-          outJac.shape[0] != x0.shape[0] ||
-          outJac.dtype != DType.float64)) {
-    throw ArgumentError(
-      'outJac must be a 1D Float64 array of length ${x0.shape[0]}.',
+  if (x0.size == 0) {
+    throw ArgumentError.value(
+      x0.size,
+      'x0',
+      'Must not be empty (initial vector x0 must not be empty)',
+    );
+  }
+  if (out != null) {
+    validateOutBuffer(out);
+    if (out.shape.length != 1 ||
+        out.shape[0] != x0.shape[0] ||
+        out.dtype != DType.float64) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must be a 1D Float64 array of length ${x0.shape[0]} (got shape ${out.shape}, dtype ${out.dtype})',
+      );
+    }
+  }
+  if (outJac != null) {
+    validateOutBuffer(outJac, 'outJac');
+    if (outJac.shape.length != 1 ||
+        outJac.shape[0] != x0.shape[0] ||
+        outJac.dtype != DType.float64) {
+      throw ArgumentError.value(
+        outJac,
+        'outJac',
+        'Must be a 1D Float64 array of length ${x0.shape[0]} (got shape ${outJac.shape}, dtype ${outJac.dtype})',
+      );
+    }
+  }
+  if (out != null && outJac != null && sharesMemory(out, outJac)) {
+    throw ArgumentError.value(
+      outJac,
+      'outJac',
+      'Must not share memory with out',
     );
   }
   if (m <= 0) {
-    throw ArgumentError('m must be strictly positive.');
+    throw ArgumentError.value(m, 'm', 'Must be strictly positive (got $m)');
   }
   if (gtol <= 0 || maxiter <= 0) {
-    throw ArgumentError('gtol and maxiter must be positive.');
+    throw ArgumentError.value(
+      [gtol, maxiter],
+      'gtol, maxiter',
+      'Must be positive (gtol and maxiter must be positive, got gtol=$gtol, maxiter=$maxiter)',
+    );
   }
   checkBlasIntDim(x0.shape[0], 'n', 'lbfgs');
   checkBlasIntStride(x0.strides[0], 'incx', 'lbfgs');

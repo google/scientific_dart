@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:gpuarray/autograd.dart';
 import 'package:gpuarray/nn.dart' as nn;
+import 'package:gpuarray/src/autograd/autograd.dart';
 import 'package:gpuarray/src/device.dart';
 import 'package:gpuarray/src/dtype.dart';
 import 'package:gpuarray/src/gpu_array.dart' hide ResourceScope, ScopedResource;
@@ -329,7 +329,7 @@ void main() {
           DType.float64,
           requiresGrad: true,
         );
-        final lsm = nn.log_softmax(x2);
+        final lsm = nn.logSoftmax(x2);
         expect(lsm.requiresGrad, isTrue);
         expect(lsm.gradFn, isA<LogSoftmaxBackward>());
       });
@@ -346,9 +346,9 @@ void main() {
         final y1 = noGrad(() => x * 3.0 + 4.0);
         expect(y1.requiresGrad, isFalse);
         expect(y1.gradFn, isNull);
-        final y2 = no_grad(() => x * 5.0);
-        expect(y2.requiresGrad, isFalse);
-        expect(y2.gradFn, isNull);
+        final y2 = noGrad(() => enableGrad(() => x * 5.0));
+        expect(y2.requiresGrad, isTrue);
+        expect(y2.gradFn, isNotNull);
 
         final y = x * 2.0;
         y.backward();

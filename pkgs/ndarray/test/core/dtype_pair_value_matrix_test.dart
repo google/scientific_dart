@@ -386,16 +386,23 @@ void main() {
                   'add',
                 );
 
-                verifyGrid(
-                  subtract(a, b, where: where),
-                  resolved,
-                  (va, vb) => resolved.isComplex
-                      ? _toComplex(va) - _toComplex(vb)
-                      : (resolved.isInteger
-                            ? _toInt(va) - _toInt(vb)
-                            : _toDouble(va) - _toDouble(vb)),
-                  'subtract',
-                );
+                if (dtA == DType.boolean) {
+                  expect(
+                    () => subtract(a, b, where: where),
+                    throwsUnsupportedError,
+                  );
+                } else {
+                  verifyGrid(
+                    subtract(a, b, where: where),
+                    resolved,
+                    (va, vb) => resolved.isComplex
+                        ? _toComplex(va) - _toComplex(vb)
+                        : (resolved.isInteger
+                              ? _toInt(va) - _toInt(vb)
+                              : _toDouble(va) - _toDouble(vb)),
+                    'subtract',
+                  );
+                }
 
                 verifyGrid(
                   multiply(a, b, where: where),

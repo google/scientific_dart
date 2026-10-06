@@ -34,7 +34,7 @@ import 'dart:math' as math;
 import '../exceptions.dart';
 import '../ndarray.dart';
 import 'broadcasting.dart' show broadcastTo;
-import 'helpers.dart' show sharesMemory;
+import 'helpers.dart' show sharesMemory, validateOutBuffer;
 import 'linalg.dart';
 import 'math.dart';
 import 'sorting.dart';
@@ -197,24 +197,32 @@ NDArray<Float64> npv(
     throw StateError('Cannot perform operation on a disposed array.');
   }
   if (values.rank < 1) {
-    throw ArgumentError('values must be at least 1D');
+    throw ArgumentError.value(
+      values.rank,
+      'values',
+      'Must be at least 1D (got rank ${values.rank})',
+    );
+  }
+
+  final expectedOutShape = <int>[
+    ...rate.shape,
+    ...values.shape.sublist(0, values.rank - 1),
+  ];
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, expectedOutShape) ||
+        out.dtype != DType.float64) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape or dtype (expected shape $expectedOutShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype})',
+      );
+    }
   }
 
   // Fast single-pass path when rate is a scalar (size 1).
   if (rate.size == 1) {
-    final expectedOutShape = values.rank == 1
-        ? const <int>[]
-        : values.shape.sublist(0, values.rank - 1);
-
-    if (out != null) {
-      if (!listEquals(out.shape, expectedOutShape) ||
-          out.dtype != DType.float64) {
-        throw ArgumentError(
-          'Provided out buffer has incompatible shape or dtype (expected shape $expectedOutShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
-        );
-      }
-    }
-
     final bool outSharesMem =
         out != null &&
         (!out.isContiguous ||
@@ -343,9 +351,12 @@ NDArray<Float64> _computeTVM({
   if (fv != null) commonShape = broadcastShapes(commonShape, fv.shape);
 
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, commonShape) || out.dtype != DType.float64) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype (expected shape $commonShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape or dtype (expected shape $commonShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype})',
       );
     }
   }
@@ -702,12 +713,19 @@ NDArray<Float64> irr(
     throw StateError('Cannot perform operation on a disposed array.');
   }
   if (values.rank != 1) {
-    throw ArgumentError('values must be a 1D array');
+    throw ArgumentError.value(
+      values.rank,
+      'values',
+      'Must be a 1D array (got rank ${values.rank})',
+    );
   }
   if (out != null) {
+    validateOutBuffer(out);
     if (!listEquals(out.shape, const <int>[]) || out.dtype != DType.float64) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype (expected shape [] and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape or dtype (expected shape [] and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype})',
       );
     }
   }
@@ -809,15 +827,17 @@ NDArray<Float64>? _getStrippedCoeffs(NDArray<Float64> values) {
     return null; // All cash flows are zero.
   }
 
-  // The first element in the indices array gives the index of the first non-zero cash flow.
   final firstNonZeroIndex = indices.getCell([0]);
-  if (firstNonZeroIndex == 0) {
-    return values; // No leading zeros to strip.
+  final lastNonZeroIndex = indices.getCell([indices.shape[0] - 1]);
+  if (firstNonZeroIndex == 0 && lastNonZeroIndex == values.shape[0] - 1) {
+    return values; // No leading or trailing zeros to strip.
   }
 
-  // Return a sliced view starting at the first non-zero index.
+  // Return a sliced view spanning from the first to the last non-zero index.
   // This avoids copying any data from the original NDArray.
-  return values.slice([Slice(start: firstNonZeroIndex)]);
+  return values.slice([
+    Slice(start: firstNonZeroIndex, stop: lastNonZeroIndex + 1),
+  ]);
 }
 
 /// Checks if all elements in [coeffs] have the same sign (all positive or all negative).

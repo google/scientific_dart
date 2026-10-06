@@ -16,7 +16,7 @@
 /// [GpuArray] tensors.
 ///
 /// Includes matrix products ([matmul], [dot], [vdot], [multiDot]),
-/// decompositions ([svd], [svdvals], [svdValues], [qr], [qrR], [cholesky],
+/// decompositions ([svd], [svdValues], [qr], [qrR], [cholesky],
 /// [eigh], [eigvalsh], [eig], [eigvals], [lu], [luFactor], [luSolve]), solvers
 /// and invariants ([solve], [inv], [pinv], [lstsq], [det], [slogdet],
 /// [matrixPower], [matrixRank], [norm], [cond], [trace], [diagonal]), and

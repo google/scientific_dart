@@ -22,10 +22,12 @@
 extern "C" {
 #endif
 
+#ifndef NDARRAY_EXPORT
 #if defined(_WIN32)
 #define NDARRAY_EXPORT __declspec(dllexport)
 #else
 #define NDARRAY_EXPORT __attribute__((visibility("default")))
+#endif
 #endif
 
 /**

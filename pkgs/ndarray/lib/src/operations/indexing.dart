@@ -73,7 +73,11 @@ List<int> _broadcastMultiShapes(List<List<int>> shapes) {
       final dim = i < s.length ? s[s.length - 1 - i] : 1;
       if (dim != 1) {
         if (maxDim != 1 && maxDim != dim) {
-          throw ArgumentError('Incompatible shapes for broadcasting: $shapes');
+          throw ArgumentError.value(
+            shapes,
+            'shapes',
+            'Incompatible shapes for broadcasting: $shapes',
+          );
         }
         maxDim = dim;
       }
@@ -127,8 +131,17 @@ NDArray<T> take_along_axis<T extends DTypeTag>(
     throw StateError('Cannot execute take_along_axis on a disposed array.');
   }
   final rank = arr.shape.length;
+  if (rank == 0) {
+    throw ArgumentError.value(
+      arr,
+      'arr',
+      'Must have at least 1 dimension for take_along_axis',
+    );
+  }
   if (indices.shape.length != rank) {
-    throw ArgumentError(
+    throw ArgumentError.value(
+      indices,
+      'indices',
       'arr and indices must have the same rank (arr.ndim=${arr.shape.length}, indices.ndim=${indices.shape.length})',
     );
   }
@@ -145,7 +158,9 @@ NDArray<T> take_along_axis<T extends DTypeTag>(
       final dimA = arr.shape[i];
       final dimI = indices.shape[i];
       if (dimA != dimI && dimA != 1 && dimI != 1) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          indices,
+          'indices',
           'Incompatible shapes along dimension $i: arr.shape[i]=$dimA vs indices.shape[i]=$dimI',
         );
       }
@@ -154,13 +169,18 @@ NDArray<T> take_along_axis<T extends DTypeTag>(
   }
 
   if (out != null) {
+    validateOutBuffer(out);
     if (out.dtype != arr.dtype) {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        out,
+        'out',
         'out dtype (${out.dtype}) must match arr dtype (${arr.dtype})',
       );
     }
     if (!out.isWriteable || !listEquals(out.shape, targetShape)) {
-      throw ArgumentError(
+      throw ArgumentError.value(
+        out,
+        'out',
         'out shape (${out.shape}) must match target shape ($targetShape)',
       );
     }
@@ -254,7 +274,11 @@ NDArray<T> take_along_axis<T extends DTypeTag>(
           'index along axis $normAxis',
         );
       }
-      throw ArgumentError('take_along_axis failed with status $status');
+      throw ArgumentError.value(
+        status,
+        'status',
+        'take_along_axis failed with status $status',
+      );
     }
 
     return result;
@@ -293,8 +317,19 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
     throw StateError('Cannot execute put_along_axis on a disposed array.');
   }
   final rank = arr.shape.length;
+  if (rank == 0) {
+    throw ArgumentError.value(
+      arr,
+      'arr',
+      'Must have at least 1 dimension for put_along_axis',
+    );
+  }
   if (indices.shape.length != rank) {
-    throw ArgumentError('arr and indices must have the same rank');
+    throw ArgumentError.value(
+      indices,
+      'indices',
+      'arr and indices must have the same rank',
+    );
   }
   final normAxis = axis < 0 ? rank + axis : axis;
   if (normAxis < 0 || normAxis >= rank) {
@@ -311,20 +346,28 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
   final valRank = valuesArr.shape.length;
   if (valRank > rank) {
     if (valuesAllocated) valuesArr.dispose();
-    throw ArgumentError(
+    throw ArgumentError.value(
+      values,
+      'values',
       'values rank ($valRank) cannot be greater than arr rank ($rank)',
     );
   }
 
   final NDArray<T> target;
   if (out != null) {
+    try {
+      validateOutBuffer(out);
+    } catch (_) {
+      if (valuesAllocated) valuesArr.dispose();
+      rethrow;
+    }
     if (out.dtype != arr.dtype) {
       if (valuesAllocated) valuesArr.dispose();
-      throw ArgumentError('out dtype must match arr dtype');
+      throw ArgumentError.value(out, 'out', 'out dtype must match arr dtype');
     }
     if (!out.isWriteable || !listEquals(out.shape, arr.shape)) {
       if (valuesAllocated) valuesArr.dispose();
-      throw ArgumentError('out shape must match arr shape');
+      throw ArgumentError.value(out, 'out', 'out shape must match arr shape');
     }
     if (sharesMemory(arr, out) ||
         sharesMemory(indices, out) ||
@@ -344,11 +387,11 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
     }
     target = out;
   } else {
-    if (!arr.isWriteable) {
+    try {
+      validateOutBuffer(arr, 'arr');
+    } catch (_) {
       if (valuesAllocated) valuesArr.dispose();
-      throw ArgumentError(
-        'Assignment destination is a read-only broadcast view.',
-      );
+      rethrow;
     }
     if (sharesMemory(arr, indices) || sharesMemory(arr, valuesArr)) {
       try {
@@ -400,7 +443,9 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
         final valDim = valuesArr.shape[valDimIndex];
         final idxDim = indices.shape[i];
         if (valDim != idxDim && valDim != 1) {
-          throw ArgumentError(
+          throw ArgumentError.value(
+            values,
+            'values',
             'Incompatible shapes for put_along_axis: indices shape ${indices.shape} and values shape ${valuesArr.shape}',
           );
         }
@@ -462,7 +507,11 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
             'index along axis $normAxis',
           );
         }
-        throw ArgumentError('put_along_axis failed with status $status');
+        throw ArgumentError.value(
+          status,
+          'status',
+          'put_along_axis failed with status $status',
+        );
       }
 
       tempTarget.copy(out: target);
@@ -504,7 +553,11 @@ NDArray<T> choose<T extends DTypeTag>(
     throw StateError('Cannot execute choose on a disposed array.');
   }
   if (choices.isEmpty) {
-    throw ArgumentError('choices list must not be empty');
+    throw ArgumentError.value(
+      choices,
+      'choices',
+      'choices list must not be empty',
+    );
   }
 
   for (var i = 0; i < choices.length; i++) {
@@ -537,15 +590,13 @@ NDArray<T> choose<T extends DTypeTag>(
       return DType.float64;
     }
 
-    final resolvedDType =
-        (out?.dtype) ??
-        (() {
-          DType dt = getItemDType(choices.first);
-          for (var i = 1; i < choices.length; i++) {
-            dt = resolveDType(dt, getItemDType(choices[i]));
-          }
-          return dt as DType<T>;
-        })();
+    final resolvedDType = (() {
+      DType dt = getItemDType(choices.first);
+      for (var i = 1; i < choices.length; i++) {
+        dt = resolveDType(dt, getItemDType(choices[i]));
+      }
+      return dt as DType<T>;
+    })();
 
     final choiceArrays = choices
         .map((c) => toNDArray<T>(c, resolvedDType))
@@ -555,11 +606,18 @@ NDArray<T> choose<T extends DTypeTag>(
     final targetShape = _broadcastMultiShapes(allShapes);
 
     if (out != null) {
+      validateOutBuffer(out);
       if (out.dtype != resolvedDType) {
-        throw ArgumentError('out dtype must match resolved choices dtype');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'out dtype must match resolved choices dtype',
+        );
       }
       if (!out.isWriteable || !listEquals(out.shape, targetShape)) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          out,
+          'out',
           'out shape must match broadcast shape ($targetShape)',
         );
       }
@@ -989,10 +1047,16 @@ NDArray<T> select<T extends DTypeTag>(
     throw StateError('Cannot execute select with a disposed out array.');
   }
   if (condlist.isEmpty || choicelist.isEmpty) {
-    throw ArgumentError('condlist and choicelist must not be empty');
+    throw ArgumentError.value(
+      condlist,
+      'condlist',
+      'condlist and choicelist must not be empty',
+    );
   }
   if (condlist.length != choicelist.length) {
-    throw ArgumentError(
+    throw ArgumentError.value(
+      choicelist,
+      'choicelist',
       'condlist (${condlist.length}) and choicelist (${choicelist.length}) must have the same length',
     );
   }
@@ -1014,7 +1078,6 @@ NDArray<T> select<T extends DTypeTag>(
         .toList();
     final resolvedDType =
         dtype ??
-        (out?.dtype) ??
         (() {
           DType getItemDType(Object item) {
             if (item is NDArray) return item.dtype;
@@ -1076,11 +1139,18 @@ NDArray<T> select<T extends DTypeTag>(
       if (out.isDisposed) {
         throw StateError('Cannot use a disposed out array.');
       }
+      validateOutBuffer(out);
       if (out.dtype != resolvedDType) {
-        throw ArgumentError('out dtype must match resolved dtype');
+        throw ArgumentError.value(
+          out,
+          'out',
+          'out dtype must match resolved dtype',
+        );
       }
       if (!out.isWriteable || !listEquals(out.shape, targetShape)) {
-        throw ArgumentError(
+        throw ArgumentError.value(
+          out,
+          'out',
           'out shape must match broadcast shape ($targetShape)',
         );
       }
@@ -1218,6 +1288,7 @@ List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
           'Cannot write unravel_index result to a disposed out array at index $i.',
         );
       }
+      validateOutBuffer(o, 'out[$i]');
       if (!o.isWriteable) {
         throw ArgumentError.value(o, 'out[$i]', 'Must be writeable');
       }
@@ -1452,12 +1523,38 @@ NDArray<Int64> ravel_multi_index(
 
   return NDArray.scope(() {
     final ndims = dims.length;
-    final coordArrays = <NDArray<Int64>>[
-      for (final c in multi_index)
-        identical(c.dtype, DType.int64)
-            ? c as NDArray<Int64>
-            : c.astype(DType.int64),
-    ];
+    final coordArrays = <NDArray<Int64>>[];
+    for (var d = 0; d < ndims; d++) {
+      final c = multi_index[d];
+      if (identical(c.dtype, DType.uint64)) {
+        final copy = c.astype(DType.int64);
+        final dimSize = dims[d];
+        final dimMode = modesList[d];
+        for (var i = 0; i < copy.size; i++) {
+          final raw = copy.getCellFlat(i);
+          if (raw < 0) {
+            switch (dimMode) {
+              case ChooseMode.raise:
+                throw RangeError(
+                  'Coordinate out of bounds for array with dimensions $dims',
+                );
+              case ChooseMode.clip:
+                copy.setCellFlat(i, dimSize - 1);
+              case ChooseMode.wrap:
+                final wrapped = BigInt.from(
+                  raw,
+                ).toUnsigned(64).remainder(BigInt.from(dimSize)).toInt();
+                copy.setCellFlat(i, wrapped);
+            }
+          }
+        }
+        coordArrays.add(copy);
+      } else if (identical(c.dtype, DType.int64)) {
+        coordArrays.add(c as NDArray<Int64>);
+      } else {
+        coordArrays.add(c.astype(DType.int64));
+      }
+    }
 
     final targetShape = _broadcastMultiShapes(
       coordArrays.map((c) => c.shape).toList(),
@@ -1469,6 +1566,7 @@ NDArray<Int64> ravel_multi_index(
           'Cannot write ravel_multi_index result to a disposed out array.',
         );
       }
+      validateOutBuffer(out);
       if (!out.isWriteable) {
         throw ArgumentError.value(out, 'out', 'Must be writeable');
       }
@@ -1571,6 +1669,13 @@ NDArray<Int64> ravel_multi_index(
           'Coordinate ${errValPtr.value} is out of bounds for dimensions $dims',
         );
       }
+      if (status == -3) {
+        throw ArgumentError.value(
+          dims,
+          'dims',
+          'Must not overflow 64-bit signed integer product',
+        );
+      }
       if (status == -4) {
         throw OutOfMemoryError();
       }
@@ -1645,6 +1750,7 @@ NDArray<T> indices<T extends DTypeTag>(
     if (out.isDisposed) {
       throw StateError('Cannot write indices result to a disposed out array.');
     }
+    validateOutBuffer(out);
     if (!out.isWriteable) {
       throw ArgumentError.value(out, 'out', 'Must be writeable');
     }

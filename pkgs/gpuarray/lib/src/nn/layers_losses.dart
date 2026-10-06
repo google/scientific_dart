@@ -41,8 +41,10 @@ final class Dropout extends Module {
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
-      functional.dropout(input, p: p, training: isTraining);
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.dropout<T>(input, p: p, training: isTraining);
+  }
 }
 
 /// Lookup table that stores embeddings of a fixed dictionary of size [numEmbeddings].
@@ -54,10 +56,15 @@ final class Embedding extends Module {
   final int embeddingDim;
 
   /// Learnable embedding table of shape `[numEmbeddings, embeddingDim]`.
-  late final GpuArray<Float64> weight;
+  late final GpuArray<DTypeTag> weight;
 
   /// Creates an [Embedding] table with [numEmbeddings] rows of dimension [embeddingDim].
-  Embedding(this.numEmbeddings, this.embeddingDim, {GpuDevice? device}) {
+  Embedding(
+    this.numEmbeddings,
+    this.embeddingDim, {
+    DType<DTypeTag> dtype = DType.float64,
+    GpuDevice? device,
+  }) {
     if (numEmbeddings <= 0) {
       throw ArgumentError.value(
         numEmbeddings,
@@ -72,18 +79,36 @@ final class Embedding extends Module {
         'Must be positive.',
       );
     }
+    if (!dtype.isFloating) {
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be a floating-point DType.',
+      );
+    }
     final targetDevice = device ?? GpuDevice.defaultDevice;
-    final sampledWeight = random_ops.randn([
+    final rawWeight = random_ops.randn([
       numEmbeddings,
       embeddingDim,
-    ], targetDevice)..requiresGrad = true;
+    ], targetDevice);
+    final GpuArray<DTypeTag> sampledWeight;
+    if (dtype == DType.float64) {
+      sampledWeight = rawWeight..requiresGrad = true;
+    } else {
+      sampledWeight = rawWeight.astype(dtype)..requiresGrad = true;
+      rawWeight.dispose();
+    }
     weight = registerParameter('weight', sampledWeight);
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<DTypeTag> input) {
+    checkNotDisposed();
     final outShape = [...input.shape, embeddingDim];
-    final output = GpuArray.empty(outShape, weight.dtype, device: input.device);
+    final targetDType = T == Float32
+        ? DType.float32
+        : (T == Float64 ? DType.float64 : weight.dtype);
+    final output = GpuArray.empty(outShape, targetDType, device: input.device);
     dispatchEmbeddingForward(
       weight: weight,
       indices: input,
@@ -100,8 +125,12 @@ final class Embedding extends Module {
         embeddingDim,
       );
     }
-    return output;
+    return output as GpuArray<T>;
   }
+
+  @override
+  GpuArray<T> call<T extends DTypeTag>(GpuArray<DTypeTag> input) =>
+      forward<T>(input);
 }
 
 /// Applies the Rectified Linear Unit (ReLU) activation as a [Module].
@@ -110,8 +139,10 @@ final class ReLU extends Module {
   ReLU();
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
-      functional.relu(input);
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.relu<T>(input);
+  }
 }
 
 /// Applies the Gaussian Error Linear Unit (GELU) activation as a [Module].
@@ -120,8 +151,10 @@ final class GELU extends Module {
   GELU();
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
-      functional.gelu(input);
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.gelu<T>(input);
+  }
 }
 
 /// Applies the logistic Sigmoid activation as a [Module].
@@ -130,8 +163,10 @@ final class Sigmoid extends Module {
   Sigmoid();
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
-      functional.sigmoid(input);
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.sigmoid<T>(input);
+  }
 }
 
 /// Applies the Hyperbolic Tangent (Tanh) activation as a [Module].
@@ -140,8 +175,131 @@ final class Tanh extends Module {
   Tanh();
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) =>
-      functional.tanh(input);
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.tanh<T>(input);
+  }
+}
+
+/// Applies the Sigmoid Linear Unit (SiLU) activation as a [Module].
+final class SiLU extends Module {
+  /// Creates a [SiLU] activation module.
+  SiLU();
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.silu<T>(input);
+  }
+}
+
+/// Applies the Swish activation ($x \cdot \sigma(x)$) as a [Module].
+final class Swish extends Module {
+  /// Creates a [Swish] activation module.
+  Swish();
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.swish<T>(input);
+  }
+}
+
+/// Applies the Leaky Rectified Linear Unit (LeakyReLU) activation as a [Module].
+final class LeakyReLU extends Module {
+  /// Controls the angle of the negative slope.
+  final double negativeSlope;
+
+  /// Creates a [LeakyReLU] activation module with [negativeSlope].
+  LeakyReLU({this.negativeSlope = 0.01}) {
+    if (negativeSlope.isNaN) {
+      throw ArgumentError.value(
+        negativeSlope,
+        'negativeSlope',
+        'Must not be NaN.',
+      );
+    }
+  }
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.leakyRelu<T>(input, negativeSlope: negativeSlope);
+  }
+}
+
+/// Applies the Exponential Linear Unit (ELU) activation as a [Module].
+final class ELU extends Module {
+  /// Scale factor $\alpha$ for negative inputs.
+  final double alpha;
+
+  /// Creates an [ELU] activation module with [alpha].
+  ELU({this.alpha = 1.0}) {
+    if (alpha.isNaN) {
+      throw ArgumentError.value(alpha, 'alpha', 'Must not be NaN.');
+    }
+  }
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.elu<T>(input, alpha: alpha);
+  }
+}
+
+/// Applies the Softplus activation ($\frac{1}{\beta} \ln(1 + e^{\beta x})$) as a [Module].
+final class Softplus extends Module {
+  /// Inverse temperature scaling factor $\beta > 0$.
+  final double beta;
+
+  /// Numerical stability threshold above which Softplus reverts to linear $x$.
+  final double threshold;
+
+  /// Creates a [Softplus] activation module with [beta] and [threshold].
+  Softplus({this.beta = 1.0, this.threshold = 20.0}) {
+    if (beta <= 0.0 || beta.isNaN) {
+      throw ArgumentError.value(beta, 'beta', 'Must be positive.');
+    }
+    if (threshold <= 0.0 || threshold.isNaN) {
+      throw ArgumentError.value(threshold, 'threshold', 'Must be positive.');
+    }
+  }
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.softplus<T>(input, beta: beta, threshold: threshold);
+  }
+}
+
+/// Applies the Softmax normalization along [axis] as a [Module].
+final class Softmax extends Module {
+  /// Axis along which Softmax normalization is computed.
+  final int axis;
+
+  /// Creates a [Softmax] module along [axis].
+  Softmax({this.axis = -1});
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.softmax<T>(input, axis: axis);
+  }
+}
+
+/// Applies the Log-Softmax normalization along [axis] as a [Module].
+final class LogSoftmax extends Module {
+  /// Axis along which Log-Softmax normalization is computed.
+  final int axis;
+
+  /// Creates a [LogSoftmax] module along [axis].
+  LogSoftmax({this.axis = -1});
+
+  @override
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    return functional.logSoftmax<T>(input, axis: axis);
+  }
 }
 
 /// Rotary Position Embedding (RoPE) for transformer query and key representations.
@@ -156,16 +314,17 @@ final class RotaryEmbedding extends Module {
   final double base;
 
   /// Precomputed cosine table of shape `[maxSequenceLength, dim]`.
-  late final GpuArray<Float64> cosCached;
+  late final GpuArray<DTypeTag> cosCached;
 
   /// Precomputed sine table of shape `[maxSequenceLength, dim]`.
-  late final GpuArray<Float64> sinCached;
+  late final GpuArray<DTypeTag> sinCached;
 
   /// Creates a [RotaryEmbedding] module with even [dim].
   RotaryEmbedding(
     this.dim, {
     this.maxSequenceLength = 2048,
     this.base = 10000.0,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) {
     if (dim <= 0 || dim % 2 != 0) {
@@ -178,16 +337,21 @@ final class RotaryEmbedding extends Module {
         'Must be positive.',
       );
     }
+    if (!dtype.isFloating) {
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be a floating-point DType.',
+      );
+    }
     final targetDevice = device ?? GpuDevice.defaultDevice;
-    cosCached = GpuArray.empty(
-      [maxSequenceLength, dim],
-      DType.float64,
-      device: targetDevice,
+    cosCached = registerBuffer(
+      'cosCached',
+      GpuArray.empty([maxSequenceLength, dim], dtype, device: targetDevice),
     );
-    sinCached = GpuArray.empty(
-      [maxSequenceLength, dim],
-      DType.float64,
-      device: targetDevice,
+    sinCached = registerBuffer(
+      'sinCached',
+      GpuArray.empty([maxSequenceLength, dim], dtype, device: targetDevice),
     );
     dispatchRotaryEmbeddingCache(
       cosCached: cosCached,
@@ -199,7 +363,7 @@ final class RotaryEmbedding extends Module {
   }
 
   /// Rotates the trailing half dimensions of [x] (`[-x2, x1]`).
-  static GpuArray<DTypeTag> rotateHalf(GpuArray<DTypeTag> x) {
+  static GpuArray<T> rotateHalf<T extends DTypeTag>(GpuArray<T> x) {
     final dimension = x.shape[x.rank - 1];
     final halfDim = dimension ~/ 2;
     final rank = x.rank;
@@ -217,11 +381,12 @@ final class RotaryEmbedding extends Module {
     final x2 = x.slice(secondHalfSpecs);
     final negX2 = x2.negate();
 
-    return manipulation.concatenate([negX2, x1], axis: -1);
+    return manipulation.concatenate<T>([negX2, x1], axis: -1);
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input, {int offset = 0}) {
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input, {int offset = 0}) {
+    checkNotDisposed();
     RangeError.checkNotNegative(offset, 'offset');
     final sequenceLength = input.shape[input.rank - 2];
     final sliceSpecs = [Slice(offset, offset + sequenceLength), const All()];
@@ -229,14 +394,14 @@ final class RotaryEmbedding extends Module {
     final sinSlice = sinCached.slice(sliceSpecs);
 
     final xCos = input * cosSlice;
-    final rotatedX = rotateHalf(input);
+    final rotatedX = rotateHalf<T>(input);
     final rotatedSin = rotatedX * sinSlice;
     return xCos + rotatedSin;
   }
 
   @override
-  GpuArray<DTypeTag> call(GpuArray<DTypeTag> input, {int offset = 0}) =>
-      forward(input, offset: offset);
+  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, {int offset = 0}) =>
+      forward<T>(input, offset: offset);
 }
 
 /// Gated Linear Unit with SiLU activation (SwiGLU):
@@ -269,6 +434,7 @@ final class SwiGLU extends Module {
     this.hiddenFeatures, {
     int? outFeatures,
     this.hasBias = false,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) : outFeatures = outFeatures ?? inFeatures {
     final targetDevice = device ?? GpuDevice.defaultDevice;
@@ -277,33 +443,40 @@ final class SwiGLU extends Module {
         inFeatures,
         hiddenFeatures,
         hasBias: hasBias,
+        dtype: dtype,
         device: targetDevice,
       ),
+      'w1',
     );
     w2 = registerModule(
       Linear(
         inFeatures,
         hiddenFeatures,
         hasBias: hasBias,
+        dtype: dtype,
         device: targetDevice,
       ),
+      'w2',
     );
     w3 = registerModule(
       Linear(
         hiddenFeatures,
         this.outFeatures,
         hasBias: hasBias,
+        dtype: dtype,
         device: targetDevice,
       ),
+      'w3',
     );
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
-    final gate = w1(input);
-    final up = functional.silu(w2(input));
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    final gate = w1<T>(input);
+    final up = functional.silu<T>(w2<T>(input));
     final fused = gate * up;
-    return w3(fused);
+    return w3<T>(fused);
   }
 }
 
@@ -337,6 +510,7 @@ final class GeGLU extends Module {
     this.hiddenFeatures, {
     int? outFeatures,
     this.hasBias = false,
+    DType<DTypeTag> dtype = DType.float64,
     GpuDevice? device,
   }) : outFeatures = outFeatures ?? inFeatures {
     final targetDevice = device ?? GpuDevice.defaultDevice;
@@ -345,33 +519,40 @@ final class GeGLU extends Module {
         inFeatures,
         hiddenFeatures,
         hasBias: hasBias,
+        dtype: dtype,
         device: targetDevice,
       ),
+      'w1',
     );
     w2 = registerModule(
       Linear(
         inFeatures,
         hiddenFeatures,
         hasBias: hasBias,
+        dtype: dtype,
         device: targetDevice,
       ),
+      'w2',
     );
     w3 = registerModule(
       Linear(
         hiddenFeatures,
         this.outFeatures,
         hasBias: hasBias,
+        dtype: dtype,
         device: targetDevice,
       ),
+      'w3',
     );
   }
 
   @override
-  GpuArray<DTypeTag> forward(GpuArray<DTypeTag> input) {
-    final gate = w1(input);
-    final up = functional.gelu(w2(input));
+  GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
+    checkNotDisposed();
+    final gate = w1<T>(input);
+    final up = functional.gelu<T>(w2<T>(input));
     final fused = gate * up;
-    return w3(fused);
+    return w3<T>(fused);
   }
 }
 
@@ -384,16 +565,14 @@ final class MSELoss {
   const MSELoss({this.reduction = LossReduction.mean});
 
   /// Computes the MSE loss between [input] and [target].
-  GpuArray<DTypeTag> forward<T extends DTypeTag>(
+  GpuArray<T> forward<T extends DTypeTag>(
     GpuArray<T> input,
     GpuArray<T> target,
-  ) => functional.mseLoss(input, target, reduction: reduction);
+  ) => functional.mseLoss<T>(input, target, reduction: reduction);
 
   /// Invokes [forward] on [input] and [target].
-  GpuArray<DTypeTag> call<T extends DTypeTag>(
-    GpuArray<T> input,
-    GpuArray<T> target,
-  ) => forward(input, target);
+  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, GpuArray<T> target) =>
+      forward<T>(input, target);
 }
 
 /// Criterion that measures the Mean Absolute Error (L1 norm) between predictions and targets.
@@ -405,16 +584,14 @@ final class L1Loss {
   const L1Loss({this.reduction = LossReduction.mean});
 
   /// Computes the L1 loss between [input] and [target].
-  GpuArray<DTypeTag> forward<T extends DTypeTag>(
+  GpuArray<T> forward<T extends DTypeTag>(
     GpuArray<T> input,
     GpuArray<T> target,
-  ) => functional.l1Loss(input, target, reduction: reduction);
+  ) => functional.l1Loss<T>(input, target, reduction: reduction);
 
   /// Invokes [forward] on [input] and [target].
-  GpuArray<DTypeTag> call<T extends DTypeTag>(
-    GpuArray<T> input,
-    GpuArray<T> target,
-  ) => forward(input, target);
+  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, GpuArray<T> target) =>
+      forward<T>(input, target);
 }
 
 /// Criterion that measures the Binary Cross-Entropy loss between predicted and target probabilities.
@@ -426,16 +603,14 @@ final class BCELoss {
   const BCELoss({this.reduction = LossReduction.mean});
 
   /// Computes the binary cross-entropy loss between [input] and [target].
-  GpuArray<DTypeTag> forward<T extends DTypeTag>(
+  GpuArray<T> forward<T extends DTypeTag>(
     GpuArray<T> input,
     GpuArray<T> target,
-  ) => functional.binaryCrossEntropy(input, target, reduction: reduction);
+  ) => functional.binaryCrossEntropy<T>(input, target, reduction: reduction);
 
   /// Invokes [forward] on [input] and [target].
-  GpuArray<DTypeTag> call<T extends DTypeTag>(
-    GpuArray<T> input,
-    GpuArray<T> target,
-  ) => forward(input, target);
+  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, GpuArray<T> target) =>
+      forward<T>(input, target);
 }
 
 /// Criterion that computes the categorical cross-entropy loss between unnormalized logits and class targets.
@@ -450,11 +625,11 @@ final class CrossEntropyLoss {
   GpuArray<T> forward<T extends DTypeTag>(
     GpuArray<T> logits,
     GpuArray<DTypeTag> targets,
-  ) => functional.crossEntropy(logits, targets, reduction: reduction);
+  ) => functional.crossEntropy<T>(logits, targets, reduction: reduction);
 
   /// Invokes [forward] on [logits] and [targets].
   GpuArray<T> call<T extends DTypeTag>(
     GpuArray<T> logits,
     GpuArray<DTypeTag> targets,
-  ) => forward(logits, targets);
+  ) => forward<T>(logits, targets);
 }

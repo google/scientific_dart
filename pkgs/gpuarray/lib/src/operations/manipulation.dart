@@ -296,14 +296,6 @@ GpuArray<T> columnStack<T extends DTypeTag>(
   }
 }
 
-/// Stacks 1D or 2D arrays as columns to create a 2D array.
-@Deprecated('Use columnStack instead.')
-// ignore: non_constant_identifier_names
-GpuArray<T> column_stack<T extends DTypeTag>(
-  List<GpuArray<DTypeTag>> arrays, {
-  GpuArray<T>? out,
-}) => columnStack<T>(arrays, out: out);
-
 /// Splits an array into multiple sub-arrays along [axis].
 List<GpuArray<T>> split<T extends DTypeTag>(
   GpuArray<T> a,
@@ -416,15 +408,6 @@ List<GpuArray<T>> arraySplit<T extends DTypeTag>(
   }
   return result;
 }
-
-/// Splits an array into multiple sub-arrays (allowing unequal division).
-@Deprecated('Use arraySplit instead.')
-// ignore: non_constant_identifier_names
-List<GpuArray<T>> array_split<T extends DTypeTag>(
-  GpuArray<T> a,
-  Object indicesOrSections, {
-  int axis = 0,
-}) => arraySplit<T>(a, indicesOrSections, axis: axis);
 
 /// Splits array horizontally (along axis 1 for >=2D, or axis 0 for 1D).
 List<GpuArray<T>> hsplit<T extends DTypeTag>(
@@ -1136,12 +1119,6 @@ GpuArray<T> expandDims<T extends DTypeTag>(GpuArray<T> a, Object axis) {
   return a.reshape(newShape);
 }
 
-/// Expands the shape of an array by inserting a new axis at [axis].
-@Deprecated('Use expandDims instead.')
-// ignore: non_constant_identifier_names
-GpuArray<T> expand_dims<T extends DTypeTag>(GpuArray<T> a, Object axis) =>
-    expandDims<T>(a, axis);
-
 /// Broadcasts an array to a new [shape].
 GpuArray<T> broadcastTo<T extends DTypeTag>(GpuArray<T> a, List<int> shape) {
   _checkNotDisposed(a, 'a');
@@ -1160,12 +1137,6 @@ GpuArray<T> broadcastTo<T extends DTypeTag>(GpuArray<T> a, List<int> shape) {
   );
 }
 
-/// Broadcasts an array to a new [shape].
-@Deprecated('Use broadcastTo instead.')
-// ignore: non_constant_identifier_names
-GpuArray<T> broadcast_to<T extends DTypeTag>(GpuArray<T> a, List<int> shape) =>
-    broadcastTo<T>(a, shape);
-
 /// Broadcasts any number of [arrays] against each other to a common shape.
 List<GpuArray<DTypeTag>> broadcastArrays(List<GpuArray<DTypeTag>> arrays) {
   if (arrays.isEmpty) return const [];
@@ -1177,8 +1148,38 @@ List<GpuArray<DTypeTag>> broadcastArrays(List<GpuArray<DTypeTag>> arrays) {
   return arrays.map((a) => a.broadcastTo(commonShape)).toList();
 }
 
-/// Broadcasts any number of [arrays] against each other to a common shape.
-@Deprecated('Use broadcastArrays instead.')
-// ignore: non_constant_identifier_names
-List<GpuArray<DTypeTag>> broadcast_arrays(List<GpuArray<DTypeTag>> arrays) =>
-    broadcastArrays(arrays);
+/// Views [a] as an array with at least one dimension.
+GpuArray<T> atleast1d<T extends DTypeTag>(GpuArray<T> a) {
+  _checkNotDisposed(a, 'a');
+  if (a.shape.isEmpty) {
+    return a.reshape(const [1]);
+  }
+  return a.reshape(a.shape);
+}
+
+/// Views [a] as an array with at least two dimensions.
+GpuArray<T> atleast2d<T extends DTypeTag>(GpuArray<T> a) {
+  _checkNotDisposed(a, 'a');
+  if (a.shape.isEmpty) {
+    return a.reshape(const [1, 1]);
+  }
+  if (a.shape.length == 1) {
+    return a.reshape([1, a.shape[0]]);
+  }
+  return a.reshape(a.shape);
+}
+
+/// Views [a] as an array with at least three dimensions.
+GpuArray<T> atleast3d<T extends DTypeTag>(GpuArray<T> a) {
+  _checkNotDisposed(a, 'a');
+  if (a.shape.isEmpty) {
+    return a.reshape(const [1, 1, 1]);
+  }
+  if (a.shape.length == 1) {
+    return a.reshape([1, a.shape[0], 1]);
+  }
+  if (a.shape.length == 2) {
+    return a.reshape([a.shape[0], a.shape[1], 1]);
+  }
+  return a.reshape(a.shape);
+}

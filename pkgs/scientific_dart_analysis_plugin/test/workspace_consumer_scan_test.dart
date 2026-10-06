@@ -103,6 +103,10 @@ void main() {
         findingsByRule['ndarray_broadcast_view_as_out'] ?? const [],
         isEmpty,
       );
+      expect(
+        findingsByRule['ndarray_loop_reassignment_leak'] ?? const [],
+        isEmpty,
+      );
       expect(findingsByRule['symbolic_lambdify_in_loop'] ?? const [], isEmpty);
     },
   );

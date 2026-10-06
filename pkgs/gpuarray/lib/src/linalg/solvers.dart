@@ -19,28 +19,29 @@ import '../gpu_array.dart';
 import 'decomposition_kernels.dart';
 import 'linalg.dart';
 import 'linalg_buffer_ops.dart';
+import 'linalg_wgsl_df64.dart';
 import 'solver_kernels.dart';
 import 'spectral_kernels.dart';
 import 'tensor_kernels.dart';
 
 /// Convenience disposal extension for [slogdet] output records.
-extension SlogdetRecordDispose
-    on ({GpuArray<Float64> sign, GpuArray<Float64> logabsdet}) {
+extension SlogdetRecordDispose<S extends DTypeTag, L extends DTypeTag>
+    on ({GpuArray<S> sign, GpuArray<L> logabsdet}) {
   /// Disposes both [GpuArray] fields (`sign`, `logabsdet`) in this record.
   void dispose() {
-    sign.dispose();
+    this.sign.dispose();
     logabsdet.dispose();
   }
 }
 
 /// Convenience disposal extension for [lstsq] output records.
-extension LstsqResultDispose
+extension LstsqResultDispose<M extends DTypeTag, F extends DTypeTag>
     on
         ({
-          GpuArray<Float64> solution,
-          GpuArray<Float64> residuals,
+          GpuArray<M> solution,
+          GpuArray<F> residuals,
           int rank,
-          GpuArray<Float64> singularValues,
+          GpuArray<F> singularValues,
         }) {
   /// Disposes all [GpuArray] fields (`solution`, `residuals`,
   /// `singularValues`) in this record.
@@ -160,10 +161,18 @@ void _requireSquare2d(GpuArray a, String functionName) {
 ///
 /// The [a] tensor must be a square 2-D matrix, and [b] must be a 1-D or 2-D
 /// array on the same [GpuDevice] with `b.shape[0] == a.shape[0]`.
-GpuArray<Float64> solve(
-  GpuArray<DTypeTag> a,
+GpuArray<M> solve<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a,
   GpuArray<DTypeTag> b, {
-  GpuArray<Float64>? out,
+  GpuArray<M>? out,
 }) {
   _requireSquare2d(a, 'solve');
   if (b.isDisposed) {
@@ -191,28 +200,49 @@ GpuArray<Float64> solve(
       'Must have first dimension $n matching a, got ${b.shape[0]}.',
     );
   }
-  validateLinalgOut(out, a.device, b.shape, DType.float64);
+  final mathDtype = linalgMathDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
+  validateLinalgOut(out, a.device, b.shape, mathDtype);
 
   final nrhs = b.ndim == 1 ? 1 : b.shape[1];
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
-    final bF64 = toContiguousFloat64Buffer(b);
-    final luBuffers = dispatchLuGpu(a.device, aF64, n, n);
-    final xF64 = dispatchLuSolveGpu(
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
+    final bBuffer = single
+        ? toContiguousFloat32Buffer(b)
+        : toContiguousFloat64Buffer(b);
+    final luBuffers = dispatchLuGpu(
+      a.device,
+      aBuffer,
+      n,
+      n,
+      singlePrecision: single,
+    );
+    final xBuffer = dispatchLuSolveGpu(
       a.device,
       luBuffers.lu,
       luBuffers.pivots,
-      bF64,
+      bBuffer,
       n,
       nrhs,
+      singlePrecision: single,
     );
-    final result = writeFloat64BufferToArray<Float64>(
-      a.device,
-      xF64,
-      b.shape,
-      DType.float64,
-      out: out,
-    );
+    final result = single
+        ? writeFloat32BufferToArray<M>(
+            a.device,
+            xBuffer,
+            b.shape,
+            mathDtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<M>(
+            a.device,
+            xBuffer,
+            b.shape,
+            mathDtype,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
@@ -224,31 +254,62 @@ GpuArray<Float64> solve(
 /// satisfying `dot(a, a_inv) = I`.
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
-/// have shape `[N, N]`, [DType.float64], and reside on `a.device`.
-GpuArray<Float64> inv(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) {
+/// have shape `[N, N]`, matching output dtype, and reside on `a.device`.
+GpuArray<M> inv<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<M>? out}) {
   _requireSquare2d(a, 'inv');
   final n = a.shape[0];
-  validateLinalgOut(out, a.device, a.shape, DType.float64);
+  final mathDtype = linalgMathDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
+  validateLinalgOut(out, a.device, a.shape, mathDtype);
 
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
-    final eyeF64 = dispatchIdentityF64Gpu(a.device, n);
-    final luBuffers = dispatchLuGpu(a.device, aF64, n, n);
-    final invF64 = dispatchLuSolveGpu(
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
+    final eyeBuffer = dispatchIdentityF64Gpu(
+      a.device,
+      n,
+      singlePrecision: single,
+    );
+    final luBuffers = dispatchLuGpu(
+      a.device,
+      aBuffer,
+      n,
+      n,
+      singlePrecision: single,
+    );
+    final invBuffer = dispatchLuSolveGpu(
       a.device,
       luBuffers.lu,
       luBuffers.pivots,
-      eyeF64,
+      eyeBuffer,
       n,
       n,
+      singlePrecision: single,
     );
-    final result = writeFloat64BufferToArray<Float64>(
-      a.device,
-      invF64,
-      a.shape,
-      DType.float64,
-      out: out,
-    );
+    final result = single
+        ? writeFloat32BufferToArray<M>(
+            a.device,
+            invBuffer,
+            a.shape,
+            mathDtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<M>(
+            a.device,
+            invBuffer,
+            a.shape,
+            mathDtype,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
@@ -261,48 +322,71 @@ GpuArray<Float64> inv(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) {
 /// values smaller than `[rcond] * max(singular_values)` are treated as zero.
 ///
 /// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
-/// shape `[N, M]`, [DType.float64], and reside on `a.device`.
-GpuArray<Float64> pinv(
-  GpuArray<DTypeTag> a, {
+/// shape `[N, M]`, matching output dtype, and reside on `a.device`.
+GpuArray<M> pinv<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   double? rcond,
-  GpuArray<Float64>? out,
+  GpuArray<M>? out,
 }) {
   _require2d(a, 'pinv');
   final m = a.shape[0];
   final n = a.shape[1];
   final outShape = <int>[n, m];
-  validateLinalgOut(out, a.device, outShape, DType.float64);
+  final mathDtype = linalgMathDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
+  validateLinalgOut(out, a.device, outShape, mathDtype);
 
-  final effectiveRcond = rcond ?? (1e-12 * math.max(m, n));
+  final defaultTol = single ? 1e-6 : 1e-12;
+  final effectiveRcond = rcond ?? (defaultTol * math.max(m, n));
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
     final svdBuffers = dispatchSvdGpu(
       a.device,
-      aF64,
+      aBuffer,
       m,
       n,
       fullMatrices: false,
+      singlePrecision: single,
     );
     final pinvBuffers = dispatchPinvAndLstsqFromSvdGpu(
       a.device,
-      aF64: aF64,
+      aF64: aBuffer,
       uF64: svdBuffers.u,
       sF64: svdBuffers.s,
       vtF64: svdBuffers.vt,
-      bF64: aF64,
+      bF64: aBuffer,
       m: m,
       n: n,
       nrhs: 1,
       rcond: effectiveRcond,
       computeLstsq: false,
+      singlePrecision: single,
     );
-    final result = writeFloat64BufferToArray<Float64>(
-      a.device,
-      pinvBuffers.pinv,
-      outShape,
-      DType.float64,
-      out: out,
-    );
+    final result = single
+        ? writeFloat32BufferToArray<M>(
+            a.device,
+            pinvBuffers.pinv,
+            outShape,
+            mathDtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<M>(
+            a.device,
+            pinvBuffers.pinv,
+            outShape,
+            mathDtype,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
@@ -322,18 +406,26 @@ GpuArray<Float64> pinv(
 /// The [a] tensor must be a 2-D `[M, N]` matrix, and [b] must be a 1-D (`[M]`)
 /// or 2-D (`[M, K]`) tensor on the same device.
 ({
-  GpuArray<Float64> solution,
-  GpuArray<Float64> residuals,
+  GpuArray<M> solution,
+  GpuArray<F> residuals,
   int rank,
-  GpuArray<Float64> singularValues,
+  GpuArray<F> singularValues,
 })
-lstsq(
-  GpuArray<DTypeTag> a,
+lstsq<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a,
   GpuArray<DTypeTag> b, {
   double? rcond,
-  GpuArray<Float64>? outSolution,
-  GpuArray<Float64>? outResiduals,
-  GpuArray<Float64>? outSingularValues,
+  GpuArray<M>? outSolution,
+  GpuArray<F>? outResiduals,
+  GpuArray<F>? outSingularValues,
 }) {
   _require2d(a, 'lstsq');
   if (b.isDisposed) {
@@ -367,86 +459,130 @@ lstsq(
   final nrhs = b.ndim == 1 ? 1 : b.shape[1];
   final solShape = b.ndim == 1 ? <int>[n] : <int>[n, nrhs];
   final sShape = <int>[kMin];
+  final mathDtype = linalgMathDType(a.dtype);
+  final floatDtype = linalgFloatDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
 
   validateLinalgOut(
     outSolution,
     a.device,
     solShape,
-    DType.float64,
+    mathDtype,
     paramName: 'outSolution',
   );
   validateLinalgOut(
     outSingularValues,
     a.device,
     sShape,
-    DType.float64,
+    floatDtype,
     paramName: 'outSingularValues',
   );
 
-  final effectiveRcond = rcond ?? (1e-12 * math.max(m, n));
+  final defaultTol = single ? 1e-6 : 1e-12;
+  final effectiveRcond = rcond ?? (defaultTol * math.max(m, n));
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
-    final bF64 = toContiguousFloat64Buffer(b);
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
+    final bBuffer = single
+        ? toContiguousFloat32Buffer(b)
+        : toContiguousFloat64Buffer(b);
     final svdBuffers = dispatchSvdGpu(
       a.device,
-      aF64,
+      aBuffer,
       m,
       n,
       fullMatrices: false,
+      singlePrecision: single,
     );
     final lstsqBuffers = dispatchPinvAndLstsqFromSvdGpu(
       a.device,
-      aF64: aF64,
+      aF64: aBuffer,
       uF64: svdBuffers.u,
       sF64: svdBuffers.s,
       vtF64: svdBuffers.vt,
-      bF64: bF64,
+      bF64: bBuffer,
       m: m,
       n: n,
       nrhs: nrhs,
       rcond: effectiveRcond,
       computeLstsq: true,
+      singlePrecision: single,
     );
-    final rankArray = writeFloat64BufferToArray<Int32>(
-      a.device,
-      lstsqBuffers.rank,
-      const <int>[],
-      DType.int32,
-    );
+    final rankArray = single
+        ? writeFloat32BufferToArray<Int32>(
+            a.device,
+            lstsqBuffers.rank,
+            const <int>[],
+            DType.int32,
+          )
+        : writeFloat64BufferToArray<Int32>(
+            a.device,
+            lstsqBuffers.rank,
+            const <int>[],
+            DType.int32,
+          );
     final rankValue = rankArray.scalar;
     final resShape = (m > n && rankValue == n) ? <int>[nrhs] : <int>[0];
     validateLinalgOut(
       outResiduals,
       a.device,
       resShape,
-      DType.float64,
+      floatDtype,
       paramName: 'outResiduals',
     );
 
-    final solArray = writeFloat64BufferToArray<Float64>(
-      a.device,
-      lstsqBuffers.solution,
-      solShape,
-      DType.float64,
-      out: outSolution,
-      outParamName: 'outSolution',
-    );
-    final resArray = writeFloat64BufferToArray<Float64>(
-      a.device,
-      lstsqBuffers.residuals,
-      resShape,
-      DType.float64,
-      out: outResiduals,
-      outParamName: 'outResiduals',
-    );
-    final sArray = writeFloat64BufferToArray<Float64>(
-      a.device,
-      svdBuffers.s,
-      sShape,
-      DType.float64,
-      out: outSingularValues,
-      outParamName: 'outSingularValues',
-    );
+    final solArray = single
+        ? writeFloat32BufferToArray<M>(
+            a.device,
+            lstsqBuffers.solution,
+            solShape,
+            mathDtype,
+            out: outSolution,
+            outParamName: 'outSolution',
+          )
+        : writeFloat64BufferToArray<M>(
+            a.device,
+            lstsqBuffers.solution,
+            solShape,
+            mathDtype,
+            out: outSolution,
+            outParamName: 'outSolution',
+          );
+    final resArray = single
+        ? writeFloat32BufferToArray<F>(
+            a.device,
+            lstsqBuffers.residuals,
+            resShape,
+            floatDtype,
+            out: outResiduals,
+            outParamName: 'outResiduals',
+          )
+        : writeFloat64BufferToArray<F>(
+            a.device,
+            lstsqBuffers.residuals,
+            resShape,
+            floatDtype,
+            out: outResiduals,
+            outParamName: 'outResiduals',
+          );
+    final sArray = single
+        ? writeFloat32BufferToArray<F>(
+            a.device,
+            svdBuffers.s,
+            sShape,
+            floatDtype,
+            out: outSingularValues,
+            outParamName: 'outSingularValues',
+          )
+        : writeFloat64BufferToArray<F>(
+            a.device,
+            svdBuffers.s,
+            sShape,
+            floatDtype,
+            out: outSingularValues,
+            outParamName: 'outSingularValues',
+          );
     if (outSolution == null) solArray.detachToParentScope();
     if (outResiduals == null) resArray.detachToParentScope();
     if (outSingularValues == null) sArray.detachToParentScope();
@@ -461,25 +597,50 @@ lstsq(
 
 /// Determinant of a square 2-D matrix [a].
 ///
-/// Produces a 0-D scalar [GpuArray] of [DType.float64].
+/// Produces a 0-D scalar [GpuArray].
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
-/// have shape `[]`, [DType.float64], and reside on `a.device`.
-GpuArray<Float64> det(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) {
+/// have shape `[]`, matching output dtype, and reside on `a.device`.
+GpuArray<M> det<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<M>? out}) {
   _requireSquare2d(a, 'det');
   final n = a.shape[0];
-  validateLinalgOut(out, a.device, const <int>[], DType.float64);
+  final mathDtype = linalgMathDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
+  validateLinalgOut(out, a.device, const <int>[], mathDtype);
 
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
-    final buffers = dispatchDetAndSlogdetGpu(a.device, aF64, n);
-    final result = writeFloat64BufferToArray<Float64>(
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
+    final buffers = dispatchDetAndSlogdetGpu(
       a.device,
-      buffers.det,
-      const <int>[],
-      DType.float64,
-      out: out,
+      aBuffer,
+      n,
+      singlePrecision: single,
     );
+    final result = single
+        ? writeFloat32BufferToArray<M>(
+            a.device,
+            buffers.det,
+            const <int>[],
+            mathDtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<M>(
+            a.device,
+            buffers.det,
+            const <int>[],
+            mathDtype,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
@@ -492,48 +653,85 @@ GpuArray<Float64> det(GpuArray<DTypeTag> a, {GpuArray<Float64>? out}) {
 /// Otherwise, `det(a) = sign * exp(logabsdet)`.
 ///
 /// The [a] tensor must be a square 2-D matrix. Optional [outSign] and
-/// [outLogAbsDet] arrays must be 0-D (`[]`) with [DType.float64] on `a.device`.
-({GpuArray<Float64> sign, GpuArray<Float64> logabsdet}) slogdet(
-  GpuArray<DTypeTag> a, {
-  GpuArray<Float64>? outSign,
-  GpuArray<Float64>? outLogAbsDet,
+/// [outLogAbsDet] arrays must be 0-D (`[]`) with matching output dtypes on
+/// `a.device`.
+({GpuArray<M> sign, GpuArray<F> logabsdet}) slogdet<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<M>? outSign,
+  GpuArray<F>? outLogAbsDet,
 }) {
   _requireSquare2d(a, 'slogdet');
   final n = a.shape[0];
+  final mathDtype = linalgMathDType(a.dtype);
+  final floatDtype = linalgFloatDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
   validateLinalgOut(
     outSign,
     a.device,
     const <int>[],
-    DType.float64,
+    mathDtype,
     paramName: 'outSign',
   );
   validateLinalgOut(
     outLogAbsDet,
     a.device,
     const <int>[],
-    DType.float64,
+    floatDtype,
     paramName: 'outLogAbsDet',
   );
 
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
-    final buffers = dispatchDetAndSlogdetGpu(a.device, aF64, n);
-    final signArray = writeFloat64BufferToArray<Float64>(
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
+    final buffers = dispatchDetAndSlogdetGpu(
       a.device,
-      buffers.sign,
-      const <int>[],
-      DType.float64,
-      out: outSign,
-      outParamName: 'outSign',
+      aBuffer,
+      n,
+      singlePrecision: single,
     );
-    final logArray = writeFloat64BufferToArray<Float64>(
-      a.device,
-      buffers.logabsdet,
-      const <int>[],
-      DType.float64,
-      out: outLogAbsDet,
-      outParamName: 'outLogAbsDet',
-    );
+    final signArray = single
+        ? writeFloat32BufferToArray<M>(
+            a.device,
+            buffers.sign,
+            const <int>[],
+            mathDtype,
+            out: outSign,
+            outParamName: 'outSign',
+          )
+        : writeFloat64BufferToArray<M>(
+            a.device,
+            buffers.sign,
+            const <int>[],
+            mathDtype,
+            out: outSign,
+            outParamName: 'outSign',
+          );
+    final logArray = single
+        ? writeFloat32BufferToArray<F>(
+            a.device,
+            buffers.logabsdet,
+            const <int>[],
+            floatDtype,
+            out: outLogAbsDet,
+            outParamName: 'outLogAbsDet',
+          )
+        : writeFloat64BufferToArray<F>(
+            a.device,
+            buffers.logabsdet,
+            const <int>[],
+            floatDtype,
+            out: outLogAbsDet,
+            outParamName: 'outLogAbsDet',
+          );
     if (outSign == null) signArray.detachToParentScope();
     if (outLogAbsDet == null) logArray.detachToParentScope();
     return (sign: signArray, logabsdet: logArray);
@@ -556,25 +754,50 @@ GpuArray<T> matrixPower<T extends DTypeTag>(
   _requireSquare2d(a, 'matrixPower');
   validateLinalgOut(out, a.device, a.shape, a.dtype);
   final size = a.shape[0];
+  final single = isSinglePrecisionDType(a.dtype);
 
   return ResourceScope.scope(() {
     if (n == 0) {
-      final eyeBuffer = dispatchIdentityF64Gpu(a.device, size);
-      final output = writeFloat64BufferToArray<T>(
+      final eyeBuffer = dispatchIdentityF64Gpu(
         a.device,
-        eyeBuffer,
-        a.shape,
-        a.dtype,
-        out: out,
+        size,
+        singlePrecision: single,
       );
+      final output = single
+          ? writeFloat32BufferToArray<T>(
+              a.device,
+              eyeBuffer,
+              a.shape,
+              a.dtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<T>(
+              a.device,
+              eyeBuffer,
+              a.shape,
+              a.dtype,
+              out: out,
+            );
       if (out == null) output.detachToParentScope();
       return output;
     }
 
-    var currentBuffer = toContiguousFloat64Buffer(a);
+    var currentBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
     if (n < 0) {
-      final eyeBuffer = dispatchIdentityF64Gpu(a.device, size);
-      final luBuffers = dispatchLuGpu(a.device, currentBuffer, size, size);
+      final eyeBuffer = dispatchIdentityF64Gpu(
+        a.device,
+        size,
+        singlePrecision: single,
+      );
+      final luBuffers = dispatchLuGpu(
+        a.device,
+        currentBuffer,
+        size,
+        size,
+        singlePrecision: single,
+      );
       currentBuffer = dispatchLuSolveGpu(
         a.device,
         luBuffers.lu,
@@ -582,11 +805,16 @@ GpuArray<T> matrixPower<T extends DTypeTag>(
         eyeBuffer,
         size,
         size,
+        singlePrecision: single,
       );
     }
 
     var exponent = n.abs();
-    var accumulatorBuffer = dispatchIdentityF64Gpu(a.device, size);
+    var accumulatorBuffer = dispatchIdentityF64Gpu(
+      a.device,
+      size,
+      singlePrecision: single,
+    );
     while (exponent > 0) {
       if ((exponent & 1) != 0) {
         accumulatorBuffer = dispatchBatchedMatmulF64Gpu(
@@ -597,6 +825,7 @@ GpuArray<T> matrixPower<T extends DTypeTag>(
           m: size,
           k: size,
           n: size,
+          singlePrecision: single,
         );
       }
       exponent >>= 1;
@@ -609,25 +838,30 @@ GpuArray<T> matrixPower<T extends DTypeTag>(
           m: size,
           k: size,
           n: size,
+          singlePrecision: single,
         );
       }
     }
 
-    final output = writeFloat64BufferToArray<T>(
-      a.device,
-      accumulatorBuffer,
-      a.shape,
-      a.dtype,
-      out: out,
-    );
+    final output = single
+        ? writeFloat32BufferToArray<T>(
+            a.device,
+            accumulatorBuffer,
+            a.shape,
+            a.dtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<T>(
+            a.device,
+            accumulatorBuffer,
+            a.shape,
+            a.dtype,
+            out: out,
+          );
     if (out == null) output.detachToParentScope();
     return output;
   });
 }
-
-/// Snake-case alias for [matrixPower].
-// ignore: non_constant_identifier_names
-final matrix_power = matrixPower;
 
 /// Numerical rank of a 2-D matrix [a] computed via SVD.
 ///
@@ -646,45 +880,55 @@ GpuArray<Int64> matrixRank(
   validateLinalgOut(out, a.device, const <int>[], DType.int64);
   final m = a.shape[0];
   final n = a.shape[1];
-  final rcond = tol ?? (1e-12 * math.max(m, n));
+  final single = isSinglePrecisionDType(a.dtype);
+  final defaultTol = single ? 1e-6 : 1e-12;
+  final rcond = tol ?? (defaultTol * math.max(m, n));
 
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
     final svdBuffers = dispatchSvdGpu(
       a.device,
-      aF64,
+      aBuffer,
       m,
       n,
       fullMatrices: false,
+      singlePrecision: single,
     );
     final buffers = dispatchPinvAndLstsqFromSvdGpu(
       a.device,
-      aF64: aF64,
+      aF64: aBuffer,
       uF64: svdBuffers.u,
       sF64: svdBuffers.s,
       vtF64: svdBuffers.vt,
-      bF64: aF64,
+      bF64: aBuffer,
       m: m,
       n: n,
       nrhs: 1,
       rcond: rcond,
       computeLstsq: false,
+      singlePrecision: single,
     );
-    final result = writeFloat64BufferToArray<Int64>(
-      a.device,
-      buffers.rank,
-      const <int>[],
-      DType.int64,
-      out: out,
-    );
+    final result = single
+        ? writeFloat32BufferToArray<Int64>(
+            a.device,
+            buffers.rank,
+            const <int>[],
+            DType.int64,
+            out: out,
+          )
+        : writeFloat64BufferToArray<Int64>(
+            a.device,
+            buffers.rank,
+            const <int>[],
+            DType.int64,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
 }
-
-/// Snake-case alias for [matrixRank].
-// ignore: non_constant_identifier_names
-final matrix_rank = matrixRank;
 
 int _vectorNormMode(NormOrd? ord) {
   if (ord == null || ord == NormOrd.two || ord == NormOrd.fro) return 0;
@@ -714,17 +958,27 @@ double _vectorNormP(NormOrd? ord) {
 /// [keepdims].
 ///
 /// The [a] tensor must not be disposed. If [out] is provided, it must match the
-/// output shape, [DType.float64], and `a.device`.
-GpuArray<Float64> norm(
-  GpuArray<DTypeTag> a, {
+/// output shape, float dtype, and `a.device`.
+GpuArray<F> norm<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   NormOrd? ord,
   Object? axis,
   bool keepdims = false,
-  GpuArray<Float64>? out,
+  GpuArray<F>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute norm of a disposed GpuArray.');
   }
+  final floatDtype = linalgFloatDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
 
   if (axis is int) {
     final normalizedAxis = axis < 0 ? a.ndim + axis : axis;
@@ -753,38 +1007,51 @@ GpuArray<Float64> norm(
             for (var i = 0; i < a.ndim; i++)
               if (i != normalizedAxis) a.shape[i],
           ];
-    validateLinalgOut(out, a.device, outShape, DType.float64);
+    validateLinalgOut(out, a.device, outShape, floatDtype);
 
     final mode = _vectorNormMode(ord);
     final pVal = _vectorNormP(ord);
     return ResourceScope.scope(() {
-      final aF64 = toContiguousFloat64Buffer(a);
-      final normF64 = dispatchNormGpu(
+      final aBuffer = single
+          ? toContiguousFloat32Buffer(a)
+          : toContiguousFloat64Buffer(a);
+      final normBuffer = dispatchNormGpu(
         a.device,
-        aF64,
+        aBuffer,
         outerSize: outerSize,
         axisLength: axisLength,
         innerSize: innerSize,
         normMode: mode,
         pValue: pVal,
+        singlePrecision: single,
       );
-      final result = writeFloat64BufferToArray<Float64>(
-        a.device,
-        normF64,
-        outShape,
-        DType.float64,
-        out: out,
-      );
+      final result = single
+          ? writeFloat32BufferToArray<F>(
+              a.device,
+              normBuffer,
+              outShape,
+              floatDtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<F>(
+              a.device,
+              normBuffer,
+              outShape,
+              floatDtype,
+              out: out,
+            );
       if (out == null) result.detachToParentScope();
       return result;
     });
   }
 
   final outShape = keepdims ? List<int>.filled(a.ndim, 1) : const <int>[];
-  validateLinalgOut(out, a.device, outShape, DType.float64);
+  validateLinalgOut(out, a.device, outShape, floatDtype);
 
   return ResourceScope.scope(() {
-    final aF64 = toContiguousFloat64Buffer(a);
+    final aBuffer = single
+        ? toContiguousFloat32Buffer(a)
+        : toContiguousFloat64Buffer(a);
     if (a.ndim == 2 && ord != null && ord != NormOrd.fro) {
       final m = a.shape[0];
       final n = a.shape[1];
@@ -795,23 +1062,32 @@ GpuArray<Float64> norm(
         final mode = ord == NormOrd.one
             ? 10
             : (ord == NormOrd.minusOne ? 11 : (ord == NormOrd.inf ? 12 : 13));
-        final normF64 = dispatchNormGpu(
+        final normBuffer = dispatchNormGpu(
           a.device,
-          aF64,
+          aBuffer,
           outerSize: 1,
           axisLength: a.size,
           innerSize: 1,
           normMode: mode,
           rows: m,
           cols: n,
+          singlePrecision: single,
         );
-        final result = writeFloat64BufferToArray<Float64>(
-          a.device,
-          normF64,
-          outShape,
-          DType.float64,
-          out: out,
-        );
+        final result = single
+            ? writeFloat32BufferToArray<F>(
+                a.device,
+                normBuffer,
+                outShape,
+                floatDtype,
+                out: out,
+              )
+            : writeFloat64BufferToArray<F>(
+                a.device,
+                normBuffer,
+                outShape,
+                floatDtype,
+                out: out,
+              );
         if (out == null) result.detachToParentScope();
         return result;
       }
@@ -819,27 +1095,37 @@ GpuArray<Float64> norm(
         final kMin = math.min(m, n);
         final svdBuffers = dispatchSvdGpu(
           a.device,
-          aF64,
+          aBuffer,
           m,
           n,
           fullMatrices: false,
+          singlePrecision: single,
         );
         final mode = ord == NormOrd.nuc ? 14 : (ord == NormOrd.two ? 15 : 16);
-        final normF64 = dispatchNormGpu(
+        final normBuffer = dispatchNormGpu(
           a.device,
           svdBuffers.s,
           outerSize: 1,
           axisLength: kMin,
           innerSize: 1,
           normMode: mode,
+          singlePrecision: single,
         );
-        final result = writeFloat64BufferToArray<Float64>(
-          a.device,
-          normF64,
-          outShape,
-          DType.float64,
-          out: out,
-        );
+        final result = single
+            ? writeFloat32BufferToArray<F>(
+                a.device,
+                normBuffer,
+                outShape,
+                floatDtype,
+                out: out,
+              )
+            : writeFloat64BufferToArray<F>(
+                a.device,
+                normBuffer,
+                outShape,
+                floatDtype,
+                out: out,
+              );
         if (out == null) result.detachToParentScope();
         return result;
       }
@@ -848,22 +1134,31 @@ GpuArray<Float64> norm(
 
     final mode = _vectorNormMode(ord);
     final pVal = _vectorNormP(ord);
-    final normF64 = dispatchNormGpu(
+    final normBuffer = dispatchNormGpu(
       a.device,
-      aF64,
+      aBuffer,
       outerSize: 1,
       axisLength: a.size,
       innerSize: 1,
       normMode: mode,
       pValue: pVal,
+      singlePrecision: single,
     );
-    final result = writeFloat64BufferToArray<Float64>(
-      a.device,
-      normF64,
-      outShape,
-      DType.float64,
-      out: out,
-    );
+    final result = single
+        ? writeFloat32BufferToArray<F>(
+            a.device,
+            normBuffer,
+            outShape,
+            floatDtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<F>(
+            a.device,
+            normBuffer,
+            outShape,
+            floatDtype,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
@@ -874,12 +1169,20 @@ GpuArray<Float64> norm(
 /// Defaults to the 2-norm condition number (`max(S) / min(S)`).
 ///
 /// The [a] tensor must be a non-empty 2-D matrix. If [out] is provided, it must
-/// have shape `[]`, [DType.float64], and reside on `a.device`.
-GpuArray<Float64> cond(
-  GpuArray<DTypeTag> a, {
+/// have shape `[]`, matching float dtype, and reside on `a.device`.
+GpuArray<F> cond<
+  R extends DTypeTag,
+  E,
+  F extends DTypeTag,
+  C extends DTypeTag,
+  M extends DTypeTag,
+  S extends DTypeTag,
+  D extends DTypeTag
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
   NormOrd? p,
   NormOrd? ord,
-  GpuArray<Float64>? out,
+  GpuArray<F>? out,
 }) {
   _require2d(a, 'cond');
   final m = a.shape[0];
@@ -887,7 +1190,9 @@ GpuArray<Float64> cond(
   if (m == 0 || n == 0) {
     throw ArgumentError.value(a.shape, 'a', 'Must not be an empty matrix.');
   }
-  validateLinalgOut(out, a.device, const <int>[], DType.float64);
+  final floatDtype = linalgFloatDType(a.dtype);
+  final single = isSinglePrecisionDType(a.dtype);
+  validateLinalgOut(out, a.device, const <int>[], floatDtype);
   final effectiveOrd = p ?? ord;
 
   return ResourceScope.scope(() {
@@ -895,30 +1200,42 @@ GpuArray<Float64> cond(
         effectiveOrd == NormOrd.two ||
         effectiveOrd == NormOrd.minusTwo) {
       final kMin = math.min(m, n);
-      final aF64 = toContiguousFloat64Buffer(a);
+      final aBuffer = single
+          ? toContiguousFloat32Buffer(a)
+          : toContiguousFloat64Buffer(a);
       final svdBuffers = dispatchSvdGpu(
         a.device,
-        aF64,
+        aBuffer,
         m,
         n,
         fullMatrices: false,
+        singlePrecision: single,
       );
       final mode = (effectiveOrd == NormOrd.minusTwo) ? 18 : 17;
-      final condF64 = dispatchNormGpu(
+      final condBuffer = dispatchNormGpu(
         a.device,
         svdBuffers.s,
         outerSize: 1,
         axisLength: kMin,
         innerSize: 1,
         normMode: mode,
+        singlePrecision: single,
       );
-      final result = writeFloat64BufferToArray<Float64>(
-        a.device,
-        condF64,
-        const <int>[],
-        DType.float64,
-        out: out,
-      );
+      final result = single
+          ? writeFloat32BufferToArray<F>(
+              a.device,
+              condBuffer,
+              const <int>[],
+              floatDtype,
+              out: out,
+            )
+          : writeFloat64BufferToArray<F>(
+              a.device,
+              condBuffer,
+              const <int>[],
+              floatDtype,
+              out: out,
+            );
       if (out == null) result.detachToParentScope();
       return result;
     }
@@ -926,17 +1243,51 @@ GpuArray<Float64> cond(
     _requireSquare2d(a, 'cond');
     final normA = norm(a, ord: effectiveOrd);
     final invA = inv(a);
-    final normInvA = norm(invA, ord: effectiveOrd);
-    final normAF64 = toContiguousFloat64Buffer(normA);
-    final normInvAF64 = toContiguousFloat64Buffer(normInvA);
-    final condF64 = dispatchScalarMulF64Gpu(a.device, normAF64, normInvAF64);
-    final result = writeFloat64BufferToArray<Float64>(
+    final normABuffer = single
+        ? toContiguousFloat32Buffer(normA)
+        : toContiguousFloat64Buffer(normA);
+    final invABuffer = single
+        ? toContiguousFloat32Buffer(invA)
+        : toContiguousFloat64Buffer(invA);
+    final mode = effectiveOrd == NormOrd.one
+        ? 10
+        : (effectiveOrd == NormOrd.minusOne
+              ? 11
+              : (effectiveOrd == NormOrd.inf
+                    ? 12
+                    : (effectiveOrd == NormOrd.minusInf ? 13 : 0)));
+    final normInvABuffer = dispatchNormGpu(
       a.device,
-      condF64,
-      const <int>[],
-      DType.float64,
-      out: out,
+      invABuffer,
+      outerSize: 1,
+      axisLength: invA.size,
+      innerSize: 1,
+      normMode: mode,
+      rows: m,
+      cols: n,
+      singlePrecision: single,
     );
+    final condBuffer = dispatchScalarMulF64Gpu(
+      a.device,
+      normABuffer,
+      normInvABuffer,
+      singlePrecision: single,
+    );
+    final result = single
+        ? writeFloat32BufferToArray<F>(
+            a.device,
+            condBuffer,
+            const <int>[],
+            floatDtype,
+            out: out,
+          )
+        : writeFloat64BufferToArray<F>(
+            a.device,
+            condBuffer,
+            const <int>[],
+            floatDtype,
+            out: out,
+          );
     if (out == null) result.detachToParentScope();
     return result;
   });
@@ -988,7 +1339,3 @@ GpuArray<T> multiDot<T extends DTypeTag>(
     return current;
   });
 }
-
-/// Snake-case alias for [multiDot].
-// ignore: non_constant_identifier_names
-final multi_dot = multiDot;

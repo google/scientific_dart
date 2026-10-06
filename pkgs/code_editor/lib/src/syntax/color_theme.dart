@@ -222,6 +222,7 @@ final class ColorTheme {
             'entity.name.class',
             'support.class',
             'support.type',
+            'storage.type.primitive',
           ],
           foreground: 0xFF4EC9B0,
         ),
@@ -232,6 +233,133 @@ final class ColorTheme {
         ThemeRule(
           scopes: ['constant', 'constant.language', 'constant.character'],
           foreground: 0xFF4FC1FF,
+        ),
+        ThemeRule(
+          scopes: ['constant.character.escape'],
+          foreground: 0xFFD7BA7D,
+        ),
+        ThemeRule(
+          scopes: [
+            'punctuation.section.embedded',
+            'variable.other.interpolation',
+          ],
+          foreground: 0xFF569CD6,
+        ),
+        ThemeRule(
+          scopes: ['storage.type.annotation', 'meta.declaration.annotation'],
+          foreground: 0xFFDCDCAA,
+        ),
+      ],
+    );
+  }
+
+  /// Built-in Catppuccin Mocha theme matching the Scientific Dart Notebook UI.
+  factory ColorTheme.catppuccinMocha() {
+    return const ColorTheme(
+      name: 'Catppuccin Mocha',
+      defaultStyle: ResolvedTokenStyle(
+        foreground: 0xFFCDD6F4,
+        background: 0xFF1E1E2E,
+      ),
+      rules: [
+        ThemeRule(
+          scopes: ['comment', 'punctuation.definition.comment'],
+          foreground: 0xFF6C7086,
+          italic: true,
+        ),
+        ThemeRule(
+          scopes: [
+            'comment.line.documentation',
+            'comment.block.documentation',
+            'comment.line.doc',
+          ],
+          foreground: 0xFF7F849C,
+          italic: true,
+        ),
+        ThemeRule(
+          scopes: ['markup.inline.raw'],
+          foreground: 0xFFA6E3A1,
+          italic: false,
+        ),
+        ThemeRule(
+          scopes: ['variable.other.link'],
+          foreground: 0xFF89B4FA,
+          italic: false,
+        ),
+        ThemeRule(
+          scopes: ['string', 'string.quoted', 'string.template'],
+          foreground: 0xFFA6E3A1,
+        ),
+        ThemeRule(
+          scopes: ['constant.character.escape'],
+          foreground: 0xFFF5C2E7,
+        ),
+        ThemeRule(
+          scopes: [
+            'punctuation.section.embedded',
+            'variable.other.interpolation',
+          ],
+          foreground: 0xFFF38BA8,
+        ),
+        ThemeRule(
+          scopes: ['keyword', 'keyword.control'],
+          foreground: 0xFFCBA6F7,
+          bold: true,
+        ),
+        ThemeRule(
+          scopes: ['keyword.declaration', 'storage.type', 'storage.modifier'],
+          foreground: 0xFFCBA6F7,
+        ),
+        ThemeRule(
+          scopes: ['storage.type.annotation', 'meta.declaration.annotation'],
+          foreground: 0xFFF9E2AF,
+        ),
+        ThemeRule(
+          scopes: ['constant.language'],
+          foreground: 0xFFFAB387,
+          bold: true,
+        ),
+        ThemeRule(
+          scopes: ['variable.language'],
+          foreground: 0xFFF38BA8,
+          italic: true,
+        ),
+        ThemeRule(
+          scopes: ['entity.name.function', 'support.function'],
+          foreground: 0xFF89B4FA,
+        ),
+        ThemeRule(
+          scopes: ['constant.numeric', 'number'],
+          foreground: 0xFFFAB387,
+        ),
+        ThemeRule(
+          scopes: [
+            'entity.name.type',
+            'entity.name.class',
+            'support.class',
+            'support.type',
+            'storage.type.primitive',
+          ],
+          foreground: 0xFFF9E2AF,
+        ),
+        ThemeRule(
+          scopes: ['variable.parameter.named'],
+          foreground: 0xFFEBA0AC,
+          italic: true,
+        ),
+        ThemeRule(scopes: ['variable.other.property'], foreground: 0xFF94E2D5),
+        ThemeRule(
+          scopes: ['variable', 'variable.other', 'variable.parameter'],
+          foreground: 0xFFCDD6F4,
+        ),
+        ThemeRule(scopes: ['keyword.operator'], foreground: 0xFF89DCEB),
+        ThemeRule(
+          scopes: [
+            'punctuation',
+            'punctuation.terminator',
+            'punctuation.section',
+          ],
+          foreground: 0xFF9399B2,
         ),
       ],
     );
@@ -270,7 +398,12 @@ final class ColorTheme {
           foreground: 0xFF098658,
         ),
         ThemeRule(
-          scopes: ['entity.name.type', 'entity.name.class', 'support.class'],
+          scopes: [
+            'entity.name.type',
+            'entity.name.class',
+            'support.class',
+            'storage.type.primitive',
+          ],
           foreground: 0xFF267F99,
         ),
         ThemeRule(

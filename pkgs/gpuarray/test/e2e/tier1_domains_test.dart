@@ -16,9 +16,12 @@ import 'dart:io';
 
 import 'package:gpuarray/fft.dart' as gpu_fft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
 import 'package:gpuarray/nn.dart' as gpu_nn;
 import 'package:gpuarray/random.dart' as gpu_random;
+import 'package:gpuarray/serialization.dart';
+import 'package:gpuarray/wgsl.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
@@ -687,7 +690,7 @@ void main() {
 
     group('F15: linalg Matrix Decompositions', () {
       test(
-        'F15.1: svd and svdvals reconstruct original matrix U * S * Vh = A',
+        'F15.1: svd and svdValues reconstruct original matrix U * S * Vh = A',
         () {
           ResourceScope.scope(() {
             final matrix = GpuArray.fromList(
@@ -696,7 +699,7 @@ void main() {
               DType.float64,
             );
             final decomposition = gpu_linalg.svd(matrix);
-            final singularValues = gpu_linalg.svdvals(matrix);
+            final singularValues = gpu_linalg.svdValues(matrix);
             _expectCloseList(
               decomposition.s.toList(),
               singularValues.toList(),
@@ -1716,6 +1719,124 @@ void main() {
             expect(device.activeBufferCount, equals(0));
           } finally {
             device.dispose();
+          }
+        },
+      );
+
+      test(
+        'F21.11: R1–R4 sorting/searching/scans, Float32 linalg/fft/nn, CompiledWgslKernel, fused optim & Module lifecycle',
+        () async {
+          final secondDevice = await createWebGpuDevice(
+            name: 'Tier1-Migration-Device',
+          );
+          try {
+            ResourceScope.scope(() {
+              // 1. Int64 sorting, searching, uniqueAll, bincount, cumsum, cumprod, diff
+              final arr = GpuArray<Int32>.fromList(
+                [3, 1, 2, 1],
+                [4],
+                DType.int32,
+              );
+              expect(sort(arr).toList(), equals([1, 1, 2, 3]));
+              expect(argsort(arr).dtype, equals(DType.int64));
+              final tk = topk(arr, 2);
+              expect(tk.values.toList(), equals([3, 2]));
+              expect(tk.indices.dtype, equals(DType.int64));
+              final uAll = uniqueAll(arr);
+              expect(uAll.values.toList(), equals([1, 2, 3]));
+              expect(uAll.counts.toList(), equals([2, 1, 1]));
+              expect(bincount(arr).toList(), equals([0, 2, 1, 1]));
+              expect(cumsum(arr).toList(), equals([3, 4, 6, 7]));
+              expect(cumprod(arr).toList(), equals([3, 3, 6, 6]));
+              expect(diff(arr).toList(), equals([-2, 1, -1]));
+
+              // 2. Float32 linalg & fft
+              final spd32 = GpuArray<Float32>.fromList(
+                [4.0, 1.0, 1.0, 3.0],
+                [2, 2],
+                DType.float32,
+              );
+              final rhs32 = GpuArray<Float32>.fromList(
+                [1.0, 2.0],
+                [2],
+                DType.float32,
+              );
+              final GpuArray<Float32> sol32 = gpu_linalg.solve(spd32, rhs32);
+              final GpuArray<Float32> chol32 = gpu_linalg.cholesky(spd32);
+              final GpuArray<Complex64> rspec32 = gpu_fft.rfft(spd32);
+              final GpuArray<Float32> irrec32 = gpu_fft.irfft(rspec32, n: 2);
+              expect(sol32.dtype, equals(DType.float32));
+              expect(chol32.dtype, equals(DType.float32));
+              expect(rspec32.dtype, equals(DType.complex64));
+              expect(irrec32.dtype, equals(DType.float32));
+
+              // 3. CompiledWgslKernel Map<String, GpuArray> execution
+              final xExpr = Expr.variable('x', bindingIndex: 0);
+              final bExpr = Expr.variable('b', bindingIndex: 1);
+              final alphaExpr = Expr.scalar('alpha');
+              final kernel = GpuDevice.defaultDevice.jitCompiler.compileKernel(
+                (xExpr * alphaExpr) + bExpr,
+              );
+              final jitOut = kernel.execute<Float32>(
+                {'x': rhs32, 'b': rhs32},
+                scalars: const {'alpha': 2.0},
+              );
+              _expectCloseList(jitOut.toList(), <double>[3.0, 6.0]);
+
+              // 4. Float32 Module, fused activations, clipGradNorm/Value, SafeTensors & Module.to/dispose
+              final mlp = gpu_nn.Sequential([
+                gpu_nn.Linear(2, 4, dtype: DType.float32),
+                gpu_nn.SiLU(),
+                gpu_nn.Linear(4, 2, dtype: DType.float32),
+              ]);
+              final xIn = GpuArray<Float32>.fromList(
+                [1.0, 2.0],
+                [1, 2],
+                DType.float32,
+              );
+              final target = GpuArray<Float32>.zeros([1, 2], DType.float32);
+              final GpuArray<Float32> pred = mlp.forward(xIn);
+              expect(pred.dtype, equals(DType.float32));
+              final loss = gpu_nn.mseLoss(pred, target);
+              loss.backward();
+              final totalNorm = gpu_nn.clipGradNorm(mlp.parameters, 1.0);
+              expect(totalNorm, greaterThan(0.0));
+              gpu_nn.clipGradValue(mlp.parameters, 0.5);
+
+              final opt = gpu_nn.AdamW(mlp.parameters, lr: 0.01);
+              final beforeCount = GpuDevice.defaultDevice.activeBufferCount;
+              opt.step();
+              // Optimizer lazily allocates 2 state buffers per parameter (4 params * 2 = 8) and 0 leaked intermediates
+              expect(
+                GpuDevice.defaultDevice.activeBufferCount,
+                lessThanOrEqualTo(beforeCount + 8),
+              );
+              final secondStepCount = GpuDevice.defaultDevice.activeBufferCount;
+              opt.step();
+              expect(
+                GpuDevice.defaultDevice.activeBufferCount,
+                equals(secondStepCount),
+              );
+
+              final ckptBytes = mlp.saveToSafetensors();
+              final mlp2 = gpu_nn.Sequential([
+                gpu_nn.Linear(2, 4, dtype: DType.float32),
+                gpu_nn.SiLU(),
+                gpu_nn.Linear(4, 2, dtype: DType.float32),
+              ]);
+              mlp2.loadFromSafetensors(ckptBytes);
+              _expectCloseList(
+                mlp2.forward(xIn).toList(),
+                mlp.forward(xIn).toList(),
+              );
+
+              mlp2.to(secondDevice);
+              expect(mlp2.parameters.first.device, same(secondDevice));
+              mlp2.dispose();
+              expect(mlp2.isDisposed, isTrue);
+            });
+          } finally {
+            secondDevice.dispose();
           }
         },
       );

@@ -255,6 +255,11 @@ void main() {
               '$baseName: contains `std::vector` (use `NoThrowBuffer` with `std::nothrow` under `-fno-exceptions`).',
             );
           }
+          if (RegExp(r'\bstd::string\b').hasMatch(stripped)) {
+            violations.add(
+              '$baseName: contains `std::string` (use `NoThrowBuffer<char>` under `-fno-exceptions`).',
+            );
+          }
           if (RegExp(r'\bstd::call_once\b').hasMatch(stripped)) {
             violations.add(
               '$baseName: contains `std::call_once` (can throw `std::system_error`; use `std::atomic` instead).',
@@ -865,14 +870,16 @@ void main() {
       () {
         final violations = <String>[];
 
-        // 1. All public functions in lib/src/operations/ with a parameter named `out` must declare it as a named parameter
+        // 1. All public functions in lib/src/operations/ with a parameter named `out` must declare it as a named parameter, and the file must validate `out` via `validateOutBuffer` (or delegate to unaryUfunc/binaryUfunc)
         for (final file in libFiles) {
           if (!_posix(file.path).contains('/src/operations/')) continue;
+          final rawContent = file.readAsStringSync();
           final parsed = parseFile(
             path: _native(file.path),
             featureSet: featureSet,
             throwIfDiagnostics: false,
           );
+          var hasPublicOutParam = false;
           for (final decl in parsed.unit.declarations) {
             if (decl is FunctionDeclaration) {
               final fnName = decl.name.lexeme;
@@ -880,14 +887,27 @@ void main() {
               final params = decl.functionExpression.parameters?.parameters;
               if (params == null) continue;
               for (final p in params) {
-                if (p.name?.lexeme == 'out' && !p.isNamed) {
-                  final line = parsed.lineInfo.getLocation(p.offset).lineNumber;
-                  violations.add(
-                    '${file.path}:$line — `$fnName` declares `out` as a positional parameter instead of a named parameter.',
-                  );
+                if (p.name?.lexeme == 'out') {
+                  hasPublicOutParam = true;
+                  if (!p.isNamed) {
+                    final line = parsed.lineInfo
+                        .getLocation(p.offset)
+                        .lineNumber;
+                    violations.add(
+                      '${file.path}:$line — `$fnName` declares `out` as a positional parameter instead of a named parameter.',
+                    );
+                  }
                 }
               }
             }
+          }
+          if (hasPublicOutParam &&
+              !rawContent.contains('validateOutBuffer') &&
+              !rawContent.contains('unaryUfunc') &&
+              !rawContent.contains('binaryUfunc')) {
+            violations.add(
+              '${file.path} — declares public function(s) with `out` parameter without calling `validateOutBuffer(out)`.',
+            );
           }
         }
 
@@ -1025,7 +1045,8 @@ void main() {
             for (final f in type.namedFields) {
               checkNoPositionalRecordReturn(f.type, context);
             }
-          } else if (type is InterfaceType) {
+          } else if (type is InterfaceType &&
+              (type.isDartAsyncFuture || type.isDartAsyncFutureOr)) {
             for (final arg in type.typeArguments) {
               checkNoPositionalRecordReturn(arg, context);
             }
@@ -1087,12 +1108,10 @@ void main() {
                 m.returnType,
                 'Member `${el.name}.${m.name}` return type',
               );
-              if (el.name == 'NDArray') {
-                checkNoPositionalRecordReturn(
-                  m.returnType,
-                  'Member `${el.name}.${m.name}` return type',
-                );
-              }
+              checkNoPositionalRecordReturn(
+                m.returnType,
+                'Member `${el.name}.${m.name}` return type',
+              );
               for (final p in m.formalParameters) {
                 if (p.type is DynamicType) {
                   violations.add(
@@ -1103,6 +1122,21 @@ void main() {
                   p.type,
                   'Member `${el.name}.${m.name}` parameter `${p.name}`',
                 );
+              }
+            }
+            if (!el.isSealed && !el.isAbstract) {
+              for (final c in el.constructors) {
+                if (c.isPrivate || c.isOriginImplicitDefault) continue;
+                if (c.metadata.annotations.any((a) => a.isInternal)) continue;
+                if (c.documentationComment == null) {
+                  final cName =
+                      (c.name == null || c.name == 'new' || c.name!.isEmpty)
+                      ? el.name
+                      : '${el.name}.${c.name}';
+                  violations.add(
+                    'Public constructor `$cName` is missing `///` dartdoc.',
+                  );
+                }
               }
             }
           }
@@ -1157,9 +1191,6 @@ void main() {
           'conjugate': 'conj',
           'arcsin': 'asin',
           'arccos': 'acos',
-          'arctan': 'atan',
-          'arcsinh': 'asinh',
-          'arccosh': 'acosh',
           'arctanh': 'atanh',
           'arctan2': 'atan2',
           'degrees': 'rad2deg',
@@ -1176,6 +1207,9 @@ void main() {
           'cbrt': 'sqrt',
           'signbit': 'sign',
           'spacing': 'abs',
+          'arctan': 'atan',
+          'arcsinh': 'asinh',
+          'arccosh': 'acosh',
         };
         for (final op in BinaryOp.values) {
           final fnName = opAliasMap[op.name] ?? op.name;
@@ -1428,7 +1462,7 @@ void main() {
     );
 
     test(
-      'AST scan of error messages in pkgs/ndarray/lib/ has no broken empty interpolation patterns',
+      'AST scan of error messages in pkgs/ndarray/lib/ has no broken empty interpolation patterns or bare ArgumentError()',
       () {
         final violations = <String>[];
         for (final file in libFiles) {
@@ -1449,7 +1483,7 @@ void main() {
           violations,
           isEmpty,
           reason:
-              'Found error instantiation with missing variable interpolation:\n'
+              'Found error instantiation with missing variable interpolation or bare ArgumentError:\n'
               '${violations.join('\n')}',
         );
       },
@@ -1488,6 +1522,7 @@ void main() {
           '/hook/include/',
           '/hook/pocketfft_hdronly.h',
           '/lib/src/miniaudio.h',
+          '/notebook/lib/src/workspace.dart',
           '/.dart_tool/',
           '/build/',
         ];
@@ -1546,7 +1581,7 @@ void main() {
 
   group('64-Bit Size, Stride, and Index Invariants (R1–R4)', () {
     test(
-      'Native C++ headers use int64_t (never 32-bit int*) for shape, stride, and index arrays',
+      'Native C++ headers use int64_t (never 32-bit int* or intptr_t) for shape, stride, and index arrays',
       () {
         final headers = [
           File('${pkgRoot.path}/hook/custom_ufuncs.h'),
@@ -1559,6 +1594,7 @@ void main() {
         final forbiddenIndexPtr = RegExp(
           r'\bint\s*\*\s*(out_indices|indices)\b',
         );
+        final forbiddenIntPtrT = RegExp(r'\bintptr_t\b');
         final violations = <String>[];
 
         for (final header in headers) {
@@ -1575,6 +1611,11 @@ void main() {
           for (final match in forbiddenIndexPtr.allMatches(content)) {
             violations.add(
               '${header.path}: found 32-bit index pointer "${match.group(0)}"',
+            );
+          }
+          for (final match in forbiddenIntPtrT.allMatches(content)) {
+            violations.add(
+              '${header.path}: found intptr_t "${match.group(0)}" (use int64_t in FFI headers)',
             );
           }
         }
@@ -2027,16 +2068,7 @@ void main() {
         }
       }
 
-      // 2. Assert {@example ...} tag hygiene across lib/ and zero inline ```dart blocks in P2-6 modules
-      const p26Modules = <String>{
-        'binning.dart',
-        'broadcasting.dart',
-        'calculus.dart',
-        'dsp.dart',
-        'indexing.dart',
-        'repeating_tiling.dart',
-        'set_operations.dart',
-      };
+      // 2. Assert {@example ...} tag hygiene across lib/ and zero inline ```dart blocks in lib/
       for (final file in libFiles) {
         final posixPath = _posix(file.path);
         final baseName = file.uri.pathSegments.last;
@@ -2053,20 +2085,19 @@ void main() {
         var hasExampleTag = false;
         for (var i = 0; i < lines.length; i++) {
           final line = lines[i];
-          if (p26Modules.contains(baseName) &&
-              RegExp(r'^\s*///\s*```dart\b').hasMatch(line)) {
+          if (RegExp(r'^\s*///\s*```dart\b').hasMatch(line)) {
             violations.add(
               '$posixPath:${i + 1} — inline ```` ```dart ```` code block in dartdoc; use `{@example /example/... lang=dart}` instead.',
             );
           }
           if (line.contains('{@example')) {
             hasExampleTag = true;
-            // Must be on its own line
+            // Must be on its own line and specify lang=dart
             if (!RegExp(
-              r'^\s*///\s*\{@example\s+[^\n]+?\}\s*$',
+              r'^\s*///\s*\{@example\s+[^\n]+?\blang=dart\b[^\n]*\}\s*$',
             ).hasMatch(line)) {
               violations.add(
-                '$posixPath:${i + 1} — `{@example}` tag must appear on its own line: `$line`',
+                '$posixPath:${i + 1} — `{@example}` tag must appear on its own line and include `lang=dart`: `$line`',
               );
             }
             // Extract target path
@@ -2095,6 +2126,21 @@ void main() {
           violations.add(
             '$posixPath — operations module is missing `{@example /example/... lang=dart}` tags.',
           );
+        }
+      }
+
+      // 3. Assert pkgs/*/hook/build.dart never uses non-portable Uri.file('${Directory.current.path}/...')
+      if (pkgsDir.existsSync()) {
+        for (final pkg in pkgsDir.listSync().whereType<Directory>()) {
+          final buildHook = File('${pkg.path}/hook/build.dart');
+          if (!buildHook.existsSync()) continue;
+          final hookSrc = buildHook.readAsStringSync();
+          if (hookSrc.contains(r'Uri.file(') &&
+              hookSrc.contains('Directory.current.path')) {
+            violations.add(
+              '${_posix(buildHook.path)} — uses non-portable `Uri.file(\'...\${Directory.current.path}...\')`; use `Directory.current.uri.resolve(...)` instead.',
+            );
+          }
         }
       }
 
@@ -2147,7 +2193,7 @@ void main() {
       expect(ufuncMethods, contains('s_binary_minmax('));
 
       // P1-3: outerUfunc delegates directly to binaryUfunc without manual ffi.Pointer loops
-      final outerStart = ufuncMethods.indexOf('NDArray<T> outerUfunc<');
+      final outerStart = ufuncMethods.indexOf('NDArray<R> outerUfunc<');
       final atStart = ufuncMethods.indexOf('void atUfunc<');
       expect(outerStart, greaterThan(0));
       expect(atStart, greaterThan(outerStart));
@@ -2159,7 +2205,513 @@ void main() {
             'outerUfunc must delegate to binaryUfunc (native C strided kernels) rather than manual Dart pointer loops',
       );
     });
+
+    test(
+      'Round 4 Invariants: __int128 portability guards in C++, miniz.c/h in nativeSourceFiles, exhaustive BinaryOp switch in binaryUfunc, and checkNativeOom coverage',
+      () {
+        // 1. Every __int128 in hook/ C++ sources must be guarded by #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)
+        final customUfuncsCpp = File(
+          '${hookDir.path}/custom_ufuncs.cpp',
+        ).readAsStringSync();
+        expect(
+          customUfuncsCpp,
+          contains('#if defined(__SIZEOF_INT128__) && !defined(_MSC_VER)'),
+          reason:
+              'custom_ufuncs.cpp must guard __int128 behind #if defined(__SIZEOF_INT128__) && !defined(_MSC_VER) for MSVC/clang-cl/32-bit portability',
+        );
+        expect(
+          customUfuncsCpp,
+          isNot(contains('static_cast<unsigned long long>')),
+          reason:
+              'round_to_even_integer in custom_ufuncs.cpp must use fixed-width uint64_t instead of unsigned long long',
+        );
+        final commonHeaderSrc = File(
+          '${hookDir.path}/ndarray_common.h',
+        ).readAsStringSync();
+        expect(
+          commonHeaderSrc,
+          contains('using ndarray_unsigned_arith_t ='),
+          reason:
+              'ndarray_common.h must promote narrow (<32-bit) integers to uint32_t in wrapping helpers to avoid C++ integral promotion to signed int',
+        );
+        expect(
+          customUfuncsCpp,
+          isNot(contains('((uint16_t)x * (uint16_t)x)')),
+          reason:
+              'custom_ufuncs.cpp must not multiply uint16_t values without uint32_t promotion (causes signed int overflow UB when >= 46341)',
+        );
+        expect(
+          customUfuncsCpp,
+          isNot(contains('(uint16_t)(x * x)')),
+          reason:
+              'custom_ufuncs.cpp must not multiply uint16_t x * x without uint32_t promotion (causes signed int overflow UB when >= 46341)',
+        );
+
+        // 2. nativeSourceFiles() in hashes.dart must include miniz.c and miniz.h
+        final sourceFiles = nativeSourceFiles(
+          hookDir.parent.uri,
+        ).map((f) => f.uri.pathSegments.last).toSet();
+        expect(sourceFiles, contains('miniz.c'));
+        expect(sourceFiles, contains('miniz.h'));
+
+        // 3. binaryUfunc must exhaustively switch on BinaryOp without a default: clause
+        final ufuncMethods = File(
+          '${libDir.path}/src/operations/math/ufunc_methods.dart',
+        ).readAsStringSync();
+        final binUfuncStart = ufuncMethods.indexOf('NDArray<R> binaryUfunc');
+        final binUfuncEnd = ufuncMethods.indexOf('bool _isValueNaN');
+        final binUfuncBody = ufuncMethods.substring(binUfuncStart, binUfuncEnd);
+        expect(
+          binUfuncBody,
+          isNot(contains('default:')),
+          reason:
+              'binaryUfunc must exhaustively handle all BinaryOp values without a default: branch',
+        );
+        for (final op in BinaryOp.values) {
+          expect(
+            binUfuncBody,
+            contains('BinaryOp.${op.name}'),
+            reason: 'binaryUfunc must handle BinaryOp.${op.name}',
+          );
+        }
+
+        // 4. Key files with native allocations must call checkNativeOom()
+        for (final relPath in [
+          'src/operations/math/ufunc_methods.dart',
+          'src/operations/stats.dart',
+          'src/operations/spacers.dart',
+          'src/operations/sorting.dart',
+          'src/operations/interpolation.dart',
+          'src/operations/helpers.dart',
+          'src/operations/calculus.dart',
+          'src/operations/distance.dart',
+          'src/operations/dsp.dart',
+          'src/operations/linalg.dart',
+          'src/operations/manipulation.dart',
+          'src/operations/padding.dart',
+          'src/operations/set_operations.dart',
+          'src/operations/io.dart',
+        ]) {
+          final content = File('${libDir.path}/$relPath').readAsStringSync();
+          expect(
+            content,
+            contains('checkNativeOom()'),
+            reason: '$relPath must check native OOM via checkNativeOom()',
+          );
+        }
+
+        // 5. DTypeSpec generic type parameters must have meaningful, non-single-letter names
+        final ndarraySrc = File(
+          '${libDir.path}/src/ndarray.dart',
+        ).readAsStringSync();
+        for (final paramName in [
+          'RealTag extends DTypeTag',
+          'Element',
+          'RealFloatTag extends DTypeTag',
+          'ComplexTag extends DTypeTag',
+          'InexactTag extends DTypeTag',
+          'AccumulatorTag extends DTypeTag',
+          'DoublePrecisionTag extends DTypeTag',
+        ]) {
+          expect(
+            ndarraySrc,
+            contains(paramName),
+            reason:
+                'DTypeSpec must declare descriptive type parameter `$paramName`',
+          );
+        }
+      },
+    );
+
+    test(
+      'C++ Hardening Invariants: zero abort() calls, zero #define native_ symbol hacks, single canonical NoThrowBuffer in ndarray_common.h, and complete division error checks',
+      () {
+        final hookFiles = hookDir
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.endsWith('.cpp') || f.path.endsWith('.h'))
+            .toList();
+
+        final abortViolations = <String>[];
+        final defineHackViolations = <String>[];
+        final noThrowRedefViolations = <String>[];
+
+        for (final file in hookFiles) {
+          final baseName = file.uri.pathSegments.last;
+          final stripped = _stripCppComments(file.readAsStringSync());
+          if (RegExp(r'\babort\s*\(\s*\)').hasMatch(stripped)) {
+            abortViolations.add(
+              '$baseName: contains `abort()` call (return a safe fallback or error code instead).',
+            );
+          }
+          if (file.path.endsWith('.cpp') &&
+              RegExp(r'#\s*define\s+native_\w+').hasMatch(stripped)) {
+            defineHackViolations.add(
+              '$baseName: contains `#define native_...` symbol-renaming hack.',
+            );
+          }
+          if (baseName != 'ndarray_common.h' &&
+              RegExp(r'\bstruct\s+NoThrowBuffer\b').hasMatch(stripped)) {
+            noThrowRedefViolations.add(
+              '$baseName: redefines `struct NoThrowBuffer` (must use canonical definition in ndarray_common.h).',
+            );
+          }
+        }
+
+        final commonHeader = File(
+          '${hookDir.path}/ndarray_common.h',
+        ).readAsStringSync();
+        expect(
+          commonHeader,
+          contains('struct NoThrowBuffer'),
+          reason: 'ndarray_common.h must define canonical struct NoThrowBuffer',
+        );
+        expect(
+          abortViolations,
+          isEmpty,
+          reason:
+              'Forbidden abort() calls in hook/:\n${abortViolations.join('\n')}',
+        );
+        expect(
+          defineHackViolations,
+          isEmpty,
+          reason:
+              'Forbidden #define native_... workarounds in hook/:\n${defineHackViolations.join('\n')}',
+        );
+        expect(
+          noThrowRedefViolations,
+          isEmpty,
+          reason:
+              'Duplicate NoThrowBuffer definitions in hook/:\n${noThrowRedefViolations.join('\n')}',
+        );
+
+        // Complete get_and_reset_division_error() enforcement across all integer div/mod/at/reduceat kernels
+        final divKernelRegex = RegExp(
+          r'\b(?:[vs]_(?:floordiv|remainder|fmod)_int\w*|s_at_\w+|[vs]_reduceat_\w+)\s*\(',
+        );
+        final divViolations = <String>[];
+        for (final file in libFiles) {
+          if (file.path.endsWith('ndarray_bindings.dart') ||
+              file.path.endsWith('ndarray_extensions_bindings.dart')) {
+            continue;
+          }
+          final content = file.readAsStringSync();
+          if (divKernelRegex.hasMatch(content) &&
+              !content.contains('get_and_reset_division_error()')) {
+            divViolations.add(
+              '${_posix(file.path)} invokes integer division/modulo/at/reduceat native kernels without checking `get_and_reset_division_error()`.',
+            );
+          }
+        }
+        expect(divViolations, isEmpty, reason: divViolations.join('\n'));
+      },
+    );
+
+    test(
+      'Exact C Header <-> Dart @ffi.Native Signature & Type Parity across all bindings',
+      () {
+        final headerFiles = [
+          File('${hookDir.path}/custom_ufuncs.h'),
+          File('${hookDir.path}/custom_sorting.h'),
+          File('${hookDir.path}/custom_indexing.h'),
+          File('${hookDir.path}/npz_io.h'),
+          File('${hookDir.path}/ndarray_common.h'),
+        ];
+        final headerMap = _parseCHeaderDeclarations(headerFiles);
+        expect(
+          headerMap.length,
+          greaterThan(1500),
+          reason: 'Expected >1500 C function declarations across hook/*.h',
+        );
+
+        final bindingFiles = [
+          File('${libDir.path}/src/ndarray_bindings.dart'),
+          File('${libDir.path}/src/ndarray_extensions_bindings.dart'),
+        ];
+
+        var totalNative = 0;
+        final violations = <String>[];
+
+        for (final bFile in bindingFiles) {
+          final baseName = bFile.uri.pathSegments.last;
+          final parsed = parseFile(
+            path: _native(bFile.path),
+            featureSet: featureSet,
+            throwIfDiagnostics: false,
+          );
+          for (final decl in parsed.unit.declarations) {
+            if (decl is FunctionDeclaration && decl.externalKeyword != null) {
+              for (final meta in decl.metadata) {
+                final metaName = meta.name.name;
+                if (metaName == 'ffi.Native' || metaName == 'Native') {
+                  final typeArgs = meta.typeArguments?.arguments;
+                  if (typeArgs != null &&
+                      typeArgs.length == 1 &&
+                      typeArgs.first is GenericFunctionType) {
+                    totalNative++;
+                    final fnType = typeArgs.first as GenericFunctionType;
+                    final fnName = decl.name.lexeme;
+                    final ffiRet = fnType.returnType?.toSource() ?? 'ffi.Void';
+                    final ffiParams = fnType.parameters.parameters
+                        .map(_extractFfiParamType)
+                        .toList();
+
+                    final cDecls = headerMap[fnName];
+                    if (cDecls == null || cDecls.isEmpty) {
+                      violations.add(
+                        '$baseName: `$fnName` is not declared in any hook/*.h file.',
+                      );
+                      continue;
+                    }
+
+                    for (final cDecl in cDecls) {
+                      if (cDecl.paramTypes.length != ffiParams.length) {
+                        violations.add(
+                          '$baseName: `$fnName` has ${ffiParams.length} params in @ffi.Native, but ${cDecl.paramTypes.length} in ${cDecl.file}.',
+                        );
+                        continue;
+                      }
+                      if (!_cTypeMatchesFfi(cDecl.returnType, ffiRet)) {
+                        violations.add(
+                          '$baseName: `$fnName` return type `$ffiRet` does not match C return type `${cDecl.returnType}` in ${cDecl.file}.',
+                        );
+                      }
+                      for (var i = 0; i < ffiParams.length; i++) {
+                        if (!_cTypeMatchesFfi(
+                          cDecl.paramTypes[i],
+                          ffiParams[i],
+                        )) {
+                          violations.add(
+                            '$baseName: `$fnName` param #${i + 1} type `${ffiParams[i]}` does not match C type `${cDecl.paramTypes[i]}` in ${cDecl.file}.',
+                          );
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        expect(totalNative, greaterThan(800));
+        expect(
+          violations,
+          isEmpty,
+          reason:
+              'C header <-> @ffi.Native signature parity violations:\n${violations.join('\n')}',
+        );
+      },
+    );
   });
+}
+
+class _CFuncDecl {
+  final String file;
+  final String name;
+  final String returnType;
+  final List<String> paramTypes;
+
+  _CFuncDecl(this.file, this.name, this.returnType, this.paramTypes);
+}
+
+String _expandUfuncMacros(String source) {
+  final macroRows = <String, List<List<String>>>{};
+  for (final macroName in [
+    'GENERATE_COMMUTATIVE_COMBINATIONS',
+    'GENERATE_OP_COMBINATIONS',
+    'GENERATE_DIV_COMBINATIONS',
+  ]) {
+    final m = RegExp(
+      '#define\\s+$macroName\\(OP,\\s*MACRO\\)\\s*((?:.*\\\\\\r?\\n)*.*)',
+    ).firstMatch(source);
+    if (m != null) {
+      final body = m.group(1)!;
+      final rows = <List<String>>[];
+      for (final call in RegExp(
+        r'MACRO\(\s*OP\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*,\s*(\w+)\s*\)',
+      ).allMatches(body)) {
+        rows.add([
+          call.group(1)!,
+          call.group(2)!,
+          call.group(3)!,
+          call.group(4)!,
+          call.group(5)!,
+          call.group(6)!,
+        ]);
+      }
+      macroRows[macroName] = rows;
+    }
+  }
+
+  final sb = StringBuffer(source);
+  for (final inv in RegExp(
+    r'\b(GENERATE_COMMUTATIVE_COMBINATIONS|GENERATE_OP_COMBINATIONS|GENERATE_DIV_COMBINATIONS)\(\s*(\w+)\s*,\s*DECLARE_FFI_HELPER\s*\)',
+  ).allMatches(source)) {
+    final macroName = inv.group(1)!;
+    final op = inv.group(2)!;
+    final rows = macroRows[macroName] ?? const [];
+    for (final r in rows) {
+      final taTok = r[0], tbTok = r[1], trTok = r[2];
+      final ta = r[3], tb = r[4], tr = r[5];
+      sb.writeln(
+        'void v_${op}_${taTok}_${tbTok}_$trTok(const $ta *a, const $tb *b, $tr *res, int64_t size, const uint8_t *mask);',
+      );
+      sb.writeln(
+        'void s_${op}_${taTok}_${tbTok}_$trTok(const $ta *a, const int64_t *stridesA, const $tb *b, const int64_t *stridesB, $tr *res, const int64_t *stridesRes, const int64_t *shape, int rank, const uint8_t *mask);',
+      );
+    }
+  }
+  return sb.toString();
+}
+
+String _stripCParamName(String rawParam) {
+  final clean = rawParam
+      .replaceAll(RegExp(r'\bRESTRICT\b'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final ptrMatch = RegExp(r'^(.*\*+)\s*([A-Za-z_]\w*)$').firstMatch(clean);
+  if (ptrMatch != null) {
+    final candName = ptrMatch.group(2)!;
+    if (candName != 'const' && candName != 'restrict') {
+      return ptrMatch.group(1)!.trim();
+    }
+  }
+  final valMatch = RegExp(r'^(.+?)\s+([A-Za-z_]\w*)$').firstMatch(clean);
+  if (valMatch != null) {
+    final candName = valMatch.group(2)!;
+    const typeKeywords = {
+      'void',
+      'char',
+      'short',
+      'int',
+      'long',
+      'float',
+      'double',
+      'signed',
+      'unsigned',
+      'bool',
+      'const',
+      'int64_t',
+      'uint64_t',
+      'int32_t',
+      'uint32_t',
+      'int16_t',
+      'uint16_t',
+      'int8_t',
+      'uint8_t',
+      'size_t',
+      'cpx_t',
+      'cpx_f_t',
+      'complex128_t',
+      'complex64_t',
+    };
+    if (!typeKeywords.contains(candName)) {
+      return valMatch.group(1)!.trim();
+    }
+  }
+  return clean;
+}
+
+Map<String, List<_CFuncDecl>> _parseCHeaderDeclarations(
+  List<File> headerFiles,
+) {
+  final map = <String, List<_CFuncDecl>>{};
+  for (final file in headerFiles) {
+    final baseName = file.uri.pathSegments.last;
+    var src = file.readAsStringSync();
+    src = src.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+    src = src.replaceAll(RegExp(r'//[^\n]*'), '');
+    if (baseName == 'custom_ufuncs.h') {
+      src = _expandUfuncMacros(src);
+    }
+    src = src.replaceAll(
+      RegExp(r'^\s*#(?:.*\\\r?\n)*.*$', multiLine: true),
+      '',
+    );
+    src = src.replaceAll(RegExp(r'extern\s+"C"\s*\{'), '');
+    while (RegExp(r'\{[^{}]*\}').hasMatch(src)) {
+      src = src.replaceAll(RegExp(r'\{[^{}]*\}'), ';');
+    }
+    src = src.replaceAll(
+      RegExp(r'[A-Za-z_]\w*\s*\(\s*\*\s*[A-Za-z_]\w*\s*\)\s*\([^()]*\)'),
+      'void *fn_ptr',
+    );
+
+    final declRegex = RegExp(
+      r'(?:NDARRAY_EXPORT|FFI_PLUGIN_EXPORT)?\s*((?:const\s+|unsigned\s+|signed\s+|struct\s+)*[A-Za-z_]\w*(?:\s*\*+)*)\s+([A-Za-z_]\w*)\s*\(([^;()]*)\)\s*;',
+      multiLine: true,
+    );
+    for (final m in declRegex.allMatches(src)) {
+      final ret = m.group(1)!.trim().replaceAll(RegExp(r'\s+'), ' ');
+      final name = m.group(2)!.trim();
+      if (name == 'typedef') continue;
+      final paramsRaw = m.group(3)!.trim();
+      final paramTypes = <String>[];
+      if (paramsRaw.isNotEmpty && paramsRaw != 'void') {
+        for (final p in paramsRaw.split(',')) {
+          paramTypes.add(_stripCParamName(p));
+        }
+      }
+      (map[name] ??= []).add(_CFuncDecl(baseName, name, ret, paramTypes));
+    }
+  }
+  return map;
+}
+
+String _extractFfiParamType(FormalParameter p) {
+  final src = p.toSource().trim();
+  final name = p.name?.lexeme;
+  if (name != null && name.isNotEmpty && src.endsWith(name)) {
+    return src.substring(0, src.length - name.length).trim();
+  }
+  return src;
+}
+
+bool _cTypeMatchesFfi(String cType, String ffiType) {
+  final c = cType
+      .replaceAll(RegExp(r'\bconst\b'), '')
+      .replaceAll(RegExp(r'\bRESTRICT\b'), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  final f = ffiType.replaceAll(RegExp(r'\s+'), '');
+
+  if (f.startsWith('ffi.Pointer<') || f.startsWith('Pointer<')) {
+    return c.endsWith('*');
+  }
+  if (c.endsWith('*')) {
+    return false;
+  }
+
+  return switch (f) {
+    'ffi.Void' || 'Void' => c == 'void',
+    'ffi.Int64' ||
+    'Int64' => c == 'int64_t' || c == 'long long' || c == 'signed long long',
+    'ffi.Uint64' || 'Uint64' => c == 'uint64_t',
+    'ffi.UnsignedLongLong' || 'UnsignedLongLong' => c == 'unsigned long long',
+    'ffi.Int32' ||
+    'Int32' ||
+    'ffi.Int' ||
+    'Int' => c == 'int32_t' || c == 'int' || c == 'signed int',
+    'ffi.Uint32' ||
+    'Uint32' ||
+    'ffi.UnsignedInt' ||
+    'UnsignedInt' => c == 'uint32_t' || c == 'unsigned int' || c == 'unsigned',
+    'ffi.Int16' ||
+    'Int16' => c == 'int16_t' || c == 'short' || c == 'signed short',
+    'ffi.Uint16' || 'Uint16' => c == 'uint16_t' || c == 'unsigned short',
+    'ffi.Int8' || 'Int8' => c == 'int8_t' || c == 'signed char' || c == 'char',
+    'ffi.Uint8' ||
+    'Uint8' ||
+    'ffi.Bool' ||
+    'Bool' => c == 'uint8_t' || c == 'bool' || c == 'unsigned char',
+    'ffi.Size' || 'Size' => c == 'size_t',
+    'ffi.Double' || 'Double' => c == 'double',
+    'ffi.Float' || 'Float' => c == 'float',
+    'cpx_t' || 'Complex128Struct' => c == 'cpx_t' || c == 'complex128_t',
+    'cpx_f_t' || 'Complex64Struct' => c == 'cpx_f_t' || c == 'complex64_t',
+    _ => false,
+  };
 }
 
 class _NDArrayMutatorAndOperatorVisitor extends RecursiveAstVisitor<void> {
@@ -2236,6 +2788,13 @@ class _ErrorMessageInterpolationVisitor extends RecursiveAstVisitor<void> {
   void _checkExpression(Expression expr) {
     if (expr is InstanceCreationExpression) {
       final typeName = expr.constructorName.type.name.lexeme;
+      final constructorName = expr.constructorName.name?.name;
+      if (typeName == 'ArgumentError' && constructorName == null) {
+        final line = lineInfo.getLocation(expr.offset).lineNumber;
+        violations.add(
+          '$filePath:$line — bare `ArgumentError(...)` is forbidden; use `ArgumentError.value(...)` instead.',
+        );
+      }
       if (_errorClasses.contains(typeName)) {
         for (final arg in expr.argumentList.arguments) {
           _inspectArgument(arg);
@@ -2243,6 +2802,12 @@ class _ErrorMessageInterpolationVisitor extends RecursiveAstVisitor<void> {
       }
     } else if (expr is MethodInvocation) {
       final target = expr.target?.toSource();
+      if (expr.methodName.name == 'ArgumentError' && target == null) {
+        final line = lineInfo.getLocation(expr.offset).lineNumber;
+        violations.add(
+          '$filePath:$line — bare `ArgumentError(...)` is forbidden; use `ArgumentError.value(...)` instead.',
+        );
+      }
       if (target != null && _errorClasses.contains(target)) {
         for (final arg in expr.argumentList.arguments) {
           _inspectArgument(arg);

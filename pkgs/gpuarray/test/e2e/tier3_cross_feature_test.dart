@@ -14,9 +14,12 @@
 
 import 'package:gpuarray/fft.dart' as gpu_fft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
 import 'package:gpuarray/nn.dart' as gpu_nn;
 import 'package:gpuarray/random.dart' as gpu_random;
+import 'package:gpuarray/safetensors.dart';
+import 'package:gpuarray/serialization.dart';
 import 'package:ndarray/ndarray.dart' as nd;
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
@@ -529,18 +532,18 @@ void main() {
             ...normLayer.parameters,
           ], lr: 0.05);
 
-          final predBefore =
-              act.forward(normLayer.forward(linear.forward(input)))
-                  as GpuArray<Float64>;
+          final predBefore = act.forward(
+            normLayer.forward(linear.forward(input)),
+          );
           final lossBefore = (gpu_nn.mseLoss(predBefore, target).scalar as num)
               .toDouble();
           gpu_nn.mseLoss(predBefore, target).backward();
           opt.step();
           opt.zeroGrad();
 
-          final predAfter =
-              act.forward(normLayer.forward(linear.forward(input)))
-                  as GpuArray<Float64>;
+          final predAfter = act.forward(
+            normLayer.forward(linear.forward(input)),
+          );
           final lossAfter = (gpu_nn.mseLoss(predAfter, target).scalar as num)
               .toDouble();
           expect(lossAfter, lessThan(lossBefore));
@@ -732,6 +735,34 @@ void main() {
         } finally {
           device.dispose();
         }
+      },
+    );
+
+    test(
+      'CF25 (R1 + R2 + R3 + R4): Float32 rfft/irfft + CompiledWgslKernel + topk/cumsum + Float32 Linear/AdamW',
+      () {
+        ResourceScope.scope(() {
+          final sig = GpuArray<Float32>.fromList(
+            <double>[1.0, 3.0, 2.0, 4.0],
+            [4],
+            DType.float32,
+          );
+          final spec = gpu_fft.rfft(sig);
+          expect(spec.dtype, equals(DType.complex64));
+          final rec = gpu_fft.irfft(spec, n: 4);
+          expect(rec.dtype, equals(DType.float32));
+
+          final xVar = Expr.variable('x', bindingIndex: 0);
+          final kernel = GpuDevice.defaultDevice.jitCompiler.compileKernel(
+            xVar * 2.0,
+          );
+          final scaled = kernel.execute<Float32>({'x': rec});
+          final cs = cumsum(scaled);
+          expect(cs.dtype, equals(DType.float32));
+          final top2 = topk(cs, 2);
+          expect(top2.indices.dtype, equals(DType.int64));
+          _expectCloseList(top2.values.toList(), <double>[20.0, 12.0]);
+        });
       },
     );
   });

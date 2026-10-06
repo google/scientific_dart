@@ -164,7 +164,7 @@ void main() {
           final m0 = mean(emptyArr, axis: 0);
           expect(m0.shape, equals([4]));
           for (var i = 0; i < 4; i++) {
-            expect(m0.getCell([i]).toDouble().isNaN, isTrue);
+            expect(m0.getCell([i]).isNaN, isTrue);
           }
 
           // Test with explicit out buffer

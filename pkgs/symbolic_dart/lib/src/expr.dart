@@ -437,7 +437,17 @@ final class Expr implements ffi.Finalizable, ScopedResource {
               : (coeffAtA / Expr.bigInt(factorial));
           term = (k == 1) ? (coeffDiv * dx) : (coeffDiv * dx.pow(k));
         }
-        result = (result.isZero) ? term : (result + term);
+        if (result.isZero) {
+          result.dispose();
+          result = term;
+        } else {
+          final prevResult = result;
+          result = prevResult + term;
+          prevResult.dispose();
+          term.dispose();
+        }
+      } else {
+        coeffAtA.dispose();
       }
     }
 

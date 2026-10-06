@@ -20,6 +20,7 @@ import 'package:meta/meta.dart';
 import '../ndarray.dart';
 import '../ndarray_extensions_bindings.dart';
 import '../scratch_arena.dart';
+import 'helpers.dart' show checkNativeOom;
 import 'dart:ffi' as ffi;
 
 ffi.Pointer<ffi.Char> _toNativeUtf8InScratchArena(String s) {
@@ -131,8 +132,8 @@ DType<DTypeTag> _descrToDType(String descr) {
   if (descr.contains('>')) {
     throw UnsupportedError('Big-Endian .npy files are not supported yet.');
   }
-  // Strip byte-order indicators if any (e.g., '<', '>', '|')
-  final clean = descr.replaceAll(RegExp(r'[<>|]'), '');
+  // Strip byte-order indicators if any (e.g., '<', '>', '|', '=')
+  final clean = descr.replaceAll(RegExp(r'[<>|=]'), '');
   switch (clean) {
     case 'f8':
       return DType.float64;
@@ -425,6 +426,7 @@ NDArray<DTypeTag> load(String filepath) {
         );
       }
 
+      const maxNpyHeaderBytes = 1024 * 1024;
       final int headerLen;
       final int prefixLen;
       if (majorVersion >= 2) {
@@ -439,6 +441,11 @@ NDArray<DTypeTag> load(String filepath) {
         prefixLen = 10;
         requirePrefix(prefixLen);
         headerLen = prefixBuf[8] | (prefixBuf[9] << 8);
+      }
+      if (headerLen < 0 || headerLen > maxNpyHeaderBytes) {
+        throw FormatException(
+          'NPY header length ($headerLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
+        );
       }
       final dataOffset = prefixLen + headerLen;
 
@@ -557,6 +564,9 @@ void savez(
   Map<String, NDArray<DTypeTag>> arrays, {
   bool compressed = false,
 }) {
+  if (arrays.isEmpty) {
+    throw ArgumentError.value(arrays, 'arrays', 'Must not be empty');
+  }
   for (final entry in arrays.entries) {
     if (entry.value.isDisposed) {
       throw StateError('Cannot save a disposed NDArray (key: ${entry.key}).');
@@ -682,6 +692,11 @@ void savez(
       compressLevel,
     );
 
+    if (status != 0) {
+      // The native encoder flags allocation failures through the thread-local
+      // OOM flag; consume it here so it cannot leak into a later operation.
+      checkNativeOom();
+    }
     if (status == -2) {
       throw _nativeFileException('Cannot open .npz file for writing', filepath);
     }
@@ -741,6 +756,7 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
 
     final handle = npz_open_reader(cFilepath, pNumEntries);
     if (handle.address == 0) {
+      checkNativeOom();
       throw FormatException('Invalid or corrupted .npz ZIP archive: $filepath');
     }
 
@@ -748,7 +764,7 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
       final numEntries = pNumEntries.value;
       final results = <String, NDArray<DTypeTag>>{};
 
-      const nameBufLen = 512;
+      const nameBufLen = 4096;
       final nameBuf = ScratchArena.allocate<ffi.Char>(
         nameBufLen * ffi.sizeOf<ffi.Char>(),
       );
@@ -778,7 +794,14 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
               continue;
             }
             if (infoStatus == -9) {
+              const maxNpyHeaderBytes = 1024 * 1024;
               final requiredHeaderLen = _readSize(pHeaderLen);
+              if (requiredHeaderLen < 0 ||
+                  requiredHeaderLen > maxNpyHeaderBytes) {
+                throw FormatException(
+                  'NPY header length ($requiredHeaderLen) exceeds maximum allowed size ($maxNpyHeaderBytes bytes).',
+                );
+              }
               final largeHeaderBuf = ScratchArena.allocate<ffi.Uint8>(
                 requiredHeaderLen,
               );
@@ -884,11 +907,13 @@ Map<String, NDArray<DTypeTag>> loadz(String filepath) {
 
           if (extractStatus != 0) {
             loadedArray.dispose();
+            checkNativeOom();
             throw FormatException(
               'Failed to extract .npy array data from .npz entry (index: $i, key: $key, code: $extractStatus)',
             );
           }
 
+          results[key]?.dispose();
           results[key] = loadedArray;
         }
 

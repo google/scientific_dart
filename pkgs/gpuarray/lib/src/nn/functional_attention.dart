@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:math' as math;
 
 import '../autograd/autograd.dart';
@@ -22,8 +21,8 @@ import 'functional.dart';
 import 'nn_wgsl.dart';
 
 /// Applies 1D Batch Normalization over a 2D (`[N, C]`) or 3D (`[N, C, L]`) input tensor.
-GpuArray<DTypeTag> batchNorm1d(
-  GpuArray<DTypeTag> input, {
+GpuArray<T> batchNorm1d<T extends DTypeTag>(
+  GpuArray<T> input, {
   GpuArray<DTypeTag>? runningMean,
   GpuArray<DTypeTag>? runningVar,
   GpuArray<DTypeTag>? weight,
@@ -49,7 +48,7 @@ GpuArray<DTypeTag> batchNorm1d(
       ? input.transpose([0, 2, 1]).reshape([sampleCount, numFeatures])
       : input;
 
-  final GpuArray<DTypeTag> normalizedFlat;
+  final GpuArray<T> normalizedFlat;
   if (training || runningMean == null || runningVar == null) {
     final invCount = 1.0 / sampleCount;
     final batchMean = flatInput.sum(axis: 0, keepDims: true) * invCount;
@@ -61,12 +60,20 @@ GpuArray<DTypeTag> batchNorm1d(
       noGrad(() {
         final mean1D = batchMean.reshape([numFeatures]);
         final var1D = batchVar.reshape([numFeatures]);
+        final matchedMean = mean1D.dtype == runningMean.dtype
+            ? mean1D
+            : mean1D.astype(runningMean.dtype);
+        final matchedVar = var1D.dtype == runningVar.dtype
+            ? var1D
+            : var1D.astype(runningVar.dtype);
         final besselScale = sampleCount > 1
             ? sampleCount / (sampleCount - 1.0)
             : 1.0;
-        final updatedMean = runningMean * (1.0 - momentum) + mean1D * momentum;
+        final updatedMean =
+            runningMean * (1.0 - momentum) + matchedMean * momentum;
         final updatedVar =
-            runningVar * (1.0 - momentum) + var1D * (besselScale * momentum);
+            runningVar * (1.0 - momentum) +
+            matchedVar * (besselScale * momentum);
         updatedMean.buffer.copyToBuffer(
           runningMean.buffer,
           runningMean.byteSize,
@@ -74,6 +81,14 @@ GpuArray<DTypeTag> batchNorm1d(
         updatedVar.buffer.copyToBuffer(runningVar.buffer, runningVar.byteSize);
         updatedMean.dispose();
         updatedVar.dispose();
+        if (!identical(matchedMean, mean1D)) {
+          matchedMean.dispose();
+        }
+        if (!identical(matchedVar, var1D)) {
+          matchedVar.dispose();
+        }
+        mean1D.dispose();
+        var1D.dispose();
       });
     }
 
@@ -81,7 +96,8 @@ GpuArray<DTypeTag> batchNorm1d(
   } else {
     final meanView = runningMean.reshape([1, numFeatures]);
     final varView = runningVar.reshape([1, numFeatures]);
-    normalizedFlat = (flatInput - meanView) / (varView + eps).sqrt();
+    final stdView = (varView + eps).sqrt();
+    normalizedFlat = (flatInput - meanView) / stdView;
   }
 
   var transformed = normalizedFlat;
@@ -100,29 +116,6 @@ GpuArray<DTypeTag> batchNorm1d(
         ])
       : transformed;
 }
-
-/// Applies 1D Batch Normalization over a 2D (`[N, C]`) or 3D (`[N, C, L]`) input tensor.
-///
-/// Alias for [batchNorm1d] provided for PyTorch naming parity.
-GpuArray<DTypeTag> batch_norm_1d(
-  GpuArray<DTypeTag> input, {
-  GpuArray<DTypeTag>? runningMean,
-  GpuArray<DTypeTag>? runningVar,
-  GpuArray<DTypeTag>? weight,
-  GpuArray<DTypeTag>? bias,
-  bool training = false,
-  double momentum = 0.1,
-  double eps = 1e-5,
-}) => batchNorm1d(
-  input,
-  runningMean: runningMean,
-  runningVar: runningVar,
-  weight: weight,
-  bias: bias,
-  training: training,
-  momentum: momentum,
-  eps: eps,
-);
 
 /// Computes Scaled Dot-Product Attention (SDPA):
 /// $$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}} + M\right) V$$
@@ -150,7 +143,7 @@ GpuArray<T> scaledDotProductAttention<T extends DTypeTag>(
   final scaleFactor = scale ?? (1.0 / math.sqrt(keyDimension));
 
   final keyTransposed = key.swapaxes(-1, -2);
-  var scores = (query.matmul(keyTransposed) * scaleFactor) as GpuArray<T>;
+  var scores = query.matmul(keyTransposed) * scaleFactor;
 
   final querySeqLength = query.shape[query.rank - 2];
   final keySeqLength = key.shape[key.rank - 2];
@@ -166,7 +159,7 @@ GpuArray<T> scaledDotProductAttention<T extends DTypeTag>(
       querySeqLength: querySeqLength,
       keySeqLength: keySeqLength,
     );
-    scores = (scores + causalMask) as GpuArray<T>;
+    scores = scores + causalMask;
   }
 
   if (attnMask != null) {
@@ -180,9 +173,9 @@ GpuArray<T> scaledDotProductAttention<T extends DTypeTag>(
         boolMask: attnMask,
         additiveMask: additiveMask,
       );
-      scores = (scores + additiveMask) as GpuArray<T>;
+      scores = scores + additiveMask;
     } else {
-      scores = (scores + attnMask) as GpuArray<T>;
+      scores = scores + attnMask;
     }
   }
 
@@ -192,26 +185,5 @@ GpuArray<T> scaledDotProductAttention<T extends DTypeTag>(
     attentionWeights = dropout(attentionWeights, p: dropoutP, training: true);
   }
 
-  return attentionWeights.matmul(value) as GpuArray<T>;
+  return attentionWeights.matmul(value);
 }
-
-/// Computes Scaled Dot-Product Attention (SDPA).
-///
-/// Alias for [scaledDotProductAttention] provided for PyTorch naming parity.
-GpuArray<T> scaled_dot_product_attention<T extends DTypeTag>(
-  GpuArray<T> query,
-  GpuArray<T> key,
-  GpuArray<T> value, {
-  GpuArray<DTypeTag>? attnMask,
-  double dropoutP = 0.0,
-  bool isCausal = false,
-  double? scale,
-}) => scaledDotProductAttention(
-  query,
-  key,
-  value,
-  attnMask: attnMask,
-  dropoutP: dropoutP,
-  isCausal: isCausal,
-  scale: scale,
-);

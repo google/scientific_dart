@@ -16,9 +16,12 @@ import 'dart:typed_data';
 
 import 'package:gpuarray/fft.dart' as gpu_fft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
 import 'package:gpuarray/linalg.dart' as gpu_linalg;
 import 'package:gpuarray/nn.dart' as gpu_nn;
 import 'package:gpuarray/random.dart' as gpu_random;
+import 'package:gpuarray/serialization.dart';
+import 'package:gpuarray/wgsl.dart';
 import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
 
@@ -1026,6 +1029,56 @@ void main() {
             } finally {
               tensor.dispose();
             }
+          },
+        );
+
+        test(
+          'F21.B11: Float32 non-square, out: dtype mismatch, and non-SPD matrices in linalg',
+          () {
+            ResourceScope.scope(() {
+              final rect32 = GpuArray.ones([2, 3], DType.float32);
+              final rhs32 = GpuArray.ones([2], DType.float32);
+              expect(
+                () => gpu_linalg.solve(rect32, rhs32),
+                _throwsArgOrRangeOrGpuError,
+              );
+              expect(() => gpu_linalg.inv(rect32), _throwsArgOrRangeOrGpuError);
+              expect(
+                () => gpu_linalg.cholesky(rect32),
+                _throwsArgOrRangeOrGpuError,
+              );
+
+              final spd32 = GpuArray.fromList(
+                <double>[4.0, 1.0, 1.0, 3.0],
+                [2, 2],
+                DType.float32,
+              );
+              final wrongShapeOut = GpuArray.zeros([3, 3], DType.float32);
+              expect(
+                () => gpu_linalg.cholesky(spd32, out: wrongShapeOut),
+                _throwsArgOrRangeOrGpuError,
+              );
+
+              final nonSpd32 = GpuArray.fromList(
+                <double>[-4.0, 1.0, 1.0, -2.0],
+                [2, 2],
+                DType.float32,
+              );
+              try {
+                final factor = gpu_linalg.cholesky(nonSpd32);
+                final values = factor.toList().cast<num>();
+                expect(values.any((v) => !v.isFinite), isTrue);
+              } on Object catch (error) {
+                expect(
+                  error,
+                  anyOf(
+                    isA<ArgumentError>(),
+                    isA<StateError>(),
+                    isA<GpuException>(),
+                  ),
+                );
+              }
+            });
           },
         );
       },

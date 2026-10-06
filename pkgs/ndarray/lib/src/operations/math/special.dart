@@ -45,11 +45,7 @@ import '../helpers.dart';
 /// - the dtype of [a] is not supported (throws [ArgumentError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([0.0, 1.0, 2.0], [3], DType.float64);
-/// final b = i0(a);
-/// print(b.toList()); // [1.0, ~1.266066, ~2.279585]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> i0<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -71,12 +67,23 @@ NDArray<R> i0<R extends DTypeTag>(
   };
 
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        'Provided out buffer has incompatible shape or dtype for i0.',
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for i0',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        i0<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -278,11 +285,7 @@ NDArray<R> i0<R extends DTypeTag>(
 /// - [a] has a complex dtype (throws [UnsupportedError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
-/// final b = gamma(a);
-/// print(b.toList()); // [1.0, 1.0, 2.0, 6.0]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> gamma<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -305,12 +308,23 @@ NDArray<R> gamma<R extends DTypeTag>(
     _ => DType.float64 as DType<R>,
   };
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype for gamma.",
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for gamma',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        gamma<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 
@@ -473,11 +487,7 @@ NDArray<R> gamma<R extends DTypeTag>(
 /// - [a] has a complex dtype (throws [UnsupportedError]).
 ///
 /// **Example:**
-/// ```dart
-/// final a = NDArray.fromList([0.0, 1.0], [2], DType.float64);
-/// final b = erf(a);
-/// print(b.toList()); // [0.0, ~0.8427]
-/// ```
+/// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> erf<R extends DTypeTag>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
@@ -500,12 +510,23 @@ NDArray<R> erf<R extends DTypeTag>(
     _ => DType.float64 as DType<R>,
   };
   if (out != null) {
-    if (!out.isWriteable ||
-        !listEquals(out.shape, a.shape) ||
-        out.dtype != targetDType) {
-      throw ArgumentError(
-        "Provided out buffer has incompatible shape or dtype for erf.",
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape and dtype for erf',
       );
+    }
+    if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
+      return NDArray.scope(() {
+        final temp = where != null
+            ? out.copy()
+            : NDArray<R>.create(out.shape, out.dtype);
+        erf<R>(a, where: where, out: temp);
+        temp.copy(out: out);
+        return out;
+      });
     }
   }
 

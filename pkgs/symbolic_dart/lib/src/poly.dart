@@ -571,13 +571,22 @@ final class FlintRationalPoly implements ffi.Finalizable, ScopedResource {
           final termCoeff = d == BigInt.one
               ? Expr.bigInt(n)
               : Expr.bigInt(n) / Expr.bigInt(d);
+          final Expr term;
           if (i == 0) {
-            sum = sum + termCoeff;
+            term = termCoeff;
           } else if (i == 1) {
-            sum = sum + (termCoeff * x);
+            term = termCoeff * x;
+            termCoeff.dispose();
           } else {
-            sum = sum + (termCoeff * (x ^ i));
+            final xPow = x ^ i;
+            term = termCoeff * xPow;
+            xPow.dispose();
+            termCoeff.dispose();
           }
+          final prevSum = sum;
+          sum = prevSum + term;
+          prevSum.dispose();
+          term.dispose();
         }
       }
       return sum;

@@ -18,6 +18,8 @@ import 'package:ffi/ffi.dart';
 import 'package:test/test.dart';
 
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart';
+import 'package:gpuarray/wgsl.dart';
 import 'package:gpuarray/src/backend/compute_engine.dart';
 import 'package:gpuarray/src/backend/kernels.dart';
 
