@@ -18,17 +18,10 @@ import 'dart:io';
 import 'package:path/path.dart' as p;
 import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
-import 'package:analyzer/dart/analysis/utilities.dart';
-import 'package:analyzer/dart/ast/ast.dart';
 import 'package:notebook/src/cell_formatter.dart';
 import 'package:notebook/src/lsp_client.dart';
 import 'package:notebook/src/kernel_helper.dart';
-
-class DeclaredSymbolResult {
-  final String symbol;
-  final bool isVariable;
-  DeclaredSymbolResult(this.symbol, this.isVariable);
-}
+import 'package:notebook/src/wasm_cell_bundler.dart';
 
 class CompletionItem {
   final String label;
@@ -51,7 +44,6 @@ class NotebookKernel {
   Process? _process;
   VmService? _service;
   String? _isolateId;
-  String? _rootLibId;
   String? _workspaceLibId;
 
   LspClient? _lspClient;
@@ -69,6 +61,17 @@ class NotebookKernel {
     "import 'dart:math' as math;",
   };
   final Map<String, String> _definitions = {};
+  final Set<String> _declaredVariables = {};
+
+  /// Chain of pending [execute] calls; cells never run concurrently.
+  Future<void> _executionQueue = Future<void>.value();
+
+  /// Identifier handed to `runNotebookCell` for the most recently started cell.
+  int _cellRunCounter = 0;
+
+  /// Completion signal for the in-flight cell run, if any.
+  Completer<void>? _cellDone;
+  int? _inFlightRunId;
 
   NotebookKernel({required this.workspaceDir, required this.dartSdkPath}) {
     final wf = _getWorkspaceFile();
@@ -233,8 +236,28 @@ class NotebookKernel {
       isolate = await _service!.getIsolate(_isolateId!);
     }
 
-    _rootLibId = isolate.rootLib!.id;
     _updateWorkspaceLibId(isolate);
+
+    final service = _service!;
+    await service.streamListen(EventStreams.kExtension);
+    service.onExtensionEvent.listen(_onExtensionEvent);
+    unawaited(
+      service.onDone.then((_) {
+        _failInFlightCell(StateError('Kernel VM service connection closed'));
+      }),
+    );
+  }
+
+  void _onExtensionEvent(Event event) {
+    if (event.extensionKind != notebookCellDoneEvent) return;
+    if (event.extensionData?.data['runId'] != _inFlightRunId) return;
+    final done = _cellDone;
+    if (done != null && !done.isCompleted) done.complete();
+  }
+
+  void _failInFlightCell(Object error) {
+    final done = _cellDone;
+    if (done != null && !done.isCompleted) done.completeError(error);
   }
 
   Future<void> _restartKernelProcess() async {
@@ -329,111 +352,71 @@ class NotebookKernel {
     }
   }
 
-  /// Formats Dart notebook cell [code] using [formatNotebookCellCode].
+  /// Formats Dart [code] using [formatNotebookCellCode].
   String formatCode(String code) => formatNotebookCellCode(code);
 
-  Future<String> execute(String code) async {
-    var rawCode = code.trim();
-    if (rawCode.isEmpty) return '';
+  /// Executes the notebook cell [code] and returns its outputs.
+  ///
+  /// For an ordinary cell the result is a JSON list of `CellOutputItem`
+  /// objects: captured `print`/`display` output followed by the formatted
+  /// value of the trailing expression, or an `Error:` item if the cell threw.
+  /// Declarations, imports and `pub add` commands return a plain status line.
+  ///
+  /// Cells run inside an `async` closure in the kernel isolate, so `await` may
+  /// be used anywhere in a cell and a trailing `Future` is awaited before its
+  /// value is shown. Calls are serialized: a cell starts only after the
+  /// previous one, including its asynchronous work, has completed.
+  ///
+  /// Throws if the cell fails to compile or the kernel connection is lost.
+  Future<String> execute(String code) {
+    final previous = _executionQueue;
+    final completer = Completer<void>();
+    _executionQueue = completer.future;
+    return previous
+        .then((_) => _executeUnqueued(code))
+        .whenComplete(completer.complete);
+  }
 
-    final pubAddMatch = RegExp(
-      r'^(?:%|%)?(?:pub\s+add|add)\s+([\w\d_\-]+)',
-    ).firstMatch(rawCode);
-    if (pubAddMatch != null) {
-      final pkgName = pubAddMatch.group(1)!;
+  Future<String> _executeUnqueued(String code) async {
+    final parsed = ParsedNotebookCell.parse(code);
+    if (parsed.isEmpty) return '';
+
+    if (parsed.pubAddPackage case final pkgName?) {
       return _handleAddDependency(pkgName);
     }
 
-    final importRegex = RegExp(
-      r'''^\s*import\s+['"][^;]+;\s*''',
-      multiLine: true,
-    );
-    final importMatches = importRegex.allMatches(rawCode).toList();
-    if (importMatches.isNotEmpty) {
-      final newlyImportedPkgs = <String>[];
-      for (final match in importMatches) {
-        final importStmt = match.group(0)!.trim();
-        final pkgMatch = RegExp(
-          r'''^import\s+['"]package:([\w\d_\-]+)/''',
-        ).firstMatch(importStmt);
-        if (pkgMatch != null) {
-          final pkgName = pkgMatch.group(1)!;
-          if (pkgName != 'ndarray' &&
-              pkgName != 'notebook' &&
-              pkgName != 'symbolic_dart' &&
-              pkgName != 'gpuarray' &&
-              pkgName != 'resource_scope') {
-            await _ensurePackageInstalled(pkgName);
-          }
-          newlyImportedPkgs.add(pkgName);
-        } else {
-          final dartMatch = RegExp(
-            r'''^import\s+['"]dart:([\w\d_\-]+)''',
-          ).firstMatch(importStmt);
-          newlyImportedPkgs.add(dartMatch?.group(1) ?? 'library');
+    if (parsed.imports.isNotEmpty) {
+      for (final imp in parsed.imports) {
+        if (imp.statement.contains('package:') &&
+            imp.name != 'ndarray' &&
+            imp.name != 'notebook' &&
+            imp.name != 'symbolic_dart' &&
+            imp.name != 'gpuarray' &&
+            imp.name != 'resource_scope') {
+          await _ensurePackageInstalled(imp.name);
         }
-        _imports.add(importStmt);
+        _imports.add(imp.statement);
       }
-
-      rawCode = rawCode.replaceAll(importRegex, '').trim();
-      if (rawCode.isEmpty) {
+      if (parsed.isPureImport) {
         await _reloadWorkspace();
-        return 'Imported ${newlyImportedPkgs.join(', ')}';
-      }
-
-      await _reloadWorkspace();
-    }
-
-    final declResult = _getDeclaredSymbolWithAnalyzer(rawCode);
-    if (declResult != null) {
-      final symbol = declResult.symbol;
-      var fullDecl = rawCode;
-      if (declResult.isVariable) {
-        if (!fullDecl.endsWith(';')) fullDecl += ';';
-        _definitions[symbol] = fullDecl;
-        await _reloadWorkspace();
-
-        try {
-          final evalResult = await _service!.evaluate(
-            _isolateId!,
-            _workspaceLibId!,
-            symbol,
-          );
-          final valStr = await _formatResult(evalResult);
-
-          String printed = '';
-          try {
-            final capObj = await _service!.evaluate(
-              _isolateId!,
-              _workspaceLibId!,
-              'getCapturedOutput()',
-            );
-            if (capObj is InstanceRef && capObj.valueAsString != null) {
-              printed = capObj.valueAsString!.trim();
-            }
-          } catch (_) {}
-
-          final header = 'Declared variable $symbol\nValue: $valStr';
-          return printed.isNotEmpty ? '$printed\n$header' : header;
-        } catch (_) {
-          return 'Declared variable $symbol';
-        }
-      } else {
-        if (!fullDecl.endsWith(';') && !fullDecl.endsWith('}')) fullDecl += ';';
-        _definitions[symbol] = fullDecl;
-        await _reloadWorkspace();
-        return 'Declared: $symbol';
+        return parsed.importedNamesSummary;
       }
     }
 
-    final prevDefs = Map<String, String>.from(_definitions);
-    final transformRes = _transformCellCode(rawCode);
+    final prevDefs = Map<String, String>.of(_definitions);
+    final prevVars = Set<String>.of(_declaredVariables);
+    final transformRes = parsed.transformForKernel();
     _definitions.addAll(transformRes.namedDefinitions);
+    _declaredVariables.addAll(transformRes.declaredVariables);
     try {
       await _reloadWorkspace();
     } catch (e) {
-      _definitions.clear();
-      _definitions.addAll(prevDefs);
+      _definitions
+        ..clear()
+        ..addAll(prevDefs);
+      _declaredVariables
+        ..clear()
+        ..addAll(prevVars);
       _writeWorkspace();
       try {
         await _service!.reloadSources(_isolateId!);
@@ -441,64 +424,79 @@ class NotebookKernel {
       rethrow;
     }
 
-    try {
-      try {
-        await _service!.evaluate(
-          _isolateId!,
-          _workspaceLibId!,
-          'clearCapturedOutput()',
-        );
-      } catch (_) {}
+    if (parsed.onlyDeclarations) {
+      final sym = parsed.lastDeclaredSymbol;
+      return sym != null ? 'Declared: $sym' : '';
+    }
 
-      final evalExpr =
-          'evalInNotebookZone(() {\n${transformRes.cellBodyCode}\n})';
-      final result = await _service!.evaluate(
+    final runId = ++_cellRunCounter;
+    final done = Completer<void>();
+    _inFlightRunId = runId;
+    _cellDone = done;
+    try {
+      final evalRef = await _service!.evaluate(
         _isolateId!,
         _workspaceLibId!,
-        evalExpr,
+        'runNotebookCell($runId, () async {\n${transformRes.cellBodyCode}\n})',
       );
-
-      final outputs = <CellOutputItem>[];
-
-      try {
-        final capObj = await _service!.evaluate(
-          _isolateId!,
-          _workspaceLibId!,
-          'getCapturedOutputsJson()',
-        );
-        String? jsonStr;
-        if (capObj is InstanceRef) {
-          if (capObj.kind == InstanceKind.kString && capObj.id != null) {
-            final fullObj = await _service!.getObject(_isolateId!, capObj.id!);
-            if (fullObj is Instance && fullObj.valueAsString != null) {
-              jsonStr = fullObj.valueAsString;
-            }
-          }
-          jsonStr ??= capObj.valueAsString;
-        }
-        if (jsonStr != null) {
-          final decoded = jsonDecode(jsonStr) as List;
-          for (final item in decoded) {
-            outputs.add(
-              CellOutputItem.fromJson(
-                Map<String, dynamic>.from(item as Map<dynamic, dynamic>),
-              ),
-            );
-          }
-        }
-      } catch (e) {
-        print('Error decoding captured outputs: $e');
+      if (evalRef is ErrorRef) {
+        throw StateError('Evaluation failed: ${evalRef.message}');
       }
+      await _waitForCellCompletion(done);
 
-      final resultItem = await _formatResultToOutputItem(result);
-      if (resultItem != null) {
-        outputs.add(resultItem);
+      final resultJson = await _evaluateString('notebookCellResultJson()');
+      if (resultJson == null) {
+        throw StateError('Kernel did not report a result for the cell.');
       }
-
+      final result = jsonDecode(resultJson) as Map<String, dynamic>;
+      final outputs = [
+        for (final item in result['outputs'] as List<dynamic>)
+          CellOutputItem.fromJson(
+            Map<String, dynamic>.from(item as Map<dynamic, dynamic>),
+          ),
+      ];
       return jsonEncode(outputs.map((e) => e.toJson()).toList());
-    } catch (e) {
-      rethrow;
+    } finally {
+      _inFlightRunId = null;
+      _cellDone = null;
     }
+  }
+
+  /// Waits until the in-flight cell has completed.
+  ///
+  /// Normally [done] is completed by the `notebook.cellDone` extension event.
+  /// As a safety net against a lost event, the isolate is also asked directly
+  /// every couple of seconds; the request is only answered once the isolate
+  /// yields, so it does not interfere with a long-running synchronous cell.
+  Future<void> _waitForCellCompletion(Completer<void> done) async {
+    while (!done.isCompleted) {
+      await done.future.timeout(const Duration(seconds: 2), onTimeout: () {});
+      if (done.isCompleted) return;
+      final isDone = await _service!.evaluate(
+        _isolateId!,
+        _workspaceLibId!,
+        'notebookCellIsDone()',
+      );
+      if (isDone is InstanceRef && isDone.valueAsString == 'true') return;
+    }
+  }
+
+  /// Evaluates [expression] in the workspace library and returns its `String`
+  /// value in full, or `null` if the result is not a string.
+  Future<String?> _evaluateString(String expression) async {
+    final ref = await _service!.evaluate(
+      _isolateId!,
+      _workspaceLibId!,
+      expression,
+    );
+    if (ref is! InstanceRef || ref.kind != InstanceKind.kString) return null;
+    if (ref.valueAsStringIsTruncated == true && ref.id != null) {
+      final full = await _service!.getObject(_isolateId!, ref.id!);
+      if (full is Instance && full.valueAsString != null) {
+        return full.valueAsString;
+      }
+    }
+    return ref.valueAsString;
   }
 
   Future<List<CompletionItem>> getCompletions(
@@ -507,15 +505,14 @@ class NotebookKernel {
   ) async {
     if (_lspClient != null) {
       try {
-        final workspaceFile = File(
-          p.join(workspaceDir, 'lib', 'src', 'workspace.dart'),
-        );
+        final workspaceFile = _getWorkspaceFile();
         final fileUri = p.toUri(workspaceFile.path).toString();
         final baseContent = workspaceFile.existsSync()
             ? workspaceFile.readAsStringSync()
             : '';
 
-        final prefix = '$baseContent\n\nvoid __eval_dummy__() {\n';
+        final prefix =
+            '$baseContent\n\nFuture<void> __eval_dummy__() async {\n';
         final fullContent = '$prefix$code\n}';
 
         _lspClient!.didChange(fileUri, fullContent, ++_workspaceVersion);
@@ -557,15 +554,13 @@ class NotebookKernel {
   Future<String?> getHover(String code, int cursorOffset) async {
     if (_lspClient == null) return null;
     try {
-      final workspaceFile = File(
-        p.join(workspaceDir, 'lib', 'src', 'workspace.dart'),
-      );
+      final workspaceFile = _getWorkspaceFile();
       final fileUri = p.toUri(workspaceFile.path).toString();
       final baseContent = workspaceFile.existsSync()
           ? workspaceFile.readAsStringSync()
           : '';
 
-      final prefix = '$baseContent\n\nvoid __eval_dummy__() {\n';
+      final prefix = '$baseContent\n\nFuture<void> __eval_dummy__() async {\n';
       final fullContent = '$prefix$code\n}';
 
       _lspClient!.didChange(fileUri, fullContent, ++_workspaceVersion);
@@ -806,9 +801,8 @@ class NotebookKernel {
     final prefix = wordMatch != null ? wordMatch.group(1)! : '';
 
     final items = <CompletionItem>[];
-    for (final entry in _definitions.entries) {
-      final symbol = entry.key;
-      final isVar = entry.value.startsWith('var ');
+    for (final symbol in _definitions.keys) {
+      final isVar = _declaredVariables.contains(symbol);
       items.add(
         CompletionItem(
           label: symbol,
@@ -1131,302 +1125,4 @@ class NotebookKernel {
       _lspClient!.didChange(fileUri, content, ++_workspaceVersion);
     }
   }
-
-  DeclaredSymbolResult? _getDeclaredSymbolWithAnalyzer(String code) {
-    try {
-      final trimmed = code.trim();
-      var parseResult = parseString(
-        content: trimmed,
-        throwIfDiagnostics: false,
-      );
-      if (parseResult.errors.isNotEmpty) {
-        parseResult = parseString(
-          content: '$trimmed;',
-          throwIfDiagnostics: false,
-        );
-      }
-      if (parseResult.errors.isNotEmpty) {
-        return null;
-      }
-
-      final unit = parseResult.unit;
-      if (unit.declarations.length != 1) {
-        return null;
-      }
-
-      final decl = unit.declarations.first;
-
-      if (decl is ClassDeclaration) {
-        return DeclaredSymbolResult(decl.namePart.typeName.lexeme, false);
-      } else if (decl is EnumDeclaration) {
-        return DeclaredSymbolResult(decl.namePart.typeName.lexeme, false);
-      } else if (decl is FunctionDeclaration) {
-        return DeclaredSymbolResult(decl.name.lexeme, false);
-      } else if (decl is MixinDeclaration) {
-        return DeclaredSymbolResult(decl.name.lexeme, false);
-      } else if (decl is ExtensionDeclaration) {
-        if (decl.name != null) {
-          return DeclaredSymbolResult(decl.name!.lexeme, false);
-        }
-      } else if (decl is TopLevelVariableDeclaration) {
-        final variables = decl.variables.variables;
-        if (variables.length == 1) {
-          return DeclaredSymbolResult(variables.first.name.lexeme, true);
-        }
-      }
-    } catch (_) {
-      // Ignored
-    }
-    return null;
-  }
-
-  CellTransformationResult _transformCellCode(String code) {
-    final trimmed = code.trim();
-    var wrapper = 'dynamic __evalCell() {\n$trimmed\n}';
-    var parseResult = parseString(content: wrapper, throwIfDiagnostics: false);
-    if (parseResult.errors.isNotEmpty) {
-      wrapper = 'dynamic __evalCell() {\n$trimmed;\n}';
-      parseResult = parseString(content: wrapper, throwIfDiagnostics: false);
-    }
-    final unit = parseResult.unit;
-
-    if (unit.declarations.isEmpty) {
-      return CellTransformationResult(
-        [],
-        'dynamic __evalCell() {\n$trimmed\n}',
-      );
-    }
-
-    final firstDecl = unit.declarations.first;
-    if (firstDecl is! FunctionDeclaration) {
-      return CellTransformationResult(
-        [],
-        'dynamic __evalCell() {\n$trimmed\n}',
-      );
-    }
-
-    final body = firstDecl.functionExpression.body;
-    if (body is! BlockFunctionBody) {
-      return CellTransformationResult(
-        [],
-        'dynamic __evalCell() {\n$trimmed\n}',
-      );
-    }
-
-    final statements = body.block.statements;
-    final topLevelDefs = <String>[];
-    final namedDefs = <String, String>{};
-    final bodyBuffer = StringBuffer();
-
-    for (var i = 0; i < statements.length; i++) {
-      final stmt = statements[i];
-      final isLast = (i == statements.length - 1);
-
-      if (stmt is FunctionDeclarationStatement) {
-        final funcDecl = stmt.functionDeclaration;
-        final funcName = funcDecl.name.lexeme;
-        final funcSrc = funcDecl.toSource();
-        topLevelDefs.add(funcSrc);
-        namedDefs[funcName] = funcSrc;
-      } else if (stmt is VariableDeclarationStatement) {
-        final typeAnnotation = stmt.variables.type?.toSource();
-        final isConst = stmt.variables.isConst;
-        for (final v in stmt.variables.variables) {
-          final varName = v.name.lexeme;
-          final String def;
-          if (typeAnnotation != null) {
-            def =
-                'late $typeAnnotation $varName;\n'
-                'T __set_$varName<T extends $typeAnnotation>(T v) {\n'
-                '  $varName = v;\n'
-                '  return v;\n'
-                '}';
-          } else {
-            def =
-                'dynamic $varName;\n'
-                'T __set_$varName<T>(T v) {\n'
-                '  $varName = v;\n'
-                '  return v;\n'
-                '}';
-          }
-          topLevelDefs.add(def);
-          namedDefs[varName] = def;
-          if (v.initializer != null) {
-            if (isConst) {
-              bodyBuffer.writeln(
-                'const $varName = ${v.initializer!.toSource()};',
-              );
-              bodyBuffer.writeln('__set_$varName($varName);');
-            } else {
-              bodyBuffer.writeln(
-                'var $varName = __set_$varName(${v.initializer!.toSource()});',
-              );
-            }
-          } else {
-            bodyBuffer.writeln('// $varName');
-          }
-        }
-      } else if (isLast && stmt is ExpressionStatement) {
-        final expr = stmt.expression;
-        final exprStr = expr.toSource();
-        final isVoid =
-            (expr is MethodInvocation && expr.methodName.name == 'print');
-        if (!isVoid && !exprStr.startsWith('return ')) {
-          bodyBuffer.writeln('return $exprStr;');
-        } else {
-          bodyBuffer.writeln(stmt.toSource());
-        }
-      } else {
-        bodyBuffer.writeln(stmt.toSource());
-      }
-    }
-
-    return CellTransformationResult(
-      topLevelDefs,
-      bodyBuffer.toString(),
-      namedDefinitions: namedDefs,
-    );
-  }
-
-  Future<CellOutputItem?> _formatResultToOutputItem(dynamic response) async {
-    if (response is InstanceRef) {
-      if (response.kind == InstanceKind.kNull ||
-          response.classRef?.name == 'Null' ||
-          response.classRef?.name == 'void') {
-        return null;
-      }
-      try {
-        final libId = _workspaceLibId ?? _rootLibId!;
-        final formattedRef = await _service!.evaluate(
-          _isolateId!,
-          libId,
-          'prettyFormat(x)',
-          scope: {'x': response.id!},
-        );
-        String? strVal;
-        if (formattedRef is InstanceRef) {
-          if (formattedRef.kind == InstanceKind.kString &&
-              formattedRef.id != null) {
-            final fullObj = await _service!.getObject(
-              _isolateId!,
-              formattedRef.id!,
-            );
-            if (fullObj is Instance && fullObj.valueAsString != null) {
-              strVal = fullObj.valueAsString!;
-            }
-          }
-          strVal ??= formattedRef.valueAsString;
-        }
-        if (strVal != null) {
-          final trimmed = strVal.trim();
-          if (trimmed.startsWith('<') &&
-              (trimmed.endsWith('>') ||
-                  trimmed.contains('/>') ||
-                  trimmed.contains('</'))) {
-            return CellOutputItem('text/html', strVal);
-          } else {
-            return CellOutputItem('text/plain', strVal);
-          }
-        }
-      } catch (_) {}
-    }
-    final fallbackStr = await _formatResult(response as Response);
-    if (fallbackStr == 'null' || fallbackStr.isEmpty) return null;
-    final trimmed = fallbackStr.trim();
-    if (trimmed.startsWith('<') &&
-        (trimmed.endsWith('>') ||
-            trimmed.contains('/>') ||
-            trimmed.contains('</'))) {
-      return CellOutputItem('text/html', fallbackStr);
-    }
-    return CellOutputItem('text/plain', fallbackStr);
-  }
-
-  Future<String> _formatResult(Response response) async {
-    if (response is InstanceRef) {
-      if (response.kind == InstanceKind.kString && response.id != null) {
-        try {
-          final fullObj = await _service!.getObject(_isolateId!, response.id!);
-          if (fullObj is Instance && fullObj.valueAsString != null) {
-            return fullObj.valueAsString!;
-          }
-        } catch (_) {}
-      }
-      if (response.valueAsString != null &&
-          !response.valueAsString!.startsWith('Instance of ')) {
-        return response.valueAsString!;
-      }
-
-      // Attempt to run prettyFormat in the isolate
-      try {
-        final libId = _workspaceLibId ?? _rootLibId!;
-        final formattedRef = await _service!.evaluate(
-          _isolateId!,
-          libId,
-          'prettyFormat(x)',
-          scope: {'x': response.id!},
-        );
-        if (formattedRef is InstanceRef) {
-          if (formattedRef.kind == InstanceKind.kString &&
-              formattedRef.id != null) {
-            final fullObj = await _service!.getObject(
-              _isolateId!,
-              formattedRef.id!,
-            );
-            if (fullObj is Instance && fullObj.valueAsString != null) {
-              return fullObj.valueAsString!;
-            }
-          }
-          if (formattedRef.valueAsString != null) {
-            return formattedRef.valueAsString!;
-          }
-        }
-      } catch (_) {}
-
-      // Fallback: evaluate "$x" directly in the isolate
-      try {
-        final strRef = await _service!.evaluate(
-          _isolateId!,
-          _workspaceLibId ?? _rootLibId!,
-          '"\$x"',
-          scope: {'x': response.id!},
-        );
-        if (strRef is InstanceRef) {
-          if (strRef.valueAsString != null) {
-            return strRef.valueAsString!;
-          }
-          if (strRef.id != null) {
-            final fullObj = await _service!.getObject(_isolateId!, strRef.id!);
-            if (fullObj is Instance && fullObj.valueAsString != null) {
-              return fullObj.valueAsString!;
-            }
-          }
-        }
-      } catch (_) {}
-
-      return 'Instance of ${response.classRef?.name} (id: ${response.id})';
-    } else if (response is ErrorRef) {
-      return 'Error: ${response.message}';
-    } else {
-      return response.toString();
-    }
-  }
-}
-
-/// Result of transforming multi-statement notebook cell code into executable workspace structures.
-final class CellTransformationResult {
-  /// Top-level variable definitions to register in the workspace.
-  final List<String> topLevelDefinitions;
-
-  /// Top-level definitions keyed by symbol name.
-  final Map<String, String> namedDefinitions;
-
-  /// The transformed body code for cell execution.
-  final String cellBodyCode;
-
-  CellTransformationResult(
-    this.topLevelDefinitions,
-    this.cellBodyCode, {
-    this.namedDefinitions = const {},
-  });
 }

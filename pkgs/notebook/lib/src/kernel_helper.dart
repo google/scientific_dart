@@ -14,6 +14,7 @@
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as developer;
 import 'dart:io';
 import 'package:ndarray/ndarray.dart';
 import 'package:symbolic_dart/symbolic_dart.dart'
@@ -78,6 +79,11 @@ widgets.Heatmap plotSymbolic2D(
 }
 
 /// Executes [body] in a notebook zone that captures `print` and standard I/O output.
+///
+/// Uncaught asynchronous errors raised inside the zone (for example from a
+/// `Future` or `Timer` callback that nobody awaits) are recorded as captured
+/// output instead of propagating to the root zone, where they would terminate
+/// the kernel isolate.
 dynamic evalInNotebookZone(dynamic Function() body) {
   if (const bool.fromEnvironment('dart.tool.dart2wasm')) {
     return widgets.evalInNotebookZone(body);
@@ -92,12 +98,101 @@ dynamic evalInNotebookZone(dynamic Function() body) {
               widgets.CellOutputItem('text/plain', line),
             );
           },
+          handleUncaughtError: (self, parent, zone, error, stackTrace) {
+            widgets.capturedOutputs.add(
+              widgets.CellOutputItem(
+                'text/plain',
+                'Unhandled async error: $error\n$stackTrace',
+              ),
+            );
+          },
         ),
       );
     },
     stdout: () => _NotebookStdout(stdout, widgets.capturedStdout),
     stderr: () => _NotebookStdout(stderr, widgets.capturedStderr),
   );
+}
+
+/// Kind of the `dart:developer` extension event posted when a cell started by
+/// [runNotebookCell] has completed. Its data is `{'runId': <int>}`.
+const String notebookCellDoneEvent = 'notebook.cellDone';
+
+bool _cellDone = true;
+dynamic _cellValue;
+Object? _cellError;
+StackTrace? _cellStackTrace;
+
+/// Starts the cell body [body] for the run identified by [runId] and returns
+/// [runId] as soon as the body suspends or completes.
+///
+/// The body runs inside [evalInNotebookZone], so `print` output and
+/// [display] calls are captured. Because [body] is asynchronous, cells may use
+/// `await`, and a `Future` produced by the trailing expression is awaited so
+/// that the cell value is its result rather than the future itself. Taking
+/// the body as a `Future<dynamic> Function()` also lets a cell end in a `void`
+/// expression: the closure's `Future<void>` return type is a subtype of
+/// `Future<dynamic>`.
+///
+/// Completion, with a value or an error, is signalled by posting a
+/// [notebookCellDoneEvent] extension event carrying [runId]; afterwards
+/// [notebookCellIsDone] is `true` and [notebookCellResultJson] describes the
+/// outcome. Previously captured output is discarded when the run starts.
+int runNotebookCell(int runId, Future<dynamic> Function() body) {
+  widgets.clearCapturedOutput();
+  _cellDone = false;
+  _cellValue = null;
+  _cellError = null;
+  _cellStackTrace = null;
+  evalInNotebookZone(() {
+    // `VmService.evaluate` invokes Dart directly from the VM service handler
+    // without draining the microtask queue on return. Hopping onto the event
+    // loop with `Timer.run` ensures `_RawReceivePort._handleMessage` drains all
+    // microtasks scheduled by `body()` and its completion handlers.
+    Timer.run(() {
+      unawaited(
+        body()
+            .then<void>(
+              (value) {
+                _cellValue = value;
+              },
+              onError: (Object error, StackTrace stackTrace) {
+                _cellError = error;
+                _cellStackTrace = stackTrace;
+              },
+            )
+            .whenComplete(() {
+              _cellDone = true;
+              developer.postEvent(notebookCellDoneEvent, {'runId': runId});
+            }),
+      );
+    });
+  });
+  return runId;
+}
+
+/// Whether the most recent [runNotebookCell] run has completed.
+bool notebookCellIsDone() => _cellDone;
+
+/// The outcome of the most recent [runNotebookCell] run, encoded as a JSON
+/// object with `isError` and `outputs`.
+///
+/// `outputs` lists the captured [widgets.CellOutputItem]s followed by the
+/// formatted cell value (omitted when it is `null`) or, if the body threw, an
+/// error item containing the error and its stack trace.
+String notebookCellResultJson() {
+  final outputs = List<widgets.CellOutputItem>.of(widgets.capturedOutputs);
+  if (_cellError case final error?) {
+    outputs.add(
+      widgets.CellOutputItem('text/plain', 'Error: $error\n$_cellStackTrace'),
+    );
+  } else if (widgets.formatEvaluationValue(_cellValue) case final item?) {
+    outputs.add(item);
+  }
+  return jsonEncode({
+    'isError': _cellError != null,
+    'outputs': [for (final item in outputs) item.toJson()],
+  });
 }
 
 class _NotebookStdout implements Stdout {
