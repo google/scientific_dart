@@ -139,8 +139,14 @@ final class WasmNotebookBuilder {
       p.join(wasmBuildDir, 'wasm_package_config.json'),
     );
     if (!nativeMathFile.existsSync() || !wasmPkgConfigFile.existsSync()) {
+      final pkgConfigPath = p.join(
+        workspaceRoot,
+        '.dart_tool',
+        'package_config.json',
+      );
       final res = await Process.run(_dartExecutable, [
-        'run',
+        '--disable-dart-dev',
+        '--packages=$pkgConfigPath',
         'tool/build_wasm.dart',
         '--build-only',
       ], workingDirectory: workspaceRoot);

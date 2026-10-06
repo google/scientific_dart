@@ -57,7 +57,9 @@ jobs:
             .dart_tool/wasm_build/libopenblas_wasm128.a
             .dart_tool/wasm_build/libopenblas_wasm128.stamp
             .dart_tool/wasm_build/objs
-          key: Linux-wasm-notebook-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h') }}
+            .dart_tool/wasm_build/compiler_worker
+            .dart_tool/wasm_build/sdk_3_14
+          key: Linux-wasm-notebook-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h', 'pkgs/notebook/lib/src/wasm_*.dart') }}
           restore-keys: |
             Linux-wasm-notebook-
 
@@ -65,7 +67,7 @@ jobs:
         run: dart pub get
 
       - name: Build Serverless Wasm Notebook Static Bundle
-        run: dart run pkgs/notebook/bin/build_wasm_notebook.dart -o _site
+        run: dart --disable-dart-dev --packages=.dart_tool/package_config.json pkgs/notebook/bin/build_wasm_notebook.dart -o _site
 
       - name: Configure GitHub Pages
         uses: actions/configure-pages@v5
