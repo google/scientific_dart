@@ -107,6 +107,7 @@ final class WasmNotebookBuilder {
     '_fe_analyzer_shared',
     '_js_interop_checks',
     'build_integration',
+    'cfg',
     'compiler',
     'dart2wasm',
     'front_end',
@@ -397,7 +398,8 @@ final class WasmNotebookBuilder {
     final dart2wasmDir = Directory(
       p.join(sdk314Dir.path, 'pkg', 'dart2wasm', 'lib'),
     );
-    if (!dart2wasmDir.existsSync()) {
+    final cfgDir = Directory(p.join(sdk314Dir.path, 'pkg', 'cfg', 'lib'));
+    if (!dart2wasmDir.existsSync() || !cfgDir.existsSync()) {
       final candidates = <String>[
         ?dartSdkRepoCheckout,
         ?Platform.environment['DART_SDK_REPO'],
