@@ -279,7 +279,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.divide:
-      final res = divide<T, T, DTypeTag>(a, b, where: where, out: out);
+      final res = divide<T, DTypeTag>(a, b, where: where, out: out);
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.floorDivide:
       final res = _withViewNullable<T, NDArray<T>>(
@@ -324,41 +324,30 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.floatPower:
-      if (a.dtype.isComplex || b.dtype.isComplex) {
-        final aCpx = castNDArray<Complex128>(a, DType.complex128);
-        final bCpx = castNDArray<Complex128>(b, DType.complex128);
-        try {
-          final res = _withViewNullable<Complex128, NDArray<Complex128>>(
-            out,
-            (outView) =>
-                power<Complex128>(aCpx, bCpx, where: where, out: outView),
-          );
-          return out ?? _coerceOwned<R>(res);
-        } finally {
-          if (!identical(aCpx, a)) aCpx.dispose();
-          if (!identical(bCpx, b)) bCpx.dispose();
-        }
-      } else {
-        final aFloat = castNDArray<Float64>(a, DType.float64);
-        final bFloat = castNDArray<Float64>(b, DType.float64);
-        try {
-          final res = _withViewNullable<Float64, NDArray<Float64>>(
-            out,
-            (outView) =>
-                power<Float64>(aFloat, bFloat, where: where, out: outView),
-          );
-          return out ?? _coerceOwned<R>(res);
-        } finally {
-          if (!identical(aFloat, a)) aFloat.dispose();
-          if (!identical(bFloat, b)) bFloat.dispose();
-        }
-      }
+      final res = _withView<AnySpec, NDArray<DTypeTag>>(
+        a,
+        (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
+          b,
+          (bSpec) => floatPower<DTypeTag, DTypeTag>(
+            aSpec,
+            bSpec,
+            where: where,
+            out: out,
+          ),
+        ),
+      );
+      return out ?? _coerceOwned<R>(res);
     case BinaryOp.logaddexp:
       final res = _withView<AnySpec, NDArray<DTypeTag>>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => logaddexp<DTypeTag>(aSpec, bSpec, where: where, out: out),
+          (bSpec) => logaddexp<DTypeTag, DTypeTag>(
+            aSpec,
+            bSpec,
+            where: where,
+            out: out,
+          ),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -367,7 +356,12 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => logaddexp2<DTypeTag>(aSpec, bSpec, where: where, out: out),
+          (bSpec) => logaddexp2<DTypeTag, DTypeTag>(
+            aSpec,
+            bSpec,
+            where: where,
+            out: out,
+          ),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -376,7 +370,8 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => atan2<DTypeTag>(aSpec, bSpec, where: where, out: out),
+          (bSpec) =>
+              atan2<DTypeTag, DTypeTag>(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -385,7 +380,8 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => hypot<DTypeTag>(aSpec, bSpec, where: where, out: out),
+          (bSpec) =>
+              hypot<DTypeTag, DTypeTag>(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -513,6 +509,400 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
   }
+}
+
+/// Element-wise minimum of [x1] and [x2], propagating `NaN` values.
+///
+/// Both [x1] and [x2] must have the same [DType]. If one of the elements being
+/// compared is `NaN`, then that element is returned.
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have the same [DType] and broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and match `x1.dtype`.
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy minimum](https://numpy.org/doc/stable/reference/generated/numpy.minimum.html)
+NDArray<T> minimum<T extends DTypeTag>(
+  NDArray<T> x1,
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<T>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute minimum() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
+  }
+  if (out != null && out.dtype != x1.dtype) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must have compatible shape and dtype for minimum',
+    );
+  }
+  if (where == null) {
+    return _nativeMinMax<T, T>(x1, x2, opCode: 2, out: out);
+  }
+  return _elementwiseMinMax<T, T>(
+    x1,
+    x2,
+    isMax: false,
+    ignoreNaN: false,
+    whereMask: where,
+    out: out,
+  );
+}
+
+/// Element-wise minimum of [x1] and [x2] computed into the specified target [dtype], propagating `NaN` values.
+///
+/// Casts operands to [dtype] and computes [minimum], returning an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy minimum](https://numpy.org/doc/stable/reference/generated/numpy.minimum.html)
+NDArray<R>
+minimumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute minimumAs() on a disposed array.');
+  }
+  if ((x1.dtype as DType<DTypeTag>) == dtype &&
+      (x2.dtype as DType<DTypeTag>) == dtype) {
+    return minimum<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = minimum<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Element-wise maximum of [x1] and [x2], propagating `NaN` values.
+///
+/// Both [x1] and [x2] must have the same [DType]. If one of the elements being
+/// compared is `NaN`, then that element is returned.
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have the same [DType] and broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and match `x1.dtype`.
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy maximum](https://numpy.org/doc/stable/reference/generated/numpy.maximum.html)
+NDArray<T> maximum<T extends DTypeTag>(
+  NDArray<T> x1,
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<T>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute maximum() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
+  }
+  if (out != null && out.dtype != x1.dtype) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must have compatible shape and dtype for maximum',
+    );
+  }
+  if (where == null) {
+    return _nativeMinMax<T, T>(x1, x2, opCode: 3, out: out);
+  }
+  return _elementwiseMinMax<T, T>(
+    x1,
+    x2,
+    isMax: true,
+    ignoreNaN: false,
+    whereMask: where,
+    out: out,
+  );
+}
+
+/// Element-wise maximum of [x1] and [x2] computed into the specified target [dtype], propagating `NaN` values.
+///
+/// Casts operands to [dtype] and computes [maximum], returning an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy maximum](https://numpy.org/doc/stable/reference/generated/numpy.maximum.html)
+NDArray<R>
+maximumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute maximumAs() on a disposed array.');
+  }
+  if ((x1.dtype as DType<DTypeTag>) == dtype &&
+      (x2.dtype as DType<DTypeTag>) == dtype) {
+    return maximum<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = maximum<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Element-wise minimum of [x1] and [x2], ignoring `NaN` values when possible.
+///
+/// Both [x1] and [x2] must have the same [DType]. If one of the elements being
+/// compared is `NaN`, then the non-`NaN` element is returned.
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have the same [DType] and broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and match `x1.dtype`.
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy fmin](https://numpy.org/doc/stable/reference/generated/numpy.fmin.html)
+NDArray<T> fmin<T extends DTypeTag>(
+  NDArray<T> x1,
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<T>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute fmin() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
+  }
+  if (out != null && out.dtype != x1.dtype) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must have compatible shape and dtype for fmin',
+    );
+  }
+  if (where == null) {
+    return _nativeMinMax<T, T>(x1, x2, opCode: 4, out: out);
+  }
+  return _elementwiseMinMax<T, T>(
+    x1,
+    x2,
+    isMax: false,
+    ignoreNaN: true,
+    whereMask: where,
+    out: out,
+  );
+}
+
+/// Element-wise minimum of [x1] and [x2] computed into the specified target [dtype], ignoring `NaN` values when possible.
+///
+/// Casts operands to [dtype] and computes [fmin], returning an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy fmin](https://numpy.org/doc/stable/reference/generated/numpy.fmin.html)
+NDArray<R> fminAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute fminAs() on a disposed array.');
+  }
+  if ((x1.dtype as DType<DTypeTag>) == dtype &&
+      (x2.dtype as DType<DTypeTag>) == dtype) {
+    return fmin<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = fmin<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
+}
+
+/// Element-wise maximum of [x1] and [x2], ignoring `NaN` values when possible.
+///
+/// Both [x1] and [x2] must have the same [DType]. If one of the elements being
+/// compared is `NaN`, then the non-`NaN` element is returned.
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have the same [DType] and broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and match `x1.dtype`.
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy fmax](https://numpy.org/doc/stable/reference/generated/numpy.fmax.html)
+NDArray<T> fmax<T extends DTypeTag>(
+  NDArray<T> x1,
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<T>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute fmax() on a disposed array.');
+  }
+  if (x1.dtype != x2.dtype) {
+    throw ArgumentError.value(
+      x2.dtype,
+      'x2',
+      'Must have the same dtype as x1 (${x1.dtype})',
+    );
+  }
+  if (out != null && out.dtype != x1.dtype) {
+    throw ArgumentError.value(
+      out,
+      'out',
+      'Must have compatible shape and dtype for fmax',
+    );
+  }
+  if (where == null) {
+    return _nativeMinMax<T, T>(x1, x2, opCode: 5, out: out);
+  }
+  return _elementwiseMinMax<T, T>(
+    x1,
+    x2,
+    isMax: true,
+    ignoreNaN: true,
+    whereMask: where,
+    out: out,
+  );
+}
+
+/// Element-wise maximum of [x1] and [x2] computed into the specified target [dtype], ignoring `NaN` values when possible.
+///
+/// Casts operands to [dtype] and computes [fmax], returning an [NDArray<R>]
+/// whose static type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [x1], [x2], [where], or [out] is disposed.
+/// - [x1] and [x2] must have broadcast-compatible shapes.
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy fmax](https://numpy.org/doc/stable/reference/generated/numpy.fmax.html)
+NDArray<R> fmaxAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> x1,
+  NDArray<Tb> x2,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (x1.isDisposed ||
+      x2.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute fmaxAs() on a disposed array.');
+  }
+  if ((x1.dtype as DType<DTypeTag>) == dtype &&
+      (x2.dtype as DType<DTypeTag>) == dtype) {
+    return fmax<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+  }
+  return NDArray.scope(() {
+    final x1Cast = castNDArray<R>(x1, dtype);
+    final x2Cast = castNDArray<R>(x2, dtype);
+    final res = fmax<R>(x1Cast, x2Cast, where: where, out: out);
+    return out ?? res.detachToParentScope();
+  });
 }
 
 bool _isValueNaN(dynamic v) {

@@ -63,18 +63,12 @@ void main() {
           [2, 2],
           DType.int64,
         ).transpose(); // view
-        expect(
-          () => divide<DTypeTag, DTypeTag, DTypeTag>(a, b),
-          throwsArgumentError,
-        );
+        expect(() => divide<DTypeTag, DTypeTag>(a, b), throwsArgumentError);
         final res1 = divide(a, b.astype(DType.float64));
         expect(res1.toList(), [5.0, 5.0, 5.0, 5.0]);
 
         // Int64 / Float64
-        expect(
-          () => divide<DTypeTag, DTypeTag, DTypeTag>(b, a),
-          throwsArgumentError,
-        );
+        expect(() => divide<DTypeTag, DTypeTag>(b, a), throwsArgumentError);
         final res2 = divide(b.astype(DType.float64), a);
         expect(res2.toList(), [0.2, 0.2, 0.2, 0.2]);
 

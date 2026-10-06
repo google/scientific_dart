@@ -160,7 +160,7 @@ void main() {
                 expect(() => subtract<DTypeTag>(a, b), throwsArgumentError);
                 expect(() => multiply<DTypeTag>(a, b), throwsArgumentError);
                 expect(
-                  () => divide<DTypeTag, DTypeTag, DTypeTag>(a, b),
+                  () => divide<DTypeTag, DTypeTag>(a, b),
                   throwsArgumentError,
                 );
                 continue;
@@ -182,7 +182,7 @@ void main() {
               expect(prod.shape, [2, 2]);
               expect(prod.dtype, dtA);
 
-              final quot = divide<DTypeTag, DTypeTag, DTypeTag>(a, b);
+              final quot = divide<DTypeTag, DTypeTag>(a, b);
               expect(quot.shape, [2, 2]);
             }
           }

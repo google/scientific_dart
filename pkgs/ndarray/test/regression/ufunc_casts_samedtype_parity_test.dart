@@ -37,6 +37,11 @@ void main() {
         expect(() => fmod(f64, f32), throwsArgumentError);
         expect(() => divmod(f64, f32), throwsArgumentError);
         expect(() => power(f64, f32), throwsArgumentError);
+        expect(() => floatPower(f64, f32), throwsArgumentError);
+        expect(() => minimum(f64, f32), throwsArgumentError);
+        expect(() => maximum(f64, f32), throwsArgumentError);
+        expect(() => fmin(f64, f32), throwsArgumentError);
+        expect(() => fmax(f64, f32), throwsArgumentError);
         expect(() => heaviside(f64, f32), throwsArgumentError);
         expect(() => logaddexp(f64, f32), throwsArgumentError);
         expect(() => logaddexp2(f64, f32), throwsArgumentError);
@@ -72,16 +77,57 @@ void main() {
           throwsArgumentError,
         );
         expect(() => matmul(f64, f32), throwsArgumentError);
+        expect(() => dot(f64, f32), throwsArgumentError);
         expect(() => tensordot(f64, f32, axes: 1), throwsArgumentError);
         expect(() => inner(f64, f32), throwsArgumentError);
         expect(() => vdot(f64, f32), throwsArgumentError);
         expect(() => kron(f64, f32), throwsArgumentError);
         expect(() => outer(f64, f32), throwsArgumentError);
         expect(() => cross(f64Vec3, f32Vec3), throwsArgumentError);
-        expect(() => addAs(f64, f32, DType.float64), throwsArgumentError);
-        expect(() => subtractAs(f64, f32, DType.float64), throwsArgumentError);
-        expect(() => multiplyAs(f64, f32, DType.float64), throwsArgumentError);
-        expect(() => divideAs(f64, f32, DType.float64), throwsArgumentError);
+
+        // *As variants explicitly support mixed input dtypes into target dtype:
+        expect(addAs(f64, f32, DType.float64).toList(), [2.0, 4.0]);
+        expect(subtractAs(f64, f32, DType.float64).toList(), [0.0, 0.0]);
+        expect(multiplyAs(f64, f32, DType.float64).toList(), [1.0, 4.0]);
+        expect(divideAs(f64, f32, DType.float64).toList(), [1.0, 1.0]);
+        expect(floorDivideAs(f64, i32, DType.float64).toList(), [1.0, 1.0]);
+        expect(remainderAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
+        expect(modAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
+        expect(fmodAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
+        final dm = divmodAs(f64, i32, DType.float64);
+        expect(dm.quotient.toList(), [1.0, 1.0]);
+        expect(dm.remainder.toList(), [0.0, 0.0]);
+        expect(powerAs(f64, i32, DType.float64).toList(), [1.0, 4.0]);
+        expect(floatPowerAs(i32, i64, DType.float64).toList(), [1.0, 4.0]);
+        expect(minimumAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
+        expect(maximumAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
+        expect(fminAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
+        expect(fmaxAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
+        expect(heavisideAs(f64, i32, DType.float64).toList(), [1.0, 1.0]);
+        expect(copysignAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
+        expect(atan2As(f64, f32, DType.float64).dtype, DType.float64);
+        expect(hypotAs(f64, f32, DType.float64).dtype, DType.float64);
+        expect(logaddexpAs(f64, f32, DType.float64).dtype, DType.float64);
+        expect(logaddexp2As(f64, f32, DType.float64).dtype, DType.float64);
+        expect(gcdAs(i32, i64, DType.int64).toList(), [1, 2]);
+        expect(lcmAs(i32, i64, DType.int64).toList(), [1, 2]);
+        expect(bitwiseAndAs(i32, i64, DType.int64).toList(), [1, 2]);
+        expect(bitwiseOrAs(i32, i64, DType.int64).toList(), [1, 2]);
+        expect(bitwiseXorAs(i32, i64, DType.int64).toList(), [0, 0]);
+        expect(leftShiftAs(i32, i64, DType.int64).toList(), [2, 8]);
+        expect(rightShiftAs(i32, i64, DType.int64).toList(), [0, 0]);
+        expect(matmulAs(f64, f32, DType.float64).scalar, 5.0);
+        expect(dotAs(f64, f32, DType.float64).scalar, 5.0);
+        expect(tensordotAs(f64, f32, DType.float64, axes: 1).scalar, 5.0);
+        expect(innerAs(f64, f32, DType.float64).scalar, 5.0);
+        expect(vdotAs(f64, f32, DType.float64).scalar, 5.0);
+        expect(kronAs(f64, f32, DType.float64).toList(), [1.0, 2.0, 2.0, 4.0]);
+        expect(outerAs(f64, f32, DType.float64).toList(), [1.0, 2.0, 2.0, 4.0]);
+        expect(crossAs(f64Vec3, f32Vec3, DType.float64).toList(), [
+          -3.0,
+          6.0,
+          -3.0,
+        ]);
       });
     });
   });

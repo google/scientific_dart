@@ -1,3 +1,9 @@
+## 0.2.1
+
+- **Mixed-DType `*As` Binary Operations**: Allowed mixed input dtypes (`<Ta, Tb, R>`) in `addAs`, `subtractAs`, `multiplyAs`, and `divideAs` when the target `DType<R>` is explicitly specified, dispatching directly to single-pass mixed-dtype C++/SIMD kernels when the kernel output matches `dtype`.
+- **Expanded `*As` & Binary Operation Coverage**: Added `floorDivideAs`, `remainderAs`, `modAs`, `fmodAs`, `divmodAs`, `powerAs`, `floatPower`, `floatPowerAs`, `minimum`, `minimumAs`, `maximum`, `maximumAs`, `fmin`, `fminAs`, `fmax`, `fmaxAs`, `matmulAs`, `dot`, `dotAs`, `tensordotAs`, `innerAs`, `vdotAs`, `kronAs`, `outerAs`, `crossAs`, `atan2As`, `hypotAs`, `logaddexpAs`, `logaddexp2As`, `copysignAs`, `heavisideAs`, `gcdAs`, `lcmAs`, `bitwiseAndAs`, `bitwiseOrAs`, `bitwiseXorAs`, `leftShiftAs`, and `rightShiftAs`.
+- **Static Same-DType Type Parameter Tightening**: Tightened non-`*As` same-dtype binary operations (`divide`, `logaddexp`, `logaddexp2`, `atan2`, `hypot`, `logicalAnd`, `logicalOr`, and `logicalXor`) so both operands share a single input type parameter `T` statically, matching their runtime same-dtype requirement.
+
 ## 0.2.0
 
 - **64-Bit Array Dimensions, Strides, & Native Kernels**: Removed the 32-bit (`2^31 - 1`) element count, shape dimension, and stride ceiling across `NDArray` creation, slicing, broadcasting, `.npy`/`.npz` I/O, FFT (`package:pocketfft` `0.2.0`), and native C/C++ kernels (`int64_t`), with division-based 64-bit signed integer overflow checks.

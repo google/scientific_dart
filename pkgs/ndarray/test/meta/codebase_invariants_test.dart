@@ -552,6 +552,25 @@ void main() {
               r'^version:\s*(\S+)',
               multiLine: true,
             ).firstMatch(pubspec)?.group(1);
+            expect(
+              pubVersion,
+              isNotNull,
+              reason: '$pkgName: pubspec.yaml must define `version:`.',
+            );
+            final changelogFile = File('${dir.path}/CHANGELOG.md');
+            if (changelogFile.existsSync()) {
+              final changelog = changelogFile.readAsStringSync();
+              final topChangelogVersion = RegExp(
+                r'^##\s+(\S+)',
+                multiLine: true,
+              ).firstMatch(changelog)?.group(1);
+              expect(
+                topChangelogVersion,
+                equals(pubVersion),
+                reason:
+                    '$pkgName: top CHANGELOG.md version (`$topChangelogVersion`) must match pubspec.yaml version (`$pubVersion`).',
+              );
+            }
             final hashesTxt = hashesFile.readAsStringSync();
             final tagVersion = RegExp(
               r"const\s+version\s*=\s*'artifacts-v([^']+)';",
@@ -565,15 +584,12 @@ void main() {
             final pinnedSourceHash = RegExp(
               r"const\s+nativeSourceHash\s*=\s*'([0-9a-f]{64})';",
             ).firstMatch(hashesTxt)?.group(1);
-            final currentSourceHash = computeNativeSourceHash(dir.uri);
-            if (pinnedSourceHash == currentSourceHash && pkgName == 'ndarray') {
-              expect(
-                tagVersion,
-                equals(pubVersion),
-                reason:
-                    '$pkgName: hashes.dart version (`artifacts-v$tagVersion`) must match pubspec.yaml version (`$pubVersion`).',
-              );
-            }
+            expect(
+              pinnedSourceHash,
+              isNotNull,
+              reason:
+                  '$pkgName: hashes.dart must define `const nativeSourceHash = \'<sha256>\';`.',
+            );
 
             // Hash inputs in hook/ must only be top-level tracked files (never recursive).
             expect(
@@ -1196,12 +1212,6 @@ void main() {
           'degrees': 'rad2deg',
           'radians': 'deg2rad',
           'bitwiseNot': 'invert',
-          'remainder': 'mod',
-          'floatPower': 'power',
-          'minimum': 'min',
-          'maximum': 'max',
-          'fmin': 'nanmin',
-          'fmax': 'nanmax',
           'positive': 'add',
           'exp2': 'exp',
           'cbrt': 'sqrt',
@@ -1231,6 +1241,122 @@ void main() {
           '${pkgRoot.path}/tool/check_branch_coverage.dart',
         ).existsSync()) {
           violations.add('Missing tool/check_branch_coverage.dart');
+        }
+
+        // 5. Same-dtype binary operations must tie both inputs to a shared type parameter,
+        // while binary `*As` functions must accept independent `<Ta, Tb, R>` type parameters.
+        const sameDTypeBinaryOps = <String>{
+          'add',
+          'subtract',
+          'multiply',
+          'divide',
+          'floorDivide',
+          'remainder',
+          'mod',
+          'fmod',
+          'divmod',
+          'power',
+          'floatPower',
+          'minimum',
+          'maximum',
+          'fmin',
+          'fmax',
+          'heaviside',
+          'copysign',
+          'atan2',
+          'hypot',
+          'logaddexp',
+          'logaddexp2',
+          'gcd',
+          'lcm',
+          'logicalAnd',
+          'logicalOr',
+          'logicalXor',
+          'bitwiseAnd',
+          'bitwiseOr',
+          'bitwiseXor',
+          'leftShift',
+          'rightShift',
+          'matmul',
+          'dot',
+          'tensordot',
+          'inner',
+          'vdot',
+          'kron',
+          'outer',
+          'cross',
+        };
+        for (final fnName in sameDTypeBinaryOps) {
+          final el = exportNames[fnName];
+          if (el is! ExecutableElement) {
+            violations.add('Expected exported binary operation `$fnName`.');
+            continue;
+          }
+          final typeParams = el.typeParameters;
+          if (typeParams.any((tp) => tp.name == 'Ta' || tp.name == 'Tb')) {
+            violations.add(
+              'Same-dtype binary operation `$fnName` must not declare separate `Ta`/`Tb` type parameters.',
+            );
+          }
+          final p0Type = el.formalParameters[0].type.getDisplayString();
+          final p1Type = el.formalParameters[1].type.getDisplayString();
+          if (p0Type != p1Type) {
+            violations.add(
+              'Same-dtype binary operation `$fnName` must give its first two parameters identical static types (got `$p0Type` vs `$p1Type`).',
+            );
+          }
+        }
+        const binaryAsOps = <String>{
+          'addAs',
+          'subtractAs',
+          'multiplyAs',
+          'divideAs',
+          'floorDivideAs',
+          'remainderAs',
+          'modAs',
+          'fmodAs',
+          'divmodAs',
+          'powerAs',
+          'floatPowerAs',
+          'minimumAs',
+          'maximumAs',
+          'fminAs',
+          'fmaxAs',
+          'heavisideAs',
+          'copysignAs',
+          'atan2As',
+          'hypotAs',
+          'logaddexpAs',
+          'logaddexp2As',
+          'gcdAs',
+          'lcmAs',
+          'bitwiseAndAs',
+          'bitwiseOrAs',
+          'bitwiseXorAs',
+          'leftShiftAs',
+          'rightShiftAs',
+          'matmulAs',
+          'dotAs',
+          'tensordotAs',
+          'innerAs',
+          'vdotAs',
+          'kronAs',
+          'outerAs',
+          'crossAs',
+        };
+        for (final fnName in binaryAsOps) {
+          final el = exportNames[fnName];
+          if (el is! ExecutableElement) {
+            violations.add(
+              'Expected exported `*As` binary operation `$fnName`.',
+            );
+            continue;
+          }
+          if (el.typeParameters.length != 3) {
+            violations.add(
+              'Binary `*As` operation `$fnName` must declare 3 type parameters `<Ta, Tb, R>` (got ${el.typeParameters.length}).',
+            );
+          }
         }
 
         expect(

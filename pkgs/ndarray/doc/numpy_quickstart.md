@@ -19,7 +19,7 @@ Before diving into code, understand the five structural differences between Pyth
    - **NumPy**: `np.ndarray` is dynamically typed; `float64_arr + int32_arr` promotes automatically at runtime.
    - **`package:ndarray`**: Arrays carry their data type in their Dart type (`NDArray<Float64>`, `NDArray<Float32>`, `NDArray<Int32>`, `NDArray<Boolean>`), inferred from `DType.float64`, `DType.int32`, etc.
      - Standard operators (`a + b`, `add(a, b)`) require both arrays to have the **same** type.
-     - To combine different types, use `*As` (`addAs(f64, i32, dtype: DType.float64)`) or convert explicitly (`f64 + i32.astype(DType.float64)`). See **[Section 2.C.1: Mixed-Type Arithmetic](#c1-mixed-type-arithmetic-float64--int32-float32--float64-etc)**.
+     - To combine different types, use `*As` (`addAs(f64, i32, DType.float64)`) or convert explicitly (`f64 + i32.astype(DType.float64)`). See **[Section 2.C.1: Mixed-Type Arithmetic](#c1-mixed-type-arithmetic-float64--int32-float32--float64-etc)**.
 
 3. **Explicit Statically-Typed Access vs. Polymorphic Overloads**:
    - **NumPy**: Square brackets `arr[...]` handle scalar indexing, slicing, boolean masking, and fancy indexing.
@@ -80,17 +80,17 @@ Before diving into code, understand the five structural differences between Pyth
 
 | NumPy Operation | Dart `package:ndarray` Equivalent | Description |
 | :--- | :--- | :--- |
-| `a + b`, `np.add(a, b)` | `a + b` or `add(a, b)` (same dtype) / `addAs(a, b, dtype: ...)` (mixed) | Element-wise addition with broadcasting. |
-| `a - b`, `np.subtract(a, b)`| `a - b` or `subtract(a, b)` (same dtype) / `subtractAs(a, b, dtype: ...)` | Element-wise subtraction with broadcasting. |
-| `a * b`, `np.multiply(a, b)`| `a * b` or `multiply(a, b)` (same dtype) / `multiplyAs(a, b, dtype: ...)` | Element-wise Hadamard multiplication. |
+| `a + b`, `np.add(a, b)` | `a + b` or `add(a, b)` (same dtype) / `addAs(a, b, DType.float64)` (mixed) | Element-wise addition with broadcasting. |
+| `a - b`, `np.subtract(a, b)`| `a - b` or `subtract(a, b)` (same dtype) / `subtractAs(a, b, DType.float64)` | Element-wise subtraction with broadcasting. |
+| `a * b`, `np.multiply(a, b)`| `a * b` or `multiply(a, b)` (same dtype) / `multiplyAs(a, b, DType.float64)` | Element-wise Hadamard multiplication. |
 | `a / b`, `np.divide(a, b)` | `a / b` or `divide(a, b)` (auto-promotes ints to `Float64`) / `divideAs(...)` | True IEEE 754 floating-point division (`nan`/`inf`). |
-| `a // b` | `a ~/ b` or `floorDivide(a, b)` | Floor integer/float division (checks `0` divisor upfront). |
-| `a % b`, `np.remainder(a,b)`| `a % b` or `remainder(a, b)` | Element-wise remainder. |
+| `a // b` | `a ~/ b` or `floorDivide(a, b)` / `floorDivideAs(a, b, ...)` | Floor integer/float division (checks `0` divisor upfront). |
+| `a % b`, `np.remainder(a,b)`| `a % b` or `remainder(a, b)` / `remainderAs(a, b, ...)` | Element-wise remainder. |
 | `-a` | `-a` or `negative(a)` | Element-wise negation. |
-| `a @ b`, `np.matmul(a, b)` | `matmul(a, b)` (same dtype) / `matmulAs(a, b, dtype: ...)` (mixed) | OpenBLAS / LAPACK matrix multiplication. |
+| `a @ b`, `np.matmul(a, b)` | `matmul(a, b)` (same dtype) / `matmulAs(a, b, DType.float64)` (mixed) | OpenBLAS / LAPACK matrix multiplication. |
 | `np.sin(a)`, `np.cos(a)` | `sin(a)`, `cos(a)`, `tan(a)` | Trigonometric universal functions (ints infer `NDArray<Float64>`). |
 | `np.exp(a)`, `np.log(a)` | `exp(a)`, `log(a)`, `log10(a)` | Exponential & logarithmic ufuncs (ints infer `NDArray<Float64>`). |
-| `np.sqrt(a)`, `np.power(a,2)`| `sqrt(a)`, `power(a, b)` | Square root and exponentiation. |
+| `np.sqrt(a)`, `np.power(a,2)`| `sqrt(a)`, `power(a, b)`, `floatPower(a, b)` | Square root and exponentiation. |
 | `np.nan_to_num(a, nan=0)` | `nan_to_num(a, nan: 0.0)` | Replaces NaNs and infinities with specified numbers. |
 
 ---
@@ -111,15 +111,12 @@ Under the hood, `package:ndarray`'s C++/Highway SIMD kernels natively accept mix
 final f64 = NDArray.fromList([1.5, 2.5, 3.5], [3], DType.float64); // NDArray<Float64>
 final i32 = NDArray.fromList([10, 20, 30], [3], DType.int32);      // NDArray<Int32>
 
-// Pattern 1A: Specify target `dtype:` — Dart infers `NDArray<Float64>` automatically!
-final sum1 = addAs(f64, i32, dtype: DType.float64); // static type: NDArray<Float64>
+// Pattern 1A: Specify target `dtype` — Dart infers `NDArray<Float64>` automatically!
+final sum1 = addAs(f64, i32, DType.float64); // static type: NDArray<Float64>
 
-// Pattern 1B: Specify output type `<Float64>` — uses NumPy's `DType.promote` at runtime
-final sum2 = addAs<Float64>(f64, i32);              // static type: NDArray<Float64>
-
-// Pattern 1C: Provide a pre-allocated `out:` buffer — infers `NDArray<Float64>`, zero allocations
+// Pattern 1B: Provide a pre-allocated `out:` buffer — zero allocations
 final out = NDArray.empty([3], DType.float64);
-addAs(f64, i32, out: out);
+addAs(f64, i32, DType.float64, out: out);
 ```
 
 #### 2. Explicit `.astype(...)` Conversion with Infix Operators (`+`, `-`, `*`)
@@ -303,7 +300,7 @@ void main() {
 
     // 5. Mixed-Type Arithmetic (Float64 + Int32 -> Float64 via addAs)
     final offsets = NDArray.fromList([1, 2, 3, 4], [1, 4], DType.int32);
-    final shifted = addAs(scaled, offsets, dtype: DType.float64);
+    final shifted = addAs(scaled, offsets, DType.float64);
 
     // 6. Reductions & Comparison Masking
     final rowSums = sum(shifted, axis: 1);

@@ -44,7 +44,7 @@ void main() {
         add<Float64>(a, b, out: outAdd);
         subtract<Float64>(a, b, out: outSub);
         multiply<Float64>(a, b, out: outMul);
-        divide<Float64, Float64, Float64>(a, b, out: outDiv);
+        divide<Float64, Float64>(a, b, out: outDiv);
 
         expect((outAdd.scalar as num).toDouble(), closeTo(8.0, 1e-12));
         expect((outSub.scalar as num).toDouble(), closeTo(4.0, 1e-12));
@@ -95,7 +95,7 @@ void main() {
         multiply<Float64>(viewA, viewB, out: viewOut);
         expect((viewOut.scalar as num).toDouble(), closeTo(12.0, 1e-12));
 
-        divide<Float64, Float64, Float64>(viewA, viewB, out: viewOut);
+        divide<Float64, Float64>(viewA, viewB, out: viewOut);
         expect((viewOut.scalar as num).toDouble(), closeTo(3.0, 1e-12));
       });
     });
@@ -223,7 +223,7 @@ void main() {
           offsetElements: 1,
         );
 
-        atan2<Float64>(viewY, viewX, out: outAtan2);
+        atan2<Float64, Float64>(viewY, viewX, out: outAtan2);
         expect(
           (outAtan2.scalar as num).toDouble(),
           closeTo(math.pi / 4.0, 1e-12),

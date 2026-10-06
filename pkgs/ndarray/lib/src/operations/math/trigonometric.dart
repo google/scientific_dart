@@ -2934,15 +2934,9 @@ NDArray<R> atanh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> atan2<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
-  y,
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
-  x, {
+NDArray<R> atan2<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> y,
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> x, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -2991,7 +2985,7 @@ NDArray<R> atan2<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        atan2<R>(y, x, where: where, out: temp);
+        atan2<T, R>(y, x, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -3008,11 +3002,11 @@ NDArray<R> atan2<R extends DTypeTag>(
     final yPromoted = promoteToDouble(y);
     final xPromoted = promoteToDouble(x);
     try {
-      final res = atan2<R>(
+      final res = atan2<Float64, R>(
         yPromoted
             as NDArray<
               DTypeSpec<
-                DTypeTag,
+                Float64,
                 Object?,
                 DTypeTag,
                 DTypeTag,
@@ -3024,7 +3018,7 @@ NDArray<R> atan2<R extends DTypeTag>(
         xPromoted
             as NDArray<
               DTypeSpec<
-                DTypeTag,
+                Float64,
                 Object?,
                 DTypeTag,
                 DTypeTag,
@@ -3177,19 +3171,109 @@ NDArray<R> atan2<R extends DTypeTag>(
   }
 }
 
+/// Computes the element-wise four-quadrant inverse tangent of [y] / [x] into the specified target [dtype].
+///
+/// Casts operands or result to [dtype] and returns an [NDArray<R>] whose static
+/// type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [y], [x], [where], or [out] is disposed.
+/// - Complex numbers are not supported for [y], [x], or [dtype].
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy arctan2](https://numpy.org/doc/stable/reference/generated/numpy.arctan2.html)
+NDArray<R>
+atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> y,
+  NDArray<Tb> x,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (y.isDisposed ||
+      x.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute atan2As() on a disposed array.');
+  }
+  if (y.dtype.isComplex || x.dtype.isComplex || dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for atan2');
+  }
+  return NDArray.scope(() {
+    if (dtype == DType.float32) {
+      final yCast = castNDArray<Float32>(y, DType.float32);
+      final xCast = castNDArray<Float32>(x, DType.float32);
+      final res = atan2<Float32, Float32>(
+        yCast,
+        xCast,
+        where: where,
+        out: out as NDArray<Float32>?,
+      );
+      return (out ?? res.detachToParentScope()) as NDArray<R>;
+    }
+    if (dtype == DType.float64) {
+      final yCast = castNDArray<Float64>(y, DType.float64);
+      final xCast = castNDArray<Float64>(x, DType.float64);
+      final res = atan2<Float64, Float64>(
+        yCast,
+        xCast,
+        where: where,
+        out: out as NDArray<Float64>?,
+      );
+      return (out ?? res.detachToParentScope()) as NDArray<R>;
+    }
+    final shape = broadcast(y, x).shape;
+    if (out != null) {
+      validateOutBuffer(out);
+      if (!listEquals(out.shape, shape) || out.dtype != dtype) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape and dtype for atan2As',
+        );
+      }
+    }
+    final yCast = castNDArray<Float64>(y, DType.float64);
+    final xCast = castNDArray<Float64>(x, DType.float64);
+    final f64Res = atan2<Float64, Float64>(yCast, xCast, where: where);
+    final casted = castNDArray<R>(f64Res, dtype);
+    if (out != null) {
+      final maskHolder = prepareMask(where, out.shape);
+      try {
+        unaryOp<DTypeTag, DTypeTag>(
+          out,
+          casted,
+          out.shape,
+          casted.strides,
+          out.strides,
+          0,
+          casted.offsetElements,
+          out.offsetElements,
+          (v) => v,
+          maskHolder.pointer,
+        );
+      } finally {
+        maskHolder.dispose();
+      }
+      return out;
+    }
+    return casted.detachToParentScope();
+  });
+}
+
 /// Computes the element-wise hypotenuse `sqrt(x1**2 + x2**2)` with broadcasting support.
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> hypot<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
-  a,
-  NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
-  >
-  b, {
+NDArray<R> hypot<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> a,
+  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> b, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -3231,7 +3315,7 @@ NDArray<R> hypot<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        hypot<R>(a, b, where: where, out: temp);
+        hypot<T, R>(a, b, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -3284,6 +3368,102 @@ NDArray<R> hypot<R extends DTypeTag>(
   } finally {
     maskHolder.dispose();
   }
+}
+
+/// Computes the element-wise hypotenuse `sqrt(a**2 + b**2)` into the specified target [dtype].
+///
+/// Casts operands or result to [dtype] and returns an [NDArray<R>] whose static
+/// type [R] is inferred from [dtype].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [b], [where], or [out] is disposed.
+/// - Complex numbers are not supported for [a], [b], or [dtype].
+/// - If [out] is provided, it must be writeable, have the broadcasted shape, and have dtype [dtype].
+///
+/// **Performance considerations:**
+/// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
+///
+/// **Example:**
+/// {@example /example/ufuncs_example.dart lang=dart}
+///
+/// Reference: [NumPy hypot](https://numpy.org/doc/stable/reference/generated/numpy.hypot.html)
+NDArray<R>
+hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+  NDArray<Ta> a,
+  NDArray<Tb> b,
+  DType<R> dtype, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
+  if (a.isDisposed ||
+      b.isDisposed ||
+      (out != null && out.isDisposed) ||
+      (where != null && where.isDisposed)) {
+    throw StateError('Cannot execute hypotAs() on a disposed array.');
+  }
+  if (a.dtype.isComplex || b.dtype.isComplex || dtype.isComplex) {
+    throw UnsupportedError('Complex numbers are not supported for hypot');
+  }
+  return NDArray.scope(() {
+    if (dtype == DType.float32) {
+      final aCast = castNDArray<Float32>(a, DType.float32);
+      final bCast = castNDArray<Float32>(b, DType.float32);
+      final res = hypot<Float32, Float32>(
+        aCast,
+        bCast,
+        where: where,
+        out: out as NDArray<Float32>?,
+      );
+      return (out ?? res.detachToParentScope()) as NDArray<R>;
+    }
+    if (dtype == DType.float64) {
+      final aCast = castNDArray<Float64>(a, DType.float64);
+      final bCast = castNDArray<Float64>(b, DType.float64);
+      final res = hypot<Float64, Float64>(
+        aCast,
+        bCast,
+        where: where,
+        out: out as NDArray<Float64>?,
+      );
+      return (out ?? res.detachToParentScope()) as NDArray<R>;
+    }
+    final shape = broadcast(a, b).shape;
+    if (out != null) {
+      validateOutBuffer(out);
+      if (!listEquals(out.shape, shape) || out.dtype != dtype) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape and dtype for hypotAs',
+        );
+      }
+    }
+    final aCast = castNDArray<Float64>(a, DType.float64);
+    final bCast = castNDArray<Float64>(b, DType.float64);
+    final f64Res = hypot<Float64, Float64>(aCast, bCast, where: where);
+    final casted = castNDArray<R>(f64Res, dtype);
+    if (out != null) {
+      final maskHolder = prepareMask(where, out.shape);
+      try {
+        unaryOp<DTypeTag, DTypeTag>(
+          out,
+          casted,
+          out.shape,
+          casted.strides,
+          out.strides,
+          0,
+          casted.offsetElements,
+          out.offsetElements,
+          (v) => v,
+          maskHolder.pointer,
+        );
+      } finally {
+        maskHolder.dispose();
+      }
+      return out;
+    }
+    return casted.detachToParentScope();
+  });
 }
 
 /// Converts angles from degrees to radians element-wise.
