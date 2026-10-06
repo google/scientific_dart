@@ -84,5 +84,28 @@ void create() {
         );
       },
     );
+
+    test(
+      'does not corrupt ==, !=, <=, >=, or => operators or string literals',
+      () {
+        const input = '''
+final eq = a == b && c != d && e <= f && g >= h;
+final fn = (int x) => x == 0 ? "a=b" : 'c==d';
+''';
+        const formatter = DartFormatterEngine(tabSize: 2);
+        final formatted = formatter.formatCode(input);
+
+        expect(formatted, '''
+final eq = a == b && c != d && e <= f && g >= h;
+final fn = (int x) => x == 0 ? "a=b" : 'c==d';''');
+      },
+    );
+
+    test('delegates to customFormatter when provided', () {
+      final formatter = DartFormatterEngine(
+        customFormatter: (code) => '// custom\n${code.trim()}',
+      );
+      expect(formatter.formatCode('var x=1;'), '// custom\nvar x=1;');
+    });
   });
 }

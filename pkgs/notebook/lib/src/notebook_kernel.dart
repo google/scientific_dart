@@ -20,9 +20,9 @@ import 'package:vm_service/vm_service.dart';
 import 'package:vm_service/vm_service_io.dart';
 import 'package:analyzer/dart/analysis/utilities.dart';
 import 'package:analyzer/dart/ast/ast.dart';
+import 'package:notebook/src/cell_formatter.dart';
 import 'package:notebook/src/lsp_client.dart';
 import 'package:notebook/src/kernel_helper.dart';
-import 'package:dart_style/dart_style.dart';
 
 class DeclaredSymbolResult {
   final String symbol;
@@ -329,28 +329,8 @@ class NotebookKernel {
     }
   }
 
-  /// Formats Dart [code] using dartfmt ([DartFormatter]).
-  String formatCode(String code) {
-    final trimmed = code.trim();
-    if (trimmed.isEmpty) return trimmed;
-    try {
-      final formatter = DartFormatter(
-        languageVersion: DartFormatter.latestLanguageVersion,
-        pageWidth: 120,
-      );
-      return formatter.format(trimmed).trim();
-    } catch (_) {
-      try {
-        final formatter = DartFormatter(
-          languageVersion: DartFormatter.latestLanguageVersion,
-          pageWidth: 120,
-        );
-        return formatter.formatStatement(trimmed).trim();
-      } catch (_) {
-        return trimmed;
-      }
-    }
-  }
+  /// Formats Dart notebook cell [code] using [formatNotebookCellCode].
+  String formatCode(String code) => formatNotebookCellCode(code);
 
   Future<String> execute(String code) async {
     var rawCode = code.trim();

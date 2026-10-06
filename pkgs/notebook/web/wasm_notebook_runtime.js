@@ -725,6 +725,27 @@
       return null;
     }
 
+    async formatCode(code) {
+      const source = String(code || '');
+      if (!source.trim()) return source;
+      if (typeof window.dartFormatCode !== 'function' && window.__editorClientReadyPromise) {
+        try {
+          await window.__editorClientReadyPromise;
+        } catch (_) {}
+      }
+      if (typeof window.dartFormatCode === 'function') {
+        try {
+          const formatted = window.dartFormatCode(source);
+          if (typeof formatted === 'string' && formatted.length > 0) {
+            return formatted;
+          }
+        } catch (err) {
+          console.warn('dartFormatCode error:', err);
+        }
+      }
+      return source;
+    }
+
     _escapeHtml(s) {
       return String(s)
         .replace(/&/g, '&amp;')
