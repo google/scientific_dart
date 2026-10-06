@@ -152,6 +152,39 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
         'a.resh',
       );
     });
+
+    test(
+      'auto-imports gpuarray, initializes default WebGPU device, and synchronizes GPU readbacks',
+      () {
+        final cells = [
+          const WasmNotebookCell(
+            id: 'c1',
+            code:
+                'final g = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float32).toGpu();\n'
+                'final g2 = g * 3.0;\n'
+                'g2.toNDArray()',
+          ),
+        ];
+
+        final bundled = WasmCellBundler.bundleCells(cells);
+        expect(
+          bundled.mainDartSource,
+          contains("import 'package:gpuarray/gpuarray.dart' show"),
+        );
+        expect(
+          bundled.mainDartSource,
+          contains('await GpuDevice.ensureDefaultInitialized();'),
+        );
+        expect(
+          bundled.mainDartSource,
+          contains('await GpuDevice.synchronizeDefault();'),
+        );
+        expect(
+          bundled.mainDartSource,
+          contains('(await (g2).toNDArrayAsync())'),
+        );
+      },
+    );
   });
 
   group('Serverless Wasm Notebook E2E (no active backend)', () {
@@ -216,7 +249,11 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
         browser = await puppeteer.launch(
           executablePath: chromePath,
           headless: true,
-          args: ['--no-sandbox', '--disable-setuid-sandbox'],
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--enable-unsafe-webgpu',
+          ],
         );
         final page = await browser!.newPage();
 
@@ -316,6 +353,37 @@ display(Plot(y: NDArray.fromList([1.0, 2.0], [2], DType.float64)))
             args: [cell3Id],
           );
           expect(cachedCompileMs, 0);
+
+          // 6b. Add a 4th code cell that transfers `a` to WebGPU (`GpuArray`), runs GPU arithmetic, and reads back to `NDArray`.
+          final cell4Id = await page.evaluate<String>('''() => {
+            const id = window.addCell(
+              "final gpuA = a.astype(DType.float32).toGpu();\\nfinal gpuB = gpuA * 3.0 + 1.0;\\ngpuB.toNDArray()"
+            );
+            window.runCell(id);
+            return id;
+          }''');
+
+          await page.waitForFunction(
+            '''(cellId) => {
+              const out = document.getElementById('output-' + cellId);
+              return out && out.innerText.trim().length > 0 && !out.innerText.includes('Running...');
+            }''',
+            args: [cell4Id],
+            timeout: const Duration(seconds: 30),
+          );
+
+          final cell4Text = await page.evaluate<String>(
+            '(cellId) => document.getElementById("output-" + cellId).innerText',
+            args: [cell4Id],
+          );
+          expect(cell4Text, contains('[[ 4.,  7.],'));
+          expect(cell4Text, contains('[10., 13.]]'));
+
+          final gpuInspectorText = await page.evaluate<String>(
+            "() => document.getElementById('inspectorList').innerText",
+          );
+          expect(gpuInspectorText, contains('gpuA'));
+          expect(gpuInspectorText, contains('[GpuArray]'));
 
           // 7. Test completions and hover via window.wasmRuntime.
           final completionCount = await page.evaluate<int>(

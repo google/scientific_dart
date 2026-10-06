@@ -36,6 +36,9 @@ abstract class GpuBackend {
   /// Whether buffers allocated by this backend attach a Dart `NativeFinalizer`.
   bool get usesNativeFinalizer => false;
 
+  /// Whether the underlying hardware device context has been initialized.
+  bool get isInitialized => true;
+
   /// Allocates a device buffer handle of [sizeInBytes] bytes with [usage] flags.
   ///
   /// Throws a [GpuMemoryException] if the allocation fails.
@@ -161,6 +164,9 @@ abstract class GpuBackend {
       }
     }
   }
+
+  /// Synchronizes any pending asynchronous GPU work and host buffer mirrors on this backend.
+  Future<void> synchronize() async {}
 
   /// Releases any driver resources held by this backend.
   void dispose() {}

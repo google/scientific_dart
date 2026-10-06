@@ -5,14 +5,16 @@
 > [!WARNING]
 > **Experimental**: This package is an experimental prototype and under active development. Its architecture, protocol, and UI may change significantly.
 
-A web-based interactive notebook and REPL interface for **Dart** and **`package:ndarray`**, powered by the Dart VM Service, LSP autocompletions, and high-performance SIMD/FFI C bindings.
+A web-based interactive notebook and REPL interface for **Dart**, **`package:ndarray`**, and **`package:gpuarray`**, supporting both a local Dart VM Service kernel and a fully serverless in-browser WebAssembly + WebGPU execution mode.
+
+> **Live Preview:** **[Open the Serverless Wasm Notebook on GitHub Pages](https://google.github.io/scientific_dart/)**
 
 ![Notebook Overview](doc/images/media__notebook_full.png)
 
 ## Features
 
-- **Interactive Dart REPL Kernel:** Execute Dart expressions, loop structures, and top-level functions with live hot-reload state persistence across cells.
-- **LSP Autocompletion & Hover Info:** Real-time symbol completion and hover type popups powered by the Dart Language Server Protocol.
+- **Interactive Dart REPL Kernel (VM & Serverless Wasm):** Execute Dart expressions, loop structures, and top-level functions with live state persistence across cells — either backed by a local Dart VM or compiled in-browser via a self-hosted `dart2wasm` Web Worker + `native_math.wasm` + WebGPU.
+- **LSP Autocompletion & Hover Info:** Real-time symbol completion and hover type popups powered by the Dart Language Server Protocol (or the in-browser DartPad analysis worker in serverless Wasm mode).
 - **Structured MIME Output Protocol:** Zero string-escaping hacks. Rich HTML widgets render directly into the DOM while plain text stdout/prints output cleanly.
 - **Rich Scientific Visualizers (`Displayable` Widget Suite):**
   - **`Plot`**: Responsive 2D line charts with auto-scaled axes and grid lines.
@@ -30,7 +32,7 @@ A web-based interactive notebook and REPL interface for **Dart** and **`package:
 
 ## Getting Started
 
-### 1. Launching the Notebook Server
+### 1. Launching the Local VM Notebook Server
 
 Run the server executable specifying the port (default `8080`) and an optional `.ipynb` notebook file:
 
@@ -45,6 +47,14 @@ dart bin/notebook_server.dart example/hearing_the_shape_of_a_drum.ipynb
 ```
 
 Open **`http://localhost:8080`** in your browser.
+
+### 2. Building & Serving the Serverless Wasm Bundle
+
+To build and serve the static serverless WebAssembly notebook bundle locally:
+
+```bash
+dart run bin/build_wasm_notebook.dart --serve --port 8088
+```
 
 ---
 

@@ -128,6 +128,12 @@ CellOutputItem? formatEvaluationValue(dynamic value) {
   return CellOutputItem('text/plain', strVal);
 }
 
+/// Extension providing [toNDArrayAsync] on [NDArray] for uniform async host readback.
+extension NDArrayAsyncNotebookExtension<T extends DTypeTag> on NDArray<T> {
+  /// Returns this [NDArray] wrapped in a [Future].
+  Future<NDArray<T>> toNDArrayAsync() async => this;
+}
+
 /// Describes a live variable for the notebook Variable Inspector drawer.
 Map<String, String> describeVariableForInspector(String name, dynamic val) {
   try {
@@ -137,12 +143,20 @@ Map<String, String> describeVariableForInspector(String name, dynamic val) {
           'NDArray shape: ${val.shape} | dtype: ${val.dtype.name} | strided: ${!val.isContiguous}';
     } else {
       final typeName = val.runtimeType.toString();
-      final str = '$val';
-      final truncated = str.length > 60 ? '${str.substring(0, 60)}...' : str;
-      desc = '$typeName -> $truncated';
+      if (typeName.startsWith('GpuArray')) {
+        final gpuVal = val as dynamic;
+        desc =
+            'GpuArray shape: ${gpuVal.shape} | dtype: ${gpuVal.dtype.name} | device: ${gpuVal.device.name}';
+      } else {
+        final str = '$val';
+        final truncated = str.length > 60 ? '${str.substring(0, 60)}...' : str;
+        desc = '$typeName -> $truncated';
+      }
     }
     final typeLabel = desc.startsWith('NDArray')
         ? 'NDArray'
+        : desc.startsWith('GpuArray')
+        ? 'GpuArray'
         : desc.split(' -> ').first;
     return {'name': name, 'type': typeLabel, 'summary': desc};
   } catch (e) {

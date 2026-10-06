@@ -6,6 +6,8 @@ Scientific Dart is an ecosystem of packages bringing high-performance numerical,
 
 The initial release centers on **`package:ndarray`**, providing a powerful N-dimensional array library inspired by NumPy, backed by optimized native SIMD, BLAS, LAPACK, and FFT routines.
 
+> **Live Demo:** Try **[Scientific Dart Notebook in your browser](https://google.github.io/scientific_dart/)** — runs `ndarray`, `openblas`, `pocketfft`, and `gpuarray` entirely client-side via WebAssembly and WebGPU.
+
 ## Packages
 
 The repository is organized as a Dart workspace configured under [`pubspec.yaml`](pubspec.yaml):
@@ -26,7 +28,7 @@ The repository is organized as a Dart workspace configured under [`pubspec.yaml`
 - **[`pkgs/ndarray_ma`](pkgs/ndarray_ma)** *(experimental)*: Masked arrays (`MaskedArray`) for `ndarray`, enabling element-wise operations, reductions, and statistical analysis over datasets with missing, invalid, or masked entries.
 - **[`pkgs/symbolic_dart`](pkgs/symbolic_dart)** *(experimental)*: Symbolic mathematics and Computer Algebra System (CAS) library for Dart powered by native C/C++ bindings (SymEngine & FLINT), with symbolic-to-numerical `ndarray` evaluation.
 - **[`pkgs/scientific_dart_analysis_plugin`](pkgs/scientific_dart_analysis_plugin)** *(experimental)*: Analyzer plugin providing memory-safety, view-lifecycle, `DType`, and performance lints and quick fixes for `scientific_dart` consumers.
-- **[`pkgs/notebook`](pkgs/notebook)** *(experimental)*: Interactive notebook and REPL interface for Dart, `ndarray`, and `symbolic_dart`.
+- **[`pkgs/notebook`](pkgs/notebook)** *(experimental)*: Interactive notebook and REPL interface for Dart, `ndarray`, `gpuarray`, and `symbolic_dart` ([live WebAssembly preview](https://google.github.io/scientific_dart/)).
 - **[`pkgs/code_editor`](pkgs/code_editor)** *(experimental)*: Multi-backend code editor component supporting syntax highlighting and interactive evaluation for the notebook environment.
 - **[`pkgs/guitar_tuner`](pkgs/guitar_tuner)** *(experimental)*: Real-time CLI guitar tuner demonstrating live audio capture (ALSA) and spectral pitch detection using `ndarray`.
 

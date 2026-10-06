@@ -17,7 +17,6 @@ import 'dart:js_interop';
 import 'dart:js_interop_unsafe';
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'package:web/web.dart' as web;
 
 import '../../buffer.dart';
 import '../../device.dart';
@@ -312,20 +311,20 @@ extension type GPUCommandBufferDescriptor._(JSObject _) implements JSObject {
   external factory GPUCommandBufferDescriptor({String? label});
 }
 
-/// Navigator helper extension to access the browser WebGPU instance.
-extension NavigatorWebGpu on web.Navigator {
-  GPU? get gpu {
-    try {
-      final jsObj = this as JSObject;
-      if (jsObj.hasProperty("gpu".toJS).toDart) {
-        final prop = jsObj.getProperty("gpu".toJS);
+GPU? _browserWebGpu() {
+  try {
+    final navigator = globalContext['navigator'];
+    if (navigator != null && navigator.isA<JSObject>()) {
+      final navigatorObject = navigator as JSObject;
+      if (navigatorObject.hasProperty('gpu'.toJS).toDart) {
+        final prop = navigatorObject.getProperty('gpu'.toJS);
         if (prop.isDefinedAndNotNull) {
           return prop as GPU;
         }
       }
-    } catch (_) {}
-    return null;
-  }
+    }
+  } catch (_) {}
+  return null;
 }
 
 // ---------------------------------------------------------------------------
@@ -342,8 +341,12 @@ final class BrowserWebGpuBackend extends GpuBackend {
 
   int _nextBufferHandleId = 1;
   final Map<int, GPUBuffer> _deviceBuffers = {};
+  final Map<int, Uint8List> _hostBuffers = {};
   final Map<int, int> _bufferSizes = {};
+  final Set<int> _dirtyGpuBuffers = <int>{};
+  final List<GPUBuffer> _pendingTemporaryBuffers = [];
   final Map<String, GPUComputePipeline> _pipelineCache = {};
+  final Map<String, bool> _pipelineHasUniform = {};
   final List<String> _dispatchLog = [];
   bool _isDisposed = false;
 
@@ -352,6 +355,9 @@ final class BrowserWebGpuBackend extends GpuBackend {
 
   @override
   GpuDeviceType get deviceType => GpuDeviceType.webgpu;
+
+  @override
+  bool get isInitialized => device != null;
 
   /// Whether this backend driver has been disposed.
   bool get isDisposed => _isDisposed;
@@ -363,9 +369,12 @@ final class BrowserWebGpuBackend extends GpuBackend {
   int get pipelineCacheSize => _pipelineCache.length;
 
   /// Clears cached compute pipelines.
-  void clearPipelineCache() => _pipelineCache.clear();
+  void clearPipelineCache() {
+    _pipelineCache.clear();
+    _pipelineHasUniform.clear();
+  }
 
-  /// Creates and initializes a [BrowserWebGpuBackend] using `window.navigator.gpu`.
+  /// Creates and initializes a [BrowserWebGpuBackend] using `navigator.gpu`.
   ///
   /// Throws a [GpuDeviceException] if WebGPU is not supported or device creation fails.
   static Future<BrowserWebGpuBackend> create({
@@ -373,8 +382,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
     bool highPerformance = true,
   }) async {
     try {
-      final navigator = web.window.navigator;
-      final gpu = navigator.gpu;
+      final gpu = _browserWebGpu();
       if (gpu == null) {
         throw const GpuDeviceException(
           'WebGPU is not supported in this browser environment (navigator.gpu is null).',
@@ -384,7 +392,10 @@ final class BrowserWebGpuBackend extends GpuBackend {
       final options = GPURequestAdapterOptions(
         powerPreference: highPerformance ? 'high-performance' : 'low-power',
       );
-      final adapter = await gpu.requestAdapter(options).toDart;
+      var adapter = await gpu.requestAdapter(options).toDart;
+      adapter ??= await gpu
+          .requestAdapter(GPURequestAdapterOptions(forceFallbackAdapter: true))
+          .toDart;
       if (adapter == null) {
         throw const GpuDeviceException(
           'Failed to acquire a WebGPU hardware adapter.',
@@ -428,6 +439,7 @@ final class BrowserWebGpuBackend extends GpuBackend {
     );
     final handleId = _nextBufferHandleId++;
     _deviceBuffers[handleId] = gpuBuffer;
+    _hostBuffers[handleId] = Uint8List(alignedSize);
     _bufferSizes[handleId] = alignedSize;
     return ffi.Pointer<ffi.Void>.fromAddress(handleId);
   }
@@ -435,13 +447,90 @@ final class BrowserWebGpuBackend extends GpuBackend {
   @override
   void freeBuffer(ffi.Pointer<ffi.Void> handle, int sizeInBytes) {
     if (handle == ffi.nullptr) return;
-    final gpuBuffer = _deviceBuffers.remove(handle.address);
+    final handleId = handle.address;
+    final gpuBuffer = _deviceBuffers.remove(handleId);
     if (gpuBuffer != null) {
       try {
         gpuBuffer.destroy();
       } catch (_) {}
     }
-    _bufferSizes.remove(handle.address);
+    _hostBuffers.remove(handleId);
+    _bufferSizes.remove(handleId);
+    _dirtyGpuBuffers.remove(handleId);
+  }
+
+  @override
+  void clearBuffer(GpuBuffer buffer, {int offset = 0, int? bytes}) {
+    super.clearBuffer(buffer, offset: offset, bytes: bytes);
+    final resolvedBytes = bytes ?? (buffer.sizeInBytes - offset);
+    if (resolvedBytes <= 0) return;
+
+    final handleId = buffer.nativeHandle.address;
+    final hostBuffer = _hostBuffers[handleId];
+    if (hostBuffer != null) {
+      hostBuffer.fillRange(offset, offset + resolvedBytes, 0);
+    }
+    if (device != null) {
+      final gpuBuffer = _deviceBuffers[handleId];
+      if (gpuBuffer != null) {
+        final alignedBytes = (resolvedBytes + 3) & ~3;
+        final zeroes = Uint8List(alignedBytes);
+        device!.queue.writeBuffer(
+          gpuBuffer,
+          offset,
+          zeroes.toJS,
+          0,
+          alignedBytes,
+        );
+        if (offset == 0 && resolvedBytes >= buffer.sizeInBytes) {
+          _dirtyGpuBuffers.remove(handleId);
+        }
+      }
+    }
+  }
+
+  static const bool _isWasmRuntime = bool.fromEnvironment(
+    'dart.tool.dart2wasm',
+  );
+
+  static void _copyPointerToBytes(
+    ffi.Pointer<ffi.Uint8> src,
+    Uint8List dst,
+    int dstOffset,
+    int bytes,
+  ) {
+    if (!_isWasmRuntime) {
+      dst.setRange(dstOffset, dstOffset + bytes, src.asTypedList(bytes));
+      return;
+    }
+    for (var i = 0; i < bytes; i++) {
+      dst[dstOffset + i] = src[i];
+    }
+  }
+
+  static void _copyBytesToPointer(
+    Uint8List src,
+    int srcOffset,
+    ffi.Pointer<ffi.Uint8> dst,
+    int bytes,
+  ) {
+    if (!_isWasmRuntime) {
+      dst.asTypedList(bytes).setRange(0, bytes, src, srcOffset);
+      return;
+    }
+    for (var i = 0; i < bytes; i++) {
+      dst[i] = src[srcOffset + i];
+    }
+  }
+
+  static void _zeroPointer(ffi.Pointer<ffi.Uint8> dst, int bytes) {
+    if (!_isWasmRuntime) {
+      dst.asTypedList(bytes).fillRange(0, bytes, 0);
+      return;
+    }
+    for (var i = 0; i < bytes; i++) {
+      dst[i] = 0;
+    }
   }
 
   @override
@@ -452,13 +541,55 @@ final class BrowserWebGpuBackend extends GpuBackend {
     int offset = 0,
   }) {
     super.copyHostToBuffer(src, dst, bytes, offset: offset);
-    if (device != null && bytes > 0) {
-      final gpuBuffer = _deviceBuffers[dst.nativeHandle.address];
+    if (bytes <= 0) return;
+
+    final handleId = dst.nativeHandle.address;
+    final hostBuffer = _hostBuffers[handleId];
+    if (hostBuffer != null) {
+      _copyPointerToBytes(src, hostBuffer, offset, bytes);
+    }
+    if (device != null) {
+      final gpuBuffer = _deviceBuffers[handleId];
       if (gpuBuffer != null) {
-        final sourceBytes = src.asTypedList(bytes);
-        final jsArray = sourceBytes.toJS;
-        device!.queue.writeBuffer(gpuBuffer, offset, jsArray, 0, bytes);
+        final alignedOffset = offset & ~3;
+        final alignedEnd = ((offset + bytes) + 3) & ~3;
+        final alignedLength = alignedEnd - alignedOffset;
+        if (hostBuffer != null && alignedEnd <= hostBuffer.length) {
+          final slice = Uint8List.sublistView(
+            hostBuffer,
+            alignedOffset,
+            alignedEnd,
+          );
+          device!.queue.writeBuffer(
+            gpuBuffer,
+            alignedOffset,
+            slice.toJS,
+            0,
+            alignedLength,
+          );
+        }
+        if (offset == 0 && bytes >= dst.sizeInBytes) {
+          _dirtyGpuBuffers.remove(handleId);
+        }
       }
+    }
+  }
+
+  @override
+  void copyBufferToHost(
+    GpuBuffer src,
+    ffi.Pointer<ffi.Uint8> dst,
+    int bytes, {
+    int offset = 0,
+  }) {
+    super.copyBufferToHost(src, dst, bytes, offset: offset);
+    if (bytes <= 0) return;
+
+    final hostBuffer = _hostBuffers[src.nativeHandle.address];
+    if (hostBuffer != null) {
+      _copyBytesToPointer(hostBuffer, offset, dst, bytes);
+    } else {
+      _zeroPointer(dst, bytes);
     }
   }
 
@@ -474,7 +605,8 @@ final class BrowserWebGpuBackend extends GpuBackend {
       copyBufferToHost(src, dst, bytes, offset: offset);
       return;
     }
-    final sourceGpu = _deviceBuffers[src.nativeHandle.address];
+    final handleId = src.nativeHandle.address;
+    final sourceGpu = _deviceBuffers[handleId];
     if (sourceGpu == null) {
       copyBufferToHost(src, dst, bytes, offset: offset);
       return;
@@ -505,8 +637,15 @@ final class BrowserWebGpuBackend extends GpuBackend {
         .toDart;
     final arrayBuffer = stagingBuffer.getMappedRange(0, alignedBytes);
     final dartBytes = arrayBuffer.toDart.asUint8List();
-    final destinationBytes = dst.asTypedList(bytes);
-    destinationBytes.setRange(0, bytes, dartBytes);
+    _copyBytesToPointer(dartBytes, 0, dst, bytes);
+
+    final hostBuffer = _hostBuffers[handleId];
+    if (hostBuffer != null && offset + bytes <= hostBuffer.length) {
+      hostBuffer.setRange(offset, offset + bytes, dartBytes);
+      if (offset == 0 && bytes >= src.sizeInBytes) {
+        _dirtyGpuBuffers.remove(handleId);
+      }
+    }
 
     stagingBuffer.unmap();
     stagingBuffer.destroy();
@@ -527,11 +666,26 @@ final class BrowserWebGpuBackend extends GpuBackend {
       srcOffset: srcOffset,
       dstOffset: dstOffset,
     );
-    if (device != null && bytes > 0) {
-      final sourceGpu = _deviceBuffers[src.nativeHandle.address];
-      final destinationGpu = _deviceBuffers[dst.nativeHandle.address];
+    if (bytes <= 0) return;
+
+    final sourceId = src.nativeHandle.address;
+    final destinationId = dst.nativeHandle.address;
+    final sourceHost = _hostBuffers[sourceId];
+    final destinationHost = _hostBuffers[destinationId];
+    if (sourceHost != null && destinationHost != null) {
+      destinationHost.setRange(
+        dstOffset,
+        dstOffset + bytes,
+        sourceHost,
+        srcOffset,
+      );
+    }
+
+    if (device != null) {
+      final sourceGpu = _deviceBuffers[sourceId];
+      final destinationGpu = _deviceBuffers[destinationId];
       if (sourceGpu != null && destinationGpu != null) {
-        final alignedBytes = math.max(16, (bytes + 3) & ~3);
+        final alignedBytes = (bytes + 3) & ~3;
         final encoder = device!.createCommandEncoder();
         encoder.copyBufferToBuffer(
           sourceGpu,
@@ -542,6 +696,9 @@ final class BrowserWebGpuBackend extends GpuBackend {
         );
         final commandBuffer = encoder.finish();
         device!.queue.submit([commandBuffer].toJS);
+        if (_dirtyGpuBuffers.contains(sourceId)) {
+          _dirtyGpuBuffers.add(destinationId);
+        }
       }
     }
   }
@@ -594,66 +751,141 @@ final class BrowserWebGpuBackend extends GpuBackend {
       '${shaderModule.name}($workgroupsX, $workgroupsY, $workgroupsZ)',
     );
 
-    if (device == null) {
+    final activeDevice = device;
+    if (activeDevice == null) {
       throw const GpuDeviceException(
         'Cannot dispatch compute pipeline on uninitialized BrowserWebGpuBackend.',
       );
     }
 
-    final pipeline = _getOrCreatePipeline(shaderModule);
-
-    GPUBuffer? uniformBuffer;
+    final pipelineKey =
+        '${shaderModule.name}_${shaderModule.entryPoint}_${shaderModule.code}';
+    final pipeline = _getOrCreatePipeline(shaderModule, pipelineKey);
+    final encoder = activeDevice.createCommandEncoder();
     final entries = <GPUBindGroupEntry>[];
 
-    if (uniforms != null && uniforms.isNotEmpty) {
-      final u32List = Uint32List.fromList(uniforms);
-      final uniformSize = math.max(16, (u32List.lengthInBytes + 15) & ~15);
-      uniformBuffer = device!.createBuffer(
+    for (var i = 0; i < buffers.length; i++) {
+      final buffer = buffers[i];
+      final handle = buffer.nativeHandle;
+      if (handle == ffi.nullptr) {
+        final emptyBuffer = activeDevice.createBuffer(
+          GPUBufferDescriptor(
+            size: 16,
+            usage:
+                GPUBufferUsageConstants.storage |
+                GPUBufferUsageConstants.copySrc |
+                GPUBufferUsageConstants.copyDst |
+                GPUBufferUsageConstants.uniform,
+          ),
+        );
+        _pendingTemporaryBuffers.add(emptyBuffer);
+        entries.add(
+          GPUBindGroupEntry(
+            binding: i,
+            resource: GPUBufferBinding(buffer: emptyBuffer, size: 16),
+          ),
+        );
+        continue;
+      }
+
+      final handleId = handle.address;
+      final gpuBuffer = _deviceBuffers[handleId];
+      if (gpuBuffer == null) continue;
+
+      final alignedSize =
+          _bufferSizes[handleId] ??
+          math.max(16, (buffer.allocatedBytes + 3) & ~3);
+
+      var isAliasedLater = false;
+      for (var j = i + 1; j < buffers.length; j++) {
+        if (buffers[j].nativeHandle == handle) {
+          isAliasedLater = true;
+          break;
+        }
+      }
+
+      if (isAliasedLater) {
+        final clonedBuffer = activeDevice.createBuffer(
+          GPUBufferDescriptor(
+            size: alignedSize,
+            usage:
+                GPUBufferUsageConstants.storage |
+                GPUBufferUsageConstants.copySrc |
+                GPUBufferUsageConstants.copyDst |
+                GPUBufferUsageConstants.uniform,
+          ),
+        );
+        _pendingTemporaryBuffers.add(clonedBuffer);
+        encoder.copyBufferToBuffer(gpuBuffer, 0, clonedBuffer, 0, alignedSize);
+        entries.add(
+          GPUBindGroupEntry(
+            binding: i,
+            resource: GPUBufferBinding(buffer: clonedBuffer, size: alignedSize),
+          ),
+        );
+      } else {
+        entries.add(
+          GPUBindGroupEntry(
+            binding: i,
+            resource: GPUBufferBinding(buffer: gpuBuffer, size: alignedSize),
+          ),
+        );
+      }
+      _dirtyGpuBuffers.add(handleId);
+    }
+
+    final uniformBindingIndex = buffers.length;
+    final uniformCheckKey = '${pipelineKey}_$uniformBindingIndex';
+    final hasBindingInCode = _pipelineHasUniform[uniformCheckKey] ??=
+        shaderModule.code.contains('@binding($uniformBindingIndex)') ||
+        shaderModule.bindings.any(
+          (b) => b.isUniform && b.binding == uniformBindingIndex,
+        );
+    final hasUniformBinding =
+        hasBindingInCode &&
+        ((uniforms != null && uniforms.isNotEmpty) ||
+            shaderModule.bindings.any(
+              (b) => b.isUniform && b.binding == uniformBindingIndex,
+            ));
+
+    if (hasUniformBinding) {
+      final uniformWords = uniforms ?? const <int>[];
+      final uniformBytes = math.max(256, (uniformWords.length * 4 + 15) & ~15);
+      final uniformDwords = uniformBytes ~/ 4;
+      final uniformData = Uint32List(uniformDwords);
+      for (var wordIndex = 0; wordIndex < uniformWords.length; wordIndex++) {
+        uniformData[wordIndex] = uniformWords[wordIndex];
+      }
+      final uniformBuffer = activeDevice.createBuffer(
         GPUBufferDescriptor(
-          size: uniformSize,
+          size: uniformBytes,
           usage:
               GPUBufferUsageConstants.uniform | GPUBufferUsageConstants.copyDst,
         ),
       );
-      device!.queue.writeBuffer(uniformBuffer, 0, u32List.buffer.toJS);
+      _pendingTemporaryBuffers.add(uniformBuffer);
+      activeDevice.queue.writeBuffer(
+        uniformBuffer,
+        0,
+        Uint8List.sublistView(uniformData).toJS,
+        0,
+        uniformBytes,
+      );
+      entries.add(
+        GPUBindGroupEntry(
+          binding: uniformBindingIndex,
+          resource: GPUBufferBinding(buffer: uniformBuffer, size: uniformBytes),
+        ),
+      );
     }
 
-    var bufferIndex = 0;
-    for (final binding in shaderModule.bindings) {
-      if (binding.isUniform) {
-        if (uniformBuffer != null) {
-          entries.add(
-            GPUBindGroupEntry(
-              binding: binding.binding,
-              resource: GPUBufferBinding(buffer: uniformBuffer),
-            ),
-          );
-        }
-      } else {
-        if (bufferIndex < buffers.length) {
-          final gpuBuffer =
-              _deviceBuffers[buffers[bufferIndex].nativeHandle.address];
-          if (gpuBuffer != null) {
-            entries.add(
-              GPUBindGroupEntry(
-                binding: binding.binding,
-                resource: GPUBufferBinding(buffer: gpuBuffer),
-              ),
-            );
-          }
-          bufferIndex++;
-        }
-      }
-    }
-
-    final bindGroup = device!.createBindGroup(
+    final bindGroup = activeDevice.createBindGroup(
       GPUBindGroupDescriptor(
         layout: pipeline.getBindGroupLayout(0),
         entries: entries.toJS,
       ),
     );
 
-    final encoder = device!.createCommandEncoder();
     final pass = encoder.beginComputePass();
     pass.setPipeline(pipeline);
     pass.setBindGroup(0, bindGroup);
@@ -661,13 +893,14 @@ final class BrowserWebGpuBackend extends GpuBackend {
     pass.end();
 
     final commandBuffer = encoder.finish();
-    device!.queue.submit([commandBuffer].toJS);
+    activeDevice.queue.submit([commandBuffer].toJS);
   }
 
   /// Compiles or retrieves a cached [GPUComputePipeline] for [shaderModule].
-  GPUComputePipeline _getOrCreatePipeline(WgslShaderModule shaderModule) {
-    final key =
-        '${shaderModule.name}_${shaderModule.entryPoint}_${shaderModule.code}';
+  GPUComputePipeline _getOrCreatePipeline(
+    WgslShaderModule shaderModule,
+    String key,
+  ) {
     if (_pipelineCache[key] case final cached?) return cached;
 
     final module = device!.createShaderModule(
@@ -690,11 +923,93 @@ final class BrowserWebGpuBackend extends GpuBackend {
     return pipeline;
   }
 
+  @override
+  Future<void> synchronize() async {
+    if (_isDisposed || device == null) return;
+    if (_dirtyGpuBuffers.isEmpty) {
+      for (final temporaryBuffer in _pendingTemporaryBuffers) {
+        try {
+          temporaryBuffer.destroy();
+        } catch (_) {}
+      }
+      _pendingTemporaryBuffers.clear();
+      return;
+    }
+
+    final activeDevice = device!;
+    final dirtyIds = <int>[];
+    final stagingBuffers = <GPUBuffer>[];
+    final stagingSizes = <int>[];
+
+    final encoder = activeDevice.createCommandEncoder();
+    for (final handleId in _dirtyGpuBuffers) {
+      final sourceGpu = _deviceBuffers[handleId];
+      final bufferSize = _bufferSizes[handleId];
+      if (sourceGpu == null || bufferSize == null || bufferSize <= 0) {
+        continue;
+      }
+      final stagingBuffer = activeDevice.createBuffer(
+        GPUBufferDescriptor(
+          size: bufferSize,
+          usage:
+              GPUBufferUsageConstants.mapRead | GPUBufferUsageConstants.copyDst,
+        ),
+      );
+      encoder.copyBufferToBuffer(sourceGpu, 0, stagingBuffer, 0, bufferSize);
+      dirtyIds.add(handleId);
+      stagingBuffers.add(stagingBuffer);
+      stagingSizes.add(bufferSize);
+    }
+    _dirtyGpuBuffers.clear();
+
+    if (stagingBuffers.isNotEmpty) {
+      final commandBuffer = encoder.finish();
+      activeDevice.queue.submit([commandBuffer].toJS);
+
+      for (var i = 0; i < stagingBuffers.length; i++) {
+        final handleId = dirtyIds[i];
+        final stagingBuffer = stagingBuffers[i];
+        final bufferSize = stagingSizes[i];
+        try {
+          await stagingBuffer
+              .mapAsync(GPUMapModeConstants.read, 0, bufferSize)
+              .toDart;
+          final arrayBuffer = stagingBuffer.getMappedRange(0, bufferSize);
+          final mappedBytes = arrayBuffer.toDart.asUint8List();
+          final hostBuffer = _hostBuffers[handleId];
+          if (hostBuffer != null) {
+            final copyBytes = math.min(hostBuffer.length, mappedBytes.length);
+            hostBuffer.setRange(0, copyBytes, mappedBytes);
+          }
+          stagingBuffer.unmap();
+        } finally {
+          try {
+            stagingBuffer.destroy();
+          } catch (_) {}
+        }
+      }
+    }
+
+    for (final temporaryBuffer in _pendingTemporaryBuffers) {
+      try {
+        temporaryBuffer.destroy();
+      } catch (_) {}
+    }
+    _pendingTemporaryBuffers.clear();
+  }
+
   /// Releases all allocated WebGPU device buffers, cached pipelines, and destroys the device context.
   @override
   void dispose() {
     if (_isDisposed) return;
     _isDisposed = true;
+
+    for (final temporaryBuffer in _pendingTemporaryBuffers) {
+      try {
+        temporaryBuffer.destroy();
+      } catch (_) {}
+    }
+    _pendingTemporaryBuffers.clear();
 
     for (final gpuBuffer in _deviceBuffers.values) {
       try {
@@ -702,8 +1017,11 @@ final class BrowserWebGpuBackend extends GpuBackend {
       } catch (_) {}
     }
     _deviceBuffers.clear();
+    _hostBuffers.clear();
     _bufferSizes.clear();
+    _dirtyGpuBuffers.clear();
     _pipelineCache.clear();
+    _pipelineHasUniform.clear();
 
     try {
       device?.destroy();

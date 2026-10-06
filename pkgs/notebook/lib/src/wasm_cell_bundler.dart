@@ -129,12 +129,12 @@ final class WasmCellBundler {
 
     final userImports = <String>[];
     final seenImports = <String>{..._defaultImports};
-    if (selectedCells.any(
-      (c) => RegExp(r'\b(?:Gpu\w*|WebGpu\w*|wgsl\w*)\b').hasMatch(c.code),
-    )) {
-      const gpuImport = "import 'package:gpuarray/gpuarray.dart';";
-      seenImports.add(gpuImport);
-      userImports.add(gpuImport);
+    var usesGpuArray = selectedCells.any(
+      (c) => _gpuUsageRegex.hasMatch(c.code),
+    );
+    if (usesGpuArray) {
+      seenImports.add(_gpuCoreImport);
+      userImports.add(_gpuCoreImport);
     }
     final topLevelDeclarations = <String, String>{};
     final declaredVariables = <String>[];
@@ -155,6 +155,14 @@ final class WasmCellBundler {
         continue;
       }
       final extracted = _extractImportsAndBody(cell.code);
+      for (final imp in extracted.imports) {
+        if (imp.contains('package:gpuarray/')) {
+          usesGpuArray = true;
+          if (seenImports.add(_gpuCoreImport)) {
+            userImports.add(_gpuCoreImport);
+          }
+        }
+      }
       for (final item in _splitTopLevelItems(extracted.body)) {
         final kind = _classifyItem(item);
         if (kind.type == _ItemType.variableDeclaration) {
@@ -202,6 +210,9 @@ final class WasmCellBundler {
         var normalized = imp.trim();
         if (normalized.contains('package:notebook/src/kernel_helper.dart')) {
           normalized = "import 'package:notebook/src/notebook_widgets.dart';";
+        } else if (normalized == "import 'package:gpuarray/gpuarray.dart';" ||
+            normalized == 'import "package:gpuarray/gpuarray.dart";') {
+          normalized = _gpuCoreImport;
         }
         if (seenImports.add(normalized)) {
           userImports.add(normalized);
@@ -272,15 +283,24 @@ final class WasmCellBundler {
               (v) => redeclaredVars.contains(v.name),
             );
             if (!anyRedeclarations) {
-              final declStmt = _stripTrailingSemicolon(item.trim());
+              var declStmt = _stripTrailingSemicolon(item.trim());
+              if (usesGpuArray) {
+                declStmt = _rewriteGpuReadbacks(declStmt);
+              }
               bodyLines.add('$declStmt;');
             } else {
               for (final v in kind.variables) {
                 if (v.initializer != null) {
-                  bodyLines.add('${v.name} = ${v.initializer};');
+                  final initExpr = usesGpuArray
+                      ? _rewriteGpuReadbacks(v.initializer!)
+                      : v.initializer!;
+                  bodyLines.add('${v.name} = $initExpr;');
                 }
                 bodyLines.add('_has_${v.name} = true;');
               }
+            }
+            if (usesGpuArray) {
+              bodyLines.add('await GpuDevice.synchronizeDefault();');
             }
             for (final v in kind.variables) {
               if (seenVariables.add(v.name)) {
@@ -297,19 +317,31 @@ final class WasmCellBundler {
           case _ItemType.statement:
             onlyDeclarations = false;
             var stmtSource = item.trim();
+            if (usesGpuArray) {
+              stmtSource = _rewriteGpuReadbacks(stmtSource);
+            }
             if (!stmtSource.endsWith('}') && !stmtSource.endsWith(';')) {
               stmtSource = '$stmtSource;';
             }
             bodyLines.add(stmtSource);
+            if (usesGpuArray) {
+              bodyLines.add('await GpuDevice.synchronizeDefault();');
+            }
           case _ItemType.expression:
             onlyDeclarations = false;
-            final exprSource = _stripTrailingSemicolon(item.trim());
+            var exprSource = _stripTrailingSemicolon(item.trim());
+            if (usesGpuArray) {
+              exprSource = _rewriteGpuReadbacks(exprSource);
+            }
             if (isLast) {
               bodyLines.add(
                 '_cellValue = await (() async => (\n$exprSource\n))();',
               );
             } else {
               bodyLines.add('$exprSource;');
+            }
+            if (usesGpuArray) {
+              bodyLines.add('await GpuDevice.synchronizeDefault();');
             }
         }
       }
@@ -391,6 +423,9 @@ void _recordCellSuccess(
     sb.writeln('  dynamic _cellValue;');
     sb.writeln('  await evalInNotebookZone(() async {');
     sb.writeln('    try {');
+    if (usesGpuArray) {
+      sb.writeln('      await GpuDevice.ensureDefaultInitialized();');
+    }
     for (final block in cellBlocks) {
       sb.writeln(block);
     }
@@ -449,6 +484,11 @@ void _recordCellSuccess(
     }
 
     final seenImports = <String>{..._defaultImports};
+    if (cells.any((c) => c.type == 'code' && _gpuUsageRegex.hasMatch(c.code))) {
+      if (seenImports.add(_gpuCoreImport)) {
+        sb.writeln(_gpuCoreImport);
+      }
+    }
     final priorTopDecls = <String>[];
     final priorVarDecls = <String>[];
     var activeCellCode = '';
@@ -884,6 +924,131 @@ void _recordCellSuccess(
       return trimmed.substring(0, trimmed.length - 1).trimRight();
     }
     return trimmed;
+  }
+
+  static const String _gpuCoreImport =
+      "import 'package:gpuarray/gpuarray.dart' show "
+      'BrowserWebGpuBackend, GradFn, GpuArray, GpuArrayNDArrayInterop, '
+      'GpuBackend, GpuBuffer, GpuBufferUsage, GpuDevice, '
+      'GpuDeviceDisposedException, GpuDeviceException, GpuDeviceType, '
+      'GpuException, GpuMemoryException, GpuMemoryPool, '
+      'GpuShaderCompilationException, GpuShapeMismatchException, GpuSlice, '
+      'LossReduction, NDArrayGpuInterop, createDefaultGpuBackend, '
+      'createWebGpuDevice, enableGrad, isGradEnabled, noGrad;';
+
+  static final RegExp _gpuUsageRegex = RegExp(
+    r'\b(?:Gpu\w*|WebGpu\w*|wgsl\w*|createWebGpuDevice)\b|\.\s*toGpu\s*\(',
+  );
+
+  static final RegExp _gpuReadbackCallRegex = RegExp(
+    r'\.\s*to(?:Host)?NDArray\s*\(\s*\)',
+  );
+
+  static String _rewriteGpuReadbacks(String code) {
+    var current = code;
+    while (true) {
+      final match = _gpuReadbackCallRegex.firstMatch(current);
+      if (match == null) break;
+      final dotIndex = match.start;
+      final recvStart = _findReceiverStart(current, dotIndex);
+      if (recvStart >= dotIndex) break;
+      final receiver = current.substring(recvStart, dotIndex);
+      current =
+          '${current.substring(0, recvStart)}(await ($receiver).toNDArrayAsync())${current.substring(match.end)}';
+    }
+    return current;
+  }
+
+  static bool _isIdentChar(int c) =>
+      (c >= 0x30 && c <= 0x39) ||
+      (c >= 0x41 && c <= 0x5A) ||
+      (c >= 0x61 && c <= 0x7A) ||
+      c == 0x5F ||
+      c == 0x24;
+
+  static int _findReceiverStart(String s, int dotIndex) {
+    var j = dotIndex - 1;
+    var start = dotIndex;
+    while (j >= 0) {
+      while (j >= 0 &&
+          (s.codeUnitAt(j) == 0x20 ||
+              s.codeUnitAt(j) == 0x09 ||
+              s.codeUnitAt(j) == 0x0A ||
+              s.codeUnitAt(j) == 0x0D)) {
+        j--;
+      }
+      if (j < 0) break;
+
+      final c = s.codeUnitAt(j);
+      if (c == 0x29 /* ) */ || c == 0x5D /* ] */ ) {
+        final openChar = c == 0x29 ? 0x28 : 0x5B;
+        var depth = 1;
+        j--;
+        while (j >= 0 && depth > 0) {
+          final ch = s.codeUnitAt(j);
+          if (ch == c) {
+            depth++;
+          } else if (ch == openChar) {
+            depth--;
+          }
+          j--;
+        }
+        start = j + 1;
+        var k = j;
+        while (k >= 0 && (s.codeUnitAt(k) == 0x20 || s.codeUnitAt(k) == 0x09)) {
+          k--;
+        }
+        if (k >= 0 && s.codeUnitAt(k) == 0x3E /* > */ ) {
+          var angleDepth = 1;
+          k--;
+          while (k >= 0 && angleDepth > 0) {
+            final ch = s.codeUnitAt(k);
+            if (ch == 0x3E) {
+              angleDepth++;
+            } else if (ch == 0x3C /* < */ ) {
+              angleDepth--;
+            }
+            k--;
+          }
+          if (angleDepth == 0) {
+            j = k;
+            start = j + 1;
+          }
+        }
+        continue;
+      }
+
+      if (_isIdentChar(c)) {
+        while (j >= 0 && _isIdentChar(s.codeUnitAt(j))) {
+          j--;
+        }
+        final word = s.substring(j + 1, start);
+        if (_statementKeywords.contains(word) ||
+            word == 'final' ||
+            word == 'var' ||
+            word == 'const') {
+          break;
+        }
+        start = j + 1;
+        var k = j;
+        while (k >= 0 &&
+            (s.codeUnitAt(k) == 0x20 ||
+                s.codeUnitAt(k) == 0x09 ||
+                s.codeUnitAt(k) == 0x0A ||
+                s.codeUnitAt(k) == 0x0D)) {
+          k--;
+        }
+        if (k >= 0 && s.codeUnitAt(k) == 0x2E /* . */ ) {
+          j = k - 1;
+          start = k;
+          continue;
+        }
+        break;
+      }
+
+      break;
+    }
+    return start;
   }
 
   static String _escapeDartString(String s) => s
