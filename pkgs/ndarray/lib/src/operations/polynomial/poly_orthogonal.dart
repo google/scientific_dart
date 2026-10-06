@@ -100,11 +100,33 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// Reference: [NumPy chebval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html)
 NDArray<R> chebval<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<R>? out,
@@ -122,11 +144,33 @@ NDArray<R> chebval<R extends DTypeTag>(
 /// Reference: [NumPy legval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.legendre.legval.html)
 NDArray<R> legval<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<R>? out,
@@ -144,11 +188,33 @@ NDArray<R> legval<R extends DTypeTag>(
 /// Reference: [NumPy hermval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.hermite.hermval.html)
 NDArray<R> hermval<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<R>? out,
@@ -166,11 +232,33 @@ NDArray<R> hermval<R extends DTypeTag>(
 /// Reference: [NumPy lagval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.laguerre.lagval.html)
 NDArray<R> lagval<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<R>? out,
@@ -661,7 +749,18 @@ NDArray<R> _evalClenshaw<
 /// Finds roots of a Chebyshev series.
 NDArray<C> chebroots<C extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      C,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<C>? out,
@@ -672,7 +771,18 @@ NDArray<C> chebroots<C extends DTypeTag>(
 /// Finds roots of a Legendre series.
 NDArray<C> legroots<C extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      C,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<C>? out,
@@ -683,7 +793,18 @@ NDArray<C> legroots<C extends DTypeTag>(
 /// Finds roots of a Hermite series.
 NDArray<C> hermroots<C extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      C,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<C>? out,
@@ -694,7 +815,18 @@ NDArray<C> hermroots<C extends DTypeTag>(
 /// Finds roots of a Laguerre series.
 NDArray<C> lagroots<C extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      C,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c, {
   NDArray<C>? out,
@@ -704,7 +836,18 @@ NDArray<C> lagroots<C extends DTypeTag>(
 
 NDArray<C> _orthoRoots<C extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      C,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c,
   _OrthoKind kind, {
@@ -934,6 +1077,9 @@ NDArray<C> _orthoRoots<C extends DTypeTag>(
               Object?,
               DTypeTag,
               C,
+              DTypeTag,
+              DTypeTag,
+              DTypeTag,
               DTypeTag,
               DTypeTag,
               DTypeTag

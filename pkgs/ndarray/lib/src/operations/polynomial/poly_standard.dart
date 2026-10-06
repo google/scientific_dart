@@ -76,11 +76,33 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
 NDArray<R> polyval<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   c,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x, {
   NDArray<R>? out,
@@ -299,16 +321,49 @@ NDArray<R> polyval<R extends DTypeTag>(
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
 NDArray<R> polyfit<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   y,
   int deg, {
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >?
   w,
   double? rcond,
@@ -811,7 +866,18 @@ NDArray<R> polyfit<R extends DTypeTag>(
 /// Reference: [NumPy roots](https://numpy.org/doc/stable/reference/generated/numpy.roots.html)
 NDArray<C> roots<C extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, C, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      C,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   p, {
   NDArray<C>? out,
@@ -935,6 +1001,9 @@ NDArray<C> roots<C extends DTypeTag>(
               Object?,
               DTypeTag,
               C,
+              DTypeTag,
+              DTypeTag,
+              DTypeTag,
               DTypeTag,
               DTypeTag,
               DTypeTag

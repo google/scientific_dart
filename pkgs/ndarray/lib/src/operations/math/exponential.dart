@@ -37,7 +37,18 @@ import '../helpers.dart';
 /// Reference: [Exponential Function](https://en.wikipedia.org/wiki/Exponential_function)
 NDArray<R> exp<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -254,7 +265,18 @@ NDArray<R> exp<R extends DTypeTag>(
 /// Reference: [Natural Logarithm](https://en.wikipedia.org/wiki/Natural_logarithm)
 NDArray<R> log<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -464,7 +486,18 @@ NDArray<R> log<R extends DTypeTag>(
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
 NDArray<R> log2<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -675,7 +708,18 @@ NDArray<R> log2<R extends DTypeTag>(
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
 NDArray<R> log10<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,

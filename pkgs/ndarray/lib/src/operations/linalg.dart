@@ -2138,7 +2138,21 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// Reference: [NumPy linalg.slogdet](https://numpy.org/doc/stable/reference/generated/numpy.linalg.slogdet.html)
 ({NDArray<T> sign, NDArray<R> logabsdet})
 slogdet<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag>> a, {
+  NDArray<
+    DTypeSpec<
+      R,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      T,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  a, {
   NDArray<T>? outSign,
   NDArray<R>? outLogdet,
 }) {
@@ -2880,7 +2894,18 @@ NDArray<T> solve<T extends DTypeTag>(
 /// - Throws a [LinAlgException] if [a] contains non-finite values (`NaN` or `±Infinity`) or if the LAPACK routine fails.
 ({NDArray<R> eigenvalues, NDArray<R> eigenvectors}) eig<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, R, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   ({NDArray<R> eigenvalues, NDArray<R> eigenvectors})? out,
@@ -3248,7 +3273,18 @@ NDArray<T> solve<T extends DTypeTag>(
 /// Reference: [NumPy linalg.eigvals](https://numpy.org/doc/stable/reference/generated/numpy.linalg.eigvals.html)
 NDArray<R> eigvals<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, R, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<R>? out,
@@ -4418,7 +4454,21 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// {@example /example/linalg_example.dart lang=dart}
 ({NDArray<T> u, NDArray<R> s, NDArray<T> vh})
 svd<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag>> a, {
+  NDArray<
+    DTypeSpec<
+      R,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      T,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  a, {
   ({NDArray<T> u, NDArray<R> s, NDArray<T> vh})? out,
 }) {
   if (a.isDisposed) {
@@ -5156,7 +5206,21 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
 ({NDArray<F> eigenvalues, NDArray<R> eigenvectors})
 eigh<F extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<DTypeTag, Object?, F, DTypeTag, R, DTypeTag, DTypeTag>> a, {
+  NDArray<
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      F,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
   NDArray<F>? outEigenvalues,
   NDArray<R>? outEigenvectors,
@@ -5511,7 +5575,18 @@ extension EighRecordDispose<F extends DTypeTag, T extends DTypeTag>
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
 NDArray<R> eigvalsh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
@@ -6129,7 +6204,18 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
 ({NDArray<R> h, NDArray<R> q}) hessenberg<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<R>? outH,
@@ -7335,7 +7421,18 @@ enum NormKind {
 /// Reference: [NumPy linalg.norm](https://numpy.org/doc/stable/reference/generated/numpy.linalg.norm.html)
 NDArray<R> norm<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   Object? ord,
@@ -8289,7 +8386,18 @@ LstsqResult<R> lstsq<
 /// Reference: [NumPy linalg.cond](https://numpy.org/doc/stable/reference/generated/numpy.linalg.cond.html)
 NDArray<R> cond<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   Object? p,

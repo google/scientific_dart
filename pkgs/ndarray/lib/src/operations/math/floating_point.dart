@@ -1490,7 +1490,18 @@ extension FrexpRecordExtension<R extends DTypeTag>
 /// Reference: [NumPy modf](https://numpy.org/doc/stable/reference/generated/numpy.modf.html)
 ({NDArray<R> fractional, NDArray<R> integral}) modf<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x, {
   NDArray<DTypeTag>? where,
@@ -1649,7 +1660,18 @@ extension FrexpRecordExtension<R extends DTypeTag>
 /// Reference: [NumPy frexp](https://numpy.org/doc/stable/reference/generated/numpy.frexp.html)
 ({NDArray<R> mantissa, NDArray<Int32> exponent}) frexp<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   x, {
   NDArray<DTypeTag>? where,

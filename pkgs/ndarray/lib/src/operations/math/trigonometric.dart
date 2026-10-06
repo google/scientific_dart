@@ -40,7 +40,18 @@ import 'arithmetic.dart';
 /// Reference: [Trigonometric Sine Function](https://en.wikipedia.org/wiki/Sine_and_cosine)
 NDArray<R> sin<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -255,7 +266,18 @@ NDArray<R> sin<R extends DTypeTag>(
 /// - For C-contiguous array layouts, uses native C vector math kernels (`v_sinc_double`/`v_sinc_float` etc).
 NDArray<R> sinc<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -472,7 +494,18 @@ NDArray<R> sinc<R extends DTypeTag>(
 /// Reference: [Trigonometric Cosine Function](https://en.wikipedia.org/wiki/Sine_and_cosine)
 NDArray<R> cos<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -679,7 +712,18 @@ NDArray<R> cos<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> tan<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -892,7 +936,18 @@ NDArray<R> tan<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> asin<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -944,6 +999,9 @@ NDArray<R> asin<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -1117,7 +1175,18 @@ NDArray<R> asin<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> acos<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -1169,6 +1238,9 @@ NDArray<R> acos<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -1342,7 +1414,18 @@ NDArray<R> acos<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> atan<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -1394,6 +1477,9 @@ NDArray<R> atan<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -1568,7 +1654,18 @@ NDArray<R> atan<R extends DTypeTag>(
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> sinh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -1620,6 +1717,9 @@ NDArray<R> sinh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -1797,7 +1897,18 @@ NDArray<R> sinh<R extends DTypeTag>(
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> cosh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -1849,6 +1960,9 @@ NDArray<R> cosh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -2026,7 +2140,18 @@ NDArray<R> cosh<R extends DTypeTag>(
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> tanh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -2078,6 +2203,9 @@ NDArray<R> tanh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -2256,7 +2384,18 @@ NDArray<R> tanh<R extends DTypeTag>(
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> asinh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -2308,6 +2447,9 @@ NDArray<R> asinh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -2485,7 +2627,18 @@ NDArray<R> asinh<R extends DTypeTag>(
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> acosh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -2537,6 +2690,9 @@ NDArray<R> acosh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -2714,7 +2870,18 @@ NDArray<R> acosh<R extends DTypeTag>(
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> atanh<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -2766,6 +2933,9 @@ NDArray<R> atanh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -2935,8 +3105,36 @@ NDArray<R> atanh<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> atan2<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> y,
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> x, {
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  y,
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  x, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -3012,6 +3210,9 @@ NDArray<R> atan2<T extends DTypeTag, R extends DTypeTag>(
                 DTypeTag,
                 R,
                 DTypeTag,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag
               >
             >,
@@ -3023,6 +3224,9 @@ NDArray<R> atan2<T extends DTypeTag, R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
+                DTypeTag,
+                DTypeTag,
+                DTypeTag,
                 DTypeTag,
                 DTypeTag
               >
@@ -3272,8 +3476,36 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> hypot<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> a,
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> b, {
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  a,
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  b, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -3480,7 +3712,18 @@ hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> deg2rad<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -3548,7 +3791,18 @@ NDArray<R> deg2rad<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> rad2deg<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,

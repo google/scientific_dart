@@ -35,7 +35,18 @@ import 'logical.dart';
 /// - Negative values will result in [double.nan].
 NDArray<R> sqrt<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -297,7 +308,18 @@ double _logaddexp2(double x, double y) {
 /// Computes the exponential minus one ($e^x - 1$) element-wise.
 NDArray<R> expm1<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -535,7 +557,18 @@ NDArray<R> expm1<R extends DTypeTag>(
 /// Computes $\ln(1+x)$ element-wise.
 NDArray<R> log1p<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -772,8 +805,35 @@ NDArray<R> log1p<R extends DTypeTag>(
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
 NDArray<R> logaddexp<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> x1,
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>>
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  x1,
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
   x2, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
@@ -970,8 +1030,35 @@ NDArray<R> logaddexp<T extends DTypeTag, R extends DTypeTag>(
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
 NDArray<R> logaddexp2<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>> x1,
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>>
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  x1,
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
   x2, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
@@ -1169,7 +1256,18 @@ NDArray<R> logaddexp2<T extends DTypeTag, R extends DTypeTag>(
 /// Rounds elements of the array to the nearest integer.
 NDArray<R> rint<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -1355,7 +1453,18 @@ NDArray<R> rint<R extends DTypeTag>(
 /// Rounds elements of the array to the nearest integer towards zero.
 NDArray<R> trunc<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -1534,7 +1643,18 @@ NDArray<R> trunc<R extends DTypeTag>(
 /// Synonym for [trunc].
 NDArray<R> fix<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -4823,7 +4943,18 @@ NDArray<T> heaviside<T extends DTypeTag>(
 /// If [out] is provided, the result is written into [out] and returned.
 NDArray<R> abs<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      R,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -13033,8 +13164,36 @@ powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
 NDArray<R> floatPower<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>> a,
-  NDArray<DTypeSpec<T, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>> b, {
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  a,
+  NDArray<
+    DTypeSpec<
+      T,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
+  >
+  b, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {

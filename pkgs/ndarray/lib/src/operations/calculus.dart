@@ -102,7 +102,18 @@ bool _listEquals(List<Object?> a, List<Object?> b) {
 /// {@example /example/calculus_example.dart lang=dart}
 NDArray<T> trapz<T extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      T,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   y, {
   Spacing spacing = const Spacing.step(1.0),
@@ -683,7 +694,18 @@ NDArray<T> trapz<T extends DTypeTag>(
 /// {@example /example/calculus_example.dart lang=dart}
 NDArray<T> gradient<T extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      T,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   f, {
   Spacing spacing = const Spacing.step(1.0),
@@ -1274,7 +1296,18 @@ NDArray<T> gradient<T extends DTypeTag>(
 /// {@example /example/calculus_example.dart lang=dart}
 List<NDArray<T>> gradientArray<T extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      T,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   f, {
   Spacing? spacing,

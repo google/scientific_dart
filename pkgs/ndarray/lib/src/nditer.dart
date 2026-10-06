@@ -293,7 +293,18 @@ final class NDEnumerate<T extends DTypeTag> {
 /// In code that is generic over all dtypes (`T extends DTypeTag`), [E]
 /// resolves to `Object?`.
 extension NDEnumerateElements<
-  T extends DTypeSpec<AnySpec, E, AnySpec, AnySpec, AnySpec, AnySpec, AnySpec>,
+  T extends DTypeSpec<
+    AnySpec,
+    E,
+    AnySpec,
+    AnySpec,
+    AnySpec,
+    AnySpec,
+    AnySpec,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
   E
 >
     on NDEnumerate<T> {

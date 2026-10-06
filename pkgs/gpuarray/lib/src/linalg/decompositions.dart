@@ -89,6 +89,9 @@ extension EigRecordDispose<
     DTypeTag,
     DTypeTag,
     DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
     DTypeTag
   >
 >
@@ -167,7 +170,7 @@ void _requireSquare2d(GpuArray a, String functionName) {
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   bool fullMatrices = true,
   GpuArray<M>? outU,
   GpuArray<F>? outS,
@@ -272,7 +275,10 @@ GpuArray<F> svdValues<
   M extends DTypeTag,
   S extends DTypeTag,
   D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<F>? out}) {
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<F>? out,
+}) {
   _require2d(a, 'svdValues');
   final m = a.shape[0];
   final n = a.shape[1];
@@ -333,7 +339,7 @@ GpuArray<F> svdValues<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   QrMode mode = QrMode.reduced,
   GpuArray<M>? outQ,
   GpuArray<M>? outR,
@@ -420,7 +426,10 @@ GpuArray<M> qrR<
   M extends DTypeTag,
   S extends DTypeTag,
   D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<M>? out}) {
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<M>? out,
+}) {
   _require2d(a, 'qrR');
   final m = a.shape[0];
   final n = a.shape[1];
@@ -480,7 +489,7 @@ GpuArray<M> cholesky<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   bool upper = false,
   UpLo? uplo,
   GpuArray<M>? out,
@@ -541,7 +550,7 @@ GpuArray<M> cholesky<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   UpLo uplo = UpLo.lower,
   GpuArray<F>? outEigenvalues,
   GpuArray<M>? outEigenvectors,
@@ -632,7 +641,7 @@ GpuArray<F> eigvalsh<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   UpLo uplo = UpLo.lower,
   GpuArray<F>? out,
 }) {
@@ -691,7 +700,7 @@ GpuArray<F> eigvalsh<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   GpuArray<C>? outEigenvalues,
   GpuArray<C>? outEigenvectors,
 }) {
@@ -782,7 +791,10 @@ GpuArray<C> eigvals<
   M extends DTypeTag,
   S extends DTypeTag,
   D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<C>? out}) {
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<C>? out,
+}) {
   _requireSquare2d(a, 'eigvals');
   final n = a.shape[0];
   final wShape = <int>[n];
@@ -838,7 +850,7 @@ GpuArray<C> eigvals<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   GpuArray<M>? outP,
   GpuArray<M>? outL,
   GpuArray<M>? outU,
@@ -944,7 +956,7 @@ GpuArray<C> eigvals<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   GpuArray<M>? outLu,
   GpuArray<Int32>? outPivots,
 }) {
@@ -1030,7 +1042,7 @@ GpuArray<M> luSolve<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> lu,
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> lu,
   GpuArray<DTypeTag> pivots,
   GpuArray<DTypeTag> b, {
   GpuArray<M>? out,

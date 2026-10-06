@@ -48,7 +48,18 @@ import '../helpers.dart';
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> i0<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -288,7 +299,18 @@ NDArray<R> i0<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> gamma<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -490,7 +512,18 @@ NDArray<R> gamma<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> erf<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,

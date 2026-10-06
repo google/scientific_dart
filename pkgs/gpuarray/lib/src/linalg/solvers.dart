@@ -170,7 +170,7 @@ GpuArray<M> solve<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a,
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a,
   GpuArray<DTypeTag> b, {
   GpuArray<M>? out,
 }) {
@@ -263,7 +263,10 @@ GpuArray<M> inv<
   M extends DTypeTag,
   S extends DTypeTag,
   D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<M>? out}) {
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<M>? out,
+}) {
   _requireSquare2d(a, 'inv');
   final n = a.shape[0];
   final mathDtype = linalgMathDType(a.dtype);
@@ -332,7 +335,7 @@ GpuArray<M> pinv<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   double? rcond,
   GpuArray<M>? out,
 }) {
@@ -420,7 +423,7 @@ lstsq<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a,
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a,
   GpuArray<DTypeTag> b, {
   double? rcond,
   GpuArray<M>? outSolution,
@@ -609,7 +612,10 @@ GpuArray<M> det<
   M extends DTypeTag,
   S extends DTypeTag,
   D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {GpuArray<M>? out}) {
+>(
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<M>? out,
+}) {
   _requireSquare2d(a, 'det');
   final n = a.shape[0];
   final mathDtype = linalgMathDType(a.dtype);
@@ -664,7 +670,7 @@ GpuArray<M> det<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   GpuArray<M>? outSign,
   GpuArray<F>? outLogAbsDet,
 }) {
@@ -968,7 +974,7 @@ GpuArray<F> norm<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   NormOrd? ord,
   Object? axis,
   bool keepdims = false,
@@ -1179,7 +1185,7 @@ GpuArray<F> cond<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
   NormOrd? p,
   NormOrd? ord,
   GpuArray<F>? out,

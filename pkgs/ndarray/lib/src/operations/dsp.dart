@@ -44,7 +44,18 @@ import 'helpers.dart';
 /// Reference: [NumPy angle](https://numpy.org/doc/stable/reference/generated/numpy.angle.html)
 NDArray<R> angle<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<R>? out,
@@ -238,7 +249,18 @@ NDArray<R> angle<R extends DTypeTag>(
 /// Reference: [NumPy unwrap](https://numpy.org/doc/stable/reference/generated/numpy.unwrap.html)
 NDArray<T> unwrap<T extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      T,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   double discont = math.pi,

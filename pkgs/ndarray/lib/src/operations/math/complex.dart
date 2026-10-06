@@ -61,7 +61,18 @@ NDArray<DTypeTag> _complexPartView(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> real<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      R,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,
@@ -221,7 +232,18 @@ NDArray<R> real<R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> imag<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, R, DTypeTag, DTypeTag, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   NDArray<DTypeTag>? where,

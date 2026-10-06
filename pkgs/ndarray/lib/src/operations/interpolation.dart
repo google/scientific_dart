@@ -70,7 +70,18 @@ NDArray<R> interp<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   fp, {
   Object? left,
@@ -418,7 +429,18 @@ NDArray<R> interpolate<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   fp, {
   Object? left,

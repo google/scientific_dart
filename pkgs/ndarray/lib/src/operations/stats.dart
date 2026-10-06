@@ -841,7 +841,18 @@ DType<R> _defaultAccumDType<R extends DTypeTag>(DType dtype) =>
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> sum<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, R, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -1183,7 +1194,18 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> prod<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, R, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -1923,7 +1945,18 @@ NDArray<Boolean> any<T extends DTypeTag>(
 /// Reference: [Arithmetic Mean](https://en.wikipedia.org/wiki/Arithmetic_mean)
 NDArray<R> mean<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -4080,7 +4113,18 @@ NDArray<T> nanmax<T extends DTypeTag>(
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> cumsum<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, R, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -4200,7 +4244,18 @@ NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> cumprod<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, R, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -4905,7 +4960,18 @@ NDArray<Float64> var_<T extends DTypeTag>(
 /// {@example /example/percentiles_example.dart lang=dart}
 NDArray<R> nanmean<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -5867,7 +5933,18 @@ DType<R> _medianDType<R extends DTypeTag>(DType inputDType) {
 /// - It is an error if [axis] is out of bounds.
 NDArray<R> median<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -6143,7 +6220,18 @@ Object r_median_helper<T extends DTypeTag>(NDArray<T> a, int size) {
 /// {@example /example/percentiles_example.dart lang=dart}
 NDArray<R> nanmedian<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,
@@ -6637,7 +6725,10 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
               DTypeTag,
               DTypeTag,
               DTypeTag,
-              R
+              R,
+              DTypeTag,
+              DTypeTag,
+              DTypeTag
             >
           >,
       axis: resolvedAxis,
@@ -6764,11 +6855,33 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
 /// If [out] is provided, writes the resulting covariance matrix into it.
 NDArray<R> cov<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   m, {
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >?
   y,
   bool rowvar = true,
@@ -7153,11 +7266,33 @@ NDArray<R> cov<R extends DTypeTag>(
 /// If [out] is provided, writes the resulting correlation matrix into it.
 NDArray<R> corrcoef<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   m, {
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, DTypeTag, R>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >?
   y,
   bool rowvar = true,
@@ -7315,7 +7450,18 @@ NDArray<R> corrcoef<R extends DTypeTag>(
 /// {@example /example/percentiles_example.dart lang=dart}
 NDArray<R> nansum<R extends DTypeTag>(
   NDArray<
-    DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, DTypeTag, R, DTypeTag>
+    DTypeSpec<
+      DTypeTag,
+      Object?,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >
   >
   a, {
   int? axis,

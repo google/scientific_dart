@@ -3544,7 +3544,7 @@ extension GpuArraySpecComponentExtension<
   S extends DTypeTag,
   D extends DTypeTag
 >
-    on GpuArray<DTypeSpec<R, E, F, C, M, S, D>> {
+    on GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> {
   /// Extracts the real part of each element (`Complex64 -> Float32`, `Complex128 -> Float64`).
   GpuArray<R> real({GpuArray<R>? out}) => _dispatchComplexComponent<R>(
     'real',
