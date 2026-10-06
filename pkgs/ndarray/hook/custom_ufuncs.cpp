@@ -12074,12 +12074,17 @@ float r_nanmedian_float(const float *src, int64_t size) {
     return res;
 }
 
-cpx_t r_nanmedian_complex128(const cpx_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return (cpx_t){NAN, NAN};
+void r_nanmedian_complex128(const cpx_t *src, int64_t size, cpx_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) {
+        *out = (cpx_t){NAN, NAN};
+        return;
+    }
     cpx_t *tmp_buf = (cpx_t *)malloc(size * sizeof(cpx_t));
     if (tmp_buf == nullptr) {
         ndarray_set_oom_flag();
-        return (cpx_t){NAN, NAN};
+        *out = (cpx_t){NAN, NAN};
+        return;
     }
     int64_t valid = 0;
     for (int64_t i = 0; i < size; i++) {
@@ -12090,7 +12095,8 @@ cpx_t r_nanmedian_complex128(const cpx_t *src, int64_t size) {
     }
     if (valid == 0) {
         free(tmp_buf);
-        return (cpx_t){NAN, NAN};
+        *out = (cpx_t){NAN, NAN};
+        return;
     }
     std::sort(tmp_buf, tmp_buf + valid, [](const cpx_t &a, const cpx_t &b) {
         return cmp_cpx_lex_d(a, b) < 0;
@@ -12103,15 +12109,20 @@ cpx_t r_nanmedian_complex128(const cpx_t *src, int64_t size) {
         res.i = (tmp_buf[valid / 2 - 1].i + tmp_buf[valid / 2].i) / 2.0;
     }
     free(tmp_buf);
-    return res;
+    *out = res;
 }
 
-cpx_f_t r_nanmedian_complex64(const cpx_f_t *src, int64_t size) {
-    if (src == nullptr || size <= 0) return (cpx_f_t){NAN, NAN};
+void r_nanmedian_complex64(const cpx_f_t *src, int64_t size, cpx_f_t *out) {
+    if (out == nullptr) return;
+    if (src == nullptr || size <= 0) {
+        *out = (cpx_f_t){NAN, NAN};
+        return;
+    }
     cpx_f_t *tmp_buf = (cpx_f_t *)malloc(size * sizeof(cpx_f_t));
     if (tmp_buf == nullptr) {
         ndarray_set_oom_flag();
-        return (cpx_f_t){NAN, NAN};
+        *out = (cpx_f_t){NAN, NAN};
+        return;
     }
     int64_t valid = 0;
     for (int64_t i = 0; i < size; i++) {
@@ -12122,7 +12133,8 @@ cpx_f_t r_nanmedian_complex64(const cpx_f_t *src, int64_t size) {
     }
     if (valid == 0) {
         free(tmp_buf);
-        return (cpx_f_t){NAN, NAN};
+        *out = (cpx_f_t){NAN, NAN};
+        return;
     }
     std::sort(tmp_buf, tmp_buf + valid, [](const cpx_f_t &a, const cpx_f_t &b) {
         return cmp_cpx_lex_f(a, b) < 0;
@@ -12135,7 +12147,7 @@ cpx_f_t r_nanmedian_complex64(const cpx_f_t *src, int64_t size) {
         res.i = (tmp_buf[valid / 2 - 1].i + tmp_buf[valid / 2].i) / 2.0f;
     }
     free(tmp_buf);
-    return res;
+    *out = res;
 }
 
 void s_nanmedian_double(const double *src, const int64_t *stridesSrc,

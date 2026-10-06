@@ -623,6 +623,7 @@ void main() {
         ];
         final seen = <String, String>{};
         final duplicates = <String>[];
+        final structByValueViolations = <String>[];
 
         for (final file in bindingFiles) {
           if (!file.existsSync()) continue;
@@ -644,6 +645,23 @@ void main() {
               } else {
                 seen[name] = loc;
               }
+              final retType = decl.returnType?.toSource() ?? '';
+              if (retType == 'cpx_t' || retType == 'cpx_f_t') {
+                structByValueViolations.add(
+                  '$loc: `$name` returns Struct `$retType` by value (unsupported by dart2wasm FFI; use `void` with an `ffi.Pointer<$retType> out` parameter)',
+                );
+              }
+              final params =
+                  decl.functionExpression.parameters?.parameters ?? const [];
+              for (final param in params) {
+                final paramSrc = param.toSource();
+                if (RegExp(r'\bcpx_(?:f_)?t\b').hasMatch(paramSrc) &&
+                    !paramSrc.contains('Pointer<')) {
+                  structByValueViolations.add(
+                    '$loc: `$name` accepts Struct parameter `$paramSrc` by value (unsupported by dart2wasm FFI; pass via `ffi.Pointer<...>`)',
+                  );
+                }
+              }
             }
           }
         }
@@ -654,6 +672,13 @@ void main() {
           reason:
               'Duplicate external @ffi.Native declarations risk signature drift:\n'
               '${duplicates.join('\n')}',
+        );
+        expect(
+          structByValueViolations,
+          isEmpty,
+          reason:
+              '@ffi.Native functions must not pass or return Structs by value (dart2wasm WasmFfiNativeTransformer crashes on Struct-by-value):\n'
+              '${structByValueViolations.join('\n')}',
         );
       },
     );

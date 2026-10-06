@@ -33,6 +33,7 @@
 * **64-bit & LLP64 safety in C/C++:**
   - Always use `int64_t` in C/C++ headers/sources and `ffi.Int64` / `ffi.Pointer<ffi.Int64>` in Dart FFI bindings for shapes, strides, element counts, and indices (never 32-bit `int*`).
   - Never use bare `long` (which is 32-bit on Windows LLP64) or 32-bit `fseek` / `ftell`.
+* **No `Struct`-by-value in `@ffi.Native` (`dart2wasm` FFI compatibility):** Never pass or return `ffi.Struct` subclasses (such as `cpx_t` or `cpx_f_t`) by value in `@ffi.Native` declarations or C/C++ entrypoints. `dart2wasm`'s `WasmFfiNativeTransformer` only supports primitive numeric and pointer types across the Wasm FFI boundary and crashes at compile time (`Null check operator used on a null value` in `getType`) on by-value structs. Always pass structs via `ffi.Pointer<...>` (e.g., return `void` and write complex scalar results into a caller-allocated `ffi.Pointer<cpx_t> out` from `ScratchArena`).
 * **`-fno-exceptions` & OOM safety:**
   - Native hooks compile with `-fno-exceptions`. Never use `throw`, `std::vector`, `std::map`, `std::set`, `std::call_once`, `<iostream>`, or `printf`.
   - Use `new (std::nothrow)` or `NoThrowBuffer` for heap allocations, declare all exported symbols in their corresponding `.h` header with include guards, and use portable overloaded `std::` math functions (e.g. `std::sin`, not `std::sinf`).
