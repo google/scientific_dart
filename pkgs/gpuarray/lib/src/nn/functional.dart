@@ -337,7 +337,13 @@ GpuArray<T> softmax<T extends DTypeTag>(
     final expShifted = shifted.exp();
     shifted.dispose();
     final sumExp = expShifted.sum(axis: axis, keepDims: true);
-    final result = expShifted / sumExp;
+    final rawResult = expShifted / sumExp;
+    final result = rawResult.dtype == input.dtype && rawResult is GpuArray<T>
+        ? rawResult
+        : rawResult.astype<T>(input.dtype);
+    if (!identical(result, rawResult)) {
+      rawResult.dispose();
+    }
     expShifted.dispose();
     sumExp.dispose();
     return result;

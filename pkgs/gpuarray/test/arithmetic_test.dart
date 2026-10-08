@@ -356,6 +356,41 @@ void main() {
             conj(c64).toList(),
             equals([Complex(1.0, -1.0), Complex(0.0, 2.0)]),
           );
+
+          // True division on integers & booleans -> Float64; Float16/BFloat16 preserved
+          final GpuArray<Float64> intDivOp = a / b;
+          final GpuArray<Float64> intDivFn = divide(a, b);
+          expect(intDivOp.dtype, equals(DType.float64));
+          expect(intDivFn.dtype, equals(DType.float64));
+          expect((intDivOp.toList()[0] as num).toDouble(), closeTo(2.0, 1e-6));
+          expect((intDivOp.toList()[1] as num).toDouble(), closeTo(2.4, 1e-6));
+
+          final boolArr = GpuArray.fromList([true, false], [2], DType.boolean);
+          final boolDen = GpuArray.fromList([true, true], [2], DType.boolean);
+          final GpuArray<Float64> boolDiv = boolArr / boolDen;
+          expect(boolDiv.dtype, equals(DType.float64));
+          expect(boolDiv.toList(), equals([1.0, 0.0]));
+
+          // Float16 & BFloat16 division preserves dtype; angle() returns Float64
+          final f16 = GpuArray.fromList([-1.0, 1.0], [2], DType.float16);
+          final bf16 = GpuArray.fromList([-1.0, 1.0], [2], DType.bfloat16);
+          final GpuArray<Float16> f16Div = f16 / 2.0;
+          final GpuArray<BFloat16> bf16Div = bf16 / 2.0;
+          expect(f16Div.dtype, equals(DType.float16));
+          expect(bf16Div.dtype, equals(DType.bfloat16));
+          expect(f16Div.toList(), equals([-0.5, 0.5]));
+          expect(bf16Div.toList(), equals([-0.5, 0.5]));
+
+          final GpuArray<Float64> f16Angle = f16.angle(deg: true);
+          final GpuArray<Float64> bf16Angle = bf16.angle(deg: true);
+          final GpuArray<Float64> f16TopAngle = angle(f16, deg: true);
+          expect(f16Angle.dtype, equals(DType.float64));
+          expect(bf16Angle.dtype, equals(DType.float64));
+          expect(f16TopAngle.dtype, equals(DType.float64));
+          expect(f16Angle.toList()[0], closeTo(180.0, 1e-3));
+          expect(f16Angle.toList()[1], closeTo(0.0, 1e-3));
+          expect(bf16Angle.toList()[0], closeTo(180.0, 1e-3));
+          expect(bf16Angle.toList()[1], closeTo(0.0, 1e-3));
         });
       },
     );

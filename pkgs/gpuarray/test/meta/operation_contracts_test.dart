@@ -968,6 +968,31 @@ void main() {
               tol: 1e-3,
               reason: 'angle',
             );
+
+            // Integer true division & Float16/BFloat16 angle parity vs NDArray
+            final GpuArray<Float64> gIntDiv = gpuBitA / gpuBitB;
+            expect(gIntDiv.dtype, equals(DType.float64));
+            _expectMatchNDArray(
+              gIntDiv,
+              ndBitA / ndBitB,
+              tol: 1e-5,
+              reason: 'int32 true divide /',
+            );
+
+            final ndF16 = nd.NDArray<Float16>.fromList(
+              [-2.0, 3.0],
+              [2],
+              nd.DType.float16,
+            );
+            final gpuF16 = GpuArray<Float16>.fromNDArray(ndF16, device: device);
+            final GpuArray<Float64> gF16Angle = gpuF16.angle();
+            expect(gF16Angle.dtype, equals(DType.float64));
+            _expectMatchNDArray(
+              gF16Angle,
+              nd.angle(ndF16),
+              tol: 1e-3,
+              reason: 'float16 angle',
+            );
           });
         });
       },

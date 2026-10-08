@@ -375,9 +375,24 @@ final class LayerNorm extends Module {
     final centered = input - mean;
     final variance = (centered * centered).mean(axis: -1, keepDims: true);
     final stdInv = (variance + eps).sqrt();
-    final normalized = centered / stdInv;
+    final normalized = _preserveLayerDType(input, centered / stdInv);
     return normalized * weight + bias;
   }
+}
+
+GpuArray<T> _preserveLayerDType<T extends DTypeTag>(
+  GpuArray<T> reference,
+  GpuArray<DTypeTag> res,
+) {
+  if (res.dtype == reference.dtype && res is GpuArray<T>) return res;
+  final casted = res.astype<T>(reference.dtype);
+  if (res.requiresGrad) {
+    casted.requiresGrad = true;
+    casted.gradFn = res.gradFn;
+    res.gradFn = null;
+  }
+  res.dispose();
+  return casted;
 }
 
 /// Applies Root Mean Square Layer Normalization (RMSNorm) over a mini-batch of inputs:
@@ -434,7 +449,7 @@ final class RMSNorm extends Module {
     final xSquared = input * input;
     final meanSquared = xSquared.mean(axis: -1, keepDims: true);
     final rms = (meanSquared + eps).sqrt();
-    final normalized = input / rms;
+    final normalized = _preserveLayerDType(input, input / rms);
     return normalized * weight;
   }
 }

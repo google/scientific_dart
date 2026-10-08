@@ -92,12 +92,12 @@ GpuArray<T> batchNorm1d<T extends DTypeTag>(
       });
     }
 
-    normalizedFlat = centered / (batchVar + eps).sqrt();
+    normalizedFlat = _preserveDType(input, centered / (batchVar + eps).sqrt());
   } else {
     final meanView = runningMean.reshape([1, numFeatures]);
     final varView = runningVar.reshape([1, numFeatures]);
     final stdView = (varView + eps).sqrt();
-    normalizedFlat = (flatInput - meanView) / stdView;
+    normalizedFlat = _preserveDType(input, (flatInput - meanView) / stdView);
   }
 
   var transformed = normalizedFlat;
@@ -115,6 +115,21 @@ GpuArray<T> batchNorm1d<T extends DTypeTag>(
           1,
         ])
       : transformed;
+}
+
+GpuArray<T> _preserveDType<T extends DTypeTag>(
+  GpuArray<T> reference,
+  GpuArray<DTypeTag> res,
+) {
+  if (res.dtype == reference.dtype && res is GpuArray<T>) return res;
+  final casted = res.astype<T>(reference.dtype);
+  if (res.requiresGrad) {
+    casted.requiresGrad = true;
+    casted.gradFn = res.gradFn;
+    res.gradFn = null;
+  }
+  res.dispose();
+  return casted;
 }
 
 /// Computes Scaled Dot-Product Attention (SDPA):

@@ -1008,10 +1008,6 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<T> operator *(Object? other) =>
       _asT(_dispatchBinary(BinaryOp.multiply, other));
 
-  /// Elementwise division (`this / other`). Supports broadcasting and scalars.
-  GpuArray<T> operator /(Object? other) =>
-      _asT(_dispatchBinary(BinaryOp.divide, other));
-
   /// Elementwise modulo/remainder (`this % other`). Supports broadcasting and scalars.
   GpuArray<T> operator %(Object? other) =>
       _asT(_dispatchBinary(BinaryOp.remainder, other));
@@ -1049,6 +1045,22 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<T> _asT(GpuArray<DTypeTag> res) {
     if (res is GpuArray<T>) return res;
     final casted = res.astype<T>(dtype);
+    if (res.requiresGrad) {
+      casted.requiresGrad = true;
+      casted.gradFn = res.gradFn;
+      res.gradFn = null;
+    }
+    res.dispose();
+    return casted;
+  }
+
+  DType<DTypeTag> get _divideDType =>
+      (dtype.isInteger || dtype == DType.boolean) ? DType.float64 : dtype;
+
+  GpuArray<M> _asDivide<M extends DTypeTag>(GpuArray<DTypeTag> res) {
+    final targetDType = _divideDType;
+    if (res.dtype == targetDType && res is GpuArray<M>) return res;
+    final casted = res.astype<M>(targetDType as DType<M>);
     if (res.requiresGrad) {
       casted.requiresGrad = true;
       casted.gradFn = res.gradFn;
@@ -1773,7 +1785,12 @@ final class GpuArray<T extends DTypeTag>
         );
       }
       final outShape = broadcastShapes(shape, other.shape);
-      final outDtype = _promotedDType(dtype, other.dtype);
+      final promoted = _promotedDType(dtype, other.dtype);
+      final outDtype =
+          (op == BinaryOp.divide &&
+              (promoted.isInteger || promoted == DType.boolean))
+          ? DType.float64
+          : promoted;
       final dst = _prepareOut(op.name, outShape, outDtype, out);
 
       GpuKernels.executeBinaryOp(
@@ -2312,6 +2329,11 @@ final class GpuArray<T extends DTypeTag>
     _ => DType.float64,
   };
 
+  DType<DTypeTag> get _realFloatDType => switch (dtype) {
+    DType.float32 || DType.complex64 => DType.float32,
+    _ => DType.float64,
+  };
+
   /// Migrates this tensor's backing GPU buffer to [targetDevice] in place.
   void moveToDevice(GpuDevice targetDevice) {
     _checkNotDisposed();
@@ -2399,6 +2421,35 @@ final class GpuArray<T extends DTypeTag>
   }
 }
 
+/// True division operator (`/`) and [divide] method for [GpuArray]s whose
+/// dtype tag implements [DivideOf].
+///
+/// Integer and [Boolean] tensors divide to [Float64]; floating-point (including
+/// [Float16] and [BFloat16]) and complex tensors divide to their own dtype,
+/// matching NumPy's `true_divide`.
+extension GpuArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
+    on GpuArray<T> {
+  /// Elementwise true division (`this / other`). Supports broadcasting and scalars.
+  GpuArray<M> operator /(Object? other) =>
+      _asDivide<M>(_dispatchBinary(BinaryOp.divide, other));
+
+  /// Elementwise true division with another [GpuArray] or scalar.
+  GpuArray<M> divide(Object? other, {GpuArray<M>? out}) =>
+      _asDivide<M>(_dispatchBinary(BinaryOp.divide, other, out: out));
+}
+
+/// Fallback true division operator (`/`) and [divide] method when the receiver
+/// is typed as `GpuArray<DTypeTag>`.
+extension GpuArrayBaseDivide on GpuArray<DTypeTag> {
+  /// Elementwise true division (`this / other`). Supports broadcasting and scalars.
+  GpuArray<DTypeTag> operator /(Object? other) =>
+      _asDivide<DTypeTag>(_dispatchBinary(BinaryOp.divide, other));
+
+  /// Elementwise true division with another [GpuArray] or scalar.
+  GpuArray<DTypeTag> divide(Object? other, {GpuArray<DTypeTag>? out}) =>
+      _asDivide<DTypeTag>(_dispatchBinary(BinaryOp.divide, other, out: out));
+}
+
 /// Elementwise binary arithmetic, unary math, reduction, linear algebra, and manipulation methods on [GpuArray<T>].
 extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
   /// Elementwise addition with another [GpuArray] or scalar.
@@ -2412,10 +2463,6 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
   /// Elementwise multiplication with another [GpuArray] or scalar.
   GpuArray<T> multiply(Object? other, {GpuArray<T>? out}) =>
       _asT(_dispatchBinary(BinaryOp.multiply, other, out: out));
-
-  /// Elementwise division with another [GpuArray] or scalar.
-  GpuArray<T> divide(Object? other, {GpuArray<T>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.divide, other, out: out));
 
   /// Elementwise floor division with another [GpuArray] or scalar.
   GpuArray<T> floorDivide(Object? other, {GpuArray<T>? out}) =>
@@ -3617,7 +3664,7 @@ extension GpuArraySpecComponentExtension<
   GpuArray<F> angle({bool deg = false, GpuArray<F>? out}) =>
       _dispatchComplexComponent<F>(
         'angle',
-        _floatComputationDType as DType<F>,
+        _realFloatDType as DType<F>,
         scale: deg ? (180.0 / math.pi) : 1.0,
         out: out,
       );
@@ -3637,7 +3684,7 @@ extension GpuArrayDefaultComponentExtension on GpuArray<DTypeTag> {
   GpuArray<DTypeTag> angle({bool deg = false, GpuArray<DTypeTag>? out}) =>
       _dispatchComplexComponent(
         'angle',
-        _floatComputationDType,
+        _realFloatDType,
         scale: deg ? (180.0 / math.pi) : 1.0,
         out: out,
       );
@@ -3666,11 +3713,11 @@ GpuArray<T> multiply<T extends DTypeTag>(
   GpuArray<T>? out,
 }) => a.multiply(b, out: out);
 
-/// Elementwise division of [a] by [b].
-GpuArray<T> divide<T extends DTypeTag>(
-  GpuArray<T> a,
+/// Elementwise true division of [a] by [b].
+GpuArray<R> divide<R extends DTypeTag>(
+  GpuArray<DivideOf<R>> a,
   Object? b, {
-  GpuArray<T>? out,
+  GpuArray<R>? out,
 }) => a.divide(b, out: out);
 
 /// Elementwise floor division of [a] by [b].
@@ -4039,13 +4086,25 @@ bool allclose(
   bool equalNan = false,
 }) => a.allclose(b, rtol: rtol, atol: atol, equalNan: equalNan);
 
-/// Extracts the real part of [a].
-GpuArray<DTypeTag> real(GpuArray<DTypeTag> a, {GpuArray<DTypeTag>? out}) =>
-    a._dispatchComplexComponent('real', a._realComponentDType, out: out);
+/// Extracts the real part of [a] (`Complex64 -> Float32`, `Complex128 -> Float64`).
+GpuArray<R> real<R extends DTypeTag>(
+  GpuArray<RealOf<R>> a, {
+  GpuArray<R>? out,
+}) => a._dispatchComplexComponent<R>(
+  'real',
+  a._realComponentDType as DType<R>,
+  out: out,
+);
 
-/// Extracts the imaginary part of [a].
-GpuArray<DTypeTag> imag(GpuArray<DTypeTag> a, {GpuArray<DTypeTag>? out}) =>
-    a._dispatchComplexComponent('imag', a._realComponentDType, out: out);
+/// Extracts the imaginary part of [a] (`Complex64 -> Float32`, `Complex128 -> Float64`, real -> zeros).
+GpuArray<R> imag<R extends DTypeTag>(
+  GpuArray<RealOf<R>> a, {
+  GpuArray<R>? out,
+}) => a._dispatchComplexComponent<R>(
+  'imag',
+  a._realComponentDType as DType<R>,
+  out: out,
+);
 
 /// Elementwise complex conjugate of [a].
 GpuArray<T> conj<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
@@ -4056,13 +4115,13 @@ GpuArray<T> conjugate<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
     a.conjugate(out: out);
 
 /// Computes the phase angle of each element of [a] in radians (or degrees if [deg] is `true`).
-GpuArray<DTypeTag> angle(
-  GpuArray<DTypeTag> a, {
+GpuArray<R> angle<R extends DTypeTag>(
+  GpuArray<RealFloatOf<R>> a, {
   bool deg = false,
-  GpuArray<DTypeTag>? out,
-}) => a._dispatchComplexComponent(
+  GpuArray<R>? out,
+}) => a._dispatchComplexComponent<R>(
   'angle',
-  a._floatComputationDType,
+  a._realFloatDType as DType<R>,
   scale: deg ? (180.0 / math.pi) : 1.0,
   out: out,
 );

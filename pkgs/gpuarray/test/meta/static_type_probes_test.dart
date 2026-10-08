@@ -44,8 +44,11 @@ Type staticTypeOf<T>(T Function() f) => T;
 Type typeOf<T>() => T;
 
 late final GpuArray<Float32> _g32;
+late final GpuArray<Float16> _gf16;
+late final GpuArray<BFloat16> _gbf16;
 late final GpuArray<Int64> _gi64;
 late final GpuArray<Int32> _gi32;
+late final GpuArray<Boolean> _gb;
 late final GpuArray<Complex64> _gc64;
 late final GpuArray<AnySpec> _ganySpec;
 
@@ -56,8 +59,11 @@ import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/linalg.dart' as glinalg;
 
 late final GpuArray<Float32> g32;
+late final GpuArray<Float16> gf16;
+late final GpuArray<BFloat16> gbf16;
 late final GpuArray<Int64> gi64;
 late final GpuArray<Int32> gi32;
+late final GpuArray<Boolean> gb;
 late final GpuArray<Complex64> gc64;
 late final GpuArray<AnySpec> ganySpec;
 
@@ -83,7 +89,11 @@ final t_abs_m_f32 = g32.abs();
 // expect: GpuArray<Float32>
 final t_real_m_f32 = g32.real();
 // expect: GpuArray<Float32>
+final t_real_fn_f32 = real(g32);
+// expect: GpuArray<Float32>
 final t_angle_m_f32 = g32.angle();
+// expect: GpuArray<Float32>
+final t_angle_fn_f32 = angle(g32);
 // expect: GpuArray<Float32>
 final t_mean_m_f32 = g32.mean();
 // expect: GpuArray<Complex64>
@@ -93,13 +103,31 @@ final t_rfft_fn_f32 = gfft.rfft(g32);
 // expect: GpuArray<Float32>
 final t_irfft_fn_f32 = gfft.irfft(g32);
 
-// --- GpuArray<Int32> (R5: no true-divide promotion on GPU)
-// expect: GpuArray<Int32>
+// --- GpuArray<Float16> & GpuArray<BFloat16>
+// expect: GpuArray<Float16>
+final t_divide_fn_f16 = divide(gf16, gf16);
+// expect: GpuArray<Float16>
+final t_divide_m_f16 = gf16.divide(gf16);
+// expect: GpuArray<Float16>
+final t_divide_op_f16 = gf16 / gf16;
+// expect: GpuArray<BFloat16>
+final t_divide_op_bf16 = gbf16 / gbf16;
+// expect: GpuArray<Float64>
+final t_angle_m_f16 = gf16.angle();
+// expect: GpuArray<Float64>
+final t_angle_fn_f16 = angle(gf16);
+// expect: GpuArray<Float64>
+final t_angle_m_bf16 = gbf16.angle();
+
+// --- GpuArray<Int32> & GpuArray<Boolean> (NumPy true-divide -> Float64)
+// expect: GpuArray<Float64>
 final t_divide_fn_i32 = divide(gi32, gi32);
-// expect: GpuArray<Int32>
+// expect: GpuArray<Float64>
 final t_divide_m_i32 = gi32.divide(gi32);
-// expect: GpuArray<Int32>
+// expect: GpuArray<Float64>
 final t_divide_op_i32 = gi32 / gi32;
+// expect: GpuArray<Float64>
+final t_divide_op_bool = gb / gb;
 // expect: GpuArray<Int32>
 final t_sin_fn_i32 = sin(gi32);
 // expect: GpuArray<Int32>
@@ -141,7 +169,13 @@ final t_abs_fn_c64 = abs(gc64);
 // expect: GpuArray<Float32>
 final t_real_m_c64 = gc64.real();
 // expect: GpuArray<Float32>
+final t_real_fn_c64 = real(gc64);
+// expect: GpuArray<Float32>
+final t_imag_fn_c64 = imag(gc64);
+// expect: GpuArray<Float32>
 final t_angle_m_c64 = gc64.angle();
+// expect: GpuArray<Float32>
+final t_angle_fn_c64 = angle(gc64);
 // expect: GpuArray<Complex64>
 final t_mean_m_c64 = gc64.mean();
 // expect: GpuArray<Complex64>
@@ -152,11 +186,11 @@ final t_rfft_fn_c64 = gfft.rfft(gc64);
 final t_irfft_fn_c64 = gfft.irfft(gc64);
 
 // --- GpuArray<AnySpec>
-// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+// expect: GpuArray<DTypeTag>
 final t_divide_fn_anyspec = divide(ganySpec, ganySpec);
-// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+// expect: GpuArray<DTypeTag>
 final t_divide_m_anyspec = ganySpec.divide(ganySpec);
-// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+// expect: GpuArray<DTypeTag>
 final t_divide_op_anyspec = ganySpec / ganySpec;
 // expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
 final t_sin_fn_anyspec = sin(ganySpec);
@@ -190,6 +224,8 @@ final t_slogdet_f32 = glinalg.slogdet(g32);
 final t_fft_lub_int = gfft.fft([gi64, gi32].first);
 // expect: GpuArray<Float64>
 final t_inv_lub_int = glinalg.inv([gi64, gi32].first);
+// expect: GpuArray<Float64>
+final t_div_lub_int = [gi64, gi32].first / [gi64, gi32].first;
 ''';
 
 const String _negativeOverlaySource = '''
@@ -199,6 +235,10 @@ import 'package:gpuarray/gpuarray.dart';
 
 late final GpuArray<DTypeTag> gdyn;
 
+final t_neg_divide_dyn = divide(gdyn, gdyn); // error: argument_type_not_assignable
+final t_neg_real_dyn = real(gdyn); // error: argument_type_not_assignable
+final t_neg_imag_dyn = imag(gdyn); // error: argument_type_not_assignable
+final t_neg_angle_dyn = angle(gdyn); // error: argument_type_not_assignable
 final t_neg_fft_dyn = gfft.fft(gdyn); // error: argument_type_not_assignable
 final t_neg_rfft_dyn = gfft.rfft(gdyn); // error: argument_type_not_assignable
 final t_neg_irfft_dyn = gfft.irfft(gdyn); // error: argument_type_not_assignable
@@ -321,18 +361,40 @@ void main() {
           equals(typeOf<GpuArray<Float32>>()),
         );
 
-        // Int32 (R5: divide stays GpuArray<Int32>)
+        // Float16 & BFloat16
+        expect(
+          staticTypeOf(() => _gf16 / _gf16),
+          equals(typeOf<GpuArray<Float16>>()),
+        );
+        expect(
+          staticTypeOf(() => _gbf16 / _gbf16),
+          equals(typeOf<GpuArray<BFloat16>>()),
+        );
+        expect(
+          staticTypeOf(() => _gf16.angle()),
+          equals(typeOf<GpuArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => _gbf16.angle()),
+          equals(typeOf<GpuArray<Float64>>()),
+        );
+
+        // Int32 & Boolean (NumPy true-divide -> GpuArray<Float64>)
         expect(
           staticTypeOf(() => divide(_gi32, _gi32)),
-          equals(typeOf<GpuArray<Int32>>()),
+          equals(typeOf<GpuArray<Float64>>()),
         );
         expect(
           staticTypeOf(() => _gi32.divide(_gi32)),
-          equals(typeOf<GpuArray<Int32>>()),
+          equals(typeOf<GpuArray<Float64>>()),
         );
         expect(
           staticTypeOf(() => _gi32 / _gi32),
-          equals(typeOf<GpuArray<Int32>>()),
+          equals(typeOf<GpuArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => _gb / _gb),
+          equals(typeOf<GpuArray<Float64>>()),
         );
         expect(
           staticTypeOf(() => sin(_gi32)),
@@ -424,15 +486,15 @@ void main() {
         // AnySpec
         expect(
           staticTypeOf(() => divide(_ganySpec, _ganySpec)),
-          equals(typeOf<GpuArray<AnySpec>>()),
+          equals(typeOf<GpuArray<DTypeTag>>()),
         );
         expect(
           staticTypeOf(() => _ganySpec.divide(_ganySpec)),
-          equals(typeOf<GpuArray<AnySpec>>()),
+          equals(typeOf<GpuArray<DTypeTag>>()),
         );
         expect(
           staticTypeOf(() => _ganySpec / _ganySpec),
-          equals(typeOf<GpuArray<AnySpec>>()),
+          equals(typeOf<GpuArray<DTypeTag>>()),
         );
         expect(
           staticTypeOf(() => sin(_ganySpec)),

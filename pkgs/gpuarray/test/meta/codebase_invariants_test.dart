@@ -448,15 +448,18 @@ void main() {
         expect(violations, isEmpty, reason: violations.join('\n'));
         expect(
           verifiedProjectingFunctions.length,
-          equals(30),
+          equals(34),
           reason:
-              'Expected Rule 2 semantic check to verify all 30 single-slot projecting functions in gpuarray.',
+              'Expected Rule 2 semantic check to verify all 34 single-slot projecting functions in gpuarray.',
         );
         expect(
           verifiedProjectingExtensions,
-          contains('GpuArraySpecComponentExtension'),
+          containsAll(<String>{
+            'GpuArrayDivide',
+            'GpuArraySpecComponentExtension',
+          }),
           reason:
-              'Expected Rule 2 semantic check to verify GpuArraySpecComponentExtension in gpuarray.',
+              'Expected Rule 2 semantic check to verify GpuArrayDivide and GpuArraySpecComponentExtension in gpuarray.',
         );
       },
     );
