@@ -5780,6 +5780,17 @@ NDArray<T> round<T extends DTypeTag>(
   }
 }
 
+// Design note: same-dtype binary functions intentionally declare a single type
+// parameter `<T extends DTypeTag>(NDArray<T> a, NDArray<T> b)` rather than a
+// dependent bound `<T extends DTypeTag, S extends T>(NDArray<T> a, NDArray<S> b)`.
+// Although `S extends T` would reject mixed concrete tags (`add(f64, f32)`) in
+// standard `dart analyze` by preventing LUB widening of `T`, it breaks single
+// explicit type-argument calls (`add<Float64>(a, b)`), introduces left-right
+// asymmetry with `NDArray<DTypeTag>` (`add(dyn, f64)` vs `add(f64, dyn)`), and
+// cannot apply to operators (`+`, `-`, `*`, `/`). Mixed-dtype diagnostics on
+// both functions and operators are instead enforced uniformly by
+// `package:scientific_dart_analysis_plugin`.
+
 /// Element-wise addition of two arrays.
 ///
 /// Both [a] and [b] must have the same [DType]. For [DType.boolean], computes
