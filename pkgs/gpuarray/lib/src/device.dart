@@ -19,7 +19,8 @@ import 'package:resource_scope/resource_scope.dart';
 
 import 'backend/backend.dart';
 import 'backend/memory_pool.dart';
-import 'backend/webgpu_backend.dart' show createDefaultGpuBackend;
+import 'backend/webgpu_backend.dart'
+    show createDefaultGpuBackend, createWebGpuDevice;
 import 'backend/wgsl/jit_compiler.dart';
 import 'buffer.dart';
 import 'exceptions.dart';
@@ -127,6 +128,35 @@ final class GpuDevice implements ScopedResource {
       throw GpuDeviceDisposedException(device.name);
     }
     _defaultDevice = device;
+  }
+
+  /// Ensures that [defaultDevice] is initialized with an active hardware
+  /// compute backend, awaiting asynchronous WebGPU adapter and device
+  /// acquisition when running in a browser environment.
+  static Future<GpuDevice> ensureDefaultInitialized() async {
+    final current = _defaultDevice;
+    if (current != null &&
+        !current.isDisposed &&
+        current.backend.isInitialized) {
+      return current;
+    }
+    final initialized = await ResourceScope.unmanaged(
+      () => createWebGpuDevice(
+        name: 'Default GPU Device',
+        enableMemoryPool: false,
+      ),
+    );
+    initialized.detachFromScope();
+    _defaultDevice = initialized;
+    return initialized;
+  }
+
+  /// Synchronizes all queued operations on the active [defaultDevice], if any.
+  static Future<void> synchronizeDefault() async {
+    final current = _defaultDevice;
+    if (current != null && !current.isDisposed) {
+      await current.synchronize();
+    }
   }
 
   void _checkNotDisposed() {
@@ -249,6 +279,7 @@ final class GpuDevice implements ScopedResource {
   /// It is an error if this device has been disposed.
   Future<void> synchronize() async {
     _checkNotDisposed();
+    await backend.synchronize();
   }
 
   /// Disposes all active buffers, purges the memory pool, and shuts down the backend.

@@ -1640,9 +1640,46 @@ final class GpuArray<T extends DTypeTag>
 
   // --- Conversions & Host Interop ---
 
+  int _stridedElementOffset(int flatIndex) {
+    if (shape.isEmpty) return offsetElements;
+    var remainder = flatIndex;
+    var elementOffset = offsetElements;
+    for (var dimension = shape.length - 1; dimension >= 0; dimension--) {
+      final dimensionSize = shape[dimension];
+      final coordinate = dimensionSize > 0 ? remainder % dimensionSize : 0;
+      remainder = dimensionSize > 0 ? remainder ~/ dimensionSize : 0;
+      elementOffset += coordinate * strides[dimension];
+    }
+    return elementOffset;
+  }
+
+  /// Synchronizes this tensor's [device] and downloads the tensor into host
+  /// memory as a standard [nd.NDArray].
+  Future<nd.NDArray<T>> toNDArrayAsync() async {
+    _checkNotDisposed();
+    await device.synchronize();
+    return toNDArray();
+  }
+
   /// Downloads this GPU tensor into host memory as a standard [nd.NDArray].
   nd.NDArray<T> toNDArray() {
     _checkNotDisposed();
+    if (!isContiguous && !device.backend.usesNativeFinalizer) {
+      final ndarray = nd.NDArray<T>.create(shape, dtype);
+      final total = size;
+      if (total == 0) return ndarray;
+      using((arena) {
+        final fullBytes = buffer.sizeInBytes;
+        final staging = arena<ffi.Uint8>(fullBytes);
+        buffer.copyToHost(staging.cast<ffi.Void>(), fullBytes);
+        final outPointer = ndarray.pointer.cast<ffi.Uint8>();
+        for (var i = 0; i < total; i++) {
+          final raw = readPointerAny(staging, dtype, _stridedElementOffset(i));
+          writePointerAny(outPointer, dtype, i, raw);
+        }
+      });
+      return ndarray;
+    }
     final contiguousArray = isContiguous ? this : copy();
     final ndarray = nd.NDArray<T>.create(shape, dtype);
 
@@ -1665,6 +1702,22 @@ final class GpuArray<T extends DTypeTag>
     final total = size;
     final result = <dynamic>[];
     if (total == 0) return result;
+    if (!isContiguous && !device.backend.usesNativeFinalizer) {
+      return using((arena) {
+        final fullBytes = buffer.sizeInBytes;
+        final staging = arena<ffi.Uint8>(fullBytes);
+        buffer.copyToHost(staging.cast<ffi.Void>(), fullBytes);
+        for (var i = 0; i < total; i++) {
+          final raw = readPointerAny(staging, dtype, _stridedElementOffset(i));
+          if (dtype == DType.boolean) {
+            result.add(raw == true || (raw is num && raw != 0));
+          } else {
+            result.add(raw);
+          }
+        }
+        return result;
+      });
+    }
     final contiguousArray = isContiguous ? this : copy();
     try {
       return using((arena) {

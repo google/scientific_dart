@@ -271,6 +271,10 @@ final class GpuBuffer implements ScopedResource {
     );
   }
 
+  static const bool _isWasmRuntime = bool.fromEnvironment(
+    'dart.tool.dart2wasm',
+  );
+
   /// Writes [data] into this buffer starting at byte [offset].
   ///
   /// It is an error if this buffer has been disposed.
@@ -285,7 +289,13 @@ final class GpuBuffer implements ScopedResource {
     if (data.isEmpty) return;
     using((arena) {
       final hostStaging = arena<ffi.Uint8>(data.length);
-      hostStaging.asTypedList(data.length).setAll(0, data);
+      if (_isWasmRuntime) {
+        for (var i = 0; i < data.length; i++) {
+          hostStaging[i] = data[i];
+        }
+      } else {
+        hostStaging.asTypedList(data.length).setAll(0, data);
+      }
       _device.backend.copyHostToBuffer(
         hostStaging,
         this,
@@ -317,7 +327,13 @@ final class GpuBuffer implements ScopedResource {
         readLength,
         offset: offset,
       );
-      result.setAll(0, hostStaging.asTypedList(readLength));
+      if (_isWasmRuntime) {
+        for (var i = 0; i < readLength; i++) {
+          result[i] = hostStaging[i];
+        }
+      } else {
+        result.setAll(0, hostStaging.asTypedList(readLength));
+      }
     });
     return result;
   }
