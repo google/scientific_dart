@@ -37,14 +37,22 @@ export 'package:resource_scope/resource_scope.dart'
 
 export 'dtype.dart'
     show
+        AccumulatorOf,
         AnySpec,
         BitwiseDType,
         Bool,
         Boolean,
+        ComplexOf,
         DTypeSpec,
         DTypeTag,
+        DivideOf,
+        DoublePrecisionOf,
+        ElementOf,
+        InexactOf,
         IntegerDType,
-        NDArrayBaseElements;
+        NDArrayBaseElements,
+        RealFloatOf,
+        RealOf;
 
 /// An N-dimensional array living on a GPU device.
 ///
@@ -3586,15 +3594,11 @@ extension GpuArrayDefaultReductionExtension on GpuArray<DTypeTag> {
 
 /// Strongly-typed complex component and phase extraction methods on [GpuArray].
 extension GpuArraySpecComponentExtension<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
+  T extends RealOf<R>,
+  R extends RealFloatOf<F>,
+  F extends DTypeTag
 >
-    on GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> {
+    on GpuArray<T> {
   /// Extracts the real part of each element (`Complex64 -> Float32`, `Complex128 -> Float64`).
   GpuArray<R> real({GpuArray<R>? out}) => _dispatchComplexComponent<R>(
     'real',

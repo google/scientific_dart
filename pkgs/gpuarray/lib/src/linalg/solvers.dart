@@ -161,16 +161,8 @@ void _requireSquare2d(GpuArray a, String functionName) {
 ///
 /// The [a] tensor must be a square 2-D matrix, and [b] must be a 1-D or 2-D
 /// array on the same [GpuDevice] with `b.shape[0] == a.shape[0]`.
-GpuArray<M> solve<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a,
+GpuArray<M> solve<M extends DTypeTag>(
+  GpuArray<InexactOf<M>> a,
   GpuArray<DTypeTag> b, {
   GpuArray<M>? out,
 }) {
@@ -255,15 +247,10 @@ GpuArray<M> solve<
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[N, N]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> inv<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {GpuArray<M>? out}) {
+GpuArray<M> inv<M extends DTypeTag>(
+  GpuArray<InexactOf<M>> a, {
+  GpuArray<M>? out,
+}) {
   _requireSquare2d(a, 'inv');
   final n = a.shape[0];
   final mathDtype = linalgMathDType(a.dtype);
@@ -323,16 +310,8 @@ GpuArray<M> inv<
 ///
 /// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
 /// shape `[N, M]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> pinv<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<M> pinv<M extends DTypeTag>(
+  GpuArray<InexactOf<M>> a, {
   double? rcond,
   GpuArray<M>? out,
 }) {
@@ -601,15 +580,10 @@ lstsq<
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> det<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {GpuArray<M>? out}) {
+GpuArray<M> det<M extends DTypeTag>(
+  GpuArray<InexactOf<M>> a, {
+  GpuArray<M>? out,
+}) {
   _requireSquare2d(a, 'det');
   final n = a.shape[0];
   final mathDtype = linalgMathDType(a.dtype);
@@ -959,16 +933,8 @@ double _vectorNormP(NormOrd? ord) {
 ///
 /// The [a] tensor must not be disposed. If [out] is provided, it must match the
 /// output shape, float dtype, and `a.device`.
-GpuArray<F> norm<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<F> norm<F extends DTypeTag>(
+  GpuArray<RealFloatOf<F>> a, {
   NormOrd? ord,
   Object? axis,
   bool keepdims = false,
@@ -1170,16 +1136,8 @@ GpuArray<F> norm<
 ///
 /// The [a] tensor must be a non-empty 2-D matrix. If [out] is provided, it must
 /// have shape `[]`, matching float dtype, and reside on `a.device`.
-GpuArray<F> cond<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<F> cond<F extends DTypeTag>(
+  GpuArray<RealFloatOf<F>> a, {
   NormOrd? p,
   NormOrd? ord,
   GpuArray<F>? out,
@@ -1242,7 +1200,7 @@ GpuArray<F> cond<
 
     _requireSquare2d(a, 'cond');
     final normA = norm(a, ord: effectiveOrd);
-    final invA = inv(a);
+    final invA = inv(a as GpuArray<InexactOf<DTypeTag>>);
     final normABuffer = single
         ? toContiguousFloat32Buffer(normA)
         : toContiguousFloat64Buffer(normA);

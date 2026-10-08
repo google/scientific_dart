@@ -16,6 +16,14 @@ import 'package:ndarray/ndarray.dart' show Boolean;
 
 export 'package:ndarray/ndarray.dart'
     show
+        AccumulatorOf,
+        ComplexOf,
+        DivideOf,
+        DoublePrecisionOf,
+        ElementOf,
+        InexactOf,
+        RealFloatOf,
+        RealOf,
         DType,
         DTypeTag,
         DTypeSpec,

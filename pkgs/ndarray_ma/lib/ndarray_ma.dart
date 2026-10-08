@@ -118,38 +118,20 @@ MaskedArray<T> maskedLessEqual<T extends DTypeTag>(
 /// If [axis] is null, returns a 0-dimensional [MaskedArray] containing the sum of all elements.
 /// Masked elements are treated as `0` during the sum.
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<R> sum<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(MaskedArray<T> a, {int? axis}) => a.sum(axis: axis);
+MaskedArray<R> sum<T extends AccumulatorOf<R>, R extends DTypeTag>(
+  MaskedArray<T> a, {
+  int? axis,
+}) => a.sum(axis: axis);
 
 /// Returns the product of [a] elements along the given [axis], ignoring masked elements.
 ///
 /// If [axis] is null, returns a 0-dimensional [MaskedArray] containing the product of all elements.
 /// Masked elements are treated as `1` during the product.
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<R> prod<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(MaskedArray<T> a, {int? axis}) => a.prod(axis: axis);
+MaskedArray<R> prod<T extends AccumulatorOf<R>, R extends DTypeTag>(
+  MaskedArray<T> a, {
+  int? axis,
+}) => a.prod(axis: axis);
 
 /// Returns the minimum of [a] elements along the given [axis], ignoring masked elements.
 ///
@@ -172,19 +154,10 @@ MaskedArray<T> max<T extends DTypeTag>(MaskedArray<T> a, {int? axis}) =>
 /// Calculated as `sum(a, axis) / count(a, axis)`.
 /// Returns a new [MaskedArray] with [DType.float64] (or [DType.complex128] if input is complex).
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<D> mean<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    D,
-    DTypeTag
-  >,
-  D extends DTypeTag
->(MaskedArray<T> a, {int? axis}) => a.mean(axis: axis);
+MaskedArray<D> mean<T extends DoublePrecisionOf<D>, D extends DTypeTag>(
+  MaskedArray<T> a, {
+  int? axis,
+}) => a.mean(axis: axis);
 
 /// Returns the variance of [a] elements along the given [axis], ignoring masked elements.
 ///
@@ -232,16 +205,7 @@ MaskedArray<T> remainder<T extends DTypeTag>(MaskedArray<T> a, Object? b) =>
 /// Performs element-wise true division of [a] and [b], propagating masks.
 ///
 /// Elements where the divisor [b] is zero are automatically masked in the result.
-MaskedArray<M> divide<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    M
-  >,
-  M extends DTypeTag
->(MaskedArray<T> a, Object? b) => a.divide(b);
+MaskedArray<M> divide<T extends DivideOf<M>, M extends DTypeTag>(
+  MaskedArray<T> a,
+  Object? b,
+) => a.divide(b);

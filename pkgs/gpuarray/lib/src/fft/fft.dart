@@ -608,16 +608,8 @@ GpuArray<F> _hermitianToReal1dInternal<F extends DTypeTag>(
 ///
 /// The transform length [n] must be positive when provided.
 /// If [out] is provided, the result is written into [out] and returned.
-GpuArray<C> fft<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> fft<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -646,16 +638,8 @@ GpuArray<C> fft<
 ///
 /// The transform length [n] must be positive when provided.
 /// If [out] is provided, the result is written into [out] and returned.
-GpuArray<C> ifft<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> ifft<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -684,16 +668,8 @@ GpuArray<C> ifft<
 ///
 /// The input [a] must have a real-valued data type, and [n] must be positive when provided.
 /// Produces `(n ~/ 2) + 1` non-redundant Hermitian frequency bins along [axis].
-GpuArray<C> rfft<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> rfft<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -729,16 +705,8 @@ GpuArray<C> rfft<
 /// Computes the inverse of [rfft], reconstructing a real-valued signal of length [n] along [axis].
 ///
 /// When [n] is omitted, defaults to `2 * (a.shape[axis] - 1)`. The resulting [n] must be positive.
-GpuArray<F> irfft<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<F> irfft<F extends DTypeTag>(
+  GpuArray<RealFloatOf<F>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -764,16 +732,8 @@ GpuArray<F> irfft<
 /// producing a real-valued spectrum of length [n] along [axis].
 ///
 /// When [n] is omitted, defaults to `2 * (a.shape[axis] - 1)`. The resulting [n] must be positive.
-GpuArray<F> hfft<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<F> hfft<F extends DTypeTag>(
+  GpuArray<RealFloatOf<F>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -799,16 +759,8 @@ GpuArray<F> hfft<
 /// Hermitian-symmetric complex coefficients along [axis].
 ///
 /// The input [a] must have a real-valued data type, and [n] must be positive when provided.
-GpuArray<C> ihfft<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> ihfft<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -917,16 +869,8 @@ GpuArray<C> ihfft<
 /// Computes the N-dimensional discrete Fourier Transform over [axes] on the GPU.
 ///
 /// When [axes] is omitted, transforms all axes (or the last `s.length` axes when [s] is given).
-GpuArray<C> fftn<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> fftn<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -974,16 +918,8 @@ GpuArray<C> fftn<
 /// Computes the N-dimensional inverse discrete Fourier Transform over [axes] on the GPU.
 ///
 /// When [axes] is omitted, transforms all axes (or the last `s.length` axes when [s] is given).
-GpuArray<C> ifftn<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> ifftn<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -1031,16 +967,8 @@ GpuArray<C> ifftn<
 /// Computes the N-dimensional discrete Fourier Transform of a real-valued input [a] on the GPU.
 ///
 /// Transforms the last axis in [axes] via [rfft] and all preceding axes via [fft].
-GpuArray<C> rfftn<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> rfftn<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -1103,16 +1031,8 @@ GpuArray<C> rfftn<
 /// Computes the inverse of [rfftn], reconstructing a real-valued N-D array on the GPU.
 ///
 /// Transforms all axes in [axes] except the last via [ifft], and the last axis via [irfft].
-GpuArray<F> irfftn<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<F> irfftn<F extends DTypeTag>(
+  GpuArray<RealFloatOf<F>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -1137,7 +1057,7 @@ GpuArray<F> irfftn<
     GpuArray<DTypeTag> current = a;
     final lastAxisPosition = plan.resolvedAxes.length - 1;
     for (var i = 0; i < lastAxisPosition; i++) {
-      current = _fft1dComplexInternal<C>(
+      current = _fft1dComplexInternal<DTypeTag>(
         current,
         n: plan.lengths[i],
         axis: plan.resolvedAxes[i],
@@ -1167,16 +1087,8 @@ GpuArray<F> irfftn<
 /// Computes the 2D discrete Fourier Transform over [axes] on the GPU.
 ///
 /// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
-GpuArray<C> fft2<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> fft2<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
@@ -1196,16 +1108,8 @@ GpuArray<C> fft2<
 /// Computes the 2D inverse discrete Fourier Transform over [axes] on the GPU.
 ///
 /// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
-GpuArray<C> ifft2<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> ifft2<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
@@ -1225,16 +1129,8 @@ GpuArray<C> ifft2<
 /// Computes the 2D discrete Fourier Transform of a real-valued array [a] over [axes] on the GPU.
 ///
 /// The input [a] must be real-valued with at least 2 dimensions, and [axes] must contain 2 axes.
-GpuArray<C> rfft2<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<C> rfft2<C extends DTypeTag>(
+  GpuArray<ComplexOf<C>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
@@ -1254,16 +1150,8 @@ GpuArray<C> rfft2<
 /// Computes the inverse of [rfft2], reconstructing a 2D real-valued array over [axes] on the GPU.
 ///
 /// The input [a] must have at least 2 dimensions and [axes] must contain 2 axes.
-GpuArray<F> irfft2<
-  R extends DTypeTag,
-  E,
-  F extends DTypeTag,
-  C extends DTypeTag,
-  M extends DTypeTag,
-  S extends DTypeTag,
-  D extends DTypeTag
->(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
+GpuArray<F> irfft2<F extends DTypeTag>(
+  GpuArray<RealFloatOf<F>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,

@@ -38,8 +38,8 @@ MaskedArray<T> _maRemainder<T extends DTypeTag>(
 ) => _maBinary<T, T>(self, other, '%', (a, b) => a % b, isDivision: true);
 
 /// True division. The runtime dtype of `a / b` on an [NDArray] follows
-/// NumPy's `true_divide` rule, which is exactly the [DTypeSpec.DivideTag]
-/// mapping [M] is bound to by the callers.
+/// NumPy's `true_divide` rule, which is exactly the [DivideOf] projection
+/// that [M] is bound to by the callers.
 MaskedArray<M> _maDivide<T extends DTypeTag, M extends DTypeTag>(
   MaskedArray<T> self,
   Object? other,

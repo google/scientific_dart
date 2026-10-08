@@ -32,9 +32,10 @@ part 'ops/views.dart';
 /// Operations whose result dtype depends deterministically on [T] (such as
 /// [MaskedArrayAccumulatingReductions.sum], [MaskedArrayDoublePrecisionReductions.mean],
 /// [MaskedArrayDivide.divide], and the typed [MaskedArrayElements.scalar]
-/// accessor) are provided as extensions bounded by [DTypeSpec], so that their
-/// static return types match the runtime dtype for every concrete tag.
-/// Receivers typed as `MaskedArray<DTypeTag>` fall back to the untyped
+/// accessor) are provided as extensions bounded by the single-projection
+/// interfaces ([AccumulatorOf], [DoublePrecisionOf], [DivideOf], [ElementOf]),
+/// so that their static return types match the runtime dtype for every concrete
+/// tag. Receivers typed as `MaskedArray<DTypeTag>` fall back to the untyped
 /// `MaskedArrayBase*` extensions.
 final class MaskedArray<T extends DTypeTag> {
   /// The underlying data array containing all values (both valid and masked).
@@ -521,8 +522,8 @@ final class MaskedArray<T extends DTypeTag> {
   // Reductions
   // ==========================================
   //
-  // `sum`, `prod` (accumulator dtype) and `mean` (double-precision dtype) are
-  // provided by the DTypeSpec-projected extensions below.
+  // `sum`, `prod` ([AccumulatorOf]) and `mean` ([DoublePrecisionOf]) are
+  // provided by the projection-bounded extensions below.
 
   /// Returns the minimum of elements along the given [axis], ignoring masked elements.
   ///
@@ -580,23 +581,10 @@ final class MaskedArray<T extends DTypeTag> {
 /// Typed element access for a [MaskedArray].
 ///
 /// The element type [E] is recovered from the dtype tag [T] through its
-/// [DTypeSpec] bound, so `MaskedArray<Float64>.scalar` has static type
+/// [ElementOf] bound, so `MaskedArray<Float64>.scalar` has static type
 /// `double?` and `MaskedArray<Int32>.scalar` has static type `int?`, where
 /// `null` means the element is masked.
-extension MaskedArrayElements<
-  T extends DTypeSpec<
-    DTypeTag,
-    E,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  E
->
-    on MaskedArray<T> {
+extension MaskedArrayElements<T extends ElementOf<E>, E> on MaskedArray<T> {
   /// The single value of a 0-dimensional [MaskedArray], or `null` if masked.
   ///
   /// It is an error if the array is not 0-dimensional.
@@ -619,21 +607,9 @@ extension MaskedArrayBaseElements on MaskedArray<DTypeTag> {
 }
 
 /// True division for a [MaskedArray], inferring the concrete result tag [M]
-/// from the [DTypeSpec.DivideTag] slot of [T] (`Float64` for integer and
+/// from the [DivideOf] projection of [T] (`Float64` for integer and
 /// boolean arrays; [T] itself for floating-point and complex arrays).
-extension MaskedArrayDivide<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    M
-  >,
-  M extends DTypeTag
->
+extension MaskedArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
     on MaskedArray<T> {
   /// Element-wise true division, propagating masks and masking zero divisors.
   ///
@@ -658,21 +634,12 @@ extension MaskedArrayBaseDivide on MaskedArray<DTypeTag> {
 }
 
 /// Sum and product reductions for a [MaskedArray], inferring the concrete
-/// accumulator tag [R] from the [DTypeSpec.AccumulatorTag] slot of [T]
+/// accumulator tag [R] from the [AccumulatorOf] projection of [T]
 /// (`Int64` for boolean and signed integer arrays, `Uint64` for unsigned
 /// integer arrays, and [T] itself otherwise), matching `package:ndarray`'s
 /// `sum` and `prod`.
 extension MaskedArrayAccumulatingReductions<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag
-  >,
+  T extends AccumulatorOf<R>,
   R extends DTypeTag
 >
     on MaskedArray<T> {
@@ -690,20 +657,11 @@ extension MaskedArrayAccumulatingReductions<
 }
 
 /// Mean reduction for a [MaskedArray], inferring the concrete result tag [D]
-/// from the [DTypeSpec.DoublePrecisionTag] slot of [T] (`Complex128` for
+/// from the [DoublePrecisionOf] projection of [T] (`Complex128` for
 /// complex arrays and `Float64` otherwise), matching `package:ndarray`'s
 /// `mean`.
 extension MaskedArrayDoublePrecisionReductions<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    D,
-    DTypeTag
-  >,
+  T extends DoublePrecisionOf<D>,
   D extends DTypeTag
 >
     on MaskedArray<T> {
