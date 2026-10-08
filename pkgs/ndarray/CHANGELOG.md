@@ -6,12 +6,18 @@
   - Multi-projection linear algebra operations (`slogdet`, `svd`, `eigh`) retain full `DTypeSpec` table bounds.
   - Public call sites preserve exact static type inference (NumPy promotion rules) without requiring explicit type arguments or casts.
 
-- **Breaking — Non-Generic BitwiseDType & IntegerDType Capability Markers**:
+- **Breaking — True Division Projection (`DivideOf<R>` & `NDArrayDivide`)**:
+  - Added `DivideOf<R>` (`DivideTag` in `DTypeSpec`) so `divide(a, b)` and `a / b` (`NDArrayDivide`, with `NDArrayBaseDivide` fallback on `NDArray<DTypeTag>`) both follow NumPy's `true_divide` rule statically and at runtime: integer and `Boolean` operands divide to `Float64`, while `Float16`, `BFloat16`, `Float32`, `Float64`, `Complex64`, and `Complex128` divide to themselves (fixing `Float16` and `BFloat16` `/` previously projecting `Float32` statically while returning half-floats at runtime).
+  - Fixed `Boolean`'s `InexactOf` (`InexactTag`) projection from `Float32` to `Float64` to match runtime promotion in transcendental operations.
+
+- **Breaking — Non-Generic `BitwiseDType` & `IntegerDType` Capability Markers**:
   - Converted `BitwiseDType` and `IntegerDType` into non-generic capability markers that statically pin constant projections across integer and boolean types:
     - `BitwiseDType` pins `RealFloatOf<Float64>`, `ComplexOf<Complex128>`, `InexactOf<Float64>`, `DoublePrecisionOf<Float64>`, and `DivideOf<Float64>`.
     - `IntegerDType` extends `BitwiseDType` and additionally pins `ElementOf<int>`.
   - All eight integer tags (`Int64` through `Uint8`) implement `IntegerDType`, and `Boolean` implements `BitwiseDType`.
-  - Heterogeneous collections and least upper bounds (LUBs) such as `[i64, i32]` (`List<NDArray<IntegerDType>>`) and `[i32, b]` (`List<NDArray<BitwiseDType>>`) now preserve their pinned projections statically without requiring `.asAnySpec`. For example, `sin([i64, i32].first)` now statically infers `NDArray<Float64>`.
+  - Constrained `bitwiseAnd`, `bitwiseOr`, `bitwiseXor`, `invert`, and `NDArrayBitwise` (`&`, `|`, `^`, `~`) to `BitwiseDType`, and `leftShift`, `rightShift`, `gcd`, `lcm`, and `NDArrayShift` (`<<`, `>>`) to `IntegerDType`, rejecting floating-point and complex arrays at compile time.
+  - Added `asBitwiseDType` and `asIntegerDType` checked escape hatches on `NDArray`, and simplified `asAnySpec` to a zero-allocation cast.
+  - Heterogeneous collections and least upper bounds (LUBs) such as `[i64, i32]` (`List<NDArray<IntegerDType>>`) and `[i32, b]` (`List<NDArray<BitwiseDType>>`) now preserve their pinned projections statically without requiring `.asAnySpec` (e.g., `sin([i64, i32].first)` statically infers `NDArray<Float64>`).
 
 - **Migration Guide**:
   - **Wildcard Bounds**: Replace generic helper bounds that previously spelled 8-slot wildcards such as `T extends DTypeSpec<DTypeTag, Object?, DTypeTag, DTypeTag, R, DTypeTag, DTypeTag, DTypeTag>` with the single relevant projection interface, e.g. `T extends InexactOf<R>` (for transcendental and math operations), `T extends AccumulatorOf<R>` (for `sum`/`prod`), `T extends DivideOf<R>` (for division), `T extends ElementOf<E>` (for element extraction), `T extends RealFloatOf<R>`, `T extends ComplexOf<R>`, or `T extends DoublePrecisionOf<R>`.
