@@ -14,7 +14,7 @@
 
 name: ndarray
 description: High-performance N-dimensional arrays and numerical operations with SIMD acceleration and BLAS/LAPACK bindings.
-version: 0.2.1
+version: 0.3.0
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/ndarray
 topics:

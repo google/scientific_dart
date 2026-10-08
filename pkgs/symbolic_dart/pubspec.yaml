@@ -28,7 +28,7 @@ dependencies:
   archive: ^3.6.1
   crypto: ^3.0.7
   meta: ^1.18.2
-  ndarray: ^0.2.0
+  ndarray: ^0.3.0
   resource_scope: ^0.1.0
 
 dev_dependencies:

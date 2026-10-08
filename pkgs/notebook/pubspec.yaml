@@ -23,7 +23,7 @@ environment:
 
 dependencies:
   vm_service: ">=14.3.0 <17.0.0"
-  ndarray: ^0.2.0
+  ndarray: ^0.3.0
   symbolic_dart: ^0.0.1
   resource_scope: ^0.1.0
   path: ^1.9.1

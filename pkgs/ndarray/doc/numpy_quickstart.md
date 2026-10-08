@@ -137,22 +137,62 @@ final f32 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float32);
 final scaled = (f32 * 2) + 0.5; // static type remains NDArray<Float32>
 ```
 
-#### 4. Automatic Float Promotion for True Division (`/`) and Unary Math (`sin`, `exp`, `mean`)
-Single-operand functions and true division (`/`) that promote integer arrays to floating-point in NumPy automatically infer the promoted return type at compile time:
+#### 4. Automatic Type Promotion via Layered Single-Slot Projections (`*Of<R>`)
+Single-operand functions, reductions, and true division (`/`) that promote integer arrays or derive result types in NumPy automatically infer the correct return type at compile time without explicit type arguments.
+
+Under the hood, `package:ndarray` models type promotion through **8 single-slot projection interfaces** that every dtype tag implements:
+- `RealOf<R>`: Real-valued counterpart (e.g., `real`, `abs`).
+- `ElementOf<E>`: Dart element type for typed element access (`.scalar`, `.toList()`, `.getCell()`).
+- `RealFloatOf<R>`: Real floating-point computation dtype (e.g., `imag`, `angle`, `norm`, `irfft`).
+- `ComplexOf<R>`: Complex computation dtype (e.g., `fft`, `eig`).
+- `InexactOf<R>`: Inexact floating-point/complex math (e.g., `sin`, `exp`, `sqrt`).
+- `AccumulatorOf<R>`: Sum and product accumulation dtype (e.g., `sum`, `prod`, `cumsum`).
+- `DoublePrecisionOf<R>`: Double-precision computation dtype (e.g., `mean`, `variance`, `floatPower`).
+- `DivideOf<R>`: True-division result dtype (e.g., `divide`, `/`).
+
+Each of the 15 concrete dtype tags implements `DTypeSpec<RealTag, Element, RealFloatTag, ComplexTag, InexactTag, AccumulatorTag, DoublePrecisionTag, DivideTag>`, which acts as the unified per-dtype projection table implementing all eight interfaces. Library operations simply bound their input to the single projection they require—such as `NDArray<R> sin<T extends InexactOf<R>, R extends DTypeTag>(NDArray<T> a)`—allowing the Dart compiler to infer `R` directly from `T`. Only operations requiring two distinct projections of one input (such as `slogdet`, `svd`, and `eigh`) retain the full 8-slot `DTypeSpec` table type.
+
+Additionally, integer and boolean tags implement non-generic capability markers that pin their constant projections:
+- `BitwiseDType`: Implemented by `Boolean` and the 8 integer tags for bitwise operations (`&`, `|`, `^`, `~`), pinning `RealFloatOf<Float64>`, `ComplexOf<Complex128>`, `InexactOf<Float64>`, `DoublePrecisionOf<Float64>`, and `DivideOf<Float64>`.
+- `IntegerDType`: Implemented by integer tags (`int64`–`int8`, `uint64`–`uint8`) for shift operations (`<<`, `>>`), `gcd`, and `lcm`, additionally pinning `ElementOf<int>`.
+
+Because constant projections are pinned on the markers, generic code bounded by `T extends IntegerDType` or `T extends BitwiseDType`, as well as the least upper bound (LUB) of multiple tags (e.g., `[i64, i32]` as `List<NDArray<IntegerDType>>`, or `[i32, b]` as `List<NDArray<BitwiseDType>>`), retains those static projections.
+
+For dynamic or dtype-agnostic code, three explicit escape hatches allow bypassing compile-time constraints with runtime dtype validation:
+- `array.asAnySpec`: Views an array with the wildcard `AnySpec` tag (`DTypeSpec<DTypeTag, dynamic, DTypeTag, ...>`), accepted by every projecting operation (returning `NDArray<DTypeTag>`).
+- `array.asBitwiseDType`: Validates at runtime that the array has integer or boolean dtype, returning `NDArray<BitwiseDType>`.
+- `array.asIntegerDType`: Validates at runtime that the array has integer dtype, returning `NDArray<IntegerDType>`.
 
 ```dart
 final i32 = NDArray.fromList([1, 2, 4], [3], DType.int32);   // NDArray<Int32>
 final f32 = NDArray.fromList([1.0, 2.0], [2], DType.float32); // NDArray<Float32>
+final b   = NDArray.fromList([true, false], [2], DType.boolean); // NDArray<Boolean>
 
-// Integer arrays automatically promote to NDArray<Float64>:
-final quotI32 = i32 / i32;     // inferred static type: NDArray<Float64>
-final sinI32  = sin(i32);      // inferred static type: NDArray<Float64>
-final meanI32 = mean(i32);     // inferred static type: NDArray<Float64>
+// 1. Single-slot projections infer return dtypes automatically:
+final quotI32 = i32 / i32; // DivideOf<Float64> -> NDArray<Float64>
+final sinI32  = sin(i32);  // InexactOf<Float64> -> NDArray<Float64>
+final meanI32 = mean(i32); // DoublePrecisionOf<Float64> -> NDArray<Float64>
+final sumB    = sum(b);    // AccumulatorOf<Int64> -> NDArray<Int64>
+final listI32 = i32.toList(); // ElementOf<int> -> List<int>
 
-// Float32 arrays preserve NDArray<Float32> for element-wise ops (mean promotes to Float64):
-final quotF32 = f32 / f32;     // inferred static type: NDArray<Float32>
-final sinF32  = sin(f32);      // inferred static type: NDArray<Float32>
-final meanF32 = mean(f32);     // inferred static type: NDArray<Float64>
+// Float32 preserves Float32 for element-wise ops (mean promotes to Float64):
+final quotF32 = f32 / f32; // DivideOf<Float32> -> NDArray<Float32>
+final sinF32  = sin(f32);  // InexactOf<Float32> -> NDArray<Float32>
+final meanF32 = mean(f32); // DoublePrecisionOf<Float64> -> NDArray<Float64>
+
+// 2. Capability markers (IntegerDType, BitwiseDType) preserve pinned projections:
+final ints = [i32, NDArray.fromList([10, 20], [2], DType.int64)]; // List<NDArray<IntegerDType>>
+final sinFirst = sin(ints.first); // retains InexactOf<Float64> -> NDArray<Float64>
+final firstElements = ints.first.toList(); // retains ElementOf<int> -> List<int>
+final bitwiseAnd = i32 & i32; // NDArrayBitwise on IntegerDType -> NDArray<Int32>
+final shifted = i32 << 1;     // NDArrayShift on IntegerDType -> NDArray<Int32>
+
+// 3. Dynamic escape hatches (.asAnySpec, .asBitwiseDType, .asIntegerDType):
+final anyArr = i32.asAnySpec; // NDArray<AnySpec>
+final dynSin = sin(anyArr);   // returns NDArray<DTypeTag> with runtime validation
+
+final bitwiseArr = i32.asBitwiseDType; // NDArray<BitwiseDType>
+final intArr     = i32.asIntegerDType; // NDArray<IntegerDType>
 ```
 
 ---

@@ -28,6 +28,6 @@ dependencies:
 
 dev_dependencies:
   lints: ^6.1.0
-  ndarray: ^0.2.0
+  ndarray: ^0.3.0
   resource_scope: ^0.1.0
   test: ^1.31.1
