@@ -37,34 +37,136 @@ import 'sendable_ndarray.dart';
 import 'wasm_pointer_lists.dart';
 
 /// Root marker for all [NDArray] dtype tags.
+///
+/// The type argument of an [NDArray] is a *dtype tag*: one of the 15 concrete
+/// tags [Float64], [Float32], [Float16], [BFloat16], [Int64], [Int32],
+/// [Int16], [Int8], [Uint64], [Uint32], [Uint16], [Uint8], [Complex64],
+/// [Complex128] and [Boolean], or a supertype of them. Tags are never
+/// instantiated; they exist so that the static type of an array can carry its
+/// dtype.
+///
+/// Every concrete tag implements [DTypeSpec], the table of the dtypes that
+/// operations on that dtype produce, and through it the single-projection
+/// interfaces [RealOf], [ElementOf], [RealFloatOf], [ComplexOf], [InexactOf],
+/// [AccumulatorOf], [DoublePrecisionOf] and [DivideOf]. An operation whose
+/// result dtype is a function of its input dtype bounds the input by one of
+/// those interfaces, which is how `sin(int32Array)` is statically an
+/// `NDArray<Float64>` without explicit type arguments. Integer and boolean
+/// tags additionally implement the capability markers [IntegerDType] and
+/// [BitwiseDType].
+///
+/// `NDArray<DTypeTag>` is the dtype-agnostic array type. It accepts every
+/// array but carries no projection information, so operations that infer
+/// their result dtype from the input reject it at compile time; use
+/// [NDArray.asAnySpec] to call them with run-time dtype validation instead.
 sealed class DTypeTag {
   const DTypeTag();
 }
 
-/// Type-level specification of a concrete [DTypeTag].
+/// A dtype tag whose real-valued counterpart is [R].
 ///
-/// Each of the 15 concrete tag classes (`Float64`, `Float32`, `Int32`, …)
-/// extends [DTypeSpec] with its deterministic type-level counterparts so that
-/// operations can infer concrete return types without explicit type arguments:
-/// - [RealTag]: the real/magnitude counterpart (`Float32` for `Complex64`;
-///   `Float64` for `Complex128`; `Self` otherwise).
-/// - [Element]: the Dart element type (`double`, `int`, [Complex], `bool`).
-/// - [RealFloatTag]: the real-float computation tag (`Float32` for
-///   `Float32`/`Complex64`; `Float64` otherwise).
-/// - [ComplexTag]: the complex computation tag (`Complex64` for
-///   `Float32`/`Complex64`; `Complex128` otherwise).
-/// - [InexactTag]: the inexact/math-promoted tag (`Self` for `Float64`,
-///   `Float32`, `Complex128`, `Complex64`; `Float64` for integers, booleans,
-///   and half floats).
-/// - [AccumulatorTag]: the sum/product accumulation tag (`Int64` for `Boolean`
-///   and signed narrow integers; `Uint64` for unsigned narrow integers; `Self`
-///   otherwise).
-/// - [DoublePrecisionTag]: the double-precision promotion tag (`Complex128` for
-///   `Complex64`/`Complex128`; `Float64` otherwise).
-/// - [DivideTag]: the true-division (`/`, [divide]) result tag following
-///   NumPy's `true_divide` rule (`Float64` for integers and booleans; `Self`
-///   for every floating-point tag, including `Float16`/`BFloat16`, and for
-///   complex tags).
+/// [Complex64] projects to [Float32] and [Complex128] to [Float64]; every
+/// other tag projects to itself. Operations that return the real part or the
+/// magnitude of their input, such as `real` and `abs`, accept an [NDArray]
+/// whose tag implements `RealOf<R>` and return `NDArray<R>`.
+abstract interface class RealOf<R extends DTypeTag> implements DTypeTag {}
+
+/// A dtype tag whose Dart element type is [E].
+///
+/// Floating-point tags (including [Float16] and [BFloat16]) have `double`
+/// elements, integer tags (including [Uint64], whose values are the signed
+/// 64-bit bit patterns) have `int` elements, complex tags have [Complex]
+/// elements and [Boolean] has `bool` elements. Typed element access —
+/// [NDArrayElements.data], [NDArrayElements.scalar],
+/// [NDArrayElements.toList], the cell accessors and the `value` of an
+/// enumerated element — derives its static types from this projection.
+///
+/// [E] is deliberately unbounded: [AnySpec] instantiates it with `dynamic`,
+/// which is not a subtype of `Object`.
+abstract interface class ElementOf<E> implements DTypeTag {}
+
+/// A dtype tag whose real floating-point computation dtype is [R].
+///
+/// [Float32] and [Complex64] project to [Float32]; every other tag — the half
+/// floats, the integers and [Boolean] included — projects to [Float64].
+/// Operations that produce a real floating-point result from any input, such
+/// as `imag`, `angle`, `rint`, `trunc`, `norm`, `eigvalsh` and the inverse
+/// real FFTs (`irfft`, `hfft`), return `NDArray<R>`.
+abstract interface class RealFloatOf<R extends DTypeTag> implements DTypeTag {}
+
+/// A dtype tag whose complex computation dtype is [R].
+///
+/// [Float32] and [Complex64] project to [Complex64]; every other tag projects
+/// to [Complex128]. Operations that produce a complex result from any input,
+/// such as the complex FFTs (`fft`, `ifft`, `rfft`, `fftn`), `eig`, `eigvals`
+/// and the polynomial root finders (`roots`, `chebroots`), return
+/// `NDArray<R>`.
+abstract interface class ComplexOf<R extends DTypeTag> implements DTypeTag {}
+
+/// A dtype tag whose inexact (floating-point or complex) computation dtype is
+/// [R].
+///
+/// [Float64], [Float32], [Complex64] and [Complex128] project to themselves;
+/// the integers, [Boolean], [Float16] and [BFloat16] project to [Float64].
+/// Promoting the half floats to `float64` is a deliberate difference from
+/// NumPy, which keeps `float16`. This is the result dtype of the
+/// transcendental and other element-wise floating-point functions, such as
+/// `sin`, `exp`, `log`, `sqrt`, `atan2`, `hypot`, `erf`, `gamma`, `median`,
+/// `gradient` and `unwrap`.
+abstract interface class InexactOf<R extends DTypeTag> implements DTypeTag {}
+
+/// A dtype tag whose sum and product accumulation dtype is [R].
+///
+/// Signed integers and [Boolean] accumulate in [Int64], unsigned integers in
+/// [Uint64], and floating-point and complex tags (including [Float16] and
+/// [BFloat16]) in themselves. This is the result dtype of `sum`, `prod`,
+/// `cumsum`, `cumprod` and `nansum`.
+abstract interface class AccumulatorOf<R extends DTypeTag>
+    implements DTypeTag {}
+
+/// A dtype tag whose double-precision computation dtype is [R].
+///
+/// [Complex64] and [Complex128] project to [Complex128]; every other tag
+/// projects to [Float64]. This is the result dtype of `mean`, `nanmean`,
+/// `average`, `cov`, `corrcoef`, `floatPower`, `interp` and `interpolate`.
+abstract interface class DoublePrecisionOf<R extends DTypeTag>
+    implements DTypeTag {}
+
+/// A dtype tag whose true-division result dtype is [R].
+///
+/// Integers and [Boolean] divide to [Float64]; every floating-point tag
+/// (including [Float16] and [BFloat16]) and every complex tag divides to
+/// itself, following NumPy's `true_divide` rule. This is the result dtype of
+/// `divide` and of the `/` operator ([NDArrayDivide]).
+abstract interface class DivideOf<R extends DTypeTag> implements DTypeTag {}
+
+/// The projection table of a concrete [DTypeTag].
+///
+/// Each of the 15 concrete tag classes implements [DTypeSpec] exactly once,
+/// naming the eight dtypes that operations on that dtype produce. [DTypeSpec]
+/// in turn implements the single-projection interfaces [RealOf], [ElementOf],
+/// [RealFloatOf], [ComplexOf], [InexactOf], [AccumulatorOf],
+/// [DoublePrecisionOf] and [DivideOf], one per entry, so a tag's row
+/// automatically makes it an instance of each of them. Operations declare only
+/// the projection they need — an `NDArray<InexactOf<R>>` argument for `sin`,
+/// `NDArray<AccumulatorOf<R>>` for `sum`, a `T extends DivideOf<R>` bound for
+/// `divide` — and the compiler infers the concrete result tag `R` from the
+/// argument's dtype. Those interfaces, not the layout of this table, are the
+/// public mechanism for expressing dtype promotion in signatures.
+///
+/// The type parameters are the internal layout of a row, in the order
+/// [RealTag], [Element], [RealFloatTag], [ComplexTag], [InexactTag],
+/// [AccumulatorTag], [DoublePrecisionTag] and [DivideTag]; the meaning of each
+/// entry is documented on the corresponding interface. Apart from this
+/// declaration, [AnySpec] and the 15 tag rows, only the few functions that
+/// need two projections of one input (`svd`, `slogdet`, `eigh`) spell out a
+/// full row, leaving the entries they do not use as wildcards.
+///
+/// Integer and boolean tags also implement [IntegerDType] or [BitwiseDType],
+/// which pin the projections that are constant across those families. A row
+/// that disagrees with its marker is a compile-time error (conflicting generic
+/// interfaces), so the compiler cross-checks the table wherever a marker
+/// applies.
 abstract interface class DTypeSpec<
   RealTag extends DTypeTag,
   Element,
@@ -75,9 +177,24 @@ abstract interface class DTypeSpec<
   DoublePrecisionTag extends DTypeTag,
   DivideTag extends DTypeTag
 >
-    extends DTypeTag {}
+    extends DTypeTag
+    implements
+        RealOf<RealTag>,
+        ElementOf<Element>,
+        RealFloatOf<RealFloatTag>,
+        ComplexOf<ComplexTag>,
+        InexactOf<InexactTag>,
+        AccumulatorOf<AccumulatorTag>,
+        DoublePrecisionOf<DoublePrecisionTag>,
+        DivideOf<DivideTag> {}
 
-/// Wildcard [DTypeSpec] bound matching any [DTypeSpec] subtype.
+/// The [DTypeSpec] row that every concrete dtype tag satisfies.
+///
+/// All of its projections are [DTypeTag] and its element type is `dynamic`,
+/// so an `NDArray<AnySpec>` is accepted by every projecting operation, which
+/// then returns `NDArray<DTypeTag>` and validates the dtype at run time rather
+/// than at compile time. Obtain one with [NDArray.asAnySpec]; this is the
+/// escape hatch for dtype-generic helpers and tests that dispatch dynamically.
 typedef AnySpec =
     DTypeSpec<
       DTypeTag,
@@ -90,51 +207,60 @@ typedef AnySpec =
       DTypeTag
     >;
 
-/// Marker interface for data types that support bitwise operations (`&`, `|`, `^`, `~`).
+/// Marker interface for the dtype tags that support bitwise operations
+/// (`&`, `|`, `^`, `~`): the eight integer tags ([IntegerDType]) and
+/// [Boolean].
 ///
-/// Implemented by all integer data types ([IntegerDType]) and [Boolean].
-abstract interface class BitwiseDType<
-  RealTag extends DTypeTag,
-  Element extends Object,
-  RealFloatTag extends DTypeTag,
-  ComplexTag extends DTypeTag,
-  InexactTag extends DTypeTag,
-  AccumulatorTag extends DTypeTag,
-  DoublePrecisionTag extends DTypeTag,
-  DivideTag extends DTypeTag
->
-    extends
-        DTypeSpec<
-          RealTag,
-          Element,
-          RealFloatTag,
-          ComplexTag,
-          InexactTag,
-          AccumulatorTag,
-          DoublePrecisionTag,
-          DivideTag
-        > {}
+/// Bounding a type parameter by `BitwiseDType` admits exactly those arrays.
+/// The operators of [NDArrayBitwise] and the functions `bitwiseAnd`,
+/// `bitwiseOr`, `bitwiseXor` and `invert` are declared this way, so applying
+/// them to a floating-point or complex array is a compile-time error.
+/// [NDArray.asBitwiseDType] converts a dynamically typed array after checking
+/// its dtype at run time.
+///
+/// The marker also pins the projections that are identical for all integer
+/// and boolean dtypes: `RealFloatOf<Float64>`, `ComplexOf<Complex128>`,
+/// `InexactOf<Float64>`, `DoublePrecisionOf<Float64>` and `DivideOf<Float64>`.
+/// Code that is generic over `T extends BitwiseDType` therefore keeps those
+/// result dtypes, as does the least upper bound of an integer and a boolean
+/// array type (`[int32Array, boolArray]` is a `List<NDArray<BitwiseDType>>`),
+/// and a tag whose [DTypeSpec] row disagrees with a pinned projection fails to
+/// compile. The element type is not pinned (integers have `int` elements,
+/// [Boolean] has `bool`), so element access on an `NDArray<BitwiseDType>` is
+/// untyped.
+abstract interface class BitwiseDType
+    implements
+        DTypeTag,
+        RealFloatOf<Float64>,
+        ComplexOf<Complex128>,
+        InexactOf<Float64>,
+        DoublePrecisionOf<Float64>,
+        DivideOf<Float64> {}
 
-/// Marker interface for signed and unsigned integer data types (`int64`–`int8`, `uint64`–`uint8`).
+/// Marker interface for the signed and unsigned integer dtype tags
+/// (`int64`–`int8`, `uint64`–`uint8`).
 ///
-/// Implemented by all 8 integer dtype tags. Supports bitwise shifts (`<<`, `>>`), `gcd`, and `lcm` in addition to [BitwiseDType] operations.
-abstract interface class IntegerDType<
-  RealTag extends DTypeTag,
-  AccumulatorTag extends DTypeTag
->
-    extends
-        BitwiseDType<
-          RealTag,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          AccumulatorTag,
-          Float64,
-          Float64
-        > {}
+/// Implemented by [Int64], [Int32], [Int16], [Int8], [Uint64], [Uint32],
+/// [Uint16] and [Uint8]. In addition to the [BitwiseDType] operations, arrays
+/// with an `IntegerDType` tag support the shifts `<<` and `>>`
+/// ([NDArrayShift], `leftShift`, `rightShift`) as well as `gcd` and `lcm`.
+/// [NDArray.asIntegerDType] converts a dynamically typed array after checking
+/// its dtype at run time.
+///
+/// Besides the projections pinned by [BitwiseDType], the marker pins
+/// `ElementOf<int>`, so code that is generic over `T extends IntegerDType`
+/// keeps `int` elements, as does the least upper bound of two integer array
+/// types (`[int64Array, int32Array]` is a `List<NDArray<IntegerDType>>`). The
+/// accumulation dtype ([AccumulatorOf]: [Int64] for signed and [Uint64] for
+/// unsigned tags) and the real counterpart ([RealOf]: the tag itself) differ
+/// between integer tags and are therefore specified only by each tag's
+/// [DTypeSpec] row.
+abstract interface class IntegerDType implements BitwiseDType, ElementOf<int> {}
 
 /// Tag for the `float64` dtype. Elements are `double`.
+///
+/// Every projection of `float64` is `float64` itself, except that its complex
+/// counterpart ([ComplexOf]) is [Complex128].
 abstract final class Float64
     implements
         DTypeSpec<
@@ -149,6 +275,11 @@ abstract final class Float64
         > {}
 
 /// Tag for the `float32` dtype. Elements are `double`.
+///
+/// Single precision is preserved by inexact math ([InexactOf]), real-float
+/// results ([RealFloatOf]), accumulation ([AccumulatorOf]) and true division
+/// ([DivideOf]); the complex counterpart ([ComplexOf]) is [Complex64] and the
+/// double-precision projection ([DoublePrecisionOf]) is [Float64].
 abstract final class Float32
     implements
         DTypeSpec<
@@ -163,6 +294,11 @@ abstract final class Float32
         > {}
 
 /// Tag for the `float16` dtype. Elements are `double`.
+///
+/// Inexact math ([InexactOf]), real-float results ([RealFloatOf]) and
+/// double-precision results ([DoublePrecisionOf]) are computed in [Float64]
+/// and complex results ([ComplexOf]) in [Complex128], whereas sums and
+/// products ([AccumulatorOf]) and true division ([DivideOf]) keep `float16`.
 abstract final class Float16
     implements
         DTypeSpec<
@@ -177,6 +313,11 @@ abstract final class Float16
         > {}
 
 /// Tag for the `bfloat16` dtype. Elements are `double`.
+///
+/// Inexact math ([InexactOf]), real-float results ([RealFloatOf]) and
+/// double-precision results ([DoublePrecisionOf]) are computed in [Float64]
+/// and complex results ([ComplexOf]) in [Complex128], whereas sums and
+/// products ([AccumulatorOf]) and true division ([DivideOf]) keep `bfloat16`.
 abstract final class BFloat16
     implements
         DTypeSpec<
@@ -191,33 +332,166 @@ abstract final class BFloat16
         > {}
 
 /// Tag for the `int64` dtype. Elements are `int`.
-abstract final class Int64 implements IntegerDType<Int64, Int64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) stay
+/// `int64`; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Int64
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Int64,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Int64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `int32` dtype. Elements are `int`.
-abstract final class Int32 implements IntegerDType<Int32, Int64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) accumulate
+/// in [Int64]; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Int32
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Int32,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Int64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `int16` dtype. Elements are `int`.
-abstract final class Int16 implements IntegerDType<Int16, Int64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) accumulate
+/// in [Int64]; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Int16
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Int16,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Int64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `int8` dtype. Elements are `int`.
-abstract final class Int8 implements IntegerDType<Int8, Int64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) accumulate
+/// in [Int64]; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Int8
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Int8,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Int64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `uint64` dtype. Elements are `int`.
 ///
 /// Dart `int` is signed 64-bit; bit patterns with the MSB set represent
 /// negative values. Use [uint64Compare] for unsigned comparisons.
-abstract final class Uint64 implements IntegerDType<Uint64, Uint64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) stay
+/// `uint64`; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Uint64
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Uint64,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Uint64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `uint32` dtype. Elements are `int`.
-abstract final class Uint32 implements IntegerDType<Uint32, Uint64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) accumulate
+/// in [Uint64]; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Uint32
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Uint32,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Uint64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `uint16` dtype. Elements are `int`.
-abstract final class Uint16 implements IntegerDType<Uint16, Uint64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) accumulate
+/// in [Uint64]; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Uint16
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Uint16,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Uint64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `uint8` dtype. Elements are `int`.
-abstract final class Uint8 implements IntegerDType<Uint8, Uint64> {}
+///
+/// Implements [IntegerDType]. Sums and products ([AccumulatorOf]) accumulate
+/// in [Uint64]; the floating-point and complex projections are those shared by
+/// every integer dtype (see [BitwiseDType]).
+abstract final class Uint8
+    implements
+        IntegerDType,
+        DTypeSpec<
+          Uint8,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          Uint64,
+          Float64,
+          Float64
+        > {}
 
 /// Tag for the `complex64` dtype. Elements are [Complex].
+///
+/// The real counterpart ([RealOf]) and the real-float projection
+/// ([RealFloatOf]) are [Float32]; inexact math ([InexactOf]), accumulation
+/// ([AccumulatorOf]) and true division ([DivideOf]) keep `complex64`, and the
+/// double-precision projection ([DoublePrecisionOf]) is [Complex128].
 abstract final class Complex64
     implements
         DTypeSpec<
@@ -232,6 +506,10 @@ abstract final class Complex64
         > {}
 
 /// Tag for the `complex128` dtype. Elements are [Complex].
+///
+/// The real counterpart ([RealOf]) and the real-float projection
+/// ([RealFloatOf]) are [Float64]; every other projection is `complex128`
+/// itself.
 abstract final class Complex128
     implements
         DTypeSpec<
@@ -246,9 +524,15 @@ abstract final class Complex128
         > {}
 
 /// Tag for the `boolean` dtype. Elements are `bool`.
+///
+/// Implements [BitwiseDType] but not [IntegerDType]: booleans have no shifts
+/// and their elements are `bool`. Sums and products ([AccumulatorOf])
+/// accumulate in [Int64]; the floating-point and complex projections are those
+/// shared with the integer dtypes (see [BitwiseDType]).
 abstract final class Boolean
     implements
-        BitwiseDType<
+        BitwiseDType,
+        DTypeSpec<
           Boolean,
           bool,
           Float64,
