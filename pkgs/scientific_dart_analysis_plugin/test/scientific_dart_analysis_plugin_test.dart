@@ -20,12 +20,14 @@ import 'package:analysis_server_plugin/src/correction/fix_generators.dart';
 import 'package:analyzer/analysis_rule/analysis_rule.dart';
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
+import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/diagnostic/diagnostic.dart';
 import 'package:analyzer/error/error.dart';
 import 'package:analyzer/src/lint/config.dart';
 import 'package:analyzer_plugin/protocol/protocol_common.dart' show SourceEdit;
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:scientific_dart_analysis_plugin/scientific_dart_analysis_plugin.dart';
+import 'package:scientific_dart_analysis_plugin/src/dtype_utils.dart';
 import 'package:test/test.dart';
 
 Directory _findWorkspaceRoot() {
@@ -96,10 +98,7 @@ void main() {
   });
 
   var counter = 0;
-  Future<List<Diagnostic>> analyzeCode(
-    String source, {
-    List<AnalysisRule>? rules,
-  }) async {
+  Future<ResolvedUnitResult> resolveUnit(String source) async {
     final file = File('${scratchDir.path}/case_${counter++}.dart');
     file.writeAsStringSync(source);
     final context = collection.contextFor(file.path);
@@ -117,6 +116,14 @@ void main() {
       isEmpty,
       reason: 'Fixture had compile errors:\n${compileErrors.join('\n')}',
     );
+    return result;
+  }
+
+  Future<List<Diagnostic>> analyzeCode(
+    String source, {
+    List<AnalysisRule>? rules,
+  }) async {
+    final result = await resolveUnit(source);
     return runScientificDartLintsOnUnit(result, rules: rules);
   }
 
@@ -1189,6 +1196,233 @@ NDArray<DTypeTag> f(NDArray<Int64> a, NDArray<Int32> b) => add(a, b);
         CastOperandWithAstypeFix.new,
       );
       expect(fixedMismatchFn, contains('add(a, b.astype(DType.int64))'));
+    });
+
+    test('resolves DType projections through *Of<R> interfaces via asInstanceOf '
+        'across concrete tags and non-generic markers', () async {
+      final unit = await resolveUnit('''
+import 'package:ndarray/ndarray.dart';
+
+void probeTypes<TInt extends IntegerDType>(
+  NDArray<Int32> i32,
+  NDArray<Complex64> c64,
+  NDArray<Uint8> u8,
+  NDArray<Float16> f16,
+  NDArray<Boolean> b,
+  NDArray<IntegerDType> intMarker,
+  NDArray<BitwiseDType> bitwiseMarker,
+  NDArray<TInt> boundedInt,
+  NDArray<AnySpec> anySpec,
+  NDArray<DTypeTag> bareTag,
+) {}
+''');
+      final fn = unit.libraryElement.topLevelFunctions.singleWhere(
+        (f) => f.name == 'probeTypes',
+      );
+      final params = {for (final p in fn.formalParameters) p.name!: p.type};
+
+      String? projDisplay(DartType? type, String projection) =>
+          projectDTypeTag(type, projection)?.getDisplayString();
+
+      // 1. Concrete tags across all eight *Of<R> interfaces:
+      expect(projDisplay(params['i32'], 'RealOf'), 'Int32');
+      expect(projDisplay(params['i32'], 'ElementOf'), 'int');
+      expect(projDisplay(params['i32'], 'RealFloatOf'), 'Float64');
+      expect(projDisplay(params['i32'], 'ComplexOf'), 'Complex128');
+      expect(projDisplay(params['i32'], 'InexactOf'), 'Float64');
+      expect(projDisplay(params['i32'], 'AccumulatorOf'), 'Int64');
+      expect(projDisplay(params['i32'], 'DoublePrecisionOf'), 'Float64');
+      expect(projDisplay(params['i32'], 'DivideOf'), 'Float64');
+      expect(
+        resolveDTypeProjection(
+          ndarrayDTypeArgument(params['i32']),
+          'InexactOf',
+        )?.getDisplayString(),
+        'Float64',
+      );
+      expect(
+        projectedConcreteDTypeTagOf(params['i32'], 'InexactOf'),
+        'Float64',
+      );
+      expect(projectedConcreteDTypeTagOf(params['i32'], 'ElementOf'), isNull);
+
+      expect(projDisplay(params['c64'], 'RealOf'), 'Float32');
+      expect(projDisplay(params['c64'], 'ElementOf'), 'Complex');
+      expect(projDisplay(params['c64'], 'RealFloatOf'), 'Float32');
+      expect(projDisplay(params['c64'], 'ComplexOf'), 'Complex64');
+      expect(projDisplay(params['c64'], 'InexactOf'), 'Complex64');
+      expect(projDisplay(params['c64'], 'AccumulatorOf'), 'Complex64');
+      expect(projDisplay(params['c64'], 'DoublePrecisionOf'), 'Complex128');
+      expect(projDisplay(params['c64'], 'DivideOf'), 'Complex64');
+
+      expect(projDisplay(params['u8'], 'AccumulatorOf'), 'Uint64');
+      expect(projDisplay(params['u8'], 'InexactOf'), 'Float64');
+      expect(projDisplay(params['u8'], 'DivideOf'), 'Float64');
+      expect(projDisplay(params['u8'], 'ElementOf'), 'int');
+
+      expect(projDisplay(params['f16'], 'DivideOf'), 'Float16');
+      expect(projDisplay(params['f16'], 'AccumulatorOf'), 'Float16');
+      expect(projDisplay(params['f16'], 'InexactOf'), 'Float64');
+      expect(projDisplay(params['f16'], 'RealFloatOf'), 'Float64');
+      expect(projDisplay(params['f16'], 'DoublePrecisionOf'), 'Float64');
+      expect(projDisplay(params['f16'], 'ElementOf'), 'double');
+
+      expect(projDisplay(params['b'], 'InexactOf'), 'Float64');
+      expect(projDisplay(params['b'], 'AccumulatorOf'), 'Int64');
+      expect(projDisplay(params['b'], 'DivideOf'), 'Float64');
+      expect(projDisplay(params['b'], 'ElementOf'), 'bool');
+
+      // 2. Non-generic capability markers (IntegerDType and BitwiseDType).
+      // Neither marker implements DTypeSpec, proving resolution traverses
+      // the *Of<R> interfaces via asInstanceOf rather than DTypeSpec slots.
+      final intMarkerTag =
+          ndarrayDTypeArgument(params['intMarker']) as InterfaceType;
+      final bitwiseMarkerTag =
+          ndarrayDTypeArgument(params['bitwiseMarker']) as InterfaceType;
+      expect(
+        intMarkerTag.allSupertypes.map((s) => s.element.name),
+        isNot(contains('DTypeSpec')),
+      );
+      expect(
+        bitwiseMarkerTag.allSupertypes.map((s) => s.element.name),
+        isNot(contains('DTypeSpec')),
+      );
+
+      expect(projDisplay(intMarkerTag, 'InexactOf'), 'Float64');
+      expect(projDisplay(intMarkerTag, 'RealFloatOf'), 'Float64');
+      expect(projDisplay(intMarkerTag, 'ComplexOf'), 'Complex128');
+      expect(projDisplay(intMarkerTag, 'DoublePrecisionOf'), 'Float64');
+      expect(projDisplay(intMarkerTag, 'DivideOf'), 'Float64');
+      expect(projDisplay(intMarkerTag, 'ElementOf'), 'int');
+      expect(projDisplay(intMarkerTag, 'RealOf'), isNull);
+      expect(projDisplay(intMarkerTag, 'AccumulatorOf'), isNull);
+      expect(
+        projectedConcreteDTypeTagOf(params['intMarker'], 'InexactOf'),
+        'Float64',
+      );
+      expect(
+        projectedConcreteDTypeTagOf(params['intMarker'], 'AccumulatorOf'),
+        isNull,
+      );
+
+      expect(projDisplay(bitwiseMarkerTag, 'InexactOf'), 'Float64');
+      expect(projDisplay(bitwiseMarkerTag, 'RealFloatOf'), 'Float64');
+      expect(projDisplay(bitwiseMarkerTag, 'ComplexOf'), 'Complex128');
+      expect(projDisplay(bitwiseMarkerTag, 'DoublePrecisionOf'), 'Float64');
+      expect(projDisplay(bitwiseMarkerTag, 'DivideOf'), 'Float64');
+      expect(projDisplay(bitwiseMarkerTag, 'ElementOf'), isNull);
+      expect(projDisplay(bitwiseMarkerTag, 'RealOf'), isNull);
+      expect(projDisplay(bitwiseMarkerTag, 'AccumulatorOf'), isNull);
+
+      // 3. Type parameter bounded by IntegerDType, AnySpec, and bare DTypeTag:
+      expect(projDisplay(params['boundedInt'], 'InexactOf'), 'Float64');
+      expect(projDisplay(params['boundedInt'], 'ElementOf'), 'int');
+      expect(projDisplay(params['boundedInt'], 'AccumulatorOf'), isNull);
+
+      expect(projDisplay(params['anySpec'], 'InexactOf'), 'DTypeTag');
+      expect(projDisplay(params['anySpec'], 'ElementOf'), 'dynamic');
+      expect(
+        projectedConcreteDTypeTagOf(params['anySpec'], 'InexactOf'),
+        isNull,
+      );
+
+      for (final projection in kProjectionInterfaceNames) {
+        expect(projDisplay(params['bareTag'], projection), isNull);
+      }
+    });
+
+    test('groups Form B *Of<R> parameter types and flags mismatched projecting '
+        'operation operands', () async {
+      final unit = await resolveUnit('''
+import 'package:ndarray/ndarray.dart';
+
+NDArray<R> formBInexactBinary<R extends DTypeTag>(
+  NDArray<InexactOf<R>> a,
+  NDArray<InexactOf<R>> b, {
+  NDArray<InexactOf<R>>? out,
+  NDArray<RealOf<R>>? otherProjection,
+}) => throw UnimplementedError();
+
+NDArray<R> formBDivideCollection<R extends DTypeTag>(
+  List<NDArray<DivideOf<R>>> arrays,
+) => throw UnimplementedError();
+
+NDArray<R> formBDistinctTypeParams<R extends DTypeTag, S extends DTypeTag>(
+  NDArray<InexactOf<R>> a,
+  NDArray<InexactOf<S>> b,
+) => throw UnimplementedError();
+''');
+      List<SameDTypeParameterGroup> groupsOf(String name) =>
+          sameDTypeParameterGroups(
+            unit.libraryElement.topLevelFunctions.singleWhere(
+              (f) => f.name == name,
+            ),
+          );
+
+      final inexactGroups = groupsOf('formBInexactBinary');
+      expect(inexactGroups, hasLength(1));
+      expect(
+        inexactGroups.single.parameters.map((p) => p.name).toList(),
+        equals(['a', 'b', 'out']),
+      );
+      expect(inexactGroups.single.collectionParameters, isEmpty);
+
+      final collectionGroups = groupsOf('formBDivideCollection');
+      expect(collectionGroups, hasLength(1));
+      expect(
+        collectionGroups.single.parameters.map((p) => p.name).toList(),
+        equals(['arrays']),
+      );
+      expect(
+        collectionGroups.single.collectionParameters.map((p) => p.name),
+        equals(['arrays']),
+      );
+
+      expect(groupsOf('formBDistinctTypeParams'), isEmpty);
+
+      final projectingMismatchDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+void checkProjectingOps(
+  NDArray<Float64> f64,
+  NDArray<Int32> i32,
+  NDArray<Int64> i64,
+  NDArray<Uint8> u8,
+  NDArray<Boolean> b,
+) {
+  final badAtan2 = atan2(i32, i64); // VIOLATION 1: LUB IntegerDType <: InexactOf<Float64>
+  final badHypot = hypot(i32, u8); // VIOLATION 2: LUB IntegerDType <: InexactOf<Float64>
+  final badDivide = divide(i32, b); // VIOLATION 3: LUB BitwiseDType <: DivideOf<Float64>
+  final badChebval = chebval(i32, i64); // VIOLATION 4: LUB IntegerDType <: InexactOf<Float64>
+  final badCov = cov(i32, y: i64); // VIOLATION 5: LUB IntegerDType <: DoublePrecisionOf<Float64>
+  final badSlash = f64 / i32; // VIOLATION 6: NDArrayDivide.operator /
+
+  final okAtan2 = atan2(i32, i32);
+  final okHypot = hypot(f64, f64);
+  final okDivide = divide(i32, i32);
+  final okSlash = i32 / i32;
+  print([
+    badAtan2,
+    badHypot,
+    badDivide,
+    badChebval,
+    badCov,
+    badSlash,
+    okAtan2,
+    okHypot,
+    okDivide,
+    okSlash,
+  ]);
+}
+''',
+        rules: [MismatchedDTypeOperandsRule()],
+      );
+      expectOnly(
+        projectingMismatchDiagnostics,
+        'ndarray_mismatched_dtype_operands',
+        6,
+      );
     });
   });
 }

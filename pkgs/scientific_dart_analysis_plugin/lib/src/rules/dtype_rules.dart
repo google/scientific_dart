@@ -144,9 +144,9 @@ final class _MismatchedDTypeOperandsVisitor extends SimpleAstVisitor<void> {
 /// | operators `<`, `<=`, `>`, `>=`                    | complex                  |
 ///
 /// Boolean is treated as supported by the bitwise (non-shift) operations, in
-/// line with the `DTypeSpec.BitwiseTag` projection. The bitwise/shift
-/// *operators* are not covered: their statically constrained extension
-/// signatures already reject unsupported dtypes at compile time.
+/// line with the `BitwiseDType` marker. The bitwise/shift *operators* are not
+/// covered: their statically constrained extension signatures already reject
+/// unsupported dtypes at compile time.
 final class UnsupportedDTypeOperationRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'ndarray_unsupported_dtype_operation',

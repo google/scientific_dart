@@ -17,12 +17,15 @@
 /// `package:ndarray` encodes the element type of an array as a type argument
 /// (`NDArray<Float64>`, `NDArray<Int32>`, ...). Because class type parameters
 /// are covariant in Dart, a same-dtype generic operation such as
-/// `add<T extends DTypeTag>(NDArray<T> a, NDArray<T> b)` still compiles when
-/// `a` and `b` have different concrete tags (the shared type parameter is
-/// simply inferred as `DTypeTag`), and the mismatch only surfaces as an
-/// `ArgumentError` at runtime. The helpers in this library recover the
-/// concrete dtype of expressions and the same-dtype operand groups of
-/// operation sites so rules and quick fixes can reason about them statically.
+/// `add<T extends DTypeTag>(NDArray<T> a, NDArray<T> b)` or
+/// `atan2<T extends InexactOf<R>, R extends DTypeTag>(NDArray<T> y, NDArray<T> x)`
+/// still compiles when `a` and `b` have different concrete tags (the shared
+/// type parameter is simply inferred as `DTypeTag`), and the mismatch only
+/// surfaces as an `ArgumentError` at runtime. The helpers in this library
+/// recover the concrete dtype of expressions, resolve dtype projections through
+/// the single-slot `*Of<R>` interfaces, and extract the same-dtype operand
+/// groups of operation sites so rules and quick fixes can reason about them
+/// statically.
 library;
 
 import 'package:analyzer/dart/ast/ast.dart';
@@ -60,6 +63,18 @@ const Set<String> kFloatingDTypeTags = {
 
 /// Concrete tag names of the complex dtypes.
 const Set<String> kComplexDTypeTags = {'Complex128', 'Complex64'};
+
+/// The 8 single-slot dtype projection interface names of `package:ndarray`.
+const Set<String> kProjectionInterfaceNames = {
+  'RealOf',
+  'ElementOf',
+  'RealFloatOf',
+  'ComplexOf',
+  'InexactOf',
+  'AccumulatorOf',
+  'DoublePrecisionOf',
+  'DivideOf',
+};
 
 /// The binary operators of `NDArray` that require an array operand to have the
 /// receiver's dtype (`NDArray<T>.operator +(Object? other)` etc.).
@@ -158,6 +173,69 @@ String? concreteDTypeTagOf(DartType? type) {
     return null;
   }
   return isDeclaredInNDArrayPackage(tag.element) ? name : null;
+}
+
+/// Resolves [tag] (a `DTypeTag` type—such as a concrete tag, `IntegerDType`,
+/// or `BitwiseDType`—or an `NDArray<Tag>` type) through the single-slot
+/// projection interface named [projection] (one of
+/// [kProjectionInterfaceNames]).
+///
+/// Resolution inspects the `*Of<R>` supertype instantiation via
+/// [InterfaceType.asInstanceOf] rather than `DTypeSpec` positional slots, so
+/// capability markers (`IntegerDType`, `BitwiseDType`) and bounded type
+/// parameters resolve any projection they pin even when they do not implement
+/// `DTypeSpec`. Returns `null` if [tag] does not implement [projection].
+DartType? projectDTypeTag(DartType? tag, String projection) {
+  if (!kProjectionInterfaceNames.contains(projection)) return null;
+  var resolved = ndarrayDTypeArgument(tag) ?? tag;
+  while (resolved is TypeParameterType) {
+    resolved = resolved.bound;
+  }
+  if (resolved is! InterfaceType) return null;
+  InterfaceElement? projectionElement;
+  if (resolved.element.name == projection &&
+      isDeclaredInNDArrayPackage(resolved.element)) {
+    projectionElement = resolved.element;
+  } else {
+    for (final supertype in resolved.allSupertypes) {
+      if (supertype.element.name == projection &&
+          isDeclaredInNDArrayPackage(supertype.element)) {
+        projectionElement = supertype.element;
+        break;
+      }
+    }
+  }
+  if (projectionElement == null) return null;
+  final instance = resolved.asInstanceOf(projectionElement);
+  if (instance == null || instance.typeArguments.length != 1) return null;
+  return instance.typeArguments.single;
+}
+
+/// Resolves [tagType] through the single-slot `*Of<R>` interface named
+/// [projectionInterfaceName] (one of [kProjectionInterfaceNames]).
+///
+/// Alias for [projectDTypeTag].
+DartType? resolveDTypeProjection(
+  DartType? tagType,
+  String projectionInterfaceName,
+) => projectDTypeTag(tagType, projectionInterfaceName);
+
+/// Returns the concrete dtype tag name (`'Float64'`, `'Int64'`, ...) produced
+/// by resolving [type] (a `DTypeTag` or `NDArray<Tag>`) through the single-slot
+/// projection interface [projection].
+///
+/// Returns `null` when [projection] does not resolve to one of the 15 concrete
+/// `DTypeTag` classes (for example when [projection] is `'ElementOf'`, or when
+/// [type] is `NDArray<DTypeTag>`, `NDArray<AnySpec>`, or `IntegerDType` under
+/// `'AccumulatorOf'`).
+String? projectedConcreteDTypeTagOf(DartType? type, String projection) {
+  final projected = projectDTypeTag(type, projection);
+  if (projected is! InterfaceType) return null;
+  final name = projected.element.name;
+  if (name == null || !kConcreteDTypeTagToEnumName.containsKey(name)) {
+    return null;
+  }
+  return isDeclaredInNDArrayPackage(projected.element) ? name : null;
 }
 
 /// An operand of a same-dtype operation site.
@@ -324,14 +402,12 @@ final class SameDTypeParameterGroup {
 ///
 /// Two formal parameters belong to the same group when their `NDArray` type
 /// arguments are identical and *dtype-identifying*: either a bare type
-/// parameter of [function] (`NDArray<T>`), or a `DTypeSpec<...>` instantiation
-/// whose `RealTag` slot is a type parameter of [function]
-/// (`NDArray<DTypeSpec<T, Object?, DTypeTag, ..., R, ...>>`, as used by
-/// `atan2`, `hypot`, `logaddexp`). `RealTag` is the only `DTypeSpec` slot that
-/// identifies a real dtype; the projection slots (`InexactTag`,
-/// `AccumulatorTag`, ...) are shared by several dtypes, so a type parameter
-/// bound only there (as in `chebval` or `cov`) does not tie operands to one
-/// dtype and is not grouped.
+/// parameter of [function] (`NDArray<T>`, including when `T` is bounded by one
+/// of the single-slot `*Of<R>` projection interfaces such as
+/// `T extends InexactOf<R>` in `atan2`, `hypot`, or `logaddexp`), or a direct
+/// single-slot projection instantiation (`NDArray<InexactOf<R>>`, etc., from
+/// [kProjectionInterfaceNames]) whose type argument is a type parameter of
+/// [function].
 ///
 /// A group is reported when it has at least two parameters, or when it contains
 /// a collection parameter (whose elements must agree among themselves, as in
@@ -376,16 +452,11 @@ List<SameDTypeParameterGroup> sameDTypeParameterGroups(
     return (key: tag.getDisplayString(), isCollection: false);
   }
   if (tag is InterfaceType &&
-      tag.element.name == 'DTypeSpec' &&
-      isDeclaredInNDArrayPackage(tag.element)) {
-    final realTagIndex = tag.element.typeParameters.indexWhere(
-      (p) => p.name == 'RealTag',
-    );
-    if (realTagIndex >= 0 &&
-        realTagIndex < tag.typeArguments.length &&
-        _isTypeParameterOf(tag.typeArguments[realTagIndex], function)) {
-      return (key: tag.getDisplayString(), isCollection: false);
-    }
+      kProjectionInterfaceNames.contains(tag.element.name) &&
+      isDeclaredInNDArrayPackage(tag.element) &&
+      tag.typeArguments.length == 1 &&
+      _isTypeParameterOf(tag.typeArguments.single, function)) {
+    return (key: tag.getDisplayString(), isCollection: false);
   }
   return null;
 }
