@@ -1268,7 +1268,339 @@ void main() {
           violations.add('Missing tool/check_branch_coverage.dart');
         }
 
-        // 5. Same-dtype binary operations must tie both inputs to a shared type parameter,
+        // 5. Single-slot projection interfaces (*Of<R>), non-generic capability markers,
+        // and DTypeSpec table invariants (Rule 2).
+        const kProjectionInterfaceNames = <String>{
+          'RealOf',
+          'ElementOf',
+          'RealFloatOf',
+          'ComplexOf',
+          'InexactOf',
+          'AccumulatorOf',
+          'DoublePrecisionOf',
+          'DivideOf',
+        };
+        const allowListedTwoProjectionFunctions = <String>{
+          'slogdet',
+          'svd',
+          'eigh',
+        };
+        const runtimeDispatchedUfuncOrMultiInputOps = <String>{
+          'lstsq',
+          'average',
+          'schur',
+          'binaryUfunc',
+          'outerUfunc',
+          'unaryUfunc',
+        };
+
+        final bitwiseEl = exportNames['BitwiseDType'];
+        final integerEl = exportNames['IntegerDType'];
+        final dtypeSpecEl = exportNames['DTypeSpec'];
+        expect(bitwiseEl, isA<ClassElement>());
+        expect(integerEl, isA<ClassElement>());
+        expect(dtypeSpecEl, isA<ClassElement>());
+        expect(
+          (bitwiseEl as ClassElement).typeParameters,
+          isEmpty,
+          reason: 'BitwiseDType must have zero type parameters.',
+        );
+        expect(
+          (integerEl as ClassElement).typeParameters,
+          isEmpty,
+          reason: 'IntegerDType must have zero type parameters.',
+        );
+
+        final dtypeSpecInterfaces = (dtypeSpecEl as ClassElement).interfaces
+            .map((i) => i.element.name)
+            .toSet();
+        expect(
+          dtypeSpecInterfaces,
+          containsAll(kProjectionInterfaceNames),
+          reason: 'DTypeSpec must implement all 8 *Of projection interfaces.',
+        );
+
+        for (final projName in kProjectionInterfaceNames) {
+          final projEl = exportNames[projName];
+          expect(
+            projEl,
+            isA<ClassElement>(),
+            reason: 'Expected exported projection interface `$projName`.',
+          );
+          final cls = projEl as ClassElement;
+          expect(
+            cls.isAbstract && cls.isInterface,
+            isTrue,
+            reason: '`$projName` must be an `abstract interface class`.',
+          );
+          expect(
+            cls.typeParameters.length,
+            equals(1),
+            reason: '`$projName` must declare exactly 1 type parameter.',
+          );
+          expect(
+            cls.interfaces.any((i) => i.element.name == 'DTypeTag'),
+            isTrue,
+            reason: '`$projName` must implement `DTypeTag`.',
+          );
+          if (projName != 'ElementOf') {
+            expect(
+              cls.typeParameters.single.bound?.element?.name,
+              equals('DTypeTag'),
+              reason:
+                  '`$projName` type parameter must be bounded by `DTypeTag`.',
+            );
+          }
+        }
+
+        const expectedBitwiseSupertypes = <String>{
+          'DTypeTag',
+          'RealFloatOf<Float64>',
+          'ComplexOf<Complex128>',
+          'InexactOf<Float64>',
+          'DoublePrecisionOf<Float64>',
+          'DivideOf<Float64>',
+        };
+        final bitwiseSupertypes = bitwiseEl.allSupertypes
+            .map((t) => t.getDisplayString())
+            .toSet();
+        expect(
+          bitwiseSupertypes,
+          containsAll(expectedBitwiseSupertypes),
+          reason: 'BitwiseDType.allSupertypes must include pinned projections.',
+        );
+        final integerSupertypes = integerEl.allSupertypes
+            .map((t) => t.getDisplayString())
+            .toSet();
+        expect(
+          integerSupertypes,
+          containsAll({
+            ...expectedBitwiseSupertypes,
+            'BitwiseDType',
+            'ElementOf<int>',
+          }),
+          reason:
+              'IntegerDType.allSupertypes must include BitwiseDType projections and ElementOf<int>.',
+        );
+
+        void collectTypeParams(
+          DartType? type,
+          Set<TypeParameterElement> target,
+        ) {
+          if (type == null) return;
+          if (type is TypeParameterType) {
+            target.add(type.element);
+          } else if (type is InterfaceType) {
+            for (final arg in type.typeArguments) {
+              collectTypeParams(arg, target);
+            }
+          } else if (type is RecordType) {
+            for (final f in type.positionalFields) {
+              collectTypeParams(f.type, target);
+            }
+            for (final f in type.namedFields) {
+              collectTypeParams(f.type, target);
+            }
+          } else if (type is FunctionType) {
+            collectTypeParams(type.returnType, target);
+            for (final p in type.formalParameters) {
+              collectTypeParams(p.type, target);
+            }
+          }
+        }
+
+        bool isOutParameter(FormalParameterElement p) {
+          final pName = p.name ?? '';
+          return p.isNamed &&
+              (pName == 'out' ||
+                  (pName.startsWith('out') &&
+                      pName.length > 3 &&
+                      pName[3].toUpperCase() == pName[3]));
+        }
+
+        bool isDirectlyDeterminedByInput(
+          DartType type,
+          TypeParameterElement tp,
+        ) {
+          if (type is InterfaceType) {
+            final elName = type.element.name;
+            if ((elName == 'NDArray' ||
+                    elName == 'DType' ||
+                    elName == 'NDIter' ||
+                    elName == 'NDEnumerate' ||
+                    elName == 'LstsqResult') &&
+                type.typeArguments.length == 1) {
+              final arg = type.typeArguments.single;
+              if (arg is TypeParameterType && arg.element == tp) {
+                return true;
+              }
+            }
+            if ((elName == 'List' || elName == 'Iterable') &&
+                type.typeArguments.length == 1) {
+              return isDirectlyDeterminedByInput(type.typeArguments.single, tp);
+            }
+          } else if (type is RecordType) {
+            return type.positionalFields.any(
+                  (f) => isDirectlyDeterminedByInput(f.type, tp),
+                ) ||
+                type.namedFields.any(
+                  (f) => isDirectlyDeterminedByInput(f.type, tp),
+                );
+          } else if (type is FunctionType) {
+            final ret = type.returnType;
+            if (ret is TypeParameterType && ret.element == tp) {
+              return true;
+            }
+          }
+          return false;
+        }
+
+        bool isBoundThroughProjection(
+          TypeParameterElement targetTp,
+          List<TypeParameterElement> allTypeParams,
+          List<DartType> nonOutInputTypes, {
+          Set<TypeParameterElement>? visited,
+        }) {
+          final seen = visited ?? <TypeParameterElement>{};
+          if (!seen.add(targetTp)) return false;
+
+          // Form B: input parameter is NDArray<XOf<R>>
+          for (final inputType in nonOutInputTypes) {
+            if (inputType is InterfaceType &&
+                inputType.element.name == 'NDArray' &&
+                inputType.typeArguments.length == 1) {
+              final inner = inputType.typeArguments.single;
+              if (inner is InterfaceType &&
+                  kProjectionInterfaceNames.contains(inner.element.name) &&
+                  inner.typeArguments.length == 1) {
+                final projArg = inner.typeArguments.single;
+                if (projArg is TypeParameterType &&
+                    projArg.element == targetTp) {
+                  return true;
+                }
+              }
+            }
+          }
+
+          // Form A: another type parameter T has bound XOf<R> (and T is determined by input or chained projection)
+          for (final tp in allTypeParams) {
+            final bound = tp.bound;
+            if (bound is InterfaceType &&
+                kProjectionInterfaceNames.contains(bound.element.name) &&
+                bound.typeArguments.length == 1) {
+              final projArg = bound.typeArguments.single;
+              if (projArg is TypeParameterType && projArg.element == targetTp) {
+                final tpFromInput = nonOutInputTypes.any(
+                  (t) => isDirectlyDeterminedByInput(t, tp),
+                );
+                if (tpFromInput ||
+                    isBoundThroughProjection(
+                      tp,
+                      allTypeParams,
+                      nonOutInputTypes,
+                      visited: seen,
+                    )) {
+                  return true;
+                }
+              }
+            }
+          }
+          return false;
+        }
+
+        final verifiedProjectingFunctions = <String>{};
+        final verifiedProjectingExtensions = <String>{};
+
+        for (final entry in exportNames.entries) {
+          final name = entry.key;
+          final el = entry.value;
+          if (el is ExecutableElement && el.typeParameters.isNotEmpty) {
+            if (allowListedTwoProjectionFunctions.contains(name) ||
+                runtimeDispatchedUfuncOrMultiInputOps.contains(name)) {
+              continue;
+            }
+            final resultTypeParams = <TypeParameterElement>{};
+            collectTypeParams(el.returnType, resultTypeParams);
+            final nonOutInputTypes = <DartType>[];
+            var hasOutParam = false;
+            for (final p in el.formalParameters) {
+              if (isOutParameter(p)) {
+                hasOutParam = true;
+                collectTypeParams(p.type, resultTypeParams);
+              } else {
+                nonOutInputTypes.add(p.type);
+              }
+            }
+            final nonOutTypeParams = <TypeParameterElement>{};
+            for (final t in nonOutInputTypes) {
+              collectTypeParams(t, nonOutTypeParams);
+            }
+            // Output-only single-type-param ops with untyped inputs (choose, multi_dot)
+            // determine T solely from `{NDArray<T>? out}`.
+            if (nonOutTypeParams.isEmpty &&
+                el.typeParameters.length == 1 &&
+                hasOutParam) {
+              continue;
+            }
+            for (final tp in el.typeParameters) {
+              if (!resultTypeParams.contains(tp)) continue;
+              final direct = nonOutInputTypes.any(
+                (t) => isDirectlyDeterminedByInput(t, tp),
+              );
+              if (direct) continue;
+              if (isBoundThroughProjection(
+                tp,
+                el.typeParameters,
+                nonOutInputTypes,
+              )) {
+                verifiedProjectingFunctions.add(name);
+              } else {
+                violations.add(
+                  'Exported function `$name`: result/out type parameter `${tp.name}` is not directly determined by an input parameter (`NDArray<${tp.name}>`, `List<NDArray<${tp.name}>>`, `DType<${tp.name}>`) and is not bound through a `*Of<${tp.name}>` projection interface.',
+                );
+              }
+            }
+          } else if (el is ExtensionElement && el.typeParameters.isNotEmpty) {
+            final extName = el.name ?? name;
+            for (final m in [...el.methods, ...el.getters]) {
+              if (m.isPrivate) continue;
+              if (extName == 'UfuncNDArrayExtension' && m.name == 'outer') {
+                continue;
+              }
+              final allTypeParams = [...el.typeParameters, ...m.typeParameters];
+              final resultTypeParams = <TypeParameterElement>{};
+              collectTypeParams(m.returnType, resultTypeParams);
+              final nonOutInputTypes = <DartType>[el.extendedType];
+              for (final p in m.formalParameters) {
+                if (isOutParameter(p)) {
+                  collectTypeParams(p.type, resultTypeParams);
+                } else {
+                  nonOutInputTypes.add(p.type);
+                }
+              }
+              for (final tp in allTypeParams) {
+                if (!resultTypeParams.contains(tp)) continue;
+                final direct = nonOutInputTypes.any(
+                  (t) => isDirectlyDeterminedByInput(t, tp),
+                );
+                if (direct) continue;
+                if (isBoundThroughProjection(
+                  tp,
+                  allTypeParams,
+                  nonOutInputTypes,
+                )) {
+                  verifiedProjectingExtensions.add(extName);
+                } else {
+                  violations.add(
+                    'Exported extension `$extName.${m.name}`: result/out type parameter `${tp.name}` is not directly determined by the receiver/input and is not bound through a `*Of<${tp.name}>` projection interface.',
+                  );
+                }
+              }
+            }
+          }
+        }
+
+        // 6. Same-dtype binary operations must tie both inputs to a shared type parameter,
         // while binary `*As` functions must accept independent `<Ta, Tb, R>` type parameters.
         const sameDTypeBinaryOps = <String>{
           'add',
@@ -1400,6 +1732,22 @@ void main() {
           reason:
               'Resolved semantic AST (`DartType` / `Element`) invariants violated:\n'
               '${violations.join('\n')}',
+        );
+        expect(
+          verifiedProjectingFunctions.length,
+          equals(88),
+          reason:
+              'Expected Rule 2 semantic check to verify all 88 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 94 total).',
+        );
+        expect(
+          verifiedProjectingExtensions,
+          containsAll({
+            'NDArrayDivide',
+            'NDArrayElements',
+            'NDEnumerateElements',
+          }),
+          reason:
+              'Expected Rule 2 semantic check to verify all 3 projecting extensions in package:ndarray.',
         );
       },
     );
@@ -2521,6 +2869,111 @@ void main() {
           ),
           reason: 'NDArrayShift must be bounded by IntegerDType',
         );
+        expect(
+          ndarraySrc.contains('class BitwiseDType<'),
+          isFalse,
+          reason: 'BitwiseDType must be declared without type parameters.',
+        );
+        expect(
+          ndarraySrc.contains('class IntegerDType<'),
+          isFalse,
+          reason: 'IntegerDType must be declared without type parameters.',
+        );
+      },
+    );
+
+    test(
+      'No 8-argument DTypeSpec< bounds across pkgs/*/lib/ outside core table declarations and allow-listed two-projection functions (Rule 1)',
+      () {
+        const expectedCoreOwners = <String>{
+          'DTypeSpec',
+          'AnySpec',
+          'Float64',
+          'Float32',
+          'Float16',
+          'BFloat16',
+          'Int64',
+          'Int32',
+          'Int16',
+          'Int8',
+          'Uint64',
+          'Uint32',
+          'Uint16',
+          'Uint8',
+          'Complex64',
+          'Complex128',
+          'Boolean',
+        };
+        const allowedTwoProjection = <String, Set<String>>{
+          'pkgs/ndarray/lib/src/operations/linalg.dart': {
+            'slogdet',
+            'svd',
+            'eigh',
+          },
+          'pkgs/gpuarray/lib/src/linalg/solvers.dart': {'lstsq', 'slogdet'},
+          'pkgs/gpuarray/lib/src/linalg/decompositions.dart': {'svd', 'eigh'},
+        };
+        final expectedTwoProjectionSites = <String>{
+          for (final entry in allowedTwoProjection.entries)
+            for (final fn in entry.value) '${entry.key}:$fn',
+        };
+
+        final seenCoreOwners = <String>{};
+        final seenTwoProjectionSites = <String>{};
+        final violations = <String>[];
+
+        final allPkgLibFiles = pkgsDir.existsSync()
+            ? (pkgsDir
+                  .listSync()
+                  .whereType<Directory>()
+                  .expand((d) => _dartFilesIn(Directory('${d.path}/lib')))
+                  .toList()
+                ..sort((a, b) => a.path.compareTo(b.path)))
+            : libFiles;
+
+        for (final file in allPkgLibFiles) {
+          final relPath = _posix(
+            file.path.substring(monorepoRoot.path.length + 1),
+          );
+          final parsed = parseFile(
+            path: _native(file.path),
+            featureSet: featureSet,
+            throwIfDiagnostics: false,
+          );
+          final visitor = _DTypeSpecUsageVisitor(
+            relPath: relPath,
+            lineInfo: parsed.lineInfo,
+            expectedCoreOwners: expectedCoreOwners,
+            allowedTwoProjection: allowedTwoProjection,
+            seenCoreOwners: seenCoreOwners,
+            seenTwoProjectionSites: seenTwoProjectionSites,
+            violations: violations,
+          );
+          parsed.unit.accept(visitor);
+        }
+
+        expect(
+          violations,
+          isEmpty,
+          reason:
+              '8-argument `DTypeSpec<...>` bounds are forbidden outside core table '
+              'declarations and allow-listed two-projection functions:\n'
+              '${violations.join('\n')}',
+        );
+        expect(
+          seenCoreOwners,
+          equals(expectedCoreOwners),
+          reason:
+              'Expected visitor to observe all 17 core DTypeSpec declarations in '
+              'pkgs/ndarray/lib/src/ndarray.dart (DTypeSpec, AnySpec, and 15 tags).',
+        );
+        expect(
+          seenTwoProjectionSites,
+          equals(expectedTwoProjectionSites),
+          reason:
+              'Expected visitor to observe all 7 allow-listed two-projection functions '
+              'across ndarray and gpuarray (no stale exemptions).',
+        );
       },
     );
 
@@ -3272,5 +3725,117 @@ class _FinalizerExternalSizeVisitor extends RecursiveAstVisitor<void> {
       }
     }
     super.visitMethodInvocation(node);
+  }
+}
+
+class _DTypeSpecUsageVisitor extends RecursiveAstVisitor<void> {
+  final String relPath;
+  final dynamic lineInfo;
+  final Set<String> expectedCoreOwners;
+  final Map<String, Set<String>> allowedTwoProjection;
+  final Set<String> seenCoreOwners;
+  final Set<String> seenTwoProjectionSites;
+  final List<String> violations;
+
+  _DTypeSpecUsageVisitor({
+    required this.relPath,
+    required this.lineInfo,
+    required this.expectedCoreOwners,
+    required this.allowedTwoProjection,
+    required this.seenCoreOwners,
+    required this.seenTwoProjectionSites,
+    required this.violations,
+  });
+
+  @override
+  void visitClassDeclaration(ClassDeclaration node) {
+    if (node.namePart.typeName.lexeme == 'DTypeSpec') {
+      final line = lineInfo.getLocation(node.offset).lineNumber;
+      final paramCount =
+          node.namePart.typeParameters?.typeParameters.length ?? 0;
+      if (relPath == 'pkgs/ndarray/lib/src/ndarray.dart' && paramCount == 8) {
+        if (!seenCoreOwners.add('DTypeSpec')) {
+          violations.add(
+            '$relPath:$line — duplicate `DTypeSpec` class declaration.',
+          );
+        }
+      } else {
+        violations.add(
+          '$relPath:$line — unexpected `DTypeSpec` class declaration (type parameter count: $paramCount).',
+        );
+      }
+    }
+    super.visitClassDeclaration(node);
+  }
+
+  @override
+  void visitNamedType(NamedType node) {
+    if (node.name.lexeme == 'DTypeSpec') {
+      final line = lineInfo.getLocation(node.offset).lineNumber;
+      final argCount = node.typeArguments?.arguments.length ?? 0;
+      if (argCount != 8) {
+        violations.add(
+          '$relPath:$line — `DTypeSpec` referenced with $argCount type arguments (expected 8).',
+        );
+      } else if (relPath == 'pkgs/ndarray/lib/src/ndarray.dart') {
+        AstNode? current = node.parent;
+        String? ownerName;
+        while (current != null) {
+          if (current is ClassDeclaration) {
+            ownerName = current.namePart.typeName.lexeme;
+            break;
+          } else if (current is GenericTypeAlias) {
+            ownerName = current.name.lexeme;
+            break;
+          } else if (current is FunctionDeclaration) {
+            ownerName = current.name.lexeme;
+            break;
+          } else if (current is ExtensionDeclaration) {
+            ownerName = current.name?.lexeme ?? '<extension>';
+            break;
+          }
+          current = current.parent;
+        }
+        if (ownerName != null &&
+            expectedCoreOwners.contains(ownerName) &&
+            ownerName != 'DTypeSpec') {
+          if (!seenCoreOwners.add(ownerName)) {
+            violations.add(
+              '$relPath:$line — duplicate 8-arg `DTypeSpec` in `$ownerName`.',
+            );
+          }
+        } else {
+          violations.add(
+            '$relPath:$line — forbidden 8-arg `DTypeSpec<...>` bound in `${ownerName ?? '<unknown>'}`; use a single-slot `*Of<R>` projection interface instead.',
+          );
+        }
+      } else {
+        AstNode? current = node.parent;
+        String? ownerFn;
+        while (current != null) {
+          if (current is FunctionDeclaration) {
+            ownerFn = current.name.lexeme;
+            break;
+          }
+          current = current.parent;
+        }
+        final allowedFns = allowedTwoProjection[relPath];
+        if (ownerFn != null &&
+            allowedFns != null &&
+            allowedFns.contains(ownerFn)) {
+          final site = '$relPath:$ownerFn';
+          if (!seenTwoProjectionSites.add(site)) {
+            violations.add(
+              '$relPath:$line — duplicate 8-arg `DTypeSpec` bound in `$ownerFn`.',
+            );
+          }
+        } else {
+          violations.add(
+            '$relPath:$line — forbidden 8-arg `DTypeSpec<...>` bound in `${ownerFn ?? '<unknown>'}`; use a single-slot `*Of<R>` projection interface instead.',
+          );
+        }
+      }
+    }
+    super.visitNamedType(node);
   }
 }

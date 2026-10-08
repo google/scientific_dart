@@ -195,6 +195,54 @@ void main() {
     });
 
     test(
+      'No 8-argument DTypeSpec< bounds in lib/ outside allow-listed two-projection linalg functions (Rule 1)',
+      () {
+        const allowedTwoProjection = <String, Set<String>>{
+          'lib/src/linalg/solvers.dart': {'lstsq', 'slogdet'},
+          'lib/src/linalg/decompositions.dart': {'svd', 'eigh'},
+        };
+        final expectedTwoProjectionSites = <String>{
+          for (final entry in allowedTwoProjection.entries)
+            for (final fn in entry.value) '${entry.key}:$fn',
+        };
+        final seenTwoProjectionSites = <String>{};
+        final violations = <String>[];
+
+        for (final file in libFiles) {
+          final path = relPath(file);
+          final result = parseString(
+            content: file.readAsStringSync(),
+            throwIfDiagnostics: false,
+          );
+          final visitor = _GpuDTypeSpecUsageVisitor(
+            filePath: path,
+            lineInfo: result.lineInfo,
+            allowedTwoProjection: allowedTwoProjection,
+            seenTwoProjectionSites: seenTwoProjectionSites,
+            violations: violations,
+          );
+          result.unit.accept(visitor);
+        }
+
+        expect(
+          violations,
+          isEmpty,
+          reason:
+              '8-argument `DTypeSpec<...>` bounds in gpuarray lib/ are only allowed '
+              'on two-projection linalg functions (svd, eigh, lstsq, slogdet):\n'
+              '${violations.join('\n')}',
+        );
+        expect(
+          seenTwoProjectionSites,
+          equals(expectedTwoProjectionSites),
+          reason:
+              'Expected visitor to observe all 4 allow-listed two-projection functions '
+              'in gpuarray (svd, eigh, lstsq, slogdet).',
+        );
+      },
+    );
+
+    test(
       'Semantic AST analysis: no dynamic in public signatures and defensive copies on collection fields',
       () async {
         final collection = AnalysisContextCollection(
@@ -204,6 +252,8 @@ void main() {
           ],
         );
         final violations = <String>[];
+        final verifiedProjectingFunctions = <String>{};
+        final verifiedProjectingExtensions = <String>{};
 
         for (final context in collection.contexts) {
           for (final filePath in context.contextRoot.analyzedFiles()) {
@@ -219,6 +269,8 @@ void main() {
               relative,
               result.lineInfo,
               violations,
+              verifiedProjectingFunctions: verifiedProjectingFunctions,
+              verifiedProjectingExtensions: verifiedProjectingExtensions,
             );
             result.unit.accept(visitor);
           }
@@ -394,6 +446,18 @@ void main() {
         }
 
         expect(violations, isEmpty, reason: violations.join('\n'));
+        expect(
+          verifiedProjectingFunctions.length,
+          equals(30),
+          reason:
+              'Expected Rule 2 semantic check to verify all 30 single-slot projecting functions in gpuarray.',
+        );
+        expect(
+          verifiedProjectingExtensions,
+          contains('GpuArraySpecComponentExtension'),
+          reason:
+              'Expected Rule 2 semantic check to verify GpuArraySpecComponentExtension in gpuarray.',
+        );
       },
     );
 
@@ -1017,6 +1081,8 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
   final String filePath;
   final LineInfo lineInfo;
   final List<String> violations;
+  final Set<String> verifiedProjectingFunctions;
+  final Set<String> verifiedProjectingExtensions;
 
   static const _allowedUntypedReturnMembers = <String>{
     'scalar',
@@ -1024,7 +1090,31 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
     'toNestedList',
   };
 
-  _SemanticInvariantVisitor(this.filePath, this.lineInfo, this.violations);
+  static const _kProjectionInterfaceNames = <String>{
+    'RealOf',
+    'ElementOf',
+    'RealFloatOf',
+    'ComplexOf',
+    'InexactOf',
+    'AccumulatorOf',
+    'DoublePrecisionOf',
+    'DivideOf',
+  };
+
+  static const _allowListedTwoProjectionFunctions = <String>{
+    'svd',
+    'eigh',
+    'lstsq',
+    'slogdet',
+  };
+
+  _SemanticInvariantVisitor(
+    this.filePath,
+    this.lineInfo,
+    this.violations, {
+    required this.verifiedProjectingFunctions,
+    required this.verifiedProjectingExtensions,
+  });
 
   bool _containsDynamic(DartType? type) {
     if (type == null) return false;
@@ -1039,6 +1129,119 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
     if (type is FunctionType) {
       return _containsDynamic(type.returnType) ||
           type.formalParameters.any((p) => _containsDynamic(p.type));
+    }
+    return false;
+  }
+
+  void _collectTypeParams(DartType? type, Set<TypeParameterElement> target) {
+    if (type == null) return;
+    if (type is TypeParameterType) {
+      target.add(type.element);
+    } else if (type is InterfaceType) {
+      for (final arg in type.typeArguments) {
+        _collectTypeParams(arg, target);
+      }
+    } else if (type is RecordType) {
+      for (final f in type.positionalFields) {
+        _collectTypeParams(f.type, target);
+      }
+      for (final f in type.namedFields) {
+        _collectTypeParams(f.type, target);
+      }
+    } else if (type is FunctionType) {
+      _collectTypeParams(type.returnType, target);
+      for (final p in type.formalParameters) {
+        _collectTypeParams(p.type, target);
+      }
+    }
+  }
+
+  bool _isOutParameter(FormalParameterElement p) {
+    final pName = p.name ?? '';
+    return pName == 'out' ||
+        (p.isNamed &&
+            pName.startsWith('out') &&
+            pName.length > 3 &&
+            pName[3].toUpperCase() == pName[3]);
+  }
+
+  bool _isDirectlyDeterminedByInput(DartType type, TypeParameterElement tp) {
+    if (type is InterfaceType) {
+      final elName = type.element.name;
+      if ((elName == 'GpuArray' || elName == 'NDArray' || elName == 'DType') &&
+          type.typeArguments.length == 1) {
+        final arg = type.typeArguments.single;
+        if (arg is TypeParameterType && arg.element == tp) {
+          return true;
+        }
+      }
+      if ((elName == 'List' || elName == 'Iterable') &&
+          type.typeArguments.length == 1) {
+        return _isDirectlyDeterminedByInput(type.typeArguments.single, tp);
+      }
+    } else if (type is RecordType) {
+      return type.positionalFields.any(
+            (f) => _isDirectlyDeterminedByInput(f.type, tp),
+          ) ||
+          type.namedFields.any((f) => _isDirectlyDeterminedByInput(f.type, tp));
+    } else if (type is FunctionType) {
+      final ret = type.returnType;
+      if (ret is TypeParameterType && ret.element == tp) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isBoundThroughProjection(
+    TypeParameterElement targetTp,
+    List<TypeParameterElement> allTypeParams,
+    List<DartType> nonOutInputTypes, {
+    Set<TypeParameterElement>? visited,
+  }) {
+    final seen = visited ?? <TypeParameterElement>{};
+    if (!seen.add(targetTp)) return false;
+
+    // Form B: input parameter is GpuArray<XOf<R>>
+    for (final inputType in nonOutInputTypes) {
+      if (inputType is InterfaceType &&
+          (inputType.element.name == 'GpuArray' ||
+              inputType.element.name == 'NDArray') &&
+          inputType.typeArguments.length == 1) {
+        final inner = inputType.typeArguments.single;
+        if (inner is InterfaceType &&
+            _kProjectionInterfaceNames.contains(inner.element.name) &&
+            inner.typeArguments.length == 1) {
+          final projArg = inner.typeArguments.single;
+          if (projArg is TypeParameterType && projArg.element == targetTp) {
+            return true;
+          }
+        }
+      }
+    }
+
+    // Form A: another type parameter T has bound XOf<R> (and T is determined by input or chained projection)
+    for (final tp in allTypeParams) {
+      final bound = tp.bound;
+      if (bound is InterfaceType &&
+          _kProjectionInterfaceNames.contains(bound.element.name) &&
+          bound.typeArguments.length == 1) {
+        final projArg = bound.typeArguments.single;
+        if (projArg is TypeParameterType && projArg.element == targetTp) {
+          final tpFromInput = nonOutInputTypes.any(
+            (t) => _isDirectlyDeterminedByInput(t, tp),
+          );
+          if (tpFromInput ||
+              _isBoundThroughProjection(
+                tp,
+                allTypeParams,
+                nonOutInputTypes,
+                visited: seen,
+              )) {
+            return true;
+          }
+        }
+      }
     }
     return false;
   }
@@ -1154,6 +1357,46 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
   }
 
   @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    final element = node.declaredFragment?.element;
+    if (element != null &&
+        element.isPublic &&
+        element.typeParameters.isNotEmpty) {
+      final extName = element.name ?? '<unnamed>';
+      final line = lineInfo.getLocation(node.offset).lineNumber;
+      for (final m in [...element.methods, ...element.getters]) {
+        if (!m.isPublic) continue;
+        final allTypeParams = [...element.typeParameters, ...m.typeParameters];
+        final resultTypeParams = <TypeParameterElement>{};
+        _collectTypeParams(m.returnType, resultTypeParams);
+        final nonOutInputTypes = <DartType>[element.extendedType];
+        for (final p in m.formalParameters) {
+          if (_isOutParameter(p)) {
+            _collectTypeParams(p.type, resultTypeParams);
+          } else {
+            nonOutInputTypes.add(p.type);
+          }
+        }
+        for (final tp in allTypeParams) {
+          if (!resultTypeParams.contains(tp)) continue;
+          final direct = nonOutInputTypes.any(
+            (t) => _isDirectlyDeterminedByInput(t, tp),
+          );
+          if (direct) continue;
+          if (_isBoundThroughProjection(tp, allTypeParams, nonOutInputTypes)) {
+            verifiedProjectingExtensions.add(extName);
+          } else {
+            violations.add(
+              '$filePath:$line: extension "$extName.${m.name}" result/out type parameter "${tp.name}" is not directly determined by receiver/input and is not bound through a `*Of<${tp.name}>` projection interface (Rule 2)',
+            );
+          }
+        }
+      }
+    }
+    super.visitExtensionDeclaration(node);
+  }
+
+  @override
   void visitFunctionDeclaration(FunctionDeclaration node) {
     if (node.parent is! CompilationUnit) {
       super.visitFunctionDeclaration(node);
@@ -1186,6 +1429,51 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
           violations,
         ),
       );
+
+      final fnName = element.name ?? '';
+      if (element.typeParameters.isNotEmpty &&
+          !_allowListedTwoProjectionFunctions.contains(fnName)) {
+        final resultTypeParams = <TypeParameterElement>{};
+        _collectTypeParams(element.returnType, resultTypeParams);
+        final nonOutInputTypes = <DartType>[];
+        var hasOutParam = false;
+        for (final p in element.formalParameters) {
+          if (_isOutParameter(p)) {
+            hasOutParam = true;
+            _collectTypeParams(p.type, resultTypeParams);
+          } else {
+            nonOutInputTypes.add(p.type);
+          }
+        }
+        final nonOutTypeParams = <TypeParameterElement>{};
+        for (final t in nonOutInputTypes) {
+          _collectTypeParams(t, nonOutTypeParams);
+        }
+        // Output-only single-type-param functions (e.g., where, select, concatenate,
+        // stack, vstack, hstack, dstack, columnStack, permutation) determine T from `{out}`.
+        if (!(nonOutTypeParams.isEmpty &&
+            element.typeParameters.length == 1 &&
+            hasOutParam)) {
+          for (final tp in element.typeParameters) {
+            if (!resultTypeParams.contains(tp)) continue;
+            final direct = nonOutInputTypes.any(
+              (t) => _isDirectlyDeterminedByInput(t, tp),
+            );
+            if (direct) continue;
+            if (_isBoundThroughProjection(
+              tp,
+              element.typeParameters,
+              nonOutInputTypes,
+            )) {
+              verifiedProjectingFunctions.add('$filePath:$fnName');
+            } else {
+              violations.add(
+                '$filePath:$line: public function "$fnName" result/out type parameter "${tp.name}" is not directly determined by an input parameter and is not bound through a `*Of<${tp.name}>` projection interface (Rule 2)',
+              );
+            }
+          }
+        }
+      }
     }
     super.visitFunctionDeclaration(node);
   }
@@ -1211,6 +1499,61 @@ class _RawGpuArrayTypeVisitor extends RecursiveAstVisitor<void> {
       violations.add(
         '$filePath:$line: $owner uses untyped GpuArray without explicit <DTypeTag> type argument',
       );
+    }
+    super.visitNamedType(node);
+  }
+}
+
+class _GpuDTypeSpecUsageVisitor extends RecursiveAstVisitor<void> {
+  final String filePath;
+  final LineInfo lineInfo;
+  final Map<String, Set<String>> allowedTwoProjection;
+  final Set<String> seenTwoProjectionSites;
+  final List<String> violations;
+
+  _GpuDTypeSpecUsageVisitor({
+    required this.filePath,
+    required this.lineInfo,
+    required this.allowedTwoProjection,
+    required this.seenTwoProjectionSites,
+    required this.violations,
+  });
+
+  @override
+  void visitNamedType(NamedType node) {
+    if (node.name.lexeme == 'DTypeSpec') {
+      final line = lineInfo.getLocation(node.offset).lineNumber;
+      final argCount = node.typeArguments?.arguments.length ?? 0;
+      if (argCount != 8) {
+        violations.add(
+          '$filePath:$line — `DTypeSpec` referenced with $argCount type arguments (expected 8).',
+        );
+      } else {
+        AstNode? current = node.parent;
+        String? ownerFn;
+        while (current != null) {
+          if (current is FunctionDeclaration) {
+            ownerFn = current.name.lexeme;
+            break;
+          }
+          current = current.parent;
+        }
+        final allowedFns = allowedTwoProjection[filePath];
+        if (ownerFn != null &&
+            allowedFns != null &&
+            allowedFns.contains(ownerFn)) {
+          final site = '$filePath:$ownerFn';
+          if (!seenTwoProjectionSites.add(site)) {
+            violations.add(
+              '$filePath:$line — duplicate 8-arg `DTypeSpec` bound in `$ownerFn`.',
+            );
+          }
+        } else {
+          violations.add(
+            '$filePath:$line — forbidden 8-arg `DTypeSpec<...>` bound in `${ownerFn ?? '<unknown>'}`; use a single-slot `*Of<R>` projection interface instead.',
+          );
+        }
+      }
     }
     super.visitNamedType(node);
   }
