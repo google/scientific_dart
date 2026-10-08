@@ -1,0 +1,51 @@
+// Copyright 2026 Google LLC
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Negative static-type probes for `static_type_probes_test.dart`.
+// Stored as `.dart.txt` and analysed through `OverlayResourceProvider` at
+// `<pkgRoot>/test/meta/fixtures/_negative_probes_overlay.dart` so that
+// `dart analyze pkgs/ndarray` never sees the intentional compile errors.
+// ignore_for_file: unused_local_variable, unused_element, non_constant_identifier_names
+
+import 'package:ndarray/ndarray.dart';
+
+late final NDArray<Float64> f64;
+late final NDArray<Float32> f32;
+late final NDArray<Int32> i32;
+late final NDArray<Boolean> b;
+late final NDArray<DTypeTag> dyn;
+
+void isSubtype<Sub extends Super, Super>() {}
+
+// Acceptance-criteria negative probes (R3b):
+final t_neg_bitwiseAnd_f64 = bitwiseAnd(f64, f64); // error: argument_type_not_assignable
+final t_neg_opand_f64 = f64 & f64; // error: undefined_operator
+final t_neg_leftShift_b = leftShift(b, b); // error: argument_type_not_assignable
+final t_neg_opshl_b = b << b; // error: undefined_operator
+final t_neg_sin_dyn = sin(dyn); // error: argument_type_not_assignable
+
+// Additional negative probes on bare DTypeTag and invalid operator receivers:
+final t_neg_sum_dyn = sum(dyn); // error: argument_type_not_assignable
+final t_neg_opand_dyn = dyn & dyn; // error: undefined_operator
+final t_neg_opshl_f32 = f32 << f32; // error: undefined_operator
+
+// Negative subtype probes on capability markers:
+void checkInvalidMarkerSubtypes() {
+  isSubtype<Float64, BitwiseDType>(); // error: type_argument_not_matching_bounds
+  isSubtype<Boolean, IntegerDType>(); // error: type_argument_not_matching_bounds
+}
+
+// Conflicting marker + DTypeSpec row witness (IntegerDType pins ElementOf<int>,
+// so a row declaring Element = double fails with conflicting_generic_interfaces):
+abstract final class _BadInt implements IntegerDType, DTypeSpec<_BadInt, double, Float64, Complex128, Float64, Int64, Float64, Float64> {} // error: conflicting_generic_interfaces
