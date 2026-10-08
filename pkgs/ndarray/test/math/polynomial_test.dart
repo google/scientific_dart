@@ -30,17 +30,27 @@ void main() {
       });
     });
 
-    test("polyval with single coefficient and mixed dtypes", () {
-      NDArray.scope(() {
-        final c = NDArray.fromList([5.0], [1], DType.float64);
-        final x = NDArray.fromList([1, 2, 3], [3], DType.int64);
-        final y = polyval(c, x);
-        expect(y.shape, equals([3]));
-        expect(y.getCell([0]), equals(5.0));
-        expect(y.getCell([1]), equals(5.0));
-        expect(y.getCell([2]), equals(5.0));
-      });
-    });
+    test(
+      "polyval with single coefficient and int64 promotion / mixed dtypes",
+      () {
+        NDArray.scope(() {
+          final cInt = NDArray.fromList([5], [1], DType.int64);
+          final x = NDArray.fromList([1, 2, 3], [3], DType.int64);
+          final y = polyval(cInt, x);
+          expect(y.dtype, equals(DType.float64));
+          expect(y.shape, equals([3]));
+          expect(y.getCell([0]), equals(5.0));
+          expect(y.getCell([1]), equals(5.0));
+          expect(y.getCell([2]), equals(5.0));
+
+          final cF64 = NDArray.fromList([5.0], [1], DType.float64);
+          expect(
+            () => polyval<AnySpec, DTypeTag>(cF64, x),
+            throwsArgumentError,
+          );
+        });
+      },
+    );
 
     test("polyval with out parameter", () {
       NDArray.scope(() {

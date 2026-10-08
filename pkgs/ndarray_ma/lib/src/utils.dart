@@ -14,90 +14,6 @@
 
 part of 'masked_array.dart';
 
-/// Resolves the common DType for binary operations.
-DType _resolveDType(DType a, DType b) {
-  if (a == DType.boolean && b == DType.boolean) return DType.uint8;
-  if (a == DType.boolean) return b;
-  if (b == DType.boolean) return a;
-  if (a == b) return a;
-
-  final isAIntLarge =
-      a == DType.int64 ||
-      a == DType.uint64 ||
-      a == DType.int32 ||
-      a == DType.uint32;
-  final isBIntLarge =
-      b == DType.int64 ||
-      b == DType.uint64 ||
-      b == DType.int32 ||
-      b == DType.uint32;
-
-  if (a == DType.complex128 || b == DType.complex128) return DType.complex128;
-  if (a == DType.complex64 || b == DType.complex64) {
-    if (a == DType.float64 || b == DType.float64) return DType.complex128;
-    if (isAIntLarge || isBIntLarge) return DType.complex128;
-    return DType.complex64;
-  }
-  if (a == DType.float64 || b == DType.float64) return DType.float64;
-  if (a == DType.float32 || b == DType.float32) {
-    if (isAIntLarge || isBIntLarge) return DType.float64;
-    return DType.float32;
-  }
-  if (a == DType.float16 ||
-      b == DType.float16 ||
-      a == DType.bfloat16 ||
-      b == DType.bfloat16) {
-    if (a.isInteger || b.isInteger) return DType.float64;
-    if (a != b) return DType.float32;
-    return a;
-  }
-  if (a == DType.uint64 || b == DType.uint64) {
-    if (a.isInteger &&
-        b.isInteger &&
-        (a != DType.uint64 || b != DType.uint64)) {
-      if (a == DType.int64 ||
-          a == DType.int32 ||
-          a == DType.int16 ||
-          a == DType.int8 ||
-          b == DType.int64 ||
-          b == DType.int32 ||
-          b == DType.int16 ||
-          b == DType.int8) {
-        return DType.float64;
-      }
-    }
-    return DType.uint64;
-  }
-  if (a == DType.int64 || b == DType.int64) return DType.int64;
-  if (a == DType.uint32 || b == DType.uint32) {
-    if (a == DType.int32 ||
-        a == DType.int16 ||
-        a == DType.int8 ||
-        b == DType.int32 ||
-        b == DType.int16 ||
-        b == DType.int8) {
-      return DType.int64;
-    }
-    return DType.uint32;
-  }
-  if (a == DType.int32 || b == DType.int32) return DType.int32;
-  if (a == DType.uint16 || b == DType.uint16) {
-    if (a == DType.int16 ||
-        a == DType.int8 ||
-        b == DType.int16 ||
-        b == DType.int8) {
-      return DType.int32;
-    }
-    return DType.uint16;
-  }
-  if (a == DType.int16 || b == DType.int16) return DType.int16;
-  if (a == DType.uint8 || b == DType.uint8) {
-    if (a == DType.int8 || b == DType.int8) return DType.int16;
-    return DType.uint8;
-  }
-  return DType.int8;
-}
-
 /// Default fill value mapping based on DType.
 Object _defaultFillValue(DType dtype) {
   switch (dtype) {
@@ -208,28 +124,6 @@ dynamic _minValue(DType dtype) {
       return 0;
     default:
       throw ArgumentError("No min value for dtype $dtype");
-  }
-}
-
-/// Dispatches binary operations to the correct generic implementation.
-NDArray<DTypeTag> _dispatchBinary(
-  NDArray<DTypeTag> a,
-  NDArray<DTypeTag> b,
-  String opName,
-  DType<DTypeTag> targetDType,
-) {
-  switch (opName) {
-    case 'add':
-      return ndops.addAs(a, b, targetDType);
-    case 'sub':
-      return ndops.subtractAs(a, b, targetDType);
-    case 'mul':
-      return ndops.multiplyAs(a, b, targetDType);
-    case 'div':
-      final divDType = targetDType.isComplex ? DType.complex128 : DType.float64;
-      return ndops.divideAs(a, b, divDType);
-    default:
-      throw ArgumentError("Unknown op: $opName");
   }
 }
 

@@ -56,8 +56,6 @@ NDArray<R> i0<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -307,8 +305,6 @@ NDArray<R> gamma<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -518,8 +514,6 @@ NDArray<R> erf<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag

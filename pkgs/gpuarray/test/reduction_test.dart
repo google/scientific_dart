@@ -187,6 +187,86 @@ void main() {
     });
 
     test(
+      'Widened GpuArray<DTypeTag> with mismatched out buffer throws ArgumentError not TypeError',
+      () {
+        ResourceScope.scope(() {
+          final mat = GpuArray.fromList(
+            [
+              [1.0, 2.0, 3.0],
+              [4.0, 5.0, 6.0],
+            ],
+            [2, 3],
+            DType.float64,
+          );
+          final widened = mat as GpuArray<DTypeTag>;
+          final wrongScalarOut = GpuArray.zeros(const [], DType.int32);
+          final wrongAxisOut = GpuArray.zeros([2], DType.int32);
+
+          expect(
+            () => widened.sum(out: wrongScalarOut),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.nansum(out: wrongScalarOut),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.prod(out: wrongScalarOut),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.min(axis: 1, out: wrongAxisOut),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.max(axis: 1, out: wrongAxisOut),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.ptp(axis: 1, out: wrongAxisOut),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+        });
+      },
+    );
+
+    test(
       'F2: mean() and nanmean() preserve floating-point dtypes and promote integers to Float64',
       () {
         ResourceScope.scope(() {
@@ -291,6 +371,33 @@ void main() {
           expect(nm.scalar, closeTo(3.0, 1e-5));
           expect(nmin.scalar, closeTo(1.0, 1e-5));
           expect(nmax.scalar, closeTo(5.0, 1e-5));
+        });
+      },
+    );
+
+    test(
+      'sumAs, nansumAs, and prodAs cast reduction output dtype with typed out:',
+      () {
+        ResourceScope.scope(() {
+          final i32 = GpuArray.fromList([1, 2, 3, 4], [4], DType.int32);
+          final outF64 = GpuArray.zeros(<int>[], DType.float64);
+          final GpuArray<Float64> s64 = i32.sumAs(DType.float64, out: outF64);
+          expect(identical(s64, outF64), isTrue);
+          expect(s64.dtype, equals(DType.float64));
+          expect(s64.scalar, closeTo(10.0, 1e-12));
+
+          final GpuArray<Int64> p64 = prodAs(i32, DType.int64);
+          expect(p64.dtype, equals(DType.int64));
+          expect(p64.scalar, equals(24));
+
+          final f32Nan = GpuArray.fromList(
+            [1.0, double.nan, 3.0],
+            [3],
+            DType.float32,
+          );
+          final GpuArray<Float64> ns64 = nansumAs(f32Nan, DType.float64);
+          expect(ns64.dtype, equals(DType.float64));
+          expect(ns64.scalar, closeTo(4.0, 1e-6));
         });
       },
     );

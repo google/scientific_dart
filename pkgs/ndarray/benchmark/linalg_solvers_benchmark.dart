@@ -23,9 +23,9 @@ void main() async {
     'NDArray Linear Algebra Solvers & Invariants Benchmark Suite',
     (c) {
       // Helper to generate well-conditioned invertible matrices
-      NDArray<AnySpec> makeInvertible(int n) {
+      NDArray<Float64> makeInvertible(int n) {
         final rand = math.Random(42);
-        final a = NDArray<AnySpec>.zeros([n, n], DType.float64);
+        final a = NDArray.zeros([n, n], DType.float64);
         for (var i = 0; i < n; i++) {
           for (var j = 0; j < n; j++) {
             a.setCell([i, j], (rand.nextDouble() - 0.5) * 2.0);

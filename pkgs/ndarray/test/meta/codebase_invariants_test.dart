@@ -1310,6 +1310,14 @@ void main() {
           'kron',
           'outer',
           'cross',
+          'polyval',
+          'polyfit',
+          'chebval',
+          'legval',
+          'hermval',
+          'lagval',
+          'cov',
+          'corrcoef',
         };
         for (final fnName in sameDTypeBinaryOps) {
           final el = exportNames[fnName];
@@ -1324,7 +1332,9 @@ void main() {
             );
           }
           final p0Type = el.formalParameters[0].type.getDisplayString();
-          final p1Type = el.formalParameters[1].type.getDisplayString();
+          final p1Type = el.formalParameters[1].type
+              .getDisplayString()
+              .replaceFirst(RegExp(r'\?$'), '');
           if (p0Type != p1Type) {
             violations.add(
               'Same-dtype binary operation `$fnName` must give its first two parameters identical static types (got `$p0Type` vs `$p1Type`).',
@@ -1455,6 +1465,7 @@ void main() {
           '+',
           '-',
           '*',
+          '/',
           '~/',
           '%',
           '&',
@@ -1462,6 +1473,10 @@ void main() {
           '^',
           '<<',
           '>>',
+          '>',
+          '<',
+          '>=',
+          '<=',
         };
 
         final visitor = _NDArrayMutatorAndOperatorVisitor(
@@ -2483,6 +2498,7 @@ void main() {
           'InexactTag extends DTypeTag',
           'AccumulatorTag extends DTypeTag',
           'DoublePrecisionTag extends DTypeTag',
+          'DivideTag extends DTypeTag',
         ]) {
           expect(
             ndarraySrc,
@@ -2491,6 +2507,20 @@ void main() {
                 'DTypeSpec must declare descriptive type parameter `$paramName`',
           );
         }
+        expect(
+          ndarraySrc,
+          contains(
+            'extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T>',
+          ),
+          reason: 'NDArrayBitwise must be bounded by BitwiseDType',
+        );
+        expect(
+          ndarraySrc,
+          contains(
+            'extension NDArrayShift<T extends IntegerDType> on NDArray<T>',
+          ),
+          reason: 'NDArrayShift must be bounded by IntegerDType',
+        );
       },
     );
 
@@ -2900,6 +2930,20 @@ class _NDArrayMutatorAndOperatorVisitor extends RecursiveAstVisitor<void> {
   void visitClassDeclaration(ClassDeclaration node) {
     if (node.namePart.typeName.lexeme == 'NDArray') {
       super.visitClassDeclaration(node);
+    }
+  }
+
+  @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    const operatorExtensions = {
+      'NDArrayDivide',
+      'NDArrayBitwise',
+      'NDArrayShift',
+      'NDArrayBaseBitwise',
+      'NDArrayBaseShift',
+    };
+    if (operatorExtensions.contains(node.name?.lexeme)) {
+      super.visitExtensionDeclaration(node);
     }
   }
 

@@ -17,7 +17,7 @@ import 'package:ndarray/ndarray.dart';
 
 void main() {
   group('Comprehensive Coverage Booster Suite', () {
-    final allDTypes = [
+    final allDTypes = <DType<AnySpec>>[
       DType.float64,
       DType.float32,
       DType.float16,
@@ -35,7 +35,7 @@ void main() {
       DType.boolean,
     ];
 
-    final numericDTypes = [
+    final numericDTypes = <DType<AnySpec>>[
       DType.float64,
       DType.float32,
       DType.float16,
@@ -50,7 +50,7 @@ void main() {
       DType.uint8,
     ];
 
-    final integerDTypes = [
+    final integerDTypes = <DType<IntegerDType>>[
       DType.int64,
       DType.int32,
       DType.int16,
@@ -61,8 +61,8 @@ void main() {
       DType.uint8,
     ];
 
-    NDArray<AnySpec> createArray(
-      DType dt,
+    NDArray<T> createArray<T extends DTypeTag>(
+      DType<T> dt,
       List<int> shape, {
       bool strided = false,
     }) {
@@ -76,13 +76,12 @@ void main() {
         return val;
       });
 
-      final dtObj = dt;
       if (strided) {
-        final flatArr = NDArray.fromList(rawList, [size * 2], dtObj);
+        final flatArr = NDArray.fromList(rawList, [size * 2], dt);
         final sliced = flatArr[Slice(step: 2)];
-        return sliced.reshape(shape);
+        return sliced.reshape(shape) as NDArray<T>;
       } else {
-        return NDArray.fromList(rawList, shape, (dtObj as DType<AnySpec>));
+        return NDArray.fromList(rawList, shape, dt);
       }
     }
 
@@ -236,7 +235,7 @@ void main() {
       'Bitwise and Logical operators across integer and boolean DTypes (Contiguous & Strided)',
       () {
         NDArray.scope(() {
-          for (final dt in [
+          for (final dt in <DType<IntegerDType>>[
             DType.int64,
             DType.int32,
             DType.int16,

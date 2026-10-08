@@ -1498,8 +1498,6 @@ extension FrexpRecordExtension<R extends DTypeTag>
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1664,8 +1662,6 @@ extension FrexpRecordExtension<R extends DTypeTag>
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,

@@ -19,6 +19,8 @@ export 'package:ndarray/ndarray.dart'
         DType,
         DTypeTag,
         DTypeSpec,
+        BitwiseDType,
+        IntegerDType,
         AnySpec,
         Boolean,
         NDArrayBaseElements,

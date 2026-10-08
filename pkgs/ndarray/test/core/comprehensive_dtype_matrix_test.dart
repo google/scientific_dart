@@ -347,8 +347,14 @@ void main() {
               final b = createNumericArray(dtB, [2, 2], strided: isStrided);
 
               if (dtA != dtB) {
-                expect(() => gcd(a, b), throwsArgumentError);
-                expect(() => lcm(a, b), throwsArgumentError);
+                expect(
+                  () => gcd(a.asIntegerDType, b.asIntegerDType),
+                  throwsArgumentError,
+                );
+                expect(
+                  () => lcm(a.asIntegerDType, b.asIntegerDType),
+                  throwsArgumentError,
+                );
                 continue;
               }
 
@@ -369,11 +375,11 @@ void main() {
               }
 
               final targetDt = dtA;
-              final resGcd = gcd(a, b);
+              final resGcd = gcd(a.asIntegerDType, b.asIntegerDType);
               expect(resGcd.shape, [2, 2]);
               expect(resGcd.dtype, targetDt);
 
-              final resLcm = lcm(a, b);
+              final resLcm = lcm(a.asIntegerDType, b.asIntegerDType);
               expect(resLcm.shape, [2, 2]);
               expect(resLcm.dtype, targetDt);
 

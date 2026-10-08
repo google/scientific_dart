@@ -358,8 +358,14 @@ void main() {
         final cArray = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
         final rArray = NDArray.fromList([1.0], [1], DType.float64);
         expect(() => atan2(cArray, cArray), throwsUnsupportedError);
-        expect(() => atan2(cArray, rArray), throwsArgumentError);
-        expect(() => atan2(rArray, cArray), throwsArgumentError);
+        expect(
+          () => atan2<AnySpec, DTypeTag>(cArray, rArray),
+          throwsArgumentError,
+        );
+        expect(
+          () => atan2<AnySpec, DTypeTag>(rArray, cArray),
+          throwsArgumentError,
+        );
 
         // Disposed checks
         final disposedY = NDArray.fromList([1.0], [1], DType.float64)

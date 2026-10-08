@@ -2139,18 +2139,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 ({NDArray<T> sign, NDArray<R> logabsdet})
 slogdet<T extends DTypeTag, R extends DTypeTag>(
   NDArray<
-    DTypeSpec<
-      R,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      T,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
+    DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
   >
   a, {
   NDArray<T>? outSign,
@@ -2902,8 +2891,6 @@ NDArray<T> solve<T extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -3278,8 +3265,6 @@ NDArray<R> eigvals<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -4455,18 +4440,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 ({NDArray<T> u, NDArray<R> s, NDArray<T> vh})
 svd<T extends DTypeTag, R extends DTypeTag>(
   NDArray<
-    DTypeSpec<
-      R,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      T,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
+    DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
   >
   a, {
   ({NDArray<T> u, NDArray<R> s, NDArray<T> vh})? out,
@@ -5207,18 +5181,7 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
 ({NDArray<F> eigenvalues, NDArray<R> eigenvectors})
 eigh<F extends DTypeTag, R extends DTypeTag>(
   NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      F,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
+    DTypeSpec<DTypeTag, Object?, F, DTypeTag, R, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
@@ -5579,8 +5542,6 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -6210,8 +6171,6 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -7429,8 +7388,6 @@ NDArray<R> norm<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -8390,8 +8347,6 @@ NDArray<R> cond<R extends DTypeTag>(
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,

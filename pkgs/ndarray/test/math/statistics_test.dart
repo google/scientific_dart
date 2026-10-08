@@ -4520,7 +4520,7 @@ void main() {
         });
       });
 
-      test('cov with y different dtype (int32)', () {
+      test('cov with y different dtype throws ArgumentError unless cast', () {
         NDArray.scope(() {
           final x = NDArray<Float64>.fromList(
             ([-2.1, -1.0, 4.3]).map((e) => (e as num).toDouble()).toList(),
@@ -4532,7 +4532,8 @@ void main() {
             [3],
             DType.int32,
           );
-          final c = cov(x, y: y);
+          expect(() => cov<AnySpec, DTypeTag>(x, y: y), throwsArgumentError);
+          final c = cov(x, y: y.astype(DType.float64));
           expect(c.shape, [2, 2]);
           expect(c.getCell([0, 0]), closeTo(11.71, 1e-4));
           expect(c.getCell([0, 1]), closeTo(-4.45, 1e-4));

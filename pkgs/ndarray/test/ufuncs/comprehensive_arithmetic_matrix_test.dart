@@ -54,7 +54,11 @@ void main() {
     }
   }
 
-  NDArray createArray(List<int> shape, DType dtype, {int seedOffset = 0}) {
+  NDArray<AnySpec> createArray(
+    List<int> shape,
+    DType dtype, {
+    int seedOffset = 0,
+  }) {
     final size = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
     final list = List.generate(size, (i) => sampleValue(dtype, i + seedOffset));
     return switch (dtype) {
@@ -160,7 +164,7 @@ void main() {
                 expect(() => subtract<DTypeTag>(a, b), throwsArgumentError);
                 expect(() => multiply<DTypeTag>(a, b), throwsArgumentError);
                 expect(
-                  () => divide<DTypeTag, DTypeTag>(a, b),
+                  () => divide<AnySpec, DTypeTag>(a, b),
                   throwsArgumentError,
                 );
                 continue;
@@ -182,7 +186,7 @@ void main() {
               expect(prod.shape, [2, 2]);
               expect(prod.dtype, dtA);
 
-              final quot = divide<DTypeTag, DTypeTag>(a, b);
+              final quot = divide<AnySpec, DTypeTag>(a, b);
               expect(quot.shape, [2, 2]);
             }
           }
@@ -657,7 +661,7 @@ void main() {
 
     test("gcd and lcm on integer DTypes and edge cases", () {
       NDArray.scope(() {
-        final intDTypes = [
+        final intDTypes = <DType<IntegerDType>>[
           DType.int64,
           DType.int32,
           DType.int16,
@@ -689,14 +693,26 @@ void main() {
           expect(gT.shape, [2, 2]);
         }
 
-        // Float & Complex gcd/lcm throw UnsupportedError
+        // Float & Complex gcd/lcm are rejected by IntegerDType / asIntegerDType
         final fArr = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-        expect(() => gcd(fArr, fArr), throwsUnsupportedError);
-        expect(() => lcm(fArr, fArr), throwsUnsupportedError);
+        expect(
+          () => gcd(fArr.asIntegerDType, fArr.asIntegerDType),
+          throwsArgumentError,
+        );
+        expect(
+          () => lcm(fArr.asIntegerDType, fArr.asIntegerDType),
+          throwsArgumentError,
+        );
 
         final cArr = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
-        expect(() => gcd(cArr, cArr), throwsUnsupportedError);
-        expect(() => lcm(cArr, cArr), throwsUnsupportedError);
+        expect(
+          () => gcd(cArr.asIntegerDType, cArr.asIntegerDType),
+          throwsArgumentError,
+        );
+        expect(
+          () => lcm(cArr.asIntegerDType, cArr.asIntegerDType),
+          throwsArgumentError,
+        );
       });
     });
 

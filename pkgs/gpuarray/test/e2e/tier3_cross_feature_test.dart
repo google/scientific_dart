@@ -563,10 +563,8 @@ void main() {
             'bias': sourceLayer.bias!,
           });
           final loaded = loadSafetensors(bytes);
-          (loaded['weight']! as GpuArray<Float64>).copy(
-            out: targetLayer.weight,
-          );
-          (loaded['bias']! as GpuArray<Float64>).copy(out: targetLayer.bias);
+          loaded['weight']!.copy(out: targetLayer.weight);
+          loaded['bias']!.copy(out: targetLayer.bias);
 
           final sampleIn = GpuArray.fromList(
             <double>[1.0, 2.0, 3.0],

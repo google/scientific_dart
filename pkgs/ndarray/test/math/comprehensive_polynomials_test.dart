@@ -144,11 +144,17 @@ void main() {
             expect(yCpx64.getCell([0]).imag, closeTo(2.0, 1e-5));
 
             final cInt = NDArray.fromList([3, 1], [2], DType.int32);
+            final xInt = NDArray.fromList([2, 4], [2], DType.int32);
+            final yInt = polyval(cInt, xInt);
+            expect(yInt.dtype, equals(DType.float64));
+            expect(yInt.getCell([0]), closeTo(7.0, 1e-9));
+            expect(yInt.getCell([1]), closeTo(13.0, 1e-9));
+
             final xF64 = NDArray.fromList([2.5, 4.0], [2], DType.float64);
-            final yMixed = polyval(cInt, xF64);
-            expect(yMixed.dtype, equals(DType.float64));
-            expect(yMixed.getCell([0]), closeTo(8.5, 1e-9));
-            expect(yMixed.getCell([1]), closeTo(13.0, 1e-9));
+            expect(
+              () => polyval<AnySpec, DTypeTag>(cInt, xF64),
+              throwsArgumentError,
+            );
           });
         },
       );

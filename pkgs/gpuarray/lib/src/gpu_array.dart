@@ -36,7 +36,15 @@ export 'package:resource_scope/resource_scope.dart'
     show ResourceScope, ScopedResource;
 
 export 'dtype.dart'
-    show AnySpec, Bool, Boolean, DTypeSpec, DTypeTag, NDArrayBaseElements;
+    show
+        AnySpec,
+        BitwiseDType,
+        Bool,
+        Boolean,
+        DTypeSpec,
+        DTypeTag,
+        IntegerDType,
+        NDArrayBaseElements;
 
 /// An N-dimensional array living on a GPU device.
 ///
@@ -981,43 +989,54 @@ final class GpuArray<T extends DTypeTag>
   // --- Elementwise Arithmetic & Operations ---
 
   /// Elementwise addition (`this + other`). Supports broadcasting and scalars.
-  GpuArray<T> operator +(Object? other) => add(other);
+  GpuArray<T> operator +(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.add, other));
 
   /// Elementwise subtraction (`this - other`). Supports broadcasting and scalars.
-  GpuArray<T> operator -(Object? other) => subtract(other);
+  GpuArray<T> operator -(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.subtract, other));
 
   /// Elementwise multiplication (`this * other`). Supports broadcasting and scalars.
-  GpuArray<T> operator *(Object? other) => multiply(other);
+  GpuArray<T> operator *(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.multiply, other));
 
   /// Elementwise division (`this / other`). Supports broadcasting and scalars.
-  GpuArray<T> operator /(Object? other) => divide(other);
+  GpuArray<T> operator /(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.divide, other));
 
   /// Elementwise modulo/remainder (`this % other`). Supports broadcasting and scalars.
-  GpuArray<T> operator %(Object? other) => remainder(other);
+  GpuArray<T> operator %(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.remainder, other));
 
   /// Elementwise floor division (`this ~/ other`). Supports broadcasting and scalars.
-  GpuArray<T> operator ~/(Object? other) => floorDivide(other);
+  GpuArray<T> operator ~/(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.floorDivide, other));
 
   /// Elementwise negation (`-this`).
-  GpuArray<T> operator -() => negate();
+  GpuArray<T> operator -() => _dispatchUnary(UnaryOp.negate);
 
   /// Elementwise bitwise AND (`this & other`).
-  GpuArray<T> operator &(Object? other) => bitwiseAnd(other);
+  GpuArray<T> operator &(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseAnd, other));
 
   /// Elementwise bitwise OR (`this | other`).
-  GpuArray<T> operator |(Object? other) => bitwiseOr(other);
+  GpuArray<T> operator |(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseOr, other));
 
   /// Elementwise bitwise XOR (`this ^ other`).
-  GpuArray<T> operator ^(Object? other) => bitwiseXor(other);
+  GpuArray<T> operator ^(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseXor, other));
 
   /// Elementwise bitwise NOT / inversion (`~this`).
-  GpuArray<T> operator ~() => bitwiseNot();
+  GpuArray<T> operator ~() => _dispatchUnary(UnaryOp.bitwiseNot);
 
   /// Elementwise bitwise left shift (`this << other`).
-  GpuArray<T> operator <<(Object? other) => leftShift(other);
+  GpuArray<T> operator <<(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.leftShift, other));
 
   /// Elementwise bitwise right shift (`this >> other`).
-  GpuArray<T> operator >>(Object? other) => rightShift(other);
+  GpuArray<T> operator >>(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.rightShift, other));
 
   GpuArray<T> _asT(GpuArray<DTypeTag> res) {
     if (res is GpuArray<T>) return res;
@@ -1031,348 +1050,63 @@ final class GpuArray<T extends DTypeTag>
     return casted;
   }
 
-  /// Elementwise addition with another [GpuArray] or scalar.
-  GpuArray<T> add(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.add, other, out: out));
-
-  /// Elementwise subtraction with another [GpuArray] or scalar.
-  GpuArray<T> subtract(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.subtract, other, out: out));
-
-  /// Elementwise multiplication with another [GpuArray] or scalar.
-  GpuArray<T> multiply(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.multiply, other, out: out));
-
-  /// Elementwise division with another [GpuArray] or scalar.
-  GpuArray<T> divide(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.divide, other, out: out));
-
-  /// Elementwise floor division with another [GpuArray] or scalar.
-  GpuArray<T> floorDivide(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.floorDivide, other, out: out));
-
-  /// Elementwise power with another [GpuArray] or scalar.
-  GpuArray<T> pow(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.power, other, out: out));
-
-  /// Elementwise remainder with another [GpuArray] or scalar.
-  GpuArray<T> remainder(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.remainder, other, out: out));
-
-  /// Elementwise C-style fmod remainder with another [GpuArray] or scalar.
-  GpuArray<T> fmod(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.fmod, other, out: out));
-
-  /// Elementwise maximum with another [GpuArray] or scalar.
-  GpuArray<T> maximum(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.maximum, other, out: out));
-
-  /// Elementwise minimum with another [GpuArray] or scalar.
-  GpuArray<T> minimum(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.minimum, other, out: out));
-
-  /// Elementwise two-argument arctangent (`atan2(this, other)`).
-  GpuArray<T> atan2(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.atan2, other, out: out));
-
-  /// Elementwise hypotenuse (`sqrt(this^2 + other^2)`).
-  GpuArray<T> hypot(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.hypot, other, out: out));
-
-  /// Elementwise copy sign of [other] to magnitude of `this`.
-  GpuArray<T> copysign(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.copysign, other, out: out));
-
-  /// Elementwise `this * 2^other`.
-  GpuArray<T> ldexp(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.ldexp, other, out: out));
-
-  /// Elementwise greatest common divisor.
-  GpuArray<T> gcd(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.gcd, other, out: out));
-
-  /// Elementwise least common multiple.
-  GpuArray<T> lcm(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.lcm, other, out: out));
-
-  /// Elementwise bitwise AND with [other].
-  GpuArray<T> bitwiseAnd(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.bitwiseAnd, other, out: out));
-
-  /// Elementwise bitwise OR with [other].
-  GpuArray<T> bitwiseOr(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.bitwiseOr, other, out: out));
-
-  /// Elementwise bitwise XOR with [other].
-  GpuArray<T> bitwiseXor(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.bitwiseXor, other, out: out));
-
-  /// Elementwise bitwise left shift by [other].
-  GpuArray<T> leftShift(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.leftShift, other, out: out));
-
-  /// Elementwise bitwise right shift by [other].
-  GpuArray<T> rightShift(Object? other, {GpuArray<DTypeTag>? out}) =>
-      _asT(_dispatchBinary(BinaryOp.rightShift, other, out: out));
-
   /// Elementwise equality comparison (`==`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> equal(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> equal(Object? other, {GpuArray<Boolean>? out}) =>
       _dispatchComparison(BinaryOp.equal, other, out: out);
 
   /// Elementwise inequality comparison (`!=`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> notEqual(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> notEqual(Object? other, {GpuArray<Boolean>? out}) =>
       _dispatchComparison(BinaryOp.notEqual, other, out: out);
 
   /// Elementwise greater than comparison (`>`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> greater(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> greater(Object? other, {GpuArray<Boolean>? out}) =>
       _dispatchComparison(BinaryOp.greater, other, out: out);
 
   /// Elementwise greater than or equal comparison (`>=`).
-  GpuArray<Boolean> greaterEqual(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> greaterEqual(Object? other, {GpuArray<Boolean>? out}) =>
       _dispatchComparison(BinaryOp.greaterEqual, other, out: out);
 
   /// Elementwise less than comparison (`<`). Returns a boolean [GpuArray].
-  GpuArray<Boolean> less(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> less(Object? other, {GpuArray<Boolean>? out}) =>
       _dispatchComparison(BinaryOp.less, other, out: out);
 
   /// Elementwise less than alias (`<`).
-  GpuArray<Boolean> lessThan(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> lessThan(Object? other, {GpuArray<Boolean>? out}) =>
       less(other, out: out);
 
   /// Elementwise less than or equal comparison (`<=`).
-  GpuArray<Boolean> lessEqual(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> lessEqual(Object? other, {GpuArray<Boolean>? out}) =>
       _dispatchComparison(BinaryOp.lessEqual, other, out: out);
 
   /// Elementwise less than or equal alias (`<=`).
-  GpuArray<Boolean> lessThanOrEqual(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> lessThanOrEqual(Object? other, {GpuArray<Boolean>? out}) =>
       lessEqual(other, out: out);
 
   /// Elementwise greater than alias (`>`).
-  GpuArray<Boolean> greaterThan(Object? other, {GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> greaterThan(Object? other, {GpuArray<Boolean>? out}) =>
       greater(other, out: out);
 
   /// Elementwise greater than or equal alias (`>=`).
   GpuArray<Boolean> greaterThanOrEqual(
     Object? other, {
-    GpuArray<DTypeTag>? out,
+    GpuArray<Boolean>? out,
   }) => greaterEqual(other, out: out);
 
-  // --- Unary Math Operations ---
-
-  /// Computes elementwise negation.
-  GpuArray<T> negate({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.negate, out: out);
-
-  /// Computes elementwise absolute value.
-  GpuArray<T> abs({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.abs, out: out);
-
-  /// Computes elementwise square root.
-  GpuArray<T> sqrt({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.sqrt, out: out);
-
-  /// Computes elementwise exponential ($e^x$).
-  GpuArray<T> exp({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.exp, out: out);
-
-  /// Computes elementwise natural logarithm ($\ln x$).
-  GpuArray<T> log({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.log, out: out);
-
-  /// Computes elementwise sine ($\sin x$).
-  GpuArray<T> sin({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.sin, out: out);
-
-  /// Computes elementwise cosine ($\cos x$).
-  GpuArray<T> cos({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.cos, out: out);
-
-  /// Computes elementwise tangent ($\tan x$).
-  GpuArray<T> tan({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.tan, out: out);
-
-  /// Computes elementwise arcsine ($\arcsin x$).
-  GpuArray<T> asin({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.asin, out: out);
-
-  /// Computes elementwise arccosine ($\arccos x$).
-  GpuArray<T> acos({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.acos, out: out);
-
-  /// Computes elementwise arctangent ($\arctan x$).
-  GpuArray<T> atan({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.atan, out: out);
-
-  /// Computes elementwise hyperbolic sine ($\sinh x$).
-  GpuArray<T> sinh({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.sinh, out: out);
-
-  /// Computes elementwise hyperbolic cosine ($\cosh x$).
-  GpuArray<T> cosh({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.cosh, out: out);
-
-  /// Computes elementwise hyperbolic tangent ($\tanh x$).
-  GpuArray<T> tanh({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.tanh, out: out);
-
-  /// Computes elementwise floor.
-  GpuArray<T> floor({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.floor, out: out);
-
-  /// Computes elementwise ceiling.
-  GpuArray<T> ceil({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.ceil, out: out);
-
-  /// Computes elementwise round.
-  GpuArray<T> round({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.round, out: out);
-
-  /// Computes elementwise round to nearest integer (`rint`).
-  GpuArray<T> rint({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.rint, out: out);
-
-  /// Computes elementwise truncation toward zero (`trunc`).
-  GpuArray<T> trunc({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.trunc, out: out);
-
-  /// Computes elementwise truncation toward zero (alias for [trunc]).
-  GpuArray<T> fix({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.trunc, out: out);
-
-  /// Computes elementwise sign indication (`-1`, `0`, `1`).
-  GpuArray<T> sign({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.sign, out: out);
-
-  /// Computes elementwise bitwise NOT / inversion (`~this`).
-  GpuArray<T> bitwiseNot({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.bitwiseNot, out: out);
-
-  /// Computes elementwise bitwise inversion (alias for [bitwiseNot]).
-  GpuArray<T> invert({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.bitwiseNot, out: out);
-
-  /// Computes elementwise complex conjugate.
-  GpuArray<T> conj({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.conj, out: out);
-
-  /// Computes elementwise complex conjugate (alias for [conj]).
-  GpuArray<T> conjugate({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.conj, out: out);
-
-  /// Computes elementwise cube root.
-  GpuArray<T> cbrt({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.cbrt, out: out);
-
-  /// Computes elementwise reciprocal (`1 / this`).
-  GpuArray<T> reciprocal({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.reciprocal, out: out);
-
-  /// Computes elementwise square (`this * this`).
-  GpuArray<T> square({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.square, out: out);
-
-  /// Computes elementwise reciprocal square root (`1 / sqrt(this)`).
-  GpuArray<T> rsqrt({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.rsqrt, out: out);
-
-  /// Computes elementwise `exp(this) - 1`.
-  GpuArray<T> expm1({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.expm1, out: out);
-
-  /// Computes elementwise `2^this`.
-  GpuArray<T> exp2({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.exp2, out: out);
-
-  /// Computes elementwise base-2 logarithm.
-  GpuArray<T> log2({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.log2, out: out);
-
-  /// Computes elementwise base-10 logarithm.
-  GpuArray<T> log10({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.log10, out: out);
-
-  /// Computes elementwise `log(1 + this)`.
-  GpuArray<T> log1p({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.log1p, out: out);
-
-  /// Computes elementwise inverse hyperbolic sine.
-  GpuArray<T> asinh({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.asinh, out: out);
-
-  /// Computes elementwise inverse hyperbolic cosine.
-  GpuArray<T> acosh({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.acosh, out: out);
-
-  /// Computes elementwise inverse hyperbolic tangent.
-  GpuArray<T> atanh({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.atanh, out: out);
-
-  /// Converts angles from degrees to radians.
-  GpuArray<T> deg2rad({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.deg2rad, out: out);
-
-  /// Converts angles from degrees to radians (alias for [deg2rad]).
-  GpuArray<T> radians({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.deg2rad, out: out);
-
-  /// Converts angles from radians to degrees.
-  GpuArray<T> rad2deg({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.rad2deg, out: out);
-
-  /// Converts angles from radians to degrees (alias for [rad2deg]).
-  GpuArray<T> degrees({GpuArray<DTypeTag>? out}) =>
-      _dispatchUnary(UnaryOp.rad2deg, out: out);
-
   /// Tests elementwise for `NaN` values.
-  GpuArray<Boolean> isnan({GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> isnan({GpuArray<Boolean>? out}) =>
       _dispatchUnaryPredicate('isnan', out: out);
 
   /// Tests elementwise for positive or negative infinity.
-  GpuArray<Boolean> isinf({GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> isinf({GpuArray<Boolean>? out}) =>
       _dispatchUnaryPredicate('isinf', out: out);
 
   /// Tests elementwise for finiteness (not infinity and not `NaN`).
-  GpuArray<Boolean> isfinite({GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> isfinite({GpuArray<Boolean>? out}) =>
       _dispatchUnaryPredicate('isfinite', out: out);
 
   /// Tests elementwise whether the sign bit is set.
-  GpuArray<Boolean> signbit({GpuArray<DTypeTag>? out}) =>
+  GpuArray<Boolean> signbit({GpuArray<Boolean>? out}) =>
       _dispatchUnaryPredicate('signbit', out: out);
-
-  /// Replaces `NaN` with [nan], positive infinity with [posinf], and negative
-  /// infinity with [neginf].
-  GpuArray<T> nanToNum({
-    double nan = 0.0,
-    double? posinf,
-    double? neginf,
-    GpuArray<DTypeTag>? out,
-  }) => _dispatchNanToNum(nan: nan, posinf: posinf, neginf: neginf, out: out);
-
-  /// Clips (limits) the values in this array to `[aMin, aMax]`.
-  GpuArray<T> clip(Object? aMin, Object? aMax, {GpuArray<DTypeTag>? out}) {
-    _checkNotDisposed();
-    if (aMin == null && aMax == null) {
-      throw ArgumentError.value(
-        null,
-        'aMin',
-        'Must specify at least one of aMin or aMax.',
-      );
-    }
-    if (aMin != null && aMax != null) {
-      final lower = maximum(aMin);
-      try {
-        return lower.minimum(aMax, out: out);
-      } finally {
-        if (!identical(lower, out) && !lower.requiresGrad) {
-          lower.dispose();
-        }
-      }
-    }
-    if (aMin != null) {
-      return maximum(aMin, out: out);
-    }
-    return minimum(aMax, out: out);
-  }
 
   /// Evaluates elementwise whether elements are equal to [other] within tolerance.
   GpuArray<Boolean> isClose(
@@ -1380,7 +1114,7 @@ final class GpuArray<T extends DTypeTag>
     double rtol = 1e-05,
     double atol = 1e-08,
     bool equalNan = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Boolean>? out,
   }) => _dispatchIsClose(
     other,
     rtol: rtol,
@@ -1395,7 +1129,7 @@ final class GpuArray<T extends DTypeTag>
     double rtol = 1e-05,
     double atol = 1e-08,
     bool equalNan = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Boolean>? out,
   }) => isClose(other, rtol: rtol, atol: atol, equalNan: equalNan, out: out);
 
   /// Returns `true` if all elements are equal to [other] within tolerance.
@@ -1428,12 +1162,12 @@ final class GpuArray<T extends DTypeTag>
 
   // --- Reductions ---
 
-  /// Computes the sum of elements over the entire tensor or along [axis].
-  GpuArray<T> sum({
+  /// Computes the sum of elements cast to [dtype].
+  GpuArray<R> sumAs<R extends DTypeTag>(
+    DType<R> dtype, {
     int? axis,
     bool keepDims = false,
-    DType<DTypeTag>? dtype,
-    GpuArray<DTypeTag>? out,
+    GpuArray<R>? out,
   }) =>
       _dispatchReduction(
             'sum',
@@ -1442,14 +1176,14 @@ final class GpuArray<T extends DTypeTag>
             dtype: dtype,
             out: out,
           )
-          as GpuArray<T>;
+          as GpuArray<R>;
 
-  /// Computes the sum of elements treating `NaN`s as zero.
-  GpuArray<T> nansum({
+  /// Computes the sum of elements treating `NaN`s as zero, cast to [dtype].
+  GpuArray<R> nansumAs<R extends DTypeTag>(
+    DType<R> dtype, {
     int? axis,
     bool keepDims = false,
-    DType<DTypeTag>? dtype,
-    GpuArray<DTypeTag>? out,
+    GpuArray<R>? out,
   }) =>
       _dispatchReduction(
             'nansum',
@@ -1458,14 +1192,14 @@ final class GpuArray<T extends DTypeTag>
             dtype: dtype,
             out: out,
           )
-          as GpuArray<T>;
+          as GpuArray<R>;
 
-  /// Computes the product of elements over the entire tensor or along [axis].
-  GpuArray<T> prod({
+  /// Computes the product of elements cast to [dtype].
+  GpuArray<R> prodAs<R extends DTypeTag>(
+    DType<R> dtype, {
     int? axis,
     bool keepDims = false,
-    DType<DTypeTag>? dtype,
-    GpuArray<DTypeTag>? out,
+    GpuArray<R>? out,
   }) =>
       _dispatchReduction(
             'prod',
@@ -1474,58 +1208,13 @@ final class GpuArray<T extends DTypeTag>
             dtype: dtype,
             out: out,
           )
-          as GpuArray<T>;
-
-  /// Computes the minimum value over the entire tensor or along [axis].
-  GpuArray<T> min({
-    int? axis,
-    bool keepDims = false,
-    GpuArray<DTypeTag>? out,
-  }) =>
-      _dispatchReduction('min', axis: axis, keepDims: keepDims, out: out)
-          as GpuArray<T>;
-
-  /// Computes the minimum value ignoring any `NaN`s.
-  GpuArray<T> nanmin({
-    int? axis,
-    bool keepDims = false,
-    GpuArray<DTypeTag>? out,
-  }) =>
-      _dispatchReduction('nanmin', axis: axis, keepDims: keepDims, out: out)
-          as GpuArray<T>;
-
-  /// Computes the maximum value over the entire tensor or along [axis].
-  GpuArray<T> max({
-    int? axis,
-    bool keepDims = false,
-    GpuArray<DTypeTag>? out,
-  }) =>
-      _dispatchReduction('max', axis: axis, keepDims: keepDims, out: out)
-          as GpuArray<T>;
-
-  /// Computes the maximum value ignoring any `NaN`s.
-  GpuArray<T> nanmax({
-    int? axis,
-    bool keepDims = false,
-    GpuArray<DTypeTag>? out,
-  }) =>
-      _dispatchReduction('nanmax', axis: axis, keepDims: keepDims, out: out)
-          as GpuArray<T>;
-
-  /// Computes the peak-to-peak range (`maximum - minimum`) along [axis].
-  GpuArray<T> ptp({
-    int? axis,
-    bool keepDims = false,
-    GpuArray<DTypeTag>? out,
-  }) =>
-      _dispatchReduction('ptp', axis: axis, keepDims: keepDims, out: out)
-          as GpuArray<T>;
+          as GpuArray<R>;
 
   /// Computes the indices of minimum values over the entire tensor or along [axis].
   GpuArray<Int64> argmin({
     int? axis,
     bool keepDims = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Int64>? out,
   }) =>
       _dispatchReduction('argmin', axis: axis, keepDims: keepDims, out: out)
           as GpuArray<Int64>;
@@ -1534,7 +1223,7 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<Int64> argmax({
     int? axis,
     bool keepDims = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Int64>? out,
   }) =>
       _dispatchReduction('argmax', axis: axis, keepDims: keepDims, out: out)
           as GpuArray<Int64>;
@@ -1543,7 +1232,7 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<Int64> countNonzero({
     int? axis,
     bool keepDims = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Int64>? out,
   }) =>
       _dispatchReduction(
             'count_nonzero',
@@ -1557,7 +1246,7 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<Boolean> all({
     int? axis,
     bool keepDims = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Boolean>? out,
   }) =>
       _dispatchReduction('all', axis: axis, keepDims: keepDims, out: out)
           as GpuArray<Boolean>;
@@ -1566,207 +1255,10 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<Boolean> any({
     int? axis,
     bool keepDims = false,
-    GpuArray<DTypeTag>? out,
+    GpuArray<Boolean>? out,
   }) =>
       _dispatchReduction('any', axis: axis, keepDims: keepDims, out: out)
           as GpuArray<Boolean>;
-
-  // --- Linear Algebra ---
-
-  /// Matrix multiplication of two 1D, 2D, or batched N-D tensors.
-  GpuArray<T> matmul(GpuArray<DTypeTag> other, {GpuArray<DTypeTag>? out}) {
-    _checkNotDisposed();
-    other._checkNotDisposed();
-    if (out != null) {
-      out._checkNotDisposed();
-    }
-    if (other.device != device) {
-      throw ArgumentError.value(
-        other.device,
-        'other.device',
-        'Must reside on the same GpuDevice ($device) as this tensor.',
-      );
-    }
-
-    if (rank < 1 || other.rank < 1) {
-      throw GpuShapeMismatchException('matmul', shape, other.shape);
-    }
-
-    final outDtype = _promotedDType(dtype, other.dtype);
-
-    if (rank == 1 && other.rank == 1) {
-      if (shape[0] != other.shape[0]) {
-        throw GpuShapeMismatchException('matmul', shape, other.shape);
-      }
-      final dst = _prepareOut('matmul', const [], outDtype, out);
-      GpuKernels.executeMatmul(
-        srcA: buffer,
-        shapeA: shape,
-        stridesA: strides,
-        offsetA: offsetElements,
-        dtypeA: dtype,
-        srcB: other.buffer,
-        shapeB: other.shape,
-        stridesB: other.strides,
-        offsetB: other.offsetElements,
-        dtypeB: other.dtype,
-        dst: dst.buffer,
-        outShape: const [],
-        outStrides: const [],
-        offsetDst: dst.offsetElements,
-        dtypeDst: outDtype,
-      );
-      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
-        dst.requiresGrad = true;
-        dst.gradFn = MatmulBackward(this, other);
-      }
-      return _asT(dst);
-    }
-
-    // 2D (or N-D) x 1D: [..., M, K] @ [K] -> [..., M]
-    if (rank >= 2 && other.rank == 1) {
-      final k1 = shape[rank - 1];
-      final k2 = other.shape[0];
-      if (k1 != k2) {
-        throw GpuShapeMismatchException('matmul', shape, other.shape);
-      }
-      final outShape = shape.sublist(0, rank - 1);
-      final dst = _prepareOut('matmul', outShape, outDtype, out);
-      GpuKernels.executeMatmul(
-        srcA: buffer,
-        shapeA: shape,
-        stridesA: strides,
-        offsetA: offsetElements,
-        dtypeA: dtype,
-        srcB: other.buffer,
-        shapeB: [...List<int>.filled(rank - 2, 1), k2, 1],
-        stridesB: [...List<int>.filled(rank - 2, 0), other.strides[0], 0],
-        offsetB: other.offsetElements,
-        dtypeB: other.dtype,
-        dst: dst.buffer,
-        outShape: [...outShape, 1],
-        outStrides: [...dst.strides, 0],
-        offsetDst: dst.offsetElements,
-        dtypeDst: outDtype,
-      );
-      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
-        dst.requiresGrad = true;
-        dst.gradFn = MatmulBackward(this, other);
-      }
-      return _asT(dst);
-    }
-
-    // 1D x 2D (or N-D): [K] @ [..., K, N] -> [..., N]
-    if (rank == 1 && other.rank >= 2) {
-      final k1 = shape[0];
-      final k2 = other.shape[other.rank - 2];
-      final n = other.shape[other.rank - 1];
-      if (k1 != k2) {
-        throw GpuShapeMismatchException('matmul', shape, other.shape);
-      }
-      final batchB = other.shape.sublist(0, other.rank - 2);
-      final outShape = [...batchB, n];
-      final dst = _prepareOut('matmul', outShape, outDtype, out);
-      final batchDstStrides = dst.strides.sublist(0, dst.strides.length - 1);
-      final nStrideDst = dst.strides.last;
-      GpuKernels.executeMatmul(
-        srcA: buffer,
-        shapeA: [...List<int>.filled(other.rank - 2, 1), 1, k1],
-        stridesA: [...List<int>.filled(other.rank - 2, 0), 0, strides[0]],
-        offsetA: offsetElements,
-        dtypeA: dtype,
-        srcB: other.buffer,
-        shapeB: other.shape,
-        stridesB: other.strides,
-        offsetB: other.offsetElements,
-        dtypeB: other.dtype,
-        dst: dst.buffer,
-        outShape: [...batchB, 1, n],
-        outStrides: [...batchDstStrides, 0, nStrideDst],
-        offsetDst: dst.offsetElements,
-        dtypeDst: outDtype,
-      );
-      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
-        dst.requiresGrad = true;
-        dst.gradFn = MatmulBackward(this, other);
-      }
-      return _asT(dst);
-    }
-
-    if (rank == 2 && other.rank == 2) {
-      if (shape[1] != other.shape[0]) {
-        throw GpuShapeMismatchException('matmul', shape, other.shape);
-      }
-      final outShape = [shape[0], other.shape[1]];
-      final dst = _prepareOut('matmul', outShape, outDtype, out);
-
-      GpuKernels.executeMatmul(
-        srcA: buffer,
-        shapeA: shape,
-        stridesA: strides,
-        offsetA: offsetElements,
-        dtypeA: dtype,
-        srcB: other.buffer,
-        shapeB: other.shape,
-        stridesB: other.strides,
-        offsetB: other.offsetElements,
-        dtypeB: other.dtype,
-        dst: dst.buffer,
-        outShape: outShape,
-        outStrides: dst.strides,
-        offsetDst: dst.offsetElements,
-        dtypeDst: outDtype,
-      );
-      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
-        dst.requiresGrad = true;
-        dst.gradFn = MatmulBackward(this, other);
-      }
-      return _asT(dst);
-    }
-
-    // Batched N-D matmul
-    final m = shape[rank - 2];
-    final k1 = shape[rank - 1];
-    final k2 = other.shape[other.rank - 2];
-    final n = other.shape[other.rank - 1];
-
-    if (k1 != k2) {
-      throw GpuShapeMismatchException('matmul', shape, other.shape);
-    }
-
-    final batchA = shape.sublist(0, rank - 2);
-    final batchB = other.shape.sublist(0, other.rank - 2);
-    final batchOut = broadcastShapes(batchA, batchB);
-    final outShape = [...batchOut, m, n];
-
-    final dst = _prepareOut('matmul', outShape, outDtype, out);
-    GpuKernels.executeMatmul(
-      srcA: buffer,
-      shapeA: shape,
-      stridesA: strides,
-      offsetA: offsetElements,
-      dtypeA: dtype,
-      srcB: other.buffer,
-      shapeB: other.shape,
-      stridesB: other.strides,
-      offsetB: other.offsetElements,
-      dtypeB: other.dtype,
-      dst: dst.buffer,
-      outShape: outShape,
-      outStrides: dst.strides,
-      offsetDst: dst.offsetElements,
-      dtypeDst: outDtype,
-    );
-    if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
-      dst.requiresGrad = true;
-      dst.gradFn = MatmulBackward(this, other);
-    }
-    return _asT(dst);
-  }
-
-  /// Dot product or matrix multiplication.
-  GpuArray<T> dot(GpuArray<DTypeTag> other, {GpuArray<DTypeTag>? out}) =>
-      matmul(other, out: out);
 
   // --- Tensor Views & Transformations ---
 
@@ -1960,25 +1452,6 @@ final class GpuArray<T extends DTypeTag>
     return res;
   }
 
-  /// Creates a contiguous copy of this tensor in device memory (or writes into
-  /// [out] if provided).
-  GpuArray<T> copy({GpuArray<DTypeTag>? out}) {
-    _checkNotDisposed();
-    final dst = _prepareOut<T>('copy', shape, dtype, out);
-    GpuKernels.copyStrided(
-      src: buffer,
-      shape: shape,
-      strides: strides,
-      offsetSrc: offsetElements,
-      dtypeSrc: dtype,
-      dst: dst.buffer,
-      outStrides: dst.strides,
-      offsetDst: dst.offsetElements,
-      dtypeDst: dtype,
-    );
-    return dst;
-  }
-
   /// Casts this tensor to a different [targetDType].
   GpuArray<R> astype<R extends DTypeTag>(
     DType<R> targetDType, {
@@ -2045,79 +1518,16 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<T> moveaxis(Object source, Object destination) =>
       manip.moveaxis(this, source, destination);
 
-  /// Repeats elements of this array [repeats] times along [axis].
-  GpuArray<T> repeat(int repeats, {int? axis, GpuArray<T>? out}) =>
-      manip.repeat(this, repeats, axis: axis, out: out);
-
-  /// Extracts a diagonal or constructs a diagonal array.
-  GpuArray<T> diag({int k = 0, GpuArray<T>? out}) =>
-      manip.diag(this, k: k, out: out);
-
-  /// Extracts specified diagonals of this array.
-  GpuArray<T> diagonal({
-    int offset = 0,
-    int axis1 = 0,
-    int axis2 = 1,
-    GpuArray<T>? out,
-  }) => manip.diagonal(
-    this,
-    offset: offset,
-    axis1: axis1,
-    axis2: axis2,
-    out: out,
-  );
-
-  /// Computes the sum along diagonals of this array as a [GpuArray].
-  GpuArray<T> trace({
-    int offset = 0,
-    int axis1 = 0,
-    int axis2 = 1,
-    GpuArray<T>? out,
-  }) => manip.trace(this, offset: offset, axis1: axis1, axis2: axis2, out: out);
-
-  /// Extracts the upper triangular portion of this array.
-  GpuArray<T> triu({int k = 0, GpuArray<T>? out}) =>
-      manip.triu(this, k: k, out: out);
-
-  /// Extracts the lower triangular portion of this array.
-  GpuArray<T> tril({int k = 0, GpuArray<T>? out}) =>
-      manip.tril(this, k: k, out: out);
-
   /// Reverses the order of elements along the given [axis].
   GpuArray<T> flip({Object? axis}) => manip.flip(this, axis: axis);
-
-  /// Rolls array elements along a given [axis].
-  GpuArray<T> roll(Object shift, {Object? axis, GpuArray<T>? out}) =>
-      manip.roll(this, shift, axis: axis, out: out);
 
   /// Rotates an array by 90 degrees in the plane specified by [axes].
   GpuArray<T> rot90({int k = 1, List<int> axes = const [0, 1]}) =>
       manip.rot90(this, k: k, axes: axes);
 
-  /// Pads this array with [padWidth] using [mode].
-  GpuArray<T> pad(
-    List<List<int>> padWidth, {
-    manip.PadMode mode = manip.PadMode.constant,
-    Object constantValues = 0,
-    GpuArray<T>? out,
-  }) => manip.pad(
-    this,
-    padWidth,
-    mode: mode,
-    constantValues: constantValues,
-    out: out,
-  );
-
   /// Broadcasts this array to [targetShape].
   GpuArray<T> broadcastTo(List<int> targetShape) =>
       manip.broadcastTo(this, targetShape);
-
-  /// Sorts elements of this array in ascending order along [axis].
-  GpuArray<T> sort({
-    int? axis = -1,
-    SortKind kind = SortKind.quicksort,
-    GpuArray<T>? out,
-  }) => indexing.sort<T>(this, axis: axis, kind: kind, out: out);
 
   /// Computes the 64-bit integer indices that would sort this array along [axis].
   GpuArray<Int64> argsort({
@@ -2125,30 +1535,6 @@ final class GpuArray<T extends DTypeTag>
     SortKind kind = SortKind.quicksort,
     GpuArray<Int64>? out,
   }) => indexing.argsort<T>(this, axis: axis, kind: kind, out: out);
-
-  /// Finds the [k] largest or smallest elements and their 64-bit indices
-  /// along [axis].
-  ({GpuArray<T> values, GpuArray<Int64> indices}) topk(
-    int k, {
-    int axis = -1,
-    bool largest = true,
-    bool sorted = true,
-    GpuArray<T>? outValues,
-    GpuArray<Int64>? outIndices,
-  }) => indexing.topk<T>(
-    this,
-    k,
-    axis: axis,
-    largest: largest,
-    sorted: sorted,
-    outValues: outValues,
-    outIndices: outIndices,
-  );
-
-  /// Rearranges elements along [axis] so that the [kth] element is in its
-  /// final sorted position.
-  GpuArray<T> partition(Object kth, {int? axis = -1, GpuArray<T>? out}) =>
-      indexing.partition<T>(this, kth, axis: axis, out: out);
 
   /// Computes the 64-bit integer indices that would partition this array at
   /// [kth] along [axis].
@@ -2218,22 +1604,6 @@ final class GpuArray<T extends DTypeTag>
     GpuArray<DTypeTag>? out,
   }) => indexing.cumprod(this, axis: axis, dtype: dtype, out: out);
 
-  /// Computes the [n]-th discrete difference along [axis].
-  GpuArray<T> diff({
-    int n = 1,
-    int axis = -1,
-    Object? prepend,
-    Object? append,
-    GpuArray<T>? out,
-  }) => indexing.diff<T>(
-    this,
-    n: n,
-    axis: axis,
-    prepend: prepend,
-    append: append,
-    out: out,
-  );
-
   /// Finds the indices of non-zero elements per dimension as
   /// `List<GpuArray<Int64>>`.
   List<GpuArray<Int64>> nonzero() => indexing.nonzero(this);
@@ -2243,27 +1613,6 @@ final class GpuArray<T extends DTypeTag>
 
   /// Finds the indices of non-zero elements as a 2-D [Int64] array.
   GpuArray<Int64> argwhere() => indexing.argwhere(this);
-
-  /// Takes elements from this array along [axis] at [indices].
-  GpuArray<T> take(GpuArray<DTypeTag> indices, {int? axis, GpuArray<T>? out}) =>
-      indexing.take<T>(this, indices, axis: axis, out: out);
-
-  /// Replaces specified elements of this array with [values] at flat [indices].
-  void put(GpuArray<DTypeTag> indices, GpuArray<T> values) =>
-      indexing.put<T>(this, indices, values);
-
-  /// Takes values from this array by matching 1-D index and data slices along
-  /// [axis].
-  GpuArray<T> takeAlongAxis(
-    GpuArray<DTypeTag> indices,
-    int axis, {
-    GpuArray<T>? out,
-  }) => indexing.takeAlongAxis<T>(this, indices, axis, out: out);
-
-  /// Puts [values] into this array by matching 1-D index and data slices along
-  /// [axis].
-  void putAlongAxis(GpuArray<DTypeTag> indices, GpuArray<T> values, int axis) =>
-      indexing.putAlongAxis<T>(this, indices, values, axis);
 
   /// Promotes two [DType]s following NumPy's type promotion hierarchy.
   static DType<DTypeTag> promoteDTypes(DType<DTypeTag> a, DType<DTypeTag> b) =>
@@ -3042,6 +2391,707 @@ final class GpuArray<T extends DTypeTag>
   }
 }
 
+/// Elementwise binary arithmetic, unary math, reduction, linear algebra, and manipulation methods on [GpuArray<T>].
+extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
+  /// Elementwise addition with another [GpuArray] or scalar.
+  GpuArray<T> add(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.add, other, out: out));
+
+  /// Elementwise subtraction with another [GpuArray] or scalar.
+  GpuArray<T> subtract(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.subtract, other, out: out));
+
+  /// Elementwise multiplication with another [GpuArray] or scalar.
+  GpuArray<T> multiply(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.multiply, other, out: out));
+
+  /// Elementwise division with another [GpuArray] or scalar.
+  GpuArray<T> divide(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.divide, other, out: out));
+
+  /// Elementwise floor division with another [GpuArray] or scalar.
+  GpuArray<T> floorDivide(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.floorDivide, other, out: out));
+
+  /// Elementwise power with another [GpuArray] or scalar.
+  GpuArray<T> pow(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.power, other, out: out));
+
+  /// Elementwise remainder with another [GpuArray] or scalar.
+  GpuArray<T> remainder(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.remainder, other, out: out));
+
+  /// Elementwise C-style fmod remainder with another [GpuArray] or scalar.
+  GpuArray<T> fmod(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.fmod, other, out: out));
+
+  /// Elementwise maximum with another [GpuArray] or scalar.
+  GpuArray<T> maximum(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.maximum, other, out: out));
+
+  /// Elementwise minimum with another [GpuArray] or scalar.
+  GpuArray<T> minimum(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.minimum, other, out: out));
+
+  /// Elementwise two-argument arctangent (`atan2(this, other)`).
+  GpuArray<T> atan2(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.atan2, other, out: out));
+
+  /// Elementwise hypotenuse (`sqrt(this^2 + other^2)`).
+  GpuArray<T> hypot(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.hypot, other, out: out));
+
+  /// Elementwise copy sign of [other] to magnitude of `this`.
+  GpuArray<T> copysign(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.copysign, other, out: out));
+
+  /// Elementwise `this * 2^other`.
+  GpuArray<T> ldexp(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.ldexp, other, out: out));
+
+  /// Elementwise greatest common divisor.
+  GpuArray<T> gcd(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.gcd, other, out: out));
+
+  /// Elementwise least common multiple.
+  GpuArray<T> lcm(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.lcm, other, out: out));
+
+  /// Elementwise bitwise AND with [other].
+  GpuArray<T> bitwiseAnd(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseAnd, other, out: out));
+
+  /// Elementwise bitwise OR with [other].
+  GpuArray<T> bitwiseOr(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseOr, other, out: out));
+
+  /// Elementwise bitwise XOR with [other].
+  GpuArray<T> bitwiseXor(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseXor, other, out: out));
+
+  /// Elementwise bitwise left shift by [other].
+  GpuArray<T> leftShift(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.leftShift, other, out: out));
+
+  /// Elementwise bitwise right shift by [other].
+  GpuArray<T> rightShift(Object? other, {GpuArray<T>? out}) =>
+      _asT(_dispatchBinary(BinaryOp.rightShift, other, out: out));
+
+  // --- Unary Math Operations ---
+
+  /// Computes elementwise negation.
+  GpuArray<T> negate({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.negate, out: out);
+
+  /// Computes elementwise absolute value.
+  GpuArray<T> abs({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.abs, out: out);
+
+  /// Computes elementwise square root.
+  GpuArray<T> sqrt({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.sqrt, out: out);
+
+  /// Computes elementwise exponential ($e^x$).
+  GpuArray<T> exp({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.exp, out: out);
+
+  /// Computes elementwise natural logarithm ($\ln x$).
+  GpuArray<T> log({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.log, out: out);
+
+  /// Computes elementwise sine ($\sin x$).
+  GpuArray<T> sin({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.sin, out: out);
+
+  /// Computes elementwise cosine ($\cos x$).
+  GpuArray<T> cos({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.cos, out: out);
+
+  /// Computes elementwise tangent ($\tan x$).
+  GpuArray<T> tan({GpuArray<T>? out}) => _dispatchUnary(UnaryOp.tan, out: out);
+
+  /// Computes elementwise arcsine ($\arcsin x$).
+  GpuArray<T> asin({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.asin, out: out);
+
+  /// Computes elementwise arccosine ($\arccos x$).
+  GpuArray<T> acos({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.acos, out: out);
+
+  /// Computes elementwise arctangent ($\arctan x$).
+  GpuArray<T> atan({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.atan, out: out);
+
+  /// Computes elementwise hyperbolic sine ($\sinh x$).
+  GpuArray<T> sinh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.sinh, out: out);
+
+  /// Computes elementwise hyperbolic cosine ($\cosh x$).
+  GpuArray<T> cosh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.cosh, out: out);
+
+  /// Computes elementwise hyperbolic tangent ($\tanh x$).
+  GpuArray<T> tanh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.tanh, out: out);
+
+  /// Computes elementwise floor.
+  GpuArray<T> floor({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.floor, out: out);
+
+  /// Computes elementwise ceiling.
+  GpuArray<T> ceil({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.ceil, out: out);
+
+  /// Computes elementwise round.
+  GpuArray<T> round({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.round, out: out);
+
+  /// Computes elementwise round to nearest integer (`rint`).
+  GpuArray<T> rint({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.rint, out: out);
+
+  /// Computes elementwise truncation toward zero (`trunc`).
+  GpuArray<T> trunc({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.trunc, out: out);
+
+  /// Computes elementwise truncation toward zero (alias for [trunc]).
+  GpuArray<T> fix({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.trunc, out: out);
+
+  /// Computes elementwise sign indication (`-1`, `0`, `1`).
+  GpuArray<T> sign({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.sign, out: out);
+
+  /// Computes elementwise bitwise NOT / inversion (`~this`).
+  GpuArray<T> bitwiseNot({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.bitwiseNot, out: out);
+
+  /// Computes elementwise bitwise inversion (alias for [bitwiseNot]).
+  GpuArray<T> invert({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.bitwiseNot, out: out);
+
+  /// Computes elementwise complex conjugate.
+  GpuArray<T> conj({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.conj, out: out);
+
+  /// Computes elementwise complex conjugate (alias for [conj]).
+  GpuArray<T> conjugate({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.conj, out: out);
+
+  /// Computes elementwise cube root.
+  GpuArray<T> cbrt({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.cbrt, out: out);
+
+  /// Computes elementwise reciprocal (`1 / this`).
+  GpuArray<T> reciprocal({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.reciprocal, out: out);
+
+  /// Computes elementwise square (`this * this`).
+  GpuArray<T> square({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.square, out: out);
+
+  /// Computes elementwise reciprocal square root (`1 / sqrt(this)`).
+  GpuArray<T> rsqrt({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.rsqrt, out: out);
+
+  /// Computes elementwise `exp(this) - 1`.
+  GpuArray<T> expm1({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.expm1, out: out);
+
+  /// Computes elementwise `2^this`.
+  GpuArray<T> exp2({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.exp2, out: out);
+
+  /// Computes elementwise base-2 logarithm.
+  GpuArray<T> log2({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.log2, out: out);
+
+  /// Computes elementwise base-10 logarithm.
+  GpuArray<T> log10({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.log10, out: out);
+
+  /// Computes elementwise `log(1 + this)`.
+  GpuArray<T> log1p({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.log1p, out: out);
+
+  /// Computes elementwise inverse hyperbolic sine.
+  GpuArray<T> asinh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.asinh, out: out);
+
+  /// Computes elementwise inverse hyperbolic cosine.
+  GpuArray<T> acosh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.acosh, out: out);
+
+  /// Computes elementwise inverse hyperbolic tangent.
+  GpuArray<T> atanh({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.atanh, out: out);
+
+  /// Converts angles from degrees to radians.
+  GpuArray<T> deg2rad({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.deg2rad, out: out);
+
+  /// Converts angles from degrees to radians (alias for [deg2rad]).
+  GpuArray<T> radians({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.deg2rad, out: out);
+
+  /// Converts angles from radians to degrees.
+  GpuArray<T> rad2deg({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.rad2deg, out: out);
+
+  /// Converts angles from radians to degrees (alias for [rad2deg]).
+  GpuArray<T> degrees({GpuArray<T>? out}) =>
+      _dispatchUnary(UnaryOp.rad2deg, out: out);
+
+  /// Replaces `NaN` with [nan], positive infinity with [posinf], and negative
+  /// infinity with [neginf].
+  GpuArray<T> nanToNum({
+    double nan = 0.0,
+    double? posinf,
+    double? neginf,
+    GpuArray<T>? out,
+  }) => _dispatchNanToNum(nan: nan, posinf: posinf, neginf: neginf, out: out);
+
+  /// Clips (limits) the values in this array to `[aMin, aMax]`.
+  GpuArray<T> clip(Object? aMin, Object? aMax, {GpuArray<T>? out}) {
+    _checkNotDisposed();
+    if (aMin == null && aMax == null) {
+      throw ArgumentError.value(
+        null,
+        'aMin',
+        'Must specify at least one of aMin or aMax.',
+      );
+    }
+    if (aMin != null && aMax != null) {
+      final lower = _asT(_dispatchBinary(BinaryOp.maximum, aMin));
+      try {
+        return lower._asT(
+          lower._dispatchBinary(BinaryOp.minimum, aMax, out: out),
+        );
+      } finally {
+        if (!identical(lower, out) && !lower.requiresGrad) {
+          lower.dispose();
+        }
+      }
+    }
+    if (aMin != null) {
+      return _asT(_dispatchBinary(BinaryOp.maximum, aMin, out: out));
+    }
+    return _asT(_dispatchBinary(BinaryOp.minimum, aMax, out: out));
+  }
+
+  // --- Reductions ---
+
+  /// Computes the sum of elements over the entire tensor or along [axis].
+  GpuArray<T> sum({
+    int? axis,
+    bool keepDims = false,
+    DType<T>? dtype,
+    GpuArray<T>? out,
+  }) =>
+      _dispatchReduction(
+            'sum',
+            axis: axis,
+            keepDims: keepDims,
+            dtype: dtype,
+            out: out,
+          )
+          as GpuArray<T>;
+
+  /// Computes the sum of elements treating `NaN`s as zero.
+  GpuArray<T> nansum({
+    int? axis,
+    bool keepDims = false,
+    DType<T>? dtype,
+    GpuArray<T>? out,
+  }) =>
+      _dispatchReduction(
+            'nansum',
+            axis: axis,
+            keepDims: keepDims,
+            dtype: dtype,
+            out: out,
+          )
+          as GpuArray<T>;
+
+  /// Computes the product of elements over the entire tensor or along [axis].
+  GpuArray<T> prod({
+    int? axis,
+    bool keepDims = false,
+    DType<T>? dtype,
+    GpuArray<T>? out,
+  }) =>
+      _dispatchReduction(
+            'prod',
+            axis: axis,
+            keepDims: keepDims,
+            dtype: dtype,
+            out: out,
+          )
+          as GpuArray<T>;
+
+  /// Computes the minimum value over the entire tensor or along [axis].
+  GpuArray<T> min({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('min', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
+
+  /// Computes the minimum value ignoring any `NaN`s.
+  GpuArray<T> nanmin({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('nanmin', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
+
+  /// Computes the maximum value over the entire tensor or along [axis].
+  GpuArray<T> max({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('max', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
+
+  /// Computes the maximum value ignoring any `NaN`s.
+  GpuArray<T> nanmax({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('nanmax', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
+
+  /// Computes the peak-to-peak range (`maximum - minimum`) along [axis].
+  GpuArray<T> ptp({int? axis, bool keepDims = false, GpuArray<T>? out}) =>
+      _dispatchReduction('ptp', axis: axis, keepDims: keepDims, out: out)
+          as GpuArray<T>;
+
+  // --- Linear Algebra ---
+
+  /// Matrix multiplication of two 1D, 2D, or batched N-D tensors.
+  GpuArray<T> matmul(GpuArray<DTypeTag> other, {GpuArray<T>? out}) {
+    _checkNotDisposed();
+    other._checkNotDisposed();
+    if (out != null) {
+      out._checkNotDisposed();
+    }
+    if (other.device != device) {
+      throw ArgumentError.value(
+        other.device,
+        'other.device',
+        'Must reside on the same GpuDevice ($device) as this tensor.',
+      );
+    }
+
+    if (rank < 1 || other.rank < 1) {
+      throw GpuShapeMismatchException('matmul', shape, other.shape);
+    }
+
+    final outDtype = GpuArray._promotedDType(dtype, other.dtype);
+
+    if (rank == 1 && other.rank == 1) {
+      if (shape[0] != other.shape[0]) {
+        throw GpuShapeMismatchException('matmul', shape, other.shape);
+      }
+      final dst = _prepareOut('matmul', const [], outDtype, out);
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: shape,
+        stridesA: strides,
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: other.shape,
+        stridesB: other.strides,
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: const [],
+        outStrides: const [],
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
+      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+        dst.requiresGrad = true;
+        dst.gradFn = MatmulBackward(this, other);
+      }
+      return _asT(dst);
+    }
+
+    // 2D (or N-D) x 1D: [..., M, K] @ [K] -> [..., M]
+    if (rank >= 2 && other.rank == 1) {
+      final k1 = shape[rank - 1];
+      final k2 = other.shape[0];
+      if (k1 != k2) {
+        throw GpuShapeMismatchException('matmul', shape, other.shape);
+      }
+      final outShape = shape.sublist(0, rank - 1);
+      final dst = _prepareOut('matmul', outShape, outDtype, out);
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: shape,
+        stridesA: strides,
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: [...List<int>.filled(rank - 2, 1), k2, 1],
+        stridesB: [...List<int>.filled(rank - 2, 0), other.strides[0], 0],
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: [...outShape, 1],
+        outStrides: [...dst.strides, 0],
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
+      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+        dst.requiresGrad = true;
+        dst.gradFn = MatmulBackward(this, other);
+      }
+      return _asT(dst);
+    }
+
+    // 1D x 2D (or N-D): [K] @ [..., K, N] -> [..., N]
+    if (rank == 1 && other.rank >= 2) {
+      final k1 = shape[0];
+      final k2 = other.shape[other.rank - 2];
+      final n = other.shape[other.rank - 1];
+      if (k1 != k2) {
+        throw GpuShapeMismatchException('matmul', shape, other.shape);
+      }
+      final batchB = other.shape.sublist(0, other.rank - 2);
+      final outShape = [...batchB, n];
+      final dst = _prepareOut('matmul', outShape, outDtype, out);
+      final batchDstStrides = dst.strides.sublist(0, dst.strides.length - 1);
+      final nStrideDst = dst.strides.last;
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: [...List<int>.filled(other.rank - 2, 1), 1, k1],
+        stridesA: [...List<int>.filled(other.rank - 2, 0), 0, strides[0]],
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: other.shape,
+        stridesB: other.strides,
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: [...batchB, 1, n],
+        outStrides: [...batchDstStrides, 0, nStrideDst],
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
+      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+        dst.requiresGrad = true;
+        dst.gradFn = MatmulBackward(this, other);
+      }
+      return _asT(dst);
+    }
+
+    if (rank == 2 && other.rank == 2) {
+      if (shape[1] != other.shape[0]) {
+        throw GpuShapeMismatchException('matmul', shape, other.shape);
+      }
+      final outShape = [shape[0], other.shape[1]];
+      final dst = _prepareOut('matmul', outShape, outDtype, out);
+
+      GpuKernels.executeMatmul(
+        srcA: buffer,
+        shapeA: shape,
+        stridesA: strides,
+        offsetA: offsetElements,
+        dtypeA: dtype,
+        srcB: other.buffer,
+        shapeB: other.shape,
+        stridesB: other.strides,
+        offsetB: other.offsetElements,
+        dtypeB: other.dtype,
+        dst: dst.buffer,
+        outShape: outShape,
+        outStrides: dst.strides,
+        offsetDst: dst.offsetElements,
+        dtypeDst: outDtype,
+      );
+      if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+        dst.requiresGrad = true;
+        dst.gradFn = MatmulBackward(this, other);
+      }
+      return _asT(dst);
+    }
+
+    // Batched N-D matmul
+    final m = shape[rank - 2];
+    final k1 = shape[rank - 1];
+    final k2 = other.shape[other.rank - 2];
+    final n = other.shape[other.rank - 1];
+
+    if (k1 != k2) {
+      throw GpuShapeMismatchException('matmul', shape, other.shape);
+    }
+
+    final batchA = shape.sublist(0, rank - 2);
+    final batchB = other.shape.sublist(0, other.rank - 2);
+    final batchOut = broadcastShapes(batchA, batchB);
+    final outShape = [...batchOut, m, n];
+
+    final dst = _prepareOut('matmul', outShape, outDtype, out);
+    GpuKernels.executeMatmul(
+      srcA: buffer,
+      shapeA: shape,
+      stridesA: strides,
+      offsetA: offsetElements,
+      dtypeA: dtype,
+      srcB: other.buffer,
+      shapeB: other.shape,
+      stridesB: other.strides,
+      offsetB: other.offsetElements,
+      dtypeB: other.dtype,
+      dst: dst.buffer,
+      outShape: outShape,
+      outStrides: dst.strides,
+      offsetDst: dst.offsetElements,
+      dtypeDst: outDtype,
+    );
+    if (isGradEnabled && (requiresGrad || other.requiresGrad)) {
+      dst.requiresGrad = true;
+      dst.gradFn = MatmulBackward(this, other);
+    }
+    return _asT(dst);
+  }
+
+  /// Dot product or matrix multiplication.
+  GpuArray<T> dot(GpuArray<DTypeTag> other, {GpuArray<T>? out}) =>
+      matmul(other, out: out);
+
+  // --- Array Manipulation & Indexing ---
+
+  /// Creates a contiguous copy of this tensor in device memory (or writes into
+  /// [out] if provided).
+  GpuArray<T> copy({GpuArray<T>? out}) {
+    _checkNotDisposed();
+    final dst = _prepareOut<T>('copy', shape, dtype, out);
+    GpuKernels.copyStrided(
+      src: buffer,
+      shape: shape,
+      strides: strides,
+      offsetSrc: offsetElements,
+      dtypeSrc: dtype,
+      dst: dst.buffer,
+      outStrides: dst.strides,
+      offsetDst: dst.offsetElements,
+      dtypeDst: dtype,
+    );
+    return dst;
+  }
+
+  /// Rolls array elements along a given [axis].
+  GpuArray<T> roll(Object shift, {Object? axis, GpuArray<T>? out}) =>
+      manip.roll(this, shift, axis: axis, out: out);
+
+  /// Pads this array with [padWidth] using [mode].
+  GpuArray<T> pad(
+    List<List<int>> padWidth, {
+    manip.PadMode mode = manip.PadMode.constant,
+    Object constantValues = 0,
+    GpuArray<T>? out,
+  }) => manip.pad(
+    this,
+    padWidth,
+    mode: mode,
+    constantValues: constantValues,
+    out: out,
+  );
+
+  /// Sorts elements of this array in ascending order along [axis].
+  GpuArray<T> sort({
+    int? axis = -1,
+    SortKind kind = SortKind.quicksort,
+    GpuArray<T>? out,
+  }) => indexing.sort<T>(this, axis: axis, kind: kind, out: out);
+
+  /// Finds the [k] largest or smallest elements and their 64-bit indices
+  /// along [axis].
+  ({GpuArray<T> values, GpuArray<Int64> indices}) topk(
+    int k, {
+    int axis = -1,
+    bool largest = true,
+    bool sorted = true,
+    GpuArray<T>? outValues,
+    GpuArray<Int64>? outIndices,
+  }) => indexing.topk<T>(
+    this,
+    k,
+    axis: axis,
+    largest: largest,
+    sorted: sorted,
+    outValues: outValues,
+    outIndices: outIndices,
+  );
+
+  /// Rearranges elements along [axis] so that the [kth] element is in its
+  /// final sorted position.
+  GpuArray<T> partition(Object kth, {int? axis = -1, GpuArray<T>? out}) =>
+      indexing.partition<T>(this, kth, axis: axis, out: out);
+
+  /// Computes the [n]-th discrete difference along [axis].
+  GpuArray<T> diff({
+    int n = 1,
+    int axis = -1,
+    Object? prepend,
+    Object? append,
+    GpuArray<T>? out,
+  }) => indexing.diff<T>(
+    this,
+    n: n,
+    axis: axis,
+    prepend: prepend,
+    append: append,
+    out: out,
+  );
+
+  /// Takes elements from this array along [axis] at [indices].
+  GpuArray<T> take(GpuArray<DTypeTag> indices, {int? axis, GpuArray<T>? out}) =>
+      indexing.take<T>(this, indices, axis: axis, out: out);
+
+  /// Repeats elements of this array [repeats] times along [axis].
+  GpuArray<T> repeat(int repeats, {int? axis, GpuArray<T>? out}) =>
+      manip.repeat(this, repeats, axis: axis, out: out);
+
+  /// Extracts a diagonal or constructs a diagonal array.
+  GpuArray<T> diag({int k = 0, GpuArray<T>? out}) =>
+      manip.diag(this, k: k, out: out);
+
+  /// Extracts specified diagonals of this array.
+  GpuArray<T> diagonal({
+    int offset = 0,
+    int axis1 = 0,
+    int axis2 = 1,
+    GpuArray<T>? out,
+  }) => manip.diagonal(
+    this,
+    offset: offset,
+    axis1: axis1,
+    axis2: axis2,
+    out: out,
+  );
+
+  /// Computes the sum along diagonals of this array as a [GpuArray].
+  GpuArray<T> trace({
+    int offset = 0,
+    int axis1 = 0,
+    int axis2 = 1,
+    GpuArray<T>? out,
+  }) => manip.trace(this, offset: offset, axis1: axis1, axis2: axis2, out: out);
+
+  /// Extracts the upper triangular portion of this array.
+  GpuArray<T> triu({int k = 0, GpuArray<T>? out}) =>
+      manip.triu(this, k: k, out: out);
+
+  /// Extracts the lower triangular portion of this array.
+  GpuArray<T> tril({int k = 0, GpuArray<T>? out}) =>
+      manip.tril(this, k: k, out: out);
+
+  /// Replaces specified elements of this array with [values] at flat [indices].
+  void put(GpuArray<DTypeTag> indices, GpuArray<T> values) =>
+      indexing.put<T>(this, indices, values);
+
+  /// Takes values from this array by matching 1-D index and data slices along
+  /// [axis].
+  GpuArray<T> takeAlongAxis(
+    GpuArray<DTypeTag> indices,
+    int axis, {
+    GpuArray<T>? out,
+  }) => indexing.takeAlongAxis<T>(this, indices, axis, out: out);
+
+  /// Puts [values] into this array by matching 1-D index and data slices along
+  /// [axis].
+  void putAlongAxis(GpuArray<DTypeTag> indices, GpuArray<T> values, int axis) =>
+      indexing.putAlongAxis<T>(this, indices, values, axis);
+}
+
 /// Statistical reduction methods on [GpuArray<Float32>] preserving [Float32].
 extension GpuArrayFloat32ReductionExtension on GpuArray<Float32> {
   /// Computes the arithmetic mean of tensor elements, preserving [Float32].
@@ -3544,7 +3594,7 @@ extension GpuArraySpecComponentExtension<
   S extends DTypeTag,
   D extends DTypeTag
 >
-    on GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> {
+    on GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> {
   /// Extracts the real part of each element (`Complex64 -> Float32`, `Complex128 -> Float64`).
   GpuArray<R> real({GpuArray<R>? out}) => _dispatchComplexComponent<R>(
     'real',
@@ -3936,7 +3986,7 @@ GpuArray<T> nanToNum<T extends DTypeTag>(
   double nan = 0.0,
   double? posinf,
   double? neginf,
-  GpuArray<DTypeTag>? out,
+  GpuArray<T>? out,
 }) => a.nanToNum(nan: nan, posinf: posinf, neginf: neginf, out: out);
 
 /// Clips (limits) the values in [a] to `[aMin, aMax]`.
@@ -3944,7 +3994,7 @@ GpuArray<T> clip<T extends DTypeTag>(
   GpuArray<T> a,
   Object? aMin,
   Object? aMax, {
-  GpuArray<DTypeTag>? out,
+  GpuArray<T>? out,
 }) => a.clip(aMin, aMax, out: out);
 
 /// Evaluates elementwise whether [a] and [b] are equal within tolerance.
@@ -4020,18 +4070,36 @@ GpuArray<T> sum<T extends DTypeTag>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  DType<DTypeTag>? dtype,
-  GpuArray<DTypeTag>? out,
+  DType<T>? dtype,
+  GpuArray<T>? out,
 }) => a.sum(axis: axis, keepDims: keepDims, dtype: dtype, out: out);
+
+/// Computes the sum of elements of [a] cast to [dtype].
+GpuArray<R> sumAs<R extends DTypeTag>(
+  GpuArray<DTypeTag> a,
+  DType<R> dtype, {
+  int? axis,
+  bool keepDims = false,
+  GpuArray<R>? out,
+}) => a.sumAs<R>(dtype, axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the sum of elements of [a] treating `NaN`s as zero.
 GpuArray<T> nansum<T extends DTypeTag>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  DType<DTypeTag>? dtype,
-  GpuArray<DTypeTag>? out,
+  DType<T>? dtype,
+  GpuArray<T>? out,
 }) => a.nansum(axis: axis, keepDims: keepDims, dtype: dtype, out: out);
+
+/// Computes the sum of elements of [a] treating `NaN`s as zero, cast to [dtype].
+GpuArray<R> nansumAs<R extends DTypeTag>(
+  GpuArray<DTypeTag> a,
+  DType<R> dtype, {
+  int? axis,
+  bool keepDims = false,
+  GpuArray<R>? out,
+}) => a.nansumAs<R>(dtype, axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the arithmetic mean of elements of [a].
 GpuArray<DTypeTag> mean(
@@ -4068,9 +4136,18 @@ GpuArray<T> prod<T extends DTypeTag>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  DType<DTypeTag>? dtype,
-  GpuArray<DTypeTag>? out,
+  DType<T>? dtype,
+  GpuArray<T>? out,
 }) => a.prod(axis: axis, keepDims: keepDims, dtype: dtype, out: out);
+
+/// Computes the product of elements of [a] cast to [dtype].
+GpuArray<R> prodAs<R extends DTypeTag>(
+  GpuArray<DTypeTag> a,
+  DType<R> dtype, {
+  int? axis,
+  bool keepDims = false,
+  GpuArray<R>? out,
+}) => a.prodAs<R>(dtype, axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the minimum of elements of [a] along [axis] or over the entire tensor.
 GpuArray<T> min<T extends DTypeTag>(

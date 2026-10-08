@@ -30,30 +30,45 @@ void main() {
         expect(() => add(f64, f32), throwsArgumentError);
         expect(() => subtract(f64, f32), throwsArgumentError);
         expect(() => multiply(f64, f32), throwsArgumentError);
-        expect(() => divide(f64, f32), throwsArgumentError);
+        expect(() => divide<AnySpec, DTypeTag>(f64, f32), throwsArgumentError);
         expect(() => floorDivide(f64, f32), throwsArgumentError);
         expect(() => remainder(f64, f32), throwsArgumentError);
         expect(() => mod(f64, f32), throwsArgumentError);
         expect(() => fmod(f64, f32), throwsArgumentError);
         expect(() => divmod(f64, f32), throwsArgumentError);
         expect(() => power(f64, f32), throwsArgumentError);
-        expect(() => floatPower(f64, f32), throwsArgumentError);
+        expect(
+          () => floatPower<AnySpec, DTypeTag>(f64, f32),
+          throwsArgumentError,
+        );
         expect(() => minimum(f64, f32), throwsArgumentError);
         expect(() => maximum(f64, f32), throwsArgumentError);
         expect(() => fmin(f64, f32), throwsArgumentError);
         expect(() => fmax(f64, f32), throwsArgumentError);
         expect(() => heaviside(f64, f32), throwsArgumentError);
-        expect(() => logaddexp(f64, f32), throwsArgumentError);
-        expect(() => logaddexp2(f64, f32), throwsArgumentError);
-        expect(() => gcd(i32, i64), throwsArgumentError);
-        expect(() => lcm(i32, i64), throwsArgumentError);
+        expect(
+          () => logaddexp<AnySpec, DTypeTag>(f64, f32),
+          throwsArgumentError,
+        );
+        expect(
+          () => logaddexp2<AnySpec, DTypeTag>(f64, f32),
+          throwsArgumentError,
+        );
+        expect(
+          () => gcd<IntegerDType>(i32.asIntegerDType, i64.asIntegerDType),
+          throwsArgumentError,
+        );
+        expect(
+          () => lcm<IntegerDType>(i32.asIntegerDType, i64.asIntegerDType),
+          throwsArgumentError,
+        );
         expect(() => copysign(f64, f32), throwsArgumentError);
         expect(
           () => binaryUfunc(f64, f32, op: BinaryOp.floatPower),
           throwsArgumentError,
         );
-        expect(() => atan2(f64, f32), throwsArgumentError);
-        expect(() => hypot(f64, f32), throwsArgumentError);
+        expect(() => atan2<AnySpec, DTypeTag>(f64, f32), throwsArgumentError);
+        expect(() => hypot<AnySpec, DTypeTag>(f64, f32), throwsArgumentError);
         expect(() => equal(f64, f32), throwsArgumentError);
         expect(() => notEqual(f64, f32), throwsArgumentError);
         expect(() => greater(f64, f32), throwsArgumentError);
@@ -63,11 +78,29 @@ void main() {
         expect(() => logicalAnd(b1, i32), throwsArgumentError);
         expect(() => logicalOr(b1, i32), throwsArgumentError);
         expect(() => logicalXor(b1, i32), throwsArgumentError);
-        expect(() => bitwiseAnd(i32, i64), throwsArgumentError);
-        expect(() => bitwiseOr(i32, i64), throwsArgumentError);
-        expect(() => bitwiseXor(i32, i64), throwsArgumentError);
-        expect(() => leftShift(i32, i64), throwsArgumentError);
-        expect(() => rightShift(i32, i64), throwsArgumentError);
+        expect(
+          () =>
+              bitwiseAnd<BitwiseDType>(i32.asBitwiseDType, i64.asBitwiseDType),
+          throwsArgumentError,
+        );
+        expect(
+          () => bitwiseOr<BitwiseDType>(i32.asBitwiseDType, i64.asBitwiseDType),
+          throwsArgumentError,
+        );
+        expect(
+          () =>
+              bitwiseXor<BitwiseDType>(i32.asBitwiseDType, i64.asBitwiseDType),
+          throwsArgumentError,
+        );
+        expect(
+          () => leftShift<IntegerDType>(i32.asIntegerDType, i64.asIntegerDType),
+          throwsArgumentError,
+        );
+        expect(
+          () =>
+              rightShift<IntegerDType>(i32.asIntegerDType, i64.asIntegerDType),
+          throwsArgumentError,
+        );
         expect(
           () => binaryUfunc(f64, f32, op: BinaryOp.add),
           throwsArgumentError,
@@ -424,5 +457,92 @@ void main() {
         expect(() => hypot(c64, c64), throwsUnsupportedError);
       });
     });
+  });
+
+  group('DivideTag, BitwiseTag, and ShiftTag Static & Runtime Contracts', () {
+    test(
+      'DivideTag: f16 / f16 and bf16 / bf16 preserve dtype; int/bool promote to Float64',
+      () {
+        NDArray.scope(() {
+          final f16a = NDArray.fromList([6.0, 9.0], [2], DType.float16);
+          final f16b = NDArray.fromList([2.0, 3.0], [2], DType.float16);
+          final NDArray<Float16> q16 = f16a / f16b;
+          final NDArray<Float16> q16Fn = divide(f16a, f16b);
+          expect(q16.dtype, DType.float16);
+          expect(q16.toList(), [3.0, 3.0]);
+          expect(q16Fn.toList(), [3.0, 3.0]);
+
+          final bf16a = NDArray.fromList([8.0, 12.0], [2], DType.bfloat16);
+          final bf16b = NDArray.fromList([2.0, 4.0], [2], DType.bfloat16);
+          final NDArray<BFloat16> qbf16 = bf16a / bf16b;
+          final NDArray<BFloat16> qbf16Fn = divide(bf16a, bf16b);
+          expect(qbf16.dtype, DType.bfloat16);
+          expect(qbf16.toList(), [4.0, 3.0]);
+          expect(qbf16Fn.toList(), [4.0, 3.0]);
+
+          final i32a = NDArray.fromList([3, 6], [2], DType.int32);
+          final i32b = NDArray.fromList([2, 4], [2], DType.int32);
+          final NDArray<Float64> qi32 = i32a / i32b;
+          final NDArray<Float64> qi32Fn = divide(i32a, i32b);
+          expect(qi32.dtype, DType.float64);
+          expect(qi32.toList(), [1.5, 1.5]);
+          expect(qi32Fn.toList(), [1.5, 1.5]);
+        });
+      },
+    );
+
+    test(
+      'BitwiseTag and ShiftTag: boolean & | ^ ~ work and invalid widened ops throw UnsupportedError',
+      () {
+        NDArray.scope(() {
+          final b1 = NDArray.fromList(
+            [true, true, false, false],
+            [4],
+            DType.boolean,
+          );
+          final b2 = NDArray.fromList(
+            [true, false, true, false],
+            [4],
+            DType.boolean,
+          );
+
+          final NDArray<Boolean> resAnd = b1 & b2;
+          final NDArray<Boolean> resOr = b1 | b2;
+          final NDArray<Boolean> resXor = b1 ^ b2;
+          final NDArray<Boolean> resNot = ~b1;
+          expect(resAnd.toList(), [true, false, false, false]);
+          expect(resOr.toList(), [true, true, true, false]);
+          expect(resXor.toList(), [false, true, true, false]);
+          expect(resNot.toList(), [false, false, true, true]);
+
+          expect(bitwiseAnd(b1, b2).toList(), [true, false, false, false]);
+          expect(bitwiseOr(b1, b2).toList(), [true, true, true, false]);
+          expect(bitwiseXor(b1, b2).toList(), [false, true, true, false]);
+
+          final i32 = NDArray.fromList([2, 4], [2], DType.int32);
+          final NDArray<Int32> shl = i32 << 1;
+          final NDArray<Int32> shr = i32 >> 1;
+          expect(shl.toList(), [4, 8]);
+          expect(shr.toList(), [1, 2]);
+
+          final f64 = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+          expect(
+            () => bitwiseAnd<BitwiseDType>(
+              f64.asBitwiseDType,
+              f64.asBitwiseDType,
+            ),
+            throwsArgumentError,
+          );
+          expect(
+            () => invert<BitwiseDType>(f64.asBitwiseDType),
+            throwsArgumentError,
+          );
+          expect(
+            () => leftShift<IntegerDType>(b1.asIntegerDType, b1.asIntegerDType),
+            throwsArgumentError,
+          );
+        });
+      },
+    );
   });
 }

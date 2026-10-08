@@ -17,7 +17,7 @@ import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/operations/helpers.dart' show castValue;
 
 void main() {
-  final all15DTypes = [
+  final all15DTypes = <DType<AnySpec>>[
     DType.float64,
     DType.float32,
     DType.float16,
@@ -35,29 +35,29 @@ void main() {
     DType.boolean,
   ];
 
-  final implementedBitwiseIntegerDTypes = [
+  final implementedBitwiseIntegerDTypes = <DType<IntegerDType>>[
     DType.int64,
     DType.int32,
     DType.int16,
     DType.uint8,
   ];
 
-  final otherIntegerDTypes = [
+  final otherIntegerDTypes = <DType<IntegerDType>>[
     DType.int8,
     DType.uint64,
     DType.uint32,
     DType.uint16,
   ];
 
-  final floatDTypes = [
+  final floatDTypes = <DType<AnySpec>>[
     DType.float64,
     DType.float32,
     DType.float16,
     DType.bfloat16,
   ];
 
-  NDArray<AnySpec> makeSampleArray(
-    DType dt,
+  NDArray<T> makeSampleArray<T extends DTypeTag>(
+    DType<T> dt,
     List<int> shape, {
     int seed = 1,
     bool nonZero = true,
@@ -65,34 +65,34 @@ void main() {
     final size = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
     if (dt == DType.boolean) {
       final raw = List<bool>.generate(size, (i) => (i + seed).isEven);
-      return NDArray<Boolean>.fromList(raw, shape, DType.boolean);
+      return NDArray<Boolean>.fromList(raw, shape, DType.boolean) as NDArray<T>;
     }
     if (dt == DType.complex128) {
       final raw = List<Complex>.generate(size, (i) {
         final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
         return Complex(baseVal.toDouble(), 1.0);
       });
-      return NDArray.fromList(raw, shape, DType.complex128);
+      return NDArray.fromList(raw, shape, DType.complex128) as NDArray<T>;
     }
     if (dt == DType.complex64) {
       final raw = List<Complex>.generate(size, (i) {
         final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
         return Complex(baseVal.toDouble(), 1.0);
       });
-      return NDArray.fromList(raw, shape, DType.complex64);
+      return NDArray.fromList(raw, shape, DType.complex64) as NDArray<T>;
     }
     if (floatDTypes.contains(dt)) {
       final raw = List<double>.generate(size, (i) {
         final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
         return baseVal.toDouble();
       });
-      return NDArray.fromList(raw, shape, (dt as DType<AnySpec>));
+      return NDArray.fromList(raw, shape, dt);
     }
     final raw = List<int>.generate(size, (i) {
       final baseVal = nonZero ? ((i + seed) % 5) + 2 : ((i + seed) % 5);
       return baseVal;
     });
-    return NDArray.fromList(raw, shape, (dt as DType<AnySpec>));
+    return NDArray.fromList(raw, shape, dt);
   }
 
   void testUnaryHelper<T extends AnySpec>(
@@ -1047,26 +1047,26 @@ void main() {
         );
 
         // Non-integer inputs throw ArgumentError (boolean invert is logical NOT per NumPy)
-        expect(() => invert(floatArr), throwsArgumentError);
+        expect(() => invert(floatArr.asBitwiseDType), throwsArgumentError);
         expect(invert(boolArr).toList(), [false, true]);
         expect(
-          () => bitwiseAnd<DTypeTag>(floatArr, intArr),
+          () => bitwiseAnd(floatArr.asBitwiseDType, intArr.asBitwiseDType),
           throwsArgumentError,
         );
         expect(
-          () => bitwiseOr<DTypeTag>(intArr, floatArr),
+          () => bitwiseOr(intArr.asBitwiseDType, floatArr.asBitwiseDType),
           throwsArgumentError,
         );
         expect(
-          () => bitwiseXor<DTypeTag>(boolArr, intArr),
+          () => bitwiseXor(boolArr.asBitwiseDType, intArr.asBitwiseDType),
           throwsArgumentError,
         );
         expect(
-          () => leftShift<DTypeTag>(floatArr, intArr),
+          () => leftShift(floatArr.asIntegerDType, intArr.asIntegerDType),
           throwsArgumentError,
         );
         expect(
-          () => rightShift<DTypeTag>(intArr, floatArr),
+          () => rightShift(intArr.asIntegerDType, floatArr.asIntegerDType),
           throwsArgumentError,
         );
 

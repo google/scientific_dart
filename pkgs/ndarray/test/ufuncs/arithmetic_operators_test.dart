@@ -740,7 +740,7 @@ void main() {
           expect(() => add<DTypeTag>(a, f32), throwsArgumentError);
           expect(() => subtract<DTypeTag>(a, f32), throwsArgumentError);
           expect(() => multiply<DTypeTag>(a, f32), throwsArgumentError);
-          expect(() => divide<DTypeTag, DTypeTag>(a, f32), throwsArgumentError);
+          expect(() => divide<AnySpec, DTypeTag>(a, f32), throwsArgumentError);
           final f32As64 = f32.astype(DType.float64);
           expect(add(a, f32As64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(a, f32As64).toList(), [0.0, 0.0, 0.0, 0.0]);
@@ -752,7 +752,7 @@ void main() {
           expect(() => add<DTypeTag>(a, i64), throwsArgumentError);
           expect(() => subtract<DTypeTag>(a, i64), throwsArgumentError);
           expect(() => multiply<DTypeTag>(a, i64), throwsArgumentError);
-          expect(() => divide<DTypeTag, DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => divide<AnySpec, DTypeTag>(a, i64), throwsArgumentError);
           final i64As64 = i64.astype(DType.float64);
           expect(add(a, i64As64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(a, i64As64).toList(), [0.0, 0.0, 0.0, 0.0]);
@@ -835,7 +835,7 @@ void main() {
           expect(() => add<DTypeTag>(a, f64), throwsArgumentError);
           expect(() => subtract<DTypeTag>(a, f64), throwsArgumentError);
           expect(() => multiply<DTypeTag>(a, f64), throwsArgumentError);
-          expect(() => divide<DTypeTag, DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => divide<AnySpec, DTypeTag>(a, f64), throwsArgumentError);
           final aAs64 = a.astype(DType.float64);
           expect(add(aAs64, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(aAs64, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
@@ -893,7 +893,7 @@ void main() {
 
           final intoDoubleBuf = NDArray<Float64>.create([2, 2], DType.float64);
           expect(
-            divide<DTypeTag, DTypeTag>(b, a, out: intoDoubleBuf),
+            divide<AnySpec, DTypeTag>(b, a, out: intoDoubleBuf),
             intoDoubleBuf,
           );
 
@@ -907,7 +907,7 @@ void main() {
             throwsArgumentError,
           );
           expect(
-            () => divide<DTypeTag, DTypeTag>(
+            () => divide<AnySpec, DTypeTag>(
               b,
               a,
               out: NDArray<Float64>.create([3], DType.float64),
@@ -978,7 +978,7 @@ void main() {
 
           final intoDoubleBuf = NDArray<Float64>.create([2, 2], DType.float64);
           expect(
-            divide<DTypeTag, DTypeTag>(b, a, out: intoDoubleBuf),
+            divide<AnySpec, DTypeTag>(b, a, out: intoDoubleBuf),
             intoDoubleBuf,
           );
 
@@ -992,7 +992,7 @@ void main() {
             throwsArgumentError,
           );
           expect(
-            () => divide<DTypeTag, DTypeTag>(
+            () => divide<AnySpec, DTypeTag>(
               b,
               a,
               out: NDArray<Float64>.create([3], DType.float64),
@@ -1082,7 +1082,7 @@ void main() {
           expect(() => add<DTypeTag>(a, f64), throwsArgumentError);
           expect(() => subtract<DTypeTag>(a, f64), throwsArgumentError);
           expect(() => multiply<DTypeTag>(a, f64), throwsArgumentError);
-          expect(() => divide<DTypeTag, DTypeTag>(a, f64), throwsArgumentError);
+          expect(() => divide<AnySpec, DTypeTag>(a, f64), throwsArgumentError);
           final f64AsC128 = f64.astype(DType.complex128);
           final resAddF64 = add(a, f64AsC128);
           expect(resAddF64.toList()[0].real, 2.0);
@@ -1105,7 +1105,7 @@ void main() {
           expect(() => add<DTypeTag>(a, i64), throwsArgumentError);
           expect(() => subtract<DTypeTag>(a, i64), throwsArgumentError);
           expect(() => multiply<DTypeTag>(a, i64), throwsArgumentError);
-          expect(() => divide<DTypeTag, DTypeTag>(a, i64), throwsArgumentError);
+          expect(() => divide<AnySpec, DTypeTag>(a, i64), throwsArgumentError);
           final i64AsC128 = i64.astype(DType.complex128);
           final resAddI64 = add(a, i64AsC128);
           expect(resAddI64.toList()[0].real, 2.0);
@@ -1851,19 +1851,19 @@ void main() {
         expect(div1.getCell([0]), Complex(1.0, 0.0));
 
         // 2. Complex / double
-        expect(() => divide<DTypeTag, DTypeTag>(c, d), throwsArgumentError);
+        expect(() => divide<AnySpec, DTypeTag>(c, d), throwsArgumentError);
         final div2 = divide(c, dC);
         expect(div2.dtype, DType.complex128);
         expect(div2.getCell([0]), Complex(2.5, 2.5));
 
         // 3. Complex / int
-        expect(() => divide<DTypeTag, DTypeTag>(c, i), throwsArgumentError);
+        expect(() => divide<AnySpec, DTypeTag>(c, i), throwsArgumentError);
         final div3 = divide(c, iC);
         expect(div3.dtype, DType.complex128);
         expect(div3.getCell([0]), Complex(5.0, 5.0));
 
         // 4. double / Complex
-        expect(() => divide<DTypeTag, DTypeTag>(d, c), throwsArgumentError);
+        expect(() => divide<AnySpec, DTypeTag>(d, c), throwsArgumentError);
         final div4 = divide(dC, c);
         expect(div4.dtype, DType.complex128);
         expect(
@@ -1872,7 +1872,7 @@ void main() {
         ); // 4 / (10+10i) = 0.2 - 0.2i
 
         // 5. int / Complex
-        expect(() => divide<DTypeTag, DTypeTag>(i, c), throwsArgumentError);
+        expect(() => divide<AnySpec, DTypeTag>(i, c), throwsArgumentError);
         final div5 = divide(iC, c);
         expect(
           div5.getCell([0]),

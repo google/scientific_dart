@@ -118,16 +118,38 @@ MaskedArray<T> maskedLessEqual<T extends DTypeTag>(
 /// If [axis] is null, returns a 0-dimensional [MaskedArray] containing the sum of all elements.
 /// Masked elements are treated as `0` during the sum.
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<T> sum<T extends DTypeTag>(MaskedArray<T> a, {int? axis}) =>
-    a.sum(axis: axis);
+MaskedArray<R> sum<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(MaskedArray<T> a, {int? axis}) => a.sum(axis: axis);
 
 /// Returns the product of [a] elements along the given [axis], ignoring masked elements.
 ///
 /// If [axis] is null, returns a 0-dimensional [MaskedArray] containing the product of all elements.
 /// Masked elements are treated as `1` during the product.
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<T> prod<T extends DTypeTag>(MaskedArray<T> a, {int? axis}) =>
-    a.prod(axis: axis);
+MaskedArray<R> prod<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(MaskedArray<T> a, {int? axis}) => a.prod(axis: axis);
 
 /// Returns the minimum of [a] elements along the given [axis], ignoring masked elements.
 ///
@@ -150,78 +172,76 @@ MaskedArray<T> max<T extends DTypeTag>(MaskedArray<T> a, {int? axis}) =>
 /// Calculated as `sum(a, axis) / count(a, axis)`.
 /// Returns a new [MaskedArray] with [DType.float64] (or [DType.complex128] if input is complex).
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<dynamic> mean(MaskedArray a, {int? axis}) => a.mean(axis: axis);
+MaskedArray<D> mean<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    D,
+    DTypeTag
+  >,
+  D extends DTypeTag
+>(MaskedArray<T> a, {int? axis}) => a.mean(axis: axis);
 
 /// Returns the variance of [a] elements along the given [axis], ignoring masked elements.
 ///
-/// Calculated as `mean((x - mean)^2)`.
-/// Returns a new [MaskedArray] with [DType.float64] (or [DType.complex128] if input is complex).
+/// Calculated as `mean(|x - mean|^2)`.
+/// Returns a new [MaskedArray] with [DType.float64].
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<dynamic> variance(MaskedArray a, {int? axis}) =>
+MaskedArray<Float64> variance(MaskedArray a, {int? axis}) =>
     a.variance(axis: axis);
 
 /// Returns the standard deviation of [a] elements along the given [axis], ignoring masked elements.
 ///
 /// Calculated as `sqrt(variance(a, axis))`.
-/// Returns a new [MaskedArray] with [DType.float64] (or [DType.complex128] if input is complex).
+/// Returns a new [MaskedArray] with [DType.float64].
 /// The output mask is `true` only if all elements along the reduction axis are masked.
-MaskedArray<dynamic> std(MaskedArray a, {int? axis}) => a.std(axis: axis);
+MaskedArray<Float64> std(MaskedArray a, {int? axis}) => a.std(axis: axis);
 
 /// Returns the count of unmasked (valid) elements in [a] along the given [axis].
 ///
-/// Returns a standard [NDArray<Int32>] containing the counts.
-NDArray<Int32> count(MaskedArray a, {int? axis}) => a.count(axis: axis);
+/// Returns a standard [NDArray<Int64>] containing the counts.
+NDArray<Int64> count(MaskedArray a, {int? axis}) => a.count(axis: axis);
 
 // ==========================================
 // Top-Level Arithmetic
 // ==========================================
 
 /// Performs element-wise addition of [a] and [b], propagating masks.
-///
-/// Either [a] or [b] (or both) must be a [MaskedArray]. Non-masked arrays or
-/// scalars are promoted to [MaskedArray] with all-false masks.
-///
-/// The resulting fill value is resolved from [a]'s fill value if it is a
-/// [MaskedArray] (coerced to the target DType), falling back to [b]'s fill value
-/// or the default for the target DType.
-MaskedArray<dynamic> add(dynamic a, dynamic b) {
-  if (a is MaskedArray) return a.add(b);
-  if (b is MaskedArray) return b.add(a);
-  return _toMaskedArray(a).add(b);
-}
+MaskedArray<T> add<T extends DTypeTag>(MaskedArray<T> a, Object? b) => a.add(b);
 
 /// Performs element-wise subtraction of [a] and [b], propagating masks.
-///
-/// [a] must be a [MaskedArray], or [b] must be a [MaskedArray].
-MaskedArray<dynamic> subtract(dynamic a, dynamic b) {
-  if (a is MaskedArray) return a.subtract(b);
-  return _toMaskedArray(a).subtract(b);
-}
+MaskedArray<T> subtract<T extends DTypeTag>(MaskedArray<T> a, Object? b) =>
+    a.subtract(b);
 
 /// Performs element-wise multiplication of [a] and [b], propagating masks.
-MaskedArray<dynamic> multiply(dynamic a, dynamic b) {
-  if (a is MaskedArray) return a.multiply(b);
-  if (b is MaskedArray) return b.multiply(a);
-  return _toMaskedArray(a).multiply(b);
-}
+MaskedArray<T> multiply<T extends DTypeTag>(MaskedArray<T> a, Object? b) =>
+    a.multiply(b);
 
-/// Performs element-wise division of [a] and [b], propagating masks.
+/// Performs element-wise floor division of [a] and [b], propagating masks.
+MaskedArray<T> floorDivide<T extends DTypeTag>(MaskedArray<T> a, Object? b) =>
+    a.floorDivide(b);
+
+/// Performs element-wise remainder of [a] and [b], propagating masks.
+MaskedArray<T> remainder<T extends DTypeTag>(MaskedArray<T> a, Object? b) =>
+    a.remainder(b);
+
+/// Performs element-wise true division of [a] and [b], propagating masks.
 ///
 /// Elements where the divisor [b] is zero are automatically masked in the result.
-MaskedArray<dynamic> divide(dynamic a, dynamic b) {
-  if (a is MaskedArray) return a.divide(b);
-  return _toMaskedArray(a).divide(b);
-}
-
-// Helper
-MaskedArray<DTypeTag> _toMaskedArray(dynamic x) {
-  if (x is MaskedArray) return x;
-  if (x is NDArray) {
-    // dispatchCreateMaskedArray is visible because it is public in utils.dart which is part of src/masked_array.dart (which we import)
-    return dispatchCreateMaskedArray(
-      x,
-      NDArray<Boolean>.zeros(x.shape, DType.boolean),
-    );
-  }
-  throw ArgumentError('Cannot convert ${x.runtimeType} to MaskedArray');
-}
+MaskedArray<M> divide<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    M
+  >,
+  M extends DTypeTag
+>(MaskedArray<T> a, Object? b) => a.divide(b);

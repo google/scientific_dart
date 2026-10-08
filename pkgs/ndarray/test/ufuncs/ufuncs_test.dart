@@ -116,7 +116,11 @@ void main() {
         final a32 = NDArray.fromList([5, 12], [2], DType.int32);
         final b64 = NDArray.fromList([3, 4], [2], DType.int64);
 
-        expect(() => bitwiseAnd<DTypeTag>(a32, b64), throwsArgumentError);
+        expect(
+          () =>
+              bitwiseAnd<BitwiseDType>(a32.asBitwiseDType, b64.asBitwiseDType),
+          throwsArgumentError,
+        );
         final res = bitwiseAnd(a32.astype(DType.int64), b64);
         expect(res.dtype, DType.int64);
         expect(res.toList(), [1, 4]);
@@ -140,8 +144,14 @@ void main() {
         final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
         final b = NDArray.fromList([3, 4], [2], DType.int32);
 
-        expect(() => bitwiseAnd(a, b), throwsArgumentError);
-        expect(() => invert(a), throwsArgumentError);
+        expect(
+          () => bitwiseAnd<BitwiseDType>(a.asBitwiseDType, b.asBitwiseDType),
+          throwsArgumentError,
+        );
+        expect(
+          () => invert<BitwiseDType>(a.asBitwiseDType),
+          throwsArgumentError,
+        );
       });
     });
 

@@ -43,7 +43,7 @@ import '../helpers.dart';
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_and](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_and.html)
-NDArray<T> bitwiseAnd<T extends DTypeTag>(
+NDArray<T> bitwiseAnd<T extends BitwiseDType>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -55,7 +55,14 @@ NDArray<T> bitwiseAnd<T extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute bitwiseAnd() on a disposed array.');
   }
-  final prep = _prepareBinaryBitwise<T>(a, b, where, out, 'bitwiseAnd');
+  final prep = _prepareBinaryBitwise<T>(
+    a,
+    b,
+    where,
+    out,
+    'bitwiseAnd',
+    allowBool: true,
+  );
   final maskHolder = prep.maskHolder;
   final aCast = prep.aCast;
   final bCast = prep.bCast;
@@ -101,11 +108,18 @@ NDArray<T> bitwiseAnd<T extends DTypeTag>(
             size,
             maskHolder.pointer,
           );
+        case DType.boolean:
+          v_logical_and(
+            aCast.pointer.cast(),
+            bCast.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
-        case DType.boolean:
         case DType.complex128:
         case DType.complex64:
           throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
@@ -180,11 +194,22 @@ NDArray<T> bitwiseAnd<T extends DTypeTag>(
               rank,
               maskHolder.pointer,
             );
+          case DType.boolean:
+            s_logical_and(
+              aCast.pointer.cast(),
+              cStridesA,
+              bCast.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
-          case DType.boolean:
           case DType.complex128:
           case DType.complex64:
             throw UnsupportedError(
@@ -238,7 +263,7 @@ NDArray<T> bitwiseAnd<T extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_or](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_or.html)
-NDArray<T> bitwiseOr<T extends DTypeTag>(
+NDArray<T> bitwiseOr<T extends BitwiseDType>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -250,7 +275,14 @@ NDArray<T> bitwiseOr<T extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute bitwiseOr() on a disposed array.');
   }
-  final prep = _prepareBinaryBitwise<T>(a, b, where, out, 'bitwiseOr');
+  final prep = _prepareBinaryBitwise<T>(
+    a,
+    b,
+    where,
+    out,
+    'bitwiseOr',
+    allowBool: true,
+  );
   final maskHolder = prep.maskHolder;
   final aCast = prep.aCast;
   final bCast = prep.bCast;
@@ -296,11 +328,18 @@ NDArray<T> bitwiseOr<T extends DTypeTag>(
             size,
             maskHolder.pointer,
           );
+        case DType.boolean:
+          v_logical_or(
+            aCast.pointer.cast(),
+            bCast.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
-        case DType.boolean:
         case DType.complex128:
         case DType.complex64:
           throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
@@ -375,11 +414,22 @@ NDArray<T> bitwiseOr<T extends DTypeTag>(
               rank,
               maskHolder.pointer,
             );
+          case DType.boolean:
+            s_logical_or(
+              aCast.pointer.cast(),
+              cStridesA,
+              bCast.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
-          case DType.boolean:
           case DType.complex128:
           case DType.complex64:
             throw UnsupportedError(
@@ -433,7 +483,7 @@ NDArray<T> bitwiseOr<T extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_xor](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_xor.html)
-NDArray<T> bitwiseXor<T extends DTypeTag>(
+NDArray<T> bitwiseXor<T extends BitwiseDType>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -445,7 +495,14 @@ NDArray<T> bitwiseXor<T extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute bitwiseXor() on a disposed array.');
   }
-  final prep = _prepareBinaryBitwise<T>(a, b, where, out, 'bitwiseXor');
+  final prep = _prepareBinaryBitwise<T>(
+    a,
+    b,
+    where,
+    out,
+    'bitwiseXor',
+    allowBool: true,
+  );
   final maskHolder = prep.maskHolder;
   final aCast = prep.aCast;
   final bCast = prep.bCast;
@@ -491,11 +548,18 @@ NDArray<T> bitwiseXor<T extends DTypeTag>(
             size,
             maskHolder.pointer,
           );
+        case DType.boolean:
+          v_logical_xor(
+            aCast.pointer.cast(),
+            bCast.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
-        case DType.boolean:
         case DType.complex128:
         case DType.complex64:
           throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
@@ -570,11 +634,22 @@ NDArray<T> bitwiseXor<T extends DTypeTag>(
               rank,
               maskHolder.pointer,
             );
+          case DType.boolean:
+            s_logical_xor(
+              aCast.pointer.cast(),
+              cStridesA,
+              bCast.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
-          case DType.boolean:
           case DType.complex128:
           case DType.complex64:
             throw UnsupportedError(
@@ -628,7 +703,7 @@ NDArray<T> bitwiseXor<T extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy left_shift](https://numpy.org/doc/stable/reference/generated/numpy.left_shift.html)
-NDArray<T> leftShift<T extends DTypeTag>(
+NDArray<T> leftShift<T extends IntegerDType>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -853,7 +928,7 @@ int _rightShiftScalar(int a, int b, DType dtype) {
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy right_shift](https://numpy.org/doc/stable/reference/generated/numpy.right_shift.html)
-NDArray<T> rightShift<T extends DTypeTag>(
+NDArray<T> rightShift<T extends IntegerDType>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -1077,7 +1152,7 @@ NDArray<T> rightShift<T extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy invert](https://numpy.org/doc/stable/reference/generated/numpy.invert.html)
-NDArray<T> invert<T extends DTypeTag>(
+NDArray<T> invert<T extends BitwiseDType>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
@@ -1290,16 +1365,27 @@ bitwiseAndAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute bitwiseAndAs() on a disposed array.');
   }
-  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype, allowBool: true);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return bitwiseAnd<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+    return bitwiseAnd<BitwiseDType>(
+          a.asBitwiseDType,
+          b.asBitwiseDType,
+          where: where,
+          out: out?.asBitwiseDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = bitwiseAnd<R>(aCast, bCast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = bitwiseAnd<BitwiseDType>(
+      aCast.asBitwiseDType,
+      bCast.asBitwiseDType,
+      where: where,
+      out: out?.asBitwiseDType,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1333,16 +1419,27 @@ bitwiseOrAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute bitwiseOrAs() on a disposed array.');
   }
-  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype, allowBool: true);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return bitwiseOr<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+    return bitwiseOr<BitwiseDType>(
+          a.asBitwiseDType,
+          b.asBitwiseDType,
+          where: where,
+          out: out?.asBitwiseDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = bitwiseOr<R>(aCast, bCast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = bitwiseOr<BitwiseDType>(
+      aCast.asBitwiseDType,
+      bCast.asBitwiseDType,
+      where: where,
+      out: out?.asBitwiseDType,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1376,16 +1473,27 @@ bitwiseXorAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       (where != null && where.isDisposed)) {
     throw StateError('Cannot execute bitwiseXorAs() on a disposed array.');
   }
-  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
+  _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype, allowBool: true);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return bitwiseXor<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+    return bitwiseXor<BitwiseDType>(
+          a.asBitwiseDType,
+          b.asBitwiseDType,
+          where: where,
+          out: out?.asBitwiseDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = bitwiseXor<R>(aCast, bCast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = bitwiseXor<BitwiseDType>(
+      aCast.asBitwiseDType,
+      bCast.asBitwiseDType,
+      where: where,
+      out: out?.asBitwiseDType,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1422,13 +1530,24 @@ leftShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return leftShift<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+    return leftShift<IntegerDType>(
+          a.asIntegerDType,
+          b.asIntegerDType,
+          where: where,
+          out: out?.asIntegerDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = leftShift<R>(aCast, bCast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = leftShift<IntegerDType>(
+      aCast.asIntegerDType,
+      bCast.asIntegerDType,
+      where: where,
+      out: out?.asIntegerDType,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1465,26 +1584,48 @@ rightShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return rightShift<DTypeTag>(a, b, where: where, out: out) as NDArray<R>;
+    return rightShift<IntegerDType>(
+          a.asIntegerDType,
+          b.asIntegerDType,
+          where: where,
+          out: out?.asIntegerDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = rightShift<R>(aCast, bCast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = rightShift<IntegerDType>(
+      aCast.asIntegerDType,
+      bCast.asIntegerDType,
+      where: where,
+      out: out?.asIntegerDType,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
 void _validateBitwiseAsDTypes(
   DType<DTypeTag> aDType,
   DType<DTypeTag> bDType,
-  DType<DTypeTag> targetDType,
-) {
-  if (!aDType.isInteger || !bDType.isInteger || !targetDType.isInteger) {
+  DType<DTypeTag> targetDType, {
+  bool allowBool = false,
+}) {
+  bool isValid(DType<DTypeTag> dt) =>
+      allowBool ? (dt.isInteger || dt == DType.boolean) : dt.isInteger;
+  if (!isValid(aDType) || !isValid(bDType) || !isValid(targetDType)) {
+    final bad = !isValid(aDType)
+        ? aDType
+        : (!isValid(bDType) ? bDType : targetDType);
+    final name = !isValid(aDType)
+        ? 'a.dtype'
+        : (!isValid(bDType) ? 'b.dtype' : 'dtype');
     throw ArgumentError.value(
-      !aDType.isInteger ? aDType : (!bDType.isInteger ? bDType : targetDType),
-      !aDType.isInteger ? 'a.dtype' : (!bDType.isInteger ? 'b.dtype' : 'dtype'),
-      'Must be integer data type for bitwise operations',
+      bad,
+      name,
+      allowBool
+          ? 'Must be integer or boolean data type for bitwise operations'
+          : 'Must be integer data type for bitwise operations',
     );
   }
 }
@@ -1504,8 +1645,9 @@ _prepareBinaryBitwise<T extends DTypeTag>(
   NDArray<T> b,
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
-  String opName,
-) {
+  String opName, {
+  bool allowBool = false,
+}) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot perform $opName on disposed arrays.');
   }
@@ -1517,15 +1659,20 @@ _prepareBinaryBitwise<T extends DTypeTag>(
     );
   }
 
-  if (!a.dtype.isInteger || !b.dtype.isInteger) {
+  final isValid = allowBool
+      ? (a.dtype.isInteger || a.dtype == DType.boolean)
+      : a.dtype.isInteger;
+  if (!isValid) {
     throw ArgumentError.value(
-      !a.dtype.isInteger ? a.dtype : b.dtype,
-      !a.dtype.isInteger ? 'a.dtype' : 'b.dtype',
-      'Must be integer data type for bitwise operations',
+      a.dtype,
+      'a.dtype',
+      allowBool
+          ? 'Must be integer or boolean data type for bitwise operations'
+          : 'Must be integer data type for bitwise operations',
     );
   }
 
-  final DType targetDType = resolveDType(a.dtype, b.dtype);
+  final DType<T> targetDType = a.dtype;
   final preBroadcast = broadcast(a, b);
   final commonShape = preBroadcast.shape;
 
@@ -1563,11 +1710,11 @@ _prepareBinaryBitwise<T extends DTypeTag>(
     final NDArray<T> result = needsTempOut
         ? (where != null
               ? out.copy()
-              : NDArray<T>.create(commonShape, targetDType as DType<T>))
+              : NDArray<T>.create(commonShape, targetDType))
         : (out ??
               NDArray<T>.create(
                 commonShape,
-                targetDType as DType<T>,
+                targetDType,
                 zeroInit: where != null,
               ));
 

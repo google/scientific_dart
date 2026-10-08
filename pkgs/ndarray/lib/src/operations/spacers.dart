@@ -1063,8 +1063,14 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
           ? DType.float64
           : resolvedDType;
       final ln10Arr = toNDArray<DTypeTag>(math.ln10, compDType);
-      final logStart = divide(log(absStart as NDArray<AnySpec>), ln10Arr);
-      final logStop = divide(log(absStop as NDArray<AnySpec>), ln10Arr);
+      final logStart = divideUntyped<DTypeTag, DTypeTag>(
+        log(absStart as NDArray<AnySpec>),
+        ln10Arr,
+      );
+      final logStop = divideUntyped<DTypeTag, DTypeTag>(
+        log(absStop as NDArray<AnySpec>),
+        ln10Arr,
+      );
       final y = linspaceGrid<DTypeTag>(
         logStart,
         logStop,
@@ -1100,11 +1106,11 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
       return res;
     }
 
-    final logStart = divide<T, T>(
+    final logStart = divideUntyped<T, T>(
       log(startBroad as NDArray<AnySpec>) as NDArray<T>,
       toNDArray<T>(math.ln10, resolvedDType),
     );
-    final logStop = divide<T, T>(
+    final logStop = divideUntyped<T, T>(
       log(stopBroad as NDArray<AnySpec>) as NDArray<T>,
       toNDArray<T>(math.ln10, resolvedDType),
     );

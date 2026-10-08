@@ -359,18 +359,10 @@ void main() {
           final restoredMap = loadSafetensors(checkpoint);
           final restoredL1 = gpu_nn.Linear(2, 4);
           final restoredL2 = gpu_nn.Linear(4, 1);
-          (restoredMap['l1.w']! as GpuArray<Float64>).copy(
-            out: restoredL1.weight,
-          );
-          (restoredMap['l1.b']! as GpuArray<Float64>).copy(
-            out: restoredL1.bias,
-          );
-          (restoredMap['l2.w']! as GpuArray<Float64>).copy(
-            out: restoredL2.weight,
-          );
-          (restoredMap['l2.b']! as GpuArray<Float64>).copy(
-            out: restoredL2.bias,
-          );
+          restoredMap['l1.w']!.copy(out: restoredL1.weight);
+          restoredMap['l1.b']!.copy(out: restoredL1.bias);
+          restoredMap['l2.w']!.copy(out: restoredL2.weight);
+          restoredMap['l2.b']!.copy(out: restoredL2.bias);
           final restoredModel = gpu_nn.Sequential([
             restoredL1,
             gpu_nn.ReLU(),

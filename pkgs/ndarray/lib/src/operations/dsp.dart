@@ -52,8 +52,6 @@ NDArray<R> angle<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -255,8 +253,6 @@ NDArray<T> unwrap<T extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       T,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag

@@ -41,18 +41,6 @@ sealed class DTypeTag {
   const DTypeTag();
 }
 
-/// Marker used in a [DTypeSpec] slot when the corresponding operation is not
-/// defined for that dtype.
-///
-/// [NoDType] is a [DTypeTag] (so every concrete tag remains a subtype of
-/// [AnySpec]) but deliberately *not* a [DTypeSpec]. Operator extensions whose
-/// result slot is bounded by [AnySpec] (for example the bitwise operators,
-/// which bind [DTypeSpec.BitwiseTag]) are therefore statically inapplicable to
-/// dtypes that map that slot to [NoDType], turning what would otherwise be a
-/// runtime [UnsupportedError] into a compile-time error. No [DType] value has
-/// this tag, so no [NDArray] can ever be created with it.
-abstract final class NoDType extends DTypeTag {}
-
 /// Type-level specification of a concrete [DTypeTag].
 ///
 /// Each of the 15 concrete tag classes (`Float64`, `Float32`, `Int32`, …)
@@ -77,12 +65,7 @@ abstract final class NoDType extends DTypeTag {}
 ///   NumPy's `true_divide` rule (`Float64` for integers and booleans; `Self`
 ///   for every floating-point tag, including `Float16`/`BFloat16`, and for
 ///   complex tags).
-/// - [BitwiseTag]: the result tag of the bitwise operations (`&`, `|`, `^`,
-///   `~`): `Self` for integers and `Boolean`; [NoDType] for floating-point and
-///   complex tags, which do not support bitwise operations.
-/// - [ShiftTag]: the result tag of the shift operations (`<<`, `>>`): `Self`
-///   for integers; [NoDType] for `Boolean`, floating-point, and complex tags.
-sealed class DTypeSpec<
+abstract interface class DTypeSpec<
   RealTag extends DTypeTag,
   Element,
   RealFloatTag extends DTypeTag,
@@ -90,13 +73,9 @@ sealed class DTypeSpec<
   InexactTag extends DTypeTag,
   AccumulatorTag extends DTypeTag,
   DoublePrecisionTag extends DTypeTag,
-  DivideTag extends DTypeTag,
-  BitwiseTag extends DTypeTag,
-  ShiftTag extends DTypeTag
+  DivideTag extends DTypeTag
 >
-    extends DTypeTag {
-  const DTypeSpec();
-}
+    extends DTypeTag {}
 
 /// Wildcard [DTypeSpec] bound matching any [DTypeSpec] subtype.
 typedef AnySpec =
@@ -108,14 +87,56 @@ typedef AnySpec =
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >;
 
+/// Marker interface for data types that support bitwise operations (`&`, `|`, `^`, `~`).
+///
+/// Implemented by all integer data types ([IntegerDType]) and [Boolean].
+abstract interface class BitwiseDType<
+  RealTag extends DTypeTag,
+  Element extends Object,
+  RealFloatTag extends DTypeTag,
+  ComplexTag extends DTypeTag,
+  InexactTag extends DTypeTag,
+  AccumulatorTag extends DTypeTag,
+  DoublePrecisionTag extends DTypeTag,
+  DivideTag extends DTypeTag
+>
+    extends
+        DTypeSpec<
+          RealTag,
+          Element,
+          RealFloatTag,
+          ComplexTag,
+          InexactTag,
+          AccumulatorTag,
+          DoublePrecisionTag,
+          DivideTag
+        > {}
+
+/// Marker interface for signed and unsigned integer data types (`int64`–`int8`, `uint64`–`uint8`).
+///
+/// Implemented by all 8 integer dtype tags. Supports bitwise shifts (`<<`, `>>`), `gcd`, and `lcm` in addition to [BitwiseDType] operations.
+abstract interface class IntegerDType<
+  RealTag extends DTypeTag,
+  AccumulatorTag extends DTypeTag
+>
+    extends
+        BitwiseDType<
+          RealTag,
+          int,
+          Float64,
+          Complex128,
+          Float64,
+          AccumulatorTag,
+          Float64,
+          Float64
+        > {}
+
 /// Tag for the `float64` dtype. Elements are `double`.
 abstract final class Float64
-    extends
+    implements
         DTypeSpec<
           Float64,
           double,
@@ -124,14 +145,12 @@ abstract final class Float64
           Float64,
           Float64,
           Float64,
-          Float64,
-          NoDType,
-          NoDType
+          Float64
         > {}
 
 /// Tag for the `float32` dtype. Elements are `double`.
 abstract final class Float32
-    extends
+    implements
         DTypeSpec<
           Float32,
           double,
@@ -140,14 +159,12 @@ abstract final class Float32
           Float32,
           Float32,
           Float64,
-          Float32,
-          NoDType,
-          NoDType
+          Float32
         > {}
 
 /// Tag for the `float16` dtype. Elements are `double`.
 abstract final class Float16
-    extends
+    implements
         DTypeSpec<
           Float16,
           double,
@@ -156,14 +173,12 @@ abstract final class Float16
           Float64,
           Float16,
           Float64,
-          Float16,
-          NoDType,
-          NoDType
+          Float16
         > {}
 
 /// Tag for the `bfloat16` dtype. Elements are `double`.
 abstract final class BFloat16
-    extends
+    implements
         DTypeSpec<
           BFloat16,
           double,
@@ -172,145 +187,39 @@ abstract final class BFloat16
           Float64,
           BFloat16,
           Float64,
-          BFloat16,
-          NoDType,
-          NoDType
+          BFloat16
         > {}
 
 /// Tag for the `int64` dtype. Elements are `int`.
-abstract final class Int64
-    extends
-        DTypeSpec<
-          Int64,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Int64,
-          Float64,
-          Float64,
-          Int64,
-          Int64
-        > {}
+abstract final class Int64 implements IntegerDType<Int64, Int64> {}
 
 /// Tag for the `int32` dtype. Elements are `int`.
-abstract final class Int32
-    extends
-        DTypeSpec<
-          Int32,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Int64,
-          Float64,
-          Float64,
-          Int32,
-          Int32
-        > {}
+abstract final class Int32 implements IntegerDType<Int32, Int64> {}
 
 /// Tag for the `int16` dtype. Elements are `int`.
-abstract final class Int16
-    extends
-        DTypeSpec<
-          Int16,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Int64,
-          Float64,
-          Float64,
-          Int16,
-          Int16
-        > {}
+abstract final class Int16 implements IntegerDType<Int16, Int64> {}
 
 /// Tag for the `int8` dtype. Elements are `int`.
-abstract final class Int8
-    extends
-        DTypeSpec<
-          Int8,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Int64,
-          Float64,
-          Float64,
-          Int8,
-          Int8
-        > {}
+abstract final class Int8 implements IntegerDType<Int8, Int64> {}
 
 /// Tag for the `uint64` dtype. Elements are `int`.
 ///
 /// Dart `int` is signed 64-bit; bit patterns with the MSB set represent
 /// negative values. Use [uint64Compare] for unsigned comparisons.
-abstract final class Uint64
-    extends
-        DTypeSpec<
-          Uint64,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Uint64,
-          Float64,
-          Float64,
-          Uint64,
-          Uint64
-        > {}
+abstract final class Uint64 implements IntegerDType<Uint64, Uint64> {}
 
 /// Tag for the `uint32` dtype. Elements are `int`.
-abstract final class Uint32
-    extends
-        DTypeSpec<
-          Uint32,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Uint64,
-          Float64,
-          Float64,
-          Uint32,
-          Uint32
-        > {}
+abstract final class Uint32 implements IntegerDType<Uint32, Uint64> {}
 
 /// Tag for the `uint16` dtype. Elements are `int`.
-abstract final class Uint16
-    extends
-        DTypeSpec<
-          Uint16,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Uint64,
-          Float64,
-          Float64,
-          Uint16,
-          Uint16
-        > {}
+abstract final class Uint16 implements IntegerDType<Uint16, Uint64> {}
 
 /// Tag for the `uint8` dtype. Elements are `int`.
-abstract final class Uint8
-    extends
-        DTypeSpec<
-          Uint8,
-          int,
-          Float64,
-          Complex128,
-          Float64,
-          Uint64,
-          Float64,
-          Float64,
-          Uint8,
-          Uint8
-        > {}
+abstract final class Uint8 implements IntegerDType<Uint8, Uint64> {}
 
 /// Tag for the `complex64` dtype. Elements are [Complex].
 abstract final class Complex64
-    extends
+    implements
         DTypeSpec<
           Float32,
           Complex,
@@ -319,14 +228,12 @@ abstract final class Complex64
           Complex64,
           Complex64,
           Complex128,
-          Complex64,
-          NoDType,
-          NoDType
+          Complex64
         > {}
 
 /// Tag for the `complex128` dtype. Elements are [Complex].
 abstract final class Complex128
-    extends
+    implements
         DTypeSpec<
           Float64,
           Complex,
@@ -335,15 +242,13 @@ abstract final class Complex128
           Complex128,
           Complex128,
           Complex128,
-          Complex128,
-          NoDType,
-          NoDType
+          Complex128
         > {}
 
 /// Tag for the `boolean` dtype. Elements are `bool`.
 abstract final class Boolean
-    extends
-        DTypeSpec<
+    implements
+        BitwiseDType<
           Boolean,
           bool,
           Float64,
@@ -351,9 +256,7 @@ abstract final class Boolean
           Float64,
           Int64,
           Float64,
-          Float64,
-          Boolean,
-          NoDType
+          Float64
         > {}
 
 /// Supported data types for the elements of an [NDArray].
@@ -2274,6 +2177,46 @@ sealed class NDArray<T extends DTypeTag>
       return this.copy() as NDArray<R>;
     }
     return helpers.castNDArray<R>(this, targetDType);
+  }
+
+  /// Views this array with the wildcard [AnySpec] tag.
+  ///
+  /// This bypasses static dtype constraints and is intended for internal
+  /// helpers and tests that dispatch or validate dtypes dynamically.
+  NDArray<AnySpec> get asAnySpec => this as NDArray<AnySpec>;
+
+  /// Views this array with the [BitwiseDType] tag.
+  ///
+  /// This bypasses static dtype constraints and is intended for internal
+  /// helpers and tests that dispatch or validate bitwise operations dynamically.
+  ///
+  /// Throws a [StateError] if this array is disposed, or an [ArgumentError] if
+  /// [dtype] is neither an integer nor `boolean`.
+  NDArray<BitwiseDType> get asBitwiseDType {
+    if (isDisposed) {
+      throw StateError('Cannot access a disposed NDArray.');
+    }
+    if (this is NDArray<BitwiseDType>) return this as NDArray<BitwiseDType>;
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be integer or boolean data type for bitwise operations',
+    );
+  }
+
+  /// Views this array with the [IntegerDType] tag.
+  ///
+  /// This bypasses static dtype constraints and is intended for internal
+  /// helpers and tests that dispatch or validate integer shift/gcd/lcm operations dynamically.
+  ///
+  /// Throws a [StateError] if this array is disposed, or an [ArgumentError] if
+  /// [dtype] is not an integer data type.
+  NDArray<IntegerDType> get asIntegerDType {
+    if (isDisposed) {
+      throw StateError('Cannot access a disposed NDArray.');
+    }
+    if (this is NDArray<IntegerDType>) return this as NDArray<IntegerDType>;
+    throw ArgumentError.value(dtype, 'dtype', 'Must be integer data type');
   }
 
   /// Creates a [SendableNDArray] by copying this array's data into an isolate-transferable buffer.
@@ -4266,16 +4209,18 @@ sealed class NDArray<T extends DTypeTag>
     }
   }
 
-  /// Like [_withWrappedScalar], but for operators that return `NDArray<T>`.
+  /// Validates [other] as a same-dtype operand of [operator] and applies [fn].
   ///
-  /// The result of these operators has the dtype of `this`, so an array
-  /// operand of a different dtype or an out-of-range/incompatible scalar is
-  /// rejected with [ArgumentError]: cast operands explicitly with `.astype(...)`
-  /// for mixed-dtype arithmetic.
-  NDArray<T> _withSameDTypeOperand(
+  /// The result dtype of every operator is a function of the dtype of `this`
+  /// alone, so an array operand of a different dtype or an
+  /// out-of-range/incompatible scalar is rejected with [ArgumentError]: cast
+  /// operands explicitly with `.astype(...)` for mixed-dtype arithmetic or
+  /// comparisons. A scalar [other] is wrapped as a 0-D broadcastable array of
+  /// this array's dtype in the [ScratchArena] for the duration of [fn].
+  R _withSameDTypeOperand<R>(
     Object? other,
     String operator,
-    NDArray<DTypeTag> Function(NDArray<T> otherArr) fn,
+    R Function(NDArray<T> otherArr) fn,
   ) {
     if (other is NDArray && other.dtype != dtype) {
       throw ArgumentError.value(
@@ -4287,17 +4232,16 @@ sealed class NDArray<T extends DTypeTag>
       );
     }
     return _withWrappedScalar(other, (otherArr) {
-          if (otherArr.dtype != dtype) {
-            throw ArgumentError.value(
-              other,
-              'other',
-              'Scalar value cannot be represented in receiver dtype $dtype for '
-                  'operator $operator (inferred ${otherArr.dtype}).',
-            );
-          }
-          return fn(otherArr as NDArray<T>);
-        })
-        as NDArray<T>;
+      if (otherArr.dtype != dtype) {
+        throw ArgumentError.value(
+          other,
+          'other',
+          'Scalar value cannot be represented in receiver dtype $dtype for '
+              'operator $operator (inferred ${otherArr.dtype}).',
+        );
+      }
+      return fn(otherArr as NDArray<T>);
+    });
   }
 
   NDArray<Boolean>? _tryOutOfRangeIntScalarComparison(
@@ -4379,45 +4323,9 @@ sealed class NDArray<T extends DTypeTag>
     return ops.negative<T>(this);
   }
 
-  /// Element-wise bitwise AND with full broadcasting support.
-  NDArray<T> operator &(Object? other) => _withSameDTypeOperand(
-    other,
-    '&',
-    (otherArr) => ops.bitwiseAnd<T>(this, otherArr),
-  );
-
-  /// Element-wise bitwise OR with full broadcasting support.
-  NDArray<T> operator |(Object? other) => _withSameDTypeOperand(
-    other,
-    '|',
-    (otherArr) => ops.bitwiseOr<T>(this, otherArr),
-  );
-
-  /// Element-wise bitwise XOR with full broadcasting support.
-  NDArray<T> operator ^(Object? other) => _withSameDTypeOperand(
-    other,
-    '^',
-    (otherArr) => ops.bitwiseXor<T>(this, otherArr),
-  );
-
-  /// Element-wise bitwise NOT.
-  NDArray<T> operator ~() {
-    return ops.invert<T>(this);
-  }
-
-  /// Element-wise left shift with full broadcasting support.
-  NDArray<T> operator <<(Object? other) => _withSameDTypeOperand(
-    other,
-    '<<',
-    (otherArr) => ops.leftShift<T>(this, otherArr),
-  );
-
-  /// Element-wise right shift with full broadcasting support.
-  NDArray<T> operator >>(Object? other) => _withSameDTypeOperand(
-    other,
-    '>>',
-    (otherArr) => ops.rightShift<T>(this, otherArr),
-  );
+  // The bitwise (`&`, `|`, `^`, `~`) and shift (`<<`, `>>`) operators are
+  // declared in [NDArrayBitwise] and [NDArrayShift], which are only applicable
+  // to the dtypes that support them ([BitwiseDType] and [IntegerDType]).
 
   /// Element-wise greater than comparison (`this > other`) with full broadcasting support.
   ///
@@ -4426,6 +4334,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
+  /// - An array [other] must have the same dtype as this array (cast with
+  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   representable in this array's dtype, except that an integer scalar
+  ///   outside the range of an integer dtype compares by value. Violations
+  ///   throw an [ArgumentError], exactly as for `+`.
   /// - Both arrays must be numeric (non-complex).
   ///
   /// It is an error if either array has a complex data type ([DType.complex64] or [DType.complex128]), or if the shapes are not broadcast-compatible.
@@ -4449,7 +4362,11 @@ sealed class NDArray<T extends DTypeTag>
         case final fast?) {
       return fast;
     }
-    return _withWrappedScalar(other, (otherArr) => ops.greater(this, otherArr));
+    return _withSameDTypeOperand(
+      other,
+      '>',
+      (otherArr) => ops.greater(this, otherArr),
+    );
   }
 
   /// Element-wise less than comparison (`this < other`) with full broadcasting support.
@@ -4459,6 +4376,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
+  /// - An array [other] must have the same dtype as this array (cast with
+  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   representable in this array's dtype, except that an integer scalar
+  ///   outside the range of an integer dtype compares by value. Violations
+  ///   throw an [ArgumentError], exactly as for `+`.
   /// - Both arrays must be numeric (non-complex).
   ///
   /// It is an error if either array has a complex data type ([DType.complex64] or [DType.complex128]), or if the shapes are not broadcast-compatible.
@@ -4481,7 +4403,11 @@ sealed class NDArray<T extends DTypeTag>
         case final fast?) {
       return fast;
     }
-    return _withWrappedScalar(other, (otherArr) => ops.less(this, otherArr));
+    return _withSameDTypeOperand(
+      other,
+      '<',
+      (otherArr) => ops.less(this, otherArr),
+    );
   }
 
   /// Element-wise greater-or-equal comparison (`this >= other`) with full broadcasting support.
@@ -4491,6 +4417,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
+  /// - An array [other] must have the same dtype as this array (cast with
+  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   representable in this array's dtype, except that an integer scalar
+  ///   outside the range of an integer dtype compares by value. Violations
+  ///   throw an [ArgumentError], exactly as for `+`.
   /// - Both arrays must be numeric (non-complex).
   ///
   /// It is an error if either array has a complex data type ([DType.complex64] or [DType.complex128]), or if the shapes are not broadcast-compatible.
@@ -4513,8 +4444,9 @@ sealed class NDArray<T extends DTypeTag>
         case final fast?) {
       return fast;
     }
-    return _withWrappedScalar(
+    return _withSameDTypeOperand(
       other,
+      '>=',
       (otherArr) => ops.greaterEqual(this, otherArr),
     );
   }
@@ -4526,6 +4458,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
+  /// - An array [other] must have the same dtype as this array (cast with
+  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   representable in this array's dtype, except that an integer scalar
+  ///   outside the range of an integer dtype compares by value. Violations
+  ///   throw an [ArgumentError], exactly as for `+`.
   /// - Both arrays must be numeric (non-complex).
   ///
   /// It is an error if either array has a complex data type ([DType.complex64] or [DType.complex128]), or if the shapes are not broadcast-compatible.
@@ -4548,8 +4485,9 @@ sealed class NDArray<T extends DTypeTag>
         case final fast?) {
       return fast;
     }
-    return _withWrappedScalar(
+    return _withSameDTypeOperand(
       other,
+      '<=',
       (otherArr) => ops.lessEqual(this, otherArr),
     );
   }
@@ -4566,6 +4504,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
+  /// - An array [other] must have the same dtype as this array (cast with
+  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   representable in this array's dtype, except that an integer scalar
+  ///   outside the range of an integer dtype compares by value. Violations
+  ///   throw an [ArgumentError], exactly as for `+`.
   /// - Supports complex types (checks real and imaginary parts).
   ///
   /// It is an error if the shapes are not broadcast-compatible.
@@ -4588,10 +4531,25 @@ sealed class NDArray<T extends DTypeTag>
         case final fast?) {
       return fast;
     }
-    return _withWrappedScalar(other, (otherArr) => ops.equal(this, otherArr));
+    return _withSameDTypeOperand(
+      other,
+      'eq',
+      (otherArr) => ops.equal(this, otherArr),
+    );
   }
 
   /// Element-wise inequality comparison (`ne(other)`) with full broadcasting support.
+  ///
+  /// Returns a boolean [NDArray] where each element is `true` if the
+  /// corresponding element in this array differs from the element in [other],
+  /// and `false` otherwise. This is the element-wise complement of [eq]; see
+  /// [eq] for the operand rules (an array [other] must have the same dtype as
+  /// this array, and a scalar [other] must be representable in it).
+  ///
+  /// **Example:**
+  /// {@example /example/comparison_operations_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [not_equal](https://numpy.org/doc/stable/reference/generated/numpy.not_equal.html).
   NDArray<Boolean> ne(Object? other) {
     if (_tryOutOfRangeIntScalarComparison(
           other,
@@ -4602,8 +4560,9 @@ sealed class NDArray<T extends DTypeTag>
         case final fast?) {
       return fast;
     }
-    return _withWrappedScalar(
+    return _withSameDTypeOperand(
       other,
+      'ne',
       (otherArr) => ops.notEqual(this, otherArr),
     );
   }
@@ -5790,29 +5749,136 @@ final class _NDArrayBoolean extends NDArray<Boolean> {
   DType<Boolean> get dtype => DType.boolean;
 }
 
-/// True division operator (`/`) inferring the concrete math-promoted dtype [M]
-/// (`Float64` for integer arrays, and preserving [T] for floating-point and
-/// complex arrays).
+/// True division operator (`/`) inferring the concrete result dtype [M] from
+/// [DTypeSpec.DivideTag]: `Float64` for integer and boolean arrays, and [T]
+/// itself for every floating-point (including `Float16`/`BFloat16`) and
+/// complex array, following NumPy's `true_divide` rule.
+///
+/// The receiver must be typed with a concrete dtype tag (or `NDArray<AnySpec>`,
+/// for which [M] is `DTypeTag`); receivers typed `NDArray<DTypeTag>` use
+/// [NDArrayBaseDivide] instead.
 extension NDArrayDivide<
   T extends DTypeSpec<
     DTypeTag,
     Object?,
     DTypeTag,
     DTypeTag,
-    M,
     DTypeTag,
     DTypeTag,
     DTypeTag,
-    DTypeTag,
-    DTypeTag
+    M
   >,
   M extends DTypeTag
 >
     on NDArray<T> {
   /// Element-wise true division with full broadcasting support.
-  NDArray<M> operator /(Object? other) =>
-      _withWrappedScalar(other, (otherArr) => ops.divide(this, otherArr))
-          as NDArray<M>;
+  ///
+  /// A scalar [other] is converted to this array's dtype. An array [other]
+  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
+  ///
+  /// Division by zero follows IEEE 754 rules (`±infinity` or `nan`); integer
+  /// and boolean arrays are divided as `float64`.
+  ///
+  /// **Example:**
+  /// {@example /example/ndarray_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [divide](https://numpy.org/doc/stable/reference/generated/numpy.divide.html).
+  NDArray<M> operator /(Object? other) => _withSameDTypeOperand(
+    other,
+    '/',
+    (otherArr) => ops.divide<T, M>(this, otherArr),
+  );
+}
+
+/// Bitwise operators (`&`, `|`, `^`, `~`) for data types that implement
+/// [BitwiseDType] (all integer types and [Boolean]).
+extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
+  /// Element-wise bitwise AND with full broadcasting support.
+  ///
+  /// A scalar [other] is converted to this array's dtype. An array [other]
+  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
+  ///
+  /// **Example:**
+  /// {@example /example/bitwise_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [bitwise_and](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_and.html).
+  NDArray<T> operator &(Object? other) => _withSameDTypeOperand(
+    other,
+    '&',
+    (otherArr) => ops.bitwiseAnd<T>(this, otherArr),
+  );
+
+  /// Element-wise bitwise OR with full broadcasting support.
+  ///
+  /// See the `&` operator for the operand rules.
+  ///
+  /// **Example:**
+  /// {@example /example/bitwise_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [bitwise_or](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_or.html).
+  NDArray<T> operator |(Object? other) => _withSameDTypeOperand(
+    other,
+    '|',
+    (otherArr) => ops.bitwiseOr<T>(this, otherArr),
+  );
+
+  /// Element-wise bitwise XOR with full broadcasting support.
+  ///
+  /// See the `&` operator for the operand rules.
+  ///
+  /// **Example:**
+  /// {@example /example/bitwise_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [bitwise_xor](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_xor.html).
+  NDArray<T> operator ^(Object? other) => _withSameDTypeOperand(
+    other,
+    '^',
+    (otherArr) => ops.bitwiseXor<T>(this, otherArr),
+  );
+
+  /// Element-wise bitwise NOT (logical NOT for `Boolean` arrays).
+  ///
+  /// **Example:**
+  /// {@example /example/bitwise_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [invert](https://numpy.org/doc/stable/reference/generated/numpy.invert.html).
+  NDArray<T> operator ~() => ops.invert<T>(this);
+}
+
+/// Shift operators (`<<`, `>>`) for data types that implement
+/// [IntegerDType] (all signed and unsigned integer types).
+extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
+  /// Element-wise left shift with full broadcasting support.
+  ///
+  /// A scalar [other] is converted to this array's dtype. An array [other]
+  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
+  ///
+  /// **Example:**
+  /// {@example /example/bitwise_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [left_shift](https://numpy.org/doc/stable/reference/generated/numpy.left_shift.html).
+  NDArray<T> operator <<(Object? other) => _withSameDTypeOperand(
+    other,
+    '<<',
+    (otherArr) => ops.leftShift<T>(this, otherArr),
+  );
+
+  /// Element-wise arithmetic right shift with full broadcasting support.
+  ///
+  /// See the `<<` operator for the operand rules.
+  ///
+  /// **Example:**
+  /// {@example /example/bitwise_example.dart lang=dart}
+  ///
+  /// Reference: See NumPy's [right_shift](https://numpy.org/doc/stable/reference/generated/numpy.right_shift.html).
+  NDArray<T> operator >>(Object? other) => _withSameDTypeOperand(
+    other,
+    '>>',
+    (otherArr) => ops.rightShift<T>(this, otherArr),
+  );
 }
 
 String _ndarrayToString(NDArray arr) {
@@ -6348,8 +6414,6 @@ extension NDArrayElements<
     DTypeTag,
     DTypeTag,
     DTypeTag,
-    DTypeTag,
-    DTypeTag,
     DTypeTag
   >,
   E
@@ -6474,8 +6538,19 @@ extension NDArrayBaseElements on NDArray<DTypeTag> {
 }
 
 /// Fallback true division operator (`/`) when the receiver is typed as [DTypeTag].
+///
+/// The result dtype follows the same rule as [NDArrayDivide] (`float64` for
+/// integer and boolean arrays; the receiver dtype otherwise) but is only known
+/// at runtime, so the static result type is `NDArray<DTypeTag>`.
 extension NDArrayBaseDivide on NDArray<DTypeTag> {
   /// Element-wise true division with full broadcasting support.
-  NDArray<DTypeTag> operator /(Object? other) =>
-      _withWrappedScalar(other, (otherArr) => ops.divide(this, otherArr));
+  ///
+  /// A scalar [other] is converted to this array's dtype. An array [other]
+  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
+  NDArray<DTypeTag> operator /(Object? other) => _withSameDTypeOperand(
+    other,
+    '/',
+    (otherArr) => ops.divideUntyped<DTypeTag, DTypeTag>(this, otherArr),
+  );
 }

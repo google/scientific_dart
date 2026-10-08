@@ -849,8 +849,6 @@ NDArray<R> sum<R extends DTypeTag>(
       DTypeTag,
       R,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1201,8 +1199,6 @@ NDArray<R> prod<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag
     >
@@ -1953,8 +1949,6 @@ NDArray<R> mean<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -4121,8 +4115,6 @@ NDArray<R> cumsum<R extends DTypeTag>(
       DTypeTag,
       R,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -4251,8 +4243,6 @@ NDArray<R> cumprod<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag
     >
@@ -4968,8 +4958,6 @@ NDArray<R> nanmean<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -5941,8 +5929,6 @@ NDArray<R> median<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -6226,8 +6212,6 @@ NDArray<R> nanmedian<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -6726,8 +6710,6 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
               DTypeTag,
               DTypeTag,
               R,
-              DTypeTag,
-              DTypeTag,
               DTypeTag
             >
           >,
@@ -6852,38 +6834,37 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
 
 /// Estimate a covariance matrix, given data and weights.
 ///
+/// [m] and the optional [y] share the type parameter `T`, so both must have the
+/// same dtype; the result dtype [R] is the double-precision promotion of that
+/// dtype (`Complex128` for complex inputs, `Float64` otherwise). Passing arrays
+/// of different concrete dtypes is a compile-time error; when the dtype
+/// equality cannot be checked statically (for example with `NDArray<AnySpec>`
+/// arguments), it is validated at runtime. [fweights] and [aweights] may have
+/// any real dtype.
+///
 /// If [out] is provided, writes the resulting covariance matrix into it.
-NDArray<R> cov<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  m, {
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >?
-  y,
+///
+/// **Preconditions:**
+/// - [m], [y], [fweights], [aweights], and [out] must not be disposed.
+/// - [m] and [y] must be non-empty 1-D or 2-D arrays.
+/// - [y] must have the same dtype as [m].
+///
+/// Reference: [NumPy cov](https://numpy.org/doc/stable/reference/generated/numpy.cov.html)
+NDArray<R> cov<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(
+  NDArray<T> m, {
+  NDArray<T>? y,
   bool rowvar = true,
   bool bias = false,
   int? ddof,
@@ -6912,9 +6893,16 @@ NDArray<R> cov<R extends DTypeTag>(
   if (y != null && y.size == 0) {
     throw ArgumentError.value(y, 'y', 'Must not be empty');
   }
+  if (y != null && y.dtype != m.dtype) {
+    throw ArgumentError.value(
+      y.dtype,
+      'y',
+      'Must have the same dtype as m (${m.dtype})',
+    );
+  }
 
   return NDArray.scope(() {
-    final isComplex = m.dtype.isComplex || (y != null && y.dtype.isComplex);
+    final isComplex = m.dtype.isComplex;
 
     if (isComplex) {
       if (out != null) {
@@ -7263,38 +7251,37 @@ NDArray<R> cov<R extends DTypeTag>(
 
 /// Compute Pearson product-moment correlation coefficients.
 ///
+/// [m] and the optional [y] share the type parameter `T`, so both must have the
+/// same dtype; the result dtype [R] is the double-precision promotion of that
+/// dtype (`Complex128` for complex inputs, `Float64` otherwise). Passing arrays
+/// of different concrete dtypes is a compile-time error; when the dtype
+/// equality cannot be checked statically (for example with `NDArray<AnySpec>`
+/// arguments), it is validated at runtime. [fweights] and [aweights] may have
+/// any real dtype.
+///
 /// If [out] is provided, writes the resulting correlation matrix into it.
-NDArray<R> corrcoef<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  m, {
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >?
-  y,
+///
+/// **Preconditions:**
+/// - [m], [y], [fweights], [aweights], and [out] must not be disposed.
+/// - [m] and [y] must be non-empty 1-D or 2-D arrays.
+/// - [y] must have the same dtype as [m].
+///
+/// Reference: [NumPy corrcoef](https://numpy.org/doc/stable/reference/generated/numpy.corrcoef.html)
+NDArray<R> corrcoef<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(
+  NDArray<T> m, {
+  NDArray<T>? y,
   bool rowvar = true,
   NDArray<DTypeTag>? fweights,
   NDArray<DTypeTag>? aweights,
@@ -7315,9 +7302,16 @@ NDArray<R> corrcoef<R extends DTypeTag>(
       'Cannot compute correlation coefficient with a disposed array y.',
     );
   }
+  if (y != null && y.dtype != m.dtype) {
+    throw ArgumentError.value(
+      y.dtype,
+      'y',
+      'Must have the same dtype as m (${m.dtype})',
+    );
+  }
 
   return NDArray.scope(() {
-    final C = cov(
+    final C = cov<T, R>(
       m,
       y: y,
       rowvar: rowvar,
@@ -7457,8 +7451,6 @@ NDArray<R> nansum<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag
     >

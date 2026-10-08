@@ -590,7 +590,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// Refer to the [NumPy histogram reference](https://numpy.org/doc/stable/reference/generated/numpy.histogram.html)
 /// for details.
-({NDArray<AnySpec> hist, NDArray<Float64> binEdges}) histogram(
+({NDArray<DTypeTag> hist, NDArray<Float64> binEdges}) histogram(
   NDArray<DTypeTag> x, {
   Object bins = 10,
   (double, double)? range,
@@ -745,7 +745,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       );
     }
 
-    final DType<AnySpec> targetHistDType = switch (rawFlatWeights?.dtype) {
+    final DType<DTypeTag> targetHistDType = switch (rawFlatWeights?.dtype) {
       null => DType.int64,
       DType.float64 => DType.float64,
       DType.float32 => DType.float32,
@@ -753,13 +753,13 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       DType.bfloat16 => DType.bfloat16,
       _ => DType.float64,
     };
-    final DType<AnySpec> computeHistDType = switch (rawFlatWeights?.dtype) {
+    final DType<DTypeTag> computeHistDType = switch (rawFlatWeights?.dtype) {
       null => DType.int64,
       DType.float32 => DType.float32,
       _ => DType.float64,
     };
 
-    final NDArray<AnySpec> hist = NDArray<AnySpec>.zeros([
+    final NDArray<DTypeTag> hist = NDArray<DTypeTag>.zeros([
       nbins,
     ], computeHistDType);
 
@@ -845,7 +845,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       }
     }
 
-    NDArray<AnySpec> finalHist = hist;
+    NDArray<DTypeTag> finalHist = hist;
     if (density) {
       final totalSum = sumAs<DTypeTag, DTypeTag>(hist, hist.dtype).scalar;
       final widths = subtract<Float64>(
@@ -857,12 +857,12 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         dtype: DType.float64,
       );
       final divisor = multiply<Float64>(widths, totalSumArr);
-      final histF64 = hist.dtype == DType.float64
+      final histF64 = hist.dtype == (DType.float64 as DType<DTypeTag>)
           ? hist as NDArray<Float64>
           : castNDArray<Float64>(hist, DType.float64);
       finalHist = divide<Float64, Float64>(histF64, divisor);
     } else if (targetHistDType != computeHistDType) {
-      finalHist = castNDArray<AnySpec>(hist, targetHistDType);
+      finalHist = castNDArray<DTypeTag>(hist, targetHistDType);
     }
 
     return (

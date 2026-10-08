@@ -78,8 +78,6 @@ NDArray<R> interp<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -437,8 +435,6 @@ NDArray<R> interpolate<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >

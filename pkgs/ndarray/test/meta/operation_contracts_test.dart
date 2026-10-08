@@ -1934,13 +1934,27 @@ void main() {
 
             if (dtype.isInteger) {
               for (final intOp in <NDArray<T> Function(NDArray<T>, NDArray<T>)>[
-                (x, y) => gcd(x, y),
-                (x, y) => lcm(x, y),
-                (x, y) => bitwiseAnd(x, y),
-                (x, y) => bitwiseOr(x, y),
-                (x, y) => bitwiseXor(x, y),
-                (x, y) => leftShift(x, y),
-                (x, y) => rightShift(x, y),
+                (x, y) =>
+                    gcd<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                        as NDArray<T>,
+                (x, y) =>
+                    lcm<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                        as NDArray<T>,
+                (x, y) =>
+                    bitwiseAnd<BitwiseDType>(x.asBitwiseDType, y.asBitwiseDType)
+                        as NDArray<T>,
+                (x, y) =>
+                    bitwiseOr<BitwiseDType>(x.asBitwiseDType, y.asBitwiseDType)
+                        as NDArray<T>,
+                (x, y) =>
+                    bitwiseXor<BitwiseDType>(x.asBitwiseDType, y.asBitwiseDType)
+                        as NDArray<T>,
+                (x, y) =>
+                    leftShift<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                        as NDArray<T>,
+                (x, y) =>
+                    rightShift<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                        as NDArray<T>,
               ]) {
                 final cRes = intOp(aContig, bContig);
                 final sRes = intOp(aStrided, bStrided);
@@ -1949,8 +1963,10 @@ void main() {
                 }
               }
 
-              final cInv = invert(aContig);
-              final sInv = invert(aStrided);
+              final cInv =
+                  invert<BitwiseDType>(aContig.asBitwiseDType) as NDArray<T>;
+              final sInv =
+                  invert<BitwiseDType>(aStrided.asBitwiseDType) as NDArray<T>;
               for (var i = 0; i < n; i++) {
                 expect(sInv[[i]], equals(cInv[[i]]));
               }
@@ -2195,7 +2211,10 @@ void main() {
       'add': (a, b) => add<DTypeTag>(a, b),
       'subtract': (a, b) => subtract<DTypeTag>(a, b),
       'multiply': (a, b) => multiply<DTypeTag>(a, b),
-      'divide': (a, b) => divide(a, b),
+      'divide': (a, b) => divide<AnySpec, DTypeTag>(
+        a as NDArray<AnySpec>,
+        b as NDArray<AnySpec>,
+      ),
     };
 
     NDArray make(DType dtype, List<int> values) => switch (dtype) {

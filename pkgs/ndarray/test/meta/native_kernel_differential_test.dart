@@ -238,7 +238,7 @@ void main() {
     DType.boolean,
   ];
 
-  const integerDTypes = <DType<AnySpec>>[
+  const integerDTypes = <DType<IntegerDType>>[
     DType.int8,
     DType.int16,
     DType.int32,
@@ -291,7 +291,7 @@ void main() {
   group(
     '1. Contiguous Fast-Path vs. Strided / Negative-Stride / Rank-3 Equivalence',
     () {
-      void verifyUnaryVariants<T extends AnySpec, R extends DTypeTag>(
+      void verifyUnaryVariants<T extends DTypeTag, R extends DTypeTag>(
         String opName,
         DType<T> dtype,
         NDArray<R> Function(NDArray<T> x) op, {
@@ -333,7 +333,7 @@ void main() {
         });
       }
 
-      void verifyBinaryVariants<T extends AnySpec, R extends DTypeTag>(
+      void verifyBinaryVariants<T extends DTypeTag, R extends DTypeTag>(
         String opName,
         DType<T> dtype,
         NDArray<R> Function(NDArray<T> a, NDArray<T> b) op, {
@@ -882,7 +882,7 @@ void main() {
     test(
       'Integer boundary values [0, 1, -1, minVal, maxVal], INT_MIN / -1, and div-by-zero',
       () {
-        final signedSpecs = <(DType<AnySpec>, int, int)>[
+        final signedSpecs = <(DType<IntegerDType>, int, int)>[
           (DType.int8, -128, 127),
           (DType.int16, -32768, 32767),
           (DType.int32, -2147483648, 2147483647),
@@ -1316,7 +1316,6 @@ void main() {
                     -9223372036854775808,
                     1,
                   ],
-                  _ => [1, 2, 3, 4, 5, 6, 7, 8],
                 };
                 final extBase = NDArray.fromList(extremeRaw.cast<dynamic>(), [
                   8,

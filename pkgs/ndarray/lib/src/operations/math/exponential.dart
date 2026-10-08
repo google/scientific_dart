@@ -45,8 +45,6 @@ NDArray<R> exp<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -273,8 +271,6 @@ NDArray<R> log<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -492,8 +488,6 @@ NDArray<R> log2<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -714,8 +708,6 @@ NDArray<R> log10<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag

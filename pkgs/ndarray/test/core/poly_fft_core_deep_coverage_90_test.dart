@@ -110,12 +110,17 @@ void main() {
           expect(yC64.getCell([0]).real, closeTo(4.0, 1e-4));
           expect(yC64.getCell([0]).imag, closeTo(1.0, 1e-4));
 
-          // Mixed DType evaluation (c is float64, x is int32)
+          // Int32 evaluation promotes to float64; mixed dtypes throw ArgumentError
           final xInt = NDArray.fromList([0, 1, 2], [3], DType.int32);
-          final yMixed = chebval(xInt, cF64);
-          expect(yMixed.dtype, equals(DType.float64));
-          expect(yMixed.getCell([0]), closeTo(-1.0, 1e-10));
-          expect(yMixed.getCell([1]), closeTo(5.0, 1e-10));
+          final cInt = NDArray.fromList([1, 2, 2], [3], DType.int32);
+          final yIntCheb = chebval(xInt, cInt);
+          expect(yIntCheb.dtype, equals(DType.float64));
+          expect(yIntCheb.getCell([0]), closeTo(-1.0, 1e-10));
+          expect(yIntCheb.getCell([1]), closeTo(5.0, 1e-10));
+          expect(
+            () => chebval<AnySpec, DTypeTag>(xInt, cF64),
+            throwsArgumentError,
+          );
 
           // Custom out buffer
           final outBuf = NDArray.zeros([4], DType.float64);
@@ -775,7 +780,7 @@ void main() {
             DType.float64,
           );
           final col0 = mat.slice([Slice.all(), Index(0)]); // [0.0, 1.0, 2.0]
-          final yStrided = polyval(cInt, col0);
+          final yStrided = polyval(cInt.astype(DType.float64), col0);
           expect(yStrided.getCell([0]), closeTo(3.0, 1e-10));
           expect(yStrided.getCell([1]), closeTo(6.0, 1e-10));
           expect(yStrided.getCell([2]), closeTo(11.0, 1e-10));

@@ -14,6 +14,7 @@
 
 import 'dart:math' as math;
 import 'dart:ffi' as ffi;
+import 'package:meta/meta.dart' show internal;
 import '../../ndarray.dart';
 import '../../ndarray_bindings.dart';
 import '../../scratch_arena.dart';
@@ -41,8 +42,6 @@ NDArray<R> sqrt<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -316,8 +315,6 @@ NDArray<R> expm1<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -565,8 +562,6 @@ NDArray<R> log1p<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -804,40 +799,19 @@ NDArray<R> log1p<R extends DTypeTag>(
 }
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
-NDArray<R> logaddexp<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x1,
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x2, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> logaddexp<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> x1, NDArray<T> x2, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
   if (x1.isDisposed ||
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1029,40 +1003,19 @@ NDArray<R> logaddexp<T extends DTypeTag, R extends DTypeTag>(
 }
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
-NDArray<R> logaddexp2<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x1,
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x2, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> logaddexp2<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> x1, NDArray<T> x2, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
   if (x1.isDisposed ||
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1264,8 +1217,6 @@ NDArray<R> rint<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1461,8 +1412,6 @@ NDArray<R> trunc<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1647,8 +1596,6 @@ NDArray<R> fix<R extends DTypeTag>(
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -4231,7 +4178,7 @@ NDArray<T> fmod<T extends DTypeTag>(
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [x1] or [x2] has a non-integer dtype (throws [UnsupportedError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
-NDArray<T> gcd<T extends DTypeTag>(
+NDArray<T> gcd<T extends IntegerDType>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -4443,7 +4390,7 @@ NDArray<T> gcd<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> lcm<T extends DTypeTag>(
+NDArray<T> lcm<T extends IntegerDType>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -4946,8 +4893,6 @@ NDArray<R> abs<R extends DTypeTag>(
     DTypeSpec<
       R,
       Object?,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -11009,7 +10954,18 @@ _multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// Element-wise division of two arrays with full broadcasting support.
 ///
 /// Both [a] and [b] must have the same [DType]. Always upcasts integer and
-/// boolean operands to [DType.float64] and performs floating-point division.
+/// boolean operands to [DType.float64] and performs floating-point division;
+/// every floating-point dtype (including `float16` and `bfloat16`) and both
+/// complex dtypes are preserved. This is NumPy's `true_divide` rule, which
+/// the result type [R] mirrors statically through [DTypeSpec.DivideTag]:
+/// `divide(int32Array, int32Array)` is an `NDArray<Float64>` and
+/// `divide(float16Array, float16Array)` is an `NDArray<Float16>` without any
+/// explicit type arguments.
+///
+/// Both operands must be statically typed with the same concrete tag (or as
+/// `NDArray<AnySpec>`); passing arrays whose static dtype tags differ fails to
+/// compile. Code that only knows the dtype at runtime (`NDArray<DTypeTag>`)
+/// should use [divideAs].
 ///
 /// **Division by Zero:**
 /// Division by zero is handled silently under IEEE 754 floating-point rules:
@@ -11024,7 +10980,36 @@ _multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - [a], [b], or [out] is disposed (throws [StateError]).
 /// - [a] and [b] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
-NDArray<R> divide<T extends DTypeTag, R extends DTypeTag>(
+///
+/// **Example:**
+/// {@example /example/ndarray_example.dart lang=dart}
+///
+/// Reference: [NumPy divide](https://numpy.org/doc/stable/reference/generated/numpy.divide.html)
+NDArray<R> divide<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R
+  >,
+  R extends DTypeTag
+>(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) =>
+    divideUntyped<T, R>(a, b, where: where, out: out);
+
+/// Untyped entry point of [divide] for callers whose operand tag is only
+/// known to be a [DTypeTag] at compile time.
+///
+/// Applies exactly the same runtime dtype rule as [divide] (integer and
+/// boolean operands are divided as [DType.float64]; every other dtype is
+/// preserved), so the result dtype is the operand dtype's
+/// [DTypeSpec.DivideTag]. [R] is not checked against the operand dtype
+/// statically; it is an error if [R] does not match the runtime result dtype.
+@internal
+NDArray<R> divideUntyped<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -13163,40 +13148,19 @@ powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
-NDArray<R> floatPower<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a,
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  b, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> floatPower<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -13318,12 +13282,25 @@ NDArray<R> gcdAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw UnsupportedError('gcdAs requires an integer target DType');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return gcd<R>(x1 as NDArray<R>, x2 as NDArray<R>, where: where, out: out);
+    return gcd<IntegerDType>(
+          x1.asIntegerDType,
+          x2.asIntegerDType,
+          where: where,
+          out: out?.asIntegerDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = gcd<R>(x1Cast, x2Cast, where: where, out: out);
+    final res =
+        gcd<IntegerDType>(
+              x1Cast.asIntegerDType,
+              x2Cast.asIntegerDType,
+              where: where,
+              out: out?.asIntegerDType,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }
@@ -13361,12 +13338,25 @@ NDArray<R> lcmAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw UnsupportedError('lcmAs requires an integer target DType');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return lcm<R>(x1 as NDArray<R>, x2 as NDArray<R>, where: where, out: out);
+    return lcm<IntegerDType>(
+          x1.asIntegerDType,
+          x2.asIntegerDType,
+          where: where,
+          out: out?.asIntegerDType,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = lcm<R>(x1Cast, x2Cast, where: where, out: out);
+    final res =
+        lcm<IntegerDType>(
+              x1Cast.asIntegerDType,
+              x2Cast.asIntegerDType,
+              where: where,
+              out: out?.asIntegerDType,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }

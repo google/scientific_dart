@@ -1676,7 +1676,10 @@ void main() {
 
             // DType mismatch & Device mismatch across all 5 domains
             _expectArgumentErrorMust(
-              () => contiguousCopy.add(contiguousCopy, out: wrongDTypeI32),
+              () => (contiguousCopy as GpuArray<DTypeTag>).add(
+                contiguousCopy,
+                out: wrongDTypeI32,
+              ),
               reason: 'core dtype mismatch',
             );
             _expectArgumentErrorMust(

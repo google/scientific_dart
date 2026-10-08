@@ -301,8 +301,6 @@ extension NDEnumerateElements<
     AnySpec,
     AnySpec,
     AnySpec,
-    DTypeTag,
-    DTypeTag,
     DTypeTag
   >,
   E

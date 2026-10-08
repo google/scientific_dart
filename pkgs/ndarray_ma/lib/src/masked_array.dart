@@ -24,10 +24,18 @@ part 'ops/views.dart';
 
 /// An array with associated boolean mask to represent missing or invalid data.
 ///
-/// A [MaskedArray] packages a standard [NDArray<T>] with a boolean [NDArray<bool>]
-/// mask of the same shape. Elements where the mask is `true` are considered
-/// invalid or missing, and are automatically bypassed in arithmetic operations
-/// and reductions.
+/// A [MaskedArray] packages a standard [NDArray] of dtype tag [T] with a
+/// boolean [NDArray] mask of the same shape. Elements where the mask is `true`
+/// are considered invalid or missing, and are automatically bypassed in
+/// arithmetic operations and reductions.
+///
+/// Operations whose result dtype depends deterministically on [T] (such as
+/// [MaskedArrayAccumulatingReductions.sum], [MaskedArrayDoublePrecisionReductions.mean],
+/// [MaskedArrayDivide.divide], and the typed [MaskedArrayElements.scalar]
+/// accessor) are provided as extensions bounded by [DTypeSpec], so that their
+/// static return types match the runtime dtype for every concrete tag.
+/// Receivers typed as `MaskedArray<DTypeTag>` fall back to the untyped
+/// `MaskedArrayBase*` extensions.
 final class MaskedArray<T extends DTypeTag> {
   /// The underlying data array containing all values (both valid and masked).
   final NDArray<T> data;
@@ -51,9 +59,25 @@ final class MaskedArray<T extends DTypeTag> {
   MaskedArray(this.data, this.mask, {Object? fillValue})
     : fillValue = fillValue ?? _defaultFillValue(data.dtype) {
     if (!data.hasSameShape(mask)) {
-      throw ArgumentError('Shapes of data and mask must be identical');
+      throw ArgumentError.value(
+        mask,
+        'mask',
+        'Must have the same shape as data (${data.shape}), '
+            'but has shape ${mask.shape}.',
+      );
     }
   }
+
+  /// Creates a [MaskedArray] wrapping [data] with every element unmasked.
+  ///
+  /// The mask is a newly allocated all-`false` array of the same shape as
+  /// [data].
+  factory MaskedArray.unmasked(NDArray<T> data, {Object? fillValue}) =>
+      MaskedArray(
+        data,
+        NDArray<Boolean>.zeros(data.shape, DType.boolean),
+        fillValue: fillValue,
+      );
 
   /// The shape (dimensions) of the array.
   List<int> get shape => data.shape;
@@ -187,18 +211,30 @@ final class MaskedArray<T extends DTypeTag> {
     });
   }
 
-  /// Returns the single scalar value of a 0-dimensional [MaskedArray].
+  /// The single value of a 0-dimensional [MaskedArray], untyped.
   ///
-  /// Returns `null` if the element is masked.
+  /// Returns `null` if the element is masked. Prefer the typed
+  /// [MaskedArrayElements.scalar] getter, which recovers the Dart element type
+  /// from [T]; this accessor is the dtype-agnostic fallback.
   ///
-  /// Throws:
-  /// - [StateError] if this array is not 0-dimensional (rank != 0).
-  dynamic get scalar {
+  /// It is an error if this array is not 0-dimensional.
+  Object? get scalarRaw {
     if (rank != 0) {
       throw StateError('scalar getter is only valid for 0-dimensional arrays');
     }
-    return mask.scalar ? null : data.scalar;
+    return mask.scalar ? null : (data as NDArray<DTypeTag>).scalar;
   }
+
+  /// The element at the given multi-dimensional [coords], untyped.
+  ///
+  /// Returns `null` if the element is masked. Prefer the typed
+  /// [MaskedArrayElements.getCell]; this accessor is the dtype-agnostic
+  /// fallback.
+  ///
+  /// It is an error if [coords] has a different length than [rank], or if
+  /// any coordinate is out of range.
+  Object? getCellUntyped(List<int> coords) =>
+      mask.getCell(coords) ? null : (data as NDArray<DTypeTag>).getCell(coords);
 
   /// Element access and slicing.
   ///
@@ -225,7 +261,7 @@ final class MaskedArray<T extends DTypeTag> {
       } else {
         coords = (spec as List).cast<int>();
       }
-      return mask.getCell(coords) ? null : data.getCell(coords);
+      return getCellUntyped(coords);
     } else {
       // Slicing
       final List<Selector> selectors;
@@ -239,12 +275,20 @@ final class MaskedArray<T extends DTypeTag> {
         selectors = spec.map((e) {
           if (e is int) return Index(e);
           if (e is Selector) return e;
-          throw ArgumentError('Invalid selector: $e');
+          throw ArgumentError.value(
+            spec,
+            'spec',
+            'Must contain only int or Selector entries, but found $e.',
+          );
         }).toList();
       } else if (spec is int) {
         selectors = [Index(spec)];
       } else {
-        throw ArgumentError('Unsupported spec: $spec');
+        throw ArgumentError.value(
+          spec,
+          'spec',
+          'Must be an int, a List<int>, a Slice, or a List of Selectors.',
+        );
       }
 
       return MaskedArray(
@@ -304,12 +348,20 @@ final class MaskedArray<T extends DTypeTag> {
         selectors = spec.map((e) {
           if (e is int) return Index(e);
           if (e is Selector) return e;
-          throw ArgumentError('Invalid selector: $e');
+          throw ArgumentError.value(
+            spec,
+            'spec',
+            'Must contain only int or Selector entries, but found $e.',
+          );
         }).toList();
       } else if (spec is int) {
         selectors = [Index(spec)];
       } else {
-        throw ArgumentError('Unsupported spec: $spec');
+        throw ArgumentError.value(
+          spec,
+          'spec',
+          'Must be an int, a List<int>, a Slice, or a List of Selectors.',
+        );
       }
 
       final dataView = data.slice(selectors);
@@ -334,7 +386,11 @@ final class MaskedArray<T extends DTypeTag> {
         dataView.fill(value as Object);
         maskView.fill(false);
       } else {
-        throw ArgumentError('Unsupported value type: ${value.runtimeType}');
+        throw ArgumentError.value(
+          value,
+          'value',
+          'Must be null, a MaskedArray<$T>, an NDArray<$T>, or a scalar.',
+        );
       }
     }
   }
@@ -354,44 +410,148 @@ final class MaskedArray<T extends DTypeTag> {
   }
 
   // ==========================================
-  // Delegated Operations
+  // Conversions
   // ==========================================
 
-  /// Performs element-wise addition, propagating masks.
-  MaskedArray<DTypeTag> add(dynamic other) => _maAdd(this, other);
+  /// Returns a copy of this array with [data] converted to [dtype].
+  ///
+  /// The mask is copied, and [fillValue] is coerced to the new dtype (falling
+  /// back to the default fill value of [dtype] when it cannot be represented).
+  ///
+  /// **Performance considerations:**
+  /// - Time complexity: $O(n)$; allocates a new data array and a new mask.
+  MaskedArray<R> astype<R extends DTypeTag>(DType<R> dtype) {
+    return NDArray.scope(() {
+      final converted = data.astype(dtype);
+      final maskCopy = mask.copy();
+      return dispatchCreateMaskedArray(
+            converted.detachToParentScope(),
+            maskCopy.detachToParentScope(),
+            fillValue: fillValue,
+          )
+          as MaskedArray<R>;
+    });
+  }
 
-  /// Performs element-wise subtraction, propagating masks.
-  MaskedArray<DTypeTag> subtract(dynamic other) => _maSubtract(this, other);
+  // ==========================================
+  // Arithmetic (dtype-preserving)
+  // ==========================================
+  //
+  // True division (`divide`, `/`) follows NumPy's `true_divide` rule and is
+  // therefore provided by [MaskedArrayDivide] / [MaskedArrayBaseDivide].
 
-  /// Performs element-wise multiplication, propagating masks.
-  MaskedArray<DTypeTag> multiply(dynamic other) => _maMultiply(this, other);
+  /// Element-wise addition, propagating masks.
+  ///
+  /// A scalar [other] is converted to this array's dtype. A [MaskedArray] or
+  /// [NDArray] operand must have the same dtype as this array; cast explicitly
+  /// with [astype] before combining arrays of different dtypes. The result
+  /// mask is the logical OR of both operand masks.
+  ///
+  /// It is an error if [other] is an array of a different dtype, a scalar
+  /// that cannot be represented in this array's dtype, or not broadcastable
+  /// against this array.
+  MaskedArray<T> add(Object? other) => _maAdd<T>(this, other);
 
-  /// Performs element-wise division, propagating masks and masking zero-divisors.
-  MaskedArray<DTypeTag> divide(dynamic other) => _maDivide(this, other);
+  /// Element-wise subtraction, propagating masks.
+  ///
+  /// See [add] for the operand and error contract.
+  MaskedArray<T> subtract(Object? other) => _maSubtract<T>(this, other);
 
-  /// Returns the sum of elements along the given [axis], ignoring masked elements.
-  MaskedArray<T> sum({int? axis}) => _maSum<T>(this, axis: axis);
+  /// Element-wise multiplication, propagating masks.
+  ///
+  /// See [add] for the operand and error contract.
+  MaskedArray<T> multiply(Object? other) => _maMultiply<T>(this, other);
 
-  /// Returns the product of elements along the given [axis], ignoring masked elements.
-  MaskedArray<T> prod({int? axis}) => _maProd<T>(this, axis: axis);
+  /// Element-wise floor division, propagating masks and masking zero divisors.
+  ///
+  /// Positions where the divisor is zero (or masked) are excluded from the
+  /// computation and masked in the result. See [add] for the operand and error
+  /// contract.
+  MaskedArray<T> floorDivide(Object? other) => _maFloorDivide<T>(this, other);
+
+  /// Element-wise remainder, propagating masks and masking zero divisors.
+  ///
+  /// Positions where the divisor is zero (or masked) are excluded from the
+  /// computation and masked in the result. See [add] for the operand and error
+  /// contract.
+  MaskedArray<T> remainder(Object? other) => _maRemainder<T>(this, other);
+
+  /// Element-wise addition (`this + other`); see [add].
+  MaskedArray<T> operator +(Object? other) => _maAdd<T>(this, other);
+
+  /// Element-wise subtraction (`this - other`); see [subtract].
+  MaskedArray<T> operator -(Object? other) => _maSubtract<T>(this, other);
+
+  /// Element-wise multiplication (`this * other`); see [multiply].
+  MaskedArray<T> operator *(Object? other) => _maMultiply<T>(this, other);
+
+  /// Element-wise floor division (`this ~/ other`); see [floorDivide].
+  MaskedArray<T> operator ~/(Object? other) => _maFloorDivide<T>(this, other);
+
+  /// Element-wise remainder (`this % other`); see [remainder].
+  MaskedArray<T> operator %(Object? other) => _maRemainder<T>(this, other);
+
+  /// Element-wise negation (`-this`), preserving the mask.
+  MaskedArray<T> operator -() => mapUnary((d) => ndops.negative<T>(d));
+
+  // ==========================================
+  // Comparisons
+  // ==========================================
+
+  /// Element-wise `this < other`, returning a boolean [MaskedArray] whose mask
+  /// is the logical OR of both operand masks.
+  ///
+  /// See [add] for the operand and error contract.
+  MaskedArray<Boolean> operator <(Object? other) =>
+      _maCompare<T>(this, other, '<', (a, b) => a < b);
+
+  /// Element-wise `this <= other`; see [operator <].
+  MaskedArray<Boolean> operator <=(Object? other) =>
+      _maCompare<T>(this, other, '<=', (a, b) => a <= b);
+
+  /// Element-wise `this > other`; see [operator <].
+  MaskedArray<Boolean> operator >(Object? other) =>
+      _maCompare<T>(this, other, '>', (a, b) => a > b);
+
+  /// Element-wise `this >= other`; see [operator <].
+  MaskedArray<Boolean> operator >=(Object? other) =>
+      _maCompare<T>(this, other, '>=', (a, b) => a >= b);
+
+  // ==========================================
+  // Reductions
+  // ==========================================
+  //
+  // `sum`, `prod` (accumulator dtype) and `mean` (double-precision dtype) are
+  // provided by the DTypeSpec-projected extensions below.
 
   /// Returns the minimum of elements along the given [axis], ignoring masked elements.
+  ///
+  /// Throws an [UnsupportedError] for complex and boolean dtypes.
   MaskedArray<T> min({int? axis}) => _maMin<T>(this, axis: axis);
 
   /// Returns the maximum of elements along the given [axis], ignoring masked elements.
+  ///
+  /// Throws an [UnsupportedError] for complex and boolean dtypes.
   MaskedArray<T> max({int? axis}) => _maMax<T>(this, axis: axis);
 
-  /// Returns the count of unmasked (valid) elements along the given [axis].
-  NDArray<Int32> count({int? axis}) => _maCount(this, axis: axis);
+  /// Returns the count of unmasked (valid) elements along the given [axis]
+  /// as an [NDArray] of [DType.int64].
+  NDArray<Int64> count({int? axis}) => _maCount(this, axis: axis);
 
-  /// Returns the mean of elements along the given [axis], ignoring masked elements.
-  MaskedArray<DTypeTag> mean({int? axis}) => _maMean(this, axis: axis);
+  /// Returns the variance of elements along the given [axis], ignoring masked
+  /// elements, as a [MaskedArray] of [DType.float64].
+  ///
+  /// Computed as the mean of the squared magnitude of the deviation from the
+  /// mean, so complex inputs also produce a real [DType.float64] result.
+  MaskedArray<Float64> variance({int? axis}) => _maVariance(this, axis: axis);
 
-  /// Returns the variance of elements along the given [axis], ignoring masked elements.
-  MaskedArray<DTypeTag> variance({int? axis}) => _maVariance(this, axis: axis);
+  /// Returns the standard deviation of elements along the given [axis],
+  /// ignoring masked elements, as a [MaskedArray] of [DType.float64].
+  MaskedArray<Float64> std({int? axis}) => _maStd(this, axis: axis);
 
-  /// Returns the standard deviation of elements along the given [axis], ignoring masked elements.
-  MaskedArray<DTypeTag> std({int? axis}) => _maStd(this, axis: axis);
+  // ==========================================
+  // Views & shape manipulation
+  // ==========================================
 
   /// Returns a new [MaskedArray] view with reshaped data and mask.
   MaskedArray<T> reshape(List<int> newShape) => _maReshape<T>(this, newShape);
@@ -415,4 +575,157 @@ final class MaskedArray<T extends DTypeTag> {
   MaskedArray<R> mapUnary<R extends DTypeTag>(
     NDArray<R> Function(NDArray<T>) ufunc,
   ) => _maMapUnary<T, R>(this, ufunc);
+}
+
+/// Typed element access for a [MaskedArray].
+///
+/// The element type [E] is recovered from the dtype tag [T] through its
+/// [DTypeSpec] bound, so `MaskedArray<Float64>.scalar` has static type
+/// `double?` and `MaskedArray<Int32>.scalar` has static type `int?`, where
+/// `null` means the element is masked.
+extension MaskedArrayElements<
+  T extends DTypeSpec<
+    DTypeTag,
+    E,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  E
+>
+    on MaskedArray<T> {
+  /// The single value of a 0-dimensional [MaskedArray], or `null` if masked.
+  ///
+  /// It is an error if the array is not 0-dimensional.
+  E? get scalar => scalarRaw as E?;
+
+  /// The element at the given multi-dimensional [coords], or `null` if masked.
+  ///
+  /// It is an error if [coords] has a different length than [MaskedArray.rank],
+  /// or if any coordinate is out of range.
+  E? getCell(List<int> coords) => getCellUntyped(coords) as E?;
+}
+
+/// Fallback element access when the type argument is widened to [DTypeTag].
+extension MaskedArrayBaseElements on MaskedArray<DTypeTag> {
+  /// The single value of a 0-dimensional [MaskedArray], or `null` if masked.
+  dynamic get scalar => scalarRaw;
+
+  /// The element at the given multi-dimensional [coords], or `null` if masked.
+  dynamic getCell(List<int> coords) => getCellUntyped(coords);
+}
+
+/// True division for a [MaskedArray], inferring the concrete result tag [M]
+/// from the [DTypeSpec.DivideTag] slot of [T] (`Float64` for integer and
+/// boolean arrays; [T] itself for floating-point and complex arrays).
+extension MaskedArrayDivide<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    M
+  >,
+  M extends DTypeTag
+>
+    on MaskedArray<T> {
+  /// Element-wise true division, propagating masks and masking zero divisors.
+  ///
+  /// Positions where the divisor is zero (or masked) are excluded from the
+  /// computation and masked in the result. See [MaskedArray.add] for the
+  /// operand and error contract.
+  MaskedArray<M> divide(Object? other) => _maDivide<T, M>(this, other);
+
+  /// Element-wise true division (`this / other`); see [divide].
+  MaskedArray<M> operator /(Object? other) => _maDivide<T, M>(this, other);
+}
+
+/// Fallback true division when the type argument is widened to [DTypeTag].
+extension MaskedArrayBaseDivide on MaskedArray<DTypeTag> {
+  /// Element-wise true division, propagating masks and masking zero divisors.
+  MaskedArray<DTypeTag> divide(Object? other) =>
+      _maDivide<DTypeTag, DTypeTag>(this, other);
+
+  /// Element-wise true division (`this / other`); see [divide].
+  MaskedArray<DTypeTag> operator /(Object? other) =>
+      _maDivide<DTypeTag, DTypeTag>(this, other);
+}
+
+/// Sum and product reductions for a [MaskedArray], inferring the concrete
+/// accumulator tag [R] from the [DTypeSpec.AccumulatorTag] slot of [T]
+/// (`Int64` for boolean and signed integer arrays, `Uint64` for unsigned
+/// integer arrays, and [T] itself otherwise), matching `package:ndarray`'s
+/// `sum` and `prod`.
+extension MaskedArrayAccumulatingReductions<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>
+    on MaskedArray<T> {
+  /// Returns the sum of elements along the given [axis], ignoring masked elements.
+  ///
+  /// Masked elements contribute `0`. The result is masked only where every
+  /// element along the reduction is masked.
+  MaskedArray<R> sum({int? axis}) => _maSum<T, R>(this, axis: axis);
+
+  /// Returns the product of elements along the given [axis], ignoring masked elements.
+  ///
+  /// Masked elements contribute `1`. The result is masked only where every
+  /// element along the reduction is masked.
+  MaskedArray<R> prod({int? axis}) => _maProd<T, R>(this, axis: axis);
+}
+
+/// Mean reduction for a [MaskedArray], inferring the concrete result tag [D]
+/// from the [DTypeSpec.DoublePrecisionTag] slot of [T] (`Complex128` for
+/// complex arrays and `Float64` otherwise), matching `package:ndarray`'s
+/// `mean`.
+extension MaskedArrayDoublePrecisionReductions<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag,
+    D,
+    DTypeTag
+  >,
+  D extends DTypeTag
+>
+    on MaskedArray<T> {
+  /// Returns the mean of elements along the given [axis], ignoring masked elements.
+  ///
+  /// Computed as `sum / count` over the unmasked elements. The result is
+  /// masked only where every element along the reduction is masked.
+  MaskedArray<D> mean({int? axis}) => _maMean<T, D>(this, axis: axis);
+}
+
+/// Fallback sum, product, and mean reductions when the type argument is
+/// widened to [DTypeTag].
+extension MaskedArrayBaseReductions on MaskedArray<DTypeTag> {
+  /// Returns the sum of elements along the given [axis], ignoring masked elements.
+  MaskedArray<DTypeTag> sum({int? axis}) =>
+      _maSum<DTypeTag, DTypeTag>(this, axis: axis);
+
+  /// Returns the product of elements along the given [axis], ignoring masked elements.
+  MaskedArray<DTypeTag> prod({int? axis}) =>
+      _maProd<DTypeTag, DTypeTag>(this, axis: axis);
+
+  /// Returns the mean of elements along the given [axis], ignoring masked elements.
+  MaskedArray<DTypeTag> mean({int? axis}) =>
+      _maMean<DTypeTag, DTypeTag>(this, axis: axis);
 }

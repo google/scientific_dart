@@ -48,8 +48,6 @@ NDArray<R> sin<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -272,8 +270,6 @@ NDArray<R> sinc<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -502,8 +498,6 @@ NDArray<R> cos<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -718,8 +712,6 @@ NDArray<R> tan<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -944,8 +936,6 @@ NDArray<R> asin<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -999,8 +989,6 @@ NDArray<R> asin<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -1183,8 +1171,6 @@ NDArray<R> acos<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1238,8 +1224,6 @@ NDArray<R> acos<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -1422,8 +1406,6 @@ NDArray<R> atan<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1477,8 +1459,6 @@ NDArray<R> atan<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -1662,8 +1642,6 @@ NDArray<R> sinh<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1717,8 +1695,6 @@ NDArray<R> sinh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -1905,8 +1881,6 @@ NDArray<R> cosh<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1960,8 +1934,6 @@ NDArray<R> cosh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -2148,8 +2120,6 @@ NDArray<R> tanh<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2203,8 +2173,6 @@ NDArray<R> tanh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -2392,8 +2360,6 @@ NDArray<R> asinh<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2447,8 +2413,6 @@ NDArray<R> asinh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -2635,8 +2599,6 @@ NDArray<R> acosh<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2690,8 +2652,6 @@ NDArray<R> acosh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -2878,8 +2838,6 @@ NDArray<R> atanh<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2933,8 +2891,6 @@ NDArray<R> atanh<R extends DTypeTag>(
                 DTypeTag,
                 DTypeTag,
                 R,
-                DTypeTag,
-                DTypeTag,
                 DTypeTag,
                 DTypeTag,
                 DTypeTag
@@ -3102,42 +3058,28 @@ NDArray<R> atanh<R extends DTypeTag>(
 
 /// Computes the element-wise arc tangent of [y] / [x] with full broadcasting support.
 ///
+/// [y] and [x] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype (`Float32` is
+/// preserved, every other real dtype computes in `Float64`). Passing arrays of
+/// different concrete dtypes is a compile-time error; when the dtype equality
+/// cannot be checked statically (for example with `NDArray<AnySpec>`
+/// arguments), it is validated at runtime. Use [atan2As] for mixed dtypes.
+///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> atan2<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  y,
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> atan2<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> y, NDArray<T> x, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
   if (y.isDisposed ||
       x.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3200,41 +3142,15 @@ NDArray<R> atan2<T extends DTypeTag, R extends DTypeTag>(
     final yPromoted = promoteToDouble(y);
     final xPromoted = promoteToDouble(x);
     try {
-      final res = atan2<Float64, R>(
-        yPromoted
-            as NDArray<
-              DTypeSpec<
-                Float64,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
-        xPromoted
-            as NDArray<
-              DTypeSpec<
-                Float64,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+      // Integer, boolean, and half-precision inputs always compute in
+      // float64, so `R` is `Float64` on this path (see `targetDType` above).
+      final res = atan2<Float64, Float64>(
+        yPromoted,
+        xPromoted,
         where: where,
-        out: out,
+        out: out as NDArray<Float64>?,
       );
-      return res;
+      return res as NDArray<R>;
     } finally {
       if (!identical(yPromoted, y)) yPromoted.dispose();
       if (!identical(xPromoted, x)) xPromoted.dispose();
@@ -3473,42 +3389,28 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 
 /// Computes the element-wise hypotenuse `sqrt(x1**2 + x2**2)` with broadcasting support.
 ///
+/// [a] and [b] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype (`Float32` is
+/// preserved, every other real dtype computes in `Float64`). Passing arrays of
+/// different concrete dtypes is a compile-time error; when the dtype equality
+/// cannot be checked statically (for example with `NDArray<AnySpec>`
+/// arguments), it is validated at runtime. Use [hypotAs] for mixed dtypes.
+///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> hypot<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a,
-  NDArray<
-    DTypeSpec<
-      T,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  b, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> hypot<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3720,8 +3622,6 @@ NDArray<R> deg2rad<R extends DTypeTag>(
       R,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -3797,8 +3697,6 @@ NDArray<R> rad2deg<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag

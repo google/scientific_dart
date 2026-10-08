@@ -65,48 +65,36 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// If [c] has length N, this function evaluates:
 /// p(x) = c[0] x^(N-1) + c[1] x^(N-2) + ... + c[N-1]
 ///
+/// [c] and [x] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype (`Float32` and
+/// the complex dtypes are preserved, every other dtype evaluates in `Float64`).
+/// Passing arrays of different concrete dtypes is a compile-time error; when
+/// the dtype equality cannot be checked statically (for example with
+/// `NDArray<AnySpec>` arguments), it is validated at runtime.
+///
 /// **Preconditions:**
 /// - [c] and [x] must not be disposed.
 /// - [c] must be a 1-dimensional array.
 /// - [c] must not be empty.
+/// - [x] must have the same dtype as [c].
 /// - It is an error if any input array or [out] buffer is disposed.
 /// - It is an error if [c] is not 1-dimensional, or if [c] is empty.
 /// - It is an error if [out] shape or dtype is incompatible with [x].
 ///
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
-NDArray<R> polyval<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x, {
-  NDArray<R>? out,
-}) {
+NDArray<R> polyval<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> c, NDArray<T> x, {NDArray<R>? out}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute polyval() on a disposed array.");
   }
@@ -120,8 +108,15 @@ NDArray<R> polyval<R extends DTypeTag>(
   if (c.shape[0] == 0) {
     throw ArgumentError.value(c.shape[0], 'c', 'Must not be empty');
   }
+  if (x.dtype != c.dtype) {
+    throw ArgumentError.value(
+      x.dtype,
+      'x',
+      'Must have the same dtype as c (${c.dtype})',
+    );
+  }
 
-  var resolved = resolveDType(c.dtype, x.dtype);
+  DType<DTypeTag> resolved = c.dtype;
   if ((!resolved.isFloating && !resolved.isComplex) ||
       resolved == DType.float16 ||
       resolved == DType.bfloat16) {
@@ -309,9 +304,17 @@ NDArray<R> polyval<R extends DTypeTag>(
 /// Optionally weighted by [w].
 /// Returns an array of coefficients of length deg + 1, ordered highest degree first.
 ///
+/// [x], [y], and [w] share the type parameter `T`, so all of them must have the
+/// same dtype; the result dtype [R] is the inexact promotion of that dtype
+/// (`Float32` and the complex dtypes are preserved, every other dtype is fitted
+/// in `Float64`). Passing arrays of different concrete dtypes is a compile-time
+/// error; when the dtype equality cannot be checked statically (for example
+/// with `NDArray<AnySpec>` arguments), it is validated at runtime.
+///
 /// **Preconditions:**
 /// - [x], [y], and optional [w] must not be disposed.
 /// - [x] and [y] must be 1-dimensional arrays of identical length.
+/// - [y] and [w] must have the same dtype as [x].
 /// - Length of [x] must be greater than [deg].
 /// - Degree [deg] must be non-negative.
 /// - It is an error if any input array or [out] buffer is disposed.
@@ -319,53 +322,23 @@ NDArray<R> polyval<R extends DTypeTag>(
 /// - It is an error if [out] shape or dtype is incompatible.
 ///
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
-NDArray<R> polyfit<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  y,
+NDArray<R> polyfit<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(
+  NDArray<T> x,
+  NDArray<T> y,
   int deg, {
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >?
-  w,
+  NDArray<T>? w,
   double? rcond,
   NDArray<R>? out,
 }) {
@@ -387,6 +360,20 @@ NDArray<R> polyfit<R extends DTypeTag>(
       y.shape[0],
       'y',
       'Must have equal length to x (got x: ${x.shape[0]}, y: ${y.shape[0]})',
+    );
+  }
+  if (y.dtype != x.dtype) {
+    throw ArgumentError.value(
+      y.dtype,
+      'y',
+      'Must have the same dtype as x (${x.dtype})',
+    );
+  }
+  if (w != null && w.dtype != x.dtype) {
+    throw ArgumentError.value(
+      w.dtype,
+      'w',
+      'Must have the same dtype as x (${x.dtype})',
     );
   }
   if (deg < 0) {
@@ -418,10 +405,7 @@ NDArray<R> polyfit<R extends DTypeTag>(
     checkBlasIntStride(out.strides[0], 'incout', 'polyfit');
   }
 
-  var resolvedType = resolveDType(x.dtype, y.dtype);
-  if (w != null) {
-    resolvedType = resolveDType(resolvedType, w.dtype);
-  }
+  DType<DTypeTag> resolvedType = x.dtype;
   if ((!resolvedType.isFloating && !resolvedType.isComplex) ||
       resolvedType == DType.float16 ||
       resolvedType == DType.bfloat16) {
@@ -874,8 +858,6 @@ NDArray<C> roots<C extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1001,8 +983,6 @@ NDArray<C> roots<C extends DTypeTag>(
               Object?,
               DTypeTag,
               C,
-              DTypeTag,
-              DTypeTag,
               DTypeTag,
               DTypeTag,
               DTypeTag,

@@ -58,16 +58,12 @@ void main() async {
       });
 
       c.group('3. Bitwise Integer Operations (100k elements)', () {
-        final intA = NDArray<AnySpec>.fromList(
-          List.generate(size, (i) => i * 13),
-          [size],
-          DType.int32,
-        );
-        final intB = NDArray<AnySpec>.fromList(
-          List.generate(size, (i) => i * 7 + 1),
-          [size],
-          DType.int32,
-        );
+        final intA = NDArray.fromList(List.generate(size, (i) => i * 13), [
+          size,
+        ], DType.int32);
+        final intB = NDArray.fromList(List.generate(size, (i) => i * 7 + 1), [
+          size,
+        ], DType.int32);
 
         c.bench('bitwiseAnd(a, b) [100k Int32]', () {
           final res = bitwiseAnd(intA, intB);
@@ -93,11 +89,9 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(size));
 
-        final shiftAmt = NDArray<AnySpec>.fromList(
-          List.generate(size, (i) => (i % 8)),
-          [size],
-          DType.int32,
-        );
+        final shiftAmt = NDArray.fromList(List.generate(size, (i) => (i % 8)), [
+          size,
+        ], DType.int32);
 
         c.bench('leftShift(a, shift) [100k Int32]', () {
           final res = leftShift(intA, shiftAmt);

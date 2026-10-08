@@ -181,7 +181,7 @@ void main() {
 
           final wrongDtype = GpuArray.zeros([3], DType.float32);
           expect(
-            () => a.add(b, out: wrongDtype),
+            () => (a as GpuArray<DTypeTag>).add(b, out: wrongDtype),
             throwsA(isA<ArgumentError>()),
           );
         });
@@ -355,6 +355,58 @@ void main() {
           expect(
             conj(c64).toList(),
             equals([Complex(1.0, -1.0), Complex(0.0, 2.0)]),
+          );
+        });
+      },
+    );
+
+    test(
+      'Widened GpuArray<DTypeTag> with mismatched out buffer throws ArgumentError not TypeError',
+      () {
+        ResourceScope.scope(() {
+          final a = GpuArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float32);
+          final widened = a as GpuArray<DTypeTag>;
+          final wrongDtype = GpuArray.zeros([4], DType.int32);
+
+          expect(
+            () => widened.abs(out: wrongDtype),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.copy(out: wrongDtype),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.negate(out: wrongDtype),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
+          );
+          expect(
+            () => widened.sqrt(out: wrongDtype),
+            throwsA(
+              isA<ArgumentError>().having(
+                (e) => e is! TypeError,
+                'not TypeError',
+                isTrue,
+              ),
+            ),
           );
         });
       },

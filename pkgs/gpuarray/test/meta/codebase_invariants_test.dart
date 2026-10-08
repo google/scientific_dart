@@ -867,6 +867,29 @@ class _DartdocVisitor extends RecursiveAstVisitor<void> {
     }
     super.visitEnumDeclaration(node);
   }
+
+  @override
+  void visitExtensionDeclaration(ExtensionDeclaration node) {
+    final extName = node.name?.lexeme;
+    if (extName != null && !Identifier.isPrivateName(extName)) {
+      _inspectComment(
+        node.documentationComment,
+        extName,
+        lineInfo.getLocation(node.offset).lineNumber,
+      );
+      for (final member in node.body.members) {
+        if (member is MethodDeclaration &&
+            !Identifier.isPrivateName(member.name.lexeme)) {
+          _inspectComment(
+            member.documentationComment,
+            '$extName.${member.name.lexeme}',
+            lineInfo.getLocation(member.offset).lineNumber,
+          );
+        }
+      }
+    }
+    super.visitExtensionDeclaration(node);
+  }
 }
 
 class _IdentifierAbbreviationVisitor extends RecursiveAstVisitor<void> {
@@ -1100,6 +1123,22 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
           violations.add(
             '$filePath:$line: public method "${element.name}" parameter "${param.name}" has dynamic in type (${param.type})',
           );
+        }
+        final enclosing = element.enclosingElement;
+        if (!element.isStatic &&
+            enclosing is ClassElement &&
+            enclosing.name == 'GpuArray' &&
+            enclosing.typeParameters.isNotEmpty) {
+          final classTypeParam = enclosing.typeParameters.first;
+          final paramType = param.type;
+          if (paramType is InterfaceType &&
+              paramType.typeArguments.any(
+                (t) => t is TypeParameterType && t.element == classTypeParam,
+              )) {
+            violations.add(
+              '$filePath:$line: GpuArray<T> instance method "${element.name}" parameter "${param.name}" uses covariant class type parameter T (${param.type}); declare on GpuArrayTypedOperationsExtension instead so widened receivers throw GpuDTypeMismatchException instead of TypeError',
+            );
+          }
         }
       }
       node.parameters?.accept(

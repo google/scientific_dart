@@ -380,8 +380,6 @@ NDArray<R> fft<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -621,8 +619,6 @@ NDArray<R> ifft<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -1457,8 +1453,6 @@ NDArray<R> rfft<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1493,8 +1487,6 @@ NDArray<R> ihfft<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1511,8 +1503,6 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -1773,8 +1763,6 @@ NDArray<R> irfft<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1809,8 +1797,6 @@ NDArray<R> hfft<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -1826,8 +1812,6 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -2299,8 +2283,6 @@ NDArray<R> fftn<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2328,8 +2310,6 @@ NDArray<R> ifftn<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -2363,8 +2343,6 @@ NDArray<R> fft2<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -2408,8 +2386,6 @@ NDArray<R> ifft2<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -2460,8 +2436,6 @@ NDArray<R> rfftn<R extends DTypeTag>(
       Object?,
       DTypeTag,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -2659,8 +2633,6 @@ NDArray<R> irfftn<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2833,8 +2805,6 @@ NDArray<R> irfftn<R extends DTypeTag>(
               DTypeTag,
               DTypeTag,
               DTypeTag,
-              DTypeTag,
-              DTypeTag,
               DTypeTag
             >
           >,
@@ -2874,8 +2844,6 @@ NDArray<R> rfft2<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -2911,8 +2879,6 @@ NDArray<R> irfft2<R extends DTypeTag>(
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,

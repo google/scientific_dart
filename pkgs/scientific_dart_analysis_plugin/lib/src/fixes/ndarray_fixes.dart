@@ -20,6 +20,7 @@ import 'package:analyzer/source/source_range.dart';
 import 'package:analyzer_plugin/utilities/change_builder/change_builder_core.dart';
 import 'package:analyzer_plugin/utilities/fixes/fixes.dart';
 
+import '../dtype_utils.dart';
 import '../type_utils.dart';
 
 /// Quick fix that replaces `a == b` with `a.equals(b)` (or `!a.equals(b)` for
@@ -376,6 +377,59 @@ final class ReplaceWithUint64CompareFix extends ResolvedCorrectionProducer {
         SourceRange(binary.offset, binary.length),
         replacement,
       );
+    });
+  }
+}
+
+/// Quick fix that casts the mismatched operand of a same-dtype operation to
+/// the dtype of the operation's reference operand, e.g. rewriting
+/// `add(f64, i32)` to `add(f64, i32.astype(DType.float64))`.
+///
+/// Output buffers (`out:` arguments) and whole-list arguments are not cast;
+/// the fix is only offered for operands that can meaningfully be converted.
+final class CastOperandWithAstypeFix extends ResolvedCorrectionProducer {
+  static const FixKind _castOperandKind = FixKind(
+    'scientific_dart_analysis_plugin.fix.castOperandWithAstype',
+    50,
+    'Cast operand with .astype(DType.{0})',
+  );
+
+  List<String>? _fixArguments;
+
+  CastOperandWithAstypeFix({required super.context});
+
+  @override
+  CorrectionApplicability get applicability =>
+      CorrectionApplicability.singleLocation;
+
+  @override
+  List<String>? get fixArguments => _fixArguments;
+
+  @override
+  FixKind get fixKind => _castOperandKind;
+
+  @override
+  Future<void> compute(ChangeBuilder builder) async {
+    final mismatch = findMismatchedOperandAt(
+      node,
+      diagnosticOffset ?? selectionOffset,
+    );
+    if (mismatch == null) return;
+    final enumName = kConcreteDTypeTagToEnumName[mismatch.referenceTag];
+    if (enumName == null) return;
+    _fixArguments = [enumName];
+    final operand = mismatch.operand.expression;
+    final cast = '.astype(DType.$enumName)';
+
+    await builder.addDartFileEdit(file, (builder) {
+      if (_needsReceiverParentheses(operand)) {
+        builder.addSimpleReplacement(
+          SourceRange(operand.offset, operand.length),
+          '(${operand.toSource()})$cast',
+        );
+      } else {
+        builder.addSimpleInsertion(operand.end, cast);
+      }
     });
   }
 }

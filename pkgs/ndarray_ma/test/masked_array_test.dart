@@ -465,7 +465,7 @@ void main() {
     });
   });
 
-  group('Runtime Type Preservation', () {
+  group('Runtime Type Preservation & Static Projections', () {
     test('runtime type preservation after operations', () {
       final a = MaskedArray<Float64>.zeros([3], DType.float64);
       final b = MaskedArray<Float64>.zeros([3], DType.float64);
@@ -478,6 +478,9 @@ void main() {
 
       final resSum = a.sum();
       expect(resSum, isA<MaskedArray<Float64>>());
+
+      final resProd = a.prod();
+      expect(resProd, isA<MaskedArray<Float64>>());
 
       final resMean = a.mean();
       expect(resMean, isA<MaskedArray<Float64>>());
@@ -492,17 +495,80 @@ void main() {
       expect(resReshape, isA<MaskedArray<Float64>>());
     });
 
-    test('runtime type preservation with mixed types', () {
+    test('mixed dtypes throw ArgumentError on same-dtype binary ops', () {
       final a = MaskedArray<Float64>.zeros([3], DType.float64);
       final b = MaskedArray<Int32>.zeros([3], DType.int32);
 
-      // Float64 + Int32 -> Float64
-      final res = a.add(b);
-      expect(res, isA<MaskedArray<Float64>>());
+      expect(() => (a as MaskedArray<DTypeTag>).add(b), throwsArgumentError);
+      expect(
+        () => (b as MaskedArray<DTypeTag>).subtract(a),
+        throwsArgumentError,
+      );
+      expect(() => (a as MaskedArray<AnySpec>) + b, throwsArgumentError);
+      expect(() => (a as MaskedArray<AnySpec>) / b, throwsArgumentError);
+    });
 
-      // Int32 + Float64 -> Float64
-      final res2 = b.add(a);
-      expect(res2, isA<MaskedArray<Float64>>());
+    test('AccumulatorTag, DivideTag, and Int64 count projections', () {
+      final i32 = MaskedArray(
+        NDArray.fromList([2, 4, 6], [3], DType.int32),
+        NDArray.fromList([false, true, false], [3], DType.boolean),
+      );
+      final sumI32 = i32.sum();
+      expect(sumI32, isA<MaskedArray<Int64>>());
+      expect(sumI32.scalar, 8);
+
+      final prodI32 = i32.prod();
+      expect(prodI32, isA<MaskedArray<Int64>>());
+      expect(prodI32.scalar, 12);
+
+      final divI32 = i32 / 2;
+      expect(divI32, isA<MaskedArray<Float64>>());
+      expect(divI32[0], 1.0);
+      expect(divI32[1], isNull);
+      expect(divI32[2], 3.0);
+
+      final f16 = MaskedArray(
+        NDArray.fromList([4.0, 6.0], [2], DType.float16),
+        NDArray.fromList([false, false], [2], DType.boolean),
+      );
+      final divF16 = f16 / 2.0;
+      expect(divF16, isA<MaskedArray<Float16>>());
+      expect(divF16[0], 2.0);
+      expect(divF16[1], 3.0);
+
+      final cnt = i32.count();
+      expect(cnt, isA<NDArray<Int64>>());
+      expect(cnt.dtype, DType.int64);
+      expect(cnt.scalar, 2);
+    });
+
+    test('arithmetic and comparison operators on MaskedArray', () {
+      final a = MaskedArray(
+        NDArray.fromList([10, 20, 30], [3], DType.int32),
+        NDArray.fromList([false, true, false], [3], DType.boolean),
+      );
+      final b = MaskedArray(
+        NDArray.fromList([3, 4, 5], [3], DType.int32),
+        NDArray.fromList([false, false, false], [3], DType.boolean),
+      );
+
+      expect((a + b)[0], 13);
+      expect((a + b)[1], isNull);
+      expect((a - b)[2], 25);
+      expect((a * 2)[0], 20);
+      expect((a ~/ b)[0], 3);
+      expect((a % b)[0], 1);
+      expect((-a)[0], -10);
+
+      final lt = a < 25;
+      expect(lt, isA<MaskedArray<Boolean>>());
+      expect(lt[0], true);
+      expect(lt[1], isNull);
+      expect(lt[2], false);
+
+      expect((a <= 10)[0], true);
+      expect((a > b)[2], true);
+      expect((a >= 30)[2], true);
     });
   });
 
@@ -544,18 +610,18 @@ void main() {
       expect(s.data, isA<NDArray<Float64>>());
     });
 
-    test('preserve and coerce custom fill value', () {
+    test('preserve and coerce custom fill value on division promotion', () {
       final a = MaskedArray(
-        NDArray.fromList([1, 2, 3], [3], DType.int32),
+        NDArray.fromList([4, 6, 8], [3], DType.int32),
         NDArray.fromList([false, true, false], [3], DType.boolean),
         fillValue: 42,
       );
       final b = MaskedArray(
-        NDArray.fromList([10.0, 20.0, 30.0], [3], DType.float64),
+        NDArray.fromList([2, 2, 2], [3], DType.int32),
         NDArray.fromList([false, false, true], [3], DType.boolean),
       );
 
-      final res = a.add(b);
+      final res = a.divide(b);
       expect(res.fillValue, 42.0);
       expect(res, isA<MaskedArray<Float64>>());
     });

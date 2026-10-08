@@ -314,6 +314,7 @@ extension type GPUCommandBufferDescriptor._(JSObject _) implements JSObject {
 
 /// Navigator helper extension to access the browser WebGPU instance.
 extension NavigatorWebGpu on web.Navigator {
+  /// The browser's [GPU] entry point, or `null` if WebGPU is unavailable.
   GPU? get gpu {
     try {
       final jsObj = this as JSObject;

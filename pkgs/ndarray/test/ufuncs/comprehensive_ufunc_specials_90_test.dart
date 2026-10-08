@@ -1042,7 +1042,7 @@ void main() {
         'bitwiseAnd, bitwiseOr, bitwiseXor, invert, leftShift, rightShift on integer types and error handling',
         () {
           NDArray.scope(() {
-            final supportedIntDTypes = [
+            final supportedIntDTypes = <DType<IntegerDType>>[
               DType.int64,
               DType.int32,
               DType.int16,

@@ -110,8 +110,6 @@ NDArray<T> trapz<T extends DTypeTag>(
       T,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -700,8 +698,6 @@ NDArray<T> gradient<T extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       T,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag
@@ -1302,8 +1298,6 @@ List<NDArray<T>> gradientArray<T extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       T,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag

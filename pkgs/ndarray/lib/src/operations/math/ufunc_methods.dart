@@ -279,7 +279,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.divide:
-      final res = divide<T, DTypeTag>(a, b, where: where, out: out);
+      final res = divideUntyped<T, DTypeTag>(a, b, where: where, out: out);
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.floorDivide:
       final res = _withViewNullable<T, NDArray<T>>(
@@ -300,15 +300,49 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.gcd:
+      if (a.dtype != b.dtype) {
+        throw ArgumentError.value(
+          b.dtype,
+          'b',
+          'Must have the same dtype as a (${a.dtype})',
+        );
+      }
+      if (!a.dtype.isInteger) {
+        throw UnsupportedError('gcd only supports integer arrays.');
+      }
       final res = _withViewNullable<T, NDArray<T>>(
         out,
-        (outView) => gcd(a, b, where: where, out: outView),
+        (outView) =>
+            gcd<IntegerDType>(
+                  a.asIntegerDType,
+                  b.asIntegerDType,
+                  where: where,
+                  out: outView?.asIntegerDType,
+                )
+                as NDArray<T>,
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.lcm:
+      if (a.dtype != b.dtype) {
+        throw ArgumentError.value(
+          b.dtype,
+          'b',
+          'Must have the same dtype as a (${a.dtype})',
+        );
+      }
+      if (!a.dtype.isInteger) {
+        throw UnsupportedError('lcm only supports integer arrays.');
+      }
       final res = _withViewNullable<T, NDArray<T>>(
         out,
-        (outView) => lcm(a, b, where: where, out: outView),
+        (outView) =>
+            lcm<IntegerDType>(
+                  a.asIntegerDType,
+                  b.asIntegerDType,
+                  where: where,
+                  out: outView?.asIntegerDType,
+                )
+                as NDArray<T>,
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.heaviside:
@@ -328,7 +362,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => floatPower<DTypeTag, DTypeTag>(
+          (bSpec) => floatPower<AnySpec, DTypeTag>(
             aSpec,
             bSpec,
             where: where,
@@ -342,7 +376,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => logaddexp<DTypeTag, DTypeTag>(
+          (bSpec) => logaddexp<AnySpec, DTypeTag>(
             aSpec,
             bSpec,
             where: where,
@@ -356,7 +390,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => logaddexp2<DTypeTag, DTypeTag>(
+          (bSpec) => logaddexp2<AnySpec, DTypeTag>(
             aSpec,
             bSpec,
             where: where,
@@ -371,7 +405,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
           (bSpec) =>
-              atan2<DTypeTag, DTypeTag>(aSpec, bSpec, where: where, out: out),
+              atan2<AnySpec, DTypeTag>(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -381,7 +415,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
           (bSpec) =>
-              hypot<DTypeTag, DTypeTag>(aSpec, bSpec, where: where, out: out),
+              hypot<AnySpec, DTypeTag>(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -392,19 +426,44 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.bitwiseAnd:
-      final res = bitwiseAnd<DTypeTag>(a, b, where: where, out: out);
+      final res = bitwiseAnd<BitwiseDType>(
+        a.asBitwiseDType,
+        b.asBitwiseDType,
+        where: where,
+        out: out?.asBitwiseDType,
+      );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.bitwiseOr:
-      final res = bitwiseOr<DTypeTag>(a, b, where: where, out: out);
+      final res = bitwiseOr<BitwiseDType>(
+        a.asBitwiseDType,
+        b.asBitwiseDType,
+        where: where,
+        out: out?.asBitwiseDType,
+      );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.bitwiseXor:
-      final res = bitwiseXor<DTypeTag>(a, b, where: where, out: out);
+      final res = bitwiseXor<BitwiseDType>(
+        a.asBitwiseDType,
+        b.asBitwiseDType,
+        where: where,
+        out: out?.asBitwiseDType,
+      );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.leftShift:
-      final res = leftShift<DTypeTag>(a, b, where: where, out: out);
+      final res = leftShift<IntegerDType>(
+        a.asIntegerDType,
+        b.asIntegerDType,
+        where: where,
+        out: out?.asIntegerDType,
+      );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.rightShift:
-      final res = rightShift<DTypeTag>(a, b, where: where, out: out);
+      final res = rightShift<IntegerDType>(
+        a.asIntegerDType,
+        b.asIntegerDType,
+        where: where,
+        out: out?.asIntegerDType,
+      );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.logicalAnd:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
@@ -3819,7 +3878,13 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       case UnaryOp.bitwiseNot:
         final res = _withViewNullable<T, NDArray<T>>(
           out,
-          (outView) => invert(x, where: where, out: outView),
+          (outView) =>
+              invert<BitwiseDType>(
+                    x.asBitwiseDType,
+                    where: where,
+                    out: outView?.asBitwiseDType,
+                  )
+                  as NDArray<T>,
         );
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.negative:

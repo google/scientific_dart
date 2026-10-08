@@ -617,7 +617,7 @@ GpuArray<C> fft<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -655,7 +655,7 @@ GpuArray<C> ifft<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -693,7 +693,7 @@ GpuArray<C> rfft<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -738,7 +738,7 @@ GpuArray<F> irfft<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -773,7 +773,7 @@ GpuArray<F> hfft<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -808,7 +808,7 @@ GpuArray<C> ihfft<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   int? n,
   int axis = -1,
   FftNorm norm = FftNorm.backward,
@@ -926,7 +926,7 @@ GpuArray<C> fftn<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -983,7 +983,7 @@ GpuArray<C> ifftn<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -1040,7 +1040,7 @@ GpuArray<C> rfftn<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -1112,7 +1112,7 @@ GpuArray<F> irfftn<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int>? axes,
   FftNorm norm = FftNorm.backward,
@@ -1176,7 +1176,7 @@ GpuArray<C> fft2<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
@@ -1205,7 +1205,7 @@ GpuArray<C> ifft2<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
@@ -1234,7 +1234,7 @@ GpuArray<C> rfft2<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,
@@ -1263,7 +1263,7 @@ GpuArray<F> irfft2<
   S extends DTypeTag,
   D extends DTypeTag
 >(
-  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag, DTypeTag, DTypeTag>> a, {
+  GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   List<int>? s,
   List<int> axes = const [-2, -1],
   FftNorm norm = FftNorm.backward,

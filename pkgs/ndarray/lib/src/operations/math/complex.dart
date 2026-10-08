@@ -69,8 +69,6 @@ NDArray<R> real<R extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -236,8 +234,6 @@ NDArray<R> imag<R extends DTypeTag>(
       DTypeTag,
       Object?,
       R,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,

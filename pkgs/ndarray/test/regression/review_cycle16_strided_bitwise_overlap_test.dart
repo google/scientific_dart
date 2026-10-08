@@ -134,7 +134,7 @@ void main() {
   );
 
   group('Review Cycle 16 — Issue #2: All 8 Integer DTypes in Bitwise Operations', () {
-    final intDTypes = <DType<AnySpec>>[
+    final intDTypes = <DType<IntegerDType>>[
       DType.int8,
       DType.int16,
       DType.int32,

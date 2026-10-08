@@ -364,8 +364,14 @@ void main() {
                     ),
                   );
                   expect(() => atan2(a, b, where: where), throwsArgumentError);
-                  expect(() => gcd(a, b, where: where), throwsArgumentError);
-                  expect(() => lcm(a, b, where: where), throwsArgumentError);
+                  expect(
+                    () => gcd(a.asIntegerDType, b.asIntegerDType, where: where),
+                    throwsArgumentError,
+                  );
+                  expect(
+                    () => lcm(a.asIntegerDType, b.asIntegerDType, where: where),
+                    throwsArgumentError,
+                  );
                   if (!useMask) {
                     expect(() => kron(a, b), throwsArgumentError);
                   }
@@ -582,20 +588,30 @@ void main() {
                 // 6. gcd and lcm (only integer dtypes)
                 if (dtA.isInteger && dtB.isInteger) {
                   verifyGrid(
-                    gcd(a, b, where: where),
+                    gcd(a.asIntegerDType, b.asIntegerDType, where: where),
                     resolved,
                     (va, vb) => _scalarGcd(_toInt(va), _toInt(vb)),
                     'gcd',
                   );
                   verifyGrid(
-                    lcm(a, b, where: where),
+                    lcm(a.asIntegerDType, b.asIntegerDType, where: where),
                     resolved,
                     (va, vb) => _scalarLcm(_toInt(va), _toInt(vb)),
                     'lcm',
                   );
                 } else {
-                  expect(() => gcd(a, b, where: where), throwsUnsupportedError);
-                  expect(() => lcm(a, b, where: where), throwsUnsupportedError);
+                  expect(
+                    () => gcd(a.asIntegerDType, b.asIntegerDType, where: where),
+                    throwsA(
+                      anyOf(isA<ArgumentError>(), isA<UnsupportedError>()),
+                    ),
+                  );
+                  expect(
+                    () => lcm(a.asIntegerDType, b.asIntegerDType, where: where),
+                    throwsA(
+                      anyOf(isA<ArgumentError>(), isA<UnsupportedError>()),
+                    ),
+                  );
                 }
 
                 // 7. kron (when not masked)
@@ -942,18 +958,28 @@ void main() {
                 () => fmod(a, b),
                 'fmod',
               );
-              checkSentinelWritten(
-                resolved,
-                (out) => gcd(a, b, out: out),
-                () => gcd(a, b),
-                'gcd',
-              );
-              checkSentinelWritten(
-                resolved,
-                (out) => lcm(a, b, out: out),
-                () => lcm(a, b),
-                'lcm',
-              );
+              if (dt.isInteger) {
+                checkSentinelWritten(
+                  resolved,
+                  (out) => gcd(
+                    a.asIntegerDType,
+                    b.asIntegerDType,
+                    out: out.asIntegerDType,
+                  ),
+                  () => gcd(a.asIntegerDType, b.asIntegerDType),
+                  'gcd',
+                );
+                checkSentinelWritten(
+                  resolved,
+                  (out) => lcm(
+                    a.asIntegerDType,
+                    b.asIntegerDType,
+                    out: out.asIntegerDType,
+                  ),
+                  () => lcm(a.asIntegerDType, b.asIntegerDType),
+                  'lcm',
+                );
+              }
               checkSentinelWritten(
                 resolved,
                 (out) => heaviside(a, b, out: out),

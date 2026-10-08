@@ -91,46 +91,34 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 ///
 /// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i T_i(x)$.
 ///
+/// [x] and [c] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype (`Float32` and
+/// the complex dtypes are preserved, every other dtype evaluates in `Float64`).
+/// Passing arrays of different concrete dtypes is a compile-time error; when
+/// the dtype equality cannot be checked statically (for example with
+/// `NDArray<AnySpec>` arguments), it is validated at runtime.
+///
 /// **Preconditions:**
 /// - [x] and [c] must not be disposed.
 /// - [c] must be 1-dimensional and non-empty.
+/// - [c] must have the same dtype as [x].
 /// - It is an error if any input or [out] buffer is disposed.
 /// - It is an error if [c] is invalid or [out] buffer mismatches.
 ///
 /// Reference: [NumPy chebval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html)
-NDArray<R> chebval<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
-  NDArray<R>? out,
-}) {
+NDArray<R> chebval<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -141,40 +129,25 @@ NDArray<R> chebval<R extends DTypeTag>(
 ///
 /// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i P_i(x)$.
 ///
+/// [x] and [c] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype. Passing arrays
+/// of different concrete dtypes is a compile-time error; otherwise the dtype
+/// equality is validated at runtime. See [chebval] for details.
+///
 /// Reference: [NumPy legval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.legendre.legval.html)
-NDArray<R> legval<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
-  NDArray<R>? out,
-}) {
+NDArray<R> legval<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -185,40 +158,25 @@ NDArray<R> legval<R extends DTypeTag>(
 ///
 /// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i H_i(x)$.
 ///
+/// [x] and [c] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype. Passing arrays
+/// of different concrete dtypes is a compile-time error; otherwise the dtype
+/// equality is validated at runtime. See [chebval] for details.
+///
 /// Reference: [NumPy hermval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.hermite.hermval.html)
-NDArray<R> hermval<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
-  NDArray<R>? out,
-}) {
+NDArray<R> hermval<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -229,51 +187,37 @@ NDArray<R> hermval<R extends DTypeTag>(
 ///
 /// Uses backward Clenshaw recurrence to evaluate $p(x) = \sum c_i L_i(x)$.
 ///
+/// [x] and [c] share the type parameter `T`, so both must have the same dtype;
+/// the result dtype [R] is the inexact promotion of that dtype. Passing arrays
+/// of different concrete dtypes is a compile-time error; otherwise the dtype
+/// equality is validated at runtime. See [chebval] for details.
+///
 /// Reference: [NumPy lagval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.laguerre.lagval.html)
-NDArray<R> lagval<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  x,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
-  NDArray<R>? out,
-}) {
+NDArray<R> lagval<
+  T extends DTypeSpec<
+    DTypeTag,
+    Object?,
+    DTypeTag,
+    DTypeTag,
+    R,
+    DTypeTag,
+    DTypeTag,
+    DTypeTag
+  >,
+  R extends DTypeTag
+>(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
   return _evalClenshaw(c, x, _OrthoKind.laguerre, out: out);
 }
 
-NDArray<R> _evalClenshaw<
-  Tc extends DTypeTag,
-  Tx extends DTypeTag,
-  R extends DTypeTag
->(NDArray<Tc> c, NDArray<Tx> x, _OrthoKind kind, {NDArray<R>? out}) {
+NDArray<R> _evalClenshaw<T extends DTypeTag, R extends DTypeTag>(
+  NDArray<T> c,
+  NDArray<T> x,
+  _OrthoKind kind, {
+  NDArray<R>? out,
+}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute series evaluation on a disposed array.");
   }
@@ -287,8 +231,15 @@ NDArray<R> _evalClenshaw<
   if (c.shape[0] == 0) {
     throw ArgumentError.value(c.shape[0], 'c', 'Must not be empty');
   }
+  if (c.dtype != x.dtype) {
+    throw ArgumentError.value(
+      c.dtype,
+      'c',
+      'Must have the same dtype as x (${x.dtype})',
+    );
+  }
 
-  var resolved = resolveDType(c.dtype, x.dtype);
+  DType<DTypeTag> resolved = x.dtype;
   if ((!resolved.isFloating && !resolved.isComplex) ||
       resolved == DType.float16 ||
       resolved == DType.bfloat16) {
@@ -757,8 +708,6 @@ NDArray<C> chebroots<C extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -776,8 +725,6 @@ NDArray<C> legroots<C extends DTypeTag>(
       Object?,
       DTypeTag,
       C,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -801,8 +748,6 @@ NDArray<C> hermroots<C extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -823,8 +768,6 @@ NDArray<C> lagroots<C extends DTypeTag>(
       DTypeTag,
       DTypeTag,
       DTypeTag,
-      DTypeTag,
-      DTypeTag,
       DTypeTag
     >
   >
@@ -841,8 +784,6 @@ NDArray<C> _orthoRoots<C extends DTypeTag>(
       Object?,
       DTypeTag,
       C,
-      DTypeTag,
-      DTypeTag,
       DTypeTag,
       DTypeTag,
       DTypeTag,
@@ -1077,8 +1018,6 @@ NDArray<C> _orthoRoots<C extends DTypeTag>(
               Object?,
               DTypeTag,
               C,
-              DTypeTag,
-              DTypeTag,
               DTypeTag,
               DTypeTag,
               DTypeTag,

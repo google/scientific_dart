@@ -176,17 +176,17 @@ void main() {
       () {
         final c = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         final xRef = NDArray.fromList([0.5, 1.5, 2.5], [3], DType.float64);
-        final expectedCheb = chebval<Float64>(xRef, c);
+        final expectedCheb = chebval(xRef, c);
 
         // Case 1: out aliases c
         final cAlias = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-        chebval<Float64>(xRef, cAlias, out: cAlias);
+        chebval(xRef, cAlias, out: cAlias);
         expect(cAlias.toList(), equals(expectedCheb.toList()));
 
         // Case 2: out is reversed view of x (strided aliasing)
         final xBuf = NDArray.fromList([0.5, 1.5, 2.5], [3], DType.float64);
         final outRev = xBuf.slice([const Slice(step: -1)]);
-        chebval<Float64>(xBuf, c, out: outRev);
+        chebval(xBuf, c, out: outRev);
         expect(outRev.toList(), equals(expectedCheb.toList()));
 
         // Case 3: strided x and overlapping strided out in 2D
@@ -199,12 +199,12 @@ void main() {
           const Slice.all(),
           const Slice(start: 0, stop: 2),
         ]); // shape [2, 2]
-        final expectedStrided = legval<Float64>(xStrided, c);
+        final expectedStrided = legval(xStrided, c);
         final outStrided = mat.slice([
           const Slice.all(),
           const Slice(start: 1, stop: 3),
         ]); // overlaps xStrided
-        legval<Float64>(xStrided, c, out: outStrided);
+        legval(xStrided, c, out: outStrided);
         expect(outStrided.toList(), equals(expectedStrided.toList()));
 
         c.dispose();

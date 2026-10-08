@@ -26,11 +26,13 @@ import 'package:analyzer/src/lint/linter_visitor.dart';
 import 'src/fixes/ndarray_fixes.dart';
 import 'src/rules/advanced_memory_and_view_rules.dart';
 import 'src/rules/api_and_performance_rules.dart';
+import 'src/rules/dtype_rules.dart';
 import 'src/rules/scope_and_lifecycle_rules.dart';
 
 export 'src/fixes/ndarray_fixes.dart';
 export 'src/rules/advanced_memory_and_view_rules.dart';
 export 'src/rules/api_and_performance_rules.dart';
+export 'src/rules/dtype_rules.dart';
 export 'src/rules/scope_and_lifecycle_rules.dart';
 
 /// Scope, view-lifecycle, disposal, and cross-isolate lifetime analysis rules.
@@ -48,6 +50,8 @@ List<AnalysisRule> createApiAndPerformanceRules() => [
   Uint64SignedComparisonRule(),
   BroadcastViewAsOutRule(),
   HotLoopElementIndexingRule(),
+  MismatchedDTypeOperandsRule(),
+  UnsupportedDTypeOperationRule(),
 ];
 
 /// Advanced memory-lifetime, view-aliasing, iterator, and symbolic rules.
@@ -100,6 +104,10 @@ final class ScientificDartAnalysisPlugin extends Plugin {
     registry.registerFixForRule(
       Uint64SignedComparisonRule.code,
       ReplaceWithUint64CompareFix.new,
+    );
+    registry.registerFixForRule(
+      MismatchedDTypeOperandsRule.code,
+      CastOperandWithAstypeFix.new,
     );
   }
 }

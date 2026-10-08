@@ -78,7 +78,11 @@ void main() {
             final rMul = multiply(a, b, where: mask);
             expect(rMul.shape, [2, 2, 2, 2]);
 
-            final rDiv = divide(a, b, where: mask);
+            final rDiv = divide(
+              a as NDArray<AnySpec>,
+              b as NDArray<AnySpec>,
+              where: mask,
+            );
             expect(rDiv.shape, [2, 2, 2, 2]);
 
             final outArr = NDArray.create([2, 2, 2, 2], rAdd.dtype);
@@ -120,7 +124,10 @@ void main() {
           final rSub = subtract(arr2d, scalarArr);
           expect(rSub.shape, [2, 3]);
 
-          final rDiv = divide(arr2d, scalarArr);
+          final rDiv = divide(
+            arr2d as NDArray<AnySpec>,
+            scalarArr as NDArray<AnySpec>,
+          );
           expect(rDiv.shape, [2, 3]);
         }
       });

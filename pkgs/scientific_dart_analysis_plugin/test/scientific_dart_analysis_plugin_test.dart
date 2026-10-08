@@ -149,6 +149,8 @@ void main() {
             'ndarray_from_pointer_dangling_arena',
             'scoped_resource_unawaited_in_scope',
             'symbolic_lambdify_in_loop',
+            'ndarray_mismatched_dtype_operands',
+            'ndarray_unsupported_dtype_operation',
           }),
         );
         expect(registry.fixes, isNotEmpty);
@@ -1079,6 +1081,114 @@ NDArray<Float64> f() => NDArray.scope(() {
         selectionOffset: returningOffset,
       );
       expect(fixedFromOuterCall, contains('return view.copy();'));
+
+      // 5. MismatchedDTypeOperandsRule, UnsupportedDTypeOperationRule, and CastOperandWithAstypeFix:
+      final mismatchDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+void checkMismatchedOperands(
+  NDArray<Float64> f64,
+  NDArray<Float32> f32,
+  NDArray<Int32> i32,
+  NDArray<Int64> i64,
+  NDArray<DTypeTag> dynamicArr,
+) {
+  final badOp1 = f64 + f32; // VIOLATION 1
+  final badOp2 = f64 - i32; // VIOLATION 2
+  final badOp3 = i32 & i64; // VIOLATION 3
+  final badOp4 = f64 < f32; // VIOLATION 4
+  final badFn1 = add(f64, f32); // VIOLATION 5
+  final badFn2 = matmul(f64, f32); // VIOLATION 6
+  final badMethod = f64.eq(f32); // VIOLATION 7
+
+  // Allowed cases:
+  final okSame = f64 + f64;
+  final okScalar = f64 + 1.0;
+  final okAs = addAs(f64, f32, DType.float64);
+  final okDynamic = f64 + dynamicArr;
+  print([
+    badOp1,
+    badOp2,
+    badOp3,
+    badOp4,
+    badFn1,
+    badFn2,
+    badMethod,
+    okSame,
+    okScalar,
+    okAs,
+    okDynamic,
+  ]);
+}
+''',
+        rules: [MismatchedDTypeOperandsRule()],
+      );
+      expectOnly(mismatchDiagnostics, 'ndarray_mismatched_dtype_operands', 7);
+
+      final unsupportedDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+void checkUnsupportedDType(
+  NDArray<Float64> f64,
+  NDArray<Complex128> c128,
+  NDArray<Boolean> b1,
+  NDArray<Int32> i32,
+) {
+  final badComplexOrder = c128 < c128; // VIOLATION 1: complex ordering
+  final badComplexMod = remainder(c128, c128); // VIOLATION 2: complex remainder
+  final badComplexFloorDiv = floorDivide(c128, c128); // VIOLATION 3: complex floorDivide
+  final badComplexAtan2 = atan2(c128, c128); // VIOLATION 4: complex atan2
+  final badComplexHypot = hypot(c128, c128); // VIOLATION 5: complex hypot
+  final badComplexFmod = fmod(c128, c128); // VIOLATION 6: complex fmod
+
+  // Allowed cases:
+  final okBoolBitwise = b1 & b1;
+  final okIntShift = i32 << 2;
+  final okIntGcd = gcd(i32, i32);
+  final okComplexEq = c128.eq(c128);
+  print([
+    badComplexOrder,
+    badComplexMod,
+    badComplexFloorDiv,
+    badComplexAtan2,
+    badComplexHypot,
+    badComplexFmod,
+    okBoolBitwise,
+    okIntShift,
+    okIntGcd,
+    okComplexEq,
+  ]);
+}
+''',
+        rules: [UnsupportedDTypeOperationRule()],
+      );
+      expectOnly(
+        unsupportedDiagnostics,
+        'ndarray_unsupported_dtype_operation',
+        6,
+      );
+
+      final fixedMismatchOp = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<Float64> a, NDArray<Float32> b) => a + b;
+''',
+        MismatchedDTypeOperandsRule(),
+        CastOperandWithAstypeFix.new,
+      );
+      expect(fixedMismatchOp, contains('a + b.astype(DType.float64)'));
+
+      final fixedMismatchFn = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<Int64> a, NDArray<Int32> b) => add(a, b);
+''',
+        MismatchedDTypeOperandsRule(),
+        CastOperandWithAstypeFix.new,
+      );
+      expect(fixedMismatchFn, contains('add(a, b.astype(DType.int64))'));
     });
   });
 }

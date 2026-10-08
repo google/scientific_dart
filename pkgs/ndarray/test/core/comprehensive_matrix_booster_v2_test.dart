@@ -120,10 +120,18 @@ void main() {
               expect(rLogAddExp2.shape, [2, 3, 2]);
 
               if (dt.isInteger) {
-                final rGcd = gcd(a, b, where: mask);
+                final rGcd = gcd(
+                  a.asIntegerDType,
+                  b.asIntegerDType,
+                  where: mask,
+                );
                 expect(rGcd.shape, [2, 3, 2]);
 
-                final rLcm = lcm(a, b, where: mask);
+                final rLcm = lcm(
+                  a.asIntegerDType,
+                  b.asIntegerDType,
+                  where: mask,
+                );
                 expect(rLcm.shape, [2, 3, 2]);
               }
             }

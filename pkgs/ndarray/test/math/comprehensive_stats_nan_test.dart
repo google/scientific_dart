@@ -1640,7 +1640,7 @@ void main() {
             final (:hist, :binEdges) = histogram(constArray, bins: 2);
             expect(hist.shape, [2]);
             expect(binEdges.shape, [3]);
-            expect(sum(hist).scalar, 3);
+            expect(sum(hist.asAnySpec).scalar, 3);
 
             final full = NDArray.fromList(
               [1.0, 99.0, 2.0, 99.0, 3.0],

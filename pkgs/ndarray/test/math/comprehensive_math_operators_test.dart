@@ -183,12 +183,27 @@ void main() {
             DType.float64,
           );
 
-          expect(() => bitwiseAnd(f64, f64_2), throwsArgumentError);
-          expect(() => bitwiseOr(f64, f64_2), throwsArgumentError);
-          expect(() => bitwiseXor(f64, f64_2), throwsArgumentError);
-          expect(() => invert(f64), throwsArgumentError);
-          expect(() => leftShift(f64, f64_2), throwsArgumentError);
-          expect(() => rightShift(f64, f64_2), throwsArgumentError);
+          expect(
+            () => bitwiseAnd(f64.asBitwiseDType, f64_2.asBitwiseDType),
+            throwsArgumentError,
+          );
+          expect(
+            () => bitwiseOr(f64.asBitwiseDType, f64_2.asBitwiseDType),
+            throwsArgumentError,
+          );
+          expect(
+            () => bitwiseXor(f64.asBitwiseDType, f64_2.asBitwiseDType),
+            throwsArgumentError,
+          );
+          expect(() => invert(f64.asBitwiseDType), throwsArgumentError);
+          expect(
+            () => leftShift(f64.asIntegerDType, f64_2.asIntegerDType),
+            throwsArgumentError,
+          );
+          expect(
+            () => rightShift(f64.asIntegerDType, f64_2.asIntegerDType),
+            throwsArgumentError,
+          );
         });
       });
     });
