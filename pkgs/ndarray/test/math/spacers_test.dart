@@ -264,8 +264,8 @@ void main() {
     });
 
     group('Exhaustive DType Grid Coverage', () {
-      void testDTypeGrid<T extends DTypeTag>(
-        DType<T> dtype,
+      void testDTypeGrid(
+        DType<AnySpec> dtype,
         List<Object?> startList,
         List<Object?> stopList,
         List<Object?> expectedGridList,

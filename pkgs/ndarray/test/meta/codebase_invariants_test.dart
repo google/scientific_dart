@@ -1482,9 +1482,14 @@ void main() {
             }
           }
 
-          // Form A: another type parameter T has bound XOf<R> (and T is determined by input or chained projection)
+          // Form A: another type parameter T has bound XOf<R> or SelfOf<XOf<R>> (and T is determined by input or chained projection)
           for (final tp in allTypeParams) {
-            final bound = tp.bound;
+            var bound = tp.bound;
+            while (bound is InterfaceType &&
+                bound.element.name == 'SelfOf' &&
+                bound.typeArguments.length == 1) {
+              bound = bound.typeArguments.single;
+            }
             if (bound is InterfaceType &&
                 kProjectionInterfaceNames.contains(bound.element.name) &&
                 bound.typeArguments.length == 1) {
@@ -1600,8 +1605,8 @@ void main() {
           }
         }
 
-        // 6. Same-dtype binary operations must tie both inputs to a shared type parameter,
-        // while binary `*As` functions must accept independent `<Ta, Tb, R>` type parameters.
+        // 6. Same-dtype binary operations must tie both inputs to a shared type parameter
+        // bounded by `SelfOf<...>`, while binary `*As` functions must accept independent `<Ta, Tb, R>` type parameters.
         const sameDTypeBinaryOps = <String>{
           'add',
           'subtract',
@@ -1661,6 +1666,13 @@ void main() {
           if (typeParams.any((tp) => tp.name == 'Ta' || tp.name == 'Tb')) {
             violations.add(
               'Same-dtype binary operation `$fnName` must not declare separate `Ta`/`Tb` type parameters.',
+            );
+          }
+          final firstBound = typeParams.firstOrNull?.bound;
+          if (firstBound is! InterfaceType ||
+              firstBound.element.name != 'SelfOf') {
+            violations.add(
+              'Same-dtype binary operation `$fnName` must bound its shared input type parameter by `SelfOf<...>` (got `${firstBound?.getDisplayString()}`).',
             );
           }
           final p0Type = el.formalParameters[0].type.getDisplayString();
@@ -2858,16 +2870,16 @@ void main() {
         expect(
           ndarraySrc,
           contains(
-            'extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T>',
+            'extension NDArrayBitwise<T extends RealOf<BitwiseDType>> on NDArray<T>',
           ),
-          reason: 'NDArrayBitwise must be bounded by BitwiseDType',
+          reason: 'NDArrayBitwise must be bounded by RealOf<BitwiseDType>',
         );
         expect(
           ndarraySrc,
           contains(
-            'extension NDArrayShift<T extends IntegerDType> on NDArray<T>',
+            'extension NDArrayShift<T extends RealOf<IntegerDType>> on NDArray<T>',
           ),
-          reason: 'NDArrayShift must be bounded by IntegerDType',
+          reason: 'NDArrayShift must be bounded by RealOf<IntegerDType>',
         );
         expect(
           ndarraySrc.contains('class BitwiseDType<'),
@@ -2888,6 +2900,8 @@ void main() {
         const expectedCoreOwners = <String>{
           'DTypeSpec',
           'AnySpec',
+          'AnyBitwiseSpec',
+          'AnyIntegerSpec',
           'Float64',
           'Float32',
           'Float16',
@@ -3796,10 +3810,8 @@ class _DTypeSpecUsageVisitor extends RecursiveAstVisitor<void> {
           }
           current = current.parent;
         }
-        if (ownerName != null &&
-            expectedCoreOwners.contains(ownerName) &&
-            ownerName != 'DTypeSpec') {
-          if (!seenCoreOwners.add(ownerName)) {
+        if (ownerName != null && expectedCoreOwners.contains(ownerName)) {
+          if (ownerName != 'DTypeSpec' && !seenCoreOwners.add(ownerName)) {
             violations.add(
               '$relPath:$line — duplicate 8-arg `DTypeSpec` in `$ownerName`.',
             );

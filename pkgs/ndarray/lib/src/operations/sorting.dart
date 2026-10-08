@@ -1179,7 +1179,7 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int64> searchsorted<T extends DTypeTag>(
+NDArray<Int64> searchsorted<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> v, {
   SearchSide side = SearchSide.left,
@@ -1199,7 +1199,7 @@ NDArray<Int64> searchsorted<T extends DTypeTag>(
 /// (`DType.int32` or `DType.int64`).
 ///
 /// Refer to [searchsorted] for full details.
-NDArray<R> searchsortedAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> searchsortedAs<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> v,
   DType<R> dtype, {

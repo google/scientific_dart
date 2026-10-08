@@ -628,7 +628,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> copysign<T extends DTypeTag>(
+NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -897,13 +897,24 @@ copysignAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((x1.dtype as DType<DTypeTag>) == dtype &&
       (x2.dtype as DType<DTypeTag>) == dtype) {
-    return copysign<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+    return copysign<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = copysign<R>(x1Cast, x2Cast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = copysign<AnySpec>(
+      x1Cast.asAnySpec,
+      x2Cast.asAnySpec,
+      where: where,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 

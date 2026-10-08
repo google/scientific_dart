@@ -1630,7 +1630,7 @@ void main() {
       test(
         'Kronecker product (kron) all dtypes coverage',
         () => NDArray.scope(() {
-          final dtypes = [
+          final dtypes = <DType<AnySpec>>[
             DType.float64,
             DType.float32,
             DType.int64,
@@ -1696,7 +1696,7 @@ void main() {
       test(
         'Vector Outer Product (outer) all dtypes coverage',
         () => NDArray.scope(() {
-          final dtypes = [
+          final dtypes = <DType<AnySpec>>[
             DType.float64,
             DType.float32,
             DType.int64,
@@ -1762,7 +1762,7 @@ void main() {
       test(
         'Vector Cross Product (cross) all dtypes coverage',
         () => NDArray.scope(() {
-          final dtypes = [
+          final dtypes = <DType<AnySpec>>[
             DType.float64,
             DType.float32,
             DType.int64,

@@ -6471,9 +6471,13 @@ NDArray<T> ptp<T extends DTypeTag>(
     final mn = min(a, axis: resolvedAxis, keepdims: keepdims);
     final NDArray<T> res;
     if (a.dtype == DType.boolean) {
-      res = notEqual(mx, mn, out: out as NDArray<Boolean>?) as NDArray<T>;
+      res =
+          notEqual(mx.asAnySpec, mn.asAnySpec, out: out as NDArray<Boolean>?)
+              as NDArray<T>;
     } else {
-      res = subtract<T>(mx, mn, out: out);
+      res =
+          subtract<AnySpec>(mx.asAnySpec, mn.asAnySpec, out: out?.asAnySpec)
+              as NDArray<T>;
     }
     if (out == null) {
       res.detachToParentScope();
@@ -6682,7 +6686,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
     final wCast = broadcastedWeights.dtype == accumDType
         ? broadcastedWeights
         : castNDArray(broadcastedWeights, accumDType);
-    final weighted_a = multiply<DTypeTag>(aCast, wCast);
+    final weighted_a = multiply<AnySpec>(aCast.asAnySpec, wCast.asAnySpec);
     final weighted_sum = sumAs<DTypeTag, DTypeTag>(
       weighted_a,
       accumDType,
@@ -6742,7 +6746,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
 /// - [y] must have the same dtype as [m].
 ///
 /// Reference: [NumPy cov](https://numpy.org/doc/stable/reference/generated/numpy.cov.html)
-NDArray<R> cov<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
+NDArray<R> cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
   NDArray<T> m, {
   NDArray<T>? y,
   bool rowvar = true,
@@ -7147,7 +7151,7 @@ NDArray<R> cov<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
 /// - [y] must have the same dtype as [m].
 ///
 /// Reference: [NumPy corrcoef](https://numpy.org/doc/stable/reference/generated/numpy.corrcoef.html)
-NDArray<R> corrcoef<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
+NDArray<R> corrcoef<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
   NDArray<T> m, {
   NDArray<T>? y,
   bool rowvar = true,

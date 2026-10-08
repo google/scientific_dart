@@ -527,12 +527,14 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     }
 
     final commonDType = resolveDType(bins.dtype, x.dtype);
-    final NDArray<DTypeTag> commonBins = bins.dtype == commonDType
-        ? bins
-        : castNDArray<DTypeTag>(bins, commonDType);
-    final NDArray<DTypeTag> commonX = x.dtype == commonDType
-        ? x
-        : castNDArray<DTypeTag>(x, commonDType);
+    final NDArray<AnySpec> commonBins =
+        (bins.dtype == commonDType
+                ? bins
+                : castNDArray<DTypeTag>(bins, commonDType))
+            .asAnySpec;
+    final NDArray<AnySpec> commonX =
+        (x.dtype == commonDType ? x : castNDArray<DTypeTag>(x, commonDType))
+            .asAnySpec;
 
     final side = right ? SearchSide.left : SearchSide.right;
     NDArray<Int64> res;

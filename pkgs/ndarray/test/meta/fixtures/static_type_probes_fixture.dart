@@ -156,14 +156,17 @@ final t_scalar_u64 = u64.scalar;
 // expect: dynamic
 final t_scalar_dyn = dyn.scalar;
 
-// expect: NDArray<DTypeTag>
-final t_add_dyn = add(dyn, dyn);
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_add_anySpec = add(anySpec, anySpec);
 
 // expect: NDArray<DTypeTag>
-final t_add_mixed_f64_f32 = add(f64, f32);
+final t_divide_anySpec = divide(anySpec, anySpec);
 
-// expect: NDArray<IntegerDType>
-final t_add_mixed_i64_i32 = add(i64, i32);
+// expect: NDArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_bitwiseAnd_asBitwise = bitwiseAnd(
+  f64.asBitwiseDType,
+  f32.asBitwiseDType,
+);
 
 // expect: NDArray<Float64>
 final t_opadd_mixed = f64 + f32;
@@ -273,8 +276,8 @@ final t_slogdet_c64 = slogdet(c64);
 // expect: ({NDArray<Float32> s, NDArray<Float32> u, NDArray<Float32> vh})
 final t_svd_f32 = svd(f32);
 
-// expect: NDArray<IntegerDType>
-final t_bitwiseAnd_lub_i32_u8 = bitwiseAnd([i32, u8].first, [i32, u8].first);
+// expect: NDArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_leftShift_asInteger = leftShift(i32.asIntegerDType, u8.asIntegerDType);
 
 // expect: List<dynamic>
 final t_tolist_lub_i32_b = [i32, b].first.toList();

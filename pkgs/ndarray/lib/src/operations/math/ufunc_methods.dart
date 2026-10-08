@@ -261,42 +261,46 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
   }
   switch (op) {
     case BinaryOp.add:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => add(a, b, where: where, out: outView),
+        (outView) => add(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.subtract:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => subtract(a, b, where: where, out: outView),
+        (outView) =>
+            subtract(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.multiply:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => multiply(a, b, where: where, out: outView),
+        (outView) =>
+            multiply(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.divide:
       final res = divideUntyped<T, DTypeTag>(a, b, where: where, out: out);
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.floorDivide:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => floorDivide(a, b, where: where, out: outView),
+        (outView) =>
+            floorDivide(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.remainder:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => remainder(a, b, where: where, out: outView),
+        (outView) =>
+            remainder(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.fmod:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => fmod(a, b, where: where, out: outView),
+        (outView) => fmod(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.gcd:
@@ -313,7 +317,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       final res = _withViewNullable<T, NDArray<T>>(
         out,
         (outView) =>
-            gcd<IntegerDType>(
+            gcd<AnyIntegerSpec>(
                   a.asIntegerDType,
                   b.asIntegerDType,
                   where: where,
@@ -336,7 +340,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       final res = _withViewNullable<T, NDArray<T>>(
         out,
         (outView) =>
-            lcm<IntegerDType>(
+            lcm<AnyIntegerSpec>(
                   a.asIntegerDType,
                   b.asIntegerDType,
                   where: where,
@@ -346,15 +350,17 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.heaviside:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => heaviside(a, b, where: where, out: outView),
+        (outView) =>
+            heaviside(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.power:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => power(a, b, where: where, out: outView),
+        (outView) =>
+            power(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.floatPower:
@@ -420,13 +426,18 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.copysign:
-      final res = _withViewNullable<T, NDArray<T>>(
+      final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => copysign<T>(a, b, where: where, out: outView),
+        (outView) => copysign<AnySpec>(
+          a.asAnySpec,
+          b.asAnySpec,
+          where: where,
+          out: outView,
+        ),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.bitwiseAnd:
-      final res = bitwiseAnd<BitwiseDType>(
+      final res = bitwiseAnd<AnyBitwiseSpec>(
         a.asBitwiseDType,
         b.asBitwiseDType,
         where: where,
@@ -434,7 +445,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.bitwiseOr:
-      final res = bitwiseOr<BitwiseDType>(
+      final res = bitwiseOr<AnyBitwiseSpec>(
         a.asBitwiseDType,
         b.asBitwiseDType,
         where: where,
@@ -442,7 +453,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.bitwiseXor:
-      final res = bitwiseXor<BitwiseDType>(
+      final res = bitwiseXor<AnyBitwiseSpec>(
         a.asBitwiseDType,
         b.asBitwiseDType,
         where: where,
@@ -450,7 +461,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.leftShift:
-      final res = leftShift<IntegerDType>(
+      final res = leftShift<AnyIntegerSpec>(
         a.asIntegerDType,
         b.asIntegerDType,
         where: where,
@@ -458,7 +469,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.rightShift:
-      final res = rightShift<IntegerDType>(
+      final res = rightShift<AnyIntegerSpec>(
         a.asIntegerDType,
         b.asIntegerDType,
         where: where,
@@ -468,19 +479,22 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
     case BinaryOp.logicalAnd:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => logicalAnd(a, b, where: where, out: outView),
+        (outView) =>
+            logicalAnd(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.logicalOr:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => logicalOr(a, b, where: where, out: outView),
+        (outView) =>
+            logicalOr(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.logicalXor:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => logicalXor(a, b, where: where, out: outView),
+        (outView) =>
+            logicalXor(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.minimum:
@@ -534,37 +548,42 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
     case BinaryOp.equal:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => equal(a, b, where: where, out: outView),
+        (outView) =>
+            equal(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.notEqual:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => notEqual(a, b, where: where, out: outView),
+        (outView) =>
+            notEqual(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.greater:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => greater(a, b, where: where, out: outView),
+        (outView) =>
+            greater(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.greaterEqual:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => greaterEqual(a, b, where: where, out: outView),
+        (outView) =>
+            greaterEqual(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.less:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => less(a, b, where: where, out: outView),
+        (outView) => less(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.lessEqual:
       final res = _withViewNullable<Boolean, NDArray<Boolean>>(
         out,
-        (outView) => lessEqual(a, b, where: where, out: outView),
+        (outView) =>
+            lessEqual(a.asAnySpec, b.asAnySpec, where: where, out: outView),
       );
       return out ?? _coerceOwned<R>(res);
   }
@@ -587,7 +606,7 @@ NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy minimum](https://numpy.org/doc/stable/reference/generated/numpy.minimum.html)
-NDArray<T> minimum<T extends DTypeTag>(
+NDArray<T> minimum<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -659,13 +678,24 @@ minimumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((x1.dtype as DType<DTypeTag>) == dtype &&
       (x2.dtype as DType<DTypeTag>) == dtype) {
-    return minimum<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+    return minimum<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = minimum<R>(x1Cast, x2Cast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = minimum<AnySpec>(
+      x1Cast.asAnySpec,
+      x2Cast.asAnySpec,
+      where: where,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -686,7 +716,7 @@ minimumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy maximum](https://numpy.org/doc/stable/reference/generated/numpy.maximum.html)
-NDArray<T> maximum<T extends DTypeTag>(
+NDArray<T> maximum<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -758,13 +788,24 @@ maximumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((x1.dtype as DType<DTypeTag>) == dtype &&
       (x2.dtype as DType<DTypeTag>) == dtype) {
-    return maximum<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+    return maximum<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = maximum<R>(x1Cast, x2Cast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = maximum<AnySpec>(
+      x1Cast.asAnySpec,
+      x2Cast.asAnySpec,
+      where: where,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -785,7 +826,7 @@ maximumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy fmin](https://numpy.org/doc/stable/reference/generated/numpy.fmin.html)
-NDArray<T> fmin<T extends DTypeTag>(
+NDArray<T> fmin<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -856,13 +897,24 @@ NDArray<R> fminAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((x1.dtype as DType<DTypeTag>) == dtype &&
       (x2.dtype as DType<DTypeTag>) == dtype) {
-    return fmin<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+    return fmin<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = fmin<R>(x1Cast, x2Cast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = fmin<AnySpec>(
+      x1Cast.asAnySpec,
+      x2Cast.asAnySpec,
+      where: where,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -883,7 +935,7 @@ NDArray<R> fminAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy fmax](https://numpy.org/doc/stable/reference/generated/numpy.fmax.html)
-NDArray<T> fmax<T extends DTypeTag>(
+NDArray<T> fmax<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -954,13 +1006,24 @@ NDArray<R> fmaxAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((x1.dtype as DType<DTypeTag>) == dtype &&
       (x2.dtype as DType<DTypeTag>) == dtype) {
-    return fmax<DTypeTag>(x1, x2, where: where, out: out) as NDArray<R>;
+    return fmax<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = fmax<R>(x1Cast, x2Cast, where: where, out: out);
-    return out ?? res.detachToParentScope();
+    final res = fmax<AnySpec>(
+      x1Cast.asAnySpec,
+      x2Cast.asAnySpec,
+      where: where,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -3879,7 +3942,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
         final res = _withViewNullable<T, NDArray<T>>(
           out,
           (outView) =>
-              invert<BitwiseDType>(
+              invert<AnyBitwiseSpec>(
                     x.asBitwiseDType,
                     where: where,
                     out: outView?.asBitwiseDType,
@@ -3938,7 +4001,12 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
             targetDType.isComplex ? Complex(2.0, 0.0) : 2.0,
             dtype: targetDType,
           );
-          final res = power<DTypeTag>(base, xCast, where: where, out: out);
+          final res = power<AnySpec>(
+            base.asAnySpec,
+            xCast.asAnySpec,
+            where: where,
+            out: out?.asAnySpec,
+          );
           return out ?? _coerceOwned<R>(res).detachToParentScope();
         });
       case UnaryOp.log:
@@ -3981,8 +4049,13 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
             (xView) => abs<DTypeTag>(xView),
           );
           final expScalar = NDArray.scalar(1.0 / 3.0, dtype: targetDType);
-          final mag = power<DTypeTag>(absX, expScalar);
-          final res = copysign<DTypeTag>(mag, xCast, where: where, out: out);
+          final mag = power<AnySpec>(absX.asAnySpec, expScalar.asAnySpec);
+          final res = copysign<AnySpec>(
+            mag,
+            xCast.asAnySpec,
+            where: where,
+            out: out?.asAnySpec,
+          );
           return out ?? _coerceOwned<R>(res).detachToParentScope();
         });
       case UnaryOp.reciprocal:
@@ -4078,11 +4151,15 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
           }
           final zero = NDArray.scalar(0, dtype: x.dtype);
           final src = x.dtype.isFloating
-              ? copysign(NDArray.scalar(1, dtype: x.dtype), x)
-              : x;
+              ? copysign<AnySpec>(
+                  NDArray.scalar(1, dtype: x.dtype).asAnySpec,
+                  xSpec,
+                )
+              : xSpec;
           final res = _withViewNullable<Boolean, NDArray<Boolean>>(
             out,
-            (outView) => less(src, zero, where: where, out: outView),
+            (outView) =>
+                less<AnySpec>(src, zero.asAnySpec, where: where, out: outView),
           );
           return out ?? _coerceOwned<R>(res).detachToParentScope();
         });

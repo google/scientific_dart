@@ -672,7 +672,7 @@ void main() {
       () => NDArray.scope(() {
         final a = NDArray.fromList([3.0, 1.0, 1.0, 2.0], [2, 2], DType.float64);
         final b = NDArray.fromList([9.0, 8.0], [2], DType.float32);
-        expect(() => solve(a, b), throwsArgumentError);
+        expect(() => solve(a.asAnySpec, b.asAnySpec), throwsArgumentError);
       }),
     );
 
@@ -1170,7 +1170,7 @@ void main() {
 
         final b = NDArray.fromList([10.0, 20.0], [2], DType.float64);
 
-        expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+        expect(() => add(a.asAnySpec, b.asAnySpec), throwsArgumentError);
         final c = add(a, b.astype(DType.complex128));
         expect(c.shape, [2]);
         expect(c.data[0], Complex(11.0, 2.0));

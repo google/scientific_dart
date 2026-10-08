@@ -231,7 +231,10 @@ void main() {
         );
 
         final realArrT = realArr.transposed;
-        expect(() => subtract<DTypeTag>(aT, realArrT), throwsArgumentError);
+        expect(
+          () => subtract(aT.asAnySpec, realArrT.asAnySpec),
+          throwsArgumentError,
+        );
         final res2 = subtract(aT, realArrT.astype(DType.complex128));
         expect(res2.shape, [2, 2]);
         expect(res2.dtype, DType.complex128);

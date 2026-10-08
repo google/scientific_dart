@@ -33,13 +33,13 @@ void main() {
             DType.float64,
           );
 
-          final aSlice = NDArray.view(
+          final aSlice = NDArray<Float64>.view(
             a,
             shape: [3],
             strides: [2],
             offsetElements: 0,
           );
-          final bSlice = NDArray.view(
+          final bSlice = NDArray<Float64>.view(
             b,
             shape: [3],
             strides: [2],
@@ -68,13 +68,13 @@ void main() {
             DType.float32,
           );
 
-          final aSlice = NDArray.view(
+          final aSlice = NDArray<Float32>.view(
             a,
             shape: [3],
             strides: [2],
             offsetElements: 0,
           );
-          final bSlice = NDArray.view(
+          final bSlice = NDArray<Float32>.view(
             b,
             shape: [3],
             strides: [2],

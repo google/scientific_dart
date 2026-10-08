@@ -140,17 +140,30 @@ abstract interface class DoublePrecisionOf<R extends DTypeTag>
 /// `divide` and of the `/` operator ([NDArrayDivide]).
 abstract interface class DivideOf<R extends DTypeTag> implements DTypeTag {}
 
+/// Self-referential invariance projection used to reject mixed-dtype arguments
+/// at compile time in same-dtype binary and multi-array operations.
+///
+/// Because [DTypeSpec] implements `SelfOf<DTypeSpec<...>>`, two distinct leaf
+/// dtype tags (such as [Float64] and [Float32], or [Int64] and [Int32])
+/// implement incompatible instantiations of [SelfOf]. Their least upper bound
+/// collapses to [DTypeTag] (or [IntegerDType] / [BitwiseDType]) rather than a
+/// subtype of `SelfOf<T>`, causing the Dart type checker to reject mixed-dtype
+/// calls such as `add(f64, f32)` or `add(i64, i32)` symmetrically while still
+/// inferring `T` from same-dtype arguments.
+abstract interface class SelfOf<R extends DTypeTag> implements DTypeTag {}
+
 /// The projection table of a concrete [DTypeTag].
 ///
 /// Each of the 15 concrete tag classes implements [DTypeSpec] exactly once,
 /// naming the eight dtypes that operations on that dtype produce. [DTypeSpec]
 /// in turn implements the single-projection interfaces [RealOf], [ElementOf],
 /// [RealFloatOf], [ComplexOf], [InexactOf], [AccumulatorOf],
-/// [DoublePrecisionOf] and [DivideOf], one per entry, so a tag's row
-/// automatically makes it an instance of each of them. Operations declare only
-/// the projection they need — an `NDArray<InexactOf<R>>` argument for `sin`,
-/// `NDArray<AccumulatorOf<R>>` for `sum`, a `T extends DivideOf<R>` bound for
-/// `divide` — and the compiler infers the concrete result tag `R` from the
+/// [DoublePrecisionOf] and [DivideOf], one per entry, as well as [SelfOf], so a
+/// tag's row automatically makes it an instance of each of them. Operations
+/// declare only the projection they need — an `NDArray<InexactOf<R>>` argument
+/// for `sin`, `NDArray<AccumulatorOf<R>>` for `sum`, a `T extends DivideOf<R>`
+/// bound for `divide`, or `T extends SelfOf<DTypeTag>` for same-dtype binary
+/// operations — and the compiler infers the concrete result tag from the
 /// argument's dtype. Those interfaces, not the layout of this table, are the
 /// public mechanism for expressing dtype promotion in signatures.
 ///
@@ -186,7 +199,19 @@ abstract interface class DTypeSpec<
         InexactOf<InexactTag>,
         AccumulatorOf<AccumulatorTag>,
         DoublePrecisionOf<DoublePrecisionTag>,
-        DivideOf<DivideTag> {}
+        DivideOf<DivideTag>,
+        SelfOf<
+          DTypeSpec<
+            RealTag,
+            Element,
+            RealFloatTag,
+            ComplexTag,
+            InexactTag,
+            AccumulatorTag,
+            DoublePrecisionTag,
+            DivideTag
+          >
+        > {}
 
 /// The [DTypeSpec] row that every concrete dtype tag satisfies.
 ///
@@ -205,6 +230,40 @@ typedef AnySpec =
       DTypeTag,
       DTypeTag,
       DTypeTag
+    >;
+
+/// The [DTypeSpec] row satisfied by every [BitwiseDType] tag (integers and
+/// [Boolean]).
+///
+/// Returned by [NDArray.asBitwiseDType] so runtime-typed bitwise arrays satisfy
+/// both [BitwiseDType] and [SelfOf] bounds.
+typedef AnyBitwiseSpec =
+    DTypeSpec<
+      BitwiseDType,
+      dynamic,
+      Float64,
+      Complex128,
+      Float64,
+      DTypeTag,
+      Float64,
+      Float64
+    >;
+
+/// The [DTypeSpec] row satisfied by every [IntegerDType] tag (signed and
+/// unsigned integers).
+///
+/// Returned by [NDArray.asIntegerDType] so runtime-typed integer arrays satisfy
+/// both [IntegerDType] and [SelfOf] bounds.
+typedef AnyIntegerSpec =
+    DTypeSpec<
+      IntegerDType,
+      int,
+      Float64,
+      Complex128,
+      Float64,
+      DTypeTag,
+      Float64,
+      Float64
     >;
 
 /// Marker interface for the dtype tags that support bitwise operations
@@ -2469,18 +2528,18 @@ sealed class NDArray<T extends DTypeTag>
   /// helpers and tests that dispatch or validate dtypes dynamically.
   NDArray<AnySpec> get asAnySpec => this as NDArray<AnySpec>;
 
-  /// Views this array with the [BitwiseDType] tag.
+  /// Views this array with the [AnyBitwiseSpec] tag.
   ///
   /// This bypasses static dtype constraints and is intended for internal
   /// helpers and tests that dispatch or validate bitwise operations dynamically.
   ///
   /// Throws a [StateError] if this array is disposed, or an [ArgumentError] if
   /// [dtype] is neither an integer nor `boolean`.
-  NDArray<BitwiseDType> get asBitwiseDType {
+  NDArray<AnyBitwiseSpec> get asBitwiseDType {
     if (isDisposed) {
       throw StateError('Cannot access a disposed NDArray.');
     }
-    if (this is NDArray<BitwiseDType>) return this as NDArray<BitwiseDType>;
+    if (this is NDArray<BitwiseDType>) return this as NDArray<AnyBitwiseSpec>;
     throw ArgumentError.value(
       dtype,
       'dtype',
@@ -2488,18 +2547,18 @@ sealed class NDArray<T extends DTypeTag>
     );
   }
 
-  /// Views this array with the [IntegerDType] tag.
+  /// Views this array with the [AnyIntegerSpec] tag.
   ///
   /// This bypasses static dtype constraints and is intended for internal
   /// helpers and tests that dispatch or validate integer shift/gcd/lcm operations dynamically.
   ///
   /// Throws a [StateError] if this array is disposed, or an [ArgumentError] if
   /// [dtype] is not an integer data type.
-  NDArray<IntegerDType> get asIntegerDType {
+  NDArray<AnyIntegerSpec> get asIntegerDType {
     if (isDisposed) {
       throw StateError('Cannot access a disposed NDArray.');
     }
-    if (this is NDArray<IntegerDType>) return this as NDArray<IntegerDType>;
+    if (this is NDArray<IntegerDType>) return this as NDArray<AnyIntegerSpec>;
     throw ArgumentError.value(dtype, 'dtype', 'Must be integer data type');
   }
 
@@ -4557,8 +4616,11 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
   /// must have the same dtype as this array; use `.astype(...)` to convert dtypes.
-  NDArray<T> operator +(Object? other) =>
-      _withSameDTypeOperand(other, '+', (otherArr) => ops.add(this, otherArr));
+  NDArray<T> operator +(Object? other) => _withSameDTypeOperand(
+    other,
+    '+',
+    (otherArr) => ops.add(asAnySpec, otherArr.asAnySpec) as NDArray<T>,
+  );
 
   /// Element-wise subtraction with full broadcasting support.
   ///
@@ -4568,7 +4630,7 @@ sealed class NDArray<T extends DTypeTag>
   NDArray<T> operator -(Object? other) => _withSameDTypeOperand(
     other,
     '-',
-    (otherArr) => ops.subtract(this, otherArr),
+    (otherArr) => ops.subtract(asAnySpec, otherArr.asAnySpec) as NDArray<T>,
   );
 
   /// Element-wise multiplication with full broadcasting support.
@@ -4579,7 +4641,7 @@ sealed class NDArray<T extends DTypeTag>
   NDArray<T> operator *(Object? other) => _withSameDTypeOperand(
     other,
     '*',
-    (otherArr) => ops.multiply(this, otherArr),
+    (otherArr) => ops.multiply(asAnySpec, otherArr.asAnySpec) as NDArray<T>,
   );
 
   /// Element-wise floor division with full broadcasting support.
@@ -4589,7 +4651,7 @@ sealed class NDArray<T extends DTypeTag>
   NDArray<T> operator ~/(Object? other) => _withSameDTypeOperand(
     other,
     '~/',
-    (otherArr) => ops.floorDivide(this, otherArr),
+    (otherArr) => ops.floorDivide(asAnySpec, otherArr.asAnySpec) as NDArray<T>,
   );
 
   /// Element-wise remainder with full broadcasting support.
@@ -4599,7 +4661,7 @@ sealed class NDArray<T extends DTypeTag>
   NDArray<T> operator %(Object? other) => _withSameDTypeOperand(
     other,
     '%',
-    (otherArr) => ops.remainder(this, otherArr),
+    (otherArr) => ops.remainder(asAnySpec, otherArr.asAnySpec) as NDArray<T>,
   );
 
   /// Numerical negative, element-wise.
@@ -4649,7 +4711,7 @@ sealed class NDArray<T extends DTypeTag>
     return _withSameDTypeOperand(
       other,
       '>',
-      (otherArr) => ops.greater(this, otherArr),
+      (otherArr) => ops.greater(asAnySpec, otherArr.asAnySpec),
     );
   }
 
@@ -4690,7 +4752,7 @@ sealed class NDArray<T extends DTypeTag>
     return _withSameDTypeOperand(
       other,
       '<',
-      (otherArr) => ops.less(this, otherArr),
+      (otherArr) => ops.less(asAnySpec, otherArr.asAnySpec),
     );
   }
 
@@ -4731,7 +4793,7 @@ sealed class NDArray<T extends DTypeTag>
     return _withSameDTypeOperand(
       other,
       '>=',
-      (otherArr) => ops.greaterEqual(this, otherArr),
+      (otherArr) => ops.greaterEqual(asAnySpec, otherArr.asAnySpec),
     );
   }
 
@@ -4772,7 +4834,7 @@ sealed class NDArray<T extends DTypeTag>
     return _withSameDTypeOperand(
       other,
       '<=',
-      (otherArr) => ops.lessEqual(this, otherArr),
+      (otherArr) => ops.lessEqual(asAnySpec, otherArr.asAnySpec),
     );
   }
 
@@ -4818,7 +4880,7 @@ sealed class NDArray<T extends DTypeTag>
     return _withSameDTypeOperand(
       other,
       'eq',
-      (otherArr) => ops.equal(this, otherArr),
+      (otherArr) => ops.equal(asAnySpec, otherArr.asAnySpec),
     );
   }
 
@@ -4847,7 +4909,7 @@ sealed class NDArray<T extends DTypeTag>
     return _withSameDTypeOperand(
       other,
       'ne',
-      (otherArr) => ops.notEqual(this, otherArr),
+      (otherArr) => ops.notEqual(asAnySpec, otherArr.asAnySpec),
     );
   }
 
@@ -6060,13 +6122,14 @@ extension NDArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
   NDArray<M> operator /(Object? other) => _withSameDTypeOperand(
     other,
     '/',
-    (otherArr) => ops.divide<T, M>(this, otherArr),
+    (otherArr) => ops.divideUntyped<T, M>(this, otherArr),
   );
 }
 
-/// Bitwise operators (`&`, `|`, `^`, `~`) for data types that implement
-/// [BitwiseDType] (all integer types and [Boolean]).
-extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
+/// Bitwise operators (`&`, `|`, `^`, `~`) for data types whose real projection
+/// implements [BitwiseDType] (all integer types, [Boolean], and
+/// [AnyBitwiseSpec]).
+extension NDArrayBitwise<T extends RealOf<BitwiseDType>> on NDArray<T> {
   /// Element-wise bitwise AND with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
@@ -6080,7 +6143,8 @@ extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   NDArray<T> operator &(Object? other) => _withSameDTypeOperand(
     other,
     '&',
-    (otherArr) => ops.bitwiseAnd<T>(this, otherArr),
+    (otherArr) =>
+        ops.bitwiseAnd(asBitwiseDType, otherArr.asBitwiseDType) as NDArray<T>,
   );
 
   /// Element-wise bitwise OR with full broadcasting support.
@@ -6094,7 +6158,8 @@ extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   NDArray<T> operator |(Object? other) => _withSameDTypeOperand(
     other,
     '|',
-    (otherArr) => ops.bitwiseOr<T>(this, otherArr),
+    (otherArr) =>
+        ops.bitwiseOr(asBitwiseDType, otherArr.asBitwiseDType) as NDArray<T>,
   );
 
   /// Element-wise bitwise XOR with full broadcasting support.
@@ -6108,7 +6173,8 @@ extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   NDArray<T> operator ^(Object? other) => _withSameDTypeOperand(
     other,
     '^',
-    (otherArr) => ops.bitwiseXor<T>(this, otherArr),
+    (otherArr) =>
+        ops.bitwiseXor(asBitwiseDType, otherArr.asBitwiseDType) as NDArray<T>,
   );
 
   /// Element-wise bitwise NOT (logical NOT for `Boolean` arrays).
@@ -6120,9 +6186,10 @@ extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   NDArray<T> operator ~() => ops.invert<T>(this);
 }
 
-/// Shift operators (`<<`, `>>`) for data types that implement
-/// [IntegerDType] (all signed and unsigned integer types).
-extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
+/// Shift operators (`<<`, `>>`) for data types whose real projection
+/// implements [IntegerDType] (all signed and unsigned integer types, and
+/// [AnyIntegerSpec]).
+extension NDArrayShift<T extends RealOf<IntegerDType>> on NDArray<T> {
   /// Element-wise left shift with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
@@ -6136,7 +6203,8 @@ extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
   NDArray<T> operator <<(Object? other) => _withSameDTypeOperand(
     other,
     '<<',
-    (otherArr) => ops.leftShift<T>(this, otherArr),
+    (otherArr) =>
+        ops.leftShift(asIntegerDType, otherArr.asIntegerDType) as NDArray<T>,
   );
 
   /// Element-wise arithmetic right shift with full broadcasting support.
@@ -6150,7 +6218,8 @@ extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
   NDArray<T> operator >>(Object? other) => _withSameDTypeOperand(
     other,
     '>>',
-    (otherArr) => ops.rightShift<T>(this, otherArr),
+    (otherArr) =>
+        ops.rightShift(asIntegerDType, otherArr.asIntegerDType) as NDArray<T>,
   );
 }
 

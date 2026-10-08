@@ -436,8 +436,11 @@ void main() {
           final lt300 = u8 < 300;
           final u64LtNeg1 = u64 < -1;
           final u64EqNeg1 = u64.eq(-1);
-          expect(() => less(i64, u64), throwsArgumentError);
-          expect(() => greater(u64, i64), throwsArgumentError);
+          expect(() => less(i64.asAnySpec, u64.asAnySpec), throwsArgumentError);
+          expect(
+            () => greater(u64.asAnySpec, i64.asAnySpec),
+            throwsArgumentError,
+          );
           try {
             expect(eq300.toList(), equals([false]));
             expect(ltNeg1.toList(), equals([false]));

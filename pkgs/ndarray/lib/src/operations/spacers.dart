@@ -142,7 +142,7 @@ NDArray<T> linspace<T extends DTypeTag>(
 ///
 /// **Memory Ownership & Lifetime:**
 /// - Allocates a new array on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
-NDArray<T> linspaceGrid<T extends DTypeTag>(
+NDArray<T> linspaceGrid<T extends SelfOf<DTypeTag>>(
   NDArray<T> start,
   NDArray<T> stop,
   int numSamples, {
@@ -185,7 +185,7 @@ NDArray<T> linspaceGrid<T extends DTypeTag>(
 /// **Memory Ownership & Lifetime:**
 /// - Allocates new arrays on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
 ({NDArray<T> samples, NDArray<T> step})
-linspaceGridWithStep<T extends DTypeTag>(
+linspaceGridWithStep<T extends SelfOf<DTypeTag>>(
   NDArray<T> start,
   NDArray<T> stop,
   int numSamples, {
@@ -211,7 +211,7 @@ linspaceGridWithStep<T extends DTypeTag>(
 }
 
 ({NDArray<T> samples, NDArray<T> step})
-_linspaceGridInternal<T extends DTypeTag>(
+_linspaceGridInternal<T extends SelfOf<DTypeTag>>(
   NDArray<T> start,
   NDArray<T> stop,
   int numSamples, {
@@ -716,7 +716,7 @@ NDArray<T> logspace<T extends DTypeTag>(
 /// - [axis]: The axis in the result to store the samples. Defaults to 0.
 /// - [dtype]: The type of the output array. If not provided, it defaults to
 ///   the resolved dtype between [start] and [stop].
-NDArray<T> logspaceGrid<T extends DTypeTag>(
+NDArray<T> logspaceGrid<T extends SelfOf<DTypeTag>>(
   NDArray<T> start,
   NDArray<T> stop,
   int numSamples, {
@@ -986,7 +986,7 @@ NDArray<T> geomspace<T extends DTypeTag>(
 /// - [axis]: The axis in the result to store the samples. Defaults to 0.
 /// - [dtype]: The type of the output array. If not provided, it defaults to
 ///   the resolved dtype between [start] and [stop].
-NDArray<T> geomspaceGrid<T extends DTypeTag>(
+NDArray<T> geomspaceGrid<T extends SelfOf<DTypeTag>>(
   NDArray<T> start,
   NDArray<T> stop,
   int numSamples, {
@@ -1059,19 +1059,20 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
       final absStart = abs(startBroad as NDArray<AnySpec>) as NDArray<T>;
       final absStop = abs(stopBroad as NDArray<AnySpec>) as NDArray<T>;
       final compDType =
-          (resolvedDType == DType.float16 || resolvedDType == DType.bfloat16)
-          ? DType.float64
-          : resolvedDType;
-      final ln10Arr = toNDArray<DTypeTag>(math.ln10, compDType);
-      final logStart = divideUntyped<DTypeTag, DTypeTag>(
-        log(absStart as NDArray<AnySpec>),
+          ((resolvedDType == DType.float16 || resolvedDType == DType.bfloat16)
+                  ? DType.float64
+                  : resolvedDType)
+              as DType<AnySpec>;
+      final ln10Arr = toNDArray<AnySpec>(math.ln10, compDType);
+      final logStart = divideUntyped<AnySpec, AnySpec>(
+        log(absStart as NDArray<AnySpec>).asAnySpec,
         ln10Arr,
       );
-      final logStop = divideUntyped<DTypeTag, DTypeTag>(
-        log(absStop as NDArray<AnySpec>),
+      final logStop = divideUntyped<AnySpec, AnySpec>(
+        log(absStop as NDArray<AnySpec>).asAnySpec,
         ln10Arr,
       );
-      final y = linspaceGrid<DTypeTag>(
+      final y = linspaceGrid<AnySpec>(
         logStart,
         logStop,
         numSamples,
@@ -1079,10 +1080,7 @@ NDArray<T> geomspaceGrid<T extends DTypeTag>(
         axis: actualAxis,
         dtype: compDType,
       );
-      final powResComp = power<DTypeTag>(
-        toNDArray<DTypeTag>(10.0, compDType),
-        y,
-      );
+      final powResComp = power<AnySpec>(toNDArray<AnySpec>(10.0, compDType), y);
       final powRes = powResComp.dtype == resolvedDType
           ? powResComp as NDArray<T>
           : castNDArray<T>(powResComp, resolvedDType);

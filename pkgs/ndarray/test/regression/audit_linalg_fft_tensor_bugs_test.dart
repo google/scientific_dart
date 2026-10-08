@@ -207,7 +207,10 @@ void main() {
           ], DType.int32);
           final bcastInt = broadcastTo(scalarInt, [4]);
           expect(bcastInt.strides[0], 0);
-          expect(() => matmul<DTypeTag>(bcastInt, vec), throwsArgumentError);
+          expect(
+            () => matmul(bcastInt.asAnySpec, vec.asAnySpec),
+            throwsArgumentError,
+          );
           final resMixed = matmul(bcastInt.astype(DType.float64), vec);
           expect(resMixed.getCell([]), closeTo(30.0, 1e-12));
           expect(scalarInt.getCell([0]), 3);
@@ -337,7 +340,10 @@ void main() {
           DType.float64,
         );
 
-        expect(() => matmul<DTypeTag>(aInt, bFloat), throwsArgumentError);
+        expect(
+          () => matmul(aInt.asAnySpec, bFloat.asAnySpec),
+          throwsArgumentError,
+        );
         final res = matmul(aInt.astype(DType.float64), bFloat);
         expect(res.getCell([0, 0]), closeTo(1.0, 1e-12));
         expect(aInt.getCell([1, 1]), 4);
@@ -514,7 +520,10 @@ void main() {
             const Slice(step: -1),
           ]);
 
-          expect(() => kron<DTypeTag>(aRev, bRev), throwsArgumentError);
+          expect(
+            () => kron(aRev.asAnySpec, bRev.asAnySpec),
+            throwsArgumentError,
+          );
           final aRevFloat = aInt.astype(DType.float64).slice([
             const Slice(step: -1),
             const Slice(step: -1),

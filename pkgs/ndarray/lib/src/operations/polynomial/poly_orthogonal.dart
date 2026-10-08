@@ -106,7 +106,7 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// - It is an error if [c] is invalid or [out] buffer mismatches.
 ///
 /// Reference: [NumPy chebval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html)
-NDArray<R> chebval<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> chebval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x,
   NDArray<T> c, {
   NDArray<R>? out,
@@ -127,7 +127,7 @@ NDArray<R> chebval<T extends InexactOf<R>, R extends DTypeTag>(
 /// equality is validated at runtime. See [chebval] for details.
 ///
 /// Reference: [NumPy legval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.legendre.legval.html)
-NDArray<R> legval<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> legval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x,
   NDArray<T> c, {
   NDArray<R>? out,
@@ -148,7 +148,7 @@ NDArray<R> legval<T extends InexactOf<R>, R extends DTypeTag>(
 /// equality is validated at runtime. See [chebval] for details.
 ///
 /// Reference: [NumPy hermval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.hermite.hermval.html)
-NDArray<R> hermval<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> hermval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x,
   NDArray<T> c, {
   NDArray<R>? out,
@@ -169,7 +169,7 @@ NDArray<R> hermval<T extends InexactOf<R>, R extends DTypeTag>(
 /// equality is validated at runtime. See [chebval] for details.
 ///
 /// Reference: [NumPy lagval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.laguerre.lagval.html)
-NDArray<R> lagval<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> lagval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x,
   NDArray<T> c, {
   NDArray<R>? out,

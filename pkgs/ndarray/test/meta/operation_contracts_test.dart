@@ -1934,26 +1934,20 @@ void main() {
 
             if (dtype.isInteger) {
               for (final intOp in <NDArray<T> Function(NDArray<T>, NDArray<T>)>[
+                (x, y) => gcd(x.asIntegerDType, y.asIntegerDType) as NDArray<T>,
+                (x, y) => lcm(x.asIntegerDType, y.asIntegerDType) as NDArray<T>,
                 (x, y) =>
-                    gcd<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                    bitwiseAnd(x.asBitwiseDType, y.asBitwiseDType)
                         as NDArray<T>,
                 (x, y) =>
-                    lcm<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                    bitwiseOr(x.asBitwiseDType, y.asBitwiseDType) as NDArray<T>,
+                (x, y) =>
+                    bitwiseXor(x.asBitwiseDType, y.asBitwiseDType)
                         as NDArray<T>,
                 (x, y) =>
-                    bitwiseAnd<BitwiseDType>(x.asBitwiseDType, y.asBitwiseDType)
-                        as NDArray<T>,
+                    leftShift(x.asIntegerDType, y.asIntegerDType) as NDArray<T>,
                 (x, y) =>
-                    bitwiseOr<BitwiseDType>(x.asBitwiseDType, y.asBitwiseDType)
-                        as NDArray<T>,
-                (x, y) =>
-                    bitwiseXor<BitwiseDType>(x.asBitwiseDType, y.asBitwiseDType)
-                        as NDArray<T>,
-                (x, y) =>
-                    leftShift<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
-                        as NDArray<T>,
-                (x, y) =>
-                    rightShift<IntegerDType>(x.asIntegerDType, y.asIntegerDType)
+                    rightShift(x.asIntegerDType, y.asIntegerDType)
                         as NDArray<T>,
               ]) {
                 final cRes = intOp(aContig, bContig);
@@ -1963,10 +1957,8 @@ void main() {
                 }
               }
 
-              final cInv =
-                  invert<BitwiseDType>(aContig.asBitwiseDType) as NDArray<T>;
-              final sInv =
-                  invert<BitwiseDType>(aStrided.asBitwiseDType) as NDArray<T>;
+              final cInv = invert(aContig.asBitwiseDType) as NDArray<T>;
+              final sInv = invert(aStrided.asBitwiseDType) as NDArray<T>;
               for (var i = 0; i < n; i++) {
                 expect(sInv[[i]], equals(cInv[[i]]));
               }
@@ -2208,13 +2200,10 @@ void main() {
       DType.boolean,
     ];
     final ops = <String, NDArray Function(NDArray, NDArray)>{
-      'add': (a, b) => add<DTypeTag>(a, b),
-      'subtract': (a, b) => subtract<DTypeTag>(a, b),
-      'multiply': (a, b) => multiply<DTypeTag>(a, b),
-      'divide': (a, b) => divide<AnySpec, DTypeTag>(
-        a as NDArray<AnySpec>,
-        b as NDArray<AnySpec>,
-      ),
+      'add': (a, b) => add(a.asAnySpec, b.asAnySpec),
+      'subtract': (a, b) => subtract(a.asAnySpec, b.asAnySpec),
+      'multiply': (a, b) => multiply(a.asAnySpec, b.asAnySpec),
+      'divide': (a, b) => divide(a.asAnySpec, b.asAnySpec),
     };
 
     NDArray make(DType dtype, List<int> values) => switch (dtype) {

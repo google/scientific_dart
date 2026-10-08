@@ -117,8 +117,7 @@ void main() {
         final b64 = NDArray.fromList([3, 4], [2], DType.int64);
 
         expect(
-          () =>
-              bitwiseAnd<BitwiseDType>(a32.asBitwiseDType, b64.asBitwiseDType),
+          () => bitwiseAnd(a32.asBitwiseDType, b64.asBitwiseDType),
           throwsArgumentError,
         );
         final res = bitwiseAnd(a32.astype(DType.int64), b64);
@@ -145,13 +144,10 @@ void main() {
         final b = NDArray.fromList([3, 4], [2], DType.int32);
 
         expect(
-          () => bitwiseAnd<BitwiseDType>(a.asBitwiseDType, b.asBitwiseDType),
+          () => bitwiseAnd(a.asBitwiseDType, b.asBitwiseDType),
           throwsArgumentError,
         );
-        expect(
-          () => invert<BitwiseDType>(a.asBitwiseDType),
-          throwsArgumentError,
-        );
+        expect(() => invert(a.asBitwiseDType), throwsArgumentError);
       });
     });
 
@@ -510,7 +506,7 @@ void main() {
             2,
           ], DType.float64);
 
-          expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+          expect(() => add(a.asAnySpec, b.asAnySpec), throwsArgumentError);
           final c = add(a, b.astype(DType.complex128));
           expect(c.dtype, DType.complex128);
           expect(c.shape, [2]);
@@ -529,7 +525,7 @@ void main() {
           b[[0]] = Complex(1.0, 2.0);
           b[[1]] = Complex(3.0, 4.0);
 
-          expect(() => subtract<DTypeTag>(a, b), throwsArgumentError);
+          expect(() => subtract(a.asAnySpec, b.asAnySpec), throwsArgumentError);
           final c = subtract(a.astype(DType.complex128), b);
           expect(c.dtype, DType.complex128);
           expect(c.toList(), [Complex(9.0, -2.0), Complex(17.0, -4.0)]);
@@ -547,7 +543,7 @@ void main() {
           b[[0]] = Complex(4.0, 5.0);
           b[[1]] = Complex(1.0, -2.0);
 
-          expect(() => multiply<DTypeTag>(a, b), throwsArgumentError);
+          expect(() => multiply(a.asAnySpec, b.asAnySpec), throwsArgumentError);
           final c = multiply(a.astype(DType.complex128), b);
           expect(c.dtype, DType.complex128);
           expect(c.toList(), [Complex(8.0, 10.0), Complex(3.0, -6.0)]);
@@ -1061,8 +1057,14 @@ void main() {
 
         // Float64 / boolean
         final f64 = NDArray.fromList([0.0, 2.5, 0.0], [3], DType.float64);
-        expect(() => logicalAnd(f64, mask), throwsArgumentError);
-        expect(() => logicalAnd(mask, f64), throwsArgumentError);
+        expect(
+          () => logicalAnd(f64.asAnySpec, mask.asAnySpec),
+          throwsArgumentError,
+        );
+        expect(
+          () => logicalAnd(mask.asAnySpec, f64.asAnySpec),
+          throwsArgumentError,
+        );
         final resF1 = logicalAnd(f64.astype(DType.boolean), mask);
         expect(resF1.dtype, DType.boolean);
         expect(resF1.toList(), [false, true, false]);
@@ -1075,8 +1077,14 @@ void main() {
         c128[[0]] = Complex(0.0, 0.0); // false
         c128[[1]] = Complex(1.0, -1.0); // true
         c128[[2]] = Complex(0.0, 0.0);
-        expect(() => logicalAnd(c128, mask), throwsArgumentError);
-        expect(() => logicalAnd(mask, c128), throwsArgumentError);
+        expect(
+          () => logicalAnd(c128.asAnySpec, mask.asAnySpec),
+          throwsArgumentError,
+        );
+        expect(
+          () => logicalAnd(mask.asAnySpec, c128.asAnySpec),
+          throwsArgumentError,
+        );
         final resC1 = logicalAnd(c128.astype(DType.boolean), mask);
         expect(resC1.dtype, DType.boolean);
         expect(resC1.toList(), [false, true, false]);
@@ -1086,8 +1094,14 @@ void main() {
 
         // Int32 / boolean
         final i32 = NDArray.fromList([0, 5, 0], [3], DType.int32);
-        expect(() => logicalAnd(i32, mask), throwsArgumentError);
-        expect(() => logicalAnd(mask, i32), throwsArgumentError);
+        expect(
+          () => logicalAnd(i32.asAnySpec, mask.asAnySpec),
+          throwsArgumentError,
+        );
+        expect(
+          () => logicalAnd(mask.asAnySpec, i32.asAnySpec),
+          throwsArgumentError,
+        );
         final resI1 = logicalAnd(i32.astype(DType.boolean), mask);
         expect(resI1.dtype, DType.boolean);
         expect(resI1.toList(), [false, true, false]);
@@ -1122,7 +1136,7 @@ void main() {
         final a = NDArray.fromList([Complex(1.0, 1.0)], [1], DType.complex64);
         final b = NDArray.fromList([2.0], [1], DType.float64);
 
-        expect(() => add<DTypeTag>(a, b), throwsArgumentError);
+        expect(() => add(a.asAnySpec, b.asAnySpec), throwsArgumentError);
         final c = addAs(a, b, DType.complex128);
         expect(c.dtype, DType.complex128);
         expect(c.getCell([0]).real, 3.0);
@@ -1140,7 +1154,14 @@ void main() {
 
         // 1. add() contiguous shape mismatch
         expect(() => add(a, b, out: incompatibleOut), throwsArgumentError);
-        expect(() => add(a, b, out: incompatibleDTypeOut), throwsArgumentError);
+        expect(
+          () => add(
+            a.asAnySpec,
+            b.asAnySpec,
+            out: incompatibleDTypeOut.asAnySpec,
+          ),
+          throwsArgumentError,
+        );
 
         // 2. add() broadcast shape mismatch
         final broadcastA = NDArray.ones([1, 3], DType.float64);
@@ -1166,27 +1187,27 @@ void main() {
         final i32 = NDArray.fromList([4], [1], DType.int32);
 
         // Mixed dtypes are rejected on add(); addAs() and explicit astype work
-        expect(() => add<DTypeTag>(f64, f32), throwsArgumentError);
+        expect(() => add(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
         final r1 = addAs(f64, f32, DType.float64);
         expect(r1.dtype, DType.float64);
         expect(r1.toList(), [3.0]);
 
-        expect(() => add<DTypeTag>(f32, i64), throwsArgumentError);
+        expect(() => add(f32.asAnySpec, i64.asAnySpec), throwsArgumentError);
         final r2 = addAs(f32, i64, DType.float64);
         expect(r2.dtype, DType.float64);
         expect(r2.toList(), [5.0]);
 
-        expect(() => add<DTypeTag>(f32, i32), throwsArgumentError);
+        expect(() => add(f32.asAnySpec, i32.asAnySpec), throwsArgumentError);
         final r2b = addAs(f32, i32, DType.float64);
         expect(r2b.dtype, DType.float64);
         expect(r2b.toList(), [6.0]);
 
-        expect(() => add<DTypeTag>(i64, i32), throwsArgumentError);
+        expect(() => add(i64.asAnySpec, i32.asAnySpec), throwsArgumentError);
         final r3 = addAs(i64, i32, DType.int64);
         expect(r3.dtype, DType.int64);
         expect(r3.toList(), [7]);
 
-        expect(() => add<DTypeTag>(i32, f64), throwsArgumentError);
+        expect(() => add(i32.asAnySpec, f64.asAnySpec), throwsArgumentError);
         final r4 = addAs(i32, f64, DType.float64);
         expect(r4.dtype, DType.float64);
         expect(r4.toList(), [5.0]);

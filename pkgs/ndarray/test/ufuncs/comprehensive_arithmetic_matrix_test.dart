@@ -160,9 +160,9 @@ void main() {
               final b = createArray([2, 2], dtB, seedOffset: 2);
 
               if (dtA != dtB) {
-                expect(() => add<DTypeTag>(a, b), throwsArgumentError);
-                expect(() => subtract<DTypeTag>(a, b), throwsArgumentError);
-                expect(() => multiply<DTypeTag>(a, b), throwsArgumentError);
+                expect(() => add<AnySpec>(a, b), throwsArgumentError);
+                expect(() => subtract<AnySpec>(a, b), throwsArgumentError);
+                expect(() => multiply<AnySpec>(a, b), throwsArgumentError);
                 expect(
                   () => divide<AnySpec, DTypeTag>(a, b),
                   throwsArgumentError,
@@ -170,19 +170,19 @@ void main() {
                 continue;
               }
 
-              final sum = add<DTypeTag>(a, b);
+              final sum = add<AnySpec>(a, b);
               expect(sum.shape, [2, 2]);
               expect(sum.dtype, dtA);
 
               if (dtA == DType.boolean) {
-                expect(() => subtract<DTypeTag>(a, b), throwsUnsupportedError);
+                expect(() => subtract<AnySpec>(a, b), throwsUnsupportedError);
               } else {
-                final diff = subtract<DTypeTag>(a, b);
+                final diff = subtract<AnySpec>(a, b);
                 expect(diff.shape, [2, 2]);
                 expect(diff.dtype, resolveDType(dtA, dtB));
               }
 
-              final prod = multiply<DTypeTag>(a, b);
+              final prod = multiply<AnySpec>(a, b);
               expect(prod.shape, [2, 2]);
               expect(prod.dtype, dtA);
 
@@ -300,7 +300,7 @@ void main() {
           );
           final outBuffer = NDArray<Float64>.create([2, 2], DType.float64);
 
-          final res = add<DTypeTag>(a, b, out: outBuffer);
+          final res = add<Float64>(a, b, out: outBuffer);
           expect(identical(res, outBuffer), true);
           expect(outBuffer.toList(), [11.0, 22.0, 33.0, 44.0]);
 
@@ -310,7 +310,7 @@ void main() {
           expect(stridedOut.isContiguous, false);
           expect(stridedOut.shape, [2, 2]);
 
-          final resStrided = add<DTypeTag>(a, b, out: stridedOut);
+          final resStrided = add<Float64>(a, b, out: stridedOut);
           expect(resStrided.toList(), [11.0, 22.0, 33.0, 44.0]);
 
           // Incompatible shape throws ArgumentError
@@ -319,14 +319,18 @@ void main() {
             2,
           ], DType.float64);
           expect(
-            () => add<DTypeTag>(a, b, out: invalidShapeOut),
+            () => add<Float64>(a, b, out: invalidShapeOut),
             throwsArgumentError,
           );
 
           // Incompatible dtype throws ArgumentError
           final invalidDTypeOut = NDArray<Int32>.create([2, 2], DType.int32);
           expect(
-            () => add<DTypeTag>(a, b, out: invalidDTypeOut),
+            () => add<AnySpec>(
+              a.asAnySpec,
+              b.asAnySpec,
+              out: invalidDTypeOut.asAnySpec,
+            ),
             throwsArgumentError,
           );
         });
@@ -424,7 +428,7 @@ void main() {
   group("Workstream 1: Specialized Binary Mathematical Functions", () {
     test("floorDivide (and BinaryOp.floorDivide) across numeric DTypes", () {
       NDArray.scope(() {
-        final intTypes = [
+        final intTypes = <DType<AnyIntegerSpec>>[
           DType.int64,
           DType.int32,
           DType.int16,
@@ -661,7 +665,7 @@ void main() {
 
     test("gcd and lcm on integer DTypes and edge cases", () {
       NDArray.scope(() {
-        final intDTypes = <DType<IntegerDType>>[
+        final intDTypes = <DType<AnyIntegerSpec>>[
           DType.int64,
           DType.int32,
           DType.int16,

@@ -199,7 +199,10 @@ void main() {
         final badSorter = NDArray<Int32>.fromList([0, 99, 1], [3], DType.int32);
 
         // searchsorted mismatched dtype
-        expect(() => searchsorted<DTypeTag>(a, vInt), throwsArgumentError);
+        expect(
+          () => searchsorted(a.asAnySpec, vInt.asAnySpec),
+          throwsArgumentError,
+        );
         // searchsorted out-of-bounds sorter index
         expect(
           () => searchsorted(a, a, sorter: badSorter),

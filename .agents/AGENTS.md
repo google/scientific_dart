@@ -1,11 +1,12 @@
 # Scientific Dart Workspace Guidelines
 
 ## 1. API Design & Static Typing (`DTypeTag` / `DTypeSpec`)
-* **Strong typing with `DTypeTag` & `DTypeSpec`:** Avoid widening argument or return types to bare `NDArray` / `NDArray<DTypeTag>`. Use:
-  - `<T extends DTypeTag>` for dtype-preserving operations,
+* **Strong typing with `DTypeTag`, `SelfOf`, & `DTypeSpec`:** Avoid widening argument or return types to bare `NDArray` / `NDArray<DTypeTag>`. Use:
+  - `<T extends DTypeTag>` for single-input dtype-preserving operations,
+  - `<T extends SelfOf<DTypeTag>>` (or `SelfOf<...Of<R>>`) for same-dtype binary and multi-array operations so that distinct concrete dtype tags (`LUB = DTypeTag`, `BitwiseDType`, or `IntegerDType`, none of which implement `SelfOf`) are rejected symmetrically at compile time while keeping a single type parameter `<T>`,
   - Single-slot projection interfaces (`RealOf<R>`, `ElementOf<E>`, `RealFloatOf<R>`, `ComplexOf<R>`, `InexactOf<R>`, `AccumulatorOf<R>`, `DoublePrecisionOf<R>`, `DivideOf<R>`) when the output dtype is a deterministic function of the input dtype (e.g., real part `RealOf`, element access `ElementOf`, float computation `RealFloatOf`, complex promotion `ComplexOf`, math/inexact promotion `InexactOf`, sum/product accumulation `AccumulatorOf`, double promotion `DoublePrecisionOf`, true division `DivideOf`),
-  - Non-generic capability markers (`BitwiseDType`, `IntegerDType`) which pin constant projections for bitwise/shift-capable types and preserve them across generic code and least-upper-bound (LUB) operations,
-  - The 8-slot projection table `DTypeSpec<RealTag, Element, RealFloatTag, ComplexTag, InexactTag, AccumulatorTag, DoublePrecisionTag, DivideTag>` (which implements all eight single-slot interfaces) only for functions requiring two distinct projections of one input (`slogdet`, `svd`, `eigh`), or
+  - Non-generic capability markers (`BitwiseDType`, `IntegerDType`) and their `DTypeSpec` aliases (`AnyBitwiseSpec`, `AnyIntegerSpec`) which pin constant projections for bitwise/shift-capable types (`RealOf<BitwiseDType>` / `RealOf<IntegerDType>`) and preserve them across generic code and least-upper-bound (LUB) operations,
+  - The 8-slot projection table `DTypeSpec<RealTag, Element, RealFloatTag, ComplexTag, InexactTag, AccumulatorTag, DoublePrecisionTag, DivideTag>` (which implements `SelfOf` and all eight single-slot interfaces) only for functions requiring two distinct projections of one input (`slogdet`, `svd`, `eigh`), or
   - a concrete tag (`NDArray<Float64>`, `NDArray<Int64>`, `NDArray<Boolean>`, etc.) when the output dtype is fixed.
 * **Explicit dtype conversions:** Keep dtype conversions explicit. Unless an operation's contract specifies promotion (such as transcendental math promoting integers/half-floats via `InexactTag`, or `Boolean` reductions accumulating into `Int64` via `AccumulatorTag`), preserve the input dtype.
 * **64-bit index & count outputs:** Operations that return indices or counts (`argmax`, `argmin`, `argsort`, `argpartition`, `searchsorted`, `nonzero`, `argwhere`, `flatnonzero`, `count_nonzero`, `digitize`, `ravel_multi_index`, `unravel_index`, `unique` indices/counts) must always return `NDArray<Int64>`.

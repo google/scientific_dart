@@ -238,7 +238,7 @@ void main() {
     DType.boolean,
   ];
 
-  const integerDTypes = <DType<IntegerDType>>[
+  const integerDTypes = <DType<AnyIntegerSpec>>[
     DType.int8,
     DType.int16,
     DType.int32,
@@ -882,7 +882,7 @@ void main() {
     test(
       'Integer boundary values [0, 1, -1, minVal, maxVal], INT_MIN / -1, and div-by-zero',
       () {
-        final signedSpecs = <(DType<IntegerDType>, int, int)>[
+        final signedSpecs = <(DType<AnyIntegerSpec>, int, int)>[
           (DType.int8, -128, 127),
           (DType.int16, -32768, 32767),
           (DType.int32, -2147483648, 2147483647),

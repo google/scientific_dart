@@ -23,9 +23,9 @@ void main() {
   group('Memory Safety Core Tests', () {
     group('Scope Tests', () {
       test('Scope automatically disposes arrays', () {
-        late NDArray a;
-        late NDArray b;
-        late NDArray c;
+        late NDArray<Float64> a;
+        late NDArray<Float64> b;
+        late NDArray<Float64> c;
 
         NDArray.scope(() {
           a = NDArray.zeros([10], DType.float64);
@@ -43,8 +43,8 @@ void main() {
       });
 
       test('detachFromScope() preserves array after scope ends', () {
-        late NDArray a;
-        late NDArray result;
+        late NDArray<Float64> a;
+        late NDArray<Float64> result;
 
         result = NDArray.scope(() {
           a = NDArray.zeros([10], DType.float64);
@@ -907,11 +907,11 @@ void main() {
       });
 
       test('kron disposes intermediate cast arrays within scope', () {
-        late NDArray result;
+        late NDArray<Float64> result;
         NDArray.scope(() {
           final a = NDArray.fromList([1, 2], [2], DType.int32);
           final b = NDArray.fromList([0.5, 1.5], [2], DType.float64);
-          expect(() => kron<DTypeTag>(a, b), throwsArgumentError);
+          expect(() => kron(a.asAnySpec, b.asAnySpec), throwsArgumentError);
           result = kron(a.astype(DType.float64), b);
           expect(result.isDisposed, isFalse);
           expect(result.dtype, DType.float64);

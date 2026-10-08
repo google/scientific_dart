@@ -1379,7 +1379,10 @@ void main() {
 
           // Mismatch shape/DType throws ArgumentError
           expect(() => stack([a, wrongShape]), throwsArgumentError);
-          expect(() => stack([a, wrongDType]), throwsArgumentError);
+          expect(
+            () => stack([a.asAnySpec, wrongDType.asAnySpec]),
+            throwsArgumentError,
+          );
 
           // Out of bounds axis throws RangeError
           expect(() => stack([a, a], axis: 5), throwsRangeError);

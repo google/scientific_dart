@@ -26,18 +26,8 @@ void main() async {
       await criterion(
         'NDArray Float32 SIMD Additions Fast Path Benchmark',
         (c) {
-          final a = linspace<DTypeTag>(
-            1.0,
-            100.0,
-            arraySize,
-            dtype: DType.float32,
-          );
-          final b = linspace<DTypeTag>(
-            1.0,
-            100.0,
-            arraySize,
-            dtype: DType.float32,
-          );
+          final a = linspace(1.0, 100.0, arraySize, dtype: DType.float32);
+          final b = linspace(1.0, 100.0, arraySize, dtype: DType.float32);
 
           final viewA = a.reshape([arraySize ~/ 2, 2]).transposed;
           final viewB = b.reshape([arraySize ~/ 2, 2]).transposed;

@@ -967,7 +967,7 @@ void main() {
             2,
           ], DType.int32);
 
-          expect(() => outer(a, b), throwsArgumentError);
+          expect(() => outer(a.asAnySpec, b.asAnySpec), throwsArgumentError);
           final res = outer(a, b.astype(DType.float64));
           expect(res.shape, [3, 2]);
           expect(res.dtype, DType.float64);

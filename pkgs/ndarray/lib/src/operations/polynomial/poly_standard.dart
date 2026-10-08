@@ -82,7 +82,7 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// - It is an error if [out] shape or dtype is incompatible with [x].
 ///
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
-NDArray<R> polyval<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> polyval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> c,
   NDArray<T> x, {
   NDArray<R>? out,
@@ -314,7 +314,7 @@ NDArray<R> polyval<T extends InexactOf<R>, R extends DTypeTag>(
 /// - It is an error if [out] shape or dtype is incompatible.
 ///
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
-NDArray<R> polyfit<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> polyfit<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x,
   NDArray<T> y,
   int deg, {

@@ -27,9 +27,9 @@ void main() {
           DType.float64,
         );
         expect(
-          () => einsum<DTypeTag>(EinsumSubscripts.parse('ij,jk->ik'), [
-            aInt,
-            bFloat,
+          () => einsum(EinsumSubscripts.parse('ij,jk->ik'), [
+            aInt.asAnySpec,
+            bFloat.asAnySpec,
           ]),
           throwsArgumentError,
         );

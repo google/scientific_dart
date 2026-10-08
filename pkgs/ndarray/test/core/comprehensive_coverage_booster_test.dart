@@ -50,7 +50,7 @@ void main() {
       DType.uint8,
     ];
 
-    final integerDTypes = <DType<IntegerDType>>[
+    final integerDTypes = <DType<AnyIntegerSpec>>[
       DType.int64,
       DType.int32,
       DType.int16,
@@ -235,7 +235,7 @@ void main() {
       'Bitwise and Logical operators across integer and boolean DTypes (Contiguous & Strided)',
       () {
         NDArray.scope(() {
-          for (final dt in <DType<IntegerDType>>[
+          for (final dt in <DType<AnyIntegerSpec>>[
             DType.int64,
             DType.int32,
             DType.int16,
@@ -274,7 +274,7 @@ void main() {
             }
           }
 
-          for (final dt in [...integerDTypes, DType.boolean]) {
+          for (final dt in <DType<AnySpec>>[...integerDTypes, DType.boolean]) {
             for (final isStrided in [false, true]) {
               final a = createArray(dt, [2, 2], strided: isStrided);
               final b = createArray(dt, [2, 2], strided: isStrided);

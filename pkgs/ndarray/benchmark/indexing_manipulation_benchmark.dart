@@ -107,8 +107,8 @@ void main() async {
       });
 
       c.group('3. Array Assembly & Joining', () {
-        final blockA = NDArray<DTypeTag>.ones([250, 500], DType.float64);
-        final blockB = NDArray<DTypeTag>.zeros([250, 500], DType.float64);
+        final blockA = NDArray.ones([250, 500], DType.float64);
+        final blockB = NDArray.zeros([250, 500], DType.float64);
 
         c.bench(
           'concatenate([A, B], axis=0) [250x500 + 250x500 -> 500x500]',

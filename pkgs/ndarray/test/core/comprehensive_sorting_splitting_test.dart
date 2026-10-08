@@ -505,9 +505,17 @@ void main() {
             dtype,
           );
           final v = NDArray.fromList([5.0, 20.0, 35.0, 60.0], [4], dtype);
-          final idxLeft = searchsorted(a, v, side: SearchSide.left);
+          final idxLeft = searchsorted(
+            a.asAnySpec,
+            v.asAnySpec,
+            side: SearchSide.left,
+          );
           expect(idxLeft.toList(), [0, 1, 3, 5]);
-          final idxRight = searchsorted(a, v, side: SearchSide.right);
+          final idxRight = searchsorted(
+            a.asAnySpec,
+            v.asAnySpec,
+            side: SearchSide.right,
+          );
           expect(idxRight.toList(), [0, 2, 3, 5]);
         }
 
@@ -523,9 +531,17 @@ void main() {
         ]) {
           final a = NDArray.fromList([10, 20, 30, 40, 50], [5], dtype);
           final v = NDArray.fromList([5, 20, 35, 60], [4], dtype);
-          final idxLeft = searchsorted(a, v, side: SearchSide.left);
+          final idxLeft = searchsorted(
+            a.asAnySpec,
+            v.asAnySpec,
+            side: SearchSide.left,
+          );
           expect(idxLeft.toList(), [0, 1, 3, 5]);
-          final idxRight = searchsorted(a, v, side: SearchSide.right);
+          final idxRight = searchsorted(
+            a.asAnySpec,
+            v.asAnySpec,
+            side: SearchSide.right,
+          );
           expect(idxRight.toList(), [0, 2, 3, 5]);
         }
 
@@ -545,7 +561,11 @@ void main() {
             [2],
             dtype,
           );
-          final idxLeft = searchsorted(a, v, side: SearchSide.left);
+          final idxLeft = searchsorted(
+            a.asAnySpec,
+            v.asAnySpec,
+            side: SearchSide.left,
+          );
           expect(idxLeft.toList(), [1, 2]);
         }
 

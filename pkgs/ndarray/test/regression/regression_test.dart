@@ -191,7 +191,7 @@ void main() {
       final a = NDArray<Uint8>.fromList([4, 5, 6], [3], DType.uint8);
       final b = NDArray<Int16>.fromList([2, 2, 2], [3], DType.int16);
 
-      expect(() => floorDivide<DTypeTag>(a, b), throwsArgumentError);
+      expect(() => floorDivide(a.asAnySpec, b.asAnySpec), throwsArgumentError);
       final aCast = castNDArray(a, DType.int16);
       final c = floorDivide(aCast, b);
       expect(c.toList(), [2, 2, 3]);
@@ -203,7 +203,7 @@ void main() {
       final a = NDArray<Uint8>.fromList([5, 6, 7], [3], DType.uint8);
       final b = NDArray<Float64>.fromList([2.0, 2.0, 2.0], [3], DType.float64);
 
-      expect(() => floorDivide<DTypeTag>(a, b), throwsArgumentError);
+      expect(() => floorDivide(a.asAnySpec, b.asAnySpec), throwsArgumentError);
       final aCast = castNDArray(a, DType.float64);
       final c = floorDivide(aCast, b);
       expect(c.toList(), [2.0, 3.0, 3.0]);
@@ -215,7 +215,7 @@ void main() {
       final a = NDArray<Uint8>.fromList([5, 6, 7], [3], DType.uint8);
       final b = NDArray<Int16>.fromList([3, 3, 3], [3], DType.int16);
 
-      expect(() => remainder<DTypeTag>(a, b), throwsArgumentError);
+      expect(() => remainder(a.asAnySpec, b.asAnySpec), throwsArgumentError);
       final aCast = castNDArray(a, DType.int16);
       final c = remainder(aCast, b);
       expect(c.toList(), [2, 0, 1]);
@@ -227,7 +227,7 @@ void main() {
       final a = NDArray<Uint8>.fromList([5, 6, 7], [3], DType.uint8);
       final b = NDArray<Float64>.fromList([3.0, 3.0, 3.0], [3], DType.float64);
 
-      expect(() => remainder<DTypeTag>(a, b), throwsArgumentError);
+      expect(() => remainder(a.asAnySpec, b.asAnySpec), throwsArgumentError);
       final aCast = castNDArray(a, DType.float64);
       final c = remainder(aCast, b);
       expect(c.toList(), [2.0, 0.0, 1.0]);

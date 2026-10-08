@@ -150,10 +150,10 @@ final class _CanaryBuffer<T extends DTypeTag> {
   }
 }
 
-NDArray<DTypeTag> _buildMatrix(
+NDArray<AnySpec> _buildMatrix(
   int rows,
   int cols,
-  DType dtype,
+  DType<AnySpec> dtype,
   _NonFiniteKind kind,
 ) {
   final size = rows * cols;
@@ -207,9 +207,9 @@ NDArray<DTypeTag> _buildMatrix(
   }
 }
 
-NDArray<DTypeTag> _buildVector(
+NDArray<AnySpec> _buildVector(
   int length,
-  DType dtype, {
+  DType<AnySpec> dtype, {
   _NonFiniteKind? kind,
 }) {
   final values = List<double>.generate(length, (i) => i + 1.0);
@@ -435,7 +435,7 @@ void main() {
   });
 
   group('Linalg non-finite & singular cross-cutting contracts', () {
-    const dtypes = <DType>[
+    const dtypes = <DType<AnySpec>>[
       DType.float64,
       DType.float32,
       DType.complex128,
@@ -552,7 +552,7 @@ void main() {
               final canaryLogdet = _CanaryBuffer.create(<int>[], realDType);
               try {
                 final res = slogdet(
-                  a as NDArray<AnySpec>,
+                  a,
                   outSign: canarySign.view,
                   outLogdet: canaryLogdet.view,
                 );
@@ -582,7 +582,7 @@ void main() {
               try {
                 if (kind == _NonFiniteKind.singular) {
                   final res = eig(
-                    a as NDArray<AnySpec>,
+                    a,
                     out: (
                       eigenvalues: canaryW.view,
                       eigenvectors: canaryVR.view,
@@ -593,7 +593,7 @@ void main() {
                 } else {
                   expect(
                     () => eig(
-                      a as NDArray<AnySpec>,
+                      a,
                       out: (
                         eigenvalues: canaryW.view,
                         eigenvectors: canaryVR.view,
@@ -619,11 +619,11 @@ void main() {
               final canaryW = _CanaryBuffer.create([n], compDType);
               try {
                 if (kind == _NonFiniteKind.singular) {
-                  final res = eigvals(a as NDArray<AnySpec>, out: canaryW.view);
+                  final res = eigvals(a, out: canaryW.view);
                   expect(res.shape, equals([n]));
                 } else {
                   expect(
-                    () => eigvals(a as NDArray<AnySpec>, out: canaryW.view),
+                    () => eigvals(a, out: canaryW.view),
                     throwsA(isA<LinAlgException>()),
                   );
                 }
@@ -644,7 +644,7 @@ void main() {
               try {
                 if (kind == _NonFiniteKind.singular) {
                   final res = eigh(
-                    a as NDArray<AnySpec>,
+                    a,
                     outEigenvalues: canaryW.view,
                     outEigenvectors: canaryV.view,
                   );
@@ -653,7 +653,7 @@ void main() {
                 } else {
                   expect(
                     () => eigh(
-                      a as NDArray<AnySpec>,
+                      a,
                       outEigenvalues: canaryW.view,
                       outEigenvectors: canaryV.view,
                     ),
@@ -677,14 +677,11 @@ void main() {
               final canaryW = _CanaryBuffer.create([n], realDType);
               try {
                 if (kind == _NonFiniteKind.singular) {
-                  final res = eigvalsh(
-                    a as NDArray<AnySpec>,
-                    out: canaryW.view,
-                  );
+                  final res = eigvalsh(a, out: canaryW.view);
                   expect(res.shape, equals([n]));
                 } else {
                   expect(
-                    () => eigvalsh(a as NDArray<AnySpec>, out: canaryW.view),
+                    () => eigvalsh(a, out: canaryW.view),
                     throwsA(isA<LinAlgException>()),
                   );
                 }
@@ -727,14 +724,14 @@ void main() {
               try {
                 if (kind == _NonFiniteKind.singular) {
                   final res = svd(
-                    a as NDArray<AnySpec>,
+                    a,
                     out: (u: canaryU.view, s: canaryS.view, vh: canaryVh.view),
                   );
                   expect(res.s.shape, equals([n]));
                 } else {
                   expect(
                     () => svd(
-                      a as NDArray<AnySpec>,
+                      a,
                       out: (
                         u: canaryU.view,
                         s: canaryS.view,
@@ -886,28 +883,16 @@ void main() {
                       kind == _NonFiniteKind.allNaN) {
                     if (isSvdNorm) {
                       expect(
-                        () => cond(
-                          a as NDArray<AnySpec>,
-                          p: p,
-                          out: canaryOut.view,
-                        ),
+                        () => cond(a, p: p, out: canaryOut.view),
                         throwsA(isA<LinAlgException>()),
                       );
                     } else {
-                      final res = cond(
-                        a as NDArray<AnySpec>,
-                        p: p,
-                        out: canaryOut.view,
-                      );
+                      final res = cond(a, p: p, out: canaryOut.view);
                       expect((res.scalar as double).isNaN, isTrue);
                     }
                   } else if (kind == _NonFiniteKind.posInf ||
                       kind == _NonFiniteKind.negInf) {
-                    final res = cond(
-                      a as NDArray<AnySpec>,
-                      p: p,
-                      out: canaryOut.view,
-                    );
+                    final res = cond(a, p: p, out: canaryOut.view);
                     final v = res.scalar as double;
                     if (p == -1 || p == double.negativeInfinity) {
                       // min row/col sum can be finite while inv has 0 -> 0.0 or inf.
@@ -916,11 +901,7 @@ void main() {
                       expect(v, equals(double.infinity));
                     }
                   } else if (kind == _NonFiniteKind.singular) {
-                    final res = cond(
-                      a as NDArray<AnySpec>,
-                      p: p,
-                      out: canaryOut.view,
-                    );
+                    final res = cond(a, p: p, out: canaryOut.view);
                     final v = res.scalar as double;
                     if (p == -2) {
                       expect(v, equals(0.0));
@@ -947,27 +928,15 @@ void main() {
                   if (kind == _NonFiniteKind.singleNaN ||
                       kind == _NonFiniteKind.allNaN) {
                     expect(
-                      () => norm(
-                        a as NDArray<AnySpec>,
-                        ord: ord,
-                        out: canaryOut.view,
-                      ),
+                      () => norm(a, ord: ord, out: canaryOut.view),
                       throwsA(isA<LinAlgException>()),
                     );
                   } else if (kind == _NonFiniteKind.posInf ||
                       kind == _NonFiniteKind.negInf) {
-                    final res = norm(
-                      a as NDArray<AnySpec>,
-                      ord: ord,
-                      out: canaryOut.view,
-                    );
+                    final res = norm(a, ord: ord, out: canaryOut.view);
                     expect((res.scalar as double).isNaN, isTrue);
                   } else {
-                    final res = norm(
-                      a as NDArray<AnySpec>,
-                      ord: ord,
-                      out: canaryOut.view,
-                    );
+                    final res = norm(a, ord: ord, out: canaryOut.view);
                     expect((res.scalar as double).isFinite, isTrue);
                   }
                   canaryOut.verifySentinelsIntact('norm ord=$ord ($label)');
@@ -1013,7 +982,7 @@ void main() {
               try {
                 if (kind == _NonFiniteKind.singular) {
                   final res = hessenberg(
-                    a as NDArray<AnySpec>,
+                    a,
                     outH: canaryH.view,
                     outQ: canaryQ.view,
                   );
@@ -1021,11 +990,7 @@ void main() {
                   expect(res.q.shape, equals([n, n]));
                 } else {
                   expect(
-                    () => hessenberg(
-                      a as NDArray<AnySpec>,
-                      outH: canaryH.view,
-                      outQ: canaryQ.view,
-                    ),
+                    () => hessenberg(a, outH: canaryH.view, outQ: canaryQ.view),
                     throwsA(isA<LinAlgException>()),
                   );
                 }
@@ -1081,10 +1046,7 @@ void main() {
               expect(_allElementsAreNaN(qrRes.q), isTrue);
               expect(_anyElementIsNaN(qrRes.r), isTrue);
 
-              expect(
-                () => svd(a as NDArray<AnySpec>),
-                throwsA(isA<LinAlgException>()),
-              );
+              expect(() => svd(a), throwsA(isA<LinAlgException>()));
             });
           }
         }

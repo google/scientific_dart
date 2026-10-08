@@ -1037,8 +1037,14 @@ void main() {
           // Complex throws UnsupportedError
           final cArr = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
           final rArr = NDArray.fromList([1.0], [1], DType.float64);
-          expect(() => copysign(cArr, rArr), throwsUnsupportedError);
-          expect(() => copysign(rArr, cArr), throwsUnsupportedError);
+          expect(
+            () => copysign(cArr.asAnySpec, rArr.asAnySpec),
+            throwsUnsupportedError,
+          );
+          expect(
+            () => copysign(rArr.asAnySpec, cArr.asAnySpec),
+            throwsUnsupportedError,
+          );
         });
       });
 

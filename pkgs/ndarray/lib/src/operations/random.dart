@@ -1402,7 +1402,11 @@ NDArray<T> multivariateNormal<T extends DTypeTag>(
         : out;
     if (sampleCount > 0 && d > 0) {
       final x2D = target.reshape([sampleCount, d]);
-      add(matmul(z2D, lT), meanCast, out: x2D);
+      add(
+        matmul(z2D.asAnySpec, lT.asAnySpec),
+        meanCast.asAnySpec,
+        out: x2D.asAnySpec,
+      );
     }
 
     if (out != null) {

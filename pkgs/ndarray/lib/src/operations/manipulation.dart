@@ -46,7 +46,7 @@ export 'helpers.dart' show castNDArray, sharesMemory;
 ///
 /// Refer to the [NumPy concatenate reference](https://numpy.org/doc/stable/reference/generated/numpy.concatenate.html)
 /// for details.
-NDArray<T> concatenate<T extends DTypeTag>(
+NDArray<T> concatenate<T extends SelfOf<DTypeTag>>(
   List<NDArray<T>> arrays, {
   int axis = 0,
   NDArray<T>? out,
@@ -219,7 +219,7 @@ NDArray<T> concatenate<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy stack reference](https://numpy.org/doc/stable/reference/generated/numpy.stack.html)
 /// for details.
-NDArray<T> stack<T extends DTypeTag>(
+NDArray<T> stack<T extends SelfOf<DTypeTag>>(
   List<NDArray<T>> arrays, {
   int axis = 0,
   NDArray<T>? out,
@@ -816,7 +816,7 @@ NDArray<T> rot90<T extends DTypeTag>(
 /// Stacks arrays in sequence vertically (row wise).
 ///
 /// It is an error if [arrays] is empty, any array is disposed, or array shapes/dtypes mismatch.
-NDArray<T> vstack<T extends DTypeTag>(
+NDArray<T> vstack<T extends SelfOf<DTypeTag>>(
   List<NDArray<T>> arrays, {
   NDArray<T>? out,
 }) {
@@ -829,7 +829,7 @@ NDArray<T> vstack<T extends DTypeTag>(
 /// except for 1-D arrays where it concatenates along the first axis (axis 0).
 ///
 /// It is an error if [arrays] is empty, any array is disposed, or array shapes/dtypes mismatch.
-NDArray<T> hstack<T extends DTypeTag>(
+NDArray<T> hstack<T extends SelfOf<DTypeTag>>(
   List<NDArray<T>> arrays, {
   NDArray<T>? out,
 }) {

@@ -640,7 +640,7 @@ enum ConvMode {
 /// - [NumPy correlate Documentation](https://numpy.org/doc/stable/reference/generated/numpy.correlate.html)
 /// - [SciPy signal.correlate Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.correlate.html)
 /// - [Wikipedia: Cross-correlation](https://en.wikipedia.org/wiki/Cross-correlation)
-NDArray<T> correlate<T extends DTypeTag>(
+NDArray<T> correlate<T extends SelfOf<DTypeTag>>(
   NDArray<T> in1,
   NDArray<T> in2, {
   ConvMode mode = ConvMode.valid,
@@ -796,7 +796,7 @@ NDArray<T> correlate<T extends DTypeTag>(
 /// - [NumPy convolve Documentation](https://numpy.org/doc/stable/reference/generated/numpy.convolve.html)
 /// - [SciPy signal.convolve Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.convolve.html)
 /// - [Wikipedia: Convolution](https://en.wikipedia.org/wiki/Convolution)
-NDArray<T> convolve<T extends DTypeTag>(
+NDArray<T> convolve<T extends SelfOf<DTypeTag>>(
   NDArray<T> in1,
   NDArray<T> in2, {
   ConvMode mode = ConvMode.full,
@@ -914,7 +914,7 @@ NDArray<T> convolve<T extends DTypeTag>(
 ///
 /// ### References & Further Reading
 /// - [SciPy signal.convolve2d Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.signal.convolve2d.html)
-NDArray<T> convolve2d<T extends DTypeTag>(
+NDArray<T> convolve2d<T extends SelfOf<DTypeTag>>(
   NDArray<T> in1,
   NDArray<T> in2, {
   ConvMode mode = ConvMode.full,

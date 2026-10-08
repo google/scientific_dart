@@ -35,14 +35,14 @@ void main() {
     DType.boolean,
   ];
 
-  final implementedBitwiseIntegerDTypes = <DType<IntegerDType>>[
+  final implementedBitwiseIntegerDTypes = <DType<AnyIntegerSpec>>[
     DType.int64,
     DType.int32,
     DType.int16,
     DType.uint8,
   ];
 
-  final otherIntegerDTypes = <DType<IntegerDType>>[
+  final otherIntegerDTypes = <DType<AnyIntegerSpec>>[
     DType.int8,
     DType.uint64,
     DType.uint32,
@@ -348,7 +348,7 @@ void main() {
             DType.boolean,
           );
 
-          final nonComplexTypes = [
+          final nonComplexTypes = <DType<AnySpec>>[
             DType.float64,
             DType.float32,
             DType.float16,
@@ -574,7 +574,7 @@ void main() {
         }
 
         // heaviside on float and integer types
-        final heavisideTypes = [
+        final heavisideTypes = <DType<AnySpec>>[
           DType.float64,
           DType.float32,
           DType.int64,
@@ -762,7 +762,7 @@ void main() {
           );
 
           for (final dtA in all15DTypes) {
-            for (final dtB in [
+            for (final dtB in <DType<AnySpec>>[
               DType.boolean,
               DType.int32,
               DType.float64,
@@ -820,7 +820,7 @@ void main() {
           );
 
           for (final dtA in all15DTypes) {
-            for (final dtB in [
+            for (final dtB in <DType<AnySpec>>[
               DType.int32,
               DType.float64,
               DType.uint8,

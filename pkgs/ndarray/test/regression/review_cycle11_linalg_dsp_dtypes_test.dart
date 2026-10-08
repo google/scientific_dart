@@ -98,17 +98,11 @@ void main() {
         test('schur promotes to float64 (real) and complex128 (complex)', () {
           NDArray.scope(() {
             final a = NDArray.fromList([2.0, 1.0, 0.0, 3.0], [2, 2], dtype);
-            final realRes = schur<DTypeTag, DTypeTag>(
-              a,
-              output: SchurForm.real,
-            );
+            final realRes = schur(a, output: SchurForm.real);
             expect(realRes.t.dtype, equals(DType.float64));
             expect(realRes.z.dtype, equals(DType.float64));
 
-            final complexRes = schur<DTypeTag, Complex128>(
-              a,
-              output: SchurForm.complex,
-            );
+            final complexRes = schur(a, output: SchurForm.complex);
             expect(complexRes.t.dtype, equals(DType.complex128));
             expect(complexRes.z.dtype, equals(DType.complex128));
           });
@@ -190,7 +184,7 @@ void main() {
           final v = NDArray.fromList([1, 2], [2], dtype);
 
           // correlate valid: [1*1 + 2*2, 2*1 + 3*2, 3*1 + 4*2] = [5, 8, 11]
-          final corrValid = correlate<DTypeTag>(a, v, mode: ConvMode.valid);
+          final corrValid = correlate(a, v, mode: ConvMode.valid);
           expect(corrValid.dtype, equals(dtype));
           expect(corrValid.shape, equals([3]));
           expect(corrValid.getCell([0]), equals(5));
@@ -198,7 +192,7 @@ void main() {
           expect(corrValid.getCell([2]), equals(11));
 
           // correlate same: length 4 -> [2, 5, 8, 11]
-          final corrSame = correlate<DTypeTag>(a, v, mode: ConvMode.same);
+          final corrSame = correlate(a, v, mode: ConvMode.same);
           expect(corrSame.dtype, equals(dtype));
           expect(corrSame.shape, equals([4]));
           expect(corrSame.getCell([0]), equals(2));
@@ -207,7 +201,7 @@ void main() {
           expect(corrSame.getCell([3]), equals(11));
 
           // correlate full: length 5 -> [2, 5, 8, 11, 4]
-          final corrFull = correlate<DTypeTag>(a, v, mode: ConvMode.full);
+          final corrFull = correlate(a, v, mode: ConvMode.full);
           expect(corrFull.dtype, equals(dtype));
           expect(corrFull.shape, equals([5]));
           expect(corrFull.getCell([0]), equals(2));
@@ -217,7 +211,7 @@ void main() {
           expect(corrFull.getCell([4]), equals(4));
 
           // convolve valid: v reversed is [2, 1] -> [1*2+2*1, 2*2+3*1, 3*2+4*1] = [4, 7, 10]
-          final convValid = convolve<DTypeTag>(a, v, mode: ConvMode.valid);
+          final convValid = convolve(a, v, mode: ConvMode.valid);
           expect(convValid.dtype, equals(dtype));
           expect(convValid.shape, equals([3]));
           expect(convValid.getCell([0]), equals(4));
@@ -225,7 +219,7 @@ void main() {
           expect(convValid.getCell([2]), equals(10));
 
           // convolve full: [1, 4, 7, 10, 8]
-          final convFull = convolve<DTypeTag>(a, v, mode: ConvMode.full);
+          final convFull = convolve(a, v, mode: ConvMode.full);
           expect(convFull.dtype, equals(dtype));
           expect(convFull.shape, equals([5]));
           expect(convFull.getCell([0]), equals(1));
@@ -243,14 +237,14 @@ void main() {
           final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], dtype);
           final v = NDArray.fromList([1.0, 2.0], [2], dtype);
 
-          final corrValid = correlate<DTypeTag>(a, v, mode: ConvMode.valid);
+          final corrValid = correlate(a, v, mode: ConvMode.valid);
           expect(corrValid.dtype, equals(dtype));
           expect(corrValid.shape, equals([3]));
           expect(corrValid.getCell([0]), closeTo(5.0, 1e-2));
           expect(corrValid.getCell([1]), closeTo(8.0, 1e-2));
           expect(corrValid.getCell([2]), closeTo(11.0, 1e-2));
 
-          final convFull = convolve<DTypeTag>(a, v, mode: ConvMode.full);
+          final convFull = convolve(a, v, mode: ConvMode.full);
           expect(convFull.dtype, equals(dtype));
           expect(convFull.shape, equals([5]));
           expect(convFull.getCell([0]), closeTo(1.0, 1e-2));

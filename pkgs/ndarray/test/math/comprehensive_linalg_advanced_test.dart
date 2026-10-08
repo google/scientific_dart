@@ -1267,7 +1267,7 @@ void main() {
         group('outer and cross products', () {
           test('outer product across all 15 DTypes', () {
             NDArray.scope(() {
-              final dtypes = [
+              final dtypes = <DType<AnySpec>>[
                 DType.float64,
                 DType.float32,
                 DType.float16,
@@ -1479,7 +1479,7 @@ void main() {
           group('kron across supported dtypes and multi-D shapes', () {
             test('kron across 15 dtypes and 2D/3D shapes', () {
               NDArray.scope(() {
-                final supportedDTypes = [
+                final supportedDTypes = <DType<AnySpec>>[
                   DType.float64,
                   DType.float32,
                   DType.int64,

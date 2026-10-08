@@ -763,7 +763,7 @@ NDArray<R> log1p<R extends DTypeTag>(
 }
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
-NDArray<R> logaddexp<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> logaddexp<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -960,7 +960,7 @@ NDArray<R> logaddexp<T extends InexactOf<R>, R extends DTypeTag>(
 }
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
-NDArray<R> logaddexp2<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> logaddexp2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -2434,7 +2434,7 @@ NDArray<T> positive<T extends DTypeTag>(
 /// Performance Considerations:
 /// - Contiguous arrays leverage vector sweeps (`v_pow_*`).
 /// - Strided broadcasting uses multi-dimensional FFI iterators (`s_pow_*`).
-NDArray<T> power<T extends DTypeTag>(
+NDArray<T> power<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -3009,7 +3009,7 @@ NDArray<T> negative<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> floorDivide<T extends DTypeTag>(
+NDArray<T> floorDivide<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -3359,7 +3359,7 @@ NDArray<T> floorDivide<T extends DTypeTag>(
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
-NDArray<T> remainder<T extends DTypeTag>(
+NDArray<T> remainder<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -3684,7 +3684,7 @@ NDArray<T> remainder<T extends DTypeTag>(
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
-NDArray<T> mod<T extends DTypeTag>(
+NDArray<T> mod<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -3709,7 +3709,8 @@ NDArray<T> mod<T extends DTypeTag>(
 /// - [x1] or [x2] is disposed (throws [StateError]).
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
-({NDArray<T> quotient, NDArray<T> remainder}) divmod<T extends DTypeTag>(
+({NDArray<T> quotient, NDArray<T> remainder})
+divmod<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -3797,7 +3798,7 @@ NDArray<T> mod<T extends DTypeTag>(
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
 /// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
-NDArray<T> fmod<T extends DTypeTag>(
+NDArray<T> fmod<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -4092,7 +4093,7 @@ NDArray<T> fmod<T extends DTypeTag>(
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [x1] or [x2] has a non-integer dtype (throws [UnsupportedError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
-NDArray<T> gcd<T extends IntegerDType>(
+NDArray<T> gcd<T extends SelfOf<RealOf<IntegerDType>>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -4304,7 +4305,7 @@ NDArray<T> gcd<T extends IntegerDType>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> lcm<T extends IntegerDType>(
+NDArray<T> lcm<T extends SelfOf<RealOf<IntegerDType>>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -4539,7 +4540,7 @@ NDArray<T> lcm<T extends IntegerDType>(
 /// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
 /// - [x1] or [x2] has a complex dtype (throws [UnsupportedError]).
 /// - [out] has incompatible shape or dtype (throws [ArgumentError]).
-NDArray<T> heaviside<T extends DTypeTag>(
+NDArray<T> heaviside<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -5780,22 +5781,22 @@ NDArray<T> round<T extends DTypeTag>(
   }
 }
 
-// Design note: same-dtype binary functions intentionally declare a single type
-// parameter `<T extends DTypeTag>(NDArray<T> a, NDArray<T> b)` rather than a
-// dependent bound `<T extends DTypeTag, S extends T>(NDArray<T> a, NDArray<S> b)`.
-// Although `S extends T` would reject mixed concrete tags (`add(f64, f32)`) in
-// standard `dart analyze` by preventing LUB widening of `T`, it breaks single
-// explicit type-argument calls (`add<Float64>(a, b)`), introduces left-right
-// asymmetry with `NDArray<DTypeTag>` (`add(dyn, f64)` vs `add(f64, dyn)`), and
-// cannot apply to operators (`+`, `-`, `*`, `/`). Mixed-dtype diagnostics on
-// both functions and operators are instead enforced uniformly by
-// `package:scientific_dart_analysis_plugin`.
+// Design note: same-dtype binary and multi-array functions bound their operand
+// type parameter with `SelfOf<...>` (e.g. `add<T extends SelfOf<DTypeTag>>`,
+// `divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag>`). Because two
+// distinct concrete tags `T1` and `T2` have distinct `SelfOf` instantiations
+// (`SelfOf<T1>` vs `SelfOf<T2>`), Dart's Least Upper Bound algorithm drops the
+// generic `SelfOf` superinterface (`LUB(Float64, Float32) = DTypeTag`,
+// `LUB(Int64, Int32) = IntegerDType`). Consequently, mixed-dtype calls such as
+// `add(f64, f32)` or `add(i64, i32)` fail type inference symmetrically at
+// compile time while preserving a single type parameter `<T>` on
+// dtype-preserving functions.
 
 /// Element-wise addition of two arrays.
 ///
 /// Both [a] and [b] must have the same [DType]. For [DType.boolean], computes
 /// logical OR (`a | b`), matching `numpy.add`.
-NDArray<T> add<T extends DTypeTag>(
+NDArray<T> add<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -7490,7 +7491,7 @@ _addKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 }
 
 /// Element-wise subtraction of two arrays.
-NDArray<T> subtract<T extends DTypeTag>(
+NDArray<T> subtract<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -9171,7 +9172,7 @@ _subtractKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// **Overflow behavior:**
 /// - **Integer arrays** (`int32`, `int64`, etc.) overflow silently wrapping around via standard two's complement.
 /// - **Floating-point arrays** (`float32`, `float64`) overflow silently to `double.infinity` or `double.negativeInfinity` per IEEE 754.
-NDArray<T> multiply<T extends DTypeTag>(
+NDArray<T> multiply<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -10898,7 +10899,7 @@ _multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ndarray_example.dart lang=dart}
 ///
 /// Reference: [NumPy divide](https://numpy.org/doc/stable/reference/generated/numpy.divide.html)
-NDArray<R> divide<T extends DivideOf<R>, R extends DTypeTag>(
+NDArray<R> divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -12855,17 +12856,25 @@ floorDivideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute floorDivideAs() on a disposed array.');
   }
   if (a.dtype == dtype && b.dtype == dtype) {
-    return floorDivide<R>(
-      a as NDArray<R>,
-      b as NDArray<R>,
-      where: where,
-      out: out,
-    );
+    return floorDivide<AnySpec>(
+          a.asAnySpec,
+          b.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = floorDivide<R>(aCast, bCast, where: where, out: out);
+    final res =
+        floorDivide<AnySpec>(
+              aCast.asAnySpec,
+              bCast.asAnySpec,
+              where: where,
+              out: out?.asAnySpec,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }
@@ -12899,17 +12908,25 @@ remainderAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute remainderAs() on a disposed array.');
   }
   if (a.dtype == dtype && b.dtype == dtype) {
-    return remainder<R>(
-      a as NDArray<R>,
-      b as NDArray<R>,
-      where: where,
-      out: out,
-    );
+    return remainder<AnySpec>(
+          a.asAnySpec,
+          b.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = remainder<R>(aCast, bCast, where: where, out: out);
+    final res =
+        remainder<AnySpec>(
+              aCast.asAnySpec,
+              bCast.asAnySpec,
+              where: where,
+              out: out?.asAnySpec,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }
@@ -12953,12 +12970,25 @@ NDArray<R> fmodAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute fmodAs() on a disposed array.');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return fmod<R>(x1 as NDArray<R>, x2 as NDArray<R>, where: where, out: out);
+    return fmod<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = fmod<R>(x1Cast, x2Cast, where: where, out: out);
+    final res =
+        fmod<AnySpec>(
+              x1Cast.asAnySpec,
+              x2Cast.asAnySpec,
+              where: where,
+              out: out?.asAnySpec,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }
@@ -12984,15 +13014,19 @@ NDArray<R> fmodAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute divmodAs() on a disposed array.');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return divmod<R>(x1 as NDArray<R>, x2 as NDArray<R>);
+    final res = divmod<AnySpec>(x1.asAnySpec, x2.asAnySpec);
+    return (
+      quotient: res.quotient as NDArray<R>,
+      remainder: res.remainder as NDArray<R>,
+    );
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = divmod<R>(x1Cast, x2Cast);
+    final res = divmod<AnySpec>(x1Cast.asAnySpec, x2Cast.asAnySpec);
     return (
-      quotient: res.quotient.detachToParentScope(),
-      remainder: res.remainder.detachToParentScope(),
+      quotient: (res.quotient as NDArray<R>).detachToParentScope(),
+      remainder: (res.remainder as NDArray<R>).detachToParentScope(),
     );
   });
 }
@@ -13026,12 +13060,25 @@ powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw StateError('Cannot execute powerAs() on a disposed array.');
   }
   if (a.dtype == dtype && b.dtype == dtype) {
-    return power<R>(a as NDArray<R>, b as NDArray<R>, where: where, out: out);
+    return power<AnySpec>(
+          a.asAnySpec,
+          b.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = power<R>(aCast, bCast, where: where, out: out);
+    final res =
+        power<AnySpec>(
+              aCast.asAnySpec,
+              bCast.asAnySpec,
+              where: where,
+              out: out?.asAnySpec,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }
@@ -13053,12 +13100,10 @@ powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
-NDArray<R> floatPower<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
-  NDArray<T> a,
-  NDArray<T> b, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> floatPower<
+  T extends SelfOf<DoublePrecisionOf<R>>,
+  R extends DTypeTag
+>(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -13180,7 +13225,7 @@ NDArray<R> gcdAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw UnsupportedError('gcdAs requires an integer target DType');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return gcd<IntegerDType>(
+    return gcd<AnyIntegerSpec>(
           x1.asIntegerDType,
           x2.asIntegerDType,
           where: where,
@@ -13192,7 +13237,7 @@ NDArray<R> gcdAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
     final res =
-        gcd<IntegerDType>(
+        gcd<AnyIntegerSpec>(
               x1Cast.asIntegerDType,
               x2Cast.asIntegerDType,
               where: where,
@@ -13236,7 +13281,7 @@ NDArray<R> lcmAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw UnsupportedError('lcmAs requires an integer target DType');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return lcm<IntegerDType>(
+    return lcm<AnyIntegerSpec>(
           x1.asIntegerDType,
           x2.asIntegerDType,
           where: where,
@@ -13248,7 +13293,7 @@ NDArray<R> lcmAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
     final res =
-        lcm<IntegerDType>(
+        lcm<AnyIntegerSpec>(
               x1Cast.asIntegerDType,
               x2Cast.asIntegerDType,
               where: where,
@@ -13292,17 +13337,25 @@ heavisideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for heaviside');
   }
   if (x1.dtype == dtype && x2.dtype == dtype) {
-    return heaviside<R>(
-      x1 as NDArray<R>,
-      x2 as NDArray<R>,
-      where: where,
-      out: out,
-    );
+    return heaviside<AnySpec>(
+          x1.asAnySpec,
+          x2.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = heaviside<R>(x1Cast, x2Cast, where: where, out: out);
+    final res =
+        heaviside<AnySpec>(
+              x1Cast.asAnySpec,
+              x2Cast.asAnySpec,
+              where: where,
+              out: out?.asAnySpec,
+            )
+            as NDArray<R>;
     return out ?? res.detachToParentScope();
   });
 }

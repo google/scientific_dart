@@ -139,7 +139,7 @@ final class MaskedArray<T extends DTypeTag> {
   }) {
     return NDArray.scope(() {
       final valArray = _wrapScalar<T>(value, data.dtype);
-      final mask = ndops.equal(data, valArray);
+      final mask = ndops.equal(data.asAnySpec, valArray.asAnySpec);
       return MaskedArray(
         data,
         mask.detachToParentScope(),

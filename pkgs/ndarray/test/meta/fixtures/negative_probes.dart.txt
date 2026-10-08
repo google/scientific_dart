@@ -22,7 +22,9 @@ import 'package:ndarray/ndarray.dart';
 
 late final NDArray<Float64> f64;
 late final NDArray<Float32> f32;
+late final NDArray<Int64> i64;
 late final NDArray<Int32> i32;
+late final NDArray<Uint8> u8;
 late final NDArray<Boolean> b;
 late final NDArray<DTypeTag> dyn;
 
@@ -39,6 +41,18 @@ final t_neg_sin_dyn = sin(dyn); // error: argument_type_not_assignable
 final t_neg_sum_dyn = sum(dyn); // error: argument_type_not_assignable
 final t_neg_opand_dyn = dyn & dyn; // error: undefined_operator
 final t_neg_opshl_f32 = f32 << f32; // error: undefined_operator
+
+// Negative probes for mixed-dtype binary & multi-array operations (SelfOf):
+final t_neg_add_f64_f32 = add(f64, f32); // error: could_not_infer
+final t_neg_add_f32_f64 = add(f32, f64); // error: could_not_infer
+final t_neg_add_i64_i32 = add(i64, i32); // error: could_not_infer
+final t_neg_add_i32_i64 = add(i32, i64); // error: could_not_infer
+final t_neg_add_dyn = add(dyn, dyn); // error: argument_type_not_assignable
+final t_neg_divide_i64_i32 = divide(i64, i32); // error: could_not_infer
+final t_neg_bitwiseAnd_i64_i32 = bitwiseAnd(i64, i32); // error: could_not_infer
+final t_neg_bitwiseAnd_lub = bitwiseAnd([i32, u8].first, [i32, u8].first); // error: argument_type_not_assignable
+final t_neg_concat_f64_f32 = concatenate([f64, f32]); // error: argument_type_not_assignable
+final t_neg_concat_i64_i32 = concatenate([i64, i32]); // error: argument_type_not_assignable
 
 // Negative subtype probes on capability markers:
 void checkInvalidMarkerSubtypes() {

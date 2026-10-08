@@ -300,7 +300,7 @@ void _checkLapackInfo(
 /// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [NumPy matmul](https://numpy.org/doc/stable/reference/generated/numpy.matmul.html)
-NDArray<T> matmul<T extends DTypeTag>(
+NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -1508,14 +1508,14 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     }
 
     // Helper function to recursively evaluate matrix multiplication chain
-    NDArray<DTypeTag> eval(int i, int j) {
+    NDArray<AnySpec> eval(int i, int j) {
       if (i == j) {
         // Return a contiguous copy of arrays[i-1] casted to the correct targetDType
         final src = arrays[i - 1];
         if (src.dtype == targetDType) {
-          return src.copy();
+          return src.copy().asAnySpec;
         } else {
-          return castNDArray(src, targetDType);
+          return castNDArray(src, targetDType).asAnySpec;
         }
       }
 
@@ -1524,7 +1524,7 @@ NDArray<T> multi_dot<T extends DTypeTag>(
       final right = eval(k + 1, j);
 
       // Perform matrix multiplication
-      final res = matmul<DTypeTag>(left, right);
+      final res = matmul<AnySpec>(left, right);
       left.dispose();
       right.dispose();
       return res;
@@ -1535,7 +1535,7 @@ NDArray<T> multi_dot<T extends DTypeTag>(
     final left = eval(1, k);
     final right = eval(k + 1, n);
 
-    final finalResult = matmul<DTypeTag>(left, right, out: out);
+    final finalResult = matmul<AnySpec>(left, right, out: out?.asAnySpec);
     left.dispose();
     right.dispose();
 
@@ -2600,7 +2600,7 @@ void _lapackeSolve(
 ///
 /// **Example:**
 /// {@example /example/linalg_example.dart#solve_system lang=dart}
-NDArray<T> solve<T extends DTypeTag>(
+NDArray<T> solve<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -3645,8 +3645,8 @@ NDArray<T> pinv<T extends DTypeTag>(
     final v = conjugate(vt.transpose());
     final ut = conjugate(u.transpose());
 
-    final temp = matmul(v, sPlus);
-    matmul(temp, ut, out: result);
+    final temp = matmul(v.asAnySpec, sPlus.asAnySpec);
+    matmul(temp, ut.asAnySpec, out: result.asAnySpec);
 
     if (out == null) {
       result.detachToParentScope();
@@ -3759,13 +3759,17 @@ NDArray<T> matrix_power<T extends DTypeTag>(
     var exponent = n;
     while (exponent > 0) {
       if ((exponent & 1) == 1) {
-        matmul(res, current, out: tempRes);
+        matmul(res.asAnySpec, current.asAnySpec, out: tempRes.asAnySpec);
         final tmp = res;
         res = tempRes;
         tempRes = tmp;
       }
       if (exponent > 1) {
-        matmul(current, current, out: tempCurrent);
+        matmul(
+          current.asAnySpec,
+          current.asAnySpec,
+          out: tempCurrent.asAnySpec,
+        );
         final tmp = current;
         current = tempCurrent;
         tempCurrent = tmp;
@@ -5758,7 +5762,8 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 ///
 /// **Throws:**
 /// - Throws [LinAlgException] if the QR algorithm fails to compute eigenvalues or if eigenvalues cannot be reordered.
-({NDArray<R> t, NDArray<R> z}) schur<T extends DTypeTag, R extends DTypeTag>(
+({NDArray<R> t, NDArray<R> z})
+schur<T extends DTypeTag, R extends SelfOf<DTypeTag>>(
   NDArray<T> a, {
   SchurForm output = SchurForm.real,
   NDArray<R>? outT,
@@ -6548,7 +6553,7 @@ NDArray<DTypeTag> _zerosTyped(List<int> shape, DType<DTypeTag> dtype) {
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy outer](https://numpy.org/doc/stable/reference/generated/numpy.outer.html)
-NDArray<T> outer<T extends DTypeTag>(
+NDArray<T> outer<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -6580,7 +6585,7 @@ NDArray<T> outer<T extends DTypeTag>(
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
       return NDArray.scope(() {
-        final temp = outer<DTypeTag>(a, b);
+        final temp = outer<T>(a, b);
         temp.copy(out: out);
         return out;
       });
@@ -6751,7 +6756,7 @@ NDArray<T> outer<T extends DTypeTag>(
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy cross](https://numpy.org/doc/stable/reference/generated/numpy.cross.html)
-NDArray<T> cross<T extends DTypeTag>(
+NDArray<T> cross<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   int? axisa,
@@ -6853,7 +6858,7 @@ NDArray<T> cross<T extends DTypeTag>(
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
       return NDArray.scope(() {
-        final temp = cross<DTypeTag>(
+        final temp = cross<T>(
           a,
           b,
           axisa: axisa,
@@ -7162,13 +7167,18 @@ NDArray<R> matmulAs<
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return matmul<DTypeTag>(a, b, out: out) as NDArray<R>;
+    return matmul<AnySpec>(a.asAnySpec, b.asAnySpec, out: out?.asAnySpec)
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = matmul<R>(aCast, bCast, out: out);
-    return out ?? res.detachToParentScope();
+    final res = matmul<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -7198,13 +7208,18 @@ NDArray<R> outerAs<
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return outer<DTypeTag>(a, b, out: out) as NDArray<R>;
+    return outer<AnySpec>(a.asAnySpec, b.asAnySpec, out: out?.asAnySpec)
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = outer<R>(aCast, bCast, out: out);
-    return out ?? res.detachToParentScope();
+    final res = outer<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -7241,30 +7256,30 @@ crossAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return cross<DTypeTag>(
-          a,
-          b,
+    return cross<AnySpec>(
+          a.asAnySpec,
+          b.asAnySpec,
           axisa: axisa,
           axisb: axisb,
           axisc: axisc,
           axis: axis,
-          out: out,
+          out: out?.asAnySpec,
         )
         as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = cross<R>(
-      aCast,
-      bCast,
+    final res = cross<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
       axisa: axisa,
       axisb: axisb,
       axisc: axisc,
       axis: axis,
-      out: out,
+      out: out?.asAnySpec,
     );
-    return out ?? res.detachToParentScope();
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 

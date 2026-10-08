@@ -1565,7 +1565,10 @@ void main() {
           // Logical AND, OR, XOR with broadcasting
           final numA = NDArray.fromList([0.0, 1.0], [2, 1], DType.float64);
           final numBInt = NDArray.fromList([0, 5], [1, 2], DType.int32);
-          expect(() => logicalAnd(numA, numBInt), throwsArgumentError);
+          expect(
+            () => logicalAnd(numA.asAnySpec, numBInt.asAnySpec),
+            throwsArgumentError,
+          );
           final numB = numBInt.astype(DType.float64);
 
           final lAnd = logicalAnd(numA, numB);

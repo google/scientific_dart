@@ -327,7 +327,7 @@ final class TensordotAxes {
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy tensordot](https://numpy.org/doc/stable/reference/generated/numpy.tensordot.html)
-NDArray<T> tensordot<T extends DTypeTag>(
+NDArray<T> tensordot<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   Object axes = const TensordotAxes.count(2),
@@ -400,7 +400,11 @@ NDArray<T> tensordot<T extends DTypeTag>(
       final aView = a.reshape(aShapeExpanded);
       final bView = b.reshape(bShapeExpanded);
 
-      final res = multiply<DTypeTag>(aView, bView, out: out);
+      final res = multiply<AnySpec>(
+        aView.asAnySpec,
+        bView.asAnySpec,
+        out: out?.asAnySpec,
+      );
       return _returnFromScope<T>(res, [a, b], out: out);
     });
   }
@@ -501,7 +505,7 @@ NDArray<T> tensordot<T extends DTypeTag>(
     final a2D = aPerm.reshape([m, k]);
     final b2D = bPerm.reshape([k, n]);
 
-    final res2D = matmul<DTypeTag>(a2D, b2D);
+    final res2D = matmul<AnySpec>(a2D.asAnySpec, b2D.asAnySpec);
     final res = listEquals(res2D.shape, targetShape)
         ? res2D
         : res2D.reshape(targetShape);
@@ -759,7 +763,7 @@ final class EinsumSubscripts {
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy einsum](https://numpy.org/doc/stable/reference/generated/numpy.einsum.html)
-NDArray<T> einsum<T extends DTypeTag>(
+NDArray<T> einsum<T extends SelfOf<DTypeTag>>(
   EinsumSubscripts subscripts,
   List<NDArray<T>> operands, {
   NDArray<T>? out,
@@ -1032,7 +1036,11 @@ NDArray<T> einsum<T extends DTypeTag>(
             subB[0] == finalOutSub[1]) {
           final aCol = operands[0].reshape([operands[0].shape[0], 1]);
           final bRow = operands[1].reshape([1, operands[1].shape[0]]);
-          final res = multiply<T>(aCol, bRow, out: out);
+          final res = multiply<AnySpec>(
+            aCol.asAnySpec,
+            bRow.asAnySpec,
+            out: out?.asAnySpec,
+          );
           return _returnFromScope<T>(res, operands, out: out);
         }
 
@@ -1140,7 +1148,7 @@ NDArray<T> einsum<T extends DTypeTag>(
               b3D = operands[1].transpose(permB).reshape([numBatch, k, n]);
             }
 
-            final res3D = matmul<DTypeTag>(a3D, b3D);
+            final res3D = matmul<AnySpec>(a3D.asAnySpec, b3D.asAnySpec);
 
             final freeAShapes = freeA.map((id) => labelSizes[id]!);
             final freeBShapes = freeB.map((id) => labelSizes[id]!);
@@ -1273,7 +1281,7 @@ NDArray<T> einsum<T extends DTypeTag>(
           ], bestInterOut);
 
           final interRes = NDArray.unmanaged(
-            () => einsum<DTypeTag>(specInter, [opI, opJ]),
+            () => einsum<AnySpec>(specInter, [opI.asAnySpec, opJ.asAnySpec]),
           );
           toDispose.add(interRes);
 
@@ -1287,10 +1295,10 @@ NDArray<T> einsum<T extends DTypeTag>(
           currentSubs[0],
           currentSubs[1],
         ], finalOutSub);
-        final finalRes = einsum<DTypeTag>(specFinal, [
-          currentOps[0],
-          currentOps[1],
-        ], out: out);
+        final finalRes = einsum<AnySpec>(specFinal, [
+          currentOps[0].asAnySpec,
+          currentOps[1].asAnySpec,
+        ], out: out?.asAnySpec);
         return _returnFromScope<T>(finalRes, operands, out: out);
       } finally {
         for (final temp in toDispose) {
@@ -1352,7 +1360,10 @@ NDArray<T> einsum<T extends DTypeTag>(
 
     NDArray combined = expandedOperands[0];
     for (var i = 1; i < expandedOperands.length; i++) {
-      combined = multiply<DTypeTag>(combined, expandedOperands[i]);
+      combined = multiply<AnySpec>(
+        combined.asAnySpec,
+        expandedOperands[i].asAnySpec,
+      );
     }
 
     for (var j = allIds.length - 1; j >= 0; j--) {
@@ -1398,7 +1409,7 @@ NDArray<T> einsum<T extends DTypeTag>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy inner](https://numpy.org/doc/stable/reference/generated/numpy.inner.html)
-NDArray<T> inner<T extends DTypeTag>(
+NDArray<T> inner<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -1467,7 +1478,7 @@ NDArray<T> inner<T extends DTypeTag>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy vdot](https://numpy.org/doc/stable/reference/generated/numpy.vdot.html)
-NDArray<T> vdot<T extends DTypeTag>(
+NDArray<T> vdot<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -1508,7 +1519,7 @@ NDArray<T> vdot<T extends DTypeTag>(
   return NDArray.scope(() {
     final flatA = a.reshape([a.size]);
     final flatB = b.reshape([b.size]);
-    final conjA = a.dtype.isComplex ? conjugate(flatA) : flatA;
+    final NDArray<T> conjA = a.dtype.isComplex ? conjugate<T>(flatA) : flatA;
     final res = matmul<T>(conjA, flatB, out: out);
     return _returnFromScope<T>(res, [a, b], out: out);
   });
@@ -1535,7 +1546,7 @@ NDArray<T> vdot<T extends DTypeTag>(
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy kron](https://numpy.org/doc/stable/reference/generated/numpy.kron.html)
-NDArray<T> kron<T extends DTypeTag>(
+NDArray<T> kron<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -1731,7 +1742,7 @@ NDArray<T> kron<T extends DTypeTag>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy dot](https://numpy.org/doc/stable/reference/generated/numpy.dot.html)
-NDArray<T> dot<T extends DTypeTag>(
+NDArray<T> dot<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<T>? out,
@@ -1788,13 +1799,18 @@ NDArray<R> dotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return dot<DTypeTag>(a, b, out: out) as NDArray<R>;
+    return dot<AnySpec>(a.asAnySpec, b.asAnySpec, out: out?.asAnySpec)
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = dot<R>(aCast, bCast, out: out);
-    return out ?? res.detachToParentScope();
+    final res = dot<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1828,13 +1844,24 @@ tensordotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return tensordot<DTypeTag>(a, b, axes: axes, out: out) as NDArray<R>;
+    return tensordot<AnySpec>(
+          a.asAnySpec,
+          b.asAnySpec,
+          axes: axes,
+          out: out?.asAnySpec,
+        )
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = tensordot<R>(aCast, bCast, axes: axes, out: out);
-    return out ?? res.detachToParentScope();
+    final res = tensordot<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      axes: axes,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1865,13 +1892,18 @@ NDArray<R> innerAs<
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return inner<DTypeTag>(a, b, out: out) as NDArray<R>;
+    return inner<AnySpec>(a.asAnySpec, b.asAnySpec, out: out?.asAnySpec)
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = inner<R>(aCast, bCast, out: out);
-    return out ?? res.detachToParentScope();
+    final res = inner<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1903,13 +1935,18 @@ NDArray<R> vdotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return vdot<DTypeTag>(a, b, out: out) as NDArray<R>;
+    return vdot<AnySpec>(a.asAnySpec, b.asAnySpec, out: out?.asAnySpec)
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = vdot<R>(aCast, bCast, out: out);
-    return out ?? res.detachToParentScope();
+    final res = vdot<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }
 
@@ -1940,12 +1977,17 @@ NDArray<R> kronAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   }
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return kron<DTypeTag>(a, b, out: out) as NDArray<R>;
+    return kron<AnySpec>(a.asAnySpec, b.asAnySpec, out: out?.asAnySpec)
+        as NDArray<R>;
   }
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = kron<R>(aCast, bCast, out: out);
-    return out ?? res.detachToParentScope();
+    final res = kron<AnySpec>(
+      aCast.asAnySpec,
+      bCast.asAnySpec,
+      out: out?.asAnySpec,
+    );
+    return out ?? (res.detachToParentScope() as NDArray<R>);
   });
 }

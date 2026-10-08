@@ -448,11 +448,7 @@ void main() {
           2,
           2,
         ], DType.float64);
-        final res = tensordot<DTypeTag>(
-          a,
-          b,
-          axes: const TensordotAxes.count(1),
-        );
+        final res = tensordot(a, b, axes: const TensordotAxes.count(1));
 
         final expectedMatmul = matmul(a, b);
         expect(res.shape, equals([2, 2]));
@@ -1069,7 +1065,7 @@ void main() {
         final b64 = NDArray.fromList([3.0, 4.0], [2], DType.float64);
 
         expect(
-          () => tensordot<DTypeTag>(a32, b64, axes: 1),
+          () => tensordot(a32.asAnySpec, b64.asAnySpec, axes: 1),
           throwsArgumentError,
         );
         final a64 = a32.astype(DType.float64);
@@ -1234,10 +1230,10 @@ void main() {
             2,
           ], DType.float64);
           expect(
-            () => einsum<DTypeTag>(EinsumSubscripts.parse("ij,jk->ik"), [
-              a,
-              b,
-            ], out: invalidDTypeOut),
+            () => einsum(EinsumSubscripts.parse("ij,jk->ik"), [
+              a.asAnySpec,
+              b.asAnySpec,
+            ], out: invalidDTypeOut.asAnySpec),
             throwsArgumentError,
           );
         });
@@ -1377,10 +1373,10 @@ void main() {
             2,
           ], DType.float32);
           expect(
-            () => einsum<DTypeTag>(EinsumSubscripts.parse("bij,bjk->ikb"), [
-              a3d,
-              b3d,
-            ], out: invalidDTypeBatchPerm),
+            () => einsum(EinsumSubscripts.parse("bij,bjk->ikb"), [
+              a3d.asAnySpec,
+              b3d.asAnySpec,
+            ], out: invalidDTypeBatchPerm.asAnySpec),
             throwsArgumentError,
           );
         });
@@ -1405,7 +1401,7 @@ void main() {
 
         final invalidDTypeOut = NDArray<Float32>.create([4], DType.float32);
         expect(
-          () => kron<DTypeTag>(a, b, out: invalidDTypeOut),
+          () => kron(a.asAnySpec, b.asAnySpec, out: invalidDTypeOut.asAnySpec),
           throwsArgumentError,
         );
 
@@ -1491,7 +1487,7 @@ void main() {
         final untypedB =
             NDArray.fromList([5.0, 6.0, 7.0, 8.0], [2, 2], DType.float64)
                 as NDArray<AnySpec>;
-        final castRes = einsum<DTypeTag>(EinsumSubscripts.parse("ij,jk->ik"), [
+        final castRes = einsum<AnySpec>(EinsumSubscripts.parse("ij,jk->ik"), [
           untypedA,
           untypedB,
         ]);
@@ -1624,7 +1620,7 @@ void main() {
       final aInt32 = NDArray<Int32>.fromList([1, 2, 3, 4], [2, 2], DType.int32);
       final bInt64 = NDArray<Int64>.fromList([1, 1, 1, 1], [2, 2], DType.int64);
       expect(
-        () => tensordot<DTypeTag>(aInt32, bInt64, axes: 2),
+        () => tensordot(aInt32.asAnySpec, bInt64.asAnySpec, axes: 2),
         throwsArgumentError,
       );
       final resTdCast = tensordot(aInt32.astype(DType.int64), bInt64, axes: 2);

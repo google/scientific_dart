@@ -43,7 +43,7 @@ import '../helpers.dart';
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_and](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_and.html)
-NDArray<T> bitwiseAnd<T extends BitwiseDType>(
+NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -263,7 +263,7 @@ NDArray<T> bitwiseAnd<T extends BitwiseDType>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_or](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_or.html)
-NDArray<T> bitwiseOr<T extends BitwiseDType>(
+NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -483,7 +483,7 @@ NDArray<T> bitwiseOr<T extends BitwiseDType>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_xor](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_xor.html)
-NDArray<T> bitwiseXor<T extends BitwiseDType>(
+NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -703,7 +703,7 @@ NDArray<T> bitwiseXor<T extends BitwiseDType>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy left_shift](https://numpy.org/doc/stable/reference/generated/numpy.left_shift.html)
-NDArray<T> leftShift<T extends IntegerDType>(
+NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -928,7 +928,7 @@ int _rightShiftScalar(int a, int b, DType dtype) {
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy right_shift](https://numpy.org/doc/stable/reference/generated/numpy.right_shift.html)
-NDArray<T> rightShift<T extends IntegerDType>(
+NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -1152,7 +1152,7 @@ NDArray<T> rightShift<T extends IntegerDType>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy invert](https://numpy.org/doc/stable/reference/generated/numpy.invert.html)
-NDArray<T> invert<T extends BitwiseDType>(
+NDArray<T> invert<T extends RealOf<BitwiseDType>>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
   NDArray<T>? out,
@@ -1368,7 +1368,7 @@ bitwiseAndAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype, allowBool: true);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return bitwiseAnd<BitwiseDType>(
+    return bitwiseAnd<AnyBitwiseSpec>(
           a.asBitwiseDType,
           b.asBitwiseDType,
           where: where,
@@ -1379,7 +1379,7 @@ bitwiseAndAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = bitwiseAnd<BitwiseDType>(
+    final res = bitwiseAnd<AnyBitwiseSpec>(
       aCast.asBitwiseDType,
       bCast.asBitwiseDType,
       where: where,
@@ -1422,7 +1422,7 @@ bitwiseOrAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype, allowBool: true);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return bitwiseOr<BitwiseDType>(
+    return bitwiseOr<AnyBitwiseSpec>(
           a.asBitwiseDType,
           b.asBitwiseDType,
           where: where,
@@ -1433,7 +1433,7 @@ bitwiseOrAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = bitwiseOr<BitwiseDType>(
+    final res = bitwiseOr<AnyBitwiseSpec>(
       aCast.asBitwiseDType,
       bCast.asBitwiseDType,
       where: where,
@@ -1476,7 +1476,7 @@ bitwiseXorAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype, allowBool: true);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return bitwiseXor<BitwiseDType>(
+    return bitwiseXor<AnyBitwiseSpec>(
           a.asBitwiseDType,
           b.asBitwiseDType,
           where: where,
@@ -1487,7 +1487,7 @@ bitwiseXorAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = bitwiseXor<BitwiseDType>(
+    final res = bitwiseXor<AnyBitwiseSpec>(
       aCast.asBitwiseDType,
       bCast.asBitwiseDType,
       where: where,
@@ -1530,7 +1530,7 @@ leftShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return leftShift<IntegerDType>(
+    return leftShift<AnyIntegerSpec>(
           a.asIntegerDType,
           b.asIntegerDType,
           where: where,
@@ -1541,7 +1541,7 @@ leftShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = leftShift<IntegerDType>(
+    final res = leftShift<AnyIntegerSpec>(
       aCast.asIntegerDType,
       bCast.asIntegerDType,
       where: where,
@@ -1584,7 +1584,7 @@ rightShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   _validateBitwiseAsDTypes(a.dtype, b.dtype, dtype);
   if ((a.dtype as DType<DTypeTag>) == dtype &&
       (b.dtype as DType<DTypeTag>) == dtype) {
-    return rightShift<IntegerDType>(
+    return rightShift<AnyIntegerSpec>(
           a.asIntegerDType,
           b.asIntegerDType,
           where: where,
@@ -1595,7 +1595,7 @@ rightShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   return NDArray.scope(() {
     final aCast = castNDArray<R>(a, dtype);
     final bCast = castNDArray<R>(b, dtype);
-    final res = rightShift<IntegerDType>(
+    final res = rightShift<AnyIntegerSpec>(
       aCast.asIntegerDType,
       bCast.asIntegerDType,
       where: where,

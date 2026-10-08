@@ -304,7 +304,7 @@ NDArray<Boolean> logicalNot<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy equal](https://numpy.org/doc/stable/reference/generated/numpy.equal.html)
-NDArray<Boolean> equal<T extends DTypeTag>(
+NDArray<Boolean> equal<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -361,7 +361,7 @@ NDArray<Boolean> equal<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy not_equal](https://numpy.org/doc/stable/reference/generated/numpy.not_equal.html)
-NDArray<Boolean> notEqual<T extends DTypeTag>(
+NDArray<Boolean> notEqual<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -420,7 +420,7 @@ NDArray<Boolean> notEqual<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy greater](https://numpy.org/doc/stable/reference/generated/numpy.greater.html)
-NDArray<Boolean> greater<T extends DTypeTag>(
+NDArray<Boolean> greater<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -484,7 +484,7 @@ NDArray<Boolean> greater<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy greater_equal](https://numpy.org/doc/stable/reference/generated/numpy.greater_equal.html)
-NDArray<Boolean> greaterEqual<T extends DTypeTag>(
+NDArray<Boolean> greaterEqual<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -548,7 +548,7 @@ NDArray<Boolean> greaterEqual<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy less](https://numpy.org/doc/stable/reference/generated/numpy.less.html)
-NDArray<Boolean> less<T extends DTypeTag>(
+NDArray<Boolean> less<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -612,7 +612,7 @@ NDArray<Boolean> less<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy less_equal](https://numpy.org/doc/stable/reference/generated/numpy.less_equal.html)
-NDArray<Boolean> lessEqual<T extends DTypeTag>(
+NDArray<Boolean> lessEqual<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -801,7 +801,7 @@ NDArray<Boolean> _compareHelper(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_and](https://numpy.org/doc/stable/reference/generated/numpy.logical_and.html)
-NDArray<Boolean> logicalAnd<T extends DTypeTag>(
+NDArray<Boolean> logicalAnd<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -845,7 +845,7 @@ NDArray<Boolean> logicalAnd<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_or](https://numpy.org/doc/stable/reference/generated/numpy.logical_or.html)
-NDArray<Boolean> logicalOr<T extends DTypeTag>(
+NDArray<Boolean> logicalOr<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -889,7 +889,7 @@ NDArray<Boolean> logicalOr<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy logical_xor](https://numpy.org/doc/stable/reference/generated/numpy.logical_xor.html)
-NDArray<Boolean> logicalXor<T extends DTypeTag>(
+NDArray<Boolean> logicalXor<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,

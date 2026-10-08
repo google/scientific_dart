@@ -2803,7 +2803,7 @@ NDArray<R> atanh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> atan2<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> atan2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> y,
   NDArray<T> x, {
   NDArray<DTypeTag>? where,
@@ -3127,7 +3127,7 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> hypot<T extends InexactOf<R>, R extends DTypeTag>(
+NDArray<R> hypot<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
@@ -3379,7 +3379,12 @@ NDArray<R> deg2rad<R extends DTypeTag>(
       : castNDArray(a, targetDType);
   final factor = NDArray.fromList([0.017453292519943295], [], targetDType);
   try {
-    return multiply<DTypeTag>(aPromoted, factor, where: where, out: out)
+    return multiply<AnySpec>(
+          aPromoted.asAnySpec,
+          factor.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
         as NDArray<R>;
   } finally {
     factor.dispose();
@@ -3444,7 +3449,12 @@ NDArray<R> rad2deg<R extends DTypeTag>(
       : castNDArray(a, targetDType);
   final factor = NDArray.fromList([57.29577951308232], [], targetDType);
   try {
-    return multiply<DTypeTag>(aPromoted, factor, where: where, out: out)
+    return multiply<AnySpec>(
+          aPromoted.asAnySpec,
+          factor.asAnySpec,
+          where: where,
+          out: out?.asAnySpec,
+        )
         as NDArray<R>;
   } finally {
     factor.dispose();

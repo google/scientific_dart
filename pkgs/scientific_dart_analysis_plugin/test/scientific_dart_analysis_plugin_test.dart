@@ -98,7 +98,10 @@ void main() {
   });
 
   var counter = 0;
-  Future<ResolvedUnitResult> resolveUnit(String source) async {
+  Future<ResolvedUnitResult> resolveUnit(
+    String source, {
+    bool allowCouldNotInfer = false,
+  }) async {
     final file = File('${scratchDir.path}/case_${counter++}.dart');
     file.writeAsStringSync(source);
     final context = collection.contextFor(file.path);
@@ -109,7 +112,10 @@ void main() {
       fail('Expected ResolvedUnitResult, got $result');
     }
     final compileErrors = result.diagnostics.where(
-      (d) => d.diagnosticCode.type == DiagnosticType.COMPILE_TIME_ERROR,
+      (d) =>
+          d.diagnosticCode.type == DiagnosticType.COMPILE_TIME_ERROR &&
+          (!allowCouldNotInfer ||
+              d.diagnosticCode.lowerCaseName != 'could_not_infer'),
     );
     expect(
       compileErrors,
@@ -122,8 +128,12 @@ void main() {
   Future<List<Diagnostic>> analyzeCode(
     String source, {
     List<AnalysisRule>? rules,
+    bool allowCouldNotInfer = false,
   }) async {
-    final result = await resolveUnit(source);
+    final result = await resolveUnit(
+      source,
+      allowCouldNotInfer: allowCouldNotInfer,
+    );
     return runScientificDartLintsOnUnit(result, rules: rules);
   }
 
@@ -1130,6 +1140,7 @@ void checkMismatchedOperands(
 }
 ''',
         rules: [MismatchedDTypeOperandsRule()],
+        allowCouldNotInfer: true,
       );
       expectOnly(mismatchDiagnostics, 'ndarray_mismatched_dtype_operands', 7);
 
@@ -1417,6 +1428,7 @@ void checkProjectingOps(
 }
 ''',
         rules: [MismatchedDTypeOperandsRule()],
+        allowCouldNotInfer: true,
       );
       expectOnly(
         projectingMismatchDiagnostics,
