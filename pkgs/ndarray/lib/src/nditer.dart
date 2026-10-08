@@ -284,28 +284,17 @@ final class NDEnumerate<T extends DTypeTag> {
   Object? get valueRaw => _array.getCellRawUntyped(_iter.index);
 }
 
-/// The element-typed view of an [NDEnumerate].
+/// The element-typed view of an [NDEnumerate] whose dtype tag implements
+/// [ElementOf].
 ///
 /// The element type [E] is recovered from the enumerated array's dtype tag
-/// [T] through its [DTypeTag] bound, so `NDEnumerate<Float64>.value` has
+/// [T] through its [ElementOf] bound, so `NDEnumerate<Float64>.value` has
 /// static type `double` and `NDEnumerate<Int32>.value` has static type `int`.
 ///
-/// In code that is generic over all dtypes (`T extends DTypeTag`), [E]
-/// resolves to `Object?`.
-extension NDEnumerateElements<
-  T extends DTypeSpec<
-    AnySpec,
-    E,
-    AnySpec,
-    AnySpec,
-    AnySpec,
-    AnySpec,
-    AnySpec,
-    DTypeTag
-  >,
-  E
->
-    on NDEnumerate<T> {
+/// Enumerations whose static tag does not specify an element type (such as
+/// `NDEnumerate<DTypeTag>` or `NDEnumerate<BitwiseDType>`) fall back to
+/// [NDEnumerateBaseElements], where `value` is typed as `dynamic`.
+extension NDEnumerateElements<T extends ElementOf<E>, E> on NDEnumerate<T> {
   /// The current element value.
   E get value => valueRaw as E;
 }

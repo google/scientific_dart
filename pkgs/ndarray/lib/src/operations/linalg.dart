@@ -2882,19 +2882,7 @@ NDArray<T> solve<T extends DTypeTag>(
 /// - Throws an [IterationsExceededException] if the eigenvalue computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values (`NaN` or `±Infinity`) or if the LAPACK routine fails.
 ({NDArray<R> eigenvalues, NDArray<R> eigenvectors}) eig<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   ({NDArray<R> eigenvalues, NDArray<R> eigenvectors})? out,
 }) {
   if (a.isDisposed) {
@@ -3259,19 +3247,7 @@ NDArray<T> solve<T extends DTypeTag>(
 ///
 /// Reference: [NumPy linalg.eigvals](https://numpy.org/doc/stable/reference/generated/numpy.linalg.eigvals.html)
 NDArray<R> eigvals<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   NDArray<R>? out,
 }) {
   if (a.isDisposed) {
@@ -5537,19 +5513,7 @@ extension EighRecordDispose<F extends DTypeTag, T extends DTypeTag>
 /// - Throws an [IterationsExceededException] if the eigenvalue computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
 NDArray<R> eigvalsh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
   NDArray<R>? out,
 }) {
@@ -6164,19 +6128,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 /// **Throws:**
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
 ({NDArray<R> h, NDArray<R> q}) hessenberg<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<R>? outH,
   NDArray<R>? outQ,
 }) {
@@ -7379,19 +7331,7 @@ enum NormKind {
 ///
 /// Reference: [NumPy linalg.norm](https://numpy.org/doc/stable/reference/generated/numpy.linalg.norm.html)
 NDArray<R> norm<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   Object? ord,
   Object? axis,
   bool keepdims = false,
@@ -8342,19 +8282,7 @@ LstsqResult<R> lstsq<
 ///
 /// Reference: [NumPy linalg.cond](https://numpy.org/doc/stable/reference/generated/numpy.linalg.cond.html)
 NDArray<R> cond<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   Object? p,
   NDArray<R>? out,
 }) {

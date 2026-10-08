@@ -47,19 +47,7 @@ import '../helpers.dart';
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> i0<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -296,19 +284,7 @@ NDArray<R> i0<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> gamma<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -507,19 +483,7 @@ NDArray<R> gamma<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> erf<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {

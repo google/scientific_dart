@@ -6034,26 +6034,15 @@ final class _NDArrayBoolean extends NDArray<Boolean> {
 }
 
 /// True division operator (`/`) inferring the concrete result dtype [M] from
-/// [DTypeSpec.DivideTag]: `Float64` for integer and boolean arrays, and [T]
-/// itself for every floating-point (including `Float16`/`BFloat16`) and
-/// complex array, following NumPy's `true_divide` rule.
+/// [DivideOf]: [Float64] for integer and boolean arrays, and [T] itself for
+/// every floating-point (including [Float16] and [BFloat16]) and complex
+/// array, following NumPy's `true_divide` rule.
 ///
-/// The receiver must be typed with a concrete dtype tag (or `NDArray<AnySpec>`,
-/// for which [M] is `DTypeTag`); receivers typed `NDArray<DTypeTag>` use
+/// The receiver's dtype tag must implement `DivideOf<M>` (all 15 concrete
+/// tags, [BitwiseDType] and [IntegerDType] with [M] = [Float64], or [AnySpec]
+/// with [M] = [DTypeTag]); receivers typed `NDArray<DTypeTag>` use
 /// [NDArrayBaseDivide] instead.
-extension NDArrayDivide<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    M
-  >,
-  M extends DTypeTag
->
+extension NDArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
     on NDArray<T> {
   /// Element-wise true division with full broadcasting support.
   ///
@@ -6679,30 +6668,18 @@ void _initializeOpenBLASOnce() {
   }
 }
 
-/// Typed element access for an [NDArray].
+/// Typed element access for an [NDArray] whose dtype tag implements
+/// [ElementOf].
 ///
 /// The element type [E] is recovered from the array's dtype tag [T] through
-/// its [DTypeTag] bound, so `NDArray<Float64>.scalar` has static type
-/// `double` and `NDArray<Int32>.scalar` has static type `int`, without
-/// [NDArray] needing a second type parameter.
+/// its [ElementOf] bound, so `NDArray<Float64>.scalar` has static type
+/// `double`, `NDArray<Int32>.scalar` and `NDArray<IntegerDType>.scalar` have
+/// static type `int`, without [NDArray] needing a second type parameter.
 ///
-/// In code that is generic over all dtypes (`T extends DTypeTag`), [E]
-/// resolves to `Object?`, which is the correct answer for dtype-agnostic
-/// operations.
-extension NDArrayElements<
-  T extends DTypeSpec<
-    DTypeTag,
-    E,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  E
->
-    on NDArray<T> {
+/// Arrays whose static tag does not specify an element type (such as
+/// `NDArray<DTypeTag>` or `NDArray<BitwiseDType>`) fall back to
+/// [NDArrayBaseElements], where element access is typed as `dynamic`.
+extension NDArrayElements<T extends ElementOf<E>, E> on NDArray<T> {
   /// A Dart list view of the raw C memory, typed as the element type.
   ///
   /// The returned list retains the root owning [NDArray], preventing the

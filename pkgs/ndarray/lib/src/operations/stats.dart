@@ -840,19 +840,7 @@ DType<R> _defaultAccumDType<R extends DTypeTag>(DType dtype) =>
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> sum<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<AccumulatorOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -1191,19 +1179,7 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> prod<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<AccumulatorOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -1940,19 +1916,7 @@ NDArray<Boolean> any<T extends DTypeTag>(
 ///
 /// Reference: [Arithmetic Mean](https://en.wikipedia.org/wiki/Arithmetic_mean)
 NDArray<R> mean<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<DoublePrecisionOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -4106,19 +4070,7 @@ NDArray<T> nanmax<T extends DTypeTag>(
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> cumsum<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<AccumulatorOf<R>> a, {
   int? axis,
   NDArray<R>? out,
 }) => cumsumAs<DTypeTag, R>(
@@ -4235,19 +4187,7 @@ NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
 NDArray<R> cumprod<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<AccumulatorOf<R>> a, {
   int? axis,
   NDArray<R>? out,
 }) => cumprodAs<DTypeTag, R>(
@@ -4949,19 +4889,7 @@ NDArray<Float64> var_<T extends DTypeTag>(
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
 NDArray<R> nanmean<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<DoublePrecisionOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -5920,19 +5848,7 @@ DType<R> _medianDType<R extends DTypeTag>(DType inputDType) {
 /// - It is an error if [a] is disposed.
 /// - It is an error if [axis] is out of bounds.
 NDArray<R> median<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -6205,19 +6121,7 @@ Object r_median_helper<T extends DTypeTag>(NDArray<T> a, int size) {
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
 NDArray<R> nanmedian<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,
@@ -6700,19 +6604,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
 
   if (weights == null) {
     final avg = mean<R>(
-      a
-          as NDArray<
-            DTypeSpec<
-              DTypeTag,
-              Object?,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag,
-              R,
-              DTypeTag
-            >
-          >,
+      a as NDArray<DoublePrecisionOf<R>>,
       axis: resolvedAxis,
       out: out,
     );
@@ -6850,19 +6742,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
 /// - [y] must have the same dtype as [m].
 ///
 /// Reference: [NumPy cov](https://numpy.org/doc/stable/reference/generated/numpy.cov.html)
-NDArray<R> cov<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(
+NDArray<R> cov<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
   NDArray<T> m, {
   NDArray<T>? y,
   bool rowvar = true,
@@ -7267,19 +7147,7 @@ NDArray<R> cov<
 /// - [y] must have the same dtype as [m].
 ///
 /// Reference: [NumPy corrcoef](https://numpy.org/doc/stable/reference/generated/numpy.corrcoef.html)
-NDArray<R> corrcoef<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(
+NDArray<R> corrcoef<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
   NDArray<T> m, {
   NDArray<T>? y,
   bool rowvar = true,
@@ -7443,19 +7311,7 @@ NDArray<R> corrcoef<
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
 NDArray<R> nansum<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<AccumulatorOf<R>> a, {
   int? axis,
   bool keepdims = false,
   NDArray<R>? out,

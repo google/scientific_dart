@@ -69,19 +69,7 @@ void _validateSorted(NDArray<Float64> xp) {
 NDArray<R> interp<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag
-    >
-  >
-  fp, {
+  NDArray<DoublePrecisionOf<R>> fp, {
   Object? left,
   Object? right,
   InterpolationMethod method = InterpolationMethod.linear,
@@ -426,19 +414,7 @@ NDArray<R> interp<R extends DTypeTag>(
 NDArray<R> interpolate<R extends DTypeTag>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag
-    >
-  >
-  fp, {
+  NDArray<DoublePrecisionOf<R>> fp, {
   Object? left,
   Object? right,
   InterpolationMethod method = InterpolationMethod.linear,

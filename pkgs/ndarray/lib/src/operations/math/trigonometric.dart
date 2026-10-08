@@ -39,19 +39,7 @@ import 'arithmetic.dart';
 ///
 /// Reference: [Trigonometric Sine Function](https://en.wikipedia.org/wiki/Sine_and_cosine)
 NDArray<R> sin<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -263,19 +251,7 @@ NDArray<R> sin<R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the total number of elements.
 /// - For C-contiguous array layouts, uses native C vector math kernels (`v_sinc_double`/`v_sinc_float` etc).
 NDArray<R> sinc<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -489,19 +465,7 @@ NDArray<R> sinc<R extends DTypeTag>(
 ///
 /// Reference: [Trigonometric Cosine Function](https://en.wikipedia.org/wiki/Sine_and_cosine)
 NDArray<R> cos<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -705,19 +669,7 @@ NDArray<R> cos<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> tan<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -927,19 +879,7 @@ NDArray<R> tan<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> asin<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -981,19 +921,7 @@ NDArray<R> asin<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = asin<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -1162,19 +1090,7 @@ NDArray<R> asin<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> acos<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -1216,19 +1132,7 @@ NDArray<R> acos<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = acos<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -1397,19 +1301,7 @@ NDArray<R> acos<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> atan<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -1451,19 +1343,7 @@ NDArray<R> atan<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = atan<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -1633,19 +1513,7 @@ NDArray<R> atan<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> sinh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -1687,19 +1555,7 @@ NDArray<R> sinh<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = sinh<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -1872,19 +1728,7 @@ NDArray<R> sinh<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> cosh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -1926,19 +1770,7 @@ NDArray<R> cosh<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = cosh<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -2111,19 +1943,7 @@ NDArray<R> cosh<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> tanh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -2165,19 +1985,7 @@ NDArray<R> tanh<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = tanh<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -2351,19 +2159,7 @@ NDArray<R> tanh<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> asinh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -2405,19 +2201,7 @@ NDArray<R> asinh<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = asinh<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -2590,19 +2374,7 @@ NDArray<R> asinh<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> acosh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -2644,19 +2416,7 @@ NDArray<R> acosh<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = acosh<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -2829,19 +2589,7 @@ NDArray<R> acosh<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
 NDArray<R> atanh<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -2883,19 +2631,7 @@ NDArray<R> atanh<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res = atanh<R>(
-        promoted
-            as NDArray<
-              DTypeSpec<
-                DTypeTag,
-                Object?,
-                DTypeTag,
-                DTypeTag,
-                R,
-                DTypeTag,
-                DTypeTag,
-                DTypeTag
-              >
-            >,
+        promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
       );
@@ -3067,19 +2803,12 @@ NDArray<R> atanh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> atan2<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> y, NDArray<T> x, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
+NDArray<R> atan2<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> y,
+  NDArray<T> x, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (y.isDisposed ||
       x.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3398,19 +3127,12 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> hypot<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
+NDArray<R> hypot<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3613,19 +3335,7 @@ hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> deg2rad<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -3690,19 +3400,7 @@ NDArray<R> deg2rad<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<R> rad2deg<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {

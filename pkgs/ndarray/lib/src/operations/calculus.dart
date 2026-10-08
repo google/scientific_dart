@@ -101,19 +101,7 @@ bool _listEquals(List<Object?> a, List<Object?> b) {
 /// **Example:**
 /// {@example /example/calculus_example.dart lang=dart}
 NDArray<T> trapz<T extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      T,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  y, {
+  NDArray<InexactOf<T>> y, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = -1,
   NDArray<T>? out,
@@ -691,19 +679,7 @@ NDArray<T> trapz<T extends DTypeTag>(
 /// **Example:**
 /// {@example /example/calculus_example.dart lang=dart}
 NDArray<T> gradient<T extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      T,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  f, {
+  NDArray<InexactOf<T>> f, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = 0,
   int edgeOrder = 1,
@@ -1291,19 +1267,7 @@ NDArray<T> gradient<T extends DTypeTag>(
 /// **Example:**
 /// {@example /example/calculus_example.dart lang=dart}
 List<NDArray<T>> gradientArray<T extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      T,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  f, {
+  NDArray<InexactOf<T>> f, {
   Spacing? spacing,
   List<Spacing>? spacings,
   List<int>? axis,

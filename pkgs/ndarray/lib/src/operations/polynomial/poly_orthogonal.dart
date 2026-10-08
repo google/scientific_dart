@@ -106,19 +106,11 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// - It is an error if [c] is invalid or [out] buffer mismatches.
 ///
 /// Reference: [NumPy chebval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.chebyshev.chebval.html)
-NDArray<R> chebval<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
+NDArray<R> chebval<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> x,
+  NDArray<T> c, {
+  NDArray<R>? out,
+}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -135,19 +127,11 @@ NDArray<R> chebval<
 /// equality is validated at runtime. See [chebval] for details.
 ///
 /// Reference: [NumPy legval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.legendre.legval.html)
-NDArray<R> legval<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
+NDArray<R> legval<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> x,
+  NDArray<T> c, {
+  NDArray<R>? out,
+}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -164,19 +148,11 @@ NDArray<R> legval<
 /// equality is validated at runtime. See [chebval] for details.
 ///
 /// Reference: [NumPy hermval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.hermite.hermval.html)
-NDArray<R> hermval<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
+NDArray<R> hermval<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> x,
+  NDArray<T> c, {
+  NDArray<R>? out,
+}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -193,19 +169,11 @@ NDArray<R> hermval<
 /// equality is validated at runtime. See [chebval] for details.
 ///
 /// Reference: [NumPy lagval](https://numpy.org/doc/stable/reference/generated/numpy.polynomial.laguerre.lagval.html)
-NDArray<R> lagval<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> x, NDArray<T> c, {NDArray<R>? out}) {
+NDArray<R> lagval<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> x,
+  NDArray<T> c, {
+  NDArray<R>? out,
+}) {
   if (x.isDisposed || c.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');
   }
@@ -699,19 +667,7 @@ NDArray<R> _evalClenshaw<T extends DTypeTag, R extends DTypeTag>(
 
 /// Finds roots of a Chebyshev series.
 NDArray<C> chebroots<C extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      C,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
+  NDArray<ComplexOf<C>> c, {
   NDArray<C>? out,
 }) {
   return _orthoRoots<C>(c, _OrthoKind.chebyshev, out: out);
@@ -719,19 +675,7 @@ NDArray<C> chebroots<C extends DTypeTag>(
 
 /// Finds roots of a Legendre series.
 NDArray<C> legroots<C extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      C,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
+  NDArray<ComplexOf<C>> c, {
   NDArray<C>? out,
 }) {
   return _orthoRoots<C>(c, _OrthoKind.legendre, out: out);
@@ -739,19 +683,7 @@ NDArray<C> legroots<C extends DTypeTag>(
 
 /// Finds roots of a Hermite series.
 NDArray<C> hermroots<C extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      C,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
+  NDArray<ComplexOf<C>> c, {
   NDArray<C>? out,
 }) {
   return _orthoRoots<C>(c, _OrthoKind.hermite, out: out);
@@ -759,38 +691,14 @@ NDArray<C> hermroots<C extends DTypeTag>(
 
 /// Finds roots of a Laguerre series.
 NDArray<C> lagroots<C extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      C,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c, {
+  NDArray<ComplexOf<C>> c, {
   NDArray<C>? out,
 }) {
   return _orthoRoots<C>(c, _OrthoKind.laguerre, out: out);
 }
 
 NDArray<C> _orthoRoots<C extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      C,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  c,
+  NDArray<ComplexOf<C>> c,
   _OrthoKind kind, {
   NDArray<C>? out,
 }) {
@@ -1010,22 +918,7 @@ NDArray<C> _orthoRoots<C extends DTypeTag>(
         }
         break;
     }
-    final res = eigvals<C>(
-      cMat
-          as NDArray<
-            DTypeSpec<
-              DTypeTag,
-              Object?,
-              DTypeTag,
-              C,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag
-            >
-          >,
-      out: out,
-    );
+    final res = eigvals<C>(cMat as NDArray<ComplexOf<C>>, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });

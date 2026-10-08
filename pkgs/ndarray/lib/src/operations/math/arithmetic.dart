@@ -35,19 +35,7 @@ import 'logical.dart';
 /// **Edge cases:**
 /// - Negative values will result in [double.nan].
 NDArray<R> sqrt<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -306,19 +294,7 @@ double _logaddexp2(double x, double y) {
 
 /// Computes the exponential minus one ($e^x - 1$) element-wise.
 NDArray<R> expm1<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -553,19 +529,7 @@ NDArray<R> expm1<R extends DTypeTag>(
 
 /// Computes $\ln(1+x)$ element-wise.
 NDArray<R> log1p<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -799,19 +763,12 @@ NDArray<R> log1p<R extends DTypeTag>(
 }
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
-NDArray<R> logaddexp<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> x1, NDArray<T> x2, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
+NDArray<R> logaddexp<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> x1,
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (x1.isDisposed ||
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1003,19 +960,12 @@ NDArray<R> logaddexp<
 }
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
-NDArray<R> logaddexp2<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> x1, NDArray<T> x2, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
+NDArray<R> logaddexp2<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> x1,
+  NDArray<T> x2, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (x1.isDisposed ||
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1208,19 +1158,7 @@ NDArray<R> logaddexp2<
 
 /// Rounds elements of the array to the nearest integer.
 NDArray<R> rint<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -1403,19 +1341,7 @@ NDArray<R> rint<R extends DTypeTag>(
 
 /// Rounds elements of the array to the nearest integer towards zero.
 NDArray<R> trunc<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -1591,19 +1517,7 @@ NDArray<R> trunc<R extends DTypeTag>(
 ///
 /// Synonym for [trunc].
 NDArray<R> fix<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) => trunc(a, where: where, out: out);
@@ -4889,19 +4803,7 @@ NDArray<T> heaviside<T extends DTypeTag>(
 /// If [where] is provided, only elements where [where] is truthy are updated.
 /// If [out] is provided, the result is written into [out] and returned.
 NDArray<R> abs<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      R,
-      Object?,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealOf<R>> a, {
   NDArray<DTypeTag>? where,
   NDArray<R>? out,
 }) {
@@ -10957,7 +10859,7 @@ _multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// boolean operands to [DType.float64] and performs floating-point division;
 /// every floating-point dtype (including `float16` and `bfloat16`) and both
 /// complex dtypes are preserved. This is NumPy's `true_divide` rule, which
-/// the result type [R] mirrors statically through [DTypeSpec.DivideTag]:
+/// the result type [R] mirrors statically through [DivideOf]:
 /// `divide(int32Array, int32Array)` is an `NDArray<Float64>` and
 /// `divide(float16Array, float16Array)` is an `NDArray<Float16>` without any
 /// explicit type arguments.
@@ -10985,29 +10887,21 @@ _multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ndarray_example.dart lang=dart}
 ///
 /// Reference: [NumPy divide](https://numpy.org/doc/stable/reference/generated/numpy.divide.html)
-NDArray<R> divide<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R
-  >,
-  R extends DTypeTag
->(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) =>
-    divideUntyped<T, R>(a, b, where: where, out: out);
+NDArray<R> divide<T extends DivideOf<R>, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) => divideUntyped<T, R>(a, b, where: where, out: out);
 
 /// Untyped entry point of [divide] for callers whose operand tag is only
 /// known to be a [DTypeTag] at compile time.
 ///
 /// Applies exactly the same runtime dtype rule as [divide] (integer and
 /// boolean operands are divided as [DType.float64]; every other dtype is
-/// preserved), so the result dtype is the operand dtype's
-/// [DTypeSpec.DivideTag]. [R] is not checked against the operand dtype
-/// statically; it is an error if [R] does not match the runtime result dtype.
+/// preserved), so the result dtype is the operand dtype's [DivideOf]
+/// projection. [R] is not checked against the operand dtype statically; it is
+/// an error if [R] does not match the runtime result dtype.
 @internal
 NDArray<R> divideUntyped<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> a,
@@ -13148,19 +13042,12 @@ powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
-NDArray<R> floatPower<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
+NDArray<R> floatPower<T extends DoublePrecisionOf<R>, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b, {
+  NDArray<DTypeTag>? where,
+  NDArray<R>? out,
+}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||

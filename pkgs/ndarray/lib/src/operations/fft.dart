@@ -371,19 +371,7 @@ kiss_fft_cfg _getKissFFTPlan(int nfft, int inverse_fft) {
 ///
 /// Reference: [Cooley-Tukey FFT Algorithm](https://en.wikipedia.org/wiki/Cooley%E2%80%93Tukey_FFT_algorithm)
 NDArray<R> fft<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
@@ -613,19 +601,7 @@ NDArray<R> fft<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/fft_example.dart lang=dart}
 NDArray<R> ifft<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
@@ -1444,19 +1420,7 @@ NDArray<Float64> rfftfreq(int n, {double d = 1.0, NDArray<Float64>? out}) {
 ///
 /// Reference: [Real 1D FFT](https://numpy.org/doc/stable/reference/generated/numpy.fft.rfft.html)
 NDArray<R> rfft<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
@@ -1478,38 +1442,14 @@ NDArray<R> rfft<R extends DTypeTag>(
 ///
 /// Reference: [NumPy ihfft](https://numpy.org/doc/stable/reference/generated/numpy.fft.ihfft.html)
 NDArray<R> ihfft<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
 }) => _rfftImpl<R>(a, n: n, axis: axis, out: out, isIhfft: true);
 
 NDArray<R> _rfftImpl<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
@@ -1754,19 +1694,7 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
 ///
 /// Reference: [Inverse Real 1D FFT](https://numpy.org/doc/stable/reference/generated/numpy.fft.irfft.html)
 NDArray<R> irfft<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
@@ -1788,38 +1716,14 @@ NDArray<R> irfft<R extends DTypeTag>(
 ///
 /// Reference: [NumPy hfft](https://numpy.org/doc/stable/reference/generated/numpy.fft.hfft.html)
 NDArray<R> hfft<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
 }) => _irfftImpl<R>(a, n: n, axis: axis, out: out, isHfft: true);
 
 NDArray<R> _irfftImpl<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   int? n,
   int axis = -1,
   NDArray<R>? out,
@@ -2274,19 +2178,7 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
 ///
 /// Reference: [N-dimensional FFT](https://numpy.org/doc/stable/reference/generated/numpy.fft.fftn.html)
 NDArray<R> fftn<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   List<int>? s,
   List<int>? axes,
   NDArray<R>? out,
@@ -2304,19 +2196,7 @@ NDArray<R> fftn<R extends DTypeTag>(
 ///
 /// Reference: [Inverse N-dimensional FFT](https://numpy.org/doc/stable/reference/generated/numpy.fft.ifftn.html)
 NDArray<R> ifftn<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   List<int>? s,
   List<int>? axes,
   NDArray<R>? out,
@@ -2337,19 +2217,7 @@ NDArray<R> ifftn<R extends DTypeTag>(
 ///
 /// Reference: [2-dimensional FFT](https://numpy.org/doc/stable/reference/generated/numpy.fft.fft2.html)
 NDArray<R> fft2<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   List<int>? s,
   List<int>? axes = const [-2, -1],
   NDArray<R>? out,
@@ -2380,19 +2248,7 @@ NDArray<R> fft2<R extends DTypeTag>(
 ///
 /// Reference: [Inverse 2-dimensional FFT](https://numpy.org/doc/stable/reference/generated/numpy.fft.ifft2.html)
 NDArray<R> ifft2<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   List<int>? s,
   List<int>? axes = const [-2, -1],
   NDArray<R>? out,
@@ -2430,19 +2286,7 @@ NDArray<R> ifft2<R extends DTypeTag>(
 ///
 /// Reference: [NumPy rfftn](https://numpy.org/doc/stable/reference/generated/numpy.fft.rfftn.html)
 NDArray<R> rfftn<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   List<int>? s,
   List<int>? axes,
   NDArray<R>? out,
@@ -2624,19 +2468,7 @@ NDArray<R> rfftn<R extends DTypeTag>(
 ///
 /// Reference: [NumPy irfftn](https://numpy.org/doc/stable/reference/generated/numpy.fft.irfftn.html)
 NDArray<R> irfftn<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   List<int>? s,
   List<int>? axes,
   NDArray<R>? out,
@@ -2795,19 +2627,7 @@ NDArray<R> irfftn<R extends DTypeTag>(
       out: tmpComplex,
     );
     final result = irfft<R>(
-      tmpComplex
-          as NDArray<
-            DTypeSpec<
-              DTypeTag,
-              Object?,
-              R,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag
-            >
-          >,
+      tmpComplex as NDArray<RealFloatOf<R>>,
       n: sResolved.last,
       axis: axesResolved.last,
       out: out,
@@ -2835,19 +2655,7 @@ NDArray<R> irfftn<R extends DTypeTag>(
 ///
 /// Reference: [NumPy rfft2](https://numpy.org/doc/stable/reference/generated/numpy.fft.rfft2.html)
 NDArray<R> rfft2<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<ComplexOf<R>> a, {
   List<int>? s,
   List<int>? axes = const [-2, -1],
   NDArray<R>? out,
@@ -2874,19 +2682,7 @@ NDArray<R> rfft2<R extends DTypeTag>(
 ///
 /// Reference: [NumPy irfft2](https://numpy.org/doc/stable/reference/generated/numpy.fft.irfft2.html)
 NDArray<R> irfft2<R extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      R,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  a, {
+  NDArray<RealFloatOf<R>> a, {
   List<int>? s,
   List<int>? axes = const [-2, -1],
   NDArray<R>? out,

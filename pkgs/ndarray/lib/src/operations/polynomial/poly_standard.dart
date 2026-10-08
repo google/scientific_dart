@@ -82,19 +82,11 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// - It is an error if [out] shape or dtype is incompatible with [x].
 ///
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
-NDArray<R> polyval<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(NDArray<T> c, NDArray<T> x, {NDArray<R>? out}) {
+NDArray<R> polyval<T extends InexactOf<R>, R extends DTypeTag>(
+  NDArray<T> c,
+  NDArray<T> x, {
+  NDArray<R>? out,
+}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute polyval() on a disposed array.");
   }
@@ -322,19 +314,7 @@ NDArray<R> polyval<
 /// - It is an error if [out] shape or dtype is incompatible.
 ///
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
-NDArray<R> polyfit<
-  T extends DTypeSpec<
-    DTypeTag,
-    Object?,
-    DTypeTag,
-    DTypeTag,
-    R,
-    DTypeTag,
-    DTypeTag,
-    DTypeTag
-  >,
-  R extends DTypeTag
->(
+NDArray<R> polyfit<T extends InexactOf<R>, R extends DTypeTag>(
   NDArray<T> x,
   NDArray<T> y,
   int deg, {
@@ -849,19 +829,7 @@ NDArray<R> polyfit<
 ///
 /// Reference: [NumPy roots](https://numpy.org/doc/stable/reference/generated/numpy.roots.html)
 NDArray<C> roots<C extends DTypeTag>(
-  NDArray<
-    DTypeSpec<
-      DTypeTag,
-      Object?,
-      DTypeTag,
-      C,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag,
-      DTypeTag
-    >
-  >
-  p, {
+  NDArray<ComplexOf<C>> p, {
   NDArray<C>? out,
 }) {
   if (p.isDisposed || (out != null && out.isDisposed)) {
@@ -975,22 +943,7 @@ NDArray<C> roots<C extends DTypeTag>(
       aMat.setCellFlat(i * deg + i - 1, castValue(one, targetMatDType));
     }
 
-    final res = eigvals(
-      aMat
-          as NDArray<
-            DTypeSpec<
-              DTypeTag,
-              Object?,
-              DTypeTag,
-              C,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag,
-              DTypeTag
-            >
-          >,
-      out: out,
-    );
+    final res = eigvals(aMat as NDArray<ComplexOf<C>>, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });
