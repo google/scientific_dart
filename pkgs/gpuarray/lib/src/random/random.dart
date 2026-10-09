@@ -1060,7 +1060,7 @@ final class RandomState {
   ///
   /// If [x] is an `int`, generates a random permutation of `[0, 1, ..., x - 1]` as `GpuArray<Int64>`.
   /// If [x] is a [GpuArray], returns a [GpuArray] with slices along axis 0 randomly permuted.
-  GpuArray<T> permutation<T extends DTypeTag>(
+  GpuArray<T> permutation<T extends AnySpec>(
     Object x, {
     GpuDevice? device,
     GpuArray<T>? out,
@@ -1238,7 +1238,7 @@ final class RandomState {
     if (a.shape[0] <= 1 || a.size == 0) {
       return;
     }
-    permutation<T>(a, device: a.device, out: a);
+    permutation(a, device: a.device, out: a.asAnySpec);
   }
 }
 
@@ -1431,7 +1431,7 @@ GpuArray<T> choice<T extends DTypeTag>(
 );
 
 /// Randomly permutes a sequence or returns a permuted range on the GPU.
-GpuArray<T> permutation<T extends DTypeTag>(
+GpuArray<T> permutation<T extends AnySpec>(
   Object x, {
   GpuDevice? device,
   GpuArray<T>? out,

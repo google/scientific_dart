@@ -1373,9 +1373,9 @@ void main() {
               );
               final GpuArray<Float32> sumArr = a + b;
               final GpuArray<Float32> scalarArr = a + 1.5;
-              final GpuArray<Float32> powArr = pow(b, 2.0);
-              final GpuArray<Float32> maxArr = maximum(a, 10.0);
-              final GpuArray<Float32> minArr = minimum(a, 10.0);
+              final GpuArray<Float32> powArr = b.pow(2.0);
+              final GpuArray<Float32> maxArr = a.maximum(10.0);
+              final GpuArray<Float32> minArr = a.minimum(10.0);
               expect(sumArr.dtype, equals(DType.float32));
               expect(scalarArr.dtype, equals(DType.float32));
               expect(powArr.dtype, equals(DType.float32));

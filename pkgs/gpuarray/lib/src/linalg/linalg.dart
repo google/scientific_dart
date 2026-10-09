@@ -95,7 +95,7 @@ _broadcastBatchShapes(List<int> shapeA, List<int> shapeB) {
 /// Both [a] and [b] must have at least 1 dimension (`ndim >= 1`), reside on the
 /// same [GpuDevice], have matching [DType]s, and have matching inner dimensions.
 /// If [out] is provided, it must match the result shape, dtype, and device.
-GpuArray<T> matmul<T extends DTypeTag>(
+GpuArray<T> matmul<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
@@ -247,7 +247,7 @@ GpuArray<T> matmul<T extends DTypeTag>(
 ///
 /// The [a] and [b] arrays must reside on the same [GpuDevice], have matching
 /// [DType]s, and have compatible contracted dimensions.
-GpuArray<T> dot<T extends DTypeTag>(
+GpuArray<T> dot<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
@@ -523,7 +523,7 @@ GpuArray<T> dot<T extends DTypeTag>(
 ///
 /// The [a] and [b] arrays must reside on the same [GpuDevice], have matching
 /// [DType]s, and contain the same total number of elements (`a.size == b.size`).
-GpuArray<T> vdot<T extends DTypeTag>(
+GpuArray<T> vdot<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,

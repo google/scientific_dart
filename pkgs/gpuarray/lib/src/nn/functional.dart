@@ -396,7 +396,7 @@ GpuArray<T> _castLossOutput<T extends DTypeTag>(
 }
 
 /// Measures the Mean Squared Error (squared L2 norm) between [input] and [target].
-GpuArray<T> mseLoss<T extends DTypeTag>(
+GpuArray<T> mseLoss<T extends SelfOf<DTypeTag>>(
   GpuArray<T> input,
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
@@ -441,7 +441,7 @@ GpuArray<T> mseLoss<T extends DTypeTag>(
 }
 
 /// Measures the Mean Absolute Error (L1 norm) between [input] and [target].
-GpuArray<T> l1Loss<T extends DTypeTag>(
+GpuArray<T> l1Loss<T extends SelfOf<DTypeTag>>(
   GpuArray<T> input,
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,
@@ -481,7 +481,7 @@ GpuArray<T> l1Loss<T extends DTypeTag>(
 /// Measures the Binary Cross-Entropy loss between target probabilities [target] and
 /// predicted probabilities [input]:
 /// $$\ell(x, y) = -\left(y \ln(x) + (1 - y) \ln(1 - x)\right)$$
-GpuArray<T> binaryCrossEntropy<T extends DTypeTag>(
+GpuArray<T> binaryCrossEntropy<T extends SelfOf<DTypeTag>>(
   GpuArray<T> input,
   GpuArray<T> target, {
   LossReduction reduction = LossReduction.mean,

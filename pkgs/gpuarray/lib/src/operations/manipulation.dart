@@ -91,7 +91,7 @@ GpuArray<T> _allocateOrValidateOut<T extends DTypeTag>(
 }
 
 /// Joins a sequence of [arrays] along an existing [axis].
-GpuArray<T> concatenate<T extends DTypeTag>(
+GpuArray<T> concatenate<T extends AnySpec>(
   List<GpuArray<DTypeTag>> arrays, {
   int axis = 0,
   GpuArray<T>? out,
@@ -165,7 +165,7 @@ GpuArray<T> concatenate<T extends DTypeTag>(
 }
 
 /// Joins a sequence of [arrays] along a new [axis].
-GpuArray<T> stack<T extends DTypeTag>(
+GpuArray<T> stack<T extends AnySpec>(
   List<GpuArray<DTypeTag>> arrays, {
   int axis = 0,
   GpuArray<T>? out,
@@ -184,7 +184,7 @@ GpuArray<T> stack<T extends DTypeTag>(
 }
 
 /// Stacks arrays in sequence vertically (row-wise / along axis 0).
-GpuArray<T> vstack<T extends DTypeTag>(
+GpuArray<T> vstack<T extends AnySpec>(
   List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
@@ -211,7 +211,7 @@ GpuArray<T> vstack<T extends DTypeTag>(
 }
 
 /// Stacks arrays in sequence horizontally (column-wise / along axis 1).
-GpuArray<T> hstack<T extends DTypeTag>(
+GpuArray<T> hstack<T extends AnySpec>(
   List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
@@ -239,7 +239,7 @@ GpuArray<T> hstack<T extends DTypeTag>(
 }
 
 /// Stacks arrays in sequence depth-wise (along axis 2).
-GpuArray<T> dstack<T extends DTypeTag>(
+GpuArray<T> dstack<T extends AnySpec>(
   List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {
@@ -270,7 +270,7 @@ GpuArray<T> dstack<T extends DTypeTag>(
 }
 
 /// Stacks 1D or 2D arrays as columns to create a 2D array.
-GpuArray<T> columnStack<T extends DTypeTag>(
+GpuArray<T> columnStack<T extends AnySpec>(
   List<GpuArray<DTypeTag>> arrays, {
   GpuArray<T>? out,
 }) {

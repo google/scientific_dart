@@ -1256,7 +1256,7 @@ GpuArray<F> cond<F extends DTypeTag>(
 /// The [arrays] list must contain at least 2 tensors residing on the same
 /// [GpuDevice] with matching [DType]s. If [out] is provided, it must match the
 /// output shape, dtype, and device.
-GpuArray<T> multiDot<T extends DTypeTag>(
+GpuArray<T> multiDot<T extends SelfOf<DTypeTag>>(
   List<GpuArray<T>> arrays, {
   GpuArray<T>? out,
 }) {

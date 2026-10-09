@@ -37,7 +37,7 @@ void _checkArrayNotDisposed(GpuArray<DTypeTag> arr, String name) {
 /// [nonzero], [flatnonzero], or [argwhere].
 ///
 /// If [out] is provided, the result is written into [out] and returned.
-GpuArray<T> where<T extends DTypeTag>(
+GpuArray<T> where<T extends AnySpec>(
   GpuArray<DTypeTag> condition,
   GpuArray<DTypeTag> x,
   GpuArray<DTypeTag> y, {
@@ -134,7 +134,7 @@ GpuArray<T> where<T extends DTypeTag>(
 /// conditions in [condlist].
 ///
 /// If [out] is provided, the final result is written into [out] and returned.
-GpuArray<T> select<T extends DTypeTag>(
+GpuArray<T> select<T extends AnySpec>(
   List<GpuArray<DTypeTag>> condlist,
   List<GpuArray<DTypeTag>> choicelist, {
   GpuArray<DTypeTag>? defaultValue,
@@ -1882,7 +1882,7 @@ GpuArray<T> diff<T extends DTypeTag>(
         appArr = _coerceDiffBoundary<T>(append, a, normAxis, 'append');
         parts.add(appArr);
       }
-      working = concatenate<T>(parts, axis: normAxis);
+      working = concatenate(parts, axis: normAxis) as GpuArray<T>;
       ownsWorking = true;
     } finally {
       prepArr?.dispose();

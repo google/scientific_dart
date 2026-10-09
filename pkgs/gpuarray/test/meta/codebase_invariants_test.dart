@@ -24,6 +24,30 @@ import 'package:analyzer/dart/element/type.dart';
 import 'package:analyzer/source/line_info.dart';
 import 'package:test/test.dart';
 
+/// Public barrel libraries whose export namespaces define the package API.
+const _barrelLibraries = <String>[
+  'lib/gpuarray.dart',
+  'lib/linalg.dart',
+  'lib/fft.dart',
+  'lib/random.dart',
+  'lib/autograd.dart',
+  'lib/nn.dart',
+  'lib/jit.dart',
+  'lib/wgsl.dart',
+  'lib/serialization.dart',
+  'lib/safetensors.dart',
+];
+
+/// Whether [tp] is bounded by the wildcard `AnySpec` row (spelled through the
+/// alias or expanded).
+bool _isAnySpecBound(TypeParameterElement tp) {
+  final bound = tp.bound;
+  if (bound is! InterfaceType) return false;
+  return bound.alias?.element.name == 'AnySpec' ||
+      bound.getDisplayString() ==
+          'DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>';
+}
+
 void main() {
   final pkgRoot = Directory.current.path.endsWith('pkgs/gpuarray')
       ? Directory.current
@@ -275,18 +299,7 @@ void main() {
             result.unit.accept(visitor);
           }
         }
-        final barrels = [
-          'lib/gpuarray.dart',
-          'lib/linalg.dart',
-          'lib/fft.dart',
-          'lib/random.dart',
-          'lib/autograd.dart',
-          'lib/nn.dart',
-          'lib/jit.dart',
-          'lib/wgsl.dart',
-          'lib/serialization.dart',
-          'lib/safetensors.dart',
-        ];
+        final barrels = _barrelLibraries;
         final coreBarrelParsed = parseString(
           content: File('${pkgRoot.path}/lib/gpuarray.dart').readAsStringSync(),
         );
@@ -460,6 +473,458 @@ void main() {
           }),
           reason:
               'Expected Rule 2 semantic check to verify GpuArrayDivide and GpuArraySpecComponentExtension in gpuarray.',
+        );
+      },
+    );
+
+    test(
+      'Static dtype typing parity with package:ndarray: shape-derived SelfOf bounds, marker-bounded bitwise/shift operator extensions and escape hatches',
+      () async {
+        final libDir = Directory('${pkgRoot.path}/lib').absolute.path;
+        final collection = AnalysisContextCollection(includedPaths: [libDir]);
+        final session = collection.contextFor(libDir).currentSession;
+        final violations = <String>[];
+
+        // Every exported executable, de-duplicated across barrels.
+        final exported = <String, ExecutableElement>{};
+        for (final barrelRel in _barrelLibraries) {
+          final barrelPath = File('${pkgRoot.path}/$barrelRel').absolute.path;
+          final libRes = await session.getResolvedLibrary(barrelPath);
+          if (libRes is! ResolvedLibraryResult) {
+            violations.add('$barrelRel: failed to resolve library');
+            continue;
+          }
+          for (final entry
+              in libRes.element.exportNamespace.definedNames2.entries) {
+            final el = entry.value;
+            if (el is ExecutableElement) {
+              exported.putIfAbsent('${el.library.uri}#${entry.key}', () => el);
+            }
+          }
+        }
+        expect(exported, isNotEmpty);
+
+        bool isOutParameter(FormalParameterElement p) {
+          final pName = p.name ?? '';
+          return pName == 'out' ||
+              (p.isNamed &&
+                  pName.startsWith('out') &&
+                  pName.length > 3 &&
+                  pName[3].toUpperCase() == pName[3]);
+        }
+
+        // Shape-derived SelfOf rule (package:ndarray check 6b): a type
+        // parameter that binds two or more non-`out` input positions
+        // (`GpuArray<T>`, `DType<T>`, or `List<GpuArray<T>>` which counts as
+        // two because a list literal LUBs its elements) can be inferred as the
+        // least upper bound of distinct concrete tags, so it must be bounded
+        // by `SelfOf<...>`. Conversely, `SelfOf` on a parameter that binds
+        // fewer than two input positions is over-constraining.
+        //
+        // Functions that deliberately accept mixed dtypes and promote or cast
+        // at run time keep `T extends DTypeTag` so `T` is the LUB of the
+        // operands: the `dtype:` parameter of the accumulating reductions
+        // requests a result dtype that may differ from the input's, so
+        // `sum(i32, dtype: DType.float64)` infers `T = DTypeTag` and the
+        // result dtype is only known at run time.
+        const mixedDTypePromotingOps = <String>{'sum', 'nansum', 'prod'};
+        int inputBindingCount(DartType type, TypeParameterElement tp) {
+          if (type is InterfaceType) {
+            final elName = type.element.name;
+            if ((elName == 'GpuArray' || elName == 'DType') &&
+                type.typeArguments.length == 1) {
+              final arg = type.typeArguments.single;
+              return (arg is TypeParameterType && arg.element == tp) ? 1 : 0;
+            }
+            if ((elName == 'List' || elName == 'Iterable') &&
+                type.typeArguments.length == 1) {
+              return 2 * inputBindingCount(type.typeArguments.single, tp);
+            }
+          }
+          return 0;
+        }
+
+        final selfOfBoundedFunctions = <String>{};
+        for (final entry in exported.entries) {
+          final el = entry.value;
+          final name = entry.key.split('#').last;
+          if (el.typeParameters.isEmpty) continue;
+          for (final tp in el.typeParameters) {
+            var bindings = 0;
+            for (final p in el.formalParameters) {
+              if (isOutParameter(p)) continue;
+              bindings += inputBindingCount(p.type, tp);
+            }
+            final bound = tp.bound;
+            final isSelfOf =
+                bound is InterfaceType && bound.element.name == 'SelfOf';
+            if (isSelfOf) selfOfBoundedFunctions.add(name);
+            if (bindings >= 2 &&
+                !isSelfOf &&
+                !mixedDTypePromotingOps.contains(name)) {
+              violations.add(
+                'Exported function `$name`: type parameter `${tp.name}` binds $bindings input positions but is bounded by `${bound?.getDisplayString()}`; bound it by `SelfOf<...>` so mixed-dtype calls are rejected at compile time (or add it to `mixedDTypePromotingOps` if it promotes dtypes at run time).',
+              );
+            }
+            if (bindings < 2 && isSelfOf) {
+              violations.add(
+                'Exported function `$name`: type parameter `${tp.name}` is bounded by `${bound.getDisplayString()}` but binds only $bindings input position(s); `SelfOf` is only warranted for same-dtype multi-input parameters.',
+              );
+            }
+            if (isSelfOf && mixedDTypePromotingOps.contains(name)) {
+              violations.add(
+                'Exported function `$name` is listed in `mixedDTypePromotingOps` but bounds `${tp.name}` by `SelfOf<...>`; remove it from the allow-list.',
+              );
+            }
+          }
+        }
+        for (final name in mixedDTypePromotingOps) {
+          if (!exported.keys.any((k) => k.endsWith('#$name'))) {
+            violations.add(
+              '`mixedDTypePromotingOps` lists `$name`, which is not an exported function.',
+            );
+          }
+        }
+
+        // Run-time-typed results default to `AnySpec` (package:ndarray's
+        // choose / multi_dot / lstsq / average rule): a type parameter that
+        // occurs in the result (return type or `out:`) but is determined
+        // neither by a non-`out` input nor through the bound of a determined
+        // type parameter (`T extends SelfOf<DivideOf<R>>` determines `R`) is
+        // only known at run time, so it must be bounded by `AnySpec` for the
+        // un-annotated result to compose with every other operation.
+        void collectTypeParams(DartType? type, Set<TypeParameterElement> into) {
+          if (type == null) return;
+          if (type is TypeParameterType) {
+            into.add(type.element);
+          } else if (type is InterfaceType) {
+            for (final arg in type.typeArguments) {
+              collectTypeParams(arg, into);
+            }
+          } else if (type is RecordType) {
+            for (final f in type.positionalFields) {
+              collectTypeParams(f.type, into);
+            }
+            for (final f in type.namedFields) {
+              collectTypeParams(f.type, into);
+            }
+          } else if (type is FunctionType) {
+            collectTypeParams(type.returnType, into);
+            for (final p in type.formalParameters) {
+              collectTypeParams(p.type, into);
+            }
+          }
+        }
+
+        final runtimeDTypedResultFunctions = <String>{};
+        for (final entry in exported.entries) {
+          final el = entry.value;
+          final name = entry.key.split('#').last;
+          if (el.typeParameters.isEmpty) continue;
+          final resultTypeParams = <TypeParameterElement>{};
+          collectTypeParams(el.returnType, resultTypeParams);
+          final determined = <TypeParameterElement>{};
+          for (final p in el.formalParameters) {
+            if (isOutParameter(p)) {
+              collectTypeParams(p.type, resultTypeParams);
+            } else {
+              collectTypeParams(p.type, determined);
+            }
+          }
+          var grew = true;
+          while (grew) {
+            grew = false;
+            for (final tp in el.typeParameters) {
+              if (!determined.contains(tp)) continue;
+              final viaBound = <TypeParameterElement>{};
+              collectTypeParams(tp.bound, viaBound);
+              for (final dependent in viaBound) {
+                if (determined.add(dependent)) grew = true;
+              }
+            }
+          }
+          for (final tp in el.typeParameters) {
+            if (!resultTypeParams.contains(tp) || determined.contains(tp)) {
+              continue;
+            }
+            if (_isAnySpecBound(tp)) {
+              runtimeDTypedResultFunctions.add(name);
+            } else {
+              violations.add(
+                'Exported function `$name`: result type parameter `${tp.name}` is determined only by `out:`; bound it by `AnySpec` instead of `${tp.bound?.getDisplayString()}` so the run-time-typed default result composes with every operation.',
+              );
+            }
+          }
+        }
+
+        // Same-dtype binary functions must give both operands the same static
+        // type (no `Object?` second operand); scalars go through the methods.
+        const sameDTypeBinaryOps = <String>{
+          'add',
+          'subtract',
+          'multiply',
+          'divide',
+          'floorDivide',
+          'pow',
+          'power',
+          'remainder',
+          'mod',
+          'fmod',
+          'maximum',
+          'minimum',
+          'atan2',
+          'hypot',
+          'copysign',
+          'gcd',
+          'lcm',
+          'bitwiseAnd',
+          'bitwiseOr',
+          'bitwiseXor',
+          'leftShift',
+          'rightShift',
+          'equal',
+          'notEqual',
+          'greater',
+          'greaterEqual',
+          'less',
+          'lessEqual',
+          'matmul',
+          'dot',
+          'vdot',
+          'tensordot',
+          'kron',
+          'inner',
+          'outer',
+          'cross',
+          'mseLoss',
+          'l1Loss',
+          'binaryCrossEntropy',
+        };
+        for (final fnName in sameDTypeBinaryOps) {
+          final el = exported.entries
+              .where((e) => e.key.endsWith('#$fnName'))
+              .map((e) => e.value)
+              .firstOrNull;
+          if (el == null) {
+            violations.add('Expected exported binary operation `$fnName`.');
+            continue;
+          }
+          final p0Type = el.formalParameters[0].type.getDisplayString();
+          final p1Type = el.formalParameters[1].type
+              .getDisplayString()
+              .replaceFirst(RegExp(r'\?$'), '');
+          if (p0Type != p1Type) {
+            violations.add(
+              'Same-dtype binary operation `$fnName` must give its first two parameters identical static types (got `$p0Type` vs `$p1Type`).',
+            );
+          }
+        }
+
+        // Expected bound families (grouped as in the CHANGELOG).
+        const expectedBounds = <String, Set<String>>{
+          'SelfOf<DTypeTag>': {
+            'add',
+            'subtract',
+            'multiply',
+            'floorDivide',
+            'pow',
+            'power',
+            'remainder',
+            'mod',
+            'fmod',
+            'maximum',
+            'minimum',
+            'atan2',
+            'hypot',
+            'copysign',
+            'equal',
+            'notEqual',
+            'greater',
+            'greaterEqual',
+            'less',
+            'lessEqual',
+            'matmul',
+            'dot',
+            'vdot',
+            'multiDot',
+            'einsum',
+            'tensordot',
+            'kron',
+            'inner',
+            'outer',
+            'cross',
+            'mseLoss',
+            'l1Loss',
+            'binaryCrossEntropy',
+            'scaledDotProductAttention',
+          },
+          'SelfOf<DivideOf<R>>': {'divide'},
+          'SelfOf<RealOf<BitwiseDType>>': {
+            'bitwiseAnd',
+            'bitwiseOr',
+            'bitwiseXor',
+          },
+          'SelfOf<RealOf<IntegerDType>>': {
+            'gcd',
+            'lcm',
+            'leftShift',
+            'rightShift',
+          },
+        };
+        for (final family in expectedBounds.entries) {
+          for (final fnName in family.value) {
+            final el = exported.entries
+                .where((e) => e.key.endsWith('#$fnName'))
+                .map((e) => e.value)
+                .firstOrNull;
+            final actual = el?.typeParameters.firstOrNull?.bound
+                ?.getDisplayString();
+            if (actual != family.key) {
+              violations.add(
+                'Exported function `$fnName` must bound its first type parameter by `${family.key}` (got `$actual`).',
+              );
+            }
+          }
+        }
+        const unaryBitwiseOps = <String>{'bitwiseNot', 'invert'};
+        for (final fnName in unaryBitwiseOps) {
+          final el = exported.entries
+              .where((e) => e.key.endsWith('#$fnName'))
+              .map((e) => e.value)
+              .firstOrNull;
+          final actual = el?.typeParameters.firstOrNull?.bound
+              ?.getDisplayString();
+          if (actual != 'RealOf<BitwiseDType>') {
+            violations.add(
+              'Exported function `$fnName` must bound its type parameter by `RealOf<BitwiseDType>` (got `$actual`).',
+            );
+          }
+        }
+        final expectedSelfOfFunctions = <String>{
+          for (final family in expectedBounds.values) ...family,
+        };
+
+        // Operator extensions: exact declarations, exact operator sets, and no
+        // bitwise/shift operator left on the `GpuArray` class itself.
+        final gpuArrayFile = File('${pkgRoot.path}/lib/src/gpu_array.dart');
+        final gpuArraySource = gpuArrayFile.readAsStringSync();
+        const requiredDeclarations = <String>[
+          'extension GpuArrayBitwise<T extends BitwiseDType> on GpuArray<T> {',
+          'extension GpuArrayBitwiseSpec on GpuArray<AnyBitwiseSpec> {',
+          'extension GpuArrayShift<T extends IntegerDType> on GpuArray<T> {',
+          'extension GpuArrayShiftSpec on GpuArray<AnyIntegerSpec> {',
+        ];
+        for (final declaration in requiredDeclarations) {
+          if (!gpuArraySource.contains(declaration)) {
+            violations.add(
+              'lib/src/gpu_array.dart: missing declaration `$declaration`',
+            );
+          }
+        }
+        const bitwiseOperators = <String>{'&', '|', '^', '~'};
+        const shiftOperators = <String>{'<<', '>>'};
+        const operatorExtensions = <String, Set<String>>{
+          'GpuArrayBitwise': bitwiseOperators,
+          'GpuArrayBitwiseSpec': bitwiseOperators,
+          'GpuArrayShift': shiftOperators,
+          'GpuArrayShiftSpec': shiftOperators,
+        };
+        const escapeHatches = <String, String>{
+          'asAnySpec': 'GpuArray<AnySpec>',
+          'asBitwiseDType': 'GpuArray<AnyBitwiseSpec>',
+          'asIntegerDType': 'GpuArray<AnyIntegerSpec>',
+        };
+        final parsed = parseString(
+          content: gpuArraySource,
+          throwIfDiagnostics: false,
+        );
+        final seenOperatorExtensions = <String>{};
+        for (final declaration in parsed.unit.declarations) {
+          if (declaration is ClassDeclaration &&
+              declaration.namePart.typeName.lexeme == 'GpuArray') {
+            final getterReturnTypes = <String, String?>{};
+            final body = declaration.body;
+            final classMembers = body is BlockClassBody
+                ? body.members
+                : const <ClassMember>[];
+            for (final member in classMembers) {
+              if (member is! MethodDeclaration) continue;
+              final memberName = member.name.lexeme;
+              if (member.isOperator &&
+                  (bitwiseOperators.contains(memberName) ||
+                      shiftOperators.contains(memberName))) {
+                violations.add(
+                  'lib/src/gpu_array.dart: `GpuArray` must not declare `operator $memberName` directly; it belongs on the marker-bounded extensions.',
+                );
+              }
+              if (member.isGetter) {
+                getterReturnTypes[memberName] = member.returnType?.toSource();
+              }
+            }
+            for (final hatch in escapeHatches.entries) {
+              final actual = getterReturnTypes[hatch.key];
+              if (actual != hatch.value) {
+                violations.add(
+                  'lib/src/gpu_array.dart: `GpuArray` must declare `${hatch.value} get ${hatch.key}` (got `$actual`).',
+                );
+              }
+            }
+          } else if (declaration is ExtensionDeclaration) {
+            final extName = declaration.name?.lexeme;
+            final declaredOperators = <String>{
+              for (final member in declaration.body.members)
+                if (member is MethodDeclaration && member.isOperator)
+                  member.name.lexeme,
+            };
+            final expectedOperators = operatorExtensions[extName];
+            if (expectedOperators == null) {
+              for (final op in declaredOperators) {
+                if (bitwiseOperators.contains(op) ||
+                    shiftOperators.contains(op)) {
+                  violations.add(
+                    'lib/src/gpu_array.dart: extension `$extName` must not declare `operator $op`; only the GpuArrayBitwise / GpuArrayShift families may.',
+                  );
+                }
+              }
+              continue;
+            }
+            seenOperatorExtensions.add(extName!);
+            if (declaredOperators.length != expectedOperators.length ||
+                !declaredOperators.containsAll(expectedOperators)) {
+              violations.add(
+                'lib/src/gpu_array.dart: extension `$extName` must declare exactly the operators $expectedOperators (got $declaredOperators).',
+              );
+            }
+          }
+        }
+        expect(
+          seenOperatorExtensions,
+          equals(operatorExtensions.keys.toSet()),
+          reason: 'Expected all four operator extensions in gpu_array.dart.',
+        );
+
+        expect(violations, isEmpty, reason: violations.join('\n'));
+        expect(
+          selfOfBoundedFunctions,
+          equals(expectedSelfOfFunctions),
+          reason:
+              'Expected the shape-derived SelfOf rule to cover exactly the same-dtype binary and multi-array functions of package:gpuarray.',
+        );
+        expect(
+          runtimeDTypedResultFunctions,
+          equals({
+            'where',
+            'select',
+            'concatenate',
+            'stack',
+            'vstack',
+            'hstack',
+            'dstack',
+            'columnStack',
+            'permutation',
+          }),
+          reason:
+              'Exactly these exported functions have a run-time-determined result dtype typed only by `out:` (bounded by `AnySpec`); every other result dtype must be a static projection of an input.',
         );
       },
     );
@@ -1093,6 +1558,11 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
     'toNestedList',
   };
 
+  /// `DTypeSpec` row aliases whose element slot is `dynamic` by design; a
+  /// signature spelled with one of them (`asAnySpec`, the `GpuArrayBitwiseSpec`
+  /// operators) is deliberately run-time typed, not accidentally `dynamic`.
+  static const _wildcardRowAliases = <String>{'AnySpec', 'AnyBitwiseSpec'};
+
   static const _kProjectionInterfaceNames = <String>{
     'RealOf',
     'ElementOf',
@@ -1123,6 +1593,7 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
     if (type == null) return false;
     if (type is DynamicType) return true;
     if (type is InterfaceType) {
+      if (_wildcardRowAliases.contains(type.alias?.element.name)) return false;
       return type.typeArguments.any(_containsDynamic);
     }
     if (type is RecordType) {
@@ -1223,9 +1694,15 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
       }
     }
 
-    // Form A: another type parameter T has bound XOf<R> (and T is determined by input or chained projection)
+    // Form A: another type parameter T has bound XOf<R> or SelfOf<XOf<R>> (and
+    // T is determined by input or chained projection)
     for (final tp in allTypeParams) {
-      final bound = tp.bound;
+      var bound = tp.bound;
+      while (bound is InterfaceType &&
+          bound.element.name == 'SelfOf' &&
+          bound.typeArguments.length == 1) {
+        bound = bound.typeArguments.single;
+      }
       if (bound is InterfaceType &&
           _kProjectionInterfaceNames.contains(bound.element.name) &&
           bound.typeArguments.length == 1) {
@@ -1452,8 +1929,11 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
         for (final t in nonOutInputTypes) {
           _collectTypeParams(t, nonOutTypeParams);
         }
-        // Output-only single-type-param functions (e.g., where, select, concatenate,
-        // stack, vstack, hstack, dstack, columnStack, permutation) determine T from `{out}`.
+        // Output-only single-type-param functions (e.g., where, select,
+        // concatenate, stack, vstack, hstack, dstack, columnStack,
+        // permutation) determine T from `{out}`; the exported ones must bound
+        // it by `AnySpec`, which the typing-parity test checks over the barrel
+        // export namespaces.
         if (!(nonOutTypeParams.isEmpty &&
             element.typeParameters.length == 1 &&
             hasOutParam)) {

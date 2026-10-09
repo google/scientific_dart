@@ -38,6 +38,8 @@ export 'package:resource_scope/resource_scope.dart'
 export 'dtype.dart'
     show
         AccumulatorOf,
+        AnyBitwiseSpec,
+        AnyIntegerSpec,
         AnySpec,
         BitwiseDType,
         Bool,
@@ -46,13 +48,17 @@ export 'dtype.dart'
         DTypeSpec,
         DTypeTag,
         DivideOf,
+        DivideSpec,
         DoublePrecisionOf,
+        DoublePrecisionSpec,
         ElementOf,
         InexactOf,
+        InexactSpec,
         IntegerDType,
         NDArrayBaseElements,
         RealFloatOf,
-        RealOf;
+        RealOf,
+        SelfOf;
 
 /// An N-dimensional array living on a GPU device.
 ///
@@ -1019,28 +1025,10 @@ final class GpuArray<T extends DTypeTag>
   /// Elementwise negation (`-this`).
   GpuArray<T> operator -() => _dispatchUnary(UnaryOp.negate);
 
-  /// Elementwise bitwise AND (`this & other`).
-  GpuArray<T> operator &(Object? other) =>
-      _asT(_dispatchBinary(BinaryOp.bitwiseAnd, other));
-
-  /// Elementwise bitwise OR (`this | other`).
-  GpuArray<T> operator |(Object? other) =>
-      _asT(_dispatchBinary(BinaryOp.bitwiseOr, other));
-
-  /// Elementwise bitwise XOR (`this ^ other`).
-  GpuArray<T> operator ^(Object? other) =>
-      _asT(_dispatchBinary(BinaryOp.bitwiseXor, other));
-
-  /// Elementwise bitwise NOT / inversion (`~this`).
-  GpuArray<T> operator ~() => _dispatchUnary(UnaryOp.bitwiseNot);
-
-  /// Elementwise bitwise left shift (`this << other`).
-  GpuArray<T> operator <<(Object? other) =>
-      _asT(_dispatchBinary(BinaryOp.leftShift, other));
-
-  /// Elementwise bitwise right shift (`this >> other`).
-  GpuArray<T> operator >>(Object? other) =>
-      _asT(_dispatchBinary(BinaryOp.rightShift, other));
+  // The bitwise (`&`, `|`, `^`, `~`) and shift (`<<`, `>>`) operators are
+  // declared on [GpuArrayBitwise] / [GpuArrayShift] (and their `*Spec`
+  // siblings) so that they are only statically available on integer and
+  // boolean dtype tags.
 
   GpuArray<T> _asT(GpuArray<DTypeTag> res) {
     if (res is GpuArray<T>) return res;
@@ -1492,6 +1480,55 @@ final class GpuArray<T extends DTypeTag>
       dtypeDst: targetDType,
     );
     return dst;
+  }
+
+  /// Views this array with the wildcard [AnySpec] tag.
+  ///
+  /// This bypasses static dtype constraints and is intended for helpers and
+  /// tests that dispatch or validate dtypes dynamically: a `GpuArray<AnySpec>`
+  /// satisfies every `SelfOf<...>` and projection bound, with the dtype
+  /// validated at run time instead. The cast allocates nothing and does not
+  /// check whether the array is disposed.
+  GpuArray<AnySpec> get asAnySpec => this as GpuArray<AnySpec>;
+
+  /// Views this array with the [AnyBitwiseSpec] tag.
+  ///
+  /// This bypasses static dtype constraints and is intended for helpers and
+  /// tests that dispatch or validate bitwise operations dynamically; the
+  /// result satisfies the `SelfOf<RealOf<BitwiseDType>>` bound of
+  /// [bitwiseAnd], [bitwiseOr], [bitwiseXor] and [invert] and carries the
+  /// operators of [GpuArrayBitwiseSpec].
+  ///
+  /// This array must not be disposed, and [dtype] must be an integer or the
+  /// `boolean` data type.
+  GpuArray<AnyBitwiseSpec> get asBitwiseDType {
+    _checkNotDisposed();
+    if (this is GpuArray<BitwiseDType>) {
+      return this as GpuArray<AnyBitwiseSpec>;
+    }
+    throw ArgumentError.value(
+      dtype,
+      'dtype',
+      'Must be integer or boolean data type for bitwise operations',
+    );
+  }
+
+  /// Views this array with the [AnyIntegerSpec] tag.
+  ///
+  /// This bypasses static dtype constraints and is intended for helpers and
+  /// tests that dispatch or validate integer shift / `gcd` / `lcm` operations
+  /// dynamically; the result satisfies the `SelfOf<RealOf<IntegerDType>>`
+  /// bound of [leftShift], [rightShift], [gcd] and [lcm] and carries the
+  /// operators of [GpuArrayShiftSpec].
+  ///
+  /// This array must not be disposed, and [dtype] must be a signed or unsigned
+  /// integer data type.
+  GpuArray<AnyIntegerSpec> get asIntegerDType {
+    _checkNotDisposed();
+    if (this is GpuArray<IntegerDType>) {
+      return this as GpuArray<AnyIntegerSpec>;
+    }
+    throw ArgumentError.value(dtype, 'dtype', 'Must be integer data type');
   }
 
   /// Creates a strided subview of this array according to [specs].
@@ -2501,6 +2538,101 @@ extension GpuArrayBaseDivide on GpuArray<DTypeTag> {
   /// Elementwise true division with another [GpuArray] or scalar.
   GpuArray<DTypeTag> divide(Object? other, {GpuArray<DTypeTag>? out}) =>
       _asDivide<DTypeTag>(_dispatchBinary(BinaryOp.divide, other, out: out));
+}
+
+/// Bitwise operators (`&`, `|`, `^`, `~`) for dtype tags that implement
+/// [BitwiseDType]: all integer tags, [Boolean], and the least upper bounds
+/// `GpuArray<IntegerDType>` / `GpuArray<BitwiseDType>`.
+///
+/// Applying one of these operators to a floating-point or complex array is a
+/// compile-time error. [GpuArrayBitwiseSpec] provides the same operators for
+/// the run-time-checked [AnyBitwiseSpec] row returned by
+/// [GpuArray.asBitwiseDType]. A concrete tag such as [Int32] satisfies both
+/// extensions; Dart selects this one because `GpuArray<Int32>` is the more
+/// specific `on` type.
+extension GpuArrayBitwise<T extends BitwiseDType> on GpuArray<T> {
+  /// Elementwise bitwise AND (`this & other`). Supports broadcasting and
+  /// scalars; an array [other] is promoted with this array's dtype and the
+  /// result is cast back to this array's dtype.
+  GpuArray<T> operator &(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseAnd, other));
+
+  /// Elementwise bitwise OR (`this | other`). Supports broadcasting and
+  /// scalars; see the `&` operator for the operand rules.
+  GpuArray<T> operator |(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseOr, other));
+
+  /// Elementwise bitwise XOR (`this ^ other`). Supports broadcasting and
+  /// scalars; see the `&` operator for the operand rules.
+  GpuArray<T> operator ^(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseXor, other));
+
+  /// Elementwise bitwise NOT / inversion (`~this`; logical NOT for `Boolean`
+  /// arrays).
+  GpuArray<T> operator ~() => _dispatchUnary(UnaryOp.bitwiseNot);
+}
+
+/// Bitwise operators (`&`, `|`, `^`, `~`) for the run-time-checked
+/// [AnyBitwiseSpec] row produced by [GpuArray.asBitwiseDType].
+///
+/// See [GpuArrayBitwise] for the operand rules; the only difference is that
+/// the receiver's dtype was validated at run time rather than at compile time.
+extension GpuArrayBitwiseSpec on GpuArray<AnyBitwiseSpec> {
+  /// Elementwise bitwise AND (`this & other`). See the `&` operator of
+  /// [GpuArrayBitwise].
+  GpuArray<AnyBitwiseSpec> operator &(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseAnd, other));
+
+  /// Elementwise bitwise OR (`this | other`). See the `|` operator of
+  /// [GpuArrayBitwise].
+  GpuArray<AnyBitwiseSpec> operator |(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseOr, other));
+
+  /// Elementwise bitwise XOR (`this ^ other`). See the `^` operator of
+  /// [GpuArrayBitwise].
+  GpuArray<AnyBitwiseSpec> operator ^(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.bitwiseXor, other));
+
+  /// Elementwise bitwise NOT / inversion (`~this`). See the `~` operator of
+  /// [GpuArrayBitwise].
+  GpuArray<AnyBitwiseSpec> operator ~() => _dispatchUnary(UnaryOp.bitwiseNot);
+}
+
+/// Shift operators (`<<`, `>>`) for dtype tags that implement [IntegerDType]:
+/// all signed and unsigned integer tags and the least upper bound
+/// `GpuArray<IntegerDType>`.
+///
+/// Applying one of these operators to a boolean, floating-point or complex
+/// array is a compile-time error. [GpuArrayShiftSpec] provides the same
+/// operators for the run-time-checked [AnyIntegerSpec] row returned by
+/// [GpuArray.asIntegerDType].
+extension GpuArrayShift<T extends IntegerDType> on GpuArray<T> {
+  /// Elementwise bitwise left shift (`this << other`). Supports broadcasting
+  /// and scalars; an array [other] is promoted with this array's dtype and the
+  /// result is cast back to this array's dtype.
+  GpuArray<T> operator <<(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.leftShift, other));
+
+  /// Elementwise bitwise right shift (`this >> other`). Supports broadcasting
+  /// and scalars; see the `<<` operator for the operand rules.
+  GpuArray<T> operator >>(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.rightShift, other));
+}
+
+/// Shift operators (`<<`, `>>`) for the run-time-checked [AnyIntegerSpec] row
+/// produced by [GpuArray.asIntegerDType].
+///
+/// See [GpuArrayShift] for the operand rules.
+extension GpuArrayShiftSpec on GpuArray<AnyIntegerSpec> {
+  /// Elementwise bitwise left shift (`this << other`). See the `<<` operator
+  /// of [GpuArrayShift].
+  GpuArray<AnyIntegerSpec> operator <<(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.leftShift, other));
+
+  /// Elementwise bitwise right shift (`this >> other`). See the `>>` operator
+  /// of [GpuArrayShift].
+  GpuArray<AnyIntegerSpec> operator >>(Object? other) =>
+      _asT(_dispatchBinary(BinaryOp.rightShift, other));
 }
 
 /// Elementwise binary arithmetic, unary math, reduction, linear algebra, and manipulation methods on [GpuArray<T>].
@@ -3744,173 +3876,234 @@ extension GpuArrayDefaultComponentExtension on GpuArray<DTypeTag> {
 }
 
 // --- Top-Level Elementwise Binary & Bitwise Functions ---
+//
+// Every function that binds two input arrays to one type parameter bounds it
+// by `SelfOf<...>`, so mixed-dtype calls such as `add(f64, f32)` are rejected
+// at compile time while same-dtype calls infer `T` without type arguments.
+// Scalars are accepted by the instance methods and operators (`a.add(2.0)`,
+// `a + 2.0`); run-time-typed arrays widen with `GpuArray.asAnySpec`,
+// `GpuArray.asBitwiseDType` or `GpuArray.asIntegerDType`.
 
 /// Elementwise addition of [a] and [b].
-GpuArray<T> add<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> add<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.add(b, out: out);
 
 /// Elementwise subtraction of [b] from [a].
-GpuArray<T> subtract<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> subtract<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.subtract(b, out: out);
 
 /// Elementwise multiplication of [a] and [b].
-GpuArray<T> multiply<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> multiply<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.multiply(b, out: out);
 
 /// Elementwise true division of [a] by [b].
-GpuArray<R> divide<R extends DTypeTag>(
-  GpuArray<DivideOf<R>> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype. Integer and [Boolean] operands
+/// divide to [Float64]; floating-point and complex operands divide to their
+/// own dtype ([DivideOf]).
+GpuArray<R> divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<R>? out,
-}) => a.divide(b, out: out);
+}) => a._asDivide<R>(a._dispatchBinary(BinaryOp.divide, b, out: out));
 
 /// Elementwise floor division of [a] by [b].
-GpuArray<T> floorDivide<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> floorDivide<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.floorDivide(b, out: out);
 
 /// Elementwise exponentiation ($a^b$).
-GpuArray<T> pow<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> pow<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.pow(b, out: out);
 
 /// Elementwise exponentiation ($a^b$, alias for [pow]).
-GpuArray<T> power<T extends DTypeTag>(
+GpuArray<T> power<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.pow(b, out: out);
 
 /// Elementwise floor remainder ($a \bmod b$).
-GpuArray<T> remainder<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> remainder<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.remainder(b, out: out);
 
 /// Elementwise floor remainder ($a \bmod b$, alias for [remainder]).
-GpuArray<T> mod<T extends DTypeTag>(
+GpuArray<T> mod<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.remainder(b, out: out);
 
 /// Elementwise C-style truncated remainder (`fmod`).
-GpuArray<T> fmod<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> fmod<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.fmod(b, out: out);
 
 /// Elementwise maximum of [a] and [b].
-GpuArray<T> maximum<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> maximum<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.maximum(b, out: out);
 
 /// Elementwise minimum of [a] and [b].
-GpuArray<T> minimum<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> minimum<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.minimum(b, out: out);
 
 /// Elementwise four-quadrant inverse tangent $\text{atan2}(a, b)$.
-GpuArray<T> atan2<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it (integer
+/// inputs are computed in floating point and cast back).
+GpuArray<T> atan2<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.atan2(b, out: out);
 
 /// Elementwise Euclidean hypotenuse $\sqrt{a^2 + b^2}$.
-GpuArray<T> hypot<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it (integer
+/// inputs are computed in floating point and cast back).
+GpuArray<T> hypot<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.hypot(b, out: out);
 
 /// Elementwise copysign (magnitude of [a] with sign of [b]).
-GpuArray<T> copysign<T extends DTypeTag>(
+///
+/// Both operands must have the same dtype; the result keeps it.
+GpuArray<T> copysign<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.copysign(b, out: out);
 
 /// Elementwise $a \cdot 2^b$.
+///
+/// The exponent [b] may have any dtype (it is converted to a 32-bit integer
+/// exponent on the device); the result keeps the dtype of the mantissa [a].
 GpuArray<T> ldexp<T extends DTypeTag>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<DTypeTag> b, {
   GpuArray<T>? out,
 }) => a.ldexp(b, out: out);
 
 /// Elementwise greatest common divisor of integer tensors [a] and [b].
-GpuArray<T> gcd<T extends DTypeTag>(
+///
+/// Both operands must have the same integer dtype; the result keeps it.
+GpuArray<T> gcd<T extends SelfOf<RealOf<IntegerDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.gcd(b, out: out);
 
 /// Elementwise least common multiple of integer tensors [a] and [b].
-GpuArray<T> lcm<T extends DTypeTag>(
+///
+/// Both operands must have the same integer dtype; the result keeps it.
+GpuArray<T> lcm<T extends SelfOf<RealOf<IntegerDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.lcm(b, out: out);
 
 /// Elementwise bitwise AND (`&`).
-GpuArray<T> bitwiseAnd<T extends DTypeTag>(
+///
+/// Both operands must have the same integer or boolean dtype; the result
+/// keeps it.
+GpuArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.bitwiseAnd(b, out: out);
 
 /// Elementwise bitwise OR (`|`).
-GpuArray<T> bitwiseOr<T extends DTypeTag>(
+///
+/// Both operands must have the same integer or boolean dtype; the result
+/// keeps it.
+GpuArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.bitwiseOr(b, out: out);
 
 /// Elementwise bitwise XOR (`^`).
-GpuArray<T> bitwiseXor<T extends DTypeTag>(
+///
+/// Both operands must have the same integer or boolean dtype; the result
+/// keeps it.
+GpuArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.bitwiseXor(b, out: out);
 
-/// Elementwise bitwise NOT (`~`).
-GpuArray<T> bitwiseNot<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.bitwiseNot(out: out);
+/// Elementwise bitwise NOT (`~`) of an integer or boolean tensor.
+GpuArray<T> bitwiseNot<T extends RealOf<BitwiseDType>>(
+  GpuArray<T> a, {
+  GpuArray<T>? out,
+}) => a.bitwiseNot(out: out);
 
 /// Elementwise bitwise inversion (`~`, alias for [bitwiseNot]).
-GpuArray<T> invert<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.invert(out: out);
+GpuArray<T> invert<T extends RealOf<BitwiseDType>>(
+  GpuArray<T> a, {
+  GpuArray<T>? out,
+}) => a.invert(out: out);
 
 /// Elementwise bitwise left shift (`<<`).
-GpuArray<T> leftShift<T extends DTypeTag>(
+///
+/// Both operands must have the same integer dtype; the result keeps it.
+GpuArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.leftShift(b, out: out);
 
 /// Elementwise bitwise right shift (`>>`).
-GpuArray<T> rightShift<T extends DTypeTag>(
+///
+/// Both operands must have the same integer dtype; the result keeps it.
+GpuArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
   GpuArray<T> a,
-  Object? b, {
+  GpuArray<T> b, {
   GpuArray<T>? out,
 }) => a.rightShift(b, out: out);
 
@@ -4380,43 +4573,61 @@ GpuArray<Boolean> any(
 }) => a.any(axis: axis, keepDims: keepDims, out: out);
 
 /// Elementwise equality comparison ($a == b$).
-GpuArray<Boolean> equal(
-  GpuArray<DTypeTag> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype; use `a.equal(scalar)` to compare
+/// against a scalar.
+GpuArray<Boolean> equal<T extends SelfOf<DTypeTag>>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<Boolean>? out,
 }) => a.equal(b, out: out);
 
 /// Elementwise inequality comparison ($a \neq b$).
-GpuArray<Boolean> notEqual(
-  GpuArray<DTypeTag> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype; use `a.notEqual(scalar)` to
+/// compare against a scalar.
+GpuArray<Boolean> notEqual<T extends SelfOf<DTypeTag>>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<Boolean>? out,
 }) => a.notEqual(b, out: out);
 
 /// Elementwise greater-than comparison ($a > b$).
-GpuArray<Boolean> greater(
-  GpuArray<DTypeTag> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype; use `a.greater(scalar)` to
+/// compare against a scalar.
+GpuArray<Boolean> greater<T extends SelfOf<DTypeTag>>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<Boolean>? out,
 }) => a.greater(b, out: out);
 
 /// Elementwise greater-than-or-equal comparison ($a \ge b$).
-GpuArray<Boolean> greaterEqual(
-  GpuArray<DTypeTag> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype; use `a.greaterEqual(scalar)` to
+/// compare against a scalar.
+GpuArray<Boolean> greaterEqual<T extends SelfOf<DTypeTag>>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<Boolean>? out,
 }) => a.greaterEqual(b, out: out);
 
 /// Elementwise less-than comparison ($a < b$).
-GpuArray<Boolean> less(
-  GpuArray<DTypeTag> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype; use `a.less(scalar)` to compare
+/// against a scalar.
+GpuArray<Boolean> less<T extends SelfOf<DTypeTag>>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<Boolean>? out,
 }) => a.less(b, out: out);
 
 /// Elementwise less-than-or-equal comparison ($a \le b$).
-GpuArray<Boolean> lessEqual(
-  GpuArray<DTypeTag> a,
-  Object? b, {
+///
+/// Both operands must have the same dtype; use `a.lessEqual(scalar)` to
+/// compare against a scalar.
+GpuArray<Boolean> lessEqual<T extends SelfOf<DTypeTag>>(
+  GpuArray<T> a,
+  GpuArray<T> b, {
   GpuArray<Boolean>? out,
 }) => a.lessEqual(b, out: out);

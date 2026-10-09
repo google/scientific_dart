@@ -85,7 +85,7 @@ bool _isIdentityPermutation(List<int> perm) {
 /// The [operands] list must be non-empty, reside on the same [GpuDevice], and
 /// share a common [DType]. If [out] is provided, it must match the output
 /// shape, dtype, and device.
-GpuArray<T> einsum<T extends DTypeTag>(
+GpuArray<T> einsum<T extends SelfOf<DTypeTag>>(
   String subscripts,
   List<GpuArray<T>> operands, {
   GpuArray<T>? out,
@@ -317,7 +317,7 @@ GpuArray<T> einsum<T extends DTypeTag>(
 ///
 /// Both [a] and [b] must reside on the same [GpuDevice], have matching
 /// [DType]s, and have matching dimension sizes along contracted axes.
-GpuArray<T> tensordot<T extends DTypeTag>(
+GpuArray<T> tensordot<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   Object axes = 2,
@@ -527,7 +527,7 @@ GpuArray<T> tensordot<T extends DTypeTag>(
 ///
 /// Both [a] and [b] must reside on the same [GpuDevice] and share a common
 /// [DType].
-GpuArray<T> kron<T extends DTypeTag>(
+GpuArray<T> kron<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
@@ -592,7 +592,7 @@ GpuArray<T> kron<T extends DTypeTag>(
 ///
 /// Both [a] and [b] must reside on the same [GpuDevice], share a common
 /// [DType], and have matching last dimensions (`a.shape.last == b.shape.last`).
-GpuArray<T> inner<T extends DTypeTag>(
+GpuArray<T> inner<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
@@ -702,7 +702,7 @@ GpuArray<T> inner<T extends DTypeTag>(
 ///
 /// Both [a] and [b] must reside on the same [GpuDevice] and share a common
 /// [DType].
-GpuArray<T> outer<T extends DTypeTag>(
+GpuArray<T> outer<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   GpuArray<T>? out,
@@ -796,7 +796,7 @@ GpuArray<T> outer<T extends DTypeTag>(
 /// Both [a] and [b] must be at least 1-D, reside on the same [GpuDevice], share
 /// a common [DType], and have dimension 2 or 3 along their respective vector
 /// axes.
-GpuArray<T> cross<T extends DTypeTag>(
+GpuArray<T> cross<T extends SelfOf<DTypeTag>>(
   GpuArray<T> a,
   GpuArray<T> b, {
   int axisa = -1,

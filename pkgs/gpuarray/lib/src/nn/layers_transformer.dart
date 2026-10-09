@@ -166,14 +166,16 @@ final class MultiheadAttention extends Module {
         .reshape([batchSize, sourceLength, numHeads, headDim])
         .swapaxes(1, 2);
 
-    final attentionOut = functional.scaledDotProductAttention<T>(
-      qHeads,
-      kHeads,
-      vHeads,
-      attnMask: attnMask,
-      dropoutP: isTraining ? dropout : 0.0,
-      isCausal: isCausal,
-    );
+    final attentionOut =
+        functional.scaledDotProductAttention(
+              qHeads.asAnySpec,
+              kHeads.asAnySpec,
+              vHeads.asAnySpec,
+              attnMask: attnMask,
+              dropoutP: isTraining ? dropout : 0.0,
+              isCausal: isCausal,
+            )
+            as GpuArray<T>;
 
     final merged = attentionOut.swapaxes(1, 2).reshape([
       batchSize,

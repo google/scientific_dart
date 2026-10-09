@@ -381,7 +381,7 @@ final class RotaryEmbedding extends Module {
     final x2 = x.slice(secondHalfSpecs);
     final negX2 = x2.negate();
 
-    return manipulation.concatenate<T>([negX2, x1], axis: -1);
+    return manipulation.concatenate([negX2, x1], axis: -1) as GpuArray<T>;
   }
 
   @override
@@ -565,14 +565,16 @@ final class MSELoss {
   const MSELoss({this.reduction = LossReduction.mean});
 
   /// Computes the MSE loss between [input] and [target].
-  GpuArray<T> forward<T extends DTypeTag>(
+  GpuArray<T> forward<T extends SelfOf<DTypeTag>>(
     GpuArray<T> input,
     GpuArray<T> target,
   ) => functional.mseLoss<T>(input, target, reduction: reduction);
 
   /// Invokes [forward] on [input] and [target].
-  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, GpuArray<T> target) =>
-      forward<T>(input, target);
+  GpuArray<T> call<T extends SelfOf<DTypeTag>>(
+    GpuArray<T> input,
+    GpuArray<T> target,
+  ) => forward<T>(input, target);
 }
 
 /// Criterion that measures the Mean Absolute Error (L1 norm) between predictions and targets.
@@ -584,14 +586,16 @@ final class L1Loss {
   const L1Loss({this.reduction = LossReduction.mean});
 
   /// Computes the L1 loss between [input] and [target].
-  GpuArray<T> forward<T extends DTypeTag>(
+  GpuArray<T> forward<T extends SelfOf<DTypeTag>>(
     GpuArray<T> input,
     GpuArray<T> target,
   ) => functional.l1Loss<T>(input, target, reduction: reduction);
 
   /// Invokes [forward] on [input] and [target].
-  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, GpuArray<T> target) =>
-      forward<T>(input, target);
+  GpuArray<T> call<T extends SelfOf<DTypeTag>>(
+    GpuArray<T> input,
+    GpuArray<T> target,
+  ) => forward<T>(input, target);
 }
 
 /// Criterion that measures the Binary Cross-Entropy loss between predicted and target probabilities.
@@ -603,14 +607,16 @@ final class BCELoss {
   const BCELoss({this.reduction = LossReduction.mean});
 
   /// Computes the binary cross-entropy loss between [input] and [target].
-  GpuArray<T> forward<T extends DTypeTag>(
+  GpuArray<T> forward<T extends SelfOf<DTypeTag>>(
     GpuArray<T> input,
     GpuArray<T> target,
   ) => functional.binaryCrossEntropy<T>(input, target, reduction: reduction);
 
   /// Invokes [forward] on [input] and [target].
-  GpuArray<T> call<T extends DTypeTag>(GpuArray<T> input, GpuArray<T> target) =>
-      forward<T>(input, target);
+  GpuArray<T> call<T extends SelfOf<DTypeTag>>(
+    GpuArray<T> input,
+    GpuArray<T> target,
+  ) => forward<T>(input, target);
 }
 
 /// Criterion that computes the categorical cross-entropy loss between unnormalized logits and class targets.

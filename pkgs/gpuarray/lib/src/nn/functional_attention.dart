@@ -138,7 +138,7 @@ GpuArray<T> _preserveDType<T extends DTypeTag>(
 /// Supports batched queries, keys, and values (e.g. `[B, H, N, D]` or `[N, D]`),
 /// causal upper-triangular masking when [isCausal] is `true`, custom boolean or
 /// additive float [attnMask], dropout probability [dropoutP], and custom [scale].
-GpuArray<T> scaledDotProductAttention<T extends DTypeTag>(
+GpuArray<T> scaledDotProductAttention<T extends SelfOf<DTypeTag>>(
   GpuArray<T> query,
   GpuArray<T> key,
   GpuArray<T> value, {

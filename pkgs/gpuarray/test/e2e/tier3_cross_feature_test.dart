@@ -590,9 +590,9 @@ void main() {
           final xEmb = emb.forward(tokens);
           final rotated = rope.forward(xEmb);
           final attended = gpu_nn.scaledDotProductAttention(
-            rotated,
-            rotated,
-            rotated,
+            rotated.asAnySpec,
+            rotated.asAnySpec,
+            rotated.asAnySpec,
             isCausal: true,
           );
           expect(attended.shape, equals([1, 3, 4]));

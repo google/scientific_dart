@@ -229,9 +229,9 @@ void main() {
           expect(modScalar.toList(), equals([4.0, 4.0, 1.0]));
 
           // Binary methods and top-level functions preserve GpuArray<Float32>
-          final GpuArray<Float32> mPow = pow(f32b, 2.0);
-          final GpuArray<Float32> mMax = maximum(f32, 10.0);
-          final GpuArray<Float32> mMin = minimum(f32, 10.0);
+          final GpuArray<Float32> mPow = f32b.pow(2.0);
+          final GpuArray<Float32> mMax = f32.maximum(10.0);
+          final GpuArray<Float32> mMin = f32.minimum(10.0);
           final GpuArray<Float32> mHypot = hypot(
             GpuArray.fromList([3.0, 5.0], [2], DType.float32),
             GpuArray.fromList([4.0, 12.0], [2], DType.float32),
@@ -240,7 +240,7 @@ void main() {
             GpuArray.fromList([1.0, 0.0], [2], DType.float32),
             GpuArray.fromList([1.0, 1.0], [2], DType.float32),
           );
-          final GpuArray<Float32> mCopysign = copysign(f32, -1.0);
+          final GpuArray<Float32> mCopysign = f32.copysign(-1.0);
           expect(mPow.dtype, equals(DType.float32));
           expect(mPow.toList(), equals([4.0, 9.0, 16.0]));
           expect(mMax.toList(), equals([10.0, 10.0, 16.0]));
@@ -277,11 +277,53 @@ void main() {
           expect(bNot.toList(), equals([-7, -13, -16]));
           expect(invert(a).toList(), equals([-7, -13, -16]));
           expect(bShl.toList(), equals([12, 24, 30]));
-          expect(leftShift(a, 1).toList(), equals([12, 24, 30]));
+          expect(a.leftShift(1).toList(), equals([12, 24, 30]));
           expect(bShr.toList(), equals([3, 6, 7]));
-          expect(rightShift(a, 1).toList(), equals([3, 6, 7]));
+          expect(a.rightShift(1).toList(), equals([3, 6, 7]));
           expect(gcd(a, b).toList(), equals([3, 1, 1]));
           expect(lcm(a, b).toList(), equals([6, 60, 105]));
+
+          // Escape hatches: the run-time-checked rows reach the same kernels
+          // through GpuArrayBitwiseSpec / GpuArrayShiftSpec and the typed
+          // functions, and reject non-bitwise / non-integer dtypes.
+          final GpuArray<AnyBitwiseSpec> aBitwise = a.asBitwiseDType;
+          final GpuArray<AnyIntegerSpec> aInteger = a.asIntegerDType;
+          expect((aBitwise & b.asBitwiseDType).toList(), equals([2, 4, 7]));
+          expect((~aBitwise).toList(), equals([-7, -13, -16]));
+          expect((aInteger << 1).toList(), equals([12, 24, 30]));
+          expect((aInteger >> aInteger).toList(), equals([0, 0, 0]));
+          expect(
+            bitwiseXor(aBitwise, b.asBitwiseDType).toList(),
+            equals([5, 9, 8]),
+          );
+          expect(gcd(aInteger, b.asIntegerDType).toList(), equals([3, 1, 1]));
+          expect(add(a.asAnySpec, b.asAnySpec).toList(), equals([9, 17, 22]));
+          expect(add(a.asAnySpec, b.asAnySpec).dtype, equals(DType.int32));
+          final GpuArray<IntegerDType> aLub = [a, b.astype(DType.uint8)].first;
+          expect((aLub & 5).toList(), equals([4, 4, 5]));
+          expect((~aLub).dtype, equals(DType.int32));
+          final GpuArray<BitwiseDType> bitLub = [
+            a,
+            GpuArray.fromList([true, false, true], [3], DType.boolean),
+          ].first;
+          expect((bitLub | 1).toList(), equals([7, 13, 15]));
+          final flags = GpuArray.fromList([true, false], [2], DType.boolean);
+          expect(flags.asBitwiseDType.dtype, equals(DType.boolean));
+          expect(
+            () => flags.asIntegerDType,
+            throwsA(
+              isA<ArgumentError>().having((e) => e.name, 'name', 'dtype'),
+            ),
+          );
+          final floats = GpuArray.fromList([1.0, 2.0], [2], DType.float32);
+          expect(floats.asAnySpec.dtype, equals(DType.float32));
+          expect(() => floats.asBitwiseDType, throwsA(isA<ArgumentError>()));
+          expect(() => floats.asIntegerDType, throwsA(isA<ArgumentError>()));
+          floats.dispose();
+          expect(
+            () => floats.asBitwiseDType,
+            throwsA(isA<GpuDeviceDisposedException>()),
+          );
 
           // Sign, clip, rint, trunc, fix, square, reciprocal, cbrt
           final x = GpuArray.fromList([-2.7, 0.0, 3.2], [3], DType.float64);

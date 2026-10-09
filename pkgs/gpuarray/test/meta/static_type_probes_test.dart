@@ -34,6 +34,8 @@ import 'package:analyzer/source/line_info.dart';
 import 'package:gpuarray/fft.dart' as gfft;
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/linalg.dart' as glinalg;
+import 'package:gpuarray/nn.dart' as gnn;
+import 'package:gpuarray/random.dart' as grandom;
 import 'package:test/test.dart';
 
 /// Captures the exact static return type `T` inferred by the Dart compiler for
@@ -43,11 +45,13 @@ Type staticTypeOf<T>(T Function() f) => T;
 /// Returns the runtime representation of the static type `T`.
 Type typeOf<T>() => T;
 
+late final GpuArray<Float64> _g64;
 late final GpuArray<Float32> _g32;
 late final GpuArray<Float16> _gf16;
 late final GpuArray<BFloat16> _gbf16;
 late final GpuArray<Int64> _gi64;
 late final GpuArray<Int32> _gi32;
+late final GpuArray<Uint8> _gu8;
 late final GpuArray<Boolean> _gb;
 late final GpuArray<Complex64> _gc64;
 late final GpuArray<AnySpec> _ganySpec;
@@ -57,15 +61,20 @@ const String _positiveOverlaySource = '''
 import 'package:gpuarray/fft.dart' as gfft;
 import 'package:gpuarray/gpuarray.dart';
 import 'package:gpuarray/linalg.dart' as glinalg;
+import 'package:gpuarray/nn.dart' as gnn;
+import 'package:gpuarray/random.dart' as grandom;
 
+late final GpuArray<Float64> g64;
 late final GpuArray<Float32> g32;
 late final GpuArray<Float16> gf16;
 late final GpuArray<BFloat16> gbf16;
 late final GpuArray<Int64> gi64;
 late final GpuArray<Int32> gi32;
+late final GpuArray<Uint8> gu8;
 late final GpuArray<Boolean> gb;
 late final GpuArray<Complex64> gc64;
 late final GpuArray<AnySpec> ganySpec;
+late final GpuArray<DTypeTag> gdyn;
 
 // --- GpuArray<Float32>
 // expect: GpuArray<Float32>
@@ -226,22 +235,183 @@ final t_fft_lub_int = gfft.fft([gi64, gi32].first);
 final t_inv_lub_int = glinalg.inv([gi64, gi32].first);
 // expect: GpuArray<Float64>
 final t_div_lub_int = [gi64, gi32].first / [gi64, gi32].first;
+
+// --- Same-dtype binary functions (SelfOf) infer the concrete tag
+// expect: GpuArray<Float32>
+final t_add_fn_f32 = add(g32, g32);
+// expect: GpuArray<Float64>
+final t_add_fn_f64 = add(g64, g64);
+// expect: GpuArray<Float32>
+final t_add_fn_out_f32 = add(g32, g32, out: g32);
+// expect: GpuArray<Int32>
+final t_maximum_fn_i32 = maximum(gi32, gi32);
+// expect: GpuArray<Int32>
+final t_atan2_fn_i32 = atan2(gi32, gi32);
+// expect: GpuArray<Float32>
+final t_hypot_fn_f32 = hypot(g32, g32);
+// expect: GpuArray<Boolean>
+final t_equal_fn_f32 = equal(g32, g32);
+// expect: GpuArray<Boolean>
+final t_greater_fn_i32 = greater(gi32, gi32);
+// expect: GpuArray<Int32>
+final t_bitwiseAnd_fn_i32 = bitwiseAnd(gi32, gi32);
+// expect: GpuArray<Boolean>
+final t_bitwiseOr_fn_bool = bitwiseOr(gb, gb);
+// expect: GpuArray<Int32>
+final t_invert_fn_i32 = invert(gi32);
+// expect: GpuArray<Uint8>
+final t_leftShift_fn_u8 = leftShift(gu8, gu8);
+// expect: GpuArray<Int64>
+final t_gcd_fn_i64 = gcd(gi64, gi64);
+// expect: GpuArray<Float32>
+final t_ldexp_fn_f32_i32 = ldexp(g32, gi32);
+// expect: GpuArray<DTypeTag>
+final t_ldexp_fn_dyn = ldexp(gdyn, gi32);
+// expect: GpuArray<Float64>
+final t_matmul_fn_f64 = glinalg.matmul(g64, g64);
+// expect: GpuArray<Float32>
+final t_tensordot_fn_f32 = glinalg.tensordot(g32, g32, axes: 1);
+// expect: GpuArray<Float32>
+final t_multiDot_fn_f32 = glinalg.multiDot([g32, g32]);
+// expect: GpuArray<Float32>
+final t_einsum_fn_f32 = glinalg.einsum('ij,jk->ik', [g32, g32]);
+// expect: GpuArray<Float32>
+final t_mseLoss_fn_f32 = gnn.mseLoss(g32, g32);
+// expect: GpuArray<Float32>
+final t_sdpa_fn_f32 = gnn.scaledDotProductAttention(g32, g32, g32);
+
+// --- Marker-bounded operators (GpuArrayBitwise / GpuArrayShift) and LUBs
+// expect: GpuArray<Int32>
+final t_opand_i32 = gi32 & gi32;
+// expect: GpuArray<Int32>
+final t_opand_scalar_i32 = gi32 & 1;
+// expect: GpuArray<Boolean>
+final t_opor_bool = gb | gb;
+// expect: GpuArray<Int32>
+final t_opxor_i32 = gi32 ^ gi32;
+// expect: GpuArray<Int32>
+final t_opnot_i32 = ~gi32;
+// expect: GpuArray<Boolean>
+final t_opnot_bool = ~gb;
+// expect: GpuArray<Int32>
+final t_opshl_i32 = gi32 << gi32;
+// expect: GpuArray<Uint8>
+final t_opshr_u8 = gu8 >> 1;
+// expect: GpuArray<IntegerDType>
+final t_opnot_lub_int = ~[gi32, gu8].first;
+// expect: GpuArray<IntegerDType>
+final t_opand_lub_int = [gi32, gu8].first & [gi32, gu8].first;
+// expect: GpuArray<IntegerDType>
+final t_opshl_lub_int = [gi32, gu8].first << 1;
+// expect: GpuArray<BitwiseDType>
+final t_opand_lub_bitwise = [gi32, gb].first & [gi32, gb].first;
+// expect: GpuArray<BitwiseDType>
+final t_opnot_lub_bitwise = ~[gi32, gb].first;
+
+// --- Escape hatches: AnySpec / AnyBitwiseSpec / AnyIntegerSpec rows
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_add_fn_anyspec = add(ganySpec, ganySpec);
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_asAnySpec_dyn = [g32, gi32].first.asAnySpec;
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_matmul_fn_anyspec = glinalg.matmul(ganySpec, ganySpec);
+// expect: GpuArray<Boolean>
+final t_equal_fn_anyspec = equal(ganySpec, ganySpec);
+// expect: GpuArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_asBitwise_i32 = gi32.asBitwiseDType;
+// expect: GpuArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_bitwiseAnd_fn_bitwiseSpec = bitwiseAnd(
+  gi32.asBitwiseDType,
+  gi32.asBitwiseDType,
+);
+// expect: GpuArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_opand_bitwiseSpec = gi32.asBitwiseDType & gi32.asBitwiseDType;
+// expect: GpuArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_opnot_bitwiseSpec = ~gi32.asBitwiseDType;
+// expect: GpuArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_asInteger_i32 = gi32.asIntegerDType;
+// expect: GpuArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_gcd_fn_integerSpec = gcd(gi32.asIntegerDType, gi32.asIntegerDType);
+// expect: GpuArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_opshl_integerSpec = gi32.asIntegerDType << gi32.asIntegerDType;
+
+// --- Run-time-typed results default to AnySpec and infer from `out:`
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_concatenate_default = concatenate([g32, g32]);
+// expect: GpuArray<Float32>
+final t_concatenate_out_f32 = concatenate([g32, g32], out: g32);
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_add_concatenate_anyspec = add(concatenate([g32, g32]), g32);
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_where_default = where(gb, g32, g32);
+// expect: GpuArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_permutation_default = grandom.permutation(4);
+// expect: GpuArray<Int64>
+final t_permutation_out_i64 = grandom.permutation(4, out: gi64);
 ''';
 
 const String _negativeOverlaySource = '''
 // ignore_for_file: non_constant_identifier_names, unused_element
 import 'package:gpuarray/fft.dart' as gfft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/linalg.dart' as glinalg;
 
 late final GpuArray<DTypeTag> gdyn;
+late final GpuArray<Float64> gf64;
+late final GpuArray<Float32> gf32;
+late final GpuArray<Int64> gi64;
+late final GpuArray<Int32> gi32;
+late final GpuArray<Uint8> gu8;
+late final GpuArray<Boolean> gb;
+late final GpuArray<AnySpec> ganySpec;
 
-final t_neg_divide_dyn = divide(gdyn, gdyn); // error: argument_type_not_assignable
+final t_neg_divide_dyn = divide(gdyn, gdyn); // error: could_not_infer, argument_type_not_assignable
 final t_neg_real_dyn = real(gdyn); // error: argument_type_not_assignable
 final t_neg_imag_dyn = imag(gdyn); // error: argument_type_not_assignable
 final t_neg_angle_dyn = angle(gdyn); // error: argument_type_not_assignable
 final t_neg_fft_dyn = gfft.fft(gdyn); // error: argument_type_not_assignable
 final t_neg_rfft_dyn = gfft.rfft(gdyn); // error: argument_type_not_assignable
 final t_neg_irfft_dyn = gfft.irfft(gdyn); // error: argument_type_not_assignable
+
+// Mixed-dtype binary & multi-array operations are rejected symmetrically (SelfOf):
+final t_neg_add_f64_f32 = add(gf64, gf32); // error: could_not_infer
+final t_neg_add_f32_f64 = add(gf32, gf64); // error: could_not_infer
+final t_neg_add_i64_i32 = add(gi64, gi32); // error: could_not_infer
+final t_neg_add_i32_i64 = add(gi32, gi64); // error: could_not_infer
+final t_neg_add_out_f32 = add(gf64, gf64, out: gf32); // error: could_not_infer
+final t_neg_add_dyn = add(gdyn, gdyn); // error: argument_type_not_assignable
+final t_neg_add_scalar = add(gf64, 2.0); // error: argument_type_not_assignable
+final t_neg_divide_i64_i32 = divide(gi64, gi32); // error: could_not_infer
+final t_neg_atan2_i64_i32 = atan2(gi64, gi32); // error: could_not_infer
+final t_neg_equal_f64_f32 = equal(gf64, gf32); // error: could_not_infer
+final t_neg_matmul_f64_f32 = glinalg.matmul(gf64, gf32); // error: could_not_infer
+final t_neg_multiDot_f64_f32 = glinalg.multiDot([gf64, gf32]); // error: argument_type_not_assignable
+final t_neg_bitwiseAnd_i64_i32 = bitwiseAnd(gi64, gi32); // error: could_not_infer
+final t_neg_gcd_i64_i32 = gcd(gi64, gi32); // error: could_not_infer
+
+// Bitwise / shift functions reject non-integer dtypes and the bare markers:
+final t_neg_bitwiseAnd_f64 = bitwiseAnd(gf64, gf64); // error: argument_type_not_assignable
+final t_neg_invert_f64 = invert(gf64); // error: argument_type_not_assignable
+final t_neg_gcd_bool = gcd(gb, gb); // error: argument_type_not_assignable
+final t_neg_leftShift_bool = leftShift(gb, gb); // error: argument_type_not_assignable
+final t_neg_bitwiseAnd_anySpec = bitwiseAnd(ganySpec, ganySpec); // error: argument_type_not_assignable
+final t_neg_bitwiseAnd_lub = bitwiseAnd([gi32, gu8].first, [gi32, gu8].first); // error: argument_type_not_assignable
+
+// The operators only exist on BitwiseDType / IntegerDType tags and the *Spec rows:
+final t_neg_opand_f64 = gf64 & gf64; // error: undefined_operator
+final t_neg_opnot_f32 = ~gf32; // error: undefined_operator
+final t_neg_opshl_f64 = gf64 << 1; // error: undefined_operator
+final t_neg_opshl_bool = gb << gb; // error: undefined_operator
+final t_neg_opand_dyn = gdyn & gdyn; // error: undefined_operator
+final t_neg_opand_anySpec = ganySpec & ganySpec; // error: undefined_operator
+final t_neg_opshl_lub_bitwise = [gi32, gb].first << 1; // error: undefined_operator
+
+// Generic helpers must declare the same kind of bound as the callee:
+GpuArray<T> badGenericAdd<T extends DTypeTag>(GpuArray<T> a) => add(a, a); // error: argument_type_not_assignable
+GpuArray<T> badGenericAnd<T extends BitwiseDType>(GpuArray<T> a) => bitwiseAnd(a, a); // error: argument_type_not_assignable
+
+// A bare GpuArray<DTypeTag> is no longer accepted as a run-time-typed `out:`:
+final t_neg_concatenate_out_dyn = concatenate([gf32, gf32], out: gdyn); // error: argument_type_not_assignable
 ''';
 
 String _native(String path) => Uri.file(path).toFilePath();
@@ -577,11 +747,123 @@ void main() {
           staticTypeOf(() => glinalg.inv([_gi64, _gi32].first)),
           equals(typeOf<GpuArray<Float64>>()),
         );
+
+        // Same-dtype binary functions (SelfOf)
+        expect(
+          staticTypeOf(() => add(_g32, _g32)),
+          equals(typeOf<GpuArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => add(_g32, _g32, out: _g32)),
+          equals(typeOf<GpuArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => atan2(_gi32, _gi32)),
+          equals(typeOf<GpuArray<Int32>>()),
+        );
+        expect(
+          staticTypeOf(() => equal(_g32, _g32)),
+          equals(typeOf<GpuArray<Boolean>>()),
+        );
+        expect(
+          staticTypeOf(() => bitwiseAnd(_gi32, _gi32)),
+          equals(typeOf<GpuArray<Int32>>()),
+        );
+        expect(
+          staticTypeOf(() => leftShift(_gu8, _gu8)),
+          equals(typeOf<GpuArray<Uint8>>()),
+        );
+        expect(
+          staticTypeOf(() => ldexp(_g32, _gi32)),
+          equals(typeOf<GpuArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => glinalg.matmul(_g64, _g64)),
+          equals(typeOf<GpuArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => glinalg.multiDot([_g32, _g32])),
+          equals(typeOf<GpuArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => gnn.mseLoss(_g32, _g32)),
+          equals(typeOf<GpuArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => add(_ganySpec, _ganySpec)),
+          equals(typeOf<GpuArray<AnySpec>>()),
+        );
+
+        // Marker-bounded operators and their least upper bounds
+        expect(
+          staticTypeOf(() => _gi32 & _gi32),
+          equals(typeOf<GpuArray<Int32>>()),
+        );
+        expect(
+          staticTypeOf(() => _gb | _gb),
+          equals(typeOf<GpuArray<Boolean>>()),
+        );
+        expect(
+          staticTypeOf(() => _gi32 << 1),
+          equals(typeOf<GpuArray<Int32>>()),
+        );
+        expect(
+          staticTypeOf(() => ~[_gi32, _gu8].first),
+          equals(typeOf<GpuArray<IntegerDType>>()),
+        );
+        expect(
+          staticTypeOf(() => [_gi32, _gu8].first >> [_gi32, _gu8].first),
+          equals(typeOf<GpuArray<IntegerDType>>()),
+        );
+        expect(
+          staticTypeOf(() => [_gi32, _gb].first ^ [_gi32, _gb].first),
+          equals(typeOf<GpuArray<BitwiseDType>>()),
+        );
+
+        // Escape hatches and the *Spec operator siblings
+        expect(
+          staticTypeOf(() => _gi32.asAnySpec),
+          equals(typeOf<GpuArray<AnySpec>>()),
+        );
+        expect(
+          staticTypeOf(() => _gi32.asBitwiseDType & _gi32.asBitwiseDType),
+          equals(typeOf<GpuArray<AnyBitwiseSpec>>()),
+        );
+        expect(
+          staticTypeOf(() => ~_gi32.asBitwiseDType),
+          equals(typeOf<GpuArray<AnyBitwiseSpec>>()),
+        );
+        expect(
+          staticTypeOf(() => _gi32.asIntegerDType << _gi32.asIntegerDType),
+          equals(typeOf<GpuArray<AnyIntegerSpec>>()),
+        );
+        expect(
+          staticTypeOf(() => gcd(_gi32.asIntegerDType, _gi32.asIntegerDType)),
+          equals(typeOf<GpuArray<AnyIntegerSpec>>()),
+        );
+
+        // Run-time-typed results default to AnySpec and infer from `out:`
+        expect(
+          staticTypeOf(() => concatenate([_g32, _g32])),
+          equals(typeOf<GpuArray<AnySpec>>()),
+        );
+        expect(
+          staticTypeOf(() => concatenate([_g32, _g32], out: _g32)),
+          equals(typeOf<GpuArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => where(_gb, _g32, _g32)),
+          equals(typeOf<GpuArray<AnySpec>>()),
+        );
+        expect(
+          staticTypeOf(() => grandom.permutation(4)),
+          equals(typeOf<GpuArray<AnySpec>>()),
+        );
       },
     );
 
     test(
-      'negative overlay rejects projecting functions on bare GpuArray<DTypeTag>',
+      'negative overlay rejects projecting functions on bare GpuArray<DTypeTag>, mixed-dtype SelfOf calls and bitwise operators on non-integer tags',
       () async {
         final virtualPath = _native(
           '$resolvedPkgRoot/test/meta/_negative_gpu_probes_overlay.dart',
