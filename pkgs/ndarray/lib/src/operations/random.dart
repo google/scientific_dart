@@ -1245,7 +1245,7 @@ NDArray<T> binomial<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/random_example.dart lang=dart}
-NDArray<T> multivariateNormal<T extends DTypeTag>(
+NDArray<T> multivariateNormal<T extends SelfOf<DTypeTag>>(
   NDArray<T> mean,
   NDArray<T> cov, {
   List<int>? size,

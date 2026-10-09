@@ -149,7 +149,34 @@ abstract interface class DivideOf<R extends DTypeTag> implements DTypeTag {}
 /// collapses to [DTypeTag] (or [IntegerDType] / [BitwiseDType]) rather than a
 /// subtype of `SelfOf<T>`, causing the Dart type checker to reject mixed-dtype
 /// calls such as `add(f64, f32)` or `add(i64, i32)` symmetrically while still
-/// inferring `T` from same-dtype arguments.
+/// inferring `T` from same-dtype arguments. The same mechanism rejects an
+/// `out:` buffer of another dtype (`add(f64, f64, out: f32)`).
+///
+/// Every operation whose type parameter binds two or more input arrays uses
+/// such a bound: `T extends SelfOf<DTypeTag>` when the result keeps the input
+/// dtype (`add`, `matmul`, `concatenate`), `T extends SelfOf<XOf<R>>` when the
+/// result is a projection (`divide`, `atan2`, `cov`), and
+/// `T extends SelfOf<RealOf<BitwiseDType>>` /
+/// `T extends SelfOf<RealOf<IntegerDType>>` for the bitwise and shift
+/// families. Generic code that forwards two arrays of the same `T` to one of
+/// these operations must declare the same kind of bound; `T extends DTypeTag`
+/// and the capability markers do not satisfy it. The escape hatches
+/// [NDArray.asAnySpec], [NDArray.asBitwiseDType] and [NDArray.asIntegerDType]
+/// produce [AnySpec], [AnyBitwiseSpec] and [AnyIntegerSpec], which do.
+///
+/// Two limitations follow from Dart having neither intersection types nor
+/// bounds that imply their argument:
+///
+/// - `SelfOf<X>` is not a subtype of `X`. Inside a function bounded by
+///   `T extends SelfOf<InexactOf<R>>`, `a` can be passed to `atan2` but not to
+///   `sin`; to combine a same-dtype binary operation with a projecting unary
+///   operation on one `T`, apply the unary operation to concrete-typed inputs
+///   first or widen with [NDArray.asAnySpec].
+/// - [IntegerDType] and [BitwiseDType] cannot implement `RealOf<...>` (the
+///   real projection differs per integer tag), so `NDArray<IntegerDType>` —
+///   for example `[i32, u8].first` — accepts neither the binary bitwise
+///   operations nor `invert` / `~`; use `.asIntegerDType` or
+///   `.asBitwiseDType` when the dtype is only known at run time.
 abstract interface class SelfOf<R extends DTypeTag> implements DTypeTag {}
 
 /// The projection table of a concrete [DTypeTag].

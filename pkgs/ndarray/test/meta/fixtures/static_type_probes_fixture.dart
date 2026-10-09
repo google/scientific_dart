@@ -313,3 +313,106 @@ final t_generic_div_int_i32 = genericDivOfInt(i32);
 
 // expect: NDArray<Float64>
 final t_generic_div_bitwise_b = genericDivOfBitwise(b);
+
+// ---------------------------------------------------------------------------
+// Section B — same-dtype binary & multi-array operations (SelfOf bounds)
+// ---------------------------------------------------------------------------
+
+// Dtype-preserving binaries (`T extends SelfOf<DTypeTag>`):
+
+// expect: NDArray<Float32>
+final t_matmul_f32 = matmul(f32, f32);
+
+// expect: NDArray<Complex64>
+final t_solve_c64 = solve(c64, c64);
+
+// expect: NDArray<Int64>
+final t_gcd_i64 = gcd(i64, i64);
+
+// expect: NDArray<Boolean>
+final t_equal_i64 = equal(i64, i64);
+
+// expect: NDArray<Int64>
+final t_searchsorted_f64 = searchsorted(f64, f64);
+
+// Projecting binaries (`T extends SelfOf<XOf<R>>` still infers `R`):
+
+// expect: NDArray<Float32>
+final t_atan2_f32 = atan2(f32, f32);
+
+// expect: NDArray<Float64>
+final t_atan2_i32 = atan2(i32, i32);
+
+// expect: NDArray<Complex64>
+final t_hypot_c64 = hypot(c64, c64);
+
+// expect: NDArray<Float64>
+final t_floatPower_f32 = floatPower(f32, f32);
+
+// expect: NDArray<Float64>
+final t_polyval_i32 = polyval(i32, i32);
+
+// expect: NDArray<Float64>
+final t_cov_f32 = cov(f32, y: f32);
+
+// Multi-array operations (`List<NDArray<T>>`):
+
+// expect: NDArray<Float64>
+final t_concat_f64 = concatenate([f64, f64]);
+
+// expect: NDArray<Int32>
+final t_stack_i32 = stack([i32, i32]);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_concat_anySpec = concatenate([f64.asAnySpec, f32.asAnySpec]);
+
+// AnySpec absorbs a concrete operand (dtype validated at run time):
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_add_anySpec_f32 = add(anySpec, f32);
+
+// Unary bitwise / shift operators on the checked escape hatches:
+
+// expect: NDArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_opinv_asBitwise = ~dyn.asBitwiseDType;
+
+// expect: NDArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_opshl_asInteger = dyn.asIntegerDType << 1;
+
+// Float32 and Int32 share exactly one depth-2 interface, so their LUB is a
+// projection interface rather than DTypeTag. SelfOf still rejects
+// `floatPower(f32, i32)` (see negative probes) because no projection
+// interface implements SelfOf.
+
+// expect: List<NDArray<DoublePrecisionOf<Float64>>>
+final t_lub_f32_i32 = [f32, i32];
+
+// Generic helpers must bound `T` by `SelfOf<...>` to call same-dtype
+// operations; `T extends DTypeTag` / `T extends IntegerDType` cannot (see
+// negative probes).
+NDArray<T> genericAddSelfOf<T extends SelfOf<DTypeTag>>(
+  NDArray<T> a,
+  NDArray<T> b,
+) => add(a, b);
+
+NDArray<T> genericGcdSelfOf<T extends SelfOf<RealOf<IntegerDType>>>(
+  NDArray<T> a,
+  NDArray<T> b,
+) => gcd(a, b);
+
+NDArray<R> genericAtan2SelfOf<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag
+>(NDArray<T> a, NDArray<T> b) => atan2(a, b);
+
+// expect: NDArray<Int32>
+final t_generic_add_selfof_i32 = genericAddSelfOf(i32, i32);
+
+// expect: NDArray<Uint8>
+final t_generic_gcd_selfof_u8 = genericGcdSelfOf(u8, u8);
+
+// expect: NDArray<Float64>
+final t_generic_atan2_selfof_i16 = genericAtan2SelfOf(i16, i16);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_generic_add_selfof_anySpec = genericAddSelfOf(anySpec, anySpec);

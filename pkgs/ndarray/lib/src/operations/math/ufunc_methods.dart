@@ -93,7 +93,7 @@ extension UfuncNDArrayExtension<T extends DTypeTag> on NDArray<T> {
     BinaryOp op = BinaryOp.multiply,
     NDArray<DTypeTag>? where,
     NDArray<R>? out,
-  }) => outerUfunc(this, b, op: op, where: where, out: out);
+  }) => outerUfunc(asAnySpec, b.asAnySpec, op: op, where: where, out: out);
 
   /// Performs unbuffered in-place scatter updates on this array at [indices] using [b] and [op].
   ///
@@ -239,7 +239,7 @@ NDArray<R> _createTyped<R extends DTypeTag>(
 }
 
 /// Evaluates binary operation [op] element-wise between [a] and [b].
-NDArray<R> binaryUfunc<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
   required BinaryOp op,
@@ -2322,7 +2322,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag>(
         (d) => d == normAxis ? Index(i) : Slice(),
       );
       final sub = a.slice(selectors);
-      final stepRes = binaryUfunc(current, sub, op: op);
+      final stepRes = binaryUfunc(current.asAnySpec, sub.asAnySpec, op: op);
       sub.dispose();
       current.dispose();
       if (stepRes.dtype == a.dtype) {
@@ -2346,7 +2346,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag>(
         (d) => d == normAxis ? Index(i) : Slice(),
       );
       final sub = a.slice(selectorsI);
-      final stepRes = binaryUfunc(current, sub, op: op);
+      final stepRes = binaryUfunc(current.asAnySpec, sub.asAnySpec, op: op);
       current.dispose();
       sub.dispose();
       if (stepRes.dtype == a.dtype) {
@@ -3009,7 +3009,7 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
         (d) => d == normAxis ? Index(i) : Slice(),
       );
       final curr = a.slice(selCurr);
-      final stepRes = binaryUfunc(prev, curr, op: op);
+      final stepRes = binaryUfunc(prev.asAnySpec, curr.asAnySpec, op: op);
       final selResI = List<Selector>.generate(
         result.rank,
         (d) => d == normAxis ? Index(i) : Slice(),
@@ -3515,7 +3515,11 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
                 strides: a.strides,
                 offsetElements: j * a.strides[normAxis],
               );
-              final stepRes = binaryUfunc(outSlice, nextSlice, op: op);
+              final stepRes = binaryUfunc(
+                outSlice.asAnySpec,
+                nextSlice.asAnySpec,
+                op: op,
+              );
               if (stepRes.dtype == a.dtype) {
                 stepRes.copy(out: outSlice);
               } else {
@@ -3533,7 +3537,7 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
 }
 
 /// Generalized ufunc outer operation.
-NDArray<R> outerUfunc<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> outerUfunc<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
   NDArray<T> a,
   NDArray<T> b, {
   BinaryOp op = BinaryOp.multiply,
@@ -3902,7 +3906,11 @@ void atUfunc<T extends DTypeTag>(
               strides: sliceStridesB,
               offsetElements: i * bReady.strides[0],
             );
-            final stepRes = binaryUfunc(aSlice, bSlice, op: op);
+            final stepRes = binaryUfunc(
+              aSlice.asAnySpec,
+              bSlice.asAnySpec,
+              op: op,
+            );
             if (stepRes.dtype == a.dtype) {
               stepRes.copy(out: aSlice);
             } else {

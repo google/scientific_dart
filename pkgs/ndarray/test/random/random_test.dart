@@ -159,7 +159,11 @@ void main() {
         );
         // Invalid dtype
         expect(
-          () => multivariateNormal(mean, cov, dtype: DType.int64),
+          () => multivariateNormal(
+            mean.asAnySpec,
+            cov.asAnySpec,
+            dtype: DType.int64,
+          ),
           throwsArgumentError,
         );
 

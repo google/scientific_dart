@@ -318,7 +318,7 @@ void main() {
             final a = NDArray.fromList([7, 3, 5, 1], [4], dt);
             final b = NDArray.fromList([6, 2, 4, 1], [4], dt);
 
-            final bAnd = binaryUfunc<DTypeTag, DTypeTag>(
+            final bAnd = binaryUfunc<AnySpec, DTypeTag>(
               a,
               b,
               op: BinaryOp.bitwiseAnd,

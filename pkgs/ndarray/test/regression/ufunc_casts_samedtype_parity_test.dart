@@ -88,7 +88,11 @@ void main() {
           throwsArgumentError,
         );
         expect(
-          () => binaryUfunc(f64, f32, op: BinaryOp.floatPower),
+          () => binaryUfunc(
+            f64.asAnySpec,
+            f32.asAnySpec,
+            op: BinaryOp.floatPower,
+          ),
           throwsArgumentError,
         );
         expect(() => atan2(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
@@ -144,11 +148,11 @@ void main() {
           throwsArgumentError,
         );
         expect(
-          () => binaryUfunc(f64, f32, op: BinaryOp.add),
+          () => binaryUfunc(f64.asAnySpec, f32.asAnySpec, op: BinaryOp.add),
           throwsArgumentError,
         );
         expect(
-          () => outerUfunc(f64, f32, op: BinaryOp.add),
+          () => outerUfunc(f64.asAnySpec, f32.asAnySpec, op: BinaryOp.add),
           throwsArgumentError,
         );
         expect(() => matmul(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);

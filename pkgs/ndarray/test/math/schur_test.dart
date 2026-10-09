@@ -25,7 +25,7 @@ void main() {
           DType.float64,
         );
 
-        final res = schur(a, output: SchurForm.real);
+        final res = schur<Float64, Float64>(a, output: SchurForm.real);
         final t = res.t;
         final z = res.z;
 
@@ -60,7 +60,7 @@ void main() {
           DType.float64,
         );
 
-        final res = schur(a, output: SchurForm.complex);
+        final res = schur<Float64, Complex128>(a, output: SchurForm.complex);
         final t = res.t;
         final z = res.z;
 
@@ -100,7 +100,7 @@ void main() {
           DType.complex128,
         );
 
-        final res = schur(a);
+        final res = schur<Complex128, Complex128>(a);
         final t = res.t;
         final z = res.z;
 
@@ -161,7 +161,7 @@ void main() {
           DType.float64,
         );
 
-        final res = schur(a);
+        final res = schur<Float64, Float64>(a);
         expect(res.t.shape, equals([2, 2, 2]));
         expect(res.z.shape, equals([2, 2, 2]));
 

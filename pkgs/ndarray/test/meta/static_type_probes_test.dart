@@ -114,7 +114,7 @@ void main() {
           isEmpty,
           reason: visitor.mismatches.join('\n'),
         );
-        expect(visitor.checkedCount, greaterThanOrEqualTo(80));
+        expect(visitor.checkedCount, greaterThanOrEqualTo(100));
       },
     );
 
@@ -318,6 +318,48 @@ void main() {
           staticTypeOf(() => fixture.genericDivOfBitwise(fixture.b)),
           equals(typeOf<NDArray<Float64>>()),
         );
+
+        // Same-dtype binary & multi-array operations (SelfOf bounds)
+        expect(
+          staticTypeOf(() => matmul(fixture.f32, fixture.f32)),
+          equals(typeOf<NDArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => atan2(fixture.i32, fixture.i32)),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => floatPower(fixture.f32, fixture.f32)),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => gcd(fixture.i64, fixture.i64)),
+          equals(typeOf<NDArray<Int64>>()),
+        );
+        expect(
+          staticTypeOf(() => concatenate([fixture.f64, fixture.f64])),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => add(fixture.anySpec, fixture.f32)),
+          equals(typeOf<NDArray<AnySpec>>()),
+        );
+        expect(
+          staticTypeOf(
+            () => fixture.genericAddSelfOf(fixture.i32, fixture.i32),
+          ),
+          equals(typeOf<NDArray<Int32>>()),
+        );
+        expect(
+          staticTypeOf(
+            () => fixture.genericAtan2SelfOf(fixture.i16, fixture.i16),
+          ),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => [fixture.f32, fixture.i32]),
+          equals(typeOf<List<NDArray<DoublePrecisionOf<Float64>>>>()),
+        );
       },
     );
   });
@@ -349,7 +391,7 @@ void main() {
             expectedCodesByLine[i + 1] = codes;
           }
         }
-        expect(expectedCodesByLine.length, greaterThanOrEqualTo(11));
+        expect(expectedCodesByLine.length, greaterThanOrEqualTo(35));
 
         final overlay = OverlayResourceProvider(
           PhysicalResourceProvider.INSTANCE,

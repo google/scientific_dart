@@ -394,7 +394,7 @@ void main() {
       test('floatPower promotes integer inputs to float64', () {
         final a = NDArray.fromList([2, 4], [2], DType.int64);
         final b = NDArray.fromList([-1, -2], [2], DType.int64);
-        final res = binaryUfunc<DTypeTag, DTypeTag>(
+        final res = binaryUfunc<AnySpec, DTypeTag>(
           a,
           b,
           op: BinaryOp.floatPower,
@@ -412,7 +412,7 @@ void main() {
           final a = NDArray.fromList([1.0, double.nan], [2], DType.float64);
           final b = NDArray.fromList([double.nan, 2.0], [2], DType.float64);
 
-          final minRes = binaryUfunc<DTypeTag, DTypeTag>(
+          final minRes = binaryUfunc<AnySpec, DTypeTag>(
             a,
             b,
             op: BinaryOp.minimum,
@@ -420,7 +420,7 @@ void main() {
           expect(minRes.getCell([0]).isNaN, isTrue);
           expect(minRes.getCell([1]).isNaN, isTrue);
 
-          final fminRes = binaryUfunc<DTypeTag, DTypeTag>(
+          final fminRes = binaryUfunc<AnySpec, DTypeTag>(
             a,
             b,
             op: BinaryOp.fmin,
@@ -765,7 +765,7 @@ void main() {
       test('floatPower on complex numbers promotes to complex128', () {
         final c = NDArray.fromList([Complex(0.0, 1.0)], [1], DType.complex64);
         final p = NDArray.fromList([Complex(2.0, 0.0)], [1], DType.complex64);
-        final res = binaryUfunc<DTypeTag, DTypeTag>(
+        final res = binaryUfunc<AnySpec, DTypeTag>(
           c,
           p,
           op: BinaryOp.floatPower,
@@ -792,7 +792,7 @@ void main() {
             DType.complex128,
           );
 
-          final minRes = binaryUfunc<DTypeTag, DTypeTag>(
+          final minRes = binaryUfunc<AnySpec, DTypeTag>(
             a,
             b,
             op: BinaryOp.minimum,
@@ -800,7 +800,7 @@ void main() {
           expect(minRes.getCell([0]).real, equals(1.0));
           expect(minRes.getCell([0]).imag.isNaN, isTrue);
 
-          final fminRes = binaryUfunc<DTypeTag, DTypeTag>(
+          final fminRes = binaryUfunc<AnySpec, DTypeTag>(
             a,
             b,
             op: BinaryOp.fmin,

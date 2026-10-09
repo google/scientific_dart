@@ -1685,6 +1685,77 @@ void main() {
             );
           }
         }
+
+        // 6b. Shape-derived SelfOf rule for every exported top-level function:
+        // a type parameter that binds two or more non-`out` input positions
+        // (`NDArray<T>`, `DType<T>`, or `List<NDArray<T>>` which counts as two
+        // because a list literal LUBs its elements) can be inferred as the LUB
+        // of distinct concrete tags, so it must be bounded by `SelfOf<...>`.
+        // Conversely, `SelfOf` on a parameter that binds fewer than two input
+        // positions is over-constraining (it would only leak `SelfOf<DTypeTag>`
+        // as an inferred result type).
+        //
+        // Functions that deliberately accept mixed dtypes and promote or cast at
+        // run time keep `T extends DTypeTag` so `T` is the LUB of the operands.
+        const mixedDTypePromotingOps = <String>{
+          'intersect1d',
+          'setdiff1d',
+          'setxor1d',
+          'union1d',
+          'isin',
+          'where',
+          'clipArray',
+        };
+        int inputBindingCount(DartType type, TypeParameterElement tp) {
+          if (type is InterfaceType) {
+            final elName = type.element.name;
+            if ((elName == 'NDArray' || elName == 'DType') &&
+                type.typeArguments.length == 1) {
+              final arg = type.typeArguments.single;
+              return (arg is TypeParameterType && arg.element == tp) ? 1 : 0;
+            }
+            if ((elName == 'List' || elName == 'Iterable') &&
+                type.typeArguments.length == 1) {
+              return 2 * inputBindingCount(type.typeArguments.single, tp);
+            }
+          }
+          return 0;
+        }
+
+        var selfOfBoundedFunctions = 0;
+        for (final entry in exportNames.entries) {
+          final name = entry.key;
+          final el = entry.value;
+          if (el is! ExecutableElement || el.typeParameters.isEmpty) continue;
+          for (final tp in el.typeParameters) {
+            var bindings = 0;
+            for (final p in el.formalParameters) {
+              if (isOutParameter(p)) continue;
+              bindings += inputBindingCount(p.type, tp);
+            }
+            final bound = tp.bound;
+            final isSelfOf =
+                bound is InterfaceType && bound.element.name == 'SelfOf';
+            if (isSelfOf) selfOfBoundedFunctions++;
+            if (bindings >= 2 &&
+                !isSelfOf &&
+                !mixedDTypePromotingOps.contains(name)) {
+              violations.add(
+                'Exported function `$name`: type parameter `${tp.name}` binds $bindings input positions but is bounded by `${bound?.getDisplayString()}`; bound it by `SelfOf<...>` so mixed-dtype calls are rejected at compile time (or add it to `mixedDTypePromotingOps` if it promotes dtypes at run time).',
+              );
+            }
+            if (bindings < 2 && isSelfOf) {
+              violations.add(
+                'Exported function `$name`: type parameter `${tp.name}` is bounded by `${bound.getDisplayString()}` but binds only $bindings input position(s); `SelfOf` is only warranted for same-dtype multi-input parameters.',
+              );
+            }
+            if (isSelfOf && mixedDTypePromotingOps.contains(name)) {
+              violations.add(
+                'Exported function `$name` is listed in `mixedDTypePromotingOps` but bounds `${tp.name}` by `SelfOf<...>`; remove it from the allow-list.',
+              );
+            }
+          }
+        }
         const binaryAsOps = <String>{
           'addAs',
           'subtractAs',
@@ -1744,6 +1815,12 @@ void main() {
           reason:
               'Resolved semantic AST (`DartType` / `Element`) invariants violated:\n'
               '${violations.join('\n')}',
+        );
+        expect(
+          selfOfBoundedFunctions,
+          greaterThanOrEqualTo(70),
+          reason:
+              'Expected the shape-derived SelfOf rule (6b) to cover every same-dtype binary and multi-array function in package:ndarray.',
         );
         expect(
           verifiedProjectingFunctions.length,

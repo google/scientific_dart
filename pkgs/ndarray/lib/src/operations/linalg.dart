@@ -5762,8 +5762,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 ///
 /// **Throws:**
 /// - Throws [LinAlgException] if the QR algorithm fails to compute eigenvalues or if eigenvalues cannot be reordered.
-({NDArray<R> t, NDArray<R> z})
-schur<T extends DTypeTag, R extends SelfOf<DTypeTag>>(
+({NDArray<R> t, NDArray<R> z}) schur<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> a, {
   SchurForm output = SchurForm.real,
   NDArray<R>? outT,

@@ -48,11 +48,47 @@ final t_neg_add_f32_f64 = add(f32, f64); // error: could_not_infer
 final t_neg_add_i64_i32 = add(i64, i32); // error: could_not_infer
 final t_neg_add_i32_i64 = add(i32, i64); // error: could_not_infer
 final t_neg_add_dyn = add(dyn, dyn); // error: argument_type_not_assignable
+final t_neg_add_out_f32 = add(f64, f64, out: f32); // error: could_not_infer
 final t_neg_divide_i64_i32 = divide(i64, i32); // error: could_not_infer
+final t_neg_atan2_i64_i32 = atan2(i64, i32); // error: could_not_infer
+final t_neg_matmul_f64_f32 = matmul(f64, f32); // error: could_not_infer
+final t_neg_equal_f64_f32 = equal(f64, f32); // error: could_not_infer
+final t_neg_searchsorted_f64_i32 = searchsorted(f64, i32); // error: could_not_infer
 final t_neg_bitwiseAnd_i64_i32 = bitwiseAnd(i64, i32); // error: could_not_infer
+final t_neg_gcd_i64_i32 = gcd(i64, i32); // error: could_not_infer
 final t_neg_bitwiseAnd_lub = bitwiseAnd([i32, u8].first, [i32, u8].first); // error: argument_type_not_assignable
 final t_neg_concat_f64_f32 = concatenate([f64, f32]); // error: argument_type_not_assignable
 final t_neg_concat_i64_i32 = concatenate([i64, i32]); // error: argument_type_not_assignable
+final t_neg_stack_i64_i32 = stack([i64, i32]); // error: argument_type_not_assignable
+final t_neg_binaryUfunc_f64_f32 = binaryUfunc(f64, f32, op: BinaryOp.add); // error: could_not_infer
+final t_neg_multivariateNormal_f64_f32 = multivariateNormal(f64, f32); // error: could_not_infer
+
+// LUB(Float32, Int32) is `DoublePrecisionOf<Float64>` (their only shared
+// depth-2 interface), which satisfied the pre-SelfOf `T extends
+// DoublePrecisionOf<R>` bound of floatPower/cov; SelfOf closes that hole.
+final t_neg_floatPower_f32_i32 = floatPower(f32, i32); // error: could_not_infer
+final t_neg_cov_f32_i32 = cov(f32, y: i32); // error: could_not_infer
+
+// Results whose type parameter is determined only by `out:` default to
+// `NDArray<DTypeTag>` and therefore need `.asAnySpec` before re-entering a
+// same-dtype operation:
+final t_neg_add_multi_dot = add(multi_dot([f64, f64]), f64); // error: argument_type_not_assignable
+final t_neg_matmul_schur = matmul(schur(f64).z, schur(f64).t); // error: argument_type_not_assignable
+
+// Generic helpers: `T extends DTypeTag` / `T extends IntegerDType` do not
+// satisfy the SelfOf bounds even for a single array used twice.
+NDArray<T> badGenericAdd<T extends DTypeTag>(NDArray<T> a) => add(a, a); // error: argument_type_not_assignable
+NDArray<T> badGenericGcd<T extends IntegerDType>(NDArray<T> a) => gcd(a, a); // error: argument_type_not_assignable
+
+// Known limitation: `SelfOf<X>` does not imply `X`, so a `SelfOf`-bounded
+// type parameter cannot be passed to the unary projection-bounded operations,
+// and the capability markers cannot be passed to unary bitwise operations
+// (`invert` / `~` require `RealOf<BitwiseDType>`, which the non-generic
+// markers cannot implement because `RealOf` differs per integer tag).
+NDArray<T> limitInvertSelfOf<T extends SelfOf<RealOf<IntegerDType>>>(NDArray<T> a) => invert(a); // error: argument_type_not_assignable
+NDArray<R> limitSinSelfOf<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(NDArray<T> a) => sin(a); // error: argument_type_not_assignable
+final t_neg_invert_lub = invert([i32, u8].first); // error: argument_type_not_assignable
+final t_neg_opinv_lub = ~[i32, u8].first; // error: undefined_operator
 
 // Negative subtype probes on capability markers:
 void checkInvalidMarkerSubtypes() {
