@@ -6550,7 +6550,7 @@ NDArray<R> _castTo<R extends DTypeTag>(
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
 ({NDArray<R> average, NDArray<R>? sumOfWeights})
-average<T extends DTypeTag, W extends DTypeTag, R extends DTypeTag>(
+average<T extends DTypeTag, W extends DTypeTag, R extends AnySpec>(
   NDArray<T> a, {
   int? axis,
   NDArray<W>? weights,

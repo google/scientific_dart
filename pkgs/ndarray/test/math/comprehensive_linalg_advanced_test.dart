@@ -942,7 +942,7 @@ void main() {
                 [2, 2],
                 DType.float64,
               );
-              final sRes = schur(a, output: SchurForm.real);
+              final sRes = schur(a);
               expect(sRes.t.shape, [2, 2]);
               expect(sRes.z.shape, [2, 2]);
 

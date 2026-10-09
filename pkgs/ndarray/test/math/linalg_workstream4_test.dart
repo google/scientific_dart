@@ -292,10 +292,10 @@ void main() {
           DType.float64,
         );
 
-        final resReal = schur(a, output: SchurForm.real);
+        final resReal = schur(a);
         expect(resReal.t.dtype, equals(DType.float64));
 
-        final resComplex = schur(a, output: SchurForm.complex);
+        final resComplex = complexSchur(a);
         expect(resComplex.t.dtype, equals(DType.complex128));
       });
     });

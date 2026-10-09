@@ -292,7 +292,7 @@ void main() {
       NDArray.scope(() {
         final a = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
         final w = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
-        final res = average<DTypeTag, DTypeTag, DTypeTag>(
+        final res = average<DTypeTag, DTypeTag, AnySpec>(
           a,
           weights: w,
           returned: true,

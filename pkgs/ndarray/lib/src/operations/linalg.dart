@@ -1353,7 +1353,7 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.multi_dot](https://numpy.org/doc/stable/reference/generated/numpy.linalg.multi_dot.html)
-NDArray<T> multi_dot<T extends DTypeTag>(
+NDArray<T> multi_dot<T extends AnySpec>(
   List<NDArray<DTypeTag>> arrays, {
   NDArray<T>? out,
 }) {
@@ -5744,27 +5744,61 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
   });
 }
 
-/// Computes the Schur decomposition of a matrix.
+/// Computes the real Schur decomposition of a matrix.
 ///
 /// A = Z * T * Z^H
 ///
 /// Returns a record containing:
-/// - [T]: The Schur form. For real input and `output = SchurForm.real`, it is quasi-upper triangular.
-///   For `output = SchurForm.complex`, it is upper triangular.
+/// - [T]: The Schur form. For real input it is quasi-upper triangular (2×2
+///   diagonal blocks hold complex-conjugate eigenvalue pairs); for complex
+///   input it is upper triangular.
 /// - [Z]: The unitary matrix of Schur vectors.
+///
+/// The result dtype is the inexact projection of the input ([InexactOf]):
+/// `float64`, `float32`, `complex128` and `complex64` are preserved, while
+/// integer, boolean and half-precision inputs are computed in `float64`. Use
+/// [complexSchur] to obtain the upper-triangular complex Schur form of a real
+/// matrix.
 ///
 /// **Preconditions:**
 /// - It is an error if [a], [outT], or [outZ] is disposed.
 /// - It is an error if [a] has rank < 2 or the last two dimensions are not square.
-/// - It is an error if [a] has an unsupported dtype.
 /// - It is an error if [outT] or [outZ] is provided and has incompatible shape or dtype.
-/// - [output] must be [SchurForm.real] or [SchurForm.complex].
 ///
 /// **Throws:**
-/// - Throws [LinAlgException] if the QR algorithm fails to compute eigenvalues or if eigenvalues cannot be reordered.
-({NDArray<R> t, NDArray<R> z}) schur<T extends DTypeTag, R extends DTypeTag>(
-  NDArray<T> a, {
-  SchurForm output = SchurForm.real,
+/// - Throws [LinAlgException] if [a] contains non-finite values or the QR algorithm fails to converge.
+({NDArray<R> t, NDArray<R> z}) schur<R extends DTypeTag>(
+  NDArray<InexactOf<R>> a, {
+  NDArray<R>? outT,
+  NDArray<R>? outZ,
+}) => _schurImpl<R>(a, complexForm: false, outT: outT, outZ: outZ);
+
+/// Computes the complex Schur decomposition of a matrix.
+///
+/// A = Z * T * Z^H, with [T] upper triangular (its diagonal holds the
+/// eigenvalues of [a]) and [Z] unitary.
+///
+/// The result dtype is the complex projection of the input ([ComplexOf]):
+/// `complex64` for `float32` and `complex64` inputs, `complex128` otherwise.
+/// For a real matrix this is the complex form of the quasi-triangular real
+/// Schur decomposition returned by [schur].
+///
+/// **Preconditions:**
+/// - It is an error if [a], [outT], or [outZ] is disposed.
+/// - It is an error if [a] has rank < 2 or the last two dimensions are not square.
+/// - It is an error if [outT] or [outZ] is provided and has incompatible shape or dtype.
+///
+/// **Throws:**
+/// - Throws [LinAlgException] if [a] contains non-finite values or the QR algorithm fails to converge.
+({NDArray<R> t, NDArray<R> z}) complexSchur<R extends DTypeTag>(
+  NDArray<ComplexOf<R>> a, {
+  NDArray<R>? outT,
+  NDArray<R>? outZ,
+}) => _schurImpl<R>(a, complexForm: true, outT: outT, outZ: outZ);
+
+({NDArray<R> t, NDArray<R> z}) _schurImpl<R extends DTypeTag>(
+  NDArray<DTypeTag> a, {
+  required bool complexForm,
   NDArray<R>? outT,
   NDArray<R>? outZ,
 }) {
@@ -5793,6 +5827,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 
   final bool promoted =
       a.dtype.isInteger ||
+      a.dtype == DType.boolean ||
       a.dtype == DType.float16 ||
       a.dtype == DType.bfloat16;
   DType targetDType = a.dtype;
@@ -5811,7 +5846,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     );
   }
 
-  if (output == SchurForm.complex && !targetDType.isComplex) {
+  if (complexForm && !targetDType.isComplex) {
     if (targetDType == DType.float64) {
       targetDType = DType.complex128;
     } else {
@@ -5827,7 +5862,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     validateOutBuffer(outT, 'outT');
     if (!listEquals(outT.shape, schurShape) ||
         (outT.dtype != targetDType &&
-            (!promoted || output != SchurForm.real || outT.dtype != a.dtype))) {
+            (!promoted || complexForm || outT.dtype != a.dtype))) {
       throw ArgumentError.value(
         outT,
         'outT',
@@ -5841,7 +5876,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
     validateOutBuffer(outZ, 'outZ');
     if (!listEquals(outZ.shape, schurShape) ||
         (outZ.dtype != targetDType &&
-            (!promoted || output != SchurForm.real || outZ.dtype != a.dtype))) {
+            (!promoted || complexForm || outZ.dtype != a.dtype))) {
       throw ArgumentError.value(
         outZ,
         'outZ',
@@ -5866,9 +5901,9 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
           sharesMemory(a, outZ));
   if (needTempT || needTempZ) {
     return NDArray.scope(() {
-      final res = schur<T, R>(
+      final res = _schurImpl<R>(
         a,
-        output: output,
+        complexForm: complexForm,
         outT: needTempT ? null : outT,
         outZ: needTempZ ? null : outZ,
       );
@@ -5976,7 +6011,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
         ]);
 
         if (sliceView.dtype == targetDType) {
-          (sliceView as NDArray<DTypeTag>).copy(out: aCopy2D);
+          sliceView.copy(out: aCopy2D);
         } else {
           final casted = castNDArray(sliceView, targetDType);
           casted.copy(out: aCopy2D);
@@ -7291,15 +7326,6 @@ enum MatrixTriangle {
   upper,
 }
 
-/// Representation form for Schur decomposition.
-enum SchurForm {
-  /// Real Schur form.
-  real,
-
-  /// Complex Schur form.
-  complex,
-}
-
 /// Supported norm orders and calculation modes for vector and matrix norm computations.
 enum NormKind {
   /// Frobenius norm (square root of sum of absolute squares).
@@ -7929,7 +7955,7 @@ extension LstsqResultDispose<T extends DTypeTag> on LstsqResult<T> {
 LstsqResult<R> lstsq<
   Ta extends DTypeTag,
   Tb extends DTypeTag,
-  R extends DTypeTag
+  R extends AnySpec
 >(NDArray<Ta> a, NDArray<Tb> b, {double? rcond, NDArray<R>? out}) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot execute lstsq() on a disposed array.');

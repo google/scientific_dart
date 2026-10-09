@@ -164,19 +164,20 @@ abstract interface class DivideOf<R extends DTypeTag> implements DTypeTag {}
 /// [NDArray.asAnySpec], [NDArray.asBitwiseDType] and [NDArray.asIntegerDType]
 /// produce [AnySpec], [AnyBitwiseSpec] and [AnyIntegerSpec], which do.
 ///
-/// Two limitations follow from Dart having neither intersection types nor
-/// bounds that imply their argument:
-///
-/// - `SelfOf<X>` is not a subtype of `X`. Inside a function bounded by
-///   `T extends SelfOf<InexactOf<R>>`, `a` can be passed to `atan2` but not to
-///   `sin`; to combine a same-dtype binary operation with a projecting unary
-///   operation on one `T`, apply the unary operation to concrete-typed inputs
-///   first or widen with [NDArray.asAnySpec].
-/// - [IntegerDType] and [BitwiseDType] cannot implement `RealOf<...>` (the
-///   real projection differs per integer tag), so `NDArray<IntegerDType>` —
-///   for example `[i32, u8].first` — accepts neither the binary bitwise
-///   operations nor `invert` / `~`; use `.asIntegerDType` or
-///   `.asBitwiseDType` when the dtype is only known at run time.
+/// `SelfOf<X>` is not a subtype of `X` (Dart has neither intersection types
+/// nor bounds that imply their argument), so inside a function bounded by
+/// `T extends SelfOf<InexactOf<R>>`, `a` can be passed to `atan2` but not to
+/// `sin`. Generic code that needs both families on one `T` should bound it by
+/// the corresponding [DTypeSpec] row instead — [AnySpec], [InexactSpec],
+/// [DivideSpec], [DoublePrecisionSpec], [AnyBitwiseSpec] or [AnyIntegerSpec]
+/// — which implements [SelfOf] and the projection alike and still rejects the
+/// least upper bound of two distinct tags. The capability markers
+/// [IntegerDType] and [BitwiseDType] cannot implement `RealOf<...>` (the real
+/// projection differs per integer tag), so `NDArray<IntegerDType>` — for
+/// example `[i32, u8].first` — is accepted by the `&`, `|`, `^`, `~`, `<<` and
+/// `>>` operators ([NDArrayBitwise], [NDArrayShift]) but not by the `bitwiseAnd`
+/// / `invert` / `gcd` functions; use `.asIntegerDType` or `.asBitwiseDType`
+/// for those.
 abstract interface class SelfOf<R extends DTypeTag> implements DTypeTag {}
 
 /// The projection table of a concrete [DTypeTag].
@@ -291,6 +292,66 @@ typedef AnyIntegerSpec =
       DTypeTag,
       Float64,
       Float64
+    >;
+
+/// The [DTypeSpec] row that pins only the inexact projection to [R].
+///
+/// This is the bound to use in generic code that needs both a same-dtype
+/// binary operation and a projecting unary operation on one type parameter.
+/// `T extends SelfOf<InexactOf<R>>` admits `atan2(a, b)` but not `sin(a)`,
+/// because `SelfOf<X>` is not a subtype of `X`; a row is, since it implements
+/// [SelfOf] and `InexactOf<R>` alike, and the least upper bound of two
+/// distinct tags still fails to satisfy it. [AnySpec] plays the same role
+/// for dtype-preserving operations, [AnyBitwiseSpec] and [AnyIntegerSpec] for
+/// the bitwise and shift families, and [DivideSpec] / [DoublePrecisionSpec]
+/// for the remaining projecting binary operations.
+///
+/// Library signatures keep the `SelfOf<...>` form because its diagnostics
+/// name the one relevant projection, whereas a row expands to all eight slots
+/// in analyzer messages. When the binary operation is nested directly inside
+/// the unary one (`sin(add(a, b))`), Dart's inference may fail to solve the
+/// inner call; assign the binary result to a local variable first.
+typedef InexactSpec<R extends DTypeTag> =
+    DTypeSpec<
+      DTypeTag,
+      dynamic,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag
+    >;
+
+/// The [DTypeSpec] row that pins only the true-division projection to [R].
+///
+/// See [InexactSpec] for when to prefer a row bound over `SelfOf<DivideOf<R>>`.
+typedef DivideSpec<R extends DTypeTag> =
+    DTypeSpec<
+      DTypeTag,
+      dynamic,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R
+    >;
+
+/// The [DTypeSpec] row that pins only the double-precision projection to [R].
+///
+/// See [InexactSpec] for when to prefer a row bound over
+/// `SelfOf<DoublePrecisionOf<R>>`.
+typedef DoublePrecisionSpec<R extends DTypeTag> =
+    DTypeSpec<
+      DTypeTag,
+      dynamic,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      DTypeTag,
+      R,
+      DTypeTag
     >;
 
 /// Marker interface for the dtype tags that support bitwise operations
@@ -6153,10 +6214,15 @@ extension NDArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
   );
 }
 
-/// Bitwise operators (`&`, `|`, `^`, `~`) for data types whose real projection
-/// implements [BitwiseDType] (all integer types, [Boolean], and
-/// [AnyBitwiseSpec]).
-extension NDArrayBitwise<T extends RealOf<BitwiseDType>> on NDArray<T> {
+/// Bitwise operators (`&`, `|`, `^`, `~`) for data types that implement
+/// [BitwiseDType]: all integer types, [Boolean], and the least upper bounds
+/// `NDArray<IntegerDType>` / `NDArray<BitwiseDType>`.
+///
+/// [NDArrayBitwiseSpec] provides the same operators for the run-time-checked
+/// [AnyBitwiseSpec] row returned by [NDArray.asBitwiseDType]. A concrete tag
+/// such as [Int32] satisfies both extensions; Dart selects this one because
+/// `NDArray<Int32>` is the more specific `on` type.
+extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   /// Element-wise bitwise AND with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
@@ -6210,13 +6276,55 @@ extension NDArrayBitwise<T extends RealOf<BitwiseDType>> on NDArray<T> {
   /// {@example /example/bitwise_example.dart lang=dart}
   ///
   /// Reference: See NumPy's [invert](https://numpy.org/doc/stable/reference/generated/numpy.invert.html).
-  NDArray<T> operator ~() => ops.invert<T>(this);
+  NDArray<T> operator ~() => ops.invert(asBitwiseDType) as NDArray<T>;
 }
 
-/// Shift operators (`<<`, `>>`) for data types whose real projection
-/// implements [IntegerDType] (all signed and unsigned integer types, and
-/// [AnyIntegerSpec]).
-extension NDArrayShift<T extends RealOf<IntegerDType>> on NDArray<T> {
+/// Bitwise operators (`&`, `|`, `^`, `~`) for the run-time-checked
+/// [AnyBitwiseSpec] row produced by [NDArray.asBitwiseDType].
+///
+/// See [NDArrayBitwise] for the operand rules; the only difference is that the
+/// receiver's dtype was validated at run time rather than at compile time.
+extension NDArrayBitwiseSpec on NDArray<AnyBitwiseSpec> {
+  /// Element-wise bitwise AND with full broadcasting support.
+  ///
+  /// See the `&` operator of [NDArrayBitwise].
+  NDArray<AnyBitwiseSpec> operator &(Object? other) => _withSameDTypeOperand(
+    other,
+    '&',
+    (otherArr) => ops.bitwiseAnd(this, otherArr),
+  );
+
+  /// Element-wise bitwise OR with full broadcasting support.
+  ///
+  /// See the `|` operator of [NDArrayBitwise].
+  NDArray<AnyBitwiseSpec> operator |(Object? other) => _withSameDTypeOperand(
+    other,
+    '|',
+    (otherArr) => ops.bitwiseOr(this, otherArr),
+  );
+
+  /// Element-wise bitwise XOR with full broadcasting support.
+  ///
+  /// See the `^` operator of [NDArrayBitwise].
+  NDArray<AnyBitwiseSpec> operator ^(Object? other) => _withSameDTypeOperand(
+    other,
+    '^',
+    (otherArr) => ops.bitwiseXor(this, otherArr),
+  );
+
+  /// Element-wise bitwise NOT (logical NOT for `Boolean` arrays).
+  ///
+  /// See the `~` operator of [NDArrayBitwise].
+  NDArray<AnyBitwiseSpec> operator ~() => ops.invert(this);
+}
+
+/// Shift operators (`<<`, `>>`) for data types that implement [IntegerDType]:
+/// all signed and unsigned integer types and the least upper bound
+/// `NDArray<IntegerDType>`.
+///
+/// [NDArrayShiftSpec] provides the same operators for the run-time-checked
+/// [AnyIntegerSpec] row returned by [NDArray.asIntegerDType].
+extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
   /// Element-wise left shift with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
@@ -6247,6 +6355,30 @@ extension NDArrayShift<T extends RealOf<IntegerDType>> on NDArray<T> {
     '>>',
     (otherArr) =>
         ops.rightShift(asIntegerDType, otherArr.asIntegerDType) as NDArray<T>,
+  );
+}
+
+/// Shift operators (`<<`, `>>`) for the run-time-checked [AnyIntegerSpec] row
+/// produced by [NDArray.asIntegerDType].
+///
+/// See [NDArrayShift] for the operand rules.
+extension NDArrayShiftSpec on NDArray<AnyIntegerSpec> {
+  /// Element-wise left shift with full broadcasting support.
+  ///
+  /// See the `<<` operator of [NDArrayShift].
+  NDArray<AnyIntegerSpec> operator <<(Object? other) => _withSameDTypeOperand(
+    other,
+    '<<',
+    (otherArr) => ops.leftShift(this, otherArr),
+  );
+
+  /// Element-wise arithmetic right shift with full broadcasting support.
+  ///
+  /// See the `>>` operator of [NDArrayShift].
+  NDArray<AnyIntegerSpec> operator >>(Object? other) => _withSameDTypeOperand(
+    other,
+    '>>',
+    (otherArr) => ops.rightShift(this, otherArr),
   );
 }
 

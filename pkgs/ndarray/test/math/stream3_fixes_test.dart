@@ -193,8 +193,7 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final ({NDArray<Float64> t, NDArray<Float64> z}) res =
-            schur<Float64, Float64>(a, output: SchurForm.real);
+        final ({NDArray<Float64> t, NDArray<Float64> z}) res = schur(a);
         expect(res.t.shape, equals([2, 2]));
         expect(res.z.shape, equals([2, 2]));
         expect(res.t[[1, 0]], closeTo(0.0, 1e-10));
@@ -479,8 +478,9 @@ void main() {
           expect(resHess.q.dtype, equals(DType.float64));
 
           // SchurRecordDispose<T> generic check
-          final ({NDArray<Float64> t, NDArray<Float64> z}) resSchur =
-              schur<Float64, Float64>(mat);
+          final ({NDArray<Float64> t, NDArray<Float64> z}) resSchur = schur(
+            mat,
+          );
           resSchur.dispose();
           expect(resSchur.t.isDisposed, isTrue);
           expect(resSchur.z.isDisposed, isTrue);
@@ -499,7 +499,7 @@ void main() {
           );
           final vec = NDArray<Float64>.fromList([5.0, 3.0], [2], DType.float64);
 
-          final res = schur<Float64, Float64>(mat);
+          final res = schur(mat);
           // Ensure t and z survive schur's internal NDArray.scope
           expect(res.t.isDisposed, isFalse);
           expect(res.z.isDisposed, isFalse);

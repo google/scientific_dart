@@ -543,7 +543,7 @@ NDArray<T> put_along_axis<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> choose<T extends DTypeTag>(
+NDArray<T> choose<T extends AnySpec>(
   NDArray<DTypeTag> a,
   List<Object> choices, {
   NDArray<T>? out,
@@ -1036,7 +1036,7 @@ NDArray<T> choose<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> select<T extends DTypeTag>(
+NDArray<T> select<T extends AnySpec>(
   List<NDArray<Boolean>> condlist,
   List<Object> choicelist, {
   Object? defaultValue,

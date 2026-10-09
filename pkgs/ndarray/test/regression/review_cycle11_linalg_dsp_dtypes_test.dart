@@ -98,11 +98,11 @@ void main() {
         test('schur promotes to float64 (real) and complex128 (complex)', () {
           NDArray.scope(() {
             final a = NDArray.fromList([2.0, 1.0, 0.0, 3.0], [2, 2], dtype);
-            final realRes = schur(a, output: SchurForm.real);
+            final realRes = schur(a);
             expect(realRes.t.dtype, equals(DType.float64));
             expect(realRes.z.dtype, equals(DType.float64));
 
-            final complexRes = schur(a, output: SchurForm.complex);
+            final complexRes = complexSchur(a);
             expect(complexRes.t.dtype, equals(DType.complex128));
             expect(complexRes.z.dtype, equals(DType.complex128));
           });
@@ -156,7 +156,7 @@ void main() {
             final cVal = cond(a);
             expect(cVal.scalar, greaterThan(1.0));
 
-            final lsq = lstsq<DTypeTag, DTypeTag, DTypeTag>(a, b);
+            final lsq = lstsq(a, b);
             expect(lsq.rank, equals(2));
             expect(lsq.x.dtype, equals(DType.float64));
             expect(lsq.x.getCell([0]), closeTo(0.1, 1e-2));

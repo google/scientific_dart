@@ -230,11 +230,11 @@ void main() {
       test(
         'multi_dot error conditions',
         () => NDArray.scope(() {
-          expect(() => multi_dot<DTypeTag>([]), throwsArgumentError);
+          expect(() => multi_dot([]), throwsArgumentError);
           final m = NDArray.ones([2, 2], DType.float64);
-          expect(() => multi_dot<DTypeTag>([m]), throwsArgumentError);
+          expect(() => multi_dot([m]), throwsArgumentError);
           final m3d = NDArray.ones([2, 2, 2], DType.float64);
-          expect(() => multi_dot<DTypeTag>([m, m3d]), throwsArgumentError);
+          expect(() => multi_dot([m, m3d]), throwsArgumentError);
         }),
       );
     });

@@ -27,6 +27,7 @@ late final NDArray<Int32> i32;
 late final NDArray<Uint8> u8;
 late final NDArray<Boolean> b;
 late final NDArray<DTypeTag> dyn;
+late final NDArray<AnySpec> anySpec;
 
 void isSubtype<Sub extends Super, Super>() {}
 
@@ -70,25 +71,35 @@ final t_neg_floatPower_f32_i32 = floatPower(f32, i32); // error: could_not_infer
 final t_neg_cov_f32_i32 = cov(f32, y: i32); // error: could_not_infer
 
 // Results whose type parameter is determined only by `out:` default to
-// `NDArray<DTypeTag>` and therefore need `.asAnySpec` before re-entering a
-// same-dtype operation:
-final t_neg_add_multi_dot = add(multi_dot([f64, f64]), f64); // error: argument_type_not_assignable
-final t_neg_matmul_schur = matmul(schur(f64).z, schur(f64).t); // error: argument_type_not_assignable
+// AnySpec, so a bare `NDArray<DTypeTag>` cannot be passed as that `out:`:
+final t_neg_multi_dot_out_dyn = multi_dot([f64, f64], out: dyn); // error: argument_type_not_assignable
+final t_neg_schur_dyn = schur(dyn); // error: argument_type_not_assignable
+final t_neg_complexSchur_dyn = complexSchur(dyn); // error: argument_type_not_assignable
 
 // Generic helpers: `T extends DTypeTag` / `T extends IntegerDType` do not
 // satisfy the SelfOf bounds even for a single array used twice.
 NDArray<T> badGenericAdd<T extends DTypeTag>(NDArray<T> a) => add(a, a); // error: argument_type_not_assignable
 NDArray<T> badGenericGcd<T extends IntegerDType>(NDArray<T> a) => gcd(a, a); // error: argument_type_not_assignable
 
-// Known limitation: `SelfOf<X>` does not imply `X`, so a `SelfOf`-bounded
-// type parameter cannot be passed to the unary projection-bounded operations,
-// and the capability markers cannot be passed to unary bitwise operations
-// (`invert` / `~` require `RealOf<BitwiseDType>`, which the non-generic
-// markers cannot implement because `RealOf` differs per integer tag).
+// `SelfOf<X>` does not imply `X`: a `SelfOf`-bounded type parameter cannot be
+// passed to the unary projection-bounded operations (bound by the row
+// typedefs `InexactSpec<R>` / `AnyIntegerSpec` instead, see the positive
+// fixture), and the capability markers cannot be passed to the bitwise
+// *functions* (`invert` requires `RealOf<BitwiseDType>`, which the markers
+// cannot implement because `RealOf` differs per integer tag) — only to the
+// operators.
 NDArray<T> limitInvertSelfOf<T extends SelfOf<RealOf<IntegerDType>>>(NDArray<T> a) => invert(a); // error: argument_type_not_assignable
 NDArray<R> limitSinSelfOf<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(NDArray<T> a) => sin(a); // error: argument_type_not_assignable
 final t_neg_invert_lub = invert([i32, u8].first); // error: argument_type_not_assignable
-final t_neg_opinv_lub = ~[i32, u8].first; // error: undefined_operator
+final t_neg_opand_anySpec = anySpec & anySpec; // error: undefined_operator
+
+// Row-typedef bounds still reject the LUB of distinct tags:
+NDArray<R> rowSinOfSum<T extends InexactSpec<R>, R extends DTypeTag>(NDArray<T> a, NDArray<T> b) {
+  final s = add(a, b);
+  return sin(s);
+}
+final t_neg_row_mixed = rowSinOfSum(i64, i32); // error: could_not_infer
+final t_neg_row_mixed_f = rowSinOfSum(f64, f32); // error: could_not_infer
 
 // Negative subtype probes on capability markers:
 void checkInvalidMarkerSubtypes() {

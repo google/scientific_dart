@@ -25,7 +25,7 @@ void main() {
           DType.float64,
         );
 
-        final res = schur<Float64, Float64>(a, output: SchurForm.real);
+        final res = schur(a);
         final t = res.t;
         final z = res.z;
 
@@ -60,7 +60,7 @@ void main() {
           DType.float64,
         );
 
-        final res = schur<Float64, Complex128>(a, output: SchurForm.complex);
+        final res = complexSchur(a);
         final t = res.t;
         final z = res.z;
 
@@ -100,7 +100,7 @@ void main() {
           DType.complex128,
         );
 
-        final res = schur<Complex128, Complex128>(a);
+        final res = schur(a);
         final t = res.t;
         final z = res.z;
 
@@ -161,7 +161,7 @@ void main() {
           DType.float64,
         );
 
-        final res = schur<Float64, Float64>(a);
+        final res = schur(a);
         expect(res.t.shape, equals([2, 2, 2]));
         expect(res.z.shape, equals([2, 2, 2]));
 
@@ -171,5 +171,77 @@ void main() {
         expect(res.t[[1, 1, 0]], closeTo(0.0, 1e-10));
       });
     });
+
+    test('schur and complexSchur result dtypes follow their projections', () {
+      NDArray.scope(() {
+        final values = [3.0, -2.0, 4.0, -1.0];
+        final f64 = NDArray.fromList(values, [2, 2], DType.float64);
+        final f32 = NDArray.fromList(values, [2, 2], DType.float32);
+        final f16 = NDArray.fromList(values, [2, 2], DType.float16);
+        final i32 = NDArray.fromList([3, -2, 4, -1], [2, 2], DType.int32);
+        final bools = NDArray.fromList(
+          [true, false, true, true],
+          [2, 2],
+          DType.boolean,
+        );
+        final c64 = NDArray.fromList(
+          [Complex(1, 1), Complex(2, 0), Complex(0, 1), Complex(3, -1)],
+          [2, 2],
+          DType.complex64,
+        );
+
+        expect(schur(f64).t.dtype, DType.float64);
+        expect(schur(f32).t.dtype, DType.float32);
+        expect(schur(f16).t.dtype, DType.float64);
+        expect(schur(i32).t.dtype, DType.float64);
+        expect(schur(bools).t.dtype, DType.float64);
+        expect(schur(c64).t.dtype, DType.complex64);
+
+        expect(complexSchur(f64).t.dtype, DType.complex128);
+        expect(complexSchur(f32).t.dtype, DType.complex64);
+        expect(complexSchur(f16).t.dtype, DType.complex128);
+        expect(complexSchur(i32).t.dtype, DType.complex128);
+        expect(complexSchur(bools).t.dtype, DType.complex128);
+        expect(complexSchur(c64).t.dtype, DType.complex64);
+      });
+    });
+
+    test(
+      'complexSchur of a real matrix is upper triangular and reconstructs',
+      () {
+        NDArray.scope(() {
+          // Eigenvalues 1 ± 2i: the real form keeps a 2×2 block, the complex
+          // form must be strictly upper triangular.
+          final a = NDArray.fromList(
+            [3.0, -2.0, 4.0, -1.0],
+            [2, 2],
+            DType.float64,
+          );
+          final real = schur(a);
+          expect(real.t[[1, 0]].abs(), greaterThan(1e-6));
+
+          final res = complexSchur(a);
+          expect(res.t[[1, 0]].real, closeTo(0.0, 1e-10));
+          expect(res.t[[1, 0]].imag, closeTo(0.0, 1e-10));
+          expect(res.t[[0, 0]].real, closeTo(1.0, 1e-10));
+          expect(res.t[[0, 0]].imag.abs(), closeTo(2.0, 1e-10));
+
+          final recon = matmul(matmul(res.z, res.t), conj(res.z).transposed);
+          for (var r = 0; r < 2; r++) {
+            for (var c = 0; c < 2; c++) {
+              expect(recon[[r, c]].real, closeTo(a[[r, c]], 1e-10));
+              expect(recon[[r, c]].imag, closeTo(0.0, 1e-10));
+            }
+          }
+
+          final outT = NDArray.zeros([2, 2], DType.complex128);
+          final outZ = NDArray.zeros([2, 2], DType.complex128);
+          final viaOut = complexSchur(a, outT: outT, outZ: outZ);
+          expect(identical(viaOut.t, outT), isTrue);
+          expect(identical(viaOut.z, outZ), isTrue);
+          expect(outT[[1, 0]].real, closeTo(0.0, 1e-10));
+        });
+      },
+    );
   });
 }

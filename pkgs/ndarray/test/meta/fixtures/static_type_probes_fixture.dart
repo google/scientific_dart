@@ -416,3 +416,124 @@ final t_generic_atan2_selfof_i16 = genericAtan2SelfOf(i16, i16);
 
 // expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
 final t_generic_add_selfof_anySpec = genericAddSelfOf(anySpec, anySpec);
+
+// ---------------------------------------------------------------------------
+// Section C — run-time-typed results, schur projections, marker operators,
+// and composable row bounds for generic code
+// ---------------------------------------------------------------------------
+
+// Results whose dtype is only known at run time default to AnySpec and
+// therefore compose with every other operation:
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_multi_dot = multi_dot([f64, f64]);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_add_multi_dot = add(multi_dot([f64, f64]), f64);
+
+// expect: NDArray<DTypeTag>
+final t_sin_multi_dot = sin(multi_dot([f64, f64]));
+
+// expect: NDArray<Float32>
+final t_multi_dot_out = multi_dot([f32, f32], out: f32);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_lstsq_x = lstsq(f64, f64).x;
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_binaryUfunc = binaryUfunc(i32, i32, op: BinaryOp.add);
+
+// schur projects InexactOf, complexSchur projects ComplexOf:
+
+// expect: ({NDArray<Float64> t, NDArray<Float64> z})
+final t_schur_f64 = schur(f64);
+
+// expect: ({NDArray<Float32> t, NDArray<Float32> z})
+final t_schur_f32 = schur(f32);
+
+// expect: ({NDArray<Float64> t, NDArray<Float64> z})
+final t_schur_i32 = schur(i32);
+
+// expect: ({NDArray<Complex64> t, NDArray<Complex64> z})
+final t_schur_c64 = schur(c64);
+
+// expect: ({NDArray<Complex128> t, NDArray<Complex128> z})
+final t_complexSchur_f64 = complexSchur(f64);
+
+// expect: ({NDArray<Complex64> t, NDArray<Complex64> z})
+final t_complexSchur_f32 = complexSchur(f32);
+
+// expect: NDArray<Float64>
+final t_matmul_schur = matmul(schur(f64).z, schur(f64).t);
+
+// Marker-typed (LUB) arrays keep the operator forms of the bitwise family:
+
+// expect: NDArray<IntegerDType>
+final t_opinv_lub = ~[i32, u8].first;
+
+// expect: NDArray<IntegerDType>
+final t_opand_lub = [i32, u8].first & [i32, u8].first;
+
+// expect: NDArray<IntegerDType>
+final t_opshl_lub = [i32, u8].first << 1;
+
+// expect: NDArray<BitwiseDType>
+final t_opinv_lub_bitwise = ~[i32, b].first;
+
+// Row-typedef bounds compose same-dtype binary and projecting unary
+// operations on one type parameter (unlike `SelfOf<XOf<R>>`):
+NDArray<R> genericSinOfSum<T extends InexactSpec<R>, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b,
+) {
+  final s = add(a, b);
+  return sin(s);
+}
+
+NDArray<R> genericDivideRow<T extends DivideSpec<R>, R extends DTypeTag>(
+  NDArray<T> a,
+  NDArray<T> b,
+) => divide(a, b);
+
+// In row-bounded generic code the operator forms resolve to the non-generic
+// `NDArrayBitwiseSpec` / `NDArrayShiftSpec` extensions and widen to the row;
+// the function forms keep `T`.
+NDArray<T> genericGcdOfInverted<T extends AnyIntegerSpec>(
+  NDArray<T> a,
+  NDArray<T> b,
+) => gcd(invert(a), bitwiseAnd(b, b));
+
+NDArray<T> genericAddAfterSin<T extends AnySpec>(NDArray<T> a, NDArray<T> b) {
+  final s = sin(a);
+  final q = a / b;
+  print([s, q]);
+  return add(a, b);
+}
+
+// expect: NDArray<Float64>
+final t_generic_sin_of_sum_i32 = genericSinOfSum(i32, i32);
+
+// expect: NDArray<Float32>
+final t_generic_sin_of_sum_f32 = genericSinOfSum(f32, f32);
+
+// expect: NDArray<Float64>
+final t_generic_divide_i16 = genericDivideRow(i16, i16);
+
+// expect: NDArray<Uint8>
+final t_generic_gcd_inverted_u8 = genericGcdOfInverted(u8, u8);
+
+// expect: NDArray<Int32>
+final t_generic_add_after_sin_i32 = genericAddAfterSin(i32, i32);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_generic_add_after_sin_any = genericAddAfterSin(anySpec, anySpec);
+
+// The operator forms on the escape-hatch rows resolve to the non-generic
+// `NDArrayBitwiseSpec`, so `~` on an `AnyIntegerSpec` array widens to
+// `AnyBitwiseSpec`; the function form keeps the integer row.
+
+// expect: NDArray<DTypeSpec<BitwiseDType, dynamic, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_opinv_asInteger = ~dyn.asIntegerDType;
+
+// expect: NDArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
+final t_invert_asInteger = invert(dyn.asIntegerDType);

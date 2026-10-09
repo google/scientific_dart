@@ -1288,7 +1288,6 @@ void main() {
         const runtimeDispatchedUfuncOrMultiInputOps = <String>{
           'lstsq',
           'average',
-          'schur',
           'binaryUfunc',
           'outerUfunc',
           'unaryUfunc',
@@ -1516,36 +1515,31 @@ void main() {
         final verifiedProjectingFunctions = <String>{};
         final verifiedProjectingExtensions = <String>{};
 
+        bool isAnySpecBound(TypeParameterElement tp) {
+          final bound = tp.bound;
+          if (bound is! InterfaceType) return false;
+          return bound.alias?.element.name == 'AnySpec' ||
+              bound.getDisplayString() ==
+                  'DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>';
+        }
+
+        final runtimeDTypedResultFunctions = <String>{};
         for (final entry in exportNames.entries) {
           final name = entry.key;
           final el = entry.value;
           if (el is ExecutableElement && el.typeParameters.isNotEmpty) {
-            if (allowListedTwoProjectionFunctions.contains(name) ||
-                runtimeDispatchedUfuncOrMultiInputOps.contains(name)) {
+            if (allowListedTwoProjectionFunctions.contains(name)) {
               continue;
             }
             final resultTypeParams = <TypeParameterElement>{};
             collectTypeParams(el.returnType, resultTypeParams);
             final nonOutInputTypes = <DartType>[];
-            var hasOutParam = false;
             for (final p in el.formalParameters) {
               if (isOutParameter(p)) {
-                hasOutParam = true;
                 collectTypeParams(p.type, resultTypeParams);
               } else {
                 nonOutInputTypes.add(p.type);
               }
-            }
-            final nonOutTypeParams = <TypeParameterElement>{};
-            for (final t in nonOutInputTypes) {
-              collectTypeParams(t, nonOutTypeParams);
-            }
-            // Output-only single-type-param ops with untyped inputs (choose, multi_dot)
-            // determine T solely from `{NDArray<T>? out}`.
-            if (nonOutTypeParams.isEmpty &&
-                el.typeParameters.length == 1 &&
-                hasOutParam) {
-              continue;
             }
             for (final tp in el.typeParameters) {
               if (!resultTypeParams.contains(tp)) continue;
@@ -1553,15 +1547,23 @@ void main() {
                 (t) => isDirectlyDeterminedByInput(t, tp),
               );
               if (direct) continue;
-              if (isBoundThroughProjection(
-                tp,
-                el.typeParameters,
-                nonOutInputTypes,
-              )) {
+              if (!runtimeDispatchedUfuncOrMultiInputOps.contains(name) &&
+                  isBoundThroughProjection(
+                    tp,
+                    el.typeParameters,
+                    nonOutInputTypes,
+                  )) {
                 verifiedProjectingFunctions.add(name);
+              } else if (isAnySpecBound(tp)) {
+                // The result dtype is only known at run time (choose,
+                // multi_dot, lstsq, average, the generic ufunc entry points):
+                // defaulting `R` to `AnySpec` keeps the result usable by every
+                // other operation while still inferring a concrete `R` from
+                // `out:`.
+                runtimeDTypedResultFunctions.add(name);
               } else {
                 violations.add(
-                  'Exported function `$name`: result/out type parameter `${tp.name}` is not directly determined by an input parameter (`NDArray<${tp.name}>`, `List<NDArray<${tp.name}>>`, `DType<${tp.name}>`) and is not bound through a `*Of<${tp.name}>` projection interface.',
+                  'Exported function `$name`: result/out type parameter `${tp.name}` is not directly determined by an input parameter (`NDArray<${tp.name}>`, `List<NDArray<${tp.name}>>`, `DType<${tp.name}>`), is not bound through a `*Of<${tp.name}>` projection interface, and is not bounded by `AnySpec` for a run-time-determined result dtype.',
                 );
               }
             }
@@ -1570,6 +1572,13 @@ void main() {
             for (final m in [...el.methods, ...el.getters]) {
               if (m.isPrivate) continue;
               if (extName == 'UfuncNDArrayExtension' && m.name == 'outer') {
+                // `outer<R>` dispatches on `op` at run time; its result
+                // parameter must default to `AnySpec` like `outerUfunc`.
+                if (!m.typeParameters.every(isAnySpecBound)) {
+                  violations.add(
+                    'Extension method `$extName.outer` must bound its result type parameter by `AnySpec`.',
+                  );
+                }
                 continue;
               }
               final allTypeParams = [...el.typeParameters, ...m.typeParameters];
@@ -1824,9 +1833,23 @@ void main() {
         );
         expect(
           verifiedProjectingFunctions.length,
-          equals(88),
+          equals(90),
           reason:
-              'Expected Rule 2 semantic check to verify all 88 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 94 total).',
+              'Expected Rule 2 semantic check to verify all 90 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 96 total).',
+        );
+        expect(
+          runtimeDTypedResultFunctions,
+          equals({
+            'choose',
+            'multi_dot',
+            'lstsq',
+            'average',
+            'binaryUfunc',
+            'outerUfunc',
+            'unaryUfunc',
+          }),
+          reason:
+              'Exactly these functions have a run-time-determined result dtype typed only by `out:`; every other result dtype must be a static projection of an input.',
         );
         expect(
           verifiedProjectingExtensions,
@@ -2944,20 +2967,19 @@ void main() {
                 'DTypeSpec must declare descriptive type parameter `$paramName`',
           );
         }
-        expect(
-          ndarraySrc,
-          contains(
-            'extension NDArrayBitwise<T extends RealOf<BitwiseDType>> on NDArray<T>',
-          ),
-          reason: 'NDArrayBitwise must be bounded by RealOf<BitwiseDType>',
-        );
-        expect(
-          ndarraySrc,
-          contains(
-            'extension NDArrayShift<T extends RealOf<IntegerDType>> on NDArray<T>',
-          ),
-          reason: 'NDArrayShift must be bounded by RealOf<IntegerDType>',
-        );
+        for (final decl in [
+          'extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T>',
+          'extension NDArrayBitwiseSpec on NDArray<AnyBitwiseSpec>',
+          'extension NDArrayShift<T extends IntegerDType> on NDArray<T>',
+          'extension NDArrayShiftSpec on NDArray<AnyIntegerSpec>',
+        ]) {
+          expect(
+            ndarraySrc,
+            contains(decl),
+            reason:
+                'The bitwise/shift operators must be declared on the capability markers (so LUBs and marker-bounded generics keep them) with non-generic siblings on the run-time-checked rows: `$decl`',
+          );
+        }
         expect(
           ndarraySrc.contains('class BitwiseDType<'),
           isFalse,
@@ -2979,6 +3001,9 @@ void main() {
           'AnySpec',
           'AnyBitwiseSpec',
           'AnyIntegerSpec',
+          'InexactSpec',
+          'DivideSpec',
+          'DoublePrecisionSpec',
           'Float64',
           'Float32',
           'Float16',

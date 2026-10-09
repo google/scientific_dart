@@ -717,7 +717,7 @@ void main() {
               [3, 3],
               DType.float64,
             );
-            final resReal = schur<Float64, Float64>(a, output: SchurForm.real);
+            final resReal = schur(a);
             expect(resReal.t.shape, [3, 3]);
             expect(resReal.z.shape, [3, 3]);
 
@@ -728,13 +728,13 @@ void main() {
             }
             resReal.dispose();
 
-            final resCpx = schur(a, output: SchurForm.complex);
+            final resCpx = complexSchur(a);
             expect(resCpx.t.dtype, DType.complex128);
             expect(resCpx.z.dtype, DType.complex128);
             resCpx.dispose();
 
             final empty = NDArray<Float64>.zeros([0, 0], DType.float64);
-            final emptyRes = schur<Float64, Float64>(empty);
+            final emptyRes = schur(empty);
             expect(emptyRes.t.shape, [0, 0]);
             emptyRes.dispose();
           }),

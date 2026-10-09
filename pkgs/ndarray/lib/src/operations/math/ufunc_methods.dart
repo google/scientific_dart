@@ -88,7 +88,7 @@ extension UfuncNDArrayExtension<T extends DTypeTag> on NDArray<T> {
   /// **Preconditions:**
   /// - It is an error if this array, [b], or [out] is disposed.
   /// - It is an error if [out] (if provided) has incompatible shape or dtype.
-  NDArray<R> outer<R extends DTypeTag>(
+  NDArray<R> outer<R extends AnySpec>(
     NDArray<T> b, {
     BinaryOp op = BinaryOp.multiply,
     NDArray<DTypeTag>? where,
@@ -239,7 +239,7 @@ NDArray<R> _createTyped<R extends DTypeTag>(
 }
 
 /// Evaluates binary operation [op] element-wise between [a] and [b].
-NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
+NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
   NDArray<T> a,
   NDArray<T> b, {
   required BinaryOp op,
@@ -3016,7 +3016,7 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
       );
       final resSliceI = result.slice(selResI);
       if (stepRes.dtype == result.dtype) {
-        stepRes.copy(out: resSliceI);
+        stepRes.copy(out: resSliceI.asAnySpec);
       } else {
         final casted = castNDArray<T>(stepRes, result.dtype);
         casted.copy(out: resSliceI);
@@ -3521,7 +3521,7 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
                 op: op,
               );
               if (stepRes.dtype == a.dtype) {
-                stepRes.copy(out: outSlice);
+                stepRes.copy(out: outSlice.asAnySpec);
               } else {
                 final casted = castNDArray<T>(stepRes, a.dtype);
                 casted.copy(out: outSlice);
@@ -3537,7 +3537,7 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
 }
 
 /// Generalized ufunc outer operation.
-NDArray<R> outerUfunc<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
+NDArray<R> outerUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
   NDArray<T> a,
   NDArray<T> b, {
   BinaryOp op = BinaryOp.multiply,
@@ -3912,7 +3912,7 @@ void atUfunc<T extends DTypeTag>(
               op: op,
             );
             if (stepRes.dtype == a.dtype) {
-              stepRes.copy(out: aSlice);
+              stepRes.copy(out: aSlice.asAnySpec);
             } else {
               final casted = castNDArray<T>(stepRes, a.dtype);
               casted.copy(out: aSlice);
@@ -3932,7 +3932,7 @@ void atUfunc<T extends DTypeTag>(
 }
 
 /// Evaluates unary operation [op] element-wise on [x].
-NDArray<R> unaryUfunc<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
   NDArray<T> x, {
   required UnaryOp op,
   NDArray<DTypeTag>? where,
