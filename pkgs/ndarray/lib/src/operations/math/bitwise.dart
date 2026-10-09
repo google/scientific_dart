@@ -1152,10 +1152,10 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy invert](https://numpy.org/doc/stable/reference/generated/numpy.invert.html)
-NDArray<T> invert<T extends RealOf<BitwiseDType>>(
+NDArray<T> invert<T extends RealOf<BitwiseDType>, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1185,7 +1185,7 @@ NDArray<T> invert<T extends RealOf<BitwiseDType>>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        invert<T>(a, where: where, out: temp);
+        invert(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1351,13 +1351,17 @@ NDArray<T> invert<T extends RealOf<BitwiseDType>>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_and](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_and.html)
-NDArray<R>
-bitwiseAndAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> bitwiseAndAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -1405,13 +1409,17 @@ bitwiseAndAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_or](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_or.html)
-NDArray<R>
-bitwiseOrAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> bitwiseOrAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -1459,13 +1467,17 @@ bitwiseOrAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy bitwise_xor](https://numpy.org/doc/stable/reference/generated/numpy.bitwise_xor.html)
-NDArray<R>
-bitwiseXorAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> bitwiseXorAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -1513,13 +1525,17 @@ bitwiseXorAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy left_shift](https://numpy.org/doc/stable/reference/generated/numpy.left_shift.html)
-NDArray<R>
-leftShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> leftShiftAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -1567,13 +1583,17 @@ leftShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/bitwise_example.dart lang=dart}
 ///
 /// Reference: [NumPy right_shift](https://numpy.org/doc/stable/reference/generated/numpy.right_shift.html)
-NDArray<R>
-rightShiftAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> rightShiftAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||

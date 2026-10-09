@@ -35,10 +35,10 @@ import '../helpers.dart';
 /// {@example /example/transcendental_example.dart lang=dart}
 ///
 /// Reference: [Exponential Function](https://en.wikipedia.org/wiki/Exponential_function)
-NDArray<R> exp<R extends DTypeTag>(
+NDArray<R> exp<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -71,7 +71,7 @@ NDArray<R> exp<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        exp<R>(a, where: where, out: temp);
+        exp(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -249,10 +249,10 @@ NDArray<R> exp<R extends DTypeTag>(
 /// {@example /example/transcendental_example.dart lang=dart}
 ///
 /// Reference: [Natural Logarithm](https://en.wikipedia.org/wiki/Natural_logarithm)
-NDArray<R> log<R extends DTypeTag>(
+NDArray<R> log<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -283,7 +283,7 @@ NDArray<R> log<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        log<R>(a, where: where, out: temp);
+        log(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -456,10 +456,10 @@ NDArray<R> log<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
-NDArray<R> log2<R extends DTypeTag>(
+NDArray<R> log2<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -490,7 +490,7 @@ NDArray<R> log2<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        log2<R>(a, where: where, out: temp);
+        log2(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -664,10 +664,10 @@ NDArray<R> log2<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
-NDArray<R> log10<R extends DTypeTag>(
+NDArray<R> log10<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -698,7 +698,7 @@ NDArray<R> log10<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        log10<R>(a, where: where, out: temp);
+        log10(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });

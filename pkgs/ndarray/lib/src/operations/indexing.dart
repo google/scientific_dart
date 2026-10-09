@@ -121,11 +121,11 @@ void _mapCoordInPlace(
 ///
 /// **Example:**
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> take_along_axis<T extends DTypeTag>(
+NDArray<T> take_along_axis<T extends DTypeTag, Out extends T>(
   NDArray<T> arr,
   NDArray<DTypeTag> indices,
   int axis, {
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (arr.isDisposed || indices.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute take_along_axis on a disposed array.');
@@ -306,12 +306,12 @@ NDArray<T> take_along_axis<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> put_along_axis<T extends DTypeTag>(
+NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
   NDArray<T> arr,
   NDArray<DTypeTag> indices,
   Object values,
   int axis, {
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (arr.isDisposed || indices.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute put_along_axis on a disposed array.');
@@ -1727,7 +1727,7 @@ NDArray<Int64> ravelMultiIndex(
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> indices<T extends DTypeTag>(
+NDArray<T> indices<T extends AnySpec>(
   List<int> dimensions, {
   DType<T>? dtype,
   NDArray<T>? out,

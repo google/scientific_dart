@@ -54,11 +54,11 @@ NDArray<T> _sliceAlongAxis<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy array_split reference](https://numpy.org/doc/stable/reference/generated/numpy.array_split.html)
 /// for details.
-List<NDArray<T>> array_split<T extends DTypeTag>(
+List<NDArray<T>> array_split<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int sections, {
   int axis = 0,
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -154,11 +154,11 @@ List<NDArray<T>> array_split<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy array_split reference](https://numpy.org/doc/stable/reference/generated/numpy.array_split.html)
 /// for details.
-List<NDArray<T>> array_split_at<T extends DTypeTag>(
+List<NDArray<T>> array_split_at<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   List<int> indices, {
   int axis = 0,
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -254,11 +254,11 @@ List<NDArray<T>> array_split_at<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy split reference](https://numpy.org/doc/stable/reference/generated/numpy.split.html)
 /// for details.
-List<NDArray<T>> split<T extends DTypeTag>(
+List<NDArray<T>> split<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int sections, {
   int axis = 0,
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -308,11 +308,11 @@ List<NDArray<T>> split<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy split reference](https://numpy.org/doc/stable/reference/generated/numpy.split.html)
 /// for details.
-List<NDArray<T>> split_at<T extends DTypeTag>(
+List<NDArray<T>> split_at<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   List<int> indices, {
   int axis = 0,
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   return array_split_at(a, indices, axis: axis, out: out);
 }
@@ -337,10 +337,10 @@ List<NDArray<T>> split_at<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy hsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.hsplit.html)
 /// for details.
-List<NDArray<T>> hsplit<T extends DTypeTag>(
+List<NDArray<T>> hsplit<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int sections, {
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -372,10 +372,10 @@ List<NDArray<T>> hsplit<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy hsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.hsplit.html)
 /// for details.
-List<NDArray<T>> hsplit_at<T extends DTypeTag>(
+List<NDArray<T>> hsplit_at<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   List<int> indices, {
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -407,10 +407,10 @@ List<NDArray<T>> hsplit_at<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy vsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.vsplit.html)
 /// for details.
-List<NDArray<T>> vsplit<T extends DTypeTag>(
+List<NDArray<T>> vsplit<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int sections, {
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -445,10 +445,10 @@ List<NDArray<T>> vsplit<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy vsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.vsplit.html)
 /// for details.
-List<NDArray<T>> vsplit_at<T extends DTypeTag>(
+List<NDArray<T>> vsplit_at<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   List<int> indices, {
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -487,10 +487,10 @@ List<NDArray<T>> vsplit_at<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy dsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.dsplit.html)
 /// for details.
-List<NDArray<T>> dsplit<T extends DTypeTag>(
+List<NDArray<T>> dsplit<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int sections, {
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -525,10 +525,10 @@ List<NDArray<T>> dsplit<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy dsplit reference](https://numpy.org/doc/stable/reference/generated/numpy.dsplit.html)
 /// for details.
-List<NDArray<T>> dsplit_at<T extends DTypeTag>(
+List<NDArray<T>> dsplit_at<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   List<int> indices, {
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');

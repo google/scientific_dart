@@ -101,13 +101,13 @@ ndenumerate<T extends DTypeTag>(NDArray<T> a) sync* {
 /// {@example /example/nan_to_num_example.dart lang=dart}
 ///
 /// Reference: [Replace NaN and Infinities](https://numpy.org/doc/stable/reference/generated/numpy.nan_to_num.html)
-NDArray<T> nan_to_num<T extends DTypeTag>(
+NDArray<T> nan_to_num<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   double nan = 0.0,
   double? posinf,
   double? neginf,
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -133,7 +133,7 @@ NDArray<T> nan_to_num<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        nan_to_num<T>(
+        nan_to_num(
           a,
           nan: nan,
           posinf: posinf,

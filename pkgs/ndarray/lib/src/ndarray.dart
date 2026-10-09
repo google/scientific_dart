@@ -883,6 +883,16 @@ enum DType<T extends DTypeTag> {
 
   const DType(this.name, this.byteWidth, this.npyDescriptor);
 
+  /// Views this dtype with the wildcard [AnySpec] tag.
+  ///
+  /// Every dtype value is a `DType<AnySpec>` at run time (the enum values are
+  /// declared with their concrete tags, which all implement [AnySpec]), so
+  /// this is a zero-cost cast. Use it to pass a run-time-chosen `DType` to an
+  /// `AnySpec`-bounded creation function (`uniform(shape, dtype: dt.asAnySpec)`)
+  /// or to create an `NDArray<AnySpec>` that satisfies every `SelfOf<...>`
+  /// bound with run-time dtype validation.
+  DType<AnySpec> get asAnySpec => this as DType<AnySpec>;
+
   bool get isComplex => this == DType.complex64 || this == DType.complex128;
   bool get isFloating =>
       this == DType.float32 ||
@@ -4754,7 +4764,7 @@ sealed class NDArray<T extends DTypeTag>
 
   /// Numerical negative, element-wise.
   NDArray<T> operator -() {
-    return ops.negative<T>(this);
+    return ops.negative(this);
   }
 
   // The bitwise (`&`, `|`, `^`, `~`) and shift (`<<`, `>>`) operators are

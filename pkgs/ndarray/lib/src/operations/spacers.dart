@@ -76,13 +76,13 @@ enum SearchSide {
 ///
 /// **Example:**
 /// {@example /example/shaping_example.dart lang=dart}
-NDArray<T> linspace<T extends DTypeTag>(
+NDArray<T> linspace<T extends DTypeTag, Out extends T>(
   Object? start,
   Object? stop,
   int numSamples, {
   bool endpoint = true,
   required DType<T> dtype,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   return linspaceInternal<T>(
     start,
@@ -106,13 +106,14 @@ NDArray<T> linspace<T extends DTypeTag>(
 ///
 /// **Memory Ownership & Lifetime:**
 /// - Allocates a new array on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
-({NDArray<T> samples, Object step}) linspaceWithStep<T extends DTypeTag>(
+({NDArray<T> samples, Object step})
+linspaceWithStep<T extends DTypeTag, Out extends T>(
   Object? start,
   Object? stop,
   int numSamples, {
   bool endpoint = true,
   required DType<T> dtype,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   final res = linspaceInternal<T>(
     start,
@@ -589,14 +590,14 @@ _linspaceGridInternal<T extends SelfOf<DTypeTag>>(
 ///
 /// **Memory Ownership & Lifetime:**
 /// - Allocates a new array on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
-NDArray<T> logspace<T extends DTypeTag>(
+NDArray<T> logspace<T extends DTypeTag, Out extends T>(
   Object? start,
   Object? stop,
   int numSamples, {
   double base = 10.0,
   bool endpoint = true,
   required DType<T> dtype,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (numSamples < 0) {
     throw ArgumentError.value(
@@ -814,13 +815,13 @@ NDArray<T> logspaceGrid<T extends SelfOf<DTypeTag>>(
 ///
 /// **Memory Ownership & Lifetime:**
 /// - Allocates a new array on the unmanaged C heap. The caller takes full ownership of this memory and must explicitly call [dispose] to prevent native leaks, unless executing inside a managed [NDArray.scope].
-NDArray<T> geomspace<T extends DTypeTag>(
+NDArray<T> geomspace<T extends DTypeTag, Out extends T>(
   Object? start,
   Object? stop,
   int numSamples, {
   bool endpoint = true,
   required DType<T> dtype,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (numSamples < 0) {
     throw ArgumentError.value(
@@ -1055,7 +1056,7 @@ NDArray<T> geomspaceGrid<T extends SelfOf<DTypeTag>>(
     final stopBroad = broadcastTo(stopArr, commonShape);
 
     if (resolvedDType.isFloating) {
-      final signs = sign<T>(startBroad);
+      final signs = sign(startBroad);
       final absStart = abs(startBroad as NDArray<AnySpec>) as NDArray<T>;
       final absStop = abs(stopBroad as NDArray<AnySpec>) as NDArray<T>;
       final compDType =

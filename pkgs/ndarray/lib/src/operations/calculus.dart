@@ -100,11 +100,11 @@ bool _listEquals(List<Object?> a, List<Object?> b) {
 ///
 /// **Example:**
 /// {@example /example/calculus_example.dart lang=dart}
-NDArray<T> trapz<T extends DTypeTag>(
+NDArray<T> trapz<T extends DTypeTag, Out extends T>(
   NDArray<InexactOf<T>> y, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = -1,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (y.isDisposed) {
     throw StateError('Cannot execute trapz() on a disposed array.');
@@ -181,7 +181,7 @@ NDArray<T> trapz<T extends DTypeTag>(
           for (final v in values) (v as num).toDouble(),
         ]),
       };
-      final doubleRes = trapz<Float64>(
+      final doubleRes = trapz<Float64, Float64>(
         doubleY,
         spacing: doubleSpacing,
         axis: axis,
@@ -209,7 +209,7 @@ NDArray<T> trapz<T extends DTypeTag>(
     }
     if (sharesMemory(y, out)) {
       return NDArray.scope(() {
-        final temp = trapz<T>(y, spacing: spacing, axis: axis);
+        final temp = trapz<T, T>(y, spacing: spacing, axis: axis);
         temp.copy(out: out);
         return out;
       });
@@ -221,7 +221,11 @@ NDArray<T> trapz<T extends DTypeTag>(
     case DType.bfloat16:
       return NDArray.scope(() {
         final doubleY = castNDArray<Float64>(y, DType.float64);
-        final doubleRes = trapz<Float64>(doubleY, spacing: spacing, axis: axis);
+        final doubleRes = trapz<Float64, Float64>(
+          doubleY,
+          spacing: spacing,
+          axis: axis,
+        );
         if (out != null) {
           if (out.dtype == DType.float64) {
             doubleRes.copy(out: out as NDArray<Float64>);
@@ -678,12 +682,12 @@ NDArray<T> trapz<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/calculus_example.dart lang=dart}
-NDArray<T> gradient<T extends DTypeTag>(
+NDArray<T> gradient<T extends DTypeTag, Out extends T>(
   NDArray<InexactOf<T>> f, {
   Spacing spacing = const Spacing.step(1.0),
   int axis = 0,
   int edgeOrder = 1,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (f.isDisposed) {
     throw StateError('Cannot execute gradient() on a disposed array.');
@@ -768,7 +772,7 @@ NDArray<T> gradient<T extends DTypeTag>(
     }
     return NDArray.scope(() {
       final doubleF = castNDArray<Float64>(f, DType.float64);
-      final doubleRes = gradient<Float64>(
+      final doubleRes = gradient<Float64, Float64>(
         doubleF,
         spacing: spacing,
         axis: axis,
@@ -801,7 +805,7 @@ NDArray<T> gradient<T extends DTypeTag>(
     }
     if (sharesMemory(f, out)) {
       return NDArray.scope(() {
-        final temp = gradient<T>(
+        final temp = gradient<T, T>(
           f,
           spacing: spacing,
           axis: axis,
@@ -816,7 +820,7 @@ NDArray<T> gradient<T extends DTypeTag>(
   if (fDType == DType.float16 || fDType == DType.bfloat16) {
     return NDArray.scope(() {
       final doubleF = castNDArray<Float64>(f, DType.float64);
-      final doubleRes = gradient<Float64>(
+      final doubleRes = gradient<Float64, Float64>(
         doubleF,
         spacing: spacing,
         axis: axis,
@@ -1266,13 +1270,13 @@ NDArray<T> gradient<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/calculus_example.dart lang=dart}
-List<NDArray<T>> gradientArray<T extends DTypeTag>(
+List<NDArray<T>> gradientArray<T extends DTypeTag, Out extends T>(
   NDArray<InexactOf<T>> f, {
   Spacing? spacing,
   List<Spacing>? spacings,
   List<int>? axis,
   int edgeOrder = 1,
-  List<NDArray<T>>? out,
+  List<NDArray<Out>>? out,
 }) {
   if (f.isDisposed) {
     throw StateError('Cannot execute gradientArray() on a disposed array.');
@@ -1382,7 +1386,7 @@ List<NDArray<T>> gradientArray<T extends DTypeTag>(
     if (targetAxes.length > 1 && out.any((o) => sharesMemory(f, o))) {
       return NDArray.scope(() {
         final fCopy = f.copy();
-        return gradientArray<T>(
+        return gradientArray<T, Out>(
           fCopy,
           spacing: spacing,
           spacings: spacings,
@@ -1397,7 +1401,7 @@ List<NDArray<T>> gradientArray<T extends DTypeTag>(
   final List<NDArray<T>> results = [];
   try {
     for (var i = 0; i < targetAxes.length; i++) {
-      final singleGrad = gradient<T>(
+      final singleGrad = gradient<T, Out>(
         f,
         spacing: spacings?[i] ?? spacing ?? const Spacing.step(1.0),
         axis: targetAxes[i],

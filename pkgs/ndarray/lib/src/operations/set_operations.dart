@@ -32,8 +32,10 @@ import 'sorting.dart';
 /// If provided, [out] must not be disposed and must have compatible dtype and shape.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-NDArray<T> unique<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) =>
-    _uniqueImpl(ar, out: out).values;
+NDArray<T> unique<T extends DTypeTag, Out extends T>(
+  NDArray<T> ar, {
+  NDArray<Out>? out,
+}) => _uniqueImpl(ar, out: out).values;
 
 /// Finds the unique elements of an array and the indices of their first occurrences.
 ///
@@ -50,10 +52,10 @@ NDArray<T> unique<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) =>
 /// If provided, [out] must not be disposed and must have compatible dtype and shape.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-({NDArray<T> values, NDArray<Int64> index}) uniqueWithIndex<T extends DTypeTag>(
-  NDArray<T> ar, {
-  NDArray<T>? out,
-}) {
+({NDArray<T> values, NDArray<Int64> index}) uniqueWithIndex<
+  T extends DTypeTag,
+  Out extends T
+>(NDArray<T> ar, {NDArray<Out>? out}) {
   final res = _uniqueImpl(ar, returnIndex: true, out: out);
   return (values: res.values, index: res.index!);
 }
@@ -73,8 +75,10 @@ NDArray<T> unique<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) =>
 /// If provided, [out] must not be disposed and must have compatible dtype and shape.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-({NDArray<T> values, NDArray<Int64> inverse})
-uniqueWithInverse<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
+({NDArray<T> values, NDArray<Int64> inverse}) uniqueWithInverse<
+  T extends DTypeTag,
+  Out extends T
+>(NDArray<T> ar, {NDArray<Out>? out}) {
   final res = _uniqueImpl(ar, returnInverse: true, out: out);
   return (values: res.values, inverse: res.inverse!);
 }
@@ -93,8 +97,10 @@ uniqueWithInverse<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
 /// If provided, [out] must not be disposed and must have compatible dtype and shape.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-({NDArray<T> values, NDArray<Int64> counts})
-uniqueWithCounts<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
+({NDArray<T> values, NDArray<Int64> counts}) uniqueWithCounts<
+  T extends DTypeTag,
+  Out extends T
+>(NDArray<T> ar, {NDArray<Out>? out}) {
   final res = _uniqueImpl(ar, returnCounts: true, out: out);
   return (values: res.values, counts: res.counts!);
 }
@@ -123,7 +129,10 @@ uniqueWithCounts<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
   NDArray<Int64> inverse,
   NDArray<Int64> counts,
 })
-uniqueAll<T extends DTypeTag>(NDArray<T> ar, {NDArray<T>? out}) {
+uniqueAll<T extends DTypeTag, Out extends T>(
+  NDArray<T> ar, {
+  NDArray<Out>? out,
+}) {
   final res = _uniqueImpl(
     ar,
     returnIndex: true,
@@ -306,11 +315,11 @@ _uniqueImpl<T extends DTypeTag>(
 /// It is an error if [ar1] or [ar2] is disposed.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-NDArray<T> intersect1d<T extends DTypeTag>(
+NDArray<T> intersect1d<T extends DTypeTag, Out extends T>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   bool assumeUnique = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (ar1.isDisposed || ar2.isDisposed) {
     throw StateError('Cannot execute intersect1d on disposed array(s).');
@@ -400,11 +409,11 @@ NDArray<T> intersect1d<T extends DTypeTag>(
 /// It is an error if [ar1] or [ar2] is disposed.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-NDArray<T> setdiff1d<T extends DTypeTag>(
+NDArray<T> setdiff1d<T extends DTypeTag, Out extends T>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   bool assumeUnique = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (ar1.isDisposed || ar2.isDisposed) {
     throw StateError('Cannot execute setdiff1d on disposed array(s).');
@@ -494,11 +503,11 @@ NDArray<T> setdiff1d<T extends DTypeTag>(
 /// It is an error if [ar1] or [ar2] is disposed.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-NDArray<T> setxor1d<T extends DTypeTag>(
+NDArray<T> setxor1d<T extends DTypeTag, Out extends T>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
   bool assumeUnique = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (ar1.isDisposed || ar2.isDisposed) {
     throw StateError('Cannot execute setxor1d on disposed array(s).');
@@ -588,10 +597,10 @@ NDArray<T> setxor1d<T extends DTypeTag>(
 /// It is an error if [ar1] or [ar2] is disposed.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-NDArray<T> union1d<T extends DTypeTag>(
+NDArray<T> union1d<T extends DTypeTag, Out extends T>(
   NDArray<T> ar1,
   NDArray<T> ar2, {
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (ar1.isDisposed || ar2.isDisposed) {
     throw StateError('Cannot execute union1d on disposed array(s).');

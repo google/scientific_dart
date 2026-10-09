@@ -66,14 +66,14 @@ void _validateSorted(NDArray<Float64> xp) {
 ///
 /// **Example:**
 /// {@example /example/interpolation_example.dart lang=dart}
-NDArray<R> interp<R extends DTypeTag>(
+NDArray<R> interp<R extends DTypeTag, Out extends R>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
   NDArray<DoublePrecisionOf<R>> fp, {
   Object? left,
   Object? right,
   InterpolationMethod method = InterpolationMethod.linear,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x.isDisposed ||
       xp.isDisposed ||
@@ -157,7 +157,7 @@ NDArray<R> interp<R extends DTypeTag>(
         fpImagPtr[i] = c.imag;
       }
 
-      final resReal = interp<Float64>(
+      final resReal = interp<Float64, Float64>(
         x,
         xp,
         fpReal,
@@ -165,7 +165,7 @@ NDArray<R> interp<R extends DTypeTag>(
         right: rightC?.real,
         method: method,
       );
-      final resImag = interp<Float64>(
+      final resImag = interp<Float64, Float64>(
         x,
         xp,
         fpImag,
@@ -255,7 +255,7 @@ NDArray<R> interp<R extends DTypeTag>(
             sharesMemory(xp, out) ||
             sharesMemory(fp, out))) {
       final temp = NDArray<Float64>.create(x.shape, DType.float64);
-      interp<Float64>(
+      interp<Float64, Float64>(
         xDouble,
         xpDouble,
         fpDouble,
@@ -411,12 +411,20 @@ NDArray<R> interp<R extends DTypeTag>(
 /// Computes one-dimensional interpolation.
 ///
 /// Alias for [interp].
-NDArray<R> interpolate<R extends DTypeTag>(
+NDArray<R> interpolate<R extends DTypeTag, Out extends R>(
   NDArray<DTypeTag> x,
   NDArray<DTypeTag> xp,
   NDArray<DoublePrecisionOf<R>> fp, {
   Object? left,
   Object? right,
   InterpolationMethod method = InterpolationMethod.linear,
-  NDArray<R>? out,
-}) => interp<R>(x, xp, fp, left: left, right: right, method: method, out: out);
+  NDArray<Out>? out,
+}) => interp<R, Out>(
+  x,
+  xp,
+  fp,
+  left: left,
+  right: right,
+  method: method,
+  out: out,
+);

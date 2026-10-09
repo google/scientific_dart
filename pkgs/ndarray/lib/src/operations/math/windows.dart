@@ -36,7 +36,7 @@ import '../helpers.dart';
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> hanning<T extends DTypeTag>(
+NDArray<T> hanning<T extends AnySpec>(
   int M, {
   DType<T>? dtype,
   NDArray<T>? out,
@@ -144,7 +144,7 @@ NDArray<T> hanning<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> hamming<T extends DTypeTag>(
+NDArray<T> hamming<T extends AnySpec>(
   int M, {
   DType<T>? dtype,
   NDArray<T>? out,

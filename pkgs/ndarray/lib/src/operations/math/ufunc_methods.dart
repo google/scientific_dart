@@ -368,12 +368,7 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => floatPower<AnySpec, DTypeTag>(
-            aSpec,
-            bSpec,
-            where: where,
-            out: out,
-          ),
+          (bSpec) => floatPower(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -382,12 +377,7 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => logaddexp<AnySpec, DTypeTag>(
-            aSpec,
-            bSpec,
-            where: where,
-            out: out,
-          ),
+          (bSpec) => logaddexp(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -396,12 +386,7 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) => logaddexp2<AnySpec, DTypeTag>(
-            aSpec,
-            bSpec,
-            where: where,
-            out: out,
-          ),
+          (bSpec) => logaddexp2(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -410,8 +395,7 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) =>
-              atan2<AnySpec, DTypeTag>(aSpec, bSpec, where: where, out: out),
+          (bSpec) => atan2(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -420,8 +404,7 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
           b,
-          (bSpec) =>
-              hypot<AnySpec, DTypeTag>(aSpec, bSpec, where: where, out: out),
+          (bSpec) => hypot(aSpec, bSpec, where: where, out: out),
         ),
       );
       return out ?? _coerceOwned<R>(res);
@@ -662,13 +645,17 @@ NDArray<T> minimum<T extends SelfOf<DTypeTag>>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy minimum](https://numpy.org/doc/stable/reference/generated/numpy.minimum.html)
-NDArray<R>
-minimumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> minimumAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -772,13 +759,17 @@ NDArray<T> maximum<T extends SelfOf<DTypeTag>>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy maximum](https://numpy.org/doc/stable/reference/generated/numpy.maximum.html)
-NDArray<R>
-maximumAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> maximumAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -882,12 +873,17 @@ NDArray<T> fmin<T extends SelfOf<DTypeTag>>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy fmin](https://numpy.org/doc/stable/reference/generated/numpy.fmin.html)
-NDArray<R> fminAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> fminAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -991,12 +987,17 @@ NDArray<T> fmax<T extends SelfOf<DTypeTag>>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy fmax](https://numpy.org/doc/stable/reference/generated/numpy.fmax.html)
-NDArray<R> fmaxAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> fmaxAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -1299,12 +1300,12 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
 /// - It is an error if [axis] is not within `[-rank, rank - 1]`.
 /// - It is an error if [a] is empty without [initial].
 /// - It is an error if [out] (if provided) has incompatible shape or dtype.
-NDArray<T> reduce<T extends DTypeTag>(
+NDArray<T> reduce<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   required BinaryOp op,
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
   Object? initial,
 }) => reduceUfunc(
   a,
@@ -1322,11 +1323,11 @@ NDArray<T> reduce<T extends DTypeTag>(
 /// - It is an error if [a] or [out] (if provided) is disposed.
 /// - It is an error if [axis] is not within `[-rank, rank - 1]`.
 /// - It is an error if [out] (if provided) has incompatible shape or dtype.
-NDArray<T> accumulate<T extends DTypeTag>(
+NDArray<T> accumulate<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   required BinaryOp op,
   int axis = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) => accumulateUfunc(a, op: op, axis: axis, out: out);
 
 /// Performs slice reductions on [a] along [axis] for intervals defined by [indices] using [op].
@@ -1336,12 +1337,12 @@ NDArray<T> accumulate<T extends DTypeTag>(
 /// - It is an error if [a], [indices], or [out] is disposed.
 /// - It is an error if [axis] is not within `[-rank, rank - 1]`.
 /// - It is an error if [out] (if provided) has incompatible shape or dtype.
-NDArray<T> reduceat<T extends DTypeTag>(
+NDArray<T> reduceat<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   NDArray<DTypeTag> indices, {
   required BinaryOp op,
   int axis = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) => reduceatUfunc(a, indices, op: op, axis: axis, out: out);
 
 /// Performs unbuffered in-place scatter updates on [a] at [indices] using [b] and [op].
@@ -1356,12 +1357,12 @@ void at<T extends DTypeTag>(
 }) => atUfunc(a, indices, b, op: op);
 
 /// Generalized ufunc reduction function.
-NDArray<T> reduceUfunc<T extends DTypeTag>(
+NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   required BinaryOp op,
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
   Object? initial,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
@@ -1402,7 +1403,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag>(
       }
       if (sharesMemory(a, out)) {
         return NDArray.scope(() {
-          final temp = reduceUfunc<T>(
+          final temp = reduceUfunc(
             a,
             op: op,
             axis: axis,
@@ -1686,7 +1687,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag>(
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = reduceUfunc<T>(
+        final temp = reduceUfunc(
           a,
           op: op,
           axis: axis,
@@ -2372,11 +2373,11 @@ NDArray<T> reduceUfunc<T extends DTypeTag>(
 }
 
 /// Generalized ufunc accumulation function.
-NDArray<T> accumulateUfunc<T extends DTypeTag>(
+NDArray<T> accumulateUfunc<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   required BinaryOp op,
   int axis = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute accumulate on a disposed array.');
@@ -2411,7 +2412,7 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = accumulateUfunc<T>(a, op: op, axis: axis);
+        final temp = accumulateUfunc(a, op: op, axis: axis);
         temp.copy(out: out);
         return out;
       });
@@ -3032,12 +3033,12 @@ NDArray<T> accumulateUfunc<T extends DTypeTag>(
 }
 
 /// Generalized ufunc reduceat function.
-NDArray<T> reduceatUfunc<T extends DTypeTag>(
+NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   NDArray<DTypeTag> indices, {
   required BinaryOp op,
   int axis = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || indices.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute reduceat on a disposed array.');
@@ -3124,7 +3125,7 @@ NDArray<T> reduceatUfunc<T extends DTypeTag>(
             sharesMemory(indices, out) ||
             !out.isContiguous)) {
       return NDArray.scope(() {
-        final temp = reduceatUfunc<T>(a, indices, op: op, axis: axis);
+        final temp = reduceatUfunc(a, indices, op: op, axis: axis);
         temp.copy(out: out);
         return out;
       });
@@ -3950,7 +3951,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
         final res = _withViewNullable<T, NDArray<T>>(
           out,
           (outView) =>
-              invert<AnyBitwiseSpec>(
+              invert(
                     x.asBitwiseDType,
                     where: where,
                     out: outView?.asBitwiseDType,
@@ -3973,10 +3974,10 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
       case UnaryOp.absolute:
       case UnaryOp.abs:
       case UnaryOp.fabs:
-        final res = abs<DTypeTag>(xSpec, where: where, out: out);
+        final res = abs(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.rint:
-        final res = rint<DTypeTag>(xSpec, where: where, out: out);
+        final res = rint(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.sign:
         final res = _withViewNullable<T, NDArray<T>>(
@@ -3992,7 +3993,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
         );
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.exp:
-        final res = exp<DTypeTag>(xSpec, where: where, out: out);
+        final res = exp(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.exp2:
         return NDArray.scope(() {
@@ -4018,22 +4019,22 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
           return out ?? _coerceOwned<R>(res).detachToParentScope();
         });
       case UnaryOp.log:
-        final res = log<DTypeTag>(xSpec, where: where, out: out);
+        final res = log(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.log2:
-        final res = log2<DTypeTag>(xSpec, where: where, out: out);
+        final res = log2(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.log10:
-        final res = log10<DTypeTag>(xSpec, where: where, out: out);
+        final res = log10(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.expm1:
-        final res = expm1<DTypeTag>(xSpec, where: where, out: out);
+        final res = expm1(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.log1p:
-        final res = log1p<DTypeTag>(xSpec, where: where, out: out);
+        final res = log1p(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.sqrt:
-        final res = sqrt<DTypeTag>(xSpec, where: where, out: out);
+        final res = sqrt(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.square:
         final res = _withViewNullable<T, NDArray<T>>(
@@ -4054,7 +4055,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
               : castNDArray(x, targetDType);
           final absX = _withView<AnySpec, NDArray<DTypeTag>>(
             xCast,
-            (xView) => abs<DTypeTag>(xView),
+            (xView) => abs(xView),
           );
           final expScalar = NDArray.scalar(1.0 / 3.0, dtype: targetDType);
           final mag = power<AnySpec>(absX.asAnySpec, expScalar.asAnySpec);
@@ -4067,51 +4068,51 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
           return out ?? _coerceOwned<R>(res).detachToParentScope();
         });
       case UnaryOp.reciprocal:
-        final res = reciprocal<DTypeTag>(xSpec, where: where, out: out);
+        final res = reciprocal(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.sin:
-        final res = sin<DTypeTag>(xSpec, where: where, out: out);
+        final res = sin(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.cos:
-        final res = cos<DTypeTag>(xSpec, where: where, out: out);
+        final res = cos(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.tan:
-        final res = tan<DTypeTag>(xSpec, where: where, out: out);
+        final res = tan(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.arcsin:
-        final res = asin<DTypeTag>(xSpec, where: where, out: out);
+        final res = asin(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.arccos:
-        final res = acos<DTypeTag>(xSpec, where: where, out: out);
+        final res = acos(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.arctan:
-        final res = atan<DTypeTag>(xSpec, where: where, out: out);
+        final res = atan(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.sinh:
-        final res = sinh<DTypeTag>(xSpec, where: where, out: out);
+        final res = sinh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.cosh:
-        final res = cosh<DTypeTag>(xSpec, where: where, out: out);
+        final res = cosh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.tanh:
-        final res = tanh<DTypeTag>(xSpec, where: where, out: out);
+        final res = tanh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.arcsinh:
-        final res = asinh<DTypeTag>(xSpec, where: where, out: out);
+        final res = asinh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.arccosh:
-        final res = acosh<DTypeTag>(xSpec, where: where, out: out);
+        final res = acosh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.arctanh:
-        final res = atanh<DTypeTag>(xSpec, where: where, out: out);
+        final res = atanh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.degrees:
       case UnaryOp.rad2deg:
-        final res = rad2deg<DTypeTag>(xSpec, where: where, out: out);
+        final res = rad2deg(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.radians:
       case UnaryOp.deg2rad:
-        final res = deg2rad<DTypeTag>(xSpec, where: where, out: out);
+        final res = deg2rad(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.logicalNot:
         final res = _withViewNullable<Boolean, NDArray<Boolean>>(
@@ -4184,7 +4185,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
         );
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.trunc:
-        final res = trunc<DTypeTag>(xSpec, where: where, out: out);
+        final res = trunc(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.spacing:
         if (x.dtype.isComplex) {

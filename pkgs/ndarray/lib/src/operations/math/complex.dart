@@ -59,10 +59,10 @@ NDArray<DTypeTag> _complexPartView(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> real<R extends DTypeTag>(
+NDArray<R> real<R extends DTypeTag, Out extends R>(
   NDArray<RealOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -106,7 +106,7 @@ NDArray<R> real<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(a.shape, out.dtype);
-        real<R>(a, where: where, out: temp);
+        real(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -216,10 +216,10 @@ NDArray<R> real<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> imag<R extends DTypeTag>(
+NDArray<R> imag<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -246,7 +246,7 @@ NDArray<R> imag<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(a.shape, out.dtype);
-        imag<R>(a, where: where, out: temp);
+        imag(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -332,10 +332,10 @@ NDArray<R> imag<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> conj<T extends DTypeTag>(
+NDArray<T> conj<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -362,7 +362,7 @@ NDArray<T> conj<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, targetDType);
-        conj<T>(a, where: where, out: temp);
+        conj(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -474,8 +474,8 @@ NDArray<T> conj<T extends DTypeTag>(
 }
 
 /// Alias for [conj].
-NDArray<T> conjugate<T extends DTypeTag>(
+NDArray<T> conjugate<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) => conj(a, where: where, out: out);

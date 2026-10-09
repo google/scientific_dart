@@ -959,7 +959,7 @@ NDArray<T> einsum<T extends SelfOf<DTypeTag>>(
       NDArray<T> res = op;
       axesToSum.sort((a, b) => b.compareTo(a));
       for (final ax in axesToSum) {
-        res = sumAs<T, T>(res, res.dtype, axis: ax);
+        res = sumAs<T, T, T>(res, res.dtype, axis: ax);
       }
 
       if (keptIds.length > 1) {
@@ -1369,7 +1369,11 @@ NDArray<T> einsum<T extends SelfOf<DTypeTag>>(
     for (var j = allIds.length - 1; j >= 0; j--) {
       final id = allIds[j];
       if (!finalOutSub.contains(id)) {
-        combined = sumAs<DTypeTag, DTypeTag>(combined, combined.dtype, axis: j);
+        combined = sumAs<DTypeTag, DTypeTag, DTypeTag>(
+          combined,
+          combined.dtype,
+          axis: j,
+        );
       }
     }
 
@@ -1519,7 +1523,7 @@ NDArray<T> vdot<T extends SelfOf<DTypeTag>>(
   return NDArray.scope(() {
     final flatA = a.reshape([a.size]);
     final flatB = b.reshape([b.size]);
-    final NDArray<T> conjA = a.dtype.isComplex ? conjugate<T>(flatA) : flatA;
+    final NDArray<T> conjA = a.dtype.isComplex ? conjugate<T, T>(flatA) : flatA;
     final res = matmul<T>(conjA, flatB, out: out);
     return _returnFromScope<T>(res, [a, b], out: out);
   });
@@ -1788,12 +1792,12 @@ NDArray<T> dot<T extends SelfOf<DTypeTag>>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy dot](https://numpy.org/doc/stable/reference/generated/numpy.dot.html)
-NDArray<R> dotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b,
-  DType<R> dtype, {
-  NDArray<R>? out,
-}) {
+NDArray<R> dotAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute dotAs() on a disposed array.');
   }
@@ -1831,13 +1835,17 @@ NDArray<R> dotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy tensordot](https://numpy.org/doc/stable/reference/generated/numpy.tensordot.html)
-NDArray<R>
-tensordotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> tensordotAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   Object axes = const TensordotAxes.count(2),
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute tensordotAs() on a disposed array.');
@@ -1885,8 +1893,9 @@ tensordotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 NDArray<R> innerAs<
   Ta extends DTypeTag,
   Tb extends DTypeTag,
-  R extends DTypeTag
->(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<R>? out}) {
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute innerAs() on a disposed array.');
   }
@@ -1924,12 +1933,12 @@ NDArray<R> innerAs<
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy vdot](https://numpy.org/doc/stable/reference/generated/numpy.vdot.html)
-NDArray<R> vdotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b,
-  DType<R> dtype, {
-  NDArray<R>? out,
-}) {
+NDArray<R> vdotAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute vdotAs() on a disposed array.');
   }
@@ -1966,12 +1975,12 @@ NDArray<R> vdotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy kron](https://numpy.org/doc/stable/reference/generated/numpy.kron.html)
-NDArray<R> kronAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
-  NDArray<Ta> a,
-  NDArray<Tb> b,
-  DType<R> dtype, {
-  NDArray<R>? out,
-}) {
+NDArray<R> kronAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute kronAs() on a disposed array.');
   }

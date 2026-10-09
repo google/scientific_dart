@@ -878,13 +878,17 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy copysign](https://numpy.org/doc/stable/reference/generated/numpy.copysign.html)
-NDArray<R>
-copysignAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> copysignAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -1499,11 +1503,12 @@ extension FrexpRecordExtension<R extends DTypeTag>
 /// shapes/dtypes or alias each other (throws [ArgumentError]).
 ///
 /// Reference: [NumPy modf](https://numpy.org/doc/stable/reference/generated/numpy.modf.html)
-({NDArray<R> fractional, NDArray<R> integral}) modf<R extends DTypeTag>(
+({NDArray<R> fractional, NDArray<R> integral})
+modf<R extends DTypeTag, Out1 extends R, Out2 extends R>(
   NDArray<RealFloatOf<R>> x, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out1,
-  NDArray<R>? out2,
+  NDArray<Out1>? out1,
+  NDArray<Out2>? out2,
 }) {
   if (x.isDisposed ||
       (out1 != null && out1.isDisposed) ||
@@ -1655,10 +1660,11 @@ extension FrexpRecordExtension<R extends DTypeTag>
 /// with the mantissa in the open interval $(-1, -0.5]$ or $[0.5, 1)$ (or $0$ when $x = 0$).
 ///
 /// Reference: [NumPy frexp](https://numpy.org/doc/stable/reference/generated/numpy.frexp.html)
-({NDArray<R> mantissa, NDArray<Int32> exponent}) frexp<R extends DTypeTag>(
+({NDArray<R> mantissa, NDArray<Int32> exponent})
+frexp<R extends DTypeTag, Out1 extends R>(
   NDArray<RealFloatOf<R>> x, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out1,
+  NDArray<Out1>? out1,
   NDArray<Int32>? out2,
 }) {
   if (x.isDisposed ||

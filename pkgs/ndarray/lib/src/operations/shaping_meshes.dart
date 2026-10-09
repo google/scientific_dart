@@ -91,7 +91,7 @@ final class GridRange {
 /// Helper to generate a 1D coordinate array from a [GridRange].
 NDArray<Float64> _generate1DCoordinate(GridRange range, DType<Float64> dtype) {
   if (range.numPoints != null) {
-    return linspace<Float64>(
+    return linspace(
       range.start,
       range.stop,
       range.numPoints!,

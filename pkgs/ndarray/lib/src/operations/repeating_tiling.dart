@@ -50,11 +50,11 @@ import 'helpers.dart';
 ///
 /// **Example:**
 /// {@example /example/repeating_tiling_example.dart lang=dart}
-NDArray<T> repeat<T extends DTypeTag>(
+NDArray<T> repeat<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   Object repeats, {
   int? axis,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot access a disposed NDArray.');
@@ -364,10 +364,10 @@ NDArray<T> repeat<T extends DTypeTag>(
 ///
 /// Refer to the [NumPy tile reference](https://numpy.org/doc/stable/reference/generated/numpy.tile.html)
 /// for details.
-NDArray<T> tile<T extends DTypeTag>(
+NDArray<T> tile<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   List<int> reps, {
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot access a disposed NDArray.');

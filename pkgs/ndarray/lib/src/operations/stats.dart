@@ -839,12 +839,12 @@ DType<R> _defaultAccumDType<R extends DTypeTag>(DType dtype) =>
 ///
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
-NDArray<R> sum<R extends DTypeTag>(
+NDArray<R> sum<R extends DTypeTag, Out extends R>(
   NDArray<AccumulatorOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
-}) => sumAs<DTypeTag, R>(
+  NDArray<Out>? out,
+}) => sumAs<DTypeTag, R, Out>(
   a,
   _defaultAccumDType<R>(a.dtype),
   axis: axis,
@@ -856,12 +856,12 @@ NDArray<R> sum<R extends DTypeTag>(
 /// returning the result in the specified target [dtype].
 ///
 /// Refer to [sum] for full details.
-NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   DType<R> dtype, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute sum of a disposed array.');
@@ -873,7 +873,7 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        sumAs<T, R>(a, dtype, axis: axis, keepdims: keepdims, out: temp);
+        sumAs(a, dtype, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -1178,12 +1178,12 @@ NDArray<R> sumAs<T extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
-NDArray<R> prod<R extends DTypeTag>(
+NDArray<R> prod<R extends DTypeTag, Out extends R>(
   NDArray<AccumulatorOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
-}) => prodAs<DTypeTag, R>(
+  NDArray<Out>? out,
+}) => prodAs<DTypeTag, R, Out>(
   a,
   _defaultAccumDType<R>(a.dtype),
   axis: axis,
@@ -1195,12 +1195,12 @@ NDArray<R> prod<R extends DTypeTag>(
 /// and returning the result in the specified target [dtype].
 ///
 /// Refer to [prod] for full details.
-NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   DType<R> dtype, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate product of disposed array');
@@ -1212,7 +1212,7 @@ NDArray<R> prodAs<T extends DTypeTag, R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        prodAs<T, R>(a, dtype, axis: axis, keepdims: keepdims, out: temp);
+        prodAs(a, dtype, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -1915,11 +1915,11 @@ NDArray<Boolean> any<T extends DTypeTag>(
 /// {@example /example/percentiles_example.dart lang=dart}
 ///
 /// Reference: [Arithmetic Mean](https://en.wikipedia.org/wiki/Arithmetic_mean)
-NDArray<R> mean<R extends DTypeTag>(
+NDArray<R> mean<R extends DTypeTag, Out extends R>(
   NDArray<DoublePrecisionOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute mean of a disposed array.');
@@ -1941,7 +1941,7 @@ NDArray<R> mean<R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        mean<R>(a, axis: axis, keepdims: keepdims, out: temp);
+        mean(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -3108,11 +3108,11 @@ NDArray<Float64> nanstd<T extends DTypeTag>(
 /// **Edge cases:**
 /// - Returns a 0-dimensional [NDArray] if [axis] is null, or a new [NDArray] if [axis] is provided.
 /// - Preserves the original data type (DType) of the input array along the reduction axis.
-NDArray<T> min<T extends DTypeTag>(
+NDArray<T> min<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute min of a disposed array.');
@@ -3140,7 +3140,7 @@ NDArray<T> min<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        min<T>(a, axis: axis, keepdims: keepdims, out: temp);
+        min(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -3354,11 +3354,11 @@ NDArray<T> min<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
-NDArray<T> nanmin<T extends DTypeTag>(
+NDArray<T> nanmin<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute nanmin of a disposed array.');
@@ -3370,7 +3370,7 @@ NDArray<T> nanmin<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for nanmin');
   }
   if (a.dtype == DType.boolean) {
-    return min<T>(a, axis: axis, keepdims: keepdims, out: out);
+    return min(a, axis: axis, keepdims: keepdims, out: out);
   }
   if (axis == null && a.size == 0) {
     throw ArgumentError.value(a, 'a', 'Must not be empty');
@@ -3395,7 +3395,7 @@ NDArray<T> nanmin<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        nanmin<T>(a, axis: axis, keepdims: keepdims, out: temp);
+        nanmin(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -3585,11 +3585,11 @@ NDArray<T> nanmin<T extends DTypeTag>(
 /// **Edge cases:**
 /// - Returns a 0-dimensional [NDArray] if [axis] is null, or a new [NDArray] if [axis] is provided.
 /// - Preserves the original data type (DType) of the input array along the reduction axis.
-NDArray<T> max<T extends DTypeTag>(
+NDArray<T> max<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute max of a disposed array.');
@@ -3617,7 +3617,7 @@ NDArray<T> max<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        max<T>(a, axis: axis, keepdims: keepdims, out: temp);
+        max(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -3831,11 +3831,11 @@ NDArray<T> max<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
-NDArray<T> nanmax<T extends DTypeTag>(
+NDArray<T> nanmax<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute nanmax of a disposed array.');
@@ -3847,7 +3847,7 @@ NDArray<T> nanmax<T extends DTypeTag>(
     throw UnsupportedError('Complex numbers are not supported for nanmax');
   }
   if (a.dtype == DType.boolean) {
-    return max<T>(a, axis: axis, keepdims: keepdims, out: out);
+    return max(a, axis: axis, keepdims: keepdims, out: out);
   }
   if (axis == null && a.size == 0) {
     throw ArgumentError.value(a, 'a', 'Must not be empty');
@@ -3872,7 +3872,7 @@ NDArray<T> nanmax<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        nanmax<T>(a, axis: axis, keepdims: keepdims, out: temp);
+        nanmax(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -4069,11 +4069,11 @@ NDArray<T> nanmax<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
-NDArray<R> cumsum<R extends DTypeTag>(
+NDArray<R> cumsum<R extends DTypeTag, Out extends R>(
   NDArray<AccumulatorOf<R>> a, {
   int? axis,
-  NDArray<R>? out,
-}) => cumsumAs<DTypeTag, R>(
+  NDArray<Out>? out,
+}) => cumsumAs<DTypeTag, R, Out>(
   a,
   _defaultAccumDType<R>(a.dtype),
   axis: axis,
@@ -4084,11 +4084,11 @@ NDArray<R> cumsum<R extends DTypeTag>(
 /// and returning the result in the specified target [dtype].
 ///
 /// Refer to [cumsum] for full details.
-NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   DType<R> dtype, {
   int? axis,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute cumsum() on a disposed array.');
@@ -4113,7 +4113,7 @@ NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
       if (sharesMemory(a, out)) {
         return NDArray.scope(() {
           final temp = NDArray<R>.create(out.shape, out.dtype);
-          cumsumAs<T, R>(a, dtype, axis: axis, out: temp);
+          cumsumAs(a, dtype, axis: axis, out: temp);
           return temp.copy(out: out);
         });
       }
@@ -4156,7 +4156,7 @@ NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        cumsumAs<T, R>(a, dtype, axis: axis, out: temp);
+        cumsumAs(a, dtype, axis: axis, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -4186,11 +4186,11 @@ NDArray<R> cumsumAs<T extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
-NDArray<R> cumprod<R extends DTypeTag>(
+NDArray<R> cumprod<R extends DTypeTag, Out extends R>(
   NDArray<AccumulatorOf<R>> a, {
   int? axis,
-  NDArray<R>? out,
-}) => cumprodAs<DTypeTag, R>(
+  NDArray<Out>? out,
+}) => cumprodAs<DTypeTag, R, Out>(
   a,
   _defaultAccumDType<R>(a.dtype),
   axis: axis,
@@ -4201,11 +4201,11 @@ NDArray<R> cumprod<R extends DTypeTag>(
 /// accumulating and returning the result in the specified target [dtype].
 ///
 /// Refer to [cumprod] for full details.
-NDArray<R> cumprodAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> cumprodAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   DType<R> dtype, {
   int? axis,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute cumprod() on a disposed array.');
@@ -4230,7 +4230,7 @@ NDArray<R> cumprodAs<T extends DTypeTag, R extends DTypeTag>(
       if (sharesMemory(a, out)) {
         return NDArray.scope(() {
           final temp = NDArray<R>.create(out.shape, out.dtype);
-          cumprodAs<T, R>(a, dtype, axis: axis, out: temp);
+          cumprodAs(a, dtype, axis: axis, out: temp);
           return temp.copy(out: out);
         });
       }
@@ -4273,7 +4273,7 @@ NDArray<R> cumprodAs<T extends DTypeTag, R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        cumprodAs<T, R>(a, dtype, axis: axis, out: temp);
+        cumprodAs(a, dtype, axis: axis, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -4303,10 +4303,10 @@ NDArray<R> cumprodAs<T extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
-NDArray<T> cummin<T extends DTypeTag>(
+NDArray<T> cummin<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute cummin() on a disposed array.');
@@ -4330,7 +4330,7 @@ NDArray<T> cummin<T extends DTypeTag>(
       if (sharesMemory(a, out)) {
         return NDArray.scope(() {
           final temp = NDArray<T>.create(out.shape, out.dtype);
-          cummin<T>(a, axis: axis, out: temp);
+          cummin(a, axis: axis, out: temp);
           return temp.copy(out: out);
         });
       }
@@ -4371,7 +4371,7 @@ NDArray<T> cummin<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        cummin<T>(a, axis: axis, out: temp);
+        cummin(a, axis: axis, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -4401,10 +4401,10 @@ NDArray<T> cummin<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/cumulative_example.dart lang=dart}
-NDArray<T> cummax<T extends DTypeTag>(
+NDArray<T> cummax<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute cummax() on a disposed array.');
@@ -4428,7 +4428,7 @@ NDArray<T> cummax<T extends DTypeTag>(
       if (sharesMemory(a, out)) {
         return NDArray.scope(() {
           final temp = NDArray<T>.create(out.shape, out.dtype);
-          cummax<T>(a, axis: axis, out: temp);
+          cummax(a, axis: axis, out: temp);
           return temp.copy(out: out);
         });
       }
@@ -4469,7 +4469,7 @@ NDArray<T> cummax<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        cummax<T>(a, axis: axis, out: temp);
+        cummax(a, axis: axis, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -4888,11 +4888,11 @@ NDArray<Float64> var_<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
-NDArray<R> nanmean<R extends DTypeTag>(
+NDArray<R> nanmean<R extends DTypeTag, Out extends R>(
   NDArray<DoublePrecisionOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute nanmean of a disposed array.');
@@ -4914,7 +4914,7 @@ NDArray<R> nanmean<R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        nanmean<R>(a, axis: axis, keepdims: keepdims, out: temp);
+        nanmean(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -5847,11 +5847,11 @@ DType<R> _medianDType<R extends DTypeTag>(DType inputDType) {
 ///
 /// - It is an error if [a] is disposed.
 /// - It is an error if [axis] is out of bounds.
-NDArray<R> median<R extends DTypeTag>(
+NDArray<R> median<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute median of a disposed array.');
@@ -5876,7 +5876,7 @@ NDArray<R> median<R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        median<R>(a, axis: axis, keepdims: keepdims, out: temp);
+        median(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -5890,7 +5890,7 @@ NDArray<R> median<R extends DTypeTag>(
   if (a.dtype != targetDType) {
     final promoted = castNDArray<Float64>(a, DType.float64);
     try {
-      return median<Float64>(
+      return median<Float64, Float64>(
             promoted,
             axis: axis,
             keepdims: keepdims,
@@ -6120,18 +6120,18 @@ Object r_median_helper<T extends DTypeTag>(NDArray<T> a, int size) {
 ///
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
-NDArray<R> nanmedian<R extends DTypeTag>(
+NDArray<R> nanmedian<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute nanmedian of a disposed array.');
   }
 
   if (a.dtype.isInteger || (a.dtype as DType) == DType.boolean) {
-    return median<R>(a, axis: axis, keepdims: keepdims, out: out);
+    return median(a, axis: axis, keepdims: keepdims, out: out);
   }
 
   var targetAxis = axis;
@@ -6153,7 +6153,7 @@ NDArray<R> nanmedian<R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        nanmedian<R>(a, axis: axis, keepdims: keepdims, out: temp);
+        nanmedian(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -6167,7 +6167,7 @@ NDArray<R> nanmedian<R extends DTypeTag>(
   if (a.dtype != targetDType) {
     final promoted = castNDArray<Float64>(a, DType.float64);
     try {
-      return nanmedian<Float64>(
+      return nanmedian<Float64, Float64>(
             promoted,
             axis: axis,
             keepdims: keepdims,
@@ -6337,11 +6337,11 @@ Object _rNanmedianContiguous<T extends DTypeTag>(NDArray<T> a, int size) {
 ///
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
-NDArray<T> ptp<T extends DTypeTag>(
+NDArray<T> ptp<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute ptp of a disposed array.');
@@ -6363,7 +6363,7 @@ NDArray<T> ptp<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        ptp<T>(a, axis: axis, keepdims: keepdims, out: temp);
+        ptp(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -6607,7 +6607,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends AnySpec>(
   }
 
   if (weights == null) {
-    final avg = mean<R>(
+    final avg = mean<R, R>(
       a as NDArray<DoublePrecisionOf<R>>,
       axis: resolvedAxis,
       out: out,
@@ -6687,12 +6687,12 @@ average<T extends DTypeTag, W extends DTypeTag, R extends AnySpec>(
         ? broadcastedWeights
         : castNDArray(broadcastedWeights, accumDType);
     final weighted_a = multiply<AnySpec>(aCast.asAnySpec, wCast.asAnySpec);
-    final weighted_sum = sumAs<DTypeTag, DTypeTag>(
+    final weighted_sum = sumAs<DTypeTag, DTypeTag, DTypeTag>(
       weighted_a,
       accumDType,
       axis: resolvedAxis,
     );
-    final sum_of_weights = sumAs<DTypeTag, DTypeTag>(
+    final sum_of_weights = sumAs<DTypeTag, DTypeTag, DTypeTag>(
       wCast,
       accumDType,
       axis: resolvedAxis,
@@ -6704,7 +6704,7 @@ average<T extends DTypeTag, W extends DTypeTag, R extends AnySpec>(
         divDType == DType.bfloat16) {
       divDType = DType.float64;
     }
-    final avg = divideAs<DTypeTag, DTypeTag, R>(
+    final avg = divideAs<DTypeTag, DTypeTag, R, R>(
       weighted_sum,
       sum_of_weights,
       divDType as DType<R>,
@@ -6746,7 +6746,8 @@ average<T extends DTypeTag, W extends DTypeTag, R extends AnySpec>(
 /// - [y] must have the same dtype as [m].
 ///
 /// Reference: [NumPy cov](https://numpy.org/doc/stable/reference/generated/numpy.cov.html)
-NDArray<R> cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
+NDArray<R>
+cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag, Out extends R>(
   NDArray<T> m, {
   NDArray<T>? y,
   bool rowvar = true,
@@ -6754,7 +6755,7 @@ NDArray<R> cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
   int? ddof,
   NDArray<DTypeTag>? fweights,
   NDArray<DTypeTag>? aweights,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (m.isDisposed) {
     throw StateError('Cannot compute covariance of a disposed array.');
@@ -6918,8 +6919,8 @@ NDArray<R> cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
       final wComplex = castNDArray<Complex128>(w, DType.complex128);
       final wComplexReshaped = wComplex.reshape([1, N]);
       final XTimesW = multiply<Complex128>(X, wComplexReshaped);
-      final sumXW = sum<Complex128>(XTimesW, axis: 1);
-      final meanVal = divide<Complex128, Complex128>(
+      final sumXW = sum(XTimesW, axis: 1);
+      final meanVal = divide<Complex128, Complex128, Complex128>(
         sumXW,
         NDArray<Complex128>.scalar(
           Complex((v1 as num).toDouble(), 0.0),
@@ -7098,8 +7099,8 @@ NDArray<R> cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
 
     final wReshaped = w.reshape([1, N]);
     final XTimesW = multiply<Float64>(X, wReshaped);
-    final sumXW = sum<Float64>(XTimesW, axis: 1);
-    final meanVal = divide<Float64, Float64>(
+    final sumXW = sum(XTimesW, axis: 1);
+    final meanVal = divide<Float64, Float64, Float64>(
       sumXW,
       NDArray<Float64>.scalar(v1, dtype: DType.float64),
     );
@@ -7151,13 +7152,17 @@ NDArray<R> cov<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
 /// - [y] must have the same dtype as [m].
 ///
 /// Reference: [NumPy corrcoef](https://numpy.org/doc/stable/reference/generated/numpy.corrcoef.html)
-NDArray<R> corrcoef<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
+NDArray<R> corrcoef<
+  T extends SelfOf<DoublePrecisionOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<T> m, {
   NDArray<T>? y,
   bool rowvar = true,
   NDArray<DTypeTag>? fweights,
   NDArray<DTypeTag>? aweights,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (m.isDisposed) {
     throw StateError(
@@ -7183,7 +7188,7 @@ NDArray<R> corrcoef<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final C = cov<T, R>(
+    final C = cov<T, R, R>(
       m,
       y: y,
       rowvar: rowvar,
@@ -7232,7 +7237,7 @@ NDArray<R> corrcoef<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
       final stdRow = std.reshape([1, K]);
       final stdOuter = multiply<Complex128>(stdCol, stdRow);
 
-      final R_arr = divide<Complex128, Complex128>(
+      final R_arr = divide<Complex128, Complex128, Complex128>(
         C_cpx,
         stdOuter,
         out: out as NDArray<Complex128>?,
@@ -7287,7 +7292,7 @@ NDArray<R> corrcoef<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
     final stdRow = std.reshape([1, K]);
     final stdOuter = multiply<Float64>(stdCol, stdRow);
 
-    final R_arr = divide<Float64, Float64>(
+    final R_arr = divide<Float64, Float64, Float64>(
       C_f64,
       stdOuter,
       out: out as NDArray<Float64>?,
@@ -7314,18 +7319,18 @@ NDArray<R> corrcoef<T extends SelfOf<DoublePrecisionOf<R>>, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/percentiles_example.dart lang=dart}
-NDArray<R> nansum<R extends DTypeTag>(
+NDArray<R> nansum<R extends DTypeTag, Out extends R>(
   NDArray<AccumulatorOf<R>> a, {
   int? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute nansum() on a disposed array.');
   }
   final DType<DTypeTag> aDType = a.dtype;
   if (aDType.isInteger || aDType == DType.boolean) {
-    return sum<R>(a, axis: axis, keepdims: keepdims, out: out);
+    return sum(a, axis: axis, keepdims: keepdims, out: out);
   }
   final DType<R> targetDType = aDType as DType<R>;
   final targetShape = _reductionTargetShape(a.shape, axis, keepdims);
@@ -7341,7 +7346,7 @@ NDArray<R> nansum<R extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<R>.create(out.shape, out.dtype);
-        nansum<R>(a, axis: axis, keepdims: keepdims, out: temp);
+        nansum(a, axis: axis, keepdims: keepdims, out: temp);
         return temp.copy(out: out);
       });
     }

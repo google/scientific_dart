@@ -49,7 +49,7 @@ final class RandomGenerator {
   }
 
   /// Generates an array with random values uniformly distributed in the half-open interval `[0.0, 1.0)`.
-  NDArray<T> uniform<T extends DTypeTag>(
+  NDArray<T> uniform<T extends AnySpec>(
     List<int> shape, {
     DType<T>? dtype,
     NDArray<T>? out,
@@ -65,7 +65,7 @@ final class RandomGenerator {
   }
 
   /// Returns random integers from the half-open interval `[low, high)`.
-  NDArray<T> randint<T extends DTypeTag>(
+  NDArray<T> randint<T extends AnySpec>(
     List<int> shape, {
     required int low,
     required int high,
@@ -85,7 +85,7 @@ final class RandomGenerator {
   }
 
   /// Draws random samples from a normal (Gaussian) distribution.
-  NDArray<T> normal<T extends DTypeTag>(
+  NDArray<T> normal<T extends AnySpec>(
     List<int> shape, {
     double loc = 0.0,
     double scale = 1.0,
@@ -105,7 +105,7 @@ final class RandomGenerator {
   }
 
   /// Draws samples from an exponential distribution.
-  NDArray<T> exponential<T extends DTypeTag>(
+  NDArray<T> exponential<T extends AnySpec>(
     List<int> shape, {
     double scale = 1.0,
     double? lam,
@@ -744,7 +744,7 @@ NDArray<T> _exponentialImpl<T extends DTypeTag>(
 ///
 /// By default, uses Dart's standard [Random] class, which is not cryptographically secure.
 /// You can request cryptographically secure generation via the [secure] parameter if needed.
-NDArray<T> uniform<T extends DTypeTag>(
+NDArray<T> uniform<T extends AnySpec>(
   List<int> shape, {
   DType<T>? dtype,
   int? seed,
@@ -791,7 +791,7 @@ NDArray<T> uniform<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/random_example.dart lang=dart}
-NDArray<T> randint<T extends DTypeTag>(
+NDArray<T> randint<T extends AnySpec>(
   List<int> shape, {
   required int low,
   required int high,
@@ -840,7 +840,7 @@ NDArray<T> randint<T extends DTypeTag>(
 ///
 /// Refer to the [Normal Distribution Reference](https://en.wikipedia.org/wiki/Normal_distribution)
 /// for details on standard Gaussian distributions.
-NDArray<T> normal<T extends DTypeTag>(
+NDArray<T> normal<T extends AnySpec>(
   List<int> shape, {
   double loc = 0.0,
   double scale = 1.0,
@@ -885,7 +885,7 @@ NDArray<T> normal<T extends DTypeTag>(
 ///
 /// Refer to the [Exponential Distribution Reference](https://en.wikipedia.org/wiki/Exponential_distribution)
 /// for details on exponential variables.
-NDArray<T> exponential<T extends DTypeTag>(
+NDArray<T> exponential<T extends AnySpec>(
   List<int> shape, {
   double scale = 1.0,
   double? lam,
@@ -937,7 +937,7 @@ NDArray<T> exponential<T extends DTypeTag>(
 ///
 /// Refer to the [Poisson Distribution Reference](https://en.wikipedia.org/wiki/Poisson_distribution)
 /// for details on Poisson processes.
-NDArray<T> poisson<T extends DTypeTag>(
+NDArray<T> poisson<T extends AnySpec>(
   List<int> shape, {
   double lam = 1.0,
   DType<T>? dtype,
@@ -1081,7 +1081,7 @@ NDArray<T> poisson<T extends DTypeTag>(
 ///
 /// Refer to the [Binomial Distribution Reference](https://en.wikipedia.org/wiki/Binomial_distribution)
 /// for details on independent Bernoulli trials.
-NDArray<T> binomial<T extends DTypeTag>(
+NDArray<T> binomial<T extends AnySpec>(
   List<int> shape, {
   required int n,
   required double p,
@@ -1388,7 +1388,12 @@ NDArray<T> multivariateNormal<T extends SelfOf<DTypeTag>>(
     }
 
     final zShape = [...sampleShape, d];
-    final z = normal(zShape, dtype: resolvedDType, seed: seed, secure: secure);
+    final z = normal(
+      zShape,
+      dtype: resolvedDType.asAnySpec,
+      seed: seed,
+      secure: secure,
+    );
     final lT = l.transpose();
 
     final z2D = z.reshape([sampleCount, d]);
@@ -1444,7 +1449,7 @@ NDArray<T> multivariateNormal<T extends SelfOf<DTypeTag>>(
 ///
 /// **Example:**
 /// {@example /example/random_example.dart lang=dart}
-NDArray<T> multinomial<T extends DTypeTag, P extends DTypeTag>(
+NDArray<T> multinomial<T extends AnySpec, P extends DTypeTag>(
   int n,
   NDArray<P> pvals, {
   List<int>? size,
@@ -1638,14 +1643,14 @@ NDArray<T> multinomial<T extends DTypeTag, P extends DTypeTag>(
 /// {@example /example/random_example.dart lang=dart}
 ///
 /// Reference: [NumPy choice](https://numpy.org/doc/stable/reference/generated/numpy.random.choice.html)
-NDArray<T> choice<T extends DTypeTag>(
+NDArray<T> choice<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   List<int>? size,
   bool replace = true,
   NDArray<Float64>? p,
   int? seed,
   bool secure = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute choice on a disposed array.');
@@ -1979,11 +1984,11 @@ void shuffle<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/random_example.dart lang=dart}
-NDArray<T> permutation<T extends DTypeTag>(
+NDArray<T> permutation<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int? seed,
   bool secure = false,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot permute a disposed array.');

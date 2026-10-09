@@ -42,9 +42,9 @@ import 'helpers.dart';
 /// {@example /example/dsp_example.dart lang=dart}
 ///
 /// Reference: [NumPy angle](https://numpy.org/doc/stable/reference/generated/numpy.angle.html)
-NDArray<R> angle<R extends DTypeTag>(
+NDArray<R> angle<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute angle() on a disposed array.');
@@ -83,7 +83,7 @@ NDArray<R> angle<R extends DTypeTag>(
     }
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = angle<R>(a);
+        final temp = angle<R, R>(a);
         temp.copy(out: out);
         return out;
       });
@@ -233,11 +233,11 @@ NDArray<R> angle<R extends DTypeTag>(
 /// {@example /example/dsp_example.dart lang=dart}
 ///
 /// Reference: [NumPy unwrap](https://numpy.org/doc/stable/reference/generated/numpy.unwrap.html)
-NDArray<T> unwrap<T extends DTypeTag>(
+NDArray<T> unwrap<T extends DTypeTag, Out extends T>(
   NDArray<InexactOf<T>> a, {
   double discont = math.pi,
   int axis = -1,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute unwrap() on a disposed array.');
@@ -286,7 +286,7 @@ NDArray<T> unwrap<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<T>.create(out.shape, out.dtype);
-        unwrap<T>(a, discont: discont, axis: axis, out: temp);
+        unwrap<T, T>(a, discont: discont, axis: axis, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -386,7 +386,7 @@ NDArray<T> unwrap<T extends DTypeTag>(
       case DType.uint8:
         NDArray.scope(() {
           final doubleA = castNDArray<Float64>(a, DType.float64);
-          final doubleRes = unwrap<Float64>(
+          final doubleRes = unwrap<Float64, Float64>(
             doubleA,
             discont: discont,
             axis: axis,
@@ -738,7 +738,7 @@ NDArray<T> correlate<T extends SelfOf<DTypeTag>>(
           rank,
           (i) => (in2.shape[i] - 1, in2.shape[i] - 1),
         );
-        final padded1 = pad<T>(
+        final padded1 = pad<T, T>(
           in1,
           PadWidth.axes(padWidths),
           mode: PaddingMode.constant,

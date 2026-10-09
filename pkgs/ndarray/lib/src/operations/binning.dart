@@ -68,11 +68,11 @@ void _fastCopyAndCast(NDArray<DTypeTag> src, NDArray<DTypeTag> dest) {
 ///
 /// Refer to the [NumPy bincount reference](https://numpy.org/doc/stable/reference/generated/numpy.bincount.html)
 /// for details.
-NDArray<T> bincount<T extends DTypeTag>(
+NDArray<T> bincount<T extends DTypeTag, Out extends T>(
   NDArray<DTypeTag> x, {
   NDArray<T>? weights,
   int? minlength,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (x.isDisposed) {
     throw StateError('Cannot compute bincount of a disposed array.');
@@ -159,7 +159,7 @@ NDArray<T> bincount<T extends DTypeTag>(
             sharesMemory(x, out) ||
             (weights != null && sharesMemory(weights, out)));
     if (aliasesInput) {
-      final temp = bincount<DTypeTag>(
+      final temp = bincount<DTypeTag, DTypeTag>(
         x,
         weights: weights,
         minlength: out.shape[0],
@@ -416,19 +416,29 @@ NDArray<Int64> digitize<Tx extends DTypeTag, Tb extends DTypeTag>(
   NDArray<Tb> bins, {
   bool right = false,
   NDArray<Int64>? out,
-}) => digitizeAs<Tx, Tb, Int64>(x, bins, DType.int64, right: right, out: out);
+}) => digitizeAs<Tx, Tb, Int64, Int64>(
+  x,
+  bins,
+  DType.int64,
+  right: right,
+  out: out,
+);
 
 /// Returns the indices of the bins to which each value in [x] belongs, stored
 /// in the specified integer [dtype].
 ///
 /// Refer to [digitize] for full details.
-NDArray<R>
-digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> digitizeAs<
+  Tx extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Tx> x,
   NDArray<Tb> bins,
   DType<R> dtype, {
   bool right = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x.isDisposed || bins.isDisposed) {
     throw StateError('Cannot execute digitize() on disposed array(s).');
@@ -672,8 +682,8 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
           minX = 0.0;
           maxX = 1.0;
         } else {
-          final minRes = min<DTypeTag>(flatX).scalar;
-          final maxRes = max<DTypeTag>(flatX).scalar;
+          final minRes = min<DTypeTag, DTypeTag>(flatX).scalar;
+          final maxRes = max<DTypeTag, DTypeTag>(flatX).scalar;
           if (flatX.dtype == DType.uint64) {
             minX = BigInt.from(minRes as int).toUnsigned(64).toDouble();
             maxX = BigInt.from(maxRes as int).toUnsigned(64).toDouble();
@@ -694,7 +704,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
           }
         }
       }
-      resolvedBinEdges = linspace<Float64>(
+      resolvedBinEdges = linspace<Float64, Float64>(
         minX,
         maxX,
         nbins + 1,
@@ -849,7 +859,10 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 
     NDArray<DTypeTag> finalHist = hist;
     if (density) {
-      final totalSum = sumAs<DTypeTag, DTypeTag>(hist, hist.dtype).scalar;
+      final totalSum = sumAs<DTypeTag, DTypeTag, DTypeTag>(
+        hist,
+        hist.dtype,
+      ).scalar;
       final widths = subtract<Float64>(
         resolvedBinEdges.slice([Slice(start: 1)]),
         resolvedBinEdges.slice([Slice(stop: resolvedBinEdges.size - 1)]),
@@ -862,7 +875,7 @@ digitizeAs<Tx extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       final histF64 = hist.dtype == (DType.float64 as DType<DTypeTag>)
           ? hist as NDArray<Float64>
           : castNDArray<Float64>(hist, DType.float64);
-      finalHist = divide<Float64, Float64>(histF64, divisor);
+      finalHist = divide<Float64, Float64, Float64>(histF64, divisor);
     } else if (targetHistDType != computeHistDType) {
       finalHist = castNDArray<DTypeTag>(hist, targetHistDType);
     }

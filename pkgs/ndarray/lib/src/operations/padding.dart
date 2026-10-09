@@ -307,14 +307,14 @@ Object _getDefaultValue(DType dtype) {
 ///
 /// **Example:**
 /// {@example /example/padding_example.dart lang=dart}
-NDArray<T> pad<T extends DTypeTag>(
+NDArray<T> pad<T extends DTypeTag, Out extends T>(
   NDArray<T> array,
   PadWidth padWidth, {
   PadMode mode = PadMode.constant,
   PadValues<T>? constantValues,
   PadValues<T>? endValues,
   StatLength? statLength,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (array.isDisposed) {
     throw StateError('Source array is disposed.');

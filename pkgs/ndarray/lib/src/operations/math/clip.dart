@@ -44,12 +44,12 @@ import 'utility.dart';
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy clip](https://numpy.org/doc/stable/reference/generated/numpy.clip.html)
-NDArray<T> clip<T extends DTypeTag>(
+NDArray<T> clip<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   num? min,
   num? max,
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -80,7 +80,7 @@ NDArray<T> clip<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        clip<T>(a, min: min, max: max, where: where, out: temp);
+        clip(a, min: min, max: max, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -239,12 +239,12 @@ NDArray<T> clip<T extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy clip](https://numpy.org/doc/stable/reference/generated/numpy.clip.html)
-NDArray<T> clipArray<T extends DTypeTag>(
+NDArray<T> clipArray<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<T>? min,
   NDArray<T>? max,
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (min != null && min.isDisposed) ||
@@ -299,7 +299,7 @@ NDArray<T> clipArray<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(commonShape, a.dtype);
-        clipArray<T>(a, min: min, max: max, where: where, out: temp);
+        clipArray(a, min: min, max: max, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });

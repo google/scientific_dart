@@ -38,10 +38,10 @@ import 'arithmetic.dart';
 /// {@example /example/transcendental_example.dart lang=dart}
 ///
 /// Reference: [Trigonometric Sine Function](https://en.wikipedia.org/wiki/Sine_and_cosine)
-NDArray<R> sin<R extends DTypeTag>(
+NDArray<R> sin<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -68,7 +68,7 @@ NDArray<R> sin<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        sin<R>(a, where: where, out: temp);
+        sin(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -82,7 +82,7 @@ NDArray<R> sin<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res =
-          sin<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+          sin(promoted, where: where, out: out as NDArray<Float64>?)
               as NDArray<R>;
       return res;
     } finally {
@@ -250,10 +250,10 @@ NDArray<R> sin<R extends DTypeTag>(
 /// **Performance considerations:**
 /// - Algorithmic complexity is $O(N)$ where $N$ is the total number of elements.
 /// - For C-contiguous array layouts, uses native C vector math kernels (`v_sinc_double`/`v_sinc_float` etc).
-NDArray<R> sinc<R extends DTypeTag>(
+NDArray<R> sinc<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -281,7 +281,7 @@ NDArray<R> sinc<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        sinc<R>(a, where: where, out: temp);
+        sinc(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -295,7 +295,7 @@ NDArray<R> sinc<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res =
-          sinc<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+          sinc(promoted, where: where, out: out as NDArray<Float64>?)
               as NDArray<R>;
       return res;
     } finally {
@@ -464,10 +464,10 @@ NDArray<R> sinc<R extends DTypeTag>(
 /// {@example /example/transcendental_example.dart lang=dart}
 ///
 /// Reference: [Trigonometric Cosine Function](https://en.wikipedia.org/wiki/Sine_and_cosine)
-NDArray<R> cos<R extends DTypeTag>(
+NDArray<R> cos<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -494,7 +494,7 @@ NDArray<R> cos<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        cos<R>(a, where: where, out: temp);
+        cos(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -508,7 +508,7 @@ NDArray<R> cos<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res =
-          cos<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+          cos(promoted, where: where, out: out as NDArray<Float64>?)
               as NDArray<R>;
       return res;
     } finally {
@@ -668,10 +668,10 @@ NDArray<R> cos<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> tan<R extends DTypeTag>(
+NDArray<R> tan<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -698,7 +698,7 @@ NDArray<R> tan<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        tan<R>(a, where: where, out: temp);
+        tan(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -712,7 +712,7 @@ NDArray<R> tan<R extends DTypeTag>(
     final promoted = promoteToDouble(a);
     try {
       final res =
-          tan<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+          tan(promoted, where: where, out: out as NDArray<Float64>?)
               as NDArray<R>;
       return res;
     } finally {
@@ -878,10 +878,10 @@ NDArray<R> tan<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> asin<R extends DTypeTag>(
+NDArray<R> asin<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -908,7 +908,7 @@ NDArray<R> asin<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        asin<R>(a, where: where, out: temp);
+        asin(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -920,7 +920,7 @@ NDArray<R> asin<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = asin<R>(
+      final res = asin(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -1089,10 +1089,10 @@ NDArray<R> asin<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> acos<R extends DTypeTag>(
+NDArray<R> acos<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1119,7 +1119,7 @@ NDArray<R> acos<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        acos<R>(a, where: where, out: temp);
+        acos(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1131,7 +1131,7 @@ NDArray<R> acos<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = acos<R>(
+      final res = acos(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -1300,10 +1300,10 @@ NDArray<R> acos<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> atan<R extends DTypeTag>(
+NDArray<R> atan<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1330,7 +1330,7 @@ NDArray<R> atan<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        atan<R>(a, where: where, out: temp);
+        atan(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1342,7 +1342,7 @@ NDArray<R> atan<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = atan<R>(
+      final res = atan(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -1512,10 +1512,10 @@ NDArray<R> atan<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
-NDArray<R> sinh<R extends DTypeTag>(
+NDArray<R> sinh<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1542,7 +1542,7 @@ NDArray<R> sinh<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        sinh<R>(a, where: where, out: temp);
+        sinh(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1554,7 +1554,7 @@ NDArray<R> sinh<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = sinh<R>(
+      final res = sinh(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -1727,10 +1727,10 @@ NDArray<R> sinh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
-NDArray<R> cosh<R extends DTypeTag>(
+NDArray<R> cosh<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1757,7 +1757,7 @@ NDArray<R> cosh<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        cosh<R>(a, where: where, out: temp);
+        cosh(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1769,7 +1769,7 @@ NDArray<R> cosh<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = cosh<R>(
+      final res = cosh(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -1942,10 +1942,10 @@ NDArray<R> cosh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
-NDArray<R> tanh<R extends DTypeTag>(
+NDArray<R> tanh<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1972,7 +1972,7 @@ NDArray<R> tanh<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        tanh<R>(a, where: where, out: temp);
+        tanh(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1984,7 +1984,7 @@ NDArray<R> tanh<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = tanh<R>(
+      final res = tanh(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -2158,10 +2158,10 @@ NDArray<R> tanh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
-NDArray<R> asinh<R extends DTypeTag>(
+NDArray<R> asinh<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -2188,7 +2188,7 @@ NDArray<R> asinh<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        asinh<R>(a, where: where, out: temp);
+        asinh(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -2200,7 +2200,7 @@ NDArray<R> asinh<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = asinh<R>(
+      final res = asinh(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -2373,10 +2373,10 @@ NDArray<R> asinh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
-NDArray<R> acosh<R extends DTypeTag>(
+NDArray<R> acosh<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -2403,7 +2403,7 @@ NDArray<R> acosh<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        acosh<R>(a, where: where, out: temp);
+        acosh(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -2415,7 +2415,7 @@ NDArray<R> acosh<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = acosh<R>(
+      final res = acosh(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -2588,10 +2588,10 @@ NDArray<R> acosh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/hyperbolic_example.dart lang=dart}
-NDArray<R> atanh<R extends DTypeTag>(
+NDArray<R> atanh<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -2618,7 +2618,7 @@ NDArray<R> atanh<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        atanh<R>(a, where: where, out: temp);
+        atanh(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -2630,7 +2630,7 @@ NDArray<R> atanh<R extends DTypeTag>(
       (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      final res = atanh<R>(
+      final res = atanh(
         promoted as NDArray<InexactOf<R>>,
         where: where,
         out: out,
@@ -2803,12 +2803,11 @@ NDArray<R> atanh<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> atan2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
-  NDArray<T> y,
-  NDArray<T> x, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> atan2<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> y, NDArray<T> x, {NDArray<DTypeTag>? where, NDArray<Out>? out}) {
   if (y.isDisposed ||
       x.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -2854,7 +2853,7 @@ NDArray<R> atan2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        atan2<T, R>(y, x, where: where, out: temp);
+        atan2(y, x, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -2873,7 +2872,7 @@ NDArray<R> atan2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
     try {
       // Integer, boolean, and half-precision inputs always compute in
       // float64, so `R` is `Float64` on this path (see `targetDType` above).
-      final res = atan2<Float64, Float64>(
+      final res = atan2(
         yPromoted,
         xPromoted,
         where: where,
@@ -3037,13 +3036,17 @@ NDArray<R> atan2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy arctan2](https://numpy.org/doc/stable/reference/generated/numpy.arctan2.html)
-NDArray<R>
-atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> atan2As<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> y,
   NDArray<Tb> x,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (y.isDisposed ||
       x.isDisposed ||
@@ -3058,7 +3061,7 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (dtype == DType.float32) {
       final yCast = castNDArray<Float32>(y, DType.float32);
       final xCast = castNDArray<Float32>(x, DType.float32);
-      final res = atan2<Float32, Float32>(
+      final res = atan2(
         yCast,
         xCast,
         where: where,
@@ -3069,7 +3072,7 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (dtype == DType.float64) {
       final yCast = castNDArray<Float64>(y, DType.float64);
       final xCast = castNDArray<Float64>(x, DType.float64);
-      final res = atan2<Float64, Float64>(
+      final res = atan2(
         yCast,
         xCast,
         where: where,
@@ -3090,7 +3093,7 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     }
     final yCast = castNDArray<Float64>(y, DType.float64);
     final xCast = castNDArray<Float64>(x, DType.float64);
-    final f64Res = atan2<Float64, Float64>(yCast, xCast, where: where);
+    final f64Res = atan2(yCast, xCast, where: where);
     final casted = castNDArray<R>(f64Res, dtype);
     if (out != null) {
       final maskHolder = prepareMask(where, out.shape);
@@ -3127,12 +3130,11 @@ atan2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> hypot<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
-  NDArray<T> a,
-  NDArray<T> b, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> hypot<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<Out>? out}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3171,7 +3173,7 @@ NDArray<R> hypot<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        hypot<T, R>(a, b, where: where, out: temp);
+        hypot(a, b, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -3243,13 +3245,17 @@ NDArray<R> hypot<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy hypot](https://numpy.org/doc/stable/reference/generated/numpy.hypot.html)
-NDArray<R>
-hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> hypotAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -3264,7 +3270,7 @@ hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (dtype == DType.float32) {
       final aCast = castNDArray<Float32>(a, DType.float32);
       final bCast = castNDArray<Float32>(b, DType.float32);
-      final res = hypot<Float32, Float32>(
+      final res = hypot(
         aCast,
         bCast,
         where: where,
@@ -3275,7 +3281,7 @@ hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (dtype == DType.float64) {
       final aCast = castNDArray<Float64>(a, DType.float64);
       final bCast = castNDArray<Float64>(b, DType.float64);
-      final res = hypot<Float64, Float64>(
+      final res = hypot(
         aCast,
         bCast,
         where: where,
@@ -3296,7 +3302,7 @@ hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     }
     final aCast = castNDArray<Float64>(a, DType.float64);
     final bCast = castNDArray<Float64>(b, DType.float64);
-    final f64Res = hypot<Float64, Float64>(aCast, bCast, where: where);
+    final f64Res = hypot(aCast, bCast, where: where);
     final casted = castNDArray<R>(f64Res, dtype);
     if (out != null) {
       final maskHolder = prepareMask(where, out.shape);
@@ -3334,10 +3340,10 @@ hypotAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> deg2rad<R extends DTypeTag>(
+NDArray<R> deg2rad<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3367,7 +3373,7 @@ NDArray<R> deg2rad<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        deg2rad<R>(a, where: where, out: temp);
+        deg2rad(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -3404,10 +3410,10 @@ NDArray<R> deg2rad<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> rad2deg<R extends DTypeTag>(
+NDArray<R> rad2deg<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -3437,7 +3443,7 @@ NDArray<R> rad2deg<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        rad2deg<R>(a, where: where, out: temp);
+        rad2deg(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });

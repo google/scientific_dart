@@ -75,11 +75,11 @@ NDArray<DTypeTag> _createNDArrayTyped(List<int> shape, DType<DTypeTag> dtype) {
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<T> sort<T extends DTypeTag>(
+NDArray<T> sort<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int axis = -1,
   SortKind kind = SortKind.quicksort,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot sort a disposed array.');
@@ -248,18 +248,18 @@ NDArray<Int64> argsort<T extends DTypeTag>(
   int axis = -1,
   SortKind kind = SortKind.quicksort,
   NDArray<Int64>? out,
-}) => argsortAs<T, Int64>(a, DType.int64, axis: axis, kind: kind, out: out);
+}) => argsortAs(a, DType.int64, axis: axis, kind: kind, out: out);
 
 /// Returns the indices that would sort an array [a], stored in the specified
 /// integer [dtype] (`DType.int32` or `DType.int64`).
 ///
 /// Refer to [argsort] for full details.
-NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   DType<R> dtype, {
   int axis = -1,
   SortKind kind = SortKind.quicksort,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute argsort() on a disposed array.');
@@ -299,7 +299,7 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
   if (targetAxis != rank - 1) {
     return NDArray.scope(() {
       final swappedView = a.swapaxes(targetAxis, rank - 1);
-      final sortedIndicesView = argsortAs<T, R>(
+      final sortedIndicesView = argsortAs(
         swappedView,
         dtype,
         axis: rank - 1,
@@ -566,11 +566,11 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<T> partition<T extends DTypeTag>(
+NDArray<T> partition<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   Object kth, {
   int axis = -1,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot partition a disposed array.');
@@ -827,18 +827,19 @@ NDArray<Int64> argpartition<T extends DTypeTag>(
   Object kth, {
   int axis = -1,
   NDArray<Int64>? out,
-}) => argpartitionAs<T, Int64>(a, kth, DType.int64, axis: axis, out: out);
+}) => argpartitionAs(a, kth, DType.int64, axis: axis, out: out);
 
 /// Returns the indices that would partition an array along [axis], stored in
 /// the specified integer [dtype] (`DType.int32` or `DType.int64`).
 ///
 /// Refer to [argpartition] for full details.
-NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
+NDArray<R>
+argpartitionAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   Object kth,
   DType<R> dtype, {
   int axis = -1,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute argpartition() on a disposed array.');
@@ -904,7 +905,7 @@ NDArray<R> argpartitionAs<T extends DTypeTag, R extends DTypeTag>(
   if (targetAxis != rank - 1) {
     return NDArray.scope(() {
       final swappedView = a.swapaxes(targetAxis, rank - 1);
-      final partitionedIndicesView = argpartitionAs<T, R>(
+      final partitionedIndicesView = argpartitionAs(
         swappedView,
         uniqueK,
         dtype,
@@ -1185,27 +1186,21 @@ NDArray<Int64> searchsorted<T extends SelfOf<DTypeTag>>(
   SearchSide side = SearchSide.left,
   NDArray<DTypeTag>? sorter,
   NDArray<Int64>? out,
-}) => searchsortedAs<T, Int64>(
-  a,
-  v,
-  DType.int64,
-  side: side,
-  sorter: sorter,
-  out: out,
-);
+}) => searchsortedAs(a, v, DType.int64, side: side, sorter: sorter, out: out);
 
 /// Finds indices where elements of [v] should be inserted to maintain order in
 /// a sorted 1-D array [a], stored in the specified integer [dtype]
 /// (`DType.int32` or `DType.int64`).
 ///
 /// Refer to [searchsorted] for full details.
-NDArray<R> searchsortedAs<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
+NDArray<R>
+searchsortedAs<T extends SelfOf<DTypeTag>, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   NDArray<T> v,
   DType<R> dtype, {
   SearchSide side = SearchSide.left,
   NDArray<DTypeTag>? sorter,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || v.isDisposed) {
     throw StateError('Cannot execute searchsorted() on a disposed array.');
@@ -1256,14 +1251,7 @@ NDArray<R> searchsortedAs<T extends SelfOf<DTypeTag>, R extends DTypeTag>(
         (sorter != null && sharesMemory(sorter, out))) {
       return NDArray.scope(() {
         final targetOut = NDArray<R>.create(v.shape, out.dtype);
-        searchsortedAs<T, R>(
-          a,
-          v,
-          dtype,
-          side: side,
-          sorter: sorter,
-          out: targetOut,
-        );
+        searchsortedAs(a, v, dtype, side: side, sorter: sorter, out: targetOut);
         targetOut.copy(out: out);
         return out;
       });

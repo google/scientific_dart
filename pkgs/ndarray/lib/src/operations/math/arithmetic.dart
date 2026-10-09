@@ -34,10 +34,10 @@ import 'logical.dart';
 ///
 /// **Edge cases:**
 /// - Negative values will result in [double.nan].
-NDArray<R> sqrt<R extends DTypeTag>(
+NDArray<R> sqrt<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -70,7 +70,7 @@ NDArray<R> sqrt<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        sqrt<R>(a, where: where, out: temp);
+        sqrt(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -293,10 +293,10 @@ double _logaddexp2(double x, double y) {
 }
 
 /// Computes the exponential minus one ($e^x - 1$) element-wise.
-NDArray<R> expm1<R extends DTypeTag>(
+NDArray<R> expm1<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -327,7 +327,7 @@ NDArray<R> expm1<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        expm1<R>(a, where: where, out: temp);
+        expm1(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -528,10 +528,10 @@ NDArray<R> expm1<R extends DTypeTag>(
 }
 
 /// Computes $\ln(1+x)$ element-wise.
-NDArray<R> log1p<R extends DTypeTag>(
+NDArray<R> log1p<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -562,7 +562,7 @@ NDArray<R> log1p<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        log1p<R>(a, where: where, out: temp);
+        log1p(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -763,12 +763,11 @@ NDArray<R> log1p<R extends DTypeTag>(
 }
 
 /// Computes $\log(e^{x_1} + e^{x_2})$ element-wise.
-NDArray<R> logaddexp<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
-  NDArray<T> x1,
-  NDArray<T> x2, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> logaddexp<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> x1, NDArray<T> x2, {NDArray<DTypeTag>? where, NDArray<Out>? out}) {
   if (x1.isDisposed ||
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -814,7 +813,7 @@ NDArray<R> logaddexp<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(shape, targetDType);
-        logaddexp<T, R>(x1, x2, where: where, out: temp);
+        logaddexp(x1, x2, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -960,12 +959,11 @@ NDArray<R> logaddexp<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
 }
 
 /// Computes $\log_2(2^{x_1} + 2^{x_2})$ element-wise.
-NDArray<R> logaddexp2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
-  NDArray<T> x1,
-  NDArray<T> x2, {
-  NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) {
+NDArray<R> logaddexp2<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> x1, NDArray<T> x2, {NDArray<DTypeTag>? where, NDArray<Out>? out}) {
   if (x1.isDisposed ||
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1011,7 +1009,7 @@ NDArray<R> logaddexp2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(shape, targetDType);
-        logaddexp2<T, R>(x1, x2, where: where, out: temp);
+        logaddexp2(x1, x2, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1157,10 +1155,10 @@ NDArray<R> logaddexp2<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
 }
 
 /// Rounds elements of the array to the nearest integer.
-NDArray<R> rint<R extends DTypeTag>(
+NDArray<R> rint<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1189,7 +1187,7 @@ NDArray<R> rint<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(a.shape, targetDType as DType<R>);
-        rint<R>(a, where: where, out: temp);
+        rint(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1340,10 +1338,10 @@ NDArray<R> rint<R extends DTypeTag>(
 }
 
 /// Rounds elements of the array to the nearest integer towards zero.
-NDArray<R> trunc<R extends DTypeTag>(
+NDArray<R> trunc<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1372,7 +1370,7 @@ NDArray<R> trunc<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(a.shape, targetDType as DType<R>);
-        trunc<R>(a, where: where, out: temp);
+        trunc(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1516,10 +1514,10 @@ NDArray<R> trunc<R extends DTypeTag>(
 /// Rounds elements of the array to the nearest integer towards zero.
 ///
 /// Synonym for [trunc].
-NDArray<R> fix<R extends DTypeTag>(
+NDArray<R> fix<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) => trunc(a, where: where, out: out);
 
 /// Computes the element-wise square of the input array.
@@ -1528,10 +1526,10 @@ NDArray<R> fix<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> square<T extends DTypeTag>(
+NDArray<T> square<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1552,7 +1550,7 @@ NDArray<T> square<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        square<T>(a, where: where, out: temp);
+        square(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -1875,10 +1873,10 @@ NDArray<T> square<T extends DTypeTag>(
 }
 
 /// Computes the element-wise reciprocal ($1/x$) of the array.
-NDArray<T> reciprocal<T extends DTypeTag>(
+NDArray<T> reciprocal<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -1899,7 +1897,7 @@ NDArray<T> reciprocal<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        reciprocal<T>(a, where: where, out: temp);
+        reciprocal(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -2162,10 +2160,10 @@ NDArray<T> reciprocal<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/easy_ufuncs_example.dart lang=dart}
-NDArray<T> positive<T extends DTypeTag>(
+NDArray<T> positive<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -2190,7 +2188,7 @@ NDArray<T> positive<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        positive<T>(a, where: where, out: temp);
+        positive(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -2889,10 +2887,10 @@ NDArray<T> power<T extends SelfOf<DTypeTag>>(
 ///
 /// The [out] array must match the shape and dtype of [a].
 /// None of [a], [where], or [out] may be disposed.
-NDArray<T> negative<T extends DTypeTag>(
+NDArray<T> negative<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -2916,7 +2914,7 @@ NDArray<T> negative<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        negative<T>(a, where: where, out: temp);
+        negative(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -4803,10 +4801,10 @@ NDArray<T> heaviside<T extends SelfOf<DTypeTag>>(
 /// with dtype [Float32] and [Float64], respectively.
 /// If [where] is provided, only elements where [where] is truthy are updated.
 /// If [out] is provided, the result is written into [out] and returned.
-NDArray<R> abs<R extends DTypeTag>(
+NDArray<R> abs<R extends DTypeTag, Out extends R>(
   NDArray<RealOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -4836,7 +4834,7 @@ NDArray<R> abs<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(a.shape, targetDType as DType<R>);
-        abs<R>(a, where: where, out: temp);
+        abs(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -5189,10 +5187,10 @@ NDArray<R> abs<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> sign<T extends DTypeTag>(
+NDArray<T> sign<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -5213,7 +5211,7 @@ NDArray<T> sign<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        sign<T>(a, where: where, out: temp);
+        sign(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -5330,10 +5328,10 @@ NDArray<T> sign<T extends DTypeTag>(
 /// It is an error if [a], [where], or [out] is disposed (throws [StateError]),
 /// if [a] has a complex dtype (throws [UnsupportedError]),
 /// or if [out] has an incompatible shape or dtype (throws [ArgumentError]).
-NDArray<T> ceil<T extends DTypeTag>(
+NDArray<T> ceil<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -5357,7 +5355,7 @@ NDArray<T> ceil<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        ceil<T>(a, where: where, out: temp);
+        ceil(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -5446,10 +5444,10 @@ NDArray<T> ceil<T extends DTypeTag>(
 /// It is an error if [a], [where], or [out] is disposed (throws [StateError]),
 /// if [a] has a complex dtype (throws [UnsupportedError]),
 /// or if [out] has an incompatible shape or dtype (throws [ArgumentError]).
-NDArray<T> floor<T extends DTypeTag>(
+NDArray<T> floor<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -5473,7 +5471,7 @@ NDArray<T> floor<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        floor<T>(a, where: where, out: temp);
+        floor(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -5567,11 +5565,11 @@ NDArray<T> floor<T extends DTypeTag>(
 /// It is an error if [a], [where], or [out] is disposed (throws [StateError]),
 /// if [a] has a complex dtype (throws [UnsupportedError]),
 /// or if [out] has an incompatible shape or dtype (throws [ArgumentError]).
-NDArray<T> round<T extends DTypeTag>(
+NDArray<T> round<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int decimals = 0,
   NDArray<DTypeTag>? where,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -5595,7 +5593,7 @@ NDArray<T> round<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        round<T>(a, decimals: decimals, where: where, out: temp);
+        round(a, decimals: decimals, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -10899,11 +10897,12 @@ _multiplyKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// {@example /example/ndarray_example.dart lang=dart}
 ///
 /// Reference: [NumPy divide](https://numpy.org/doc/stable/reference/generated/numpy.divide.html)
-NDArray<R> divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag>(
+NDArray<R>
+divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag, Out extends R>(
   NDArray<T> a,
   NDArray<T> b, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) => divideUntyped<T, R>(a, b, where: where, out: out);
 
 /// Untyped entry point of [divide] for callers whose operand tag is only
@@ -12468,11 +12467,7 @@ _divideKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         if (result.dtype.isComplex || a.dtype.isComplex || b.dtype.isComplex) {
           final cpxA = castNDArray(a, DType.complex128);
           final cpxB = castNDArray(b, DType.complex128);
-          final cpxRes = divide<Complex128, Complex128>(
-            cpxA,
-            cpxB,
-            where: where,
-          );
+          final cpxRes = divide(cpxA, cpxB, where: where);
           final casted = castNDArray(cpxRes, result.dtype);
           _copyMaskedResult(casted, result, where);
           if (!identical(cpxA, a)) cpxA.dispose();
@@ -12483,11 +12478,7 @@ _divideKernel<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
         } else {
           final doubleA = castNDArray(a, DType.float64);
           final doubleB = castNDArray(b, DType.float64);
-          final doubleRes = divide<Float64, Float64>(
-            doubleA,
-            doubleB,
-            where: where,
-          );
+          final doubleRes = divide(doubleA, doubleB, where: where);
           final casted = castNDArray(doubleRes, result.dtype);
           _copyMaskedResult(casted, result, where);
           if (!identical(doubleA, a)) doubleA.dispose();
@@ -12610,12 +12601,17 @@ DType<DTypeTag>? _nativeMixedKernelOutputDType(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy add](https://numpy.org/doc/stable/reference/generated/numpy.add.html)
-NDArray<R> addAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> addAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -12658,13 +12654,17 @@ NDArray<R> addAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy subtract](https://numpy.org/doc/stable/reference/generated/numpy.subtract.html)
-NDArray<R>
-subtractAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> subtractAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -12707,13 +12707,17 @@ subtractAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy multiply](https://numpy.org/doc/stable/reference/generated/numpy.multiply.html)
-NDArray<R>
-multiplyAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> multiplyAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -12756,13 +12760,17 @@ multiplyAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy divide](https://numpy.org/doc/stable/reference/generated/numpy.divide.html)
-NDArray<R>
-divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> divideAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -12841,13 +12849,17 @@ divideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy floor_divide](https://numpy.org/doc/stable/reference/generated/numpy.floor_divide.html)
-NDArray<R>
-floorDivideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> floorDivideAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -12893,13 +12905,17 @@ floorDivideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy remainder](https://numpy.org/doc/stable/reference/generated/numpy.remainder.html)
-NDArray<R>
-remainderAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> remainderAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -12934,13 +12950,18 @@ remainderAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// Alias for [remainderAs] matching `numpy.mod`.
 ///
 /// Reference: [NumPy mod](https://numpy.org/doc/stable/reference/generated/numpy.mod.html)
-NDArray<R> modAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> modAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
-}) => remainderAs<Ta, Tb, R>(a, b, dtype, where: where, out: out);
+  NDArray<Out>? out,
+}) => remainderAs(a, b, dtype, where: where, out: out);
 
 /// Element-wise C-style `fmod` remainder of [x1] divided by [x2] computed into the specified target [dtype].
 ///
@@ -12956,12 +12977,17 @@ NDArray<R> modAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy fmod](https://numpy.org/doc/stable/reference/generated/numpy.fmod.html)
-NDArray<R> fmodAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> fmodAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -13045,13 +13071,17 @@ NDArray<R> fmodAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy power](https://numpy.org/doc/stable/reference/generated/numpy.power.html)
-NDArray<R>
-powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> powerAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -13102,8 +13132,9 @@ powerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
 NDArray<R> floatPower<
   T extends SelfOf<DoublePrecisionOf<R>>,
-  R extends DTypeTag
->(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<R>? out}) {
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> a, NDArray<T> b, {NDArray<DTypeTag>? where, NDArray<Out>? out}) {
   if (a.isDisposed ||
       b.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -13119,13 +13150,7 @@ NDArray<R> floatPower<
   }
   final targetDType =
       (a.dtype.isComplex ? DType.complex128 : DType.float64) as DType<R>;
-  return floatPowerAs<DTypeTag, DTypeTag, R>(
-    a,
-    b,
-    targetDType,
-    where: where,
-    out: out,
-  );
+  return floatPowerAs(a, b, targetDType, where: where, out: out);
 }
 
 /// Element-wise float exponentiation of [a] to [b] computed in double precision
@@ -13144,13 +13169,17 @@ NDArray<R> floatPower<
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy float_power](https://numpy.org/doc/stable/reference/generated/numpy.float_power.html)
-NDArray<R>
-floatPowerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> floatPowerAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       b.isDisposed ||
@@ -13163,7 +13192,7 @@ floatPowerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       ? DType.complex128
       : DType.float64;
   if (computeDType == dtype) {
-    return powerAs<Ta, Tb, R>(a, b, dtype, where: where, out: out);
+    return powerAs(a, b, dtype, where: where, out: out);
   }
   final broadcastResult = broadcast(a, b);
   if (out != null) {
@@ -13177,7 +13206,7 @@ floatPowerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     }
   }
   return NDArray.scope(() {
-    final computed = powerAs<Ta, Tb, DTypeTag>(
+    final computed = powerAs<Ta, Tb, DTypeTag, DTypeTag>(
       a,
       b,
       computeDType,
@@ -13208,12 +13237,17 @@ floatPowerAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N \log(\min(|x_1|, |x_2|)))$.
 ///
 /// Reference: [NumPy gcd](https://numpy.org/doc/stable/reference/generated/numpy.gcd.html)
-NDArray<R> gcdAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> gcdAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -13264,12 +13298,17 @@ NDArray<R> gcdAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N \log(\min(|x_1|, |x_2|)))$.
 ///
 /// Reference: [NumPy lcm](https://numpy.org/doc/stable/reference/generated/numpy.lcm.html)
-NDArray<R> lcmAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> lcmAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -13319,13 +13358,17 @@ NDArray<R> lcmAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy heaviside](https://numpy.org/doc/stable/reference/generated/numpy.heaviside.html)
-NDArray<R>
-heavisideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> heavisideAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -13375,13 +13418,17 @@ heavisideAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy logaddexp](https://numpy.org/doc/stable/reference/generated/numpy.logaddexp.html)
-NDArray<R>
-logaddexpAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> logaddexpAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -13407,7 +13454,7 @@ logaddexpAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (dtype == DType.float32) {
       final aCast = castNDArray<Float32>(x1, DType.float32);
       final bCast = castNDArray<Float32>(x2, DType.float32);
-      final res = logaddexp<Float32, Float32>(
+      final res = logaddexp(
         aCast,
         bCast,
         where: where,
@@ -13418,7 +13465,7 @@ logaddexpAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     final aCast = castNDArray<Float64>(x1, DType.float64);
     final bCast = castNDArray<Float64>(x2, DType.float64);
     if (dtype == DType.float64) {
-      final res = logaddexp<Float64, Float64>(
+      final res = logaddexp(
         aCast,
         bCast,
         where: where,
@@ -13426,7 +13473,7 @@ logaddexpAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? (res.detachToParentScope() as NDArray<R>);
     }
-    final res = logaddexp<Float64, Float64>(aCast, bCast, where: where);
+    final res = logaddexp(aCast, bCast, where: where);
     final casted = castNDArray<R>(res, dtype);
     if (out != null) {
       _copyMaskedResult(casted, out, where);
@@ -13451,13 +13498,17 @@ logaddexpAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
 /// - Algorithmic complexity is $O(N)$ where $N$ is the broadcasted element count.
 ///
 /// Reference: [NumPy logaddexp2](https://numpy.org/doc/stable/reference/generated/numpy.logaddexp2.html)
-NDArray<R>
-logaddexp2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> logaddexp2As<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> x1,
   NDArray<Tb> x2,
   DType<R> dtype, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x1.isDisposed ||
       x2.isDisposed ||
@@ -13483,7 +13534,7 @@ logaddexp2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     if (dtype == DType.float32) {
       final aCast = castNDArray<Float32>(x1, DType.float32);
       final bCast = castNDArray<Float32>(x2, DType.float32);
-      final res = logaddexp2<Float32, Float32>(
+      final res = logaddexp2(
         aCast,
         bCast,
         where: where,
@@ -13494,7 +13545,7 @@ logaddexp2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
     final aCast = castNDArray<Float64>(x1, DType.float64);
     final bCast = castNDArray<Float64>(x2, DType.float64);
     if (dtype == DType.float64) {
-      final res = logaddexp2<Float64, Float64>(
+      final res = logaddexp2(
         aCast,
         bCast,
         where: where,
@@ -13502,7 +13553,7 @@ logaddexp2As<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
       );
       return out ?? (res.detachToParentScope() as NDArray<R>);
     }
-    final res = logaddexp2<Float64, Float64>(aCast, bCast, where: where);
+    final res = logaddexp2(aCast, bCast, where: where);
     final casted = castNDArray<R>(res, dtype);
     if (out != null) {
       _copyMaskedResult(casted, out, where);

@@ -1569,7 +1569,10 @@ NDArray<T> multi_dot<T extends AnySpec>(
 /// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [Matrix Inversion](https://en.wikipedia.org/wiki/Invertible_matrix)
-NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
+NDArray<T> inv<T extends DTypeTag, Out extends T>(
+  NDArray<T> a, {
+  NDArray<Out>? out,
+}) {
   if (a.isDisposed) {
     throw StateError('Cannot compute inverse of a disposed array.');
   }
@@ -1617,7 +1620,7 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = inv<Float64>(aF64);
+      final resF64 = inv<Float64, Float64>(aF64);
       if (out != null) {
         if (out.dtype == DType.float64) {
           resF64.copy(out: out as NDArray<Float64>);
@@ -1644,7 +1647,7 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = inv<T>(a);
+        final temp = inv<T, T>(a);
         temp.copy(out: out);
         return out;
       });
@@ -1881,7 +1884,10 @@ NDArray<T> inv<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// and [LAPACK LU solver](https://en.wikipedia.org/wiki/LU_decomposition) for additional details.
 ///
 /// Returns a 0-dimensional [NDArray] if [a] is a 2D matrix, or a new [NDArray] with stack dimensions if [a] is a stack of matrices.
-NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
+NDArray<T> det<T extends DTypeTag, Out extends T>(
+  NDArray<T> a, {
+  NDArray<Out>? out,
+}) {
   if (a.isDisposed) {
     throw StateError('Cannot compute determinant of a disposed array.');
   }
@@ -1926,7 +1932,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = det<Float64>(aF64);
+      final resF64 = det<Float64, Float64>(aF64);
       if (out != null) {
         if (out.dtype == DType.float64) {
           resF64.copy(out: out as NDArray<Float64>);
@@ -1951,7 +1957,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = det<T>(a);
+        final temp = det<T, T>(a);
         temp.copy(out: out);
         return out;
       });
@@ -1960,7 +1966,7 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 
   return NDArray.scope(() {
     if (a.shape[rank - 1] == 0) {
-      final result = out ?? NDArray.zeros(stackShape, a.dtype);
+      final NDArray<T> result = out ?? NDArray.zeros(stackShape, a.dtype);
       result.fill(
         castValue(a.dtype.isComplex ? Complex(1.0, 0.0) : 1.0, a.dtype),
       );
@@ -2136,14 +2142,18 @@ NDArray<T> det<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// - A record `(sign, logdet)` of two NDArrays, representing the sign (or phase) and log of the absolute determinant.
 ///
 /// Reference: [NumPy linalg.slogdet](https://numpy.org/doc/stable/reference/generated/numpy.linalg.slogdet.html)
-({NDArray<T> sign, NDArray<R> logabsdet})
-slogdet<T extends DTypeTag, R extends DTypeTag>(
+({NDArray<T> sign, NDArray<R> logabsdet}) slogdet<
+  T extends DTypeTag,
+  R extends DTypeTag,
+  OutSign extends T,
+  OutLogdet extends R
+>(
   NDArray<
     DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
   >
   a, {
-  NDArray<T>? outSign,
-  NDArray<R>? outLogdet,
+  NDArray<OutSign>? outSign,
+  NDArray<OutLogdet>? outLogdet,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute slogdet of a disposed array.');
@@ -2215,7 +2225,7 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = slogdet<Float64, Float64>(aF64);
+      final resF64 = slogdet<Float64, Float64, Float64, Float64>(aF64);
       if (outSign != null) {
         if (outSign.dtype == DType.float64) {
           resF64.sign.copy(out: outSign as NDArray<Float64>);
@@ -2285,7 +2295,7 @@ slogdet<T extends DTypeTag, R extends DTypeTag>(
       (!outLogdet.isContiguous || sharesMemory(a, outLogdet));
   if (needTempSign || needTempLogdet) {
     return NDArray.scope(() {
-      final res = slogdet<T, R>(
+      final res = slogdet<T, R, OutSign, OutLogdet>(
         a,
         outSign: needTempSign ? null : outSign,
         outLogdet: needTempLogdet ? null : outLogdet,
@@ -2881,9 +2891,14 @@ NDArray<T> solve<T extends SelfOf<DTypeTag>>(
 /// **Throws:**
 /// - Throws an [IterationsExceededException] if the eigenvalue computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values (`NaN` or `±Infinity`) or if the LAPACK routine fails.
-({NDArray<R> eigenvalues, NDArray<R> eigenvectors}) eig<R extends DTypeTag>(
+({NDArray<R> eigenvalues, NDArray<R> eigenvectors})
+eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
   NDArray<ComplexOf<R>> a, {
-  ({NDArray<R> eigenvalues, NDArray<R> eigenvectors})? out,
+  ({
+    NDArray<OutEigenvalues> eigenvalues,
+    NDArray<OutEigenvectors> eigenvectors,
+  })?
+  out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute eig of a disposed array.');
@@ -2949,7 +2964,7 @@ NDArray<T> solve<T extends SelfOf<DTypeTag>>(
           !vr.isContiguous ||
           sharesMemory(a, w) ||
           sharesMemory(a, vr)) {
-        final temp = eig<R>(a);
+        final temp = eig<R, R, R>(a);
         temp.eigenvalues.copy(out: w);
         temp.eigenvectors.copy(out: vr);
         return (eigenvalues: w, eigenvectors: vr);
@@ -3246,9 +3261,9 @@ NDArray<T> solve<T extends SelfOf<DTypeTag>>(
 /// - A contiguous `NDArray<DTypeTag>` containing the computed eigenvalues.
 ///
 /// Reference: [NumPy linalg.eigvals](https://numpy.org/doc/stable/reference/generated/numpy.linalg.eigvals.html)
-NDArray<R> eigvals<R extends DTypeTag>(
+NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
   NDArray<ComplexOf<R>> a, {
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute eigvals of a disposed array.');
@@ -3292,7 +3307,7 @@ NDArray<R> eigvals<R extends DTypeTag>(
         );
       }
       if (!w.isContiguous || sharesMemory(a, w)) {
-        final temp = eigvals<R>(a);
+        final temp = eigvals<R, R>(a);
         temp.copy(out: w);
         return w;
       }
@@ -3539,10 +3554,10 @@ NDArray<R> eigvals<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/linalg_premium_example.dart lang=dart}
-NDArray<T> pinv<T extends DTypeTag>(
+NDArray<T> pinv<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   double? rcond,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute pinv() on a disposed array.');
@@ -3579,7 +3594,7 @@ NDArray<T> pinv<T extends DTypeTag>(
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = pinv<Float64>(aF64, rcond: rcond);
+      final resF64 = pinv<Float64, Float64>(aF64, rcond: rcond);
       if (out != null) {
         if (out.dtype == DType.float64) {
           resF64.copy(out: out as NDArray<Float64>);
@@ -3602,7 +3617,7 @@ NDArray<T> pinv<T extends DTypeTag>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = pinv<T>(a, rcond: rcond);
+        final temp = pinv<T, T>(a, rcond: rcond);
         temp.copy(out: out);
         return out;
       });
@@ -3667,10 +3682,10 @@ NDArray<T> pinv<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/linalg_premium_example.dart lang=dart}
-NDArray<T> matrix_power<T extends DTypeTag>(
+NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int n, {
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute matrix_power() on a disposed array.');
@@ -3712,7 +3727,7 @@ NDArray<T> matrix_power<T extends DTypeTag>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = matrix_power<T>(a, n);
+        final temp = matrix_power<T, T>(a, n);
         temp.copy(out: out);
         return out;
       });
@@ -3815,7 +3830,10 @@ NDArray<T> matrix_power<T extends DTypeTag>(
 /// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.cholesky](https://numpy.org/doc/stable/reference/generated/numpy.linalg.cholesky.html)
-NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
+NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
+  NDArray<T> a, {
+  NDArray<Out>? out,
+}) {
   if (a.isDisposed) {
     throw StateError('Cannot execute cholesky() on a disposed array.');
   }
@@ -3856,7 +3874,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = cholesky<Float64>(aF64);
+      final resF64 = cholesky<Float64, Float64>(aF64);
       if (out != null) {
         if (out.dtype == DType.float64) {
           resF64.copy(out: out as NDArray<Float64>);
@@ -3883,7 +3901,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = cholesky<T>(a);
+        final temp = cholesky<T, T>(a);
         temp.copy(out: out);
         return out;
       });
@@ -4028,10 +4046,11 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 ///
 /// **Example:**
 /// {@example /example/linalg_example.dart lang=dart}
-({NDArray<T> q, NDArray<T> r}) qr<T extends DTypeTag>(
-  NDArray<T> a, {
-  ({NDArray<T> q, NDArray<T> r})? out,
-}) {
+({NDArray<T> q, NDArray<T> r}) qr<
+  T extends DTypeTag,
+  OutQ extends T,
+  OutR extends T
+>(NDArray<T> a, {({NDArray<OutQ> q, NDArray<OutR> r})? out}) {
   if (a.isDisposed) {
     throw StateError('Cannot execute qr() on a disposed array.');
   }
@@ -4096,7 +4115,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = qr<Float64>(aF64);
+      final resF64 = qr<Float64, Float64, Float64>(aF64);
       if (out != null) {
         if (out.q.dtype == DType.float64) {
           resF64.q.copy(out: out.q as NDArray<Float64>);
@@ -4145,7 +4164,7 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
           !rMat.isContiguous ||
           sharesMemory(a, qMat) ||
           sharesMemory(a, rMat)) {
-        final temp = qr<T>(a);
+        final temp = qr<T, T, T>(a);
         temp.q.copy(out: qMat);
         temp.r.copy(out: rMat);
         return (q: qMat, r: rMat);
@@ -4417,13 +4436,18 @@ NDArray<T> cholesky<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 ///
 /// **Example:**
 /// {@example /example/linalg_example.dart lang=dart}
-({NDArray<T> u, NDArray<R> s, NDArray<T> vh})
-svd<T extends DTypeTag, R extends DTypeTag>(
+({NDArray<T> u, NDArray<R> s, NDArray<T> vh}) svd<
+  T extends DTypeTag,
+  R extends DTypeTag,
+  OutU extends T,
+  OutS extends R,
+  OutVh extends T
+>(
   NDArray<
     DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
   >
   a, {
-  ({NDArray<T> u, NDArray<R> s, NDArray<T> vh})? out,
+  ({NDArray<OutU> u, NDArray<OutS> s, NDArray<OutVh> vh})? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot execute svd() on a disposed array.');
@@ -5158,15 +5182,19 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
 /// **Throws:**
 /// - Throws an [IterationsExceededException] if the eigenvalue computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
-({NDArray<F> eigenvalues, NDArray<R> eigenvectors})
-eigh<F extends DTypeTag, R extends DTypeTag>(
+({NDArray<F> eigenvalues, NDArray<R> eigenvectors}) eigh<
+  F extends DTypeTag,
+  R extends DTypeTag,
+  OutEigenvalues extends F,
+  OutEigenvectors extends R
+>(
   NDArray<
     DTypeSpec<DTypeTag, Object?, F, DTypeTag, R, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
-  NDArray<F>? outEigenvalues,
-  NDArray<R>? outEigenvectors,
+  NDArray<OutEigenvalues>? outEigenvalues,
+  NDArray<OutEigenvectors>? outEigenvectors,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate eigh on a disposed array.');
@@ -5284,7 +5312,7 @@ eigh<F extends DTypeTag, R extends DTypeTag>(
           sharesMemory(a, outEigenvectors));
   if (needTempVal || needTempVec) {
     return NDArray.scope(() {
-      final res = eigh<F, R>(
+      final res = eigh<F, R, OutEigenvalues, OutEigenvectors>(
         a,
         uplo: uplo,
         outEigenvalues: needTempVal ? null : outEigenvalues,
@@ -5516,10 +5544,10 @@ extension EighRecordDispose<F extends DTypeTag, T extends DTypeTag>
 /// **Throws:**
 /// - Throws an [IterationsExceededException] if the eigenvalue computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
-NDArray<R> eigvalsh<R extends DTypeTag>(
+NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate eigvalsh on a disposed array.');
@@ -5597,7 +5625,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
         !out.isContiguous ||
         sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = eigvalsh<R>(a, uplo: uplo);
+        final temp = eigvalsh<R, R>(a, uplo: uplo);
         if (out.dtype == temp.dtype) {
           temp.copy(out: out);
         } else {
@@ -5767,10 +5795,11 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 ///
 /// **Throws:**
 /// - Throws [LinAlgException] if [a] contains non-finite values or the QR algorithm fails to converge.
-({NDArray<R> t, NDArray<R> z}) schur<R extends DTypeTag>(
+({NDArray<R> t, NDArray<R> z})
+schur<R extends DTypeTag, OutT extends R, OutZ extends R>(
   NDArray<InexactOf<R>> a, {
-  NDArray<R>? outT,
-  NDArray<R>? outZ,
+  NDArray<OutT>? outT,
+  NDArray<OutZ>? outZ,
 }) => _schurImpl<R>(a, complexForm: false, outT: outT, outZ: outZ);
 
 /// Computes the complex Schur decomposition of a matrix.
@@ -5790,10 +5819,11 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 ///
 /// **Throws:**
 /// - Throws [LinAlgException] if [a] contains non-finite values or the QR algorithm fails to converge.
-({NDArray<R> t, NDArray<R> z}) complexSchur<R extends DTypeTag>(
+({NDArray<R> t, NDArray<R> z})
+complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
   NDArray<ComplexOf<R>> a, {
-  NDArray<R>? outT,
-  NDArray<R>? outZ,
+  NDArray<OutT>? outT,
+  NDArray<OutZ>? outZ,
 }) => _schurImpl<R>(a, complexForm: true, outT: outT, outZ: outZ);
 
 ({NDArray<R> t, NDArray<R> z}) _schurImpl<R extends DTypeTag>(
@@ -6166,11 +6196,11 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
 ///
 /// **Throws:**
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
-({NDArray<R> h, NDArray<R> q}) hessenberg<R extends DTypeTag>(
-  NDArray<InexactOf<R>> a, {
-  NDArray<R>? outH,
-  NDArray<R>? outQ,
-}) {
+({NDArray<R> h, NDArray<R> q}) hessenberg<
+  R extends DTypeTag,
+  OutH extends R,
+  OutQ extends R
+>(NDArray<InexactOf<R>> a, {NDArray<OutH>? outH, NDArray<OutQ>? outQ}) {
   if (a.isDisposed) {
     throw StateError('Cannot calculate hessenberg on a disposed array.');
   }
@@ -6259,7 +6289,7 @@ NDArray<R> eigvalsh<R extends DTypeTag>(
           sharesMemory(a, outQ));
   if (needTempH || needTempQ) {
     return NDArray.scope(() {
-      final res = hessenberg<R>(
+      final res = hessenberg<R, OutH, OutQ>(
         a,
         outH: needTempH ? null : outH,
         outQ: needTempQ ? null : outQ,
@@ -7194,8 +7224,9 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
 NDArray<R> matmulAs<
   Ta extends DTypeTag,
   Tb extends DTypeTag,
-  R extends DTypeTag
->(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<R>? out}) {
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute matmulAs() on a disposed array.');
   }
@@ -7235,8 +7266,9 @@ NDArray<R> matmulAs<
 NDArray<R> outerAs<
   Ta extends DTypeTag,
   Tb extends DTypeTag,
-  R extends DTypeTag
->(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<R>? out}) {
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<Ta> a, NDArray<Tb> b, DType<R> dtype, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute outerAs() on a disposed array.');
   }
@@ -7274,8 +7306,12 @@ NDArray<R> outerAs<
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy cross](https://numpy.org/doc/stable/reference/generated/numpy.cross.html)
-NDArray<R>
-crossAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
+NDArray<R> crossAs<
+  Ta extends DTypeTag,
+  Tb extends DTypeTag,
+  R extends DTypeTag,
+  Out extends R
+>(
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
@@ -7283,7 +7319,7 @@ crossAs<Ta extends DTypeTag, Tb extends DTypeTag, R extends DTypeTag>(
   int? axisb,
   int? axisc,
   int? axis,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || b.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute crossAs() on a disposed array.');
@@ -7370,12 +7406,12 @@ enum NormKind {
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.norm](https://numpy.org/doc/stable/reference/generated/numpy.linalg.norm.html)
-NDArray<R> norm<R extends DTypeTag>(
+NDArray<R> norm<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   Object? ord,
   Object? axis,
   bool keepdims = false,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute norm() on a disposed array.');
@@ -7471,7 +7507,7 @@ NDArray<R> norm<R extends DTypeTag>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = norm<R>(a, ord: ord, axis: axis, keepdims: keepdims);
+        final temp = norm<R, R>(a, ord: ord, axis: axis, keepdims: keepdims);
         temp.copy(out: out);
         return out;
       });
@@ -8321,10 +8357,10 @@ LstsqResult<R> lstsq<
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.cond](https://numpy.org/doc/stable/reference/generated/numpy.linalg.cond.html)
-NDArray<R> cond<R extends DTypeTag>(
+NDArray<R> cond<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   Object? p,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute cond() on a disposed array.');
@@ -8480,12 +8516,18 @@ NDArray<R> cond<R extends DTypeTag>(
             val = double.nan;
           } else {
             final normAVal =
-                norm<DTypeTag>(aSlice as NDArray<AnySpec>, ord: ord).scalar
+                norm<DTypeTag, DTypeTag>(
+                      aSlice as NDArray<AnySpec>,
+                      ord: ord,
+                    ).scalar
                     as double;
             try {
-              final invSliceA = inv<DTypeTag>(aSlice);
+              final invSliceA = inv<DTypeTag, DTypeTag>(aSlice);
               final normInvAVal =
-                  norm<DTypeTag>(invSliceA as NDArray<AnySpec>, ord: ord).scalar
+                  norm<DTypeTag, DTypeTag>(
+                        invSliceA as NDArray<AnySpec>,
+                        ord: ord,
+                      ).scalar
                       as double;
               invSliceA.dispose();
               val = normAVal * normInvAVal;

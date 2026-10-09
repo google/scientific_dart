@@ -46,10 +46,10 @@ import '../helpers.dart';
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> i0<R extends DTypeTag>(
+NDArray<R> i0<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -77,7 +77,7 @@ NDArray<R> i0<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        i0<R>(a, where: where, out: temp);
+        i0(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -92,7 +92,7 @@ NDArray<R> i0<R extends DTypeTag>(
       aDType == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      return i0<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+      return i0(promoted, where: where, out: out as NDArray<Float64>?)
           as NDArray<R>;
     } finally {
       if (!identical(promoted, a)) {
@@ -283,10 +283,10 @@ NDArray<R> i0<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> gamma<R extends DTypeTag>(
+NDArray<R> gamma<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -315,7 +315,7 @@ NDArray<R> gamma<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        gamma<R>(a, where: where, out: temp);
+        gamma(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -329,11 +329,7 @@ NDArray<R> gamma<R extends DTypeTag>(
       aDType == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      return gamma<Float64>(
-            promoted,
-            where: where,
-            out: out as NDArray<Float64>?,
-          )
+      return gamma(promoted, where: where, out: out as NDArray<Float64>?)
           as NDArray<R>;
     } finally {
       if (!identical(promoted, a)) {
@@ -482,10 +478,10 @@ NDArray<R> gamma<R extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<R> erf<R extends DTypeTag>(
+NDArray<R> erf<R extends DTypeTag, Out extends R>(
   NDArray<InexactOf<R>> a, {
   NDArray<DTypeTag>? where,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
@@ -514,7 +510,7 @@ NDArray<R> erf<R extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<R>.create(out.shape, out.dtype);
-        erf<R>(a, where: where, out: temp);
+        erf(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -528,7 +524,7 @@ NDArray<R> erf<R extends DTypeTag>(
       aDType == DType.bfloat16) {
     final promoted = promoteToDouble(a);
     try {
-      return erf<Float64>(promoted, where: where, out: out as NDArray<Float64>?)
+      return erf(promoted, where: where, out: out as NDArray<Float64>?)
           as NDArray<R>;
     } finally {
       if (!identical(promoted, a)) {

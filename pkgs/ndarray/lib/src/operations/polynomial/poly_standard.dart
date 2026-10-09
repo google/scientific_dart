@@ -82,11 +82,11 @@ void _copyInto<R extends DTypeTag>(NDArray src, NDArray<R> out) {
 /// - It is an error if [out] shape or dtype is incompatible with [x].
 ///
 /// Reference: [NumPy polyval](https://numpy.org/doc/stable/reference/generated/numpy.polyval.html)
-NDArray<R> polyval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
-  NDArray<T> c,
-  NDArray<T> x, {
-  NDArray<R>? out,
-}) {
+NDArray<R> polyval<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> c, NDArray<T> x, {NDArray<Out>? out}) {
   if (c.isDisposed || x.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute polyval() on a disposed array.");
   }
@@ -314,13 +314,14 @@ NDArray<R> polyval<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
 /// - It is an error if [out] shape or dtype is incompatible.
 ///
 /// Reference: [NumPy polyfit](https://numpy.org/doc/stable/reference/generated/numpy.polyfit.html)
-NDArray<R> polyfit<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
+NDArray<R>
+polyfit<T extends SelfOf<InexactOf<R>>, R extends DTypeTag, Out extends R>(
   NDArray<T> x,
   NDArray<T> y,
   int deg, {
   NDArray<T>? w,
   double? rcond,
-  NDArray<R>? out,
+  NDArray<Out>? out,
 }) {
   if (x.isDisposed ||
       y.isDisposed ||
@@ -828,9 +829,9 @@ NDArray<R> polyfit<T extends SelfOf<InexactOf<R>>, R extends DTypeTag>(
 /// - It is an error if [p] is not 1-dimensional.
 ///
 /// Reference: [NumPy roots](https://numpy.org/doc/stable/reference/generated/numpy.roots.html)
-NDArray<C> roots<C extends DTypeTag>(
+NDArray<C> roots<C extends DTypeTag, Out extends C>(
   NDArray<ComplexOf<C>> p, {
-  NDArray<C>? out,
+  NDArray<Out>? out,
 }) {
   if (p.isDisposed || (out != null && out.isDisposed)) {
     throw StateError("Cannot execute roots() on a disposed array.");
@@ -876,7 +877,7 @@ NDArray<C> roots<C extends DTypeTag>(
         );
       }
       if (!out.isContiguous || sharesMemory(p, out)) {
-        final temp = roots<C>(p);
+        final temp = roots<C, C>(p);
         _copyInto(temp, out);
         return out;
       }

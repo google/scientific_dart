@@ -856,7 +856,10 @@ NDArray<T> hstack<T extends SelfOf<DTypeTag>>(
 ///
 /// **Example:**
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<T> copy<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
+NDArray<T> copy<T extends DTypeTag, Out extends T>(
+  NDArray<T> a, {
+  NDArray<Out>? out,
+}) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute copy() on a disposed array.');
   }
@@ -873,10 +876,10 @@ NDArray<T> copy<T extends DTypeTag>(NDArray<T> a, {NDArray<T>? out}) {
 /// {@example /example/diag_example.dart lang=dart}
 ///
 /// Reference: [Diagonal Matrix](https://en.wikipedia.org/wiki/Diagonal_matrix)
-NDArray<T> diag<T extends DTypeTag>(
+NDArray<T> diag<T extends DTypeTag, Out extends T>(
   NDArray<T> v, {
   int k = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (v.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute diag() on a disposed array.');
@@ -1012,10 +1015,10 @@ NDArray<T> diag<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/triangular_example.dart lang=dart}
-NDArray<T> tril<T extends DTypeTag>(
+NDArray<T> tril<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int k = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute tril() on a disposed array.');
@@ -1141,10 +1144,10 @@ NDArray<T> tril<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/triangular_example.dart lang=dart}
-NDArray<T> triu<T extends DTypeTag>(
+NDArray<T> triu<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int k = 0,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute triu() on a disposed array.');
@@ -1271,11 +1274,11 @@ NDArray<T> triu<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<T> diff<T extends DTypeTag>(
+NDArray<T> diff<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   int n = 1,
   int axis = -1,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute diff() on a disposed array.');
@@ -1548,11 +1551,11 @@ NDArray<T> diff<T extends DTypeTag>(
 /// Refer to [NumPy roll documentation](https://numpy.org/doc/stable/reference/generated/numpy.roll.html).
 ///
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<T> roll<T extends DTypeTag>(
+NDArray<T> roll<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   Object shift, {
   Object? axis,
-  NDArray<T>? out,
+  NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
     throw StateError('Cannot execute roll() on a disposed array.');
@@ -1662,7 +1665,7 @@ NDArray<T> roll<T extends DTypeTag>(
   }
 
   if (out != null && sharesMemory(a, out)) {
-    final temp = roll<T>(a, shift, axis: axis);
+    final temp = roll(a, shift, axis: axis);
     try {
       temp.copy(out: out);
       return out;
