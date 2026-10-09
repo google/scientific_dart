@@ -1870,19 +1870,19 @@ void main() {
         expect(div1.getCell([0]), Complex(1.0, 0.0));
 
         // 2. Complex / double
-        expect(() => divide<AnySpec, DTypeTag>(c, d), throwsArgumentError);
+        expect(() => divide(c.asAnySpec, d.asAnySpec), throwsArgumentError);
         final div2 = divide(c, dC);
         expect(div2.dtype, DType.complex128);
         expect(div2.getCell([0]), Complex(2.5, 2.5));
 
         // 3. Complex / int
-        expect(() => divide<AnySpec, DTypeTag>(c, i), throwsArgumentError);
+        expect(() => divide(c.asAnySpec, i.asAnySpec), throwsArgumentError);
         final div3 = divide(c, iC);
         expect(div3.dtype, DType.complex128);
         expect(div3.getCell([0]), Complex(5.0, 5.0));
 
         // 4. double / Complex
-        expect(() => divide<AnySpec, DTypeTag>(d, c), throwsArgumentError);
+        expect(() => divide(d.asAnySpec, c.asAnySpec), throwsArgumentError);
         final div4 = divide(dC, c);
         expect(div4.dtype, DType.complex128);
         expect(
@@ -1891,7 +1891,7 @@ void main() {
         ); // 4 / (10+10i) = 0.2 - 0.2i
 
         // 5. int / Complex
-        expect(() => divide<AnySpec, DTypeTag>(i, c), throwsArgumentError);
+        expect(() => divide(i.asAnySpec, c.asAnySpec), throwsArgumentError);
         final div5 = divide(iC, c);
         expect(
           div5.getCell([0]),
@@ -2090,7 +2090,10 @@ void main() {
             () => add(a.asAnySpec, b.asAnySpec, out: outBadDType.asAnySpec),
             throwsArgumentError,
           );
-          expect(() => sin(a, out: outBadDType), throwsArgumentError);
+          expect(
+            () => sin(a.asAnySpec, out: outBadDType.asAnySpec),
+            throwsArgumentError,
+          );
         });
       },
     );

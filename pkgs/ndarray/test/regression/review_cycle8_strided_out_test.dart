@@ -26,7 +26,7 @@ void main() {
           // Negative stride: flip(buf)
           final buf1 = NDArray<Float64>.zeros([3], DType.float64);
           final flippedOut = flip(buf1);
-          unique<Float64>(ar, out: flippedOut);
+          unique(ar, out: flippedOut);
           expect(flippedOut[0].scalar, closeTo(1.0, 1e-12));
           expect(flippedOut[1].scalar, closeTo(2.0, 1e-12));
           expect(flippedOut[2].scalar, closeTo(3.0, 1e-12));
@@ -40,7 +40,7 @@ void main() {
             6,
           ], DType.float64);
           final stridedOut = buf2.slice([Slice(step: 2)]);
-          unique<Float64>(ar, out: stridedOut);
+          unique(ar, out: stridedOut);
           expect(buf2[0].scalar, closeTo(1.0, 1e-12));
           expect(buf2[1].scalar, closeTo(-99.0, 1e-12));
           expect(buf2[2].scalar, closeTo(2.0, 1e-12));
@@ -60,16 +60,12 @@ void main() {
 
           // intersect1d -> [2, 3]
           final bufInter = NDArray.zeros([2], DType.int64);
-          intersect1d<DTypeTag>(a, b, out: flip(bufInter));
+          intersect1d(a, b, out: flip(bufInter));
           expect(bufInter[0].scalar, equals(3));
           expect(bufInter[1].scalar, equals(2));
 
           final bufInterStep = NDArray.zeros([4], DType.int64);
-          intersect1d<DTypeTag>(
-            a,
-            b,
-            out: bufInterStep.slice([Slice(step: 2)]),
-          );
+          intersect1d(a, b, out: bufInterStep.slice([Slice(step: 2)]));
           expect(bufInterStep[0].scalar, equals(2));
           expect(bufInterStep[1].scalar, equals(0));
           expect(bufInterStep[2].scalar, equals(3));
@@ -77,22 +73,18 @@ void main() {
 
           // setdiff1d -> [1]
           final bufDiff = NDArray.zeros([2], DType.int64);
-          setdiff1d<DTypeTag>(
-            a,
-            b,
-            out: bufDiff.slice([Slice(start: 1, stop: 2)]),
-          );
+          setdiff1d(a, b, out: bufDiff.slice([Slice(start: 1, stop: 2)]));
           expect(bufDiff[0].scalar, equals(0));
           expect(bufDiff[1].scalar, equals(1));
 
           // setxor1d -> [1, 4]
           final bufXor = NDArray.zeros([2], DType.int64);
-          setxor1d<DTypeTag>(a, b, out: flip(bufXor));
+          setxor1d(a, b, out: flip(bufXor));
           expect(bufXor[0].scalar, equals(4));
           expect(bufXor[1].scalar, equals(1));
 
           final bufXorStep = NDArray.zeros([4], DType.int64);
-          setxor1d<DTypeTag>(a, b, out: bufXorStep.slice([Slice(step: 2)]));
+          setxor1d(a, b, out: bufXorStep.slice([Slice(step: 2)]));
           expect(bufXorStep[0].scalar, equals(1));
           expect(bufXorStep[1].scalar, equals(0));
           expect(bufXorStep[2].scalar, equals(4));
@@ -100,14 +92,14 @@ void main() {
 
           // union1d -> [1, 2, 3, 4]
           final bufUnion = NDArray.zeros([4], DType.int64);
-          union1d<DTypeTag>(a, b, out: flip(bufUnion));
+          union1d(a, b, out: flip(bufUnion));
           expect(bufUnion[0].scalar, equals(4));
           expect(bufUnion[1].scalar, equals(3));
           expect(bufUnion[2].scalar, equals(2));
           expect(bufUnion[3].scalar, equals(1));
 
           final bufUnionStep = NDArray.zeros([8], DType.int64);
-          union1d<DTypeTag>(a, b, out: bufUnionStep.slice([Slice(step: 2)]));
+          union1d(a, b, out: bufUnionStep.slice([Slice(step: 2)]));
           expect(bufUnionStep[0].scalar, equals(1));
           expect(bufUnionStep[2].scalar, equals(2));
           expect(bufUnionStep[4].scalar, equals(3));
@@ -165,14 +157,14 @@ void main() {
       NDArray.scope(() {
         // linspace
         final bufLin = NDArray<Float64>.zeros([4], DType.float64);
-        linspace<Float64>(0.0, 3.0, 4, dtype: DType.float64, out: flip(bufLin));
+        linspace(0.0, 3.0, 4, dtype: DType.float64, out: flip(bufLin));
         expect(bufLin[0].scalar, closeTo(3.0, 1e-12));
         expect(bufLin[1].scalar, closeTo(2.0, 1e-12));
         expect(bufLin[2].scalar, closeTo(1.0, 1e-12));
         expect(bufLin[3].scalar, closeTo(0.0, 1e-12));
 
         final bufLinStep = NDArray<Float64>.zeros([8], DType.float64);
-        linspace<Float64>(
+        linspace(
           0.0,
           3.0,
           4,
@@ -186,13 +178,13 @@ void main() {
 
         // logspace
         final bufLog = NDArray<Float64>.zeros([3], DType.float64);
-        logspace<Float64>(0.0, 2.0, 3, dtype: DType.float64, out: flip(bufLog));
+        logspace(0.0, 2.0, 3, dtype: DType.float64, out: flip(bufLog));
         expect(bufLog[0].scalar, closeTo(100.0, 1e-9));
         expect(bufLog[1].scalar, closeTo(10.0, 1e-9));
         expect(bufLog[2].scalar, closeTo(1.0, 1e-9));
 
         final bufLogStep = NDArray<Float64>.zeros([6], DType.float64);
-        logspace<Float64>(
+        logspace(
           0.0,
           2.0,
           3,
@@ -205,19 +197,13 @@ void main() {
 
         // geomspace
         final bufGeom = NDArray<Float64>.zeros([3], DType.float64);
-        geomspace<Float64>(
-          1.0,
-          100.0,
-          3,
-          dtype: DType.float64,
-          out: flip(bufGeom),
-        );
+        geomspace(1.0, 100.0, 3, dtype: DType.float64, out: flip(bufGeom));
         expect(bufGeom[0].scalar, closeTo(100.0, 1e-9));
         expect(bufGeom[1].scalar, closeTo(10.0, 1e-9));
         expect(bufGeom[2].scalar, closeTo(1.0, 1e-9));
 
         final bufGeomStep = NDArray<Float64>.zeros([6], DType.float64);
-        geomspace<Float64>(
+        geomspace(
           1.0,
           100.0,
           3,
@@ -319,11 +305,11 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          final expectedTrapz = trapz<Float64>(y, axis: 1);
+          final expectedTrapz = trapz(y, axis: 1);
           final outTrapzView = y
               .slice([Slice(), Slice(start: 0, stop: 1)])
               .reshape([2]);
-          trapz<Float64>(y, axis: 1, out: outTrapzView);
+          trapz(y, axis: 1, out: outTrapzView);
           expect(
             outTrapzView[0].scalar,
             closeTo(expectedTrapz[0].scalar, 1e-12),
@@ -338,8 +324,8 @@ void main() {
             [4],
             DType.float64,
           );
-          final expectedGrad = gradient<Float64>(f);
-          gradient<Float64>(f, out: f);
+          final expectedGrad = gradient(f);
+          gradient(f, out: f);
           for (var i = 0; i < 4; i++) {
             expect(f[i].scalar, closeTo(expectedGrad[i].scalar, 1e-12));
           }

@@ -55,22 +55,19 @@ void main() {
             keepdims: true,
           );
           final centered = subtract<Float64>(rawData, featureMeans);
-          expect(
-            max(abs<Float64>(mean(centered, axis: 0))).scalar,
-            lessThan(1e-12),
-          );
+          expect(max(abs(mean(centered, axis: 0))).scalar, lessThan(1e-12));
 
           // 2. Compute sample covariance matrix (4 x 4)
           final sampleCov = cov(centered.transposed);
           expect(sampleCov.shape, equals([nFeatures, nFeatures]));
 
           // 3. Eigendecomposition of symmetric covariance matrix (eigh returns ascending eigenvalues)
-          final eighRes = eigh<Float64, Float64>(sampleCov);
+          final eighRes = eigh(sampleCov);
           final eigValsDesc = flip(eighRes.eigenvalues);
           final eigVecsDesc = fliplr(eighRes.eigenvectors);
 
           // 4. Compare against SVD of centered data: s_i^2 / (N - 1) == lambda_i
-          final svdRes = svd<Float64, Float64>(centered);
+          final svdRes = svd(centered);
           final svdVariances = divide(
             square(svdRes.s),
             NDArray.scalar((nSamples - 1).toDouble(), dtype: DType.float64),
@@ -104,7 +101,7 @@ void main() {
           // Eckart-Young-Mirsky theorem: Frobenius norm squared of rank-2 residual
           // equals (N - 1) * (lambda_3 + lambda_4)
           final frobErrSq = square(
-            norm<Float64>(residual, ord: NormKind.frobenius),
+            norm(residual, ord: NormKind.frobenius),
           ).scalar;
           final tailVarSum =
               (nSamples - 1) * (eigValsDesc[[2]] + eigValsDesc[[3]]);
@@ -118,7 +115,7 @@ void main() {
         NDArray.scope(() {
           const fs = 256.0; // Sampling rate (Hz)
           const n = 256; // 1.0 second duration
-          final t = linspace<Float64>(
+          final t = linspace(
             0.0,
             1.0,
             n,
@@ -128,7 +125,7 @@ void main() {
 
           // Desired low-frequency signal: 8 Hz tone (amplitude 2.0)
           final desired = multiply<Float64>(
-            sin<Float64>(
+            sin(
               multiply<Float64>(
                 t,
                 NDArray.scalar(2.0 * math.pi * 8.0, dtype: DType.float64),
@@ -138,7 +135,7 @@ void main() {
           );
           // High-frequency interference: 72 Hz tone (amplitude 1.5)
           final interference = multiply<Float64>(
-            cos<Float64>(
+            cos(
               multiply<Float64>(
                 t,
                 NDArray.scalar(2.0 * math.pi * 72.0, dtype: DType.float64),
@@ -150,7 +147,7 @@ void main() {
 
           // 1. Verify raw spectrum via RFFT and rfftfreq
           final freqs = rfftfreq(n, d: 1.0 / fs);
-          final rawMag = abs<Float64>(rfft<Complex128>(composite));
+          final rawMag = abs(rfft(composite));
           // Peak at 8 Hz (bin 8) and 72 Hz (bin 72)
           expect(argmax(rawMag).scalar, equals(8));
           expect(freqs[[8]], closeTo(8.0, 1e-12));
@@ -160,7 +157,7 @@ void main() {
           const taps = 33;
           const half = (taps - 1) ~/ 2; // 16
           const fcNorm = 24.0 / (fs / 2.0); // Normalized to Nyquist = 0.1875
-          final nIdx = linspace<Float64>(
+          final nIdx = linspace(
             -half.toDouble(),
             half.toDouble(),
             taps,
@@ -168,7 +165,7 @@ void main() {
           );
           // Ideal low-pass impulse response: fcNorm * sinc(fcNorm * n)
           final idealLp = multiply<Float64>(
-            sinc<Float64>(
+            sinc(
               multiply<Float64>(
                 nIdx,
                 NDArray.scalar(fcNorm, dtype: DType.float64),
@@ -220,12 +217,7 @@ void main() {
         // Exact analytical solution: u(x) = sin(pi * x)
         const nInterior = 31;
         const h = 1.0 / (nInterior + 1);
-        final xInt = linspace<Float64>(
-          h,
-          1.0 - h,
-          nInterior,
-          dtype: DType.float64,
-        );
+        final xInt = linspace(h, 1.0 - h, nInterior, dtype: DType.float64);
 
         // Build tridiagonal second-difference matrix A = (1/h^2) * tridiag(-1, 2, -1)
         final mainDiag = diag(
@@ -241,7 +233,7 @@ void main() {
         );
 
         final rhs = multiply<Float64>(
-          sin<Float64>(
+          sin(
             multiply<Float64>(
               xInt,
               NDArray.scalar(math.pi, dtype: DType.float64),
@@ -250,7 +242,7 @@ void main() {
           NDArray.scalar(math.pi * math.pi, dtype: DType.float64),
         );
         final uNum = solve(laplacian, rhs);
-        final uExact = sin<Float64>(
+        final uExact = sin(
           multiply<Float64>(
             xInt,
             NDArray.scalar(math.pi, dtype: DType.float64),
@@ -258,9 +250,7 @@ void main() {
         );
 
         // Second-order O(h^2) convergence check: max error < 1e-3 for h = 1/32
-        final maxBvpErr = max(
-          abs<Float64>(subtract<Float64>(uNum, uExact)),
-        ).scalar;
+        final maxBvpErr = max(abs(subtract<Float64>(uNum, uExact))).scalar;
         expect(maxBvpErr, lessThan(1e-3));
 
         // Part B: 1D Periodic Heat Equation u_t = alpha * u_xx solved via Spectral FFT
@@ -269,7 +259,7 @@ void main() {
         const dx = 2.0 * math.pi / nGrid;
         const alpha = 0.5;
         const tFinal = 0.8;
-        final xGrid = linspace<Float64>(
+        final xGrid = linspace(
           0.0,
           2.0 * math.pi,
           nGrid,
@@ -278,28 +268,23 @@ void main() {
         );
         final u0 = add<Float64>(
           NDArray.scalar(1.0, dtype: DType.float64),
-          cos<Float64>(xGrid),
+          cos(xGrid),
         );
 
         final kFreq = fftfreq(nGrid, d: dx / (2.0 * math.pi));
-        final decay = exp<Float64>(
+        final decay = exp(
           multiply<Float64>(
             square(kFreq),
             NDArray.scalar(-alpha * tFinal, dtype: DType.float64),
           ),
         );
         final uFinal = real(
-          ifft<Complex128>(
-            multiply<Complex128>(
-              fft<Complex128>(u0),
-              decay.astype(DType.complex128),
-            ),
-          ),
+          ifft(multiply<Complex128>(fft(u0), decay.astype(DType.complex128))),
         );
         final uFinalExact = add<Float64>(
           NDArray.scalar(1.0, dtype: DType.float64),
           multiply<Float64>(
-            cos<Float64>(xGrid),
+            cos(xGrid),
             NDArray.scalar(math.exp(-alpha * tFinal), dtype: DType.float64),
           ),
         );
@@ -314,7 +299,7 @@ void main() {
       () {
         NDArray.scope(() {
           // Sample y(x) = 1.0 + 2.0*x - 0.5*x^2 + 0.25*x^3 on [-2, 2]
-          final x = linspace<Float64>(-2.0, 2.0, 41, dtype: DType.float64);
+          final x = linspace(-2.0, 2.0, 41, dtype: DType.float64);
           final trueCoeffsDesc = NDArray.fromList(
             [0.25, -0.5, 2.0, 1.0],
             [4],
@@ -362,7 +347,7 @@ void main() {
                 pIntCoeffs,
                 NDArray.fromList([-2.0], [1], DType.float64),
               )[[0]];
-          final numIntegral = trapz<Float64>(
+          final numIntegral = trapz(
             y,
             spacing: const Spacing.step(4.0 / 40.0),
           ).scalar;
@@ -455,25 +440,15 @@ void main() {
         NDArray.scope(() {
           const rows = 16;
           const cols = 16;
-          final xAxis = linspace<Float64>(
-            -1.0,
-            1.0,
-            cols,
-            dtype: DType.float64,
-          );
-          final yAxis = linspace<Float64>(
-            -1.0,
-            1.0,
-            rows,
-            dtype: DType.float64,
-          );
+          final xAxis = linspace(-1.0, 1.0, cols, dtype: DType.float64);
+          final yAxis = linspace(-1.0, 1.0, rows, dtype: DType.float64);
           final X = broadcastTo(xAxis.reshape([1, cols]), [rows, cols]);
           final Y = broadcastTo(yAxis.reshape([rows, 1]), [rows, cols]);
 
           // 1. Construct separable rank-2 spatial field: F(x, y) = exp(-x^2)*cos(pi*y) + 0.5*sin(pi*x)*exp(-2*y^2)
           final term1 = multiply<Float64>(
-            exp<Float64>(negative(square(X))),
-            cos<Float64>(
+            exp(negative(square(X))),
+            cos(
               multiply<Float64>(
                 Y,
                 NDArray.scalar(math.pi, dtype: DType.float64),
@@ -482,13 +457,13 @@ void main() {
           );
           final term2 = multiply<Float64>(
             multiply<Float64>(
-              sin<Float64>(
+              sin(
                 multiply<Float64>(
                   X,
                   NDArray.scalar(math.pi, dtype: DType.float64),
                 ),
               ),
-              exp<Float64>(
+              exp(
                 multiply<Float64>(
                   square(Y),
                   NDArray.scalar(-2.0, dtype: DType.float64),
@@ -500,7 +475,7 @@ void main() {
           final field = add<Float64>(term1, term2);
 
           // 2. SVD rank-2 compression recovers a rank-2 separable sum to machine precision!
-          final svdRes = svd<Float64, Float64>(field);
+          final svdRes = svd(field);
           expect(svdRes.s[[0]], greaterThan(1.0));
           expect(svdRes.s[[1]], greaterThan(0.5));
           expect(svdRes.s[[2]], lessThan(1e-12));
@@ -518,7 +493,7 @@ void main() {
           expect(allClose(rank2Recon, field, atol: 1e-11), isTrue);
 
           // 3. Compute 2D spatial gradient and gradient magnitude ||∇F|| = hypot(dF/dy, dF/dx)
-          final grads = gradientArray<Float64>(field);
+          final grads = gradientArray(field);
           final gradMag = hypot(grads[0], grads[1]);
           expect(gradMag.shape, equals([rows, cols]));
           expect(min(gradMag).scalar, greaterThanOrEqualTo(0.0));
@@ -527,7 +502,7 @@ void main() {
           const shiftRow = 3;
           const shiftCol = 5;
           // Create unique asymmetric pulse image to register
-          final pulse = exp<Float64>(
+          final pulse = exp(
             negative(
               add<Float64>(
                 multiply<Float64>(
@@ -555,10 +530,10 @@ void main() {
           );
 
           // Cross-power spectrum: R = F(shifted) * conj(F(ref))
-          final fRef = fft2<Complex128>(pulse);
-          final fShift = fft2<Complex128>(shiftedPulse);
+          final fRef = fft2(pulse);
+          final fShift = fft2(shiftedPulse);
           final crossCorr = real(
-            ifft2<Complex128>(multiply<Complex128>(fShift, conj(fRef))),
+            ifft2(multiply<Complex128>(fShift, conj(fRef))),
           );
           final peakFlatIdx = argmax(crossCorr);
           final peakCoords = unravel_index(peakFlatIdx, [rows, cols]);

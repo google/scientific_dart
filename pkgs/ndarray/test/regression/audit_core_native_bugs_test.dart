@@ -695,10 +695,10 @@ void main() {
           final b = NDArray.fromList([2, 3, 4], [3], DType.int16);
           final equalA = NDArray.fromList([1, 2, 3], [3], DType.int8);
           try {
-            final inter = intersect1d<DTypeTag>(a, b);
-            final uni = union1d<DTypeTag>(a, b);
-            final diff = setdiff1d<DTypeTag>(a, b);
-            final xor = setxor1d<DTypeTag>(a, b);
+            final inter = intersect1d(a.asAnySpec, b.asAnySpec);
+            final uni = union1d(a.asAnySpec, b.asAnySpec);
+            final diff = setdiff1d(a.asAnySpec, b.asAnySpec);
+            final xor = setxor1d(a.asAnySpec, b.asAnySpec);
             final inMask = isin<DTypeTag>(a, b);
             final sameInter = intersect1d(a, equalA);
             try {

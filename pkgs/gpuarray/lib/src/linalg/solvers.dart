@@ -161,10 +161,10 @@ void _requireSquare2d(GpuArray a, String functionName) {
 ///
 /// The [a] tensor must be a square 2-D matrix, and [b] must be a 1-D or 2-D
 /// array on the same [GpuDevice] with `b.shape[0] == a.shape[0]`.
-GpuArray<M> solve<M extends DTypeTag>(
+GpuArray<M> solve<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> a,
   GpuArray<DTypeTag> b, {
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'solve');
   if (b.isDisposed) {
@@ -247,9 +247,9 @@ GpuArray<M> solve<M extends DTypeTag>(
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[N, N]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> inv<M extends DTypeTag>(
+GpuArray<M> inv<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> a, {
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'inv');
   final n = a.shape[0];
@@ -310,10 +310,10 @@ GpuArray<M> inv<M extends DTypeTag>(
 ///
 /// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
 /// shape `[N, M]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> pinv<M extends DTypeTag>(
+GpuArray<M> pinv<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> a, {
   double? rcond,
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _require2d(a, 'pinv');
   final m = a.shape[0];
@@ -397,14 +397,17 @@ lstsq<
   C extends DTypeTag,
   M extends DTypeTag,
   S extends DTypeTag,
-  D extends DTypeTag
+  D extends DTypeTag,
+  OutSolution extends M,
+  OutResiduals extends F,
+  OutSingularValues extends F
 >(
   GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a,
   GpuArray<DTypeTag> b, {
   double? rcond,
-  GpuArray<M>? outSolution,
-  GpuArray<F>? outResiduals,
-  GpuArray<F>? outSingularValues,
+  GpuArray<OutSolution>? outSolution,
+  GpuArray<OutResiduals>? outResiduals,
+  GpuArray<OutSingularValues>? outSingularValues,
 }) {
   _require2d(a, 'lstsq');
   if (b.isDisposed) {
@@ -580,9 +583,9 @@ lstsq<
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> det<M extends DTypeTag>(
+GpuArray<M> det<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> a, {
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'det');
   final n = a.shape[0];
@@ -636,11 +639,13 @@ GpuArray<M> det<M extends DTypeTag>(
   C extends DTypeTag,
   M extends DTypeTag,
   S extends DTypeTag,
-  D extends DTypeTag
+  D extends DTypeTag,
+  OutSign extends M,
+  OutLogAbsDet extends F
 >(
   GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
-  GpuArray<M>? outSign,
-  GpuArray<F>? outLogAbsDet,
+  GpuArray<OutSign>? outSign,
+  GpuArray<OutLogAbsDet>? outLogAbsDet,
 }) {
   _requireSquare2d(a, 'slogdet');
   final n = a.shape[0];
@@ -720,10 +725,10 @@ GpuArray<M> det<M extends DTypeTag>(
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// match `a.shape`, `a.dtype`, and `a.device`.
-GpuArray<T> matrixPower<T extends DTypeTag>(
+GpuArray<T> matrixPower<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   int n, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'matrixPower');
   validateLinalgOut(out, a.device, a.shape, a.dtype);
@@ -933,12 +938,12 @@ double _vectorNormP(NormOrd? ord) {
 ///
 /// The [a] tensor must not be disposed. If [out] is provided, it must match the
 /// output shape, float dtype, and `a.device`.
-GpuArray<F> norm<F extends DTypeTag>(
+GpuArray<F> norm<F extends DTypeTag, Out extends F>(
   GpuArray<RealFloatOf<F>> a, {
   NormOrd? ord,
   Object? axis,
   bool keepdims = false,
-  GpuArray<F>? out,
+  GpuArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute norm of a disposed GpuArray.');
@@ -1136,11 +1141,11 @@ GpuArray<F> norm<F extends DTypeTag>(
 ///
 /// The [a] tensor must be a non-empty 2-D matrix. If [out] is provided, it must
 /// have shape `[]`, matching float dtype, and reside on `a.device`.
-GpuArray<F> cond<F extends DTypeTag>(
+GpuArray<F> cond<F extends DTypeTag, Out extends F>(
   GpuArray<RealFloatOf<F>> a, {
   NormOrd? p,
   NormOrd? ord,
-  GpuArray<F>? out,
+  GpuArray<Out>? out,
 }) {
   _require2d(a, 'cond');
   final m = a.shape[0];

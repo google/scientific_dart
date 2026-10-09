@@ -2617,13 +2617,9 @@ void main() {
         ).readAsStringSync();
         expect(
           setOpsContent,
-          matches(RegExp(r'NDArray<T>\s+unique<T\s+extends\s+DTypeTag>')),
-        );
-        expect(
-          setOpsContent,
           matches(
             RegExp(
-              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+index\}\)\s+uniqueWithIndex<T\s+extends\s+DTypeTag>',
+              r'NDArray<T>\s+unique<T\s+extends\s+DTypeTag,\s*Out\s+extends\s+T>',
             ),
           ),
         );
@@ -2631,7 +2627,7 @@ void main() {
           setOpsContent,
           matches(
             RegExp(
-              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+inverse\}\)\s+uniqueWithInverse<T\s+extends\s+DTypeTag>',
+              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+index\}\)\s+uniqueWithIndex<\s*T\s+extends\s+DTypeTag,\s*Out\s+extends\s+T\s*>',
             ),
           ),
         );
@@ -2639,7 +2635,7 @@ void main() {
           setOpsContent,
           matches(
             RegExp(
-              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+counts\}\)\s+uniqueWithCounts<T\s+extends\s+DTypeTag>',
+              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+inverse\}\)\s+uniqueWithInverse<\s*T\s+extends\s+DTypeTag,\s*Out\s+extends\s+T\s*>',
             ),
           ),
         );
@@ -2647,7 +2643,15 @@ void main() {
           setOpsContent,
           matches(
             RegExp(
-              r'\(\{\s*NDArray<T>\s+values,\s*NDArray<Int64>\s+index,\s*NDArray<Int64>\s+inverse,\s*NDArray<Int64>\s+counts,?\s*\}\)\s+uniqueAll<T\s+extends\s+DTypeTag>',
+              r'\(\{NDArray<T>\s+values,\s*NDArray<Int64>\s+counts\}\)\s+uniqueWithCounts<\s*T\s+extends\s+DTypeTag,\s*Out\s+extends\s+T\s*>',
+            ),
+          ),
+        );
+        expect(
+          setOpsContent,
+          matches(
+            RegExp(
+              r'\(\{\s*NDArray<T>\s+values,\s*NDArray<Int64>\s+index,\s*NDArray<Int64>\s+inverse,\s*NDArray<Int64>\s+counts,?\s*\}\)\s+uniqueAll<T\s+extends\s+DTypeTag,\s*Out\s+extends\s+T>',
             ),
           ),
         );

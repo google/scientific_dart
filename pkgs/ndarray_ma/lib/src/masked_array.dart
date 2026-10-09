@@ -493,7 +493,7 @@ final class MaskedArray<T extends DTypeTag> {
   MaskedArray<T> operator %(Object? other) => _maRemainder<T>(this, other);
 
   /// Element-wise negation (`-this`), preserving the mask.
-  MaskedArray<T> operator -() => mapUnary((d) => ndops.negative<T>(d));
+  MaskedArray<T> operator -() => mapUnary((d) => ndops.negative(d));
 
   // ==========================================
   // Comparisons

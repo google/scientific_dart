@@ -291,31 +291,38 @@ void main() {
         final badOutShape = NDArray.zeros([4], DType.float64);
         final badOutDType = NDArray.zeros([3], DType.float32);
 
-        // Incompatible shape/dtype out errors
+        // Incompatible shape/dtype out errors. The dtype mismatch is a
+        // compile-time error with statically typed arrays, so both sides are
+        // widened to `AnySpec` to exercise the run-time validation.
+        final aAny = a.asAnySpec;
+        final badOutDTypeAny = badOutDType.asAnySpec;
         expect(() => sqrt(a, out: badOutShape), throwsArgumentError);
-        expect(() => sqrt(a, out: badOutDType), throwsArgumentError);
+        expect(() => sqrt(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => expm1(a, out: badOutShape), throwsArgumentError);
-        expect(() => expm1(a, out: badOutDType), throwsArgumentError);
+        expect(() => expm1(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => log1p(a, out: badOutShape), throwsArgumentError);
-        expect(() => log1p(a, out: badOutDType), throwsArgumentError);
+        expect(() => log1p(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => rint(a, out: badOutShape), throwsArgumentError);
-        expect(() => rint(a, out: badOutDType), throwsArgumentError);
+        expect(() => rint(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => trunc(a, out: badOutShape), throwsArgumentError);
-        expect(() => trunc(a, out: badOutDType), throwsArgumentError);
+        expect(() => trunc(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => square(a, out: badOutShape), throwsArgumentError);
-        expect(() => square(a, out: badOutDType), throwsArgumentError);
+        expect(() => square(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => reciprocal(a, out: badOutShape), throwsArgumentError);
-        expect(() => reciprocal(a, out: badOutDType), throwsArgumentError);
+        expect(
+          () => reciprocal(aAny, out: badOutDTypeAny),
+          throwsArgumentError,
+        );
         expect(() => positive(a, out: badOutShape), throwsArgumentError);
-        expect(() => positive(a, out: badOutDType), throwsArgumentError);
+        expect(() => positive(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => negative(a, out: badOutShape), throwsArgumentError);
-        expect(() => negative(a, out: badOutDType), throwsArgumentError);
+        expect(() => negative(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => abs(a, out: badOutShape), throwsArgumentError);
-        expect(() => abs(a, out: badOutDType), throwsArgumentError);
+        expect(() => abs(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => sign(a, out: badOutShape), throwsArgumentError);
-        expect(() => sign(a, out: badOutDType), throwsArgumentError);
+        expect(() => sign(aAny, out: badOutDTypeAny), throwsArgumentError);
         expect(() => conj(a, out: badOutShape), throwsArgumentError);
-        expect(() => conj(a, out: badOutDType), throwsArgumentError);
+        expect(() => conj(aAny, out: badOutDTypeAny), throwsArgumentError);
 
         // Disposed array errors
         final dispArr = NDArray.fromList([1.0, 2.0], [2], DType.float64);

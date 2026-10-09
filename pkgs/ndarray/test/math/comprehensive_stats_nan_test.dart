@@ -810,7 +810,7 @@ void main() {
               [3],
               DType.complex128,
             );
-            final m = nanmean<DTypeTag>(c);
+            final m = nanmean(c);
             expect(m.dtype, DType.complex128);
             expect(m.scalar.real, closeTo(2.0, 1e-9));
             expect(m.scalar.imag, closeTo(4.0, 1e-9));
@@ -826,7 +826,7 @@ void main() {
             );
             final strided = a.slice([Slice(start: 0, stop: 6, step: 2)]);
             final out = NDArray<Float64>.zeros([], DType.float64);
-            final res = nanmean<Float64>(strided, out: out);
+            final res = nanmean(strided, out: out);
             expect(identical(res, out), true);
             expect(out.scalar, 3.0);
           });

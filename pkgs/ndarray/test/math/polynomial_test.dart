@@ -45,7 +45,7 @@ void main() {
 
           final cF64 = NDArray.fromList([5.0], [1], DType.float64);
           expect(
-            () => polyval<AnySpec, DTypeTag>(cF64, x),
+            () => polyval(cF64.asAnySpec, x.asAnySpec),
             throwsArgumentError,
           );
         });

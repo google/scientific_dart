@@ -22,7 +22,7 @@ void main() async {
     'NDArray Padding, Rotations, Rolling & Splitting Benchmark Suite',
     (c) {
       const dim = 500;
-      final mat = linspace<DTypeTag>(
+      final mat = linspace(
         0.0,
         100.0,
         dim * dim,
@@ -69,7 +69,7 @@ void main() async {
 
       c.group('3. Array Splitting & Chunking', () {
         const largeRows = 1000;
-        final largeMat = linspace<DTypeTag>(
+        final largeMat = linspace(
           0.0,
           100.0,
           largeRows * dim,

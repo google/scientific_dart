@@ -57,7 +57,7 @@ void main() {
     _printMatrix(m);
 
     // Verify columns sum to 1.
-    final colSums = sum<Float64>(m, axis: 0);
+    final colSums = sum(m, axis: 0);
     print('\nVerify columns sum to 1: ${colSums.toList()}');
     colSums.dispose();
 
@@ -98,8 +98,8 @@ void main() {
         final rawNext = add<Float64>(damped, teleportArr);
 
         // Normalize using L1 norm (sum) to handle potential numerical drift
-        final s = sum<Float64>(rawNext);
-        final normalized = divide<Float64, Float64>(rawNext, s);
+        final s = sum(rawNext);
+        final normalized = divide(rawNext, s);
 
         // We must detach the result from the scope so it survives when the scope exits.
         return normalized.detachFromScope();
@@ -129,7 +129,7 @@ void main() {
       print('Node $i: ${v[[i]].toStringAsFixed(6)}');
     }
 
-    final finalSum = sum<Float64>(v).scalar;
+    final finalSum = sum(v).scalar;
     print('\nSum of final PageRank vector: $finalSum');
 
     // Clean up manually managed arrays

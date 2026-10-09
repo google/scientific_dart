@@ -625,13 +625,19 @@ void main() {
         expect(() => gradient(a, out: outGradWrongShape), throwsArgumentError);
 
         final outGradWrongDtype = NDArray.zeros([8], DType.float32);
-        expect(() => gradient(a, out: outGradWrongDtype), throwsArgumentError);
+        expect(
+          () => gradient(a.asAnySpec, out: outGradWrongDtype.asAnySpec),
+          throwsArgumentError,
+        );
 
         final outDiffWrongShape = NDArray.zeros([8], DType.float64);
         expect(() => diff(a, out: outDiffWrongShape), throwsArgumentError);
 
         final outDiffWrongDtype = NDArray.zeros([7], DType.float32);
-        expect(() => diff(a, out: outDiffWrongDtype), throwsArgumentError);
+        expect(
+          () => diff(a.asAnySpec, out: outDiffWrongDtype.asAnySpec),
+          throwsArgumentError,
+        );
       }),
     );
 

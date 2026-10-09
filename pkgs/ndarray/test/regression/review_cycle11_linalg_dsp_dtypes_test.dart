@@ -82,7 +82,7 @@ void main() {
         test('eigh and eigvalsh promote to float64 on symmetric matrix', () {
           NDArray.scope(() {
             final a = NDArray.fromList([2.0, 1.0, 1.0, 2.0], [2, 2], dtype);
-            final res = eigh<DTypeTag, DTypeTag>(a);
+            final res = eigh(a);
             expect(res.eigenvalues.dtype, equals(DType.float64));
             expect(res.eigenvectors.dtype, equals(DType.float64));
             expect(res.eigenvalues.getCell([0]), closeTo(1.0, 1e-2));

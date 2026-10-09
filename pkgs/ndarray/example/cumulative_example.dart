@@ -53,7 +53,7 @@ void main() {
     _printMatrix(cpCol);
 
     // 4. In-place recycler buffer reuse
-    final recycler = NDArray<DTypeTag>.zeros([2, 3], DType.float64);
+    final recycler = NDArray<Float64>.zeros([2, 3], DType.float64);
     final recycled = cumsum(mat, axis: 0, out: recycler);
     print(
       '\nRecycled buffer (identical check): ${identical(recycled, recycler) ? "PASS" : "FAIL"}',

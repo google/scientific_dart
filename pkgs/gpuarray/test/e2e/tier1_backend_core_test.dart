@@ -798,12 +798,12 @@ void main() {
               [4],
               DType.float32,
             );
-            final ints = floats.astype<Int32>(DType.int32);
+            final ints = floats.astype(DType.int32);
             expect(ints.dtype, equals(DType.int32));
             expect(ints.toList(), equals(<int>[0, 1, -2, 4]));
 
             final outBool = GpuArray.empty([4], DType.boolean);
-            final bools = ints.astype<Boolean>(DType.boolean, out: outBool);
+            final bools = ints.astype(DType.boolean, out: outBool);
             expect(identical(bools, outBool), isTrue);
             expect(bools.toList(), equals(<bool>[false, true, true, true]));
           });

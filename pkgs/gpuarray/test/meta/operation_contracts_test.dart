@@ -321,7 +321,7 @@ void main() {
               reason: 'indexing where transposed',
             );
             _expectMatchNDArray(
-              take<Float64>(gpuX, gpuIdx, axis: 1),
+              take(gpuX, gpuIdx, axis: 1),
               ndTake,
               reason: 'indexing take axis 1',
             );
@@ -355,17 +355,17 @@ void main() {
                 reason: 'manipulation concatenate transposed',
               );
               _expectMatchNDArray(
-                tile<Float64>(gpuX, [2, 2]),
+                tile(gpuX, [2, 2]),
                 ndTile,
                 reason: 'manipulation tile',
               );
               _expectMatchNDArray(
-                repeat<Float64>(gpuX, 2, axis: 1),
+                repeat(gpuX, 2, axis: 1),
                 ndRep,
                 reason: 'manipulation repeat',
               );
               _expectMatchNDArray(
-                roll<Float64>(gpuX, 1, axis: 1),
+                roll(gpuX, 1, axis: 1),
                 ndRoll,
                 reason: 'manipulation roll',
               );
@@ -1578,7 +1578,7 @@ void main() {
                 contiguousCopy,
                 contiguousCopy,
               );
-              innerTileAlloc = tile<Float64>(contiguousCopy, [1, 2]);
+              innerTileAlloc = tile(contiguousCopy, [1, 2]);
               innerInvAlloc = gpu_linalg.inv(contiguousCopy);
               innerFftAlloc = gpu_fft.fft(contiguousCopy);
 
@@ -1600,10 +1600,7 @@ void main() {
                 isTrue,
               );
               expect(
-                identical(
-                  tile<Float64>(stridedView, [1, 2], out: outTile),
-                  outTile,
-                ),
+                identical(tile(stridedView, [1, 2], out: outTile), outTile),
                 isTrue,
               );
               expect(
@@ -1687,7 +1684,7 @@ void main() {
               reason: 'indexing shape mismatch',
             );
             _expectArgumentErrorMust(
-              () => tile<Float64>(contiguousCopy, [1, 2], out: wrongShapeF64),
+              () => tile(contiguousCopy, [1, 2], out: wrongShapeF64),
               reason: 'manipulation shape mismatch',
             );
             _expectArgumentErrorMust(
@@ -1721,7 +1718,7 @@ void main() {
               reason: 'indexing device mismatch',
             );
             _expectArgumentErrorMust(
-              () => tile<Float64>(contiguousCopy, [1, 1], out: wrongDeviceF64),
+              () => tile(contiguousCopy, [1, 1], out: wrongDeviceF64),
               reason: 'manipulation device mismatch',
             );
             _expectArgumentErrorMust(
@@ -1763,9 +1760,9 @@ void main() {
               ),
               throwsStateError,
             );
-            expect(() => tile<Float64>(disposedF64, [1, 2]), throwsStateError);
+            expect(() => tile(disposedF64, [1, 2]), throwsStateError);
             expect(
-              () => tile<Float64>(contiguousCopy, [1, 1], out: disposedF64),
+              () => tile(contiguousCopy, [1, 1], out: disposedF64),
               throwsStateError,
             );
             expect(() => gpu_linalg.inv(disposedF64), throwsStateError);

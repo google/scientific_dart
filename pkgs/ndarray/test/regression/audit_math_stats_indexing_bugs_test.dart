@@ -624,7 +624,7 @@ void main() {
     test(
       'linspaceWithStep and linspaceGridWithStep with numSamples == 0 on integer dtype do not crash',
       () {
-        final res = linspaceWithStep<DTypeTag>(0, 10, 0, dtype: DType.int64);
+        final res = linspaceWithStep(0, 10, 0, dtype: DType.int64);
         expect(res.samples.shape, equals([0]));
         expect(res.step, equals(0));
         res.samples.dispose();

@@ -19,7 +19,7 @@ import 'package:notebook/src/kernel_helper.dart';
 
 void main() {
   test('Plot renders valid SVG markup', () {
-    final x = linspace<Float64>((0.0), (10.0), 10, dtype: DType.float64);
+    final x = linspace((0.0), (10.0), 10, dtype: DType.float64);
     final y = sin(x);
     final plot = Plot(x: x, y: y, title: 'Test Plot');
     final html = plot.toHtml();
@@ -61,7 +61,7 @@ void main() {
   });
 
   test('Histogram renders distribution SVG bar chart', () {
-    final data = linspace<Float64>((0.0), (100.0), 50, dtype: DType.float64);
+    final data = linspace((0.0), (100.0), 50, dtype: DType.float64);
     final hist = Histogram(data, bins: 10, title: 'Dist Hist');
     final html = hist.toHtml();
 
@@ -111,7 +111,7 @@ void main() {
   });
 
   test('Spectrogram renders audio signal time-frequency heatmap', () {
-    final t = linspace<Float64>((0.0), (0.1), 1000, dtype: DType.float64);
+    final t = linspace((0.0), (0.1), 1000, dtype: DType.float64);
     final signal = sin(t * (2 * 3.14159 * 440));
     final spec = Spectrogram(signal, title: 'Tone Spectrogram');
     final html = spec.toHtml();

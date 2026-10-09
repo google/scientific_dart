@@ -124,7 +124,7 @@ void main() {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
         final out = NDArray.zeros([], DType.float32); // incompatible dtype
-        expect(() => ptp(a, out: out), throwsArgumentError);
+        expect(() => ptp(a.asAnySpec, out: out.asAnySpec), throwsArgumentError);
       });
 
       NDArray.scope(() {

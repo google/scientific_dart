@@ -118,7 +118,7 @@ void main() {
           expect(yIntCheb.getCell([0]), closeTo(-1.0, 1e-10));
           expect(yIntCheb.getCell([1]), closeTo(5.0, 1e-10));
           expect(
-            () => chebval<AnySpec, DTypeTag>(xInt, cF64),
+            () => chebval(xInt.asAnySpec, cF64.asAnySpec),
             throwsArgumentError,
           );
 

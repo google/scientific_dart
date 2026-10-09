@@ -61,11 +61,11 @@ void main() {
         clearFFTPlanCache();
         expect(PocketFFTPlanCache.instance.size, equals(0));
 
-        final x = linspace<Float64>(0.0, 7.0, 8, dtype: DType.float64);
-        final spec = rfft<Complex128>(x);
+        final x = linspace(0.0, 7.0, 8, dtype: DType.float64);
+        final spec = rfft(x);
         expect(PocketFFTPlanCache.instance.size, greaterThan(0));
 
-        final rec = irfft<Float64>(spec, n: 8);
+        final rec = irfft(spec, n: 8);
         expect(allClose(rec, x, atol: 1e-12), isTrue);
 
         // Raw pocketfft plan lookup for the same length reuses the cached plan
@@ -183,7 +183,7 @@ void main() {
           final qrRes = qr(subT);
           expect(allClose(matmul(qrRes.q, qrRes.r), subT, atol: 1e-12), isTrue);
 
-          final svdRes = svd<Float64, Float64>(sub);
+          final svdRes = svd(sub);
           final recon = matmul(matmul(svdRes.u, diag(svdRes.s)), svdRes.vh);
           expect(allClose(recon, sub, atol: 1e-12), isTrue);
         });
@@ -192,7 +192,7 @@ void main() {
 
     test('FFT and RFFT on negative-stride reversed and transposed views', () {
       NDArray.scope(() {
-        final base = linspace<Float64>(
+        final base = linspace(
           1.0,
           16.0,
           16,
@@ -201,12 +201,12 @@ void main() {
         final revRows = base.slice([const Slice(step: -1), const Slice.all()]);
         expect(revRows.isContiguous, isFalse);
 
-        final spec2D = fft2<Complex128>(revRows);
-        final rec2D = real(ifft2<Complex128>(spec2D));
+        final spec2D = fft2(revRows);
+        final rec2D = real(ifft2(spec2D));
         expect(allClose(rec2D, revRows, atol: 1e-11), isTrue);
 
-        final rSpec2D = rfft2<Complex128>(revRows.transposed);
-        final rRec2D = irfft2<Float64>(rSpec2D, s: [4, 4]);
+        final rSpec2D = rfft2(revRows.transposed);
+        final rRec2D = irfft2(rSpec2D, s: [4, 4]);
         expect(allClose(rRec2D, revRows.transposed, atol: 1e-11), isTrue);
       });
     });
@@ -223,7 +223,7 @@ void main() {
           final sendCopy = SendableNDArray.fromCopy(base);
           final matCopy = sendCopy.materialize();
 
-          expect(median<Float64>(matCopy).scalar, closeTo(30.0, 1e-12));
+          expect(median(matCopy).scalar, closeTo(30.0, 1e-12));
           expect(
             sort(matCopy).toList(),
             equals([10.0, 20.0, 30.0, 40.0, 50.0]),
@@ -242,7 +242,7 @@ void main() {
       () {
         NDArray.scope(() {
           final escaped = NDArray.returning(() {
-            final a = linspace<Float64>(0.0, 10.0, 11, dtype: DType.float64);
+            final a = linspace(0.0, 10.0, 11, dtype: DType.float64);
             final b = square(a);
             final path = '$tempDirPath/returning_roundtrip.npz';
             savez(path, {'a': a, 'b': b}, compressed: true);
@@ -286,7 +286,7 @@ void main() {
     test('Broadcasted binaryUfunc with where: mask and padded output buffer', () {
       NDArray.scope(() {
         final core = NDArray.ones([2, 2], DType.float64);
-        final padded = pad<Float64>(
+        final padded = pad(
           core,
           PadWidth.all(1),
           mode: PaddingMode.constant,
@@ -327,12 +327,12 @@ void main() {
             t,
             NDArray.scalar(2.0 * math.pi * 10.5 / n, dtype: DType.float64),
           );
-          final sig = cos<Float64>(phase);
+          final sig = cos(phase);
           final win = hanning<Float64>(n, dtype: DType.float64);
           final windowedSig = multiply<Float64>(sig, win);
 
-          final magRect = abs<Float64>(rfft<Complex128>(sig));
-          final magHann = abs<Float64>(rfft<Complex128>(windowedSig));
+          final magRect = abs(rfft(sig));
+          final magHann = abs(rfft(windowedSig));
 
           // Distant bin k = 30 side-lobe energy relative to peak is much lower with Hanning window
           final rectRatio = magRect[[30]] / max(magRect).scalar;
@@ -347,7 +347,7 @@ void main() {
       () {
         NDArray.scope(() {
           const n = 201;
-          final t = linspace<Float64>(0.0, 2.0, n, dtype: DType.float64);
+          final t = linspace(0.0, 2.0, n, dtype: DType.float64);
           const dt = 2.0 / (n - 1);
           // Phase φ(t) = 3*t + 2*t^2 -> instantaneous angular freq dφ/dt = 3 + 4*t
           final truePhase = add<Float64>(
@@ -358,15 +358,15 @@ void main() {
             ),
           );
           // Construct complex signal z(t) = cos(φ) + i*sin(φ)
-          final cCos = cos<Float64>(truePhase).astype(DType.complex128);
+          final cCos = cos(truePhase).astype(DType.complex128);
           final cSin = multiply<Complex128>(
-            sin<Float64>(truePhase).astype(DType.complex128),
+            sin(truePhase).astype(DType.complex128),
             NDArray.scalar(Complex(0.0, 1.0), dtype: DType.complex128),
           );
           final z = add<Complex128>(cCos, cSin);
 
-          final recoveredPhase = unwrap<Float64>(angle<Float64>(z));
-          final instFreq = gradient<Float64>(
+          final recoveredPhase = unwrap(angle(z));
+          final instFreq = gradient(
             recoveredPhase,
             spacing: const Spacing.step(dt),
           );
@@ -375,7 +375,7 @@ void main() {
 
           // Integrating instFreq over [0, 2] via trapz recovers φ(2) - φ(0) = 6 + 8 = 14.0
           expect(
-            trapz<Float64>(instFreq, spacing: const Spacing.step(dt)).scalar,
+            trapz(instFreq, spacing: const Spacing.step(dt)).scalar,
             closeTo(14.0, 1e-2),
           );
         });
@@ -429,7 +429,7 @@ void main() {
 
           // Eigenvalues of covManual equal s^2 / (N - 1) from SVD of centered
           final eigVals = sort(eigvalsh(covBuiltIn));
-          final svdS = svd<Float64, Float64>(centered).s;
+          final svdS = svd(centered).s;
           final svdVar = sort(
             divide(square(svdS), NDArray.scalar(3.0, dtype: DType.float64)),
           );
@@ -444,7 +444,7 @@ void main() {
         NDArray.scope(() {
           final rng = RandomGenerator(2026);
           final draws = rng.randint([500], low: 0, high: 5);
-          final bc = bincount<Int64>(draws, minlength: 5);
+          final bc = bincount<Int64, Int64>(draws, minlength: 5);
           final u = uniqueAll(draws);
 
           expect(sum(bc).scalar, equals(500));
@@ -497,7 +497,7 @@ void main() {
 
           expect(filtered.shape, equals([8]));
           expect(allClose(filtered, sig, atol: 1e-12), isTrue);
-          expect(max(abs<Float64>(diff(filtered))).scalar, closeTo(0.0, 1e-12));
+          expect(max(abs(diff(filtered))).scalar, closeTo(0.0, 1e-12));
         });
       },
     );
@@ -533,11 +533,7 @@ void main() {
           final x = NDArray.fromList([1.0, -1.0, 2.0, 0.5], [4], DType.float64);
 
           final yMatmul = matmul(C, x);
-          final yFft = real(
-            ifft<Complex128>(
-              multiply<Complex128>(fft<Complex128>(c), fft<Complex128>(x)),
-            ),
-          );
+          final yFft = real(ifft(multiply<Complex128>(fft(c), fft(x))));
           expect(allClose(yMatmul, yFft, atol: 1e-12), isTrue);
         });
       },
@@ -571,7 +567,7 @@ void main() {
           );
 
           // Vandermonde lstsq vs polyfit
-          final x = linspace<Float64>(0.0, 3.0, 6, dtype: DType.float64);
+          final x = linspace(0.0, 3.0, 6, dtype: DType.float64);
           final y = polyval(p, x);
           final x2 = square(x);
           final x3 = multiply<Float64>(x2, x);
@@ -596,7 +592,7 @@ void main() {
             allClose(qtq, NDArray<Float64>.eye(5, DType.float64), atol: 1e-11),
             isTrue,
           );
-          final sd = slogdet<Float64, Float64>(qrRes.q);
+          final sd = slogdet(qrRes.q);
           expect(sd.sign.scalar.abs(), closeTo(1.0, 1e-11));
           expect(sd.logabsdet.scalar, closeTo(0.0, 1e-11));
         });
@@ -616,11 +612,8 @@ void main() {
           const fullLen = 5 + 4 - 1; // 8
 
           final timeConv = convolve(a, b, mode: ConvMode.full);
-          final freqConv = irfft<Float64>(
-            multiply<Complex128>(
-              rfft<Complex128>(a, n: fullLen),
-              rfft<Complex128>(b, n: fullLen),
-            ),
+          final freqConv = irfft(
+            multiply<Complex128>(rfft(a, n: fullLen), rfft(b, n: fullLen)),
             n: fullLen,
           );
           expect(allClose(freqConv, timeConv, atol: 1e-12), isTrue);
@@ -635,7 +628,7 @@ void main() {
           const n = 64;
           const length = 2.0 * math.pi;
           const dx = length / n;
-          final x = linspace<Float64>(
+          final x = linspace(
             0.0,
             length,
             n,
@@ -643,8 +636,8 @@ void main() {
             dtype: DType.float64,
           );
           // f(x) = sin(x) -> f'(x) = cos(x)
-          final y = sin<Float64>(x);
-          final exactDeriv = cos<Float64>(x);
+          final y = sin(x);
+          final exactDeriv = cos(x);
 
           // Spectral derivative: ifft(i * k * fft(y))
           final k = fftfreq(n, d: dx / (2.0 * math.pi));
@@ -652,13 +645,11 @@ void main() {
             k.astype(DType.complex128),
             NDArray.scalar(Complex(0.0, 1.0), dtype: DType.complex128),
           );
-          final specDeriv = real(
-            ifft<Complex128>(multiply<Complex128>(ik, fft<Complex128>(y))),
-          );
+          final specDeriv = real(ifft(multiply<Complex128>(ik, fft(y))));
           expect(allClose(specDeriv, exactDeriv, atol: 1e-11), isTrue);
 
           // Interior finite-difference gradient also matches cos(x) to O(dx^2)
-          final fdGrad = gradient<Float64>(y, spacing: const Spacing.step(dx));
+          final fdGrad = gradient(y, spacing: const Spacing.step(dx));
           expect(fdGrad[[16]], closeTo(exactDeriv[[16]], 1e-2));
         });
       },
@@ -667,8 +658,8 @@ void main() {
     test('Polynomial regression on noisy samples and linear interpolation', () {
       NDArray.scope(() {
         final rng = RandomGenerator(888);
-        final x = linspace<Float64>(-1.0, 1.0, 41, dtype: DType.float64);
-        final clean = exp<Float64>(x);
+        final x = linspace(-1.0, 1.0, 41, dtype: DType.float64);
+        final clean = exp(x);
         final noise = rng.normal<Float64>(
           [41],
           loc: 0.0,
@@ -680,21 +671,21 @@ void main() {
         final coeffs = polyfit(x, noisy, 6);
         final fitted = polyval(coeffs, x);
         expect(
-          max(abs<Float64>(subtract<Float64>(fitted, clean))).scalar,
+          max(abs(subtract<Float64>(fitted, clean))).scalar,
           lessThan(5e-3),
         );
 
         // Linear interpolation on dense grid recovers exp(x)
-        final xGrid = linspace<Float64>(-1.0, 1.0, 81, dtype: DType.float64);
-        final yGrid = exp<Float64>(xGrid);
-        final yInterp = interp<Float64>(
+        final xGrid = linspace(-1.0, 1.0, 81, dtype: DType.float64);
+        final yGrid = exp(xGrid);
+        final yInterp = interp(
           x,
           xGrid,
           yGrid,
           method: InterpolationMethod.linear,
         );
         expect(
-          max(abs<Float64>(subtract<Float64>(yInterp, clean))).scalar,
+          max(abs(subtract<Float64>(yInterp, clean))).scalar,
           lessThan(5e-4),
         );
       });
@@ -709,7 +700,7 @@ void main() {
             [4, 3],
             DType.float64,
           );
-          final svdRes = svd<Float64, Float64>(m);
+          final svdRes = svd(m);
           final uThin = svdRes.u.slice([
             const Slice.all(),
             const Slice(start: 0, stop: 3),

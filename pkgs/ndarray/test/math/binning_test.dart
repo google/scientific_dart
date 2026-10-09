@@ -335,9 +335,12 @@ void main() {
           DType.float32,
         );
         final outFloat64 = NDArray.zeros([3], DType.float64);
+        // `out` is statically bound to the weights dtype; widen the weights to
+        // exercise the run-time promotion of float32 weights into a float64
+        // out buffer.
         final counts6 = bincount(
           xInt64,
-          weights: weightsFloat32,
+          weights: weightsFloat32.asAnySpec,
           out: outFloat64,
         );
         expect(counts6.dtype, DType.float64);

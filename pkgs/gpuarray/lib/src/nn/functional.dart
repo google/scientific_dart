@@ -152,20 +152,22 @@ GpuArray<T> _runUnaryActivation<T extends DTypeTag>({
 /// Applies the Rectified Linear Unit activation elementwise: $\text{ReLU}(x) = \max(0, x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> relu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
-    _runUnaryActivation(
-      input: input,
-      op: 'relu',
-      buildGradFn: (saved, _) => ReluBackward(saved),
-      out: out,
-    );
+GpuArray<T> relu<T extends DTypeTag, Out extends T>(
+  GpuArray<T> input, {
+  GpuArray<Out>? out,
+}) => _runUnaryActivation(
+  input: input,
+  op: 'relu',
+  buildGradFn: (saved, _) => ReluBackward(saved),
+  out: out,
+);
 
 /// Applies the logistic Sigmoid activation elementwise: $\sigma(x) = \frac{1}{1 + e^{-x}}$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> sigmoid<T extends DTypeTag>(
+GpuArray<T> sigmoid<T extends DTypeTag, Out extends T>(
   GpuArray<T> input, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => _runUnaryActivation(
   input: input,
   op: 'sigmoid',
@@ -176,52 +178,60 @@ GpuArray<T> sigmoid<T extends DTypeTag>(
 /// Applies the Hyperbolic Tangent activation elementwise: $\tanh(x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> tanh<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
-    _runUnaryActivation(
-      input: input,
-      op: 'tanh',
-      buildGradFn: (saved, output) => TanhBackward(saved, output),
-      out: out,
-    );
+GpuArray<T> tanh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> input, {
+  GpuArray<Out>? out,
+}) => _runUnaryActivation(
+  input: input,
+  op: 'tanh',
+  buildGradFn: (saved, output) => TanhBackward(saved, output),
+  out: out,
+);
 
 /// Applies the Gaussian Error Linear Unit (GELU) activation elementwise:
 /// $\text{GELU}(x) = 0.5x \left(1 + \tanh\left(\sqrt{2/\pi}\left(x + 0.044715 x^3\right)\right)\right)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> gelu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
-    _runUnaryActivation(
-      input: input,
-      op: 'gelu',
-      buildGradFn: (saved, _) => GeluBackward(saved),
-      out: out,
-    );
+GpuArray<T> gelu<T extends DTypeTag, Out extends T>(
+  GpuArray<T> input, {
+  GpuArray<Out>? out,
+}) => _runUnaryActivation(
+  input: input,
+  op: 'gelu',
+  buildGradFn: (saved, _) => GeluBackward(saved),
+  out: out,
+);
 
 /// Applies the Sigmoid Linear Unit (SiLU / Swish) activation elementwise:
 /// $\text{SiLU}(x) = x \cdot \sigma(x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> silu<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
-    _runUnaryActivation(
-      input: input,
-      op: 'silu',
-      buildGradFn: (saved, _) => SiluBackward(saved),
-      out: out,
-    );
+GpuArray<T> silu<T extends DTypeTag, Out extends T>(
+  GpuArray<T> input, {
+  GpuArray<Out>? out,
+}) => _runUnaryActivation(
+  input: input,
+  op: 'silu',
+  buildGradFn: (saved, _) => SiluBackward(saved),
+  out: out,
+);
 
 /// Applies the Swish activation elementwise: $\text{Swish}(x) = x \cdot \sigma(x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> swish<T extends DTypeTag>(GpuArray<T> input, {GpuArray<T>? out}) =>
-    silu(input, out: out);
+GpuArray<T> swish<T extends DTypeTag, Out extends T>(
+  GpuArray<T> input, {
+  GpuArray<Out>? out,
+}) => silu(input, out: out);
 
 /// Applies the Leaky Rectified Linear Unit activation elementwise:
 /// $\text{LeakyReLU}(x) = \max(0, x) + \text{negativeSlope} \cdot \min(0, x)$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> leakyRelu<T extends DTypeTag>(
+GpuArray<T> leakyRelu<T extends DTypeTag, Out extends T>(
   GpuArray<T> input, {
   double negativeSlope = 0.01,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   if (negativeSlope.isNaN) {
     throw ArgumentError.value(
@@ -244,10 +254,10 @@ GpuArray<T> leakyRelu<T extends DTypeTag>(
 /// $\text{ELU}(x) = \max(0, x) + \min(0, \alpha (\exp(x) - 1))$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> elu<T extends DTypeTag>(
+GpuArray<T> elu<T extends DTypeTag, Out extends T>(
   GpuArray<T> input, {
   double alpha = 1.0,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   if (alpha.isNaN) {
     throw ArgumentError.value(alpha, 'alpha', 'Must not be NaN.');
@@ -266,11 +276,11 @@ GpuArray<T> elu<T extends DTypeTag>(
 /// linear $x$ when $\beta x > \text{threshold}$.
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> softplus<T extends DTypeTag>(
+GpuArray<T> softplus<T extends DTypeTag, Out extends T>(
   GpuArray<T> input, {
   double beta = 1.0,
   double threshold = 20.0,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   if (beta <= 0.0 || beta.isNaN) {
     throw ArgumentError.value(beta, 'beta', 'Must be positive.');
@@ -324,10 +334,10 @@ GpuArray<T> dropout<T extends DTypeTag>(
 /// Applies the Softmax function to an N-dimensional tensor along [axis].
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> softmax<T extends DTypeTag>(
+GpuArray<T> softmax<T extends DTypeTag, Out extends T>(
   GpuArray<T> input, {
   int axis = -1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _validateOutTensor(input, out);
   final computed = noGrad(() {
@@ -340,7 +350,7 @@ GpuArray<T> softmax<T extends DTypeTag>(
     final rawResult = expShifted / sumExp;
     final result = rawResult.dtype == input.dtype && rawResult is GpuArray<T>
         ? rawResult
-        : rawResult.astype<T>(input.dtype);
+        : rawResult.astype(input.dtype);
     if (!identical(result, rawResult)) {
       rawResult.dispose();
     }
@@ -358,10 +368,10 @@ GpuArray<T> softmax<T extends DTypeTag>(
 /// Applies the Log-Softmax function to an N-dimensional tensor along [axis].
 ///
 /// If [out] is provided, the result is written directly into [out] and returned.
-GpuArray<T> logSoftmax<T extends DTypeTag>(
+GpuArray<T> logSoftmax<T extends DTypeTag, Out extends T>(
   GpuArray<T> input, {
   int axis = -1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _validateOutTensor(input, out);
   final computed = noGrad(() {

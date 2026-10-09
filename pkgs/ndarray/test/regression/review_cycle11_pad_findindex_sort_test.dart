@@ -27,7 +27,7 @@ void main() {
             final a = NDArray.fromList([1.0, 2.0, 3.0], [3], dtype);
 
             // Uniform constant value
-            final paddedUniform = pad<DTypeTag>(
+            final paddedUniform = pad(
               a,
               PadWidth.all(2, 1),
               mode: PaddingMode.constant,
@@ -38,7 +38,7 @@ void main() {
             expect(paddedUniform.toList(), [5.5, 5.5, 1.0, 2.0, 3.0, 5.5]);
 
             // Per-axis (before, after) constant values
-            final paddedPerAxis = pad<DTypeTag>(
+            final paddedPerAxis = pad(
               a,
               PadWidth.axes([(1, 2)]),
               mode: PaddingMode.constant,
@@ -55,7 +55,7 @@ void main() {
             final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], dtype);
 
             // Uniform constant value (hits native_pad_2d with isUniform = 1)
-            final paddedUniform = pad<DTypeTag>(
+            final paddedUniform = pad(
               a,
               PadWidth.all(1, 1),
               mode: PaddingMode.constant,
@@ -83,7 +83,7 @@ void main() {
             ]);
 
             // Per-axis constant values (hits native_pad_2d with isUniform = 0)
-            final paddedPerAxis = pad<DTypeTag>(
+            final paddedPerAxis = pad(
               a,
               PadWidth.axes([(1, 1), (2, 1)]),
               mode: PaddingMode.constant,
@@ -121,7 +121,7 @@ void main() {
             final a = NDArray.fromList([1.0, 2.0], [1, 1, 2], dtype);
 
             // Uniform constant value (hits native_pad_nd with isUniform = 1)
-            final paddedUniform = pad<DTypeTag>(
+            final paddedUniform = pad(
               a,
               PadWidth.axes([(1, 0), (0, 1), (1, 1)]),
               mode: PaddingMode.constant,
@@ -149,7 +149,7 @@ void main() {
             ]);
 
             // Per-axis constant values (hits native_pad_nd with isUniform = 0)
-            final paddedPerAxis = pad<DTypeTag>(
+            final paddedPerAxis = pad(
               a,
               PadWidth.axes([(1, 1), (1, 0), (1, 1)]),
               mode: PaddingMode.constant,

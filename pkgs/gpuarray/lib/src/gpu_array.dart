@@ -1032,7 +1032,7 @@ final class GpuArray<T extends DTypeTag>
 
   GpuArray<T> _asT(GpuArray<DTypeTag> res) {
     if (res is GpuArray<T>) return res;
-    final casted = res.astype<T>(dtype);
+    final casted = res.astype(dtype);
     if (res.requiresGrad) {
       casted.requiresGrad = true;
       casted.gradFn = res.gradFn;
@@ -1048,7 +1048,7 @@ final class GpuArray<T extends DTypeTag>
   GpuArray<M> _asDivide<M extends DTypeTag>(GpuArray<DTypeTag> res) {
     final targetDType = _divideDType;
     if (res.dtype == targetDType && res is GpuArray<M>) return res;
-    final casted = res.astype<M>(targetDType as DType<M>);
+    final casted = res.astype(targetDType as DType<M>);
     if (res.requiresGrad) {
       casted.requiresGrad = true;
       casted.gradFn = res.gradFn;
@@ -1171,11 +1171,11 @@ final class GpuArray<T extends DTypeTag>
   // --- Reductions ---
 
   /// Computes the sum of elements cast to [dtype].
-  GpuArray<R> sumAs<R extends DTypeTag>(
+  GpuArray<R> sumAs<R extends DTypeTag, Out extends R>(
     DType<R> dtype, {
     int? axis,
     bool keepDims = false,
-    GpuArray<R>? out,
+    GpuArray<Out>? out,
   }) =>
       _dispatchReduction(
             'sum',
@@ -1187,11 +1187,11 @@ final class GpuArray<T extends DTypeTag>
           as GpuArray<R>;
 
   /// Computes the sum of elements treating `NaN`s as zero, cast to [dtype].
-  GpuArray<R> nansumAs<R extends DTypeTag>(
+  GpuArray<R> nansumAs<R extends DTypeTag, Out extends R>(
     DType<R> dtype, {
     int? axis,
     bool keepDims = false,
-    GpuArray<R>? out,
+    GpuArray<Out>? out,
   }) =>
       _dispatchReduction(
             'nansum',
@@ -1203,11 +1203,11 @@ final class GpuArray<T extends DTypeTag>
           as GpuArray<R>;
 
   /// Computes the product of elements cast to [dtype].
-  GpuArray<R> prodAs<R extends DTypeTag>(
+  GpuArray<R> prodAs<R extends DTypeTag, Out extends R>(
     DType<R> dtype, {
     int? axis,
     bool keepDims = false,
-    GpuArray<R>? out,
+    GpuArray<Out>? out,
   }) =>
       _dispatchReduction(
             'prod',
@@ -1461,9 +1461,9 @@ final class GpuArray<T extends DTypeTag>
   }
 
   /// Casts this tensor to a different [targetDType].
-  GpuArray<R> astype<R extends DTypeTag>(
+  GpuArray<R> astype<R extends DTypeTag, Out extends R>(
     DType<R> targetDType, {
-    GpuArray<R>? out,
+    GpuArray<Out>? out,
   }) {
     _checkNotDisposed();
     if (dtype == targetDType && out == null) return this as GpuArray<R>;
@@ -3230,7 +3230,7 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
     int? axis = -1,
     SortKind kind = SortKind.quicksort,
     GpuArray<T>? out,
-  }) => indexing.sort<T>(this, axis: axis, kind: kind, out: out);
+  }) => indexing.sort(this, axis: axis, kind: kind, out: out);
 
   /// Finds the [k] largest or smallest elements and their 64-bit indices
   /// along [axis].
@@ -3241,7 +3241,7 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
     bool sorted = true,
     GpuArray<T>? outValues,
     GpuArray<Int64>? outIndices,
-  }) => indexing.topk<T>(
+  }) => indexing.topk(
     this,
     k,
     axis: axis,
@@ -3254,7 +3254,7 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
   /// Rearranges elements along [axis] so that the [kth] element is in its
   /// final sorted position.
   GpuArray<T> partition(Object kth, {int? axis = -1, GpuArray<T>? out}) =>
-      indexing.partition<T>(this, kth, axis: axis, out: out);
+      indexing.partition(this, kth, axis: axis, out: out);
 
   /// Computes the [n]-th discrete difference along [axis].
   GpuArray<T> diff({
@@ -3263,7 +3263,7 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
     Object? prepend,
     Object? append,
     GpuArray<T>? out,
-  }) => indexing.diff<T>(
+  }) => indexing.diff(
     this,
     n: n,
     axis: axis,
@@ -3274,7 +3274,7 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
 
   /// Takes elements from this array along [axis] at [indices].
   GpuArray<T> take(GpuArray<DTypeTag> indices, {int? axis, GpuArray<T>? out}) =>
-      indexing.take<T>(this, indices, axis: axis, out: out);
+      indexing.take(this, indices, axis: axis, out: out);
 
   /// Repeats elements of this array [repeats] times along [axis].
   GpuArray<T> repeat(int repeats, {int? axis, GpuArray<T>? out}) =>
@@ -3324,7 +3324,7 @@ extension GpuArrayTypedOperationsExtension<T extends DTypeTag> on GpuArray<T> {
     GpuArray<DTypeTag> indices,
     int axis, {
     GpuArray<T>? out,
-  }) => indexing.takeAlongAxis<T>(this, indices, axis, out: out);
+  }) => indexing.takeAlongAxis(this, indices, axis, out: out);
 
   /// Puts [values] into this array by matching 1-D index and data slices along
   /// [axis].
@@ -3916,10 +3916,11 @@ GpuArray<T> multiply<T extends SelfOf<DTypeTag>>(
 /// Both operands must have the same dtype. Integer and [Boolean] operands
 /// divide to [Float64]; floating-point and complex operands divide to their
 /// own dtype ([DivideOf]).
-GpuArray<R> divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag>(
+GpuArray<R>
+divide<T extends SelfOf<DivideOf<R>>, R extends DTypeTag, Out extends R>(
   GpuArray<T> a,
   GpuArray<T> b, {
-  GpuArray<R>? out,
+  GpuArray<Out>? out,
 }) => a._asDivide<R>(a._dispatchBinary(BinaryOp.divide, b, out: out));
 
 /// Elementwise floor division of [a] by [b].
@@ -4023,10 +4024,10 @@ GpuArray<T> copysign<T extends SelfOf<DTypeTag>>(
 ///
 /// The exponent [b] may have any dtype (it is converted to a 32-bit integer
 /// exponent on the device); the result keeps the dtype of the mantissa [a].
-GpuArray<T> ldexp<T extends DTypeTag>(
+GpuArray<T> ldexp<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   GpuArray<DTypeTag> b, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.ldexp(b, out: out);
 
 /// Elementwise greatest common divisor of integer tensors [a] and [b].
@@ -4078,15 +4079,15 @@ GpuArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
 }) => a.bitwiseXor(b, out: out);
 
 /// Elementwise bitwise NOT (`~`) of an integer or boolean tensor.
-GpuArray<T> bitwiseNot<T extends RealOf<BitwiseDType>>(
+GpuArray<T> bitwiseNot<T extends RealOf<BitwiseDType>, Out extends T>(
   GpuArray<T> a, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.bitwiseNot(out: out);
 
 /// Elementwise bitwise inversion (`~`, alias for [bitwiseNot]).
-GpuArray<T> invert<T extends RealOf<BitwiseDType>>(
+GpuArray<T> invert<T extends RealOf<BitwiseDType>, Out extends T>(
   GpuArray<T> a, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.invert(out: out);
 
 /// Elementwise bitwise left shift (`<<`).
@@ -4110,156 +4111,232 @@ GpuArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
 // --- Top-Level Elementwise Unary, Predicate & Complex Functions ---
 
 /// Elementwise negation (`-a`).
-GpuArray<T> negate<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.negate(out: out);
+GpuArray<T> negate<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.negate(out: out);
 
 /// Elementwise negation (`-a`, alias for [negate]).
-GpuArray<T> negative<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.negate(out: out);
+GpuArray<T> negative<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.negate(out: out);
 
 /// Elementwise absolute value ($|a|$).
-GpuArray<T> abs<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.abs(out: out);
+GpuArray<T> abs<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.abs(out: out);
 
 /// Elementwise square root ($\sqrt{a}$).
-GpuArray<T> sqrt<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.sqrt(out: out);
+GpuArray<T> sqrt<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.sqrt(out: out);
 
 /// Elementwise cube root ($\sqrt[3]{a}$).
-GpuArray<T> cbrt<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.cbrt(out: out);
+GpuArray<T> cbrt<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.cbrt(out: out);
 
 /// Elementwise reciprocal ($1 / a$).
-GpuArray<T> reciprocal<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.reciprocal(out: out);
+GpuArray<T> reciprocal<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.reciprocal(out: out);
 
 /// Elementwise square ($a^2$).
-GpuArray<T> square<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.square(out: out);
+GpuArray<T> square<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.square(out: out);
 
 /// Elementwise reciprocal square root ($1 / \sqrt{a}$).
-GpuArray<T> rsqrt<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.rsqrt(out: out);
+GpuArray<T> rsqrt<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.rsqrt(out: out);
 
 /// Elementwise exponential ($e^a$).
-GpuArray<T> exp<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.exp(out: out);
+GpuArray<T> exp<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.exp(out: out);
 
 /// Elementwise $e^a - 1$.
-GpuArray<T> expm1<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.expm1(out: out);
+GpuArray<T> expm1<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.expm1(out: out);
 
 /// Elementwise $2^a$.
-GpuArray<T> exp2<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.exp2(out: out);
+GpuArray<T> exp2<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.exp2(out: out);
 
 /// Elementwise natural logarithm ($\ln(a)$).
-GpuArray<T> log<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.log(out: out);
+GpuArray<T> log<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.log(out: out);
 
 /// Elementwise base-2 logarithm ($\log_2(a)$).
-GpuArray<T> log2<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.log2(out: out);
+GpuArray<T> log2<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.log2(out: out);
 
 /// Elementwise base-10 logarithm ($\log_{10}(a)$).
-GpuArray<T> log10<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.log10(out: out);
+GpuArray<T> log10<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.log10(out: out);
 
 /// Elementwise $\ln(1 + a)$.
-GpuArray<T> log1p<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.log1p(out: out);
+GpuArray<T> log1p<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.log1p(out: out);
 
 /// Elementwise sine ($\sin(a)$).
-GpuArray<T> sin<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.sin(out: out);
+GpuArray<T> sin<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.sin(out: out);
 
 /// Elementwise cosine ($\cos(a)$).
-GpuArray<T> cos<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.cos(out: out);
+GpuArray<T> cos<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.cos(out: out);
 
 /// Elementwise tangent ($\tan(a)$).
-GpuArray<T> tan<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.tan(out: out);
+GpuArray<T> tan<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.tan(out: out);
 
 /// Elementwise inverse sine ($\arcsin(a)$).
-GpuArray<T> asin<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.asin(out: out);
+GpuArray<T> asin<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.asin(out: out);
 
 /// Elementwise inverse cosine ($\arccos(a)$).
-GpuArray<T> acos<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.acos(out: out);
+GpuArray<T> acos<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.acos(out: out);
 
 /// Elementwise inverse tangent ($\arctan(a)$).
-GpuArray<T> atan<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.atan(out: out);
+GpuArray<T> atan<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.atan(out: out);
 
 /// Elementwise hyperbolic sine ($\sinh(a)$).
-GpuArray<T> sinh<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.sinh(out: out);
+GpuArray<T> sinh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.sinh(out: out);
 
 /// Elementwise hyperbolic cosine ($\cosh(a)$).
-GpuArray<T> cosh<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.cosh(out: out);
+GpuArray<T> cosh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.cosh(out: out);
 
 /// Elementwise hyperbolic tangent ($\tanh(a)$).
-GpuArray<T> tanh<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.tanh(out: out);
+GpuArray<T> tanh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.tanh(out: out);
 
 /// Elementwise inverse hyperbolic sine ($\text{asinh}(a)$).
-GpuArray<T> asinh<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.asinh(out: out);
+GpuArray<T> asinh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.asinh(out: out);
 
 /// Elementwise inverse hyperbolic cosine ($\text{acosh}(a)$).
-GpuArray<T> acosh<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.acosh(out: out);
+GpuArray<T> acosh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.acosh(out: out);
 
 /// Elementwise inverse hyperbolic tangent ($\text{atanh}(a)$).
-GpuArray<T> atanh<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.atanh(out: out);
+GpuArray<T> atanh<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.atanh(out: out);
 
 /// Elementwise floor ($\lfloor a \rfloor$).
-GpuArray<T> floor<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.floor(out: out);
+GpuArray<T> floor<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.floor(out: out);
 
 /// Elementwise ceiling ($\lceil a \rceil$).
-GpuArray<T> ceil<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.ceil(out: out);
+GpuArray<T> ceil<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.ceil(out: out);
 
 /// Elementwise round to nearest integer.
-GpuArray<T> round<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.round(out: out);
+GpuArray<T> round<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.round(out: out);
 
 /// Elementwise round to nearest even integer.
-GpuArray<T> rint<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.rint(out: out);
+GpuArray<T> rint<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.rint(out: out);
 
 /// Elementwise truncation toward zero.
-GpuArray<T> trunc<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.trunc(out: out);
+GpuArray<T> trunc<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.trunc(out: out);
 
 /// Elementwise truncation toward zero (alias for [trunc]).
-GpuArray<T> fix<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.fix(out: out);
+GpuArray<T> fix<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.fix(out: out);
 
 /// Elementwise signum ($-1$, $0$, or $+1$).
-GpuArray<T> sign<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.sign(out: out);
+GpuArray<T> sign<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.sign(out: out);
 
 /// Elementwise conversion from degrees to radians.
-GpuArray<T> deg2rad<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.deg2rad(out: out);
+GpuArray<T> deg2rad<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.deg2rad(out: out);
 
 /// Elementwise conversion from degrees to radians (alias for [deg2rad]).
-GpuArray<T> radians<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.radians(out: out);
+GpuArray<T> radians<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.radians(out: out);
 
 /// Elementwise conversion from radians to degrees.
-GpuArray<T> rad2deg<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.rad2deg(out: out);
+GpuArray<T> rad2deg<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.rad2deg(out: out);
 
 /// Elementwise conversion from radians to degrees (alias for [rad2deg]).
-GpuArray<T> degrees<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.rad2deg(out: out);
+GpuArray<T> degrees<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.rad2deg(out: out);
 
 /// Elementwise test for `NaN`, returning a [GpuArray<Boolean>].
 GpuArray<Boolean> isnan(GpuArray<DTypeTag> a, {GpuArray<Boolean>? out}) =>
@@ -4278,20 +4355,20 @@ GpuArray<Boolean> signbit(GpuArray<DTypeTag> a, {GpuArray<Boolean>? out}) =>
     a.signbit(out: out);
 
 /// Replaces `NaN`, positive infinity, and negative infinity values in [a].
-GpuArray<T> nanToNum<T extends DTypeTag>(
+GpuArray<T> nanToNum<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   double nan = 0.0,
   double? posinf,
   double? neginf,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.nanToNum(nan: nan, posinf: posinf, neginf: neginf, out: out);
 
 /// Clips (limits) the values in [a] to `[aMin, aMax]`.
-GpuArray<T> clip<T extends DTypeTag>(
+GpuArray<T> clip<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   Object? aMin,
   Object? aMax, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.clip(aMin, aMax, out: out);
 
 /// Evaluates elementwise whether [a] and [b] are equal within tolerance.
@@ -4333,9 +4410,9 @@ bool allclose(
 }) => a.allclose(b, rtol: rtol, atol: atol, equalNan: equalNan);
 
 /// Extracts the real part of [a] (`Complex64 -> Float32`, `Complex128 -> Float64`).
-GpuArray<R> real<R extends DTypeTag>(
+GpuArray<R> real<R extends DTypeTag, Out extends R>(
   GpuArray<RealOf<R>> a, {
-  GpuArray<R>? out,
+  GpuArray<Out>? out,
 }) => a._dispatchComplexComponent<R>(
   'real',
   a._realComponentDType as DType<R>,
@@ -4343,9 +4420,9 @@ GpuArray<R> real<R extends DTypeTag>(
 );
 
 /// Extracts the imaginary part of [a] (`Complex64 -> Float32`, `Complex128 -> Float64`, real -> zeros).
-GpuArray<R> imag<R extends DTypeTag>(
+GpuArray<R> imag<R extends DTypeTag, Out extends R>(
   GpuArray<RealOf<R>> a, {
-  GpuArray<R>? out,
+  GpuArray<Out>? out,
 }) => a._dispatchComplexComponent<R>(
   'imag',
   a._realComponentDType as DType<R>,
@@ -4353,18 +4430,22 @@ GpuArray<R> imag<R extends DTypeTag>(
 );
 
 /// Elementwise complex conjugate of [a].
-GpuArray<T> conj<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.conj(out: out);
+GpuArray<T> conj<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.conj(out: out);
 
 /// Elementwise complex conjugate of [a] (alias for [conj]).
-GpuArray<T> conjugate<T extends DTypeTag>(GpuArray<T> a, {GpuArray<T>? out}) =>
-    a.conjugate(out: out);
+GpuArray<T> conjugate<T extends DTypeTag, Out extends T>(
+  GpuArray<T> a, {
+  GpuArray<Out>? out,
+}) => a.conjugate(out: out);
 
 /// Computes the phase angle of each element of [a] in radians (or degrees if [deg] is `true`).
-GpuArray<R> angle<R extends DTypeTag>(
+GpuArray<R> angle<R extends DTypeTag, Out extends R>(
   GpuArray<RealFloatOf<R>> a, {
   bool deg = false,
-  GpuArray<R>? out,
+  GpuArray<Out>? out,
 }) => a._dispatchComplexComponent<R>(
   'angle',
   a._realFloatDType as DType<R>,
@@ -4375,40 +4456,40 @@ GpuArray<R> angle<R extends DTypeTag>(
 // --- Top-Level Reduction & Comparison Functions ---
 
 /// Computes the sum of elements of [a] along [axis] or over the entire tensor.
-GpuArray<T> sum<T extends DTypeTag>(
+GpuArray<T> sum<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
   DType<T>? dtype,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.sum(axis: axis, keepDims: keepDims, dtype: dtype, out: out);
 
 /// Computes the sum of elements of [a] cast to [dtype].
-GpuArray<R> sumAs<R extends DTypeTag>(
+GpuArray<R> sumAs<R extends DTypeTag, Out extends R>(
   GpuArray<DTypeTag> a,
   DType<R> dtype, {
   int? axis,
   bool keepDims = false,
-  GpuArray<R>? out,
-}) => a.sumAs<R>(dtype, axis: axis, keepDims: keepDims, out: out);
+  GpuArray<Out>? out,
+}) => a.sumAs(dtype, axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the sum of elements of [a] treating `NaN`s as zero.
-GpuArray<T> nansum<T extends DTypeTag>(
+GpuArray<T> nansum<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
   DType<T>? dtype,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.nansum(axis: axis, keepDims: keepDims, dtype: dtype, out: out);
 
 /// Computes the sum of elements of [a] treating `NaN`s as zero, cast to [dtype].
-GpuArray<R> nansumAs<R extends DTypeTag>(
+GpuArray<R> nansumAs<R extends DTypeTag, Out extends R>(
   GpuArray<DTypeTag> a,
   DType<R> dtype, {
   int? axis,
   bool keepDims = false,
-  GpuArray<R>? out,
-}) => a.nansumAs<R>(dtype, axis: axis, keepDims: keepDims, out: out);
+  GpuArray<Out>? out,
+}) => a.nansumAs(dtype, axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the arithmetic mean of elements of [a].
 GpuArray<DTypeTag> mean(
@@ -4441,61 +4522,61 @@ GpuArray<DTypeTag> nanmean(
 );
 
 /// Computes the product of elements of [a] along [axis] or over the entire tensor.
-GpuArray<T> prod<T extends DTypeTag>(
+GpuArray<T> prod<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
   DType<T>? dtype,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.prod(axis: axis, keepDims: keepDims, dtype: dtype, out: out);
 
 /// Computes the product of elements of [a] cast to [dtype].
-GpuArray<R> prodAs<R extends DTypeTag>(
+GpuArray<R> prodAs<R extends DTypeTag, Out extends R>(
   GpuArray<DTypeTag> a,
   DType<R> dtype, {
   int? axis,
   bool keepDims = false,
-  GpuArray<R>? out,
-}) => a.prodAs<R>(dtype, axis: axis, keepDims: keepDims, out: out);
+  GpuArray<Out>? out,
+}) => a.prodAs(dtype, axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the minimum of elements of [a] along [axis] or over the entire tensor.
-GpuArray<T> min<T extends DTypeTag>(
+GpuArray<T> min<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.min(axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the minimum of elements of [a] ignoring `NaN`s.
-GpuArray<T> nanmin<T extends DTypeTag>(
+GpuArray<T> nanmin<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.nanmin(axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the maximum of elements of [a] along [axis] or over the entire tensor.
-GpuArray<T> max<T extends DTypeTag>(
+GpuArray<T> max<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.max(axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the maximum of elements of [a] ignoring `NaN`s.
-GpuArray<T> nanmax<T extends DTypeTag>(
+GpuArray<T> nanmax<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.nanmax(axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the peak-to-peak range ($\max - \min$) of elements of [a].
-GpuArray<T> ptp<T extends DTypeTag>(
+GpuArray<T> ptp<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis,
   bool keepDims = false,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) => a.ptp(axis: axis, keepDims: keepDims, out: out);
 
 /// Computes the variance of elements of [a].

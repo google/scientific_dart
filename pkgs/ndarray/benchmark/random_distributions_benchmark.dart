@@ -24,49 +24,44 @@ void main() async {
     (c) {
       c.group('1. Continuous & Discrete Distributions (100k samples)', () {
         c.bench('uniform([100k])', () {
-          final res = uniform<DTypeTag>([size]);
+          final res = uniform([size]);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('normal([100k], loc=5.0, scale=2.0)', () {
-          final res = normal<DTypeTag>([size], loc: 5.0, scale: 2.0);
+          final res = normal([size], loc: 5.0, scale: 2.0);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('exponential([100k], scale=1.5)', () {
-          final res = exponential<DTypeTag>([size], scale: 1.5);
+          final res = exponential([size], scale: 1.5);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('poisson([100k], lam=5.0)', () {
-          final res = poisson<DTypeTag>([size], lam: 5.0);
+          final res = poisson([size], lam: 5.0);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('binomial([100k], n=10, p=0.5)', () {
-          final res = binomial<DTypeTag>([size], n: 10, p: 0.5);
+          final res = binomial([size], n: 10, p: 0.5);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('randint([100k], low=0, high=100)', () {
-          final res = randint<DTypeTag>([size], low: 0, high: 100);
+          final res = randint([size], low: 0, high: 100);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
       });
 
       c.group('2. Permutations, Choice & Shuffling', () {
-        final samplePool = linspace<DTypeTag>(
-          0.0,
-          100.0,
-          size,
-          dtype: DType.float64,
-        );
+        final samplePool = linspace(0.0, 100.0, size, dtype: DType.float64);
 
         c.bench('choice(pool, size=100k, replace=true)', () {
           final res = choice(samplePool, size: [size], replace: true);
@@ -80,12 +75,7 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(size));
 
-        final shuffleArr = linspace<DTypeTag>(
-          0.0,
-          100.0,
-          size,
-          dtype: DType.float64,
-        );
+        final shuffleArr = linspace(0.0, 100.0, size, dtype: DType.float64);
         c.bench('shuffle(arr) [100k in-place]', () {
           shuffle(shuffleArr);
           blackhole(shuffleArr);

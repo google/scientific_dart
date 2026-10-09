@@ -1468,13 +1468,21 @@ void _recordCellSuccess(
 
   static const String _gpuCoreImport =
       "import 'package:gpuarray/gpuarray.dart' show "
-      'BrowserWebGpuBackend, GradFn, GpuArray, GpuArrayNDArrayInterop, '
-      'GpuBackend, GpuBuffer, GpuBufferUsage, GpuDevice, '
-      'GpuDeviceDisposedException, GpuDeviceException, GpuDeviceType, '
-      'GpuException, GpuMemoryException, GpuMemoryPool, '
-      'GpuShaderCompilationException, GpuShapeMismatchException, GpuSlice, '
-      'LossReduction, NDArrayGpuInterop, createDefaultGpuBackend, '
-      'createWebGpuDevice, enableGrad, isGradEnabled, noGrad;';
+      'BrowserWebGpuBackend, GradFn, GpuArray, GpuArrayBaseDivide, '
+      'GpuArrayBFloat16ReductionExtension, GpuArrayBitwise, '
+      'GpuArrayBitwiseSpec, GpuArrayComplex128ReductionExtension, '
+      'GpuArrayComplex64ReductionExtension, GpuArrayDefaultComponentExtension, '
+      'GpuArrayDefaultReductionExtension, GpuArrayDivide, '
+      'GpuArrayFloat16ReductionExtension, GpuArrayFloat32ReductionExtension, '
+      'GpuArrayFloat64ReductionExtension, GpuArrayNDArrayInterop, '
+      'GpuArrayShift, GpuArrayShiftSpec, GpuArraySpecComponentExtension, '
+      'GpuArrayTypedOperationsExtension, GpuBackend, GpuBuffer, '
+      'GpuBufferUsage, GpuDevice, GpuDeviceDisposedException, '
+      'GpuDeviceException, GpuDeviceType, GpuException, GpuMemoryException, '
+      'GpuMemoryPool, GpuShaderCompilationException, '
+      'GpuShapeMismatchException, GpuSlice, LossReduction, NDArrayGpuInterop, '
+      'createDefaultGpuBackend, createWebGpuDevice, enableGrad, isGradEnabled, '
+      'noGrad;';
 
   static final RegExp _gpuUsageRegex = RegExp(
     r'\b(?:Gpu\w*|WebGpu\w*|wgsl\w*|createWebGpuDevice)\b|\.\s*toGpu\s*\(',

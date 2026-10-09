@@ -38,7 +38,7 @@ widgets.Plot plotSymbolic(
     throw ArgumentError('points must be greater than 1');
   }
   final lambda = f.lambdify([varName]);
-  final xArr = linspace<Float64>(
+  final xArr = linspace(
     from.toDouble(),
     to.toDouble(),
     points,

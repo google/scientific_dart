@@ -537,3 +537,62 @@ final t_opinv_asInteger = ~dyn.asIntegerDType;
 
 // expect: NDArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
 final t_invert_asInteger = invert(dyn.asIntegerDType);
+
+// ---------------------------------------------------------------------------
+// Section D — `out:` buffers typed by dependent `Out extends T` parameters
+// ---------------------------------------------------------------------------
+
+// A matching `out:` keeps the exact result type:
+
+// expect: NDArray<Float64>
+final t_sort_out = sort(f64, out: f64);
+
+// expect: NDArray<Float32>
+final t_sin_out = sin(f32, out: f32);
+
+// expect: NDArray<Float64>
+final t_sin_i32_out = sin(i32, out: f64);
+
+// expect: NDArray<Int64>
+final t_sumAs_out = sumAs(i32, DType.int64, out: i64);
+
+// expect: NDArray<Int64>
+final t_argsortAs_out = argsortAs(f64, DType.int64, out: i64);
+
+// expect: ({NDArray<Float64> t, NDArray<Float64> z})
+final t_schur_out = schur(f64, outT: f64, outZ: f64);
+
+// expect: NDArray<Float64>
+final t_divide_out = divide(i32, i32, out: f64);
+
+// `NDArray<DTypeTag>` inputs and `T extends DTypeTag` generic callers keep
+// working (the dependent parameter only constrains `out` relative to `T`):
+
+// expect: NDArray<DTypeTag>
+final t_sort_dyn = sort(dyn);
+
+// expect: NDArray<DTypeTag>
+final t_sort_dyn_out = sort(dyn, out: f32);
+
+NDArray<T> genericSortInto<T extends DTypeTag>(NDArray<T> a, NDArray<T> buf) =>
+    sort(a, out: buf);
+
+// expect: NDArray<Int16>
+final t_generic_sort_into = genericSortInto(i16, i16);
+
+// Creation-style functions infer their dtype from `dtype:` or `out:` alone:
+
+// expect: NDArray<Float32>
+final t_uniform_dtype = uniform([2], dtype: DType.float32);
+
+// expect: NDArray<Float32>
+final t_uniform_out = uniform([2], out: f32);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_uniform_default = uniform([2]);
+
+// expect: NDArray<Float64>
+final t_hanning_out = hanning(5, out: f64);
+
+// expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
+final t_hanning_dyn_dtype = hanning(5, dtype: DType.float64.asAnySpec);

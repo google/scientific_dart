@@ -122,7 +122,7 @@ GpuArray<T> _preserveDType<T extends DTypeTag>(
   GpuArray<DTypeTag> res,
 ) {
   if (res.dtype == reference.dtype && res is GpuArray<T>) return res;
-  final casted = res.astype<T>(reference.dtype);
+  final casted = res.astype(reference.dtype);
   if (res.requiresGrad) {
     casted.requiresGrad = true;
     casted.gradFn = res.gradFn;

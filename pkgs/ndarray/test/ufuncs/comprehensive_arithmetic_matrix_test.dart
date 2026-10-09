@@ -164,7 +164,7 @@ void main() {
                 expect(() => subtract<AnySpec>(a, b), throwsArgumentError);
                 expect(() => multiply<AnySpec>(a, b), throwsArgumentError);
                 expect(
-                  () => divide<AnySpec, DTypeTag>(a, b),
+                  () => divide(a.asAnySpec, b.asAnySpec),
                   throwsArgumentError,
                 );
                 continue;
@@ -186,7 +186,7 @@ void main() {
               expect(prod.shape, [2, 2]);
               expect(prod.dtype, dtA);
 
-              final quot = divide<AnySpec, DTypeTag>(a, b);
+              final quot = divide(a.asAnySpec, b.asAnySpec);
               expect(quot.shape, [2, 2]);
             }
           }

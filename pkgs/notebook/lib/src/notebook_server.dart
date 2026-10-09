@@ -210,7 +210,7 @@ class NotebookServer {
           'content-disposition',
           'attachment; filename="notebook.ipynb"',
         );
-        request.response.write(ipynbJson);
+        request.response.add(utf8.encode(ipynbJson));
         await request.response.close();
       } else if (!serverlessWasm &&
           path == '/api/import/ipynb' &&

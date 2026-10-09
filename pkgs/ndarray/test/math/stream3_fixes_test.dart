@@ -222,7 +222,7 @@ void main() {
           DType.float64,
         );
 
-        final res = qr<Float64>(a);
+        final res = qr(a);
         expect(res.q.shape, equals([3, 2, 2]));
         expect(res.r.shape, equals([3, 2, 2]));
 
@@ -346,7 +346,7 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          final qrRes = qr<Float64>(a);
+          final qrRes = qr(a);
           expect(qrRes.q.shape, equals([2, 2]));
           expect(qrRes.r.shape, equals([2, 2]));
           qrRes.dispose();
@@ -467,7 +467,7 @@ void main() {
 
           // eigh return generic <T> check
           final ({NDArray<AnySpec> eigenvalues, NDArray<Float64> eigenvectors})
-          resEigh = eigh<Float64, Float64>(mat);
+          resEigh = eigh(mat);
           expect(resEigh.eigenvectors.dtype, equals(DType.float64));
 
           // hessenberg return generic <T> check

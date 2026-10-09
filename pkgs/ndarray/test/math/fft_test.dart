@@ -991,7 +991,9 @@ void main() {
             DType.int32,
           );
           final out = NDArray<Complex64>.zeros([2, 4], DType.complex64);
-          final freq = fftn(a, out: out);
+          // The static complex projection of an integer input is complex128;
+          // widen the input to exercise the run-time complex64 out promotion.
+          final freq = fftn(a.asAnySpec, out: out);
           expect(freq.dtype, DType.complex64);
           final flat = freq.ravel();
           for (var i = 0; i < 8; i++) {
@@ -1009,7 +1011,7 @@ void main() {
             DType.int64,
           );
           final out = NDArray<Complex64>.zeros([2, 4], DType.complex64);
-          final freq = fftn(a, out: out);
+          final freq = fftn(a.asAnySpec, out: out);
           expect(freq.dtype, DType.complex64);
         }),
       );
@@ -1023,7 +1025,7 @@ void main() {
             DType.int16,
           );
           final out = NDArray<Complex64>.zeros([2, 4], DType.complex64);
-          final freq = fftn(a, out: out);
+          final freq = fftn(a.asAnySpec, out: out);
           expect(freq.dtype, DType.complex64);
         }),
       );
@@ -1037,7 +1039,7 @@ void main() {
             DType.uint8,
           );
           final out = NDArray<Complex64>.zeros([2, 4], DType.complex64);
-          final freq = fftn(a, out: out);
+          final freq = fftn(a.asAnySpec, out: out);
           expect(freq.dtype, DType.complex64);
         }),
       );
@@ -1109,18 +1111,27 @@ void main() {
         () => NDArray.scope(() {
           final a64 = NDArray.zeros([8], DType.float64);
           final outC64 = NDArray<Complex64>.zeros([8], DType.complex64);
-          expect(() => fft(a64, out: outC64), throwsArgumentError);
+          expect(
+            () => fft(a64.asAnySpec, out: outC64.asAnySpec),
+            throwsArgumentError,
+          );
 
           final aC128 = NDArray<Complex128>.zeros([8], DType.complex128);
-          expect(() => ifft(aC128, out: outC64), throwsArgumentError);
+          expect(
+            () => ifft(aC128.asAnySpec, out: outC64.asAnySpec),
+            throwsArgumentError,
+          );
 
           final outRfftWrong = NDArray<Complex64>.zeros([5], DType.complex64);
-          expect(() => rfft(a64, out: outRfftWrong), throwsArgumentError);
+          expect(
+            () => rfft(a64.asAnySpec, out: outRfftWrong.asAnySpec),
+            throwsArgumentError,
+          );
 
           final outIrfftWrong = NDArray.zeros([8], DType.float32);
           final rfftIn = NDArray<Complex128>.zeros([5], DType.complex128);
           expect(
-            () => irfft(rfftIn, n: 8, out: outIrfftWrong),
+            () => irfft(rfftIn.asAnySpec, n: 8, out: outIrfftWrong.asAnySpec),
             throwsArgumentError,
           );
 
@@ -1129,7 +1140,10 @@ void main() {
             2,
           ], DType.complex64);
           final a2D = NDArray.zeros([2, 2], DType.float64);
-          expect(() => fftn(a2D, out: outFftnWrong), throwsArgumentError);
+          expect(
+            () => fftn(a2D.asAnySpec, out: outFftnWrong.asAnySpec),
+            throwsArgumentError,
+          );
         }),
       );
     });
@@ -1362,11 +1376,11 @@ void main() {
     test('fft/ifft and rfft/irfft roundtrip for n = 53', () {
       NDArray.scope(() {
         const n = 53;
-        final x = linspace<Float64>(-1.0, 2.0, n, dtype: DType.float64);
-        final cRec = real(ifft<Complex128>(fft<Complex128>(x)));
+        final x = linspace(-1.0, 2.0, n, dtype: DType.float64);
+        final cRec = real(ifft(fft(x)));
         expect(allClose(cRec, x, atol: 1e-11), isTrue);
 
-        final rRec = irfft<Float64>(rfft<Complex128>(x), n: n);
+        final rRec = irfft(rfft(x), n: n);
         expect(allClose(rRec, x, atol: 1e-11), isTrue);
       });
     });

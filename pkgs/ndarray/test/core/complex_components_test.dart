@@ -132,15 +132,27 @@ void main() {
         final wrongDType = NDArray.create([2], DType.int32);
 
         expect(() => real(a, out: wrongShape), throwsArgumentError);
-        expect(() => real(a, out: wrongDType), throwsArgumentError);
+        expect(
+          () => real(a.asAnySpec, out: wrongDType.asAnySpec),
+          throwsArgumentError,
+        );
         expect(() => imag(a, out: wrongShape), throwsArgumentError);
-        expect(() => imag(a, out: wrongDType), throwsArgumentError);
+        expect(
+          () => imag(a.asAnySpec, out: wrongDType.asAnySpec),
+          throwsArgumentError,
+        );
 
         final realArr = NDArray.fromList([10.0, 20.0], [2], DType.float64);
         expect(() => real(realArr, out: wrongShape), throwsArgumentError);
-        expect(() => real(realArr, out: wrongDType), throwsArgumentError);
+        expect(
+          () => real(realArr.asAnySpec, out: wrongDType.asAnySpec),
+          throwsArgumentError,
+        );
         expect(() => imag(realArr, out: wrongShape), throwsArgumentError);
-        expect(() => imag(realArr, out: wrongDType), throwsArgumentError);
+        expect(
+          () => imag(realArr.asAnySpec, out: wrongDType.asAnySpec),
+          throwsArgumentError,
+        );
       }),
     );
 

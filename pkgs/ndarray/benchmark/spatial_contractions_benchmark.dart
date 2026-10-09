@@ -24,14 +24,14 @@ void main() async {
       const numPoints = 500;
       const pointDim = 20;
 
-      final pointsA = linspace<DTypeTag>(
+      final pointsA = linspace(
         0.0,
         10.0,
         numPoints * pointDim,
         dtype: DType.float64,
       ).reshape([numPoints, pointDim]);
 
-      final pointsB = linspace<DTypeTag>(
+      final pointsB = linspace(
         5.0,
         15.0,
         numPoints * pointDim,

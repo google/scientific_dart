@@ -23,7 +23,7 @@ void main() async {
   await criterion(
     'NDArray Indexing, Slicing & Manipulation Benchmark Suite',
     (c) {
-      final a1d = linspace<DTypeTag>(0.0, 100.0, size, dtype: DType.float64);
+      final a1d = linspace(0.0, 100.0, size, dtype: DType.float64);
       final mat2d = NDArray<DTypeTag>.arange(
         0.0,
         (matrixDim * matrixDim).toDouble(),
@@ -91,7 +91,7 @@ void main() async {
         final choices = [
           NDArray<DTypeTag>.zeros([10000], DType.float64),
           NDArray<DTypeTag>.ones([10000], DType.float64),
-          linspace<DTypeTag>(0.0, 10.0, 10000, dtype: DType.float64),
+          linspace(0.0, 10.0, 10000, dtype: DType.float64),
         ];
         final selector = NDArray<DTypeTag>.fromList(
           List.generate(10000, (i) => i % 3),
@@ -133,12 +133,7 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(500 * 500));
 
-        final repVec = linspace<DTypeTag>(
-          0.0,
-          10.0,
-          1000,
-          dtype: DType.float64,
-        );
+        final repVec = linspace(0.0, 10.0, 1000, dtype: DType.float64);
         c.bench('repeat([1000], repeats=50) -> [50,000]', () {
           final res = repeat(repVec, [50]);
           blackhole(res);

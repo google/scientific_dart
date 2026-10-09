@@ -152,7 +152,7 @@ void main() {
 
             final xF64 = NDArray.fromList([2.5, 4.0], [2], DType.float64);
             expect(
-              () => polyval<AnySpec, DTypeTag>(cInt, xF64),
+              () => polyval(cInt.asAnySpec, xF64.asAnySpec),
               throwsArgumentError,
             );
           });
@@ -299,7 +299,10 @@ void main() {
           expect(() => polyval(c, x, out: outBadShape), throwsArgumentError);
 
           final outBadDtype = NDArray.zeros([3], DType.float32);
-          expect(() => polyval(c, x, out: outBadDtype), throwsArgumentError);
+          expect(
+            () => polyval(c.asAnySpec, x.asAnySpec, out: outBadDtype.asAnySpec),
+            throwsArgumentError,
+          );
         });
       });
 

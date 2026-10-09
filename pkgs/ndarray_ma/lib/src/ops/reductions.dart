@@ -28,11 +28,8 @@ MaskedArray<R> _maSum<T extends DTypeTag, R extends DTypeTag>(
   int? axis,
 }) => _reduction<T, R>(
   self,
-  (arr, {axis}) => ndops.sumAs<T, R>(
-    arr,
-    _accumulatorDType(self.dtype) as DType<R>,
-    axis: axis,
-  ),
+  (arr, {axis}) =>
+      ndops.sumAs(arr, _accumulatorDType(self.dtype) as DType<R>, axis: axis),
   _zeroValue(self.dtype),
   axis,
 );
@@ -42,11 +39,8 @@ MaskedArray<R> _maProd<T extends DTypeTag, R extends DTypeTag>(
   int? axis,
 }) => _reduction<T, R>(
   self,
-  (arr, {axis}) => ndops.prodAs<T, R>(
-    arr,
-    _accumulatorDType(self.dtype) as DType<R>,
-    axis: axis,
-  ),
+  (arr, {axis}) =>
+      ndops.prodAs(arr, _accumulatorDType(self.dtype) as DType<R>, axis: axis),
   _oneValue(self.dtype),
   axis,
 );
@@ -57,7 +51,7 @@ MaskedArray<T> _maMin<T extends DTypeTag>(MaskedArray<T> self, {int? axis}) {
   }
   return _reduction<T, T>(
     self,
-    (a, {axis}) => ndops.min<T>(a, axis: axis),
+    (a, {axis}) => ndops.min(a, axis: axis),
     _maxValue(self.dtype),
     axis,
   );
@@ -69,7 +63,7 @@ MaskedArray<T> _maMax<T extends DTypeTag>(MaskedArray<T> self, {int? axis}) {
   }
   return _reduction<T, T>(
     self,
-    (a, {axis}) => ndops.max<T>(a, axis: axis),
+    (a, {axis}) => ndops.max(a, axis: axis),
     _minValue(self.dtype),
     axis,
   );

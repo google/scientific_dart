@@ -141,7 +141,7 @@ final class ReLU extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.relu<T>(input);
+    return functional.relu(input);
   }
 }
 
@@ -153,7 +153,7 @@ final class GELU extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.gelu<T>(input);
+    return functional.gelu(input);
   }
 }
 
@@ -165,7 +165,7 @@ final class Sigmoid extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.sigmoid<T>(input);
+    return functional.sigmoid(input);
   }
 }
 
@@ -177,7 +177,7 @@ final class Tanh extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.tanh<T>(input);
+    return functional.tanh(input);
   }
 }
 
@@ -189,7 +189,7 @@ final class SiLU extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.silu<T>(input);
+    return functional.silu(input);
   }
 }
 
@@ -201,7 +201,7 @@ final class Swish extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.swish<T>(input);
+    return functional.swish(input);
   }
 }
 
@@ -224,7 +224,7 @@ final class LeakyReLU extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.leakyRelu<T>(input, negativeSlope: negativeSlope);
+    return functional.leakyRelu(input, negativeSlope: negativeSlope);
   }
 }
 
@@ -243,7 +243,7 @@ final class ELU extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.elu<T>(input, alpha: alpha);
+    return functional.elu(input, alpha: alpha);
   }
 }
 
@@ -268,7 +268,7 @@ final class Softplus extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.softplus<T>(input, beta: beta, threshold: threshold);
+    return functional.softplus(input, beta: beta, threshold: threshold);
   }
 }
 
@@ -283,7 +283,7 @@ final class Softmax extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.softmax<T>(input, axis: axis);
+    return functional.softmax(input, axis: axis);
   }
 }
 
@@ -298,7 +298,7 @@ final class LogSoftmax extends Module {
   @override
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
-    return functional.logSoftmax<T>(input, axis: axis);
+    return functional.logSoftmax(input, axis: axis);
   }
 }
 
@@ -474,7 +474,7 @@ final class SwiGLU extends Module {
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
     final gate = w1<T>(input);
-    final up = functional.silu<T>(w2<T>(input));
+    final up = functional.silu(w2<T>(input));
     final fused = gate * up;
     return w3<T>(fused);
   }
@@ -550,7 +550,7 @@ final class GeGLU extends Module {
   GpuArray<T> forward<T extends DTypeTag>(GpuArray<T> input) {
     checkNotDisposed();
     final gate = w1<T>(input);
-    final up = functional.gelu<T>(w2<T>(input));
+    final up = functional.gelu(w2<T>(input));
     final fused = gate * up;
     return w3<T>(fused);
   }

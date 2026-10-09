@@ -238,7 +238,7 @@ void main() {
           DType.complex128,
         );
         final xQuery = NDArray<Float64>.fromList([1.5], [1], DType.float64);
-        final cRes = interp<Complex128>(xQuery, xp, cFp);
+        final cRes = interp(xQuery, xp, cFp);
         expect(cRes.dtype, DType.complex128);
         final cVal = cRes.toList().first;
         expect(cVal.real, closeTo(5.0, 1e-12));

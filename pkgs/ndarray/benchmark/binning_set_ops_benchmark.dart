@@ -50,7 +50,7 @@ void main() async {
           counts.dispose();
         }, throughput: Throughput.elements(size));
 
-        final bins = linspace<DTypeTag>(0.0, 100.0, 101, dtype: DType.float64);
+        final bins = linspace(0.0, 100.0, 101, dtype: DType.float64);
         c.bench('digitize(data, bins: 100) [size=100,000]', () {
           final binIdx = digitize(rawData, bins);
           blackhole(binIdx);

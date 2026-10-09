@@ -3004,7 +3004,7 @@ void main() {
       () => NDArray.scope(() {
         final empty = NDArray.zeros([0], DType.float64);
         expect(nansum(empty).scalar, 0.0);
-        expect(nanmean<DTypeTag>(empty).scalar.isNaN, true);
+        expect(nanmean(empty).scalar.isNaN, true);
 
         final a = NDArray<Float64>.fromList(
           ([1.0, double.nan]).map((e) => (e as num).toDouble()).toList(),
@@ -3452,19 +3452,19 @@ void main() {
 
           final outDType = NDArray.zeros([2], DType.int32);
           expect(
-            () => cumsum<DTypeTag>(a, out: outDType),
+            () => cumsum(a.asAnySpec, out: outDType.asAnySpec),
             throwsA(anyOf(isA<TypeError>(), isA<ArgumentError>())),
           );
           expect(
-            () => cumprod<DTypeTag>(a, out: outDType),
+            () => cumprod(a.asAnySpec, out: outDType.asAnySpec),
             throwsA(anyOf(isA<TypeError>(), isA<ArgumentError>())),
           );
           expect(
-            () => cummin<DTypeTag>(a, out: outDType as dynamic),
+            () => cummin(a.asAnySpec, out: outDType.asAnySpec),
             throwsA(anyOf(isA<TypeError>(), isA<ArgumentError>())),
           );
           expect(
-            () => cummax<DTypeTag>(a, out: outDType as dynamic),
+            () => cummax(a.asAnySpec, out: outDType.asAnySpec),
             throwsA(anyOf(isA<TypeError>(), isA<ArgumentError>())),
           );
         }),
@@ -4532,7 +4532,7 @@ void main() {
             [3],
             DType.int32,
           );
-          expect(() => cov<AnySpec, DTypeTag>(x, y: y), throwsArgumentError);
+          expect(() => cov(x.asAnySpec, y: y.asAnySpec), throwsArgumentError);
           final c = cov(x, y: y.astype(DType.float64));
           expect(c.shape, [2, 2]);
           expect(c.getCell([0, 0]), closeTo(11.71, 1e-4));

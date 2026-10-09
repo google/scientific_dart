@@ -197,13 +197,13 @@ final class CompiledWgslKernel {
   /// binding order via [positionalInputs]. Runtime scalar uniform parameters
   /// declared via [Expr.scalar] can be overridden in [scalars]. When [out] is
   /// provided, the result is written into [out] and returned.
-  GpuArray<T> run<T extends DTypeTag>({
+  GpuArray<T> run<T extends AnySpec>({
     Map<String, GpuArray<DTypeTag>> inputs = const {},
     List<GpuArray<DTypeTag>> positionalInputs = const [],
     Map<String, double>? scalars,
     List<int>? outputShape,
     List<int>? shape,
-    DType<DTypeTag>? dtype,
+    DType<T>? dtype,
     GpuDevice? device,
     GpuArray<T>? out,
   }) {
@@ -334,12 +334,11 @@ final class CompiledWgslKernel {
             ? resolvedInputs.first.device
             : GpuDevice.defaultDevice);
     final resolvedDType =
-        (out?.dtype ??
-                dtype ??
-                _inferOutputDType<T>(
-                  resolvedInputs.isNotEmpty ? resolvedInputs.first.dtype : null,
-                ))
-            as DType<T>;
+        out?.dtype ??
+        dtype ??
+        _inferOutputDType<T>(
+          resolvedInputs.isNotEmpty ? resolvedInputs.first.dtype : null,
+        );
     final totalElements = computeSize(targetShape);
 
     for (var i = 0; i < resolvedInputs.length; i++) {
@@ -548,12 +547,12 @@ final class CompiledWgslKernel {
   }
 
   /// Dispatches this compiled WGSL kernel on the GPU over the named [inputs] map.
-  GpuArray<T> execute<T extends DTypeTag>(
+  GpuArray<T> execute<T extends AnySpec>(
     Map<String, GpuArray<DTypeTag>> inputs, {
     Map<String, double>? scalars,
     List<int>? outputShape,
     List<int>? shape,
-    DType<DTypeTag>? dtype,
+    DType<T>? dtype,
     GpuDevice? device,
     GpuArray<T>? out,
   }) => run<T>(
@@ -567,12 +566,12 @@ final class CompiledWgslKernel {
   );
 
   /// Dispatches this compiled WGSL kernel on the GPU over [inputs] in binding order.
-  GpuArray<T> executePositional<T extends DTypeTag>(
+  GpuArray<T> executePositional<T extends AnySpec>(
     List<GpuArray<DTypeTag>> inputs, {
     Map<String, double>? scalars,
     List<int>? outputShape,
     List<int>? shape,
-    DType<DTypeTag>? dtype,
+    DType<T>? dtype,
     GpuDevice? device,
     GpuArray<T>? out,
   }) => run<T>(
@@ -586,12 +585,12 @@ final class CompiledWgslKernel {
   );
 
   /// Callable shorthand for dispatching this compiled WGSL kernel on [inputs].
-  GpuArray<T> call<T extends DTypeTag>(
+  GpuArray<T> call<T extends AnySpec>(
     Map<String, GpuArray<DTypeTag>> inputs, {
     Map<String, double>? scalars,
     List<int>? outputShape,
     List<int>? shape,
-    DType<DTypeTag>? dtype,
+    DType<T>? dtype,
     GpuDevice? device,
     GpuArray<T>? out,
   }) => run<T>(
@@ -785,13 +784,13 @@ final class WgslJitCompiler {
   /// Compiles (or retrieves from cache) and immediately executes [expression] on the GPU.
   ///
   /// Throws a [FormatException] if [validate] is `true` and the generated WGSL fails validation.
-  GpuArray<T> execute<T extends DTypeTag>(
+  GpuArray<T> execute<T extends AnySpec>(
     Expr expression,
     Map<String, GpuArray<DTypeTag>> inputs, {
     Map<String, double>? scalars,
     List<int>? outputShape,
     List<int>? shape,
-    DType<DTypeTag>? dtype,
+    DType<T>? dtype,
     GpuDevice? device,
     GpuArray<T>? out,
     String? kernelName,

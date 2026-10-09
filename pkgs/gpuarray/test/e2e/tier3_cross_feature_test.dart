@@ -120,8 +120,8 @@ void main() {
               [2, 2],
               DType.int8,
             );
-            final f16Gpu = int8Gpu.astype<Float16>(DType.float16);
-            final f64Gpu = f16Gpu.astype<Float64>(DType.float64);
+            final f16Gpu = int8Gpu.astype(DType.float16);
+            final f64Gpu = f16Gpu.astype(DType.float64);
             final hostF64 = f64Gpu.toNDArray();
             _expectCloseList(hostF64.toList(), <double>[
               -5.0,
@@ -293,7 +293,7 @@ void main() {
             DType.float32,
           );
           final flipped = fliplr(base);
-          final intCast = base.astype<Int16>(DType.int16);
+          final intCast = base.astype(DType.int16);
           final payload = saveSafetensors({
             'flipped': flipped,
             'int16': intCast,

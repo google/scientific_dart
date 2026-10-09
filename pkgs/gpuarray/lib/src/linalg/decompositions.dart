@@ -155,13 +155,16 @@ void _requireSquare2d(GpuArray a, String functionName) {
   C extends DTypeTag,
   M extends DTypeTag,
   S extends DTypeTag,
-  D extends DTypeTag
+  D extends DTypeTag,
+  OutU extends M,
+  OutS extends F,
+  OutVt extends M
 >(
   GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   bool fullMatrices = true,
-  GpuArray<M>? outU,
-  GpuArray<F>? outS,
-  GpuArray<M>? outVt,
+  GpuArray<OutU>? outU,
+  GpuArray<OutS>? outS,
+  GpuArray<OutVt>? outVt,
 }) {
   _require2d(a, 'svd');
   final m = a.shape[0];
@@ -254,9 +257,9 @@ void _requireSquare2d(GpuArray a, String functionName) {
 ///
 /// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
 /// shape `[min(M, N)]`, matching float dtype, and reside on `a.device`.
-GpuArray<F> svdValues<F extends DTypeTag>(
+GpuArray<F> svdValues<F extends DTypeTag, Out extends F>(
   GpuArray<RealFloatOf<F>> a, {
-  GpuArray<F>? out,
+  GpuArray<Out>? out,
 }) {
   _require2d(a, 'svdValues');
   final m = a.shape[0];
@@ -309,11 +312,12 @@ GpuArray<F> svdValues<F extends DTypeTag>(
 ///
 /// The [a] tensor must be a 2-D matrix. Optional [outQ] and [outR] arrays must
 /// match the expected shapes, output dtype, and reside on `a.device`.
-({GpuArray<M> q, GpuArray<M> r}) qr<M extends DTypeTag>(
+({GpuArray<M> q, GpuArray<M> r})
+qr<M extends DTypeTag, OutQ extends M, OutR extends M>(
   GpuArray<InexactOf<M>> a, {
   QrMode mode = QrMode.reduced,
-  GpuArray<M>? outQ,
-  GpuArray<M>? outR,
+  GpuArray<OutQ>? outQ,
+  GpuArray<OutR>? outR,
 }) {
   _require2d(a, 'qr');
   final m = a.shape[0];
@@ -389,9 +393,9 @@ GpuArray<F> svdValues<F extends DTypeTag>(
 ///
 /// The [a] tensor must be a 2-D matrix. If [out] is provided, it must have
 /// shape `[min(M, N), N]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> qrR<M extends DTypeTag>(
+GpuArray<M> qrR<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> a, {
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _require2d(a, 'qrR');
   final m = a.shape[0];
@@ -443,11 +447,11 @@ GpuArray<M> qrR<M extends DTypeTag>(
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[N, N]`, matching output dtype, and reside on `a.device`.
-GpuArray<M> cholesky<M extends DTypeTag>(
+GpuArray<M> cholesky<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> a, {
   bool upper = false,
   UpLo? uplo,
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'cholesky');
   final n = a.shape[0];
@@ -503,12 +507,14 @@ GpuArray<M> cholesky<M extends DTypeTag>(
   C extends DTypeTag,
   M extends DTypeTag,
   S extends DTypeTag,
-  D extends DTypeTag
+  D extends DTypeTag,
+  OutEigenvalues extends F,
+  OutEigenvectors extends M
 >(
   GpuArray<DTypeSpec<R, E, F, C, M, S, D, DTypeTag>> a, {
   UpLo uplo = UpLo.lower,
-  GpuArray<F>? outEigenvalues,
-  GpuArray<M>? outEigenvectors,
+  GpuArray<OutEigenvalues>? outEigenvalues,
+  GpuArray<OutEigenvectors>? outEigenvectors,
 }) {
   _requireSquare2d(a, 'eigh');
   final n = a.shape[0];
@@ -587,10 +593,10 @@ GpuArray<M> cholesky<M extends DTypeTag>(
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[N]`, matching float dtype, and reside on `a.device`.
-GpuArray<F> eigvalsh<F extends DTypeTag>(
+GpuArray<F> eigvalsh<F extends DTypeTag, Out extends F>(
   GpuArray<RealFloatOf<F>> a, {
   UpLo uplo = UpLo.lower,
-  GpuArray<F>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'eigvalsh');
   final n = a.shape[0];
@@ -638,10 +644,11 @@ GpuArray<F> eigvalsh<F extends DTypeTag>(
 /// The [a] tensor must be a square 2-D matrix. Optional [outEigenvalues] and
 /// [outEigenvectors] arrays must have matching complex dtype and shapes `[N]`
 /// and `[N, N]` on `a.device`.
-({GpuArray<C> eigenvalues, GpuArray<C> eigenvectors}) eig<C extends DTypeTag>(
+({GpuArray<C> eigenvalues, GpuArray<C> eigenvectors})
+eig<C extends DTypeTag, OutEigenvalues extends C, OutEigenvectors extends C>(
   GpuArray<ComplexOf<C>> a, {
-  GpuArray<C>? outEigenvalues,
-  GpuArray<C>? outEigenvectors,
+  GpuArray<OutEigenvalues>? outEigenvalues,
+  GpuArray<OutEigenvectors>? outEigenvectors,
 }) {
   _requireSquare2d(a, 'eig');
   final n = a.shape[0];
@@ -722,9 +729,9 @@ GpuArray<F> eigvalsh<F extends DTypeTag>(
 ///
 /// The [a] tensor must be a square 2-D matrix. If [out] is provided, it must
 /// have shape `[N]`, matching complex dtype, and reside on `a.device`.
-GpuArray<C> eigvals<C extends DTypeTag>(
+GpuArray<C> eigvals<C extends DTypeTag, Out extends C>(
   GpuArray<ComplexOf<C>> a, {
-  GpuArray<C>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(a, 'eigvals');
   final n = a.shape[0];
@@ -772,11 +779,12 @@ GpuArray<C> eigvals<C extends DTypeTag>(
 ///
 /// The [a] tensor must be a 2-D matrix. Optional [outP], [outL], and [outU]
 /// arrays must match the expected shapes and output dtype on `a.device`.
-({GpuArray<M> p, GpuArray<M> l, GpuArray<M> u}) lu<M extends DTypeTag>(
+({GpuArray<M> p, GpuArray<M> l, GpuArray<M> u})
+lu<M extends DTypeTag, OutP extends M, OutL extends M, OutU extends M>(
   GpuArray<InexactOf<M>> a, {
-  GpuArray<M>? outP,
-  GpuArray<M>? outL,
-  GpuArray<M>? outU,
+  GpuArray<OutP>? outP,
+  GpuArray<OutL>? outL,
+  GpuArray<OutU>? outU,
 }) {
   _require2d(a, 'lu');
   final m = a.shape[0];
@@ -870,9 +878,10 @@ GpuArray<C> eigvals<C extends DTypeTag>(
 ///
 /// The [a] tensor must be a square 2-D matrix. Optional [outLu] and [outPivots]
 /// arrays must match the expected shapes and dtypes on `a.device`.
-({GpuArray<M> lu, GpuArray<Int32> pivots}) luFactor<M extends DTypeTag>(
+({GpuArray<M> lu, GpuArray<Int32> pivots})
+luFactor<M extends DTypeTag, OutLu extends M>(
   GpuArray<InexactOf<M>> a, {
-  GpuArray<M>? outLu,
+  GpuArray<OutLu>? outLu,
   GpuArray<Int32>? outPivots,
 }) {
   _requireSquare2d(a, 'luFactor');
@@ -948,11 +957,11 @@ GpuArray<C> eigvals<C extends DTypeTag>(
 /// The [lu] tensor must be a square 2-D matrix of shape `[N, N]`, [pivots] must
 /// be a 1-D array of length `N`, and [b] must be a 1-D (`[N]`) or 2-D
 /// (`[N, K]`) array on the same device.
-GpuArray<M> luSolve<M extends DTypeTag>(
+GpuArray<M> luSolve<M extends DTypeTag, Out extends M>(
   GpuArray<InexactOf<M>> lu,
   GpuArray<DTypeTag> pivots,
   GpuArray<DTypeTag> b, {
-  GpuArray<M>? out,
+  GpuArray<Out>? out,
 }) {
   _requireSquare2d(lu, 'luSolve');
   if (pivots.isDisposed) {

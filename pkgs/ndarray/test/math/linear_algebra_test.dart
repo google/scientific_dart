@@ -1899,7 +1899,7 @@ void main() {
           DType.complex128,
         );
 
-        final d = det<DTypeTag>(a);
+        final d = det(a);
 
         expect(d.shape, []);
         expect(d.scalar.real, closeTo(-4.0, 1e-9));
@@ -1923,7 +1923,7 @@ void main() {
           DType.complex64,
         );
 
-        final d = det<DTypeTag>(a);
+        final d = det(a);
 
         expect(d.shape, [2]);
         final dList = d.toList();
@@ -2652,7 +2652,7 @@ void main() {
           NDArray.zeros([3], DType.float64),
         );
         expect(ls.rank, equals(1));
-        final aPlus = pinv<Float64>(a);
+        final aPlus = pinv(a);
         // Moore-Penrose identity: A * A^+ * A == A.
         final recon = matmul(matmul(a, aPlus), a);
         expect(allClose(recon, a, atol: 1e-11), isTrue);

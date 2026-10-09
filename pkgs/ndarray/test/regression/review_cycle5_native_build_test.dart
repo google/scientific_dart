@@ -36,7 +36,7 @@ void main() {
               [length],
               DType.complex64,
             );
-            final res64 = divide<Complex64, Complex64>(num64, den64);
+            final res64 = divide(num64, den64);
             for (var i = 0; i < length; i++) {
               final val = res64.getCell([i]);
               expect(val.real.isNaN, isFalse, reason: 'len=$length idx=$i');
@@ -84,7 +84,7 @@ void main() {
               [length],
               DType.complex128,
             );
-            final res128 = divide<Complex128, Complex128>(num128, den128);
+            final res128 = divide(num128, den128);
             for (var i = 0; i < length; i++) {
               final val = res128.getCell([i]);
               expect(val.real.isNaN, isFalse, reason: 'len=$length idx=$i');
@@ -318,7 +318,7 @@ void main() {
             DType.float64,
           );
           final v = base.slice([const Slice(start: 0, stop: 6, step: 2)]);
-          roll<Float64>(v, 1, axis: 0, out: v);
+          roll(v, 1, axis: 0, out: v);
           // Expected rolled v: [50.0, 10.0, 30.0]
           expect(v.getCell([0]), closeTo(50.0, 1e-12));
           expect(v.getCell([1]), closeTo(10.0, 1e-12));
@@ -369,7 +369,7 @@ void main() {
           );
           final srcSlice = baseOverlap.slice([const Slice(start: 0, stop: 5)]);
           final dstSlice = baseOverlap.slice([const Slice(start: 1, stop: 6)]);
-          roll<Float64>(srcSlice, 2, out: dstSlice);
+          roll(srcSlice, 2, out: dstSlice);
           // srcSlice was [1, 2, 3, 4, 5], rolled by 2 is [4, 5, 1, 2, 3]
           expect(dstSlice.getCell([0]), closeTo(4.0, 1e-12));
           expect(dstSlice.getCell([1]), closeTo(5.0, 1e-12));
@@ -427,7 +427,7 @@ void main() {
             [8.0, 8.0, 8.0],
           ];
 
-          clipArray<Float64>(a, min: minArr, max: maxArr, out: a.transpose());
+          clipArray(a, min: minArr, max: maxArr, out: a.transpose());
 
           for (var r = 0; r < 3; r++) {
             for (var c = 0; c < 3; c++) {

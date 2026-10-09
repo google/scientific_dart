@@ -204,7 +204,7 @@ void main() {
     test(
       'Linspace Factory',
       () => NDArray.scope(() {
-        final a = linspace<DTypeTag>(0.0, 1.0, 5, dtype: DType.float64);
+        final a = linspace(0.0, 1.0, 5, dtype: DType.float64);
         expect(a.shape, [5]);
         expect(a.data, [0.0, 0.25, 0.5, 0.75, 1.0]);
       }),
@@ -1397,7 +1397,7 @@ void main() {
     test(
       'linspace() with num == 1 coverage',
       () => NDArray.scope(() {
-        final a = linspace<DTypeTag>(5.0, 10.0, 1, dtype: DType.float64);
+        final a = linspace(5.0, 10.0, 1, dtype: DType.float64);
         expect(a.shape, [1]);
         expect(a.toList(), [5.0]);
       }),
@@ -1498,7 +1498,7 @@ void main() {
         expect(a64.toList(), [Complex(1.0, 0.0), Complex(2.0, 0.0)]);
 
         // 3. linspace with complex128
-        final l128 = linspace<DTypeTag>(
+        final l128 = linspace(
           Complex(1.0, 0.0),
           Complex(2.0, 0.0),
           3,
@@ -1513,7 +1513,7 @@ void main() {
         ]);
 
         // 4. linspace with single-element num == 1 and complex64
-        final l64 = linspace<DTypeTag>(
+        final l64 = linspace(
           Complex(5.0, 0.0),
           Complex(10.0, 0.0),
           1,

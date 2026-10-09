@@ -98,7 +98,7 @@ GpuArray<T> where<T extends AnySpec>(
 
   final condBool = condition.dtype == DType.boolean
       ? condition
-      : condition.astype<Boolean>(DType.boolean);
+      : condition.astype(DType.boolean);
   try {
     GpuKernels.executeWhere(
       cond: condBool.buffer,
@@ -166,7 +166,7 @@ GpuArray<T> select<T extends AnySpec>(
   }
 
   var current = (defaultValue != null)
-      ? defaultValue.astype<T>(outDType as DType<T>)
+      ? defaultValue.astype(outDType as DType<T>)
       : GpuArray<T>.zeros(
           outShape,
           outDType as DType<T>,
@@ -211,7 +211,7 @@ GpuArray<T> extract<T extends DTypeTag>(
     }
     final flatArr = arr.flatten();
     try {
-      return take<T>(flatArr, flatIndices);
+      return take(flatArr, flatIndices);
     } finally {
       if (!identical(flatArr, arr)) {
         flatArr.dispose();
@@ -230,11 +230,11 @@ GpuArray<T> booleanMask<T extends DTypeTag>(
 
 /// Takes elements from [arr] along [axis] (or from the flattened array if
 /// [axis] is `null`) at the given [indices].
-GpuArray<T> take<T extends DTypeTag>(
+GpuArray<T> take<T extends DTypeTag, Out extends T>(
   GpuArray<T> arr,
   GpuArray<DTypeTag> indices, {
   int? axis,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkArrayNotDisposed(arr, 'arr');
   _checkArrayNotDisposed(indices, 'indices');
@@ -395,12 +395,12 @@ GpuArray<T> take<T extends DTypeTag>(
 }
 
 /// Gathers elements from [arr] along [axis] (alias for [take]).
-GpuArray<T> gather<T extends DTypeTag>(
+GpuArray<T> gather<T extends DTypeTag, Out extends T>(
   GpuArray<T> arr,
   GpuArray<DTypeTag> indices, {
   int? axis,
-  GpuArray<T>? out,
-}) => take<T>(arr, indices, axis: axis, out: out);
+  GpuArray<Out>? out,
+}) => take(arr, indices, axis: axis, out: out);
 
 /// Replaces specified elements of [arr] with [values] using flat 1D [indices].
 void put<T extends DTypeTag>(
@@ -468,11 +468,11 @@ void scatter<T extends DTypeTag>(
 
 /// Takes values from [arr] along [axis] at specified 1D or multi-dimensional
 /// [indices].
-GpuArray<T> takeAlongAxis<T extends DTypeTag>(
+GpuArray<T> takeAlongAxis<T extends DTypeTag, Out extends T>(
   GpuArray<T> arr,
   GpuArray<DTypeTag> indices,
   int axis, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkArrayNotDisposed(arr, 'arr');
   _checkArrayNotDisposed(indices, 'indices');
@@ -872,11 +872,11 @@ GpuArray<T> _prepareOutputArray<T extends DTypeTag>(
 /// When [axis] is `null`, the flattened array is sorted into a 1-D array.
 /// If [out] is provided, the sorted values are written into [out] and
 /// returned.
-GpuArray<T> sort<T extends DTypeTag>(
+GpuArray<T> sort<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int? axis = -1,
   SortKind kind = SortKind.quicksort,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkArrayNotDisposed(a, 'a');
   if (axis == null) {
@@ -1007,13 +1007,14 @@ GpuArray<Int64> argsort<T extends DTypeTag>(
 /// When [largest] is `true`, the [k] largest elements are selected in
 /// descending order; otherwise the [k] smallest elements are selected in
 /// ascending order.
-({GpuArray<T> values, GpuArray<Int64> indices}) topk<T extends DTypeTag>(
+({GpuArray<T> values, GpuArray<Int64> indices})
+topk<T extends DTypeTag, OutValues extends T>(
   GpuArray<T> a,
   int k, {
   int axis = -1,
   bool largest = true,
   bool sorted = true,
-  GpuArray<T>? outValues,
+  GpuArray<OutValues>? outValues,
   GpuArray<Int64>? outIndices,
 }) {
   _checkArrayNotDisposed(a, 'a');
@@ -1097,18 +1098,18 @@ void _validateKth(Object kth, int axisSize) {
 /// All elements smaller than the [kth] element are moved before it and all
 /// equal or greater elements are moved behind it. Accepts an `int` or
 /// `List<int>` for [kth].
-GpuArray<T> partition<T extends DTypeTag>(
+GpuArray<T> partition<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   Object kth, {
   int? axis = -1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkArrayNotDisposed(a, 'a');
   final axisSize = axis == null
       ? a.size
       : a.shape[_normalizeRequiredAxis(axis, a.ndim)];
   _validateKth(kth, axisSize);
-  return sort<T>(a, axis: axis, out: out);
+  return sort(a, axis: axis, out: out);
 }
 
 /// Computes the 64-bit integer indices that would partition [a] at [kth]
@@ -1233,10 +1234,10 @@ GpuArray<Int64> searchsorted<T extends DTypeTag>(
     final commonDType = GpuArray.promoteDTypes(a.dtype, vArr.dtype);
     final effectiveA = a.dtype == commonDType
         ? a
-        : (castA = a.astype<DTypeTag>(commonDType));
+        : (castA = a.astype(commonDType));
     final effectiveV = vArr.dtype == commonDType
         ? vArr
-        : (castV = vArr.astype<DTypeTag>(commonDType));
+        : (castV = vArr.astype(commonDType));
 
     GpuKernels.executeSearchSorted(
       arr: effectiveA.buffer,
@@ -1808,7 +1809,7 @@ GpuArray<T> _coerceDiffBoundary<T extends DTypeTag>(
       bShape[normAxis] = 1;
       final castScalar = boundary.dtype == a.dtype
           ? boundary as GpuArray<T>
-          : boundary.astype<T>(a.dtype);
+          : boundary.astype(a.dtype);
       try {
         return broadcastTo<T>(castScalar, bShape).copy();
       } finally {
@@ -1819,7 +1820,7 @@ GpuArray<T> _coerceDiffBoundary<T extends DTypeTag>(
     }
     return boundary.dtype == a.dtype
         ? boundary.copy() as GpuArray<T>
-        : boundary.astype<T>(a.dtype);
+        : boundary.astype(a.dtype);
   }
   if (boundary is List) {
     final shape = _inferListShape(boundary);
@@ -1844,13 +1845,13 @@ GpuArray<T> _coerceDiffBoundary<T extends DTypeTag>(
 ///
 /// Optional [prepend] and [append] values are concatenated along [axis] prior
 /// to computing differences.
-GpuArray<T> diff<T extends DTypeTag>(
+GpuArray<T> diff<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int n = 1,
   int axis = -1,
   Object? prepend,
   Object? append,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkArrayNotDisposed(a, 'a');
   if (n < 0) {

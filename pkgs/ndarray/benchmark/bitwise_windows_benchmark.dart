@@ -24,34 +24,29 @@ void main() async {
     (c) {
       c.group('1. DSP Windowing Functions (100k points)', () {
         c.bench('hanning(100k)', () {
-          final res = hanning<DTypeTag>(size);
+          final res = hanning(size);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('hamming(100k)', () {
-          final res = hamming<DTypeTag>(size);
+          final res = hamming(size);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
       });
 
       c.group('2. Special Mathematical Functions (100k elements)', () {
-        final floatVec = linspace<DTypeTag>(
-          0.0,
-          10.0,
-          size,
-          dtype: DType.float64,
-        );
+        final floatVec = linspace(0.0, 10.0, size, dtype: DType.float64);
 
         c.bench('i0(x) (Bessel I0) [100k]', () {
-          final res = i0((floatVec as NDArray<AnySpec>));
+          final res = i0(floatVec);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
         c.bench('sinc(x) (Normalized Sinc) [100k]', () {
-          final res = sinc((floatVec as NDArray<AnySpec>));
+          final res = sinc(floatVec);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));

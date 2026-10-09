@@ -623,12 +623,12 @@ GpuArray<T> vdot<T extends SelfOf<DTypeTag>>(
 ///
 /// The [a] array must have at least 2 dimensions (`ndim >= 2`), and [axis1] and
 /// [axis2] must be distinct valid axes.
-GpuArray<T> diagonal<T extends DTypeTag>(
+GpuArray<T> diagonal<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int offset = 0,
   int axis1 = 0,
   int axis2 = 1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot extract diagonal of a disposed GpuArray.');
@@ -711,12 +711,12 @@ GpuArray<T> diagonal<T extends DTypeTag>(
 ///
 /// The [a] array must have at least 2 dimensions (`ndim >= 2`), and [axis1] and
 /// [axis2] must be distinct valid axes.
-GpuArray<T> trace<T extends DTypeTag>(
+GpuArray<T> trace<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int offset = 0,
   int axis1 = 0,
   int axis2 = 1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute trace of a disposed GpuArray.');

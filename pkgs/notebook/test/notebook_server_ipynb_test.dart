@@ -20,9 +20,20 @@ import 'package:test/test.dart';
 
 void main() {
   late NotebookServer server;
+  String? savedSessionIpynb;
+  String? savedSessionJson;
 
   setUp(() async {
     final workspaceDir = Directory.current.path;
+    final ipynbFile = File(p.join(workspaceDir, 'notebook_session.ipynb'));
+    final jsonFile = File(p.join(workspaceDir, 'notebook_session.json'));
+    savedSessionIpynb = ipynbFile.existsSync()
+        ? ipynbFile.readAsStringSync()
+        : null;
+    savedSessionJson = jsonFile.existsSync()
+        ? jsonFile.readAsStringSync()
+        : null;
+
     final sdkPath =
         Platform.environment['DART_SDK'] ??
         p.dirname(p.dirname(Platform.resolvedExecutable));
@@ -36,6 +47,19 @@ void main() {
 
   tearDown(() async {
     await server.stop();
+    final workspaceDir = Directory.current.path;
+    final ipynbFile = File(p.join(workspaceDir, 'notebook_session.ipynb'));
+    final jsonFile = File(p.join(workspaceDir, 'notebook_session.json'));
+    if (savedSessionIpynb != null) {
+      ipynbFile.writeAsStringSync(savedSessionIpynb!);
+    } else if (ipynbFile.existsSync()) {
+      ipynbFile.deleteSync();
+    }
+    if (savedSessionJson != null) {
+      jsonFile.writeAsStringSync(savedSessionJson!);
+    } else if (jsonFile.existsSync()) {
+      jsonFile.deleteSync();
+    }
   });
 
   test('Exports and imports .ipynb through HTTP endpoints', () async {

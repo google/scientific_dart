@@ -969,7 +969,10 @@ void main() {
         expect(() => abs(aValid, out: outInvalidShape), throwsArgumentError);
 
         final outInvalidDType = NDArray<Float64>.create([4], DType.float64);
-        expect(() => abs(aValid, out: outInvalidDType), throwsArgumentError);
+        expect(
+          () => abs(aValid.asAnySpec, out: outInvalidDType.asAnySpec),
+          throwsArgumentError,
+        );
       });
     });
   });

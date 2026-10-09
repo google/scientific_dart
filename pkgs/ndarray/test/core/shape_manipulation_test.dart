@@ -1513,7 +1513,7 @@ void main() {
               throwsArgumentError,
             );
             expect(
-              () => repeat(a, rep(2), out: outWrongDType),
+              () => repeat(a.asAnySpec, rep(2), out: outWrongDType.asAnySpec),
               throwsArgumentError,
             );
           });
@@ -1686,7 +1686,7 @@ void main() {
               throwsArgumentError,
             );
             expect(
-              () => tile(a, rep(2), out: outWrongDType),
+              () => tile(a.asAnySpec, rep(2), out: outWrongDType.asAnySpec),
               throwsArgumentError,
             );
           });

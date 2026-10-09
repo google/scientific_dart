@@ -1160,7 +1160,7 @@ void main() {
               DType.float64,
             );
 
-            final m = nanmean<Float64>(a);
+            final m = nanmean(a);
             expect(m.scalar, closeTo(3.0, 1e-9));
 
             final v = nanvar(a);
@@ -1174,7 +1174,7 @@ void main() {
               [3],
               DType.complex128,
             );
-            final cpxMean = nanmean<DTypeTag>(cpx);
+            final cpxMean = nanmean(cpx);
             final c = cpxMean.scalar;
             expect(c.real, closeTo(2.0, 1e-9));
             expect(c.imag, closeTo(4.0, 1e-9));
@@ -1184,7 +1184,7 @@ void main() {
               [2],
               DType.float64,
             );
-            final mAllNaN = nanmean<Float64>(allNaN);
+            final mAllNaN = nanmean(allNaN);
             expect(mAllNaN.scalar.isNaN, isTrue);
 
             final vAllNaN = nanvar(allNaN);
@@ -1816,14 +1816,28 @@ void main() {
           expect(() => cummax(aDisp), throwsStateError);
 
           final outDisp = NDArray.zeros([2, 2], DType.int32)..dispose();
-          expect(() => cumsum(a, axis: 0, out: outDisp), throwsStateError);
-          expect(() => cumprod(a, axis: 0, out: outDisp), throwsStateError);
+          // cumsum/cumprod accumulate int32 into int64, so an int32 `out` is
+          // only expressible through the run-time typed `AnySpec` row.
+          expect(
+            () => cumsum(a.asAnySpec, axis: 0, out: outDisp.asAnySpec),
+            throwsStateError,
+          );
+          expect(
+            () => cumprod(a.asAnySpec, axis: 0, out: outDisp.asAnySpec),
+            throwsStateError,
+          );
           expect(() => cummin(a, axis: 0, out: outDisp), throwsStateError);
           expect(() => cummax(a, axis: 0, out: outDisp), throwsStateError);
 
           final outBad = NDArray.zeros([5], DType.int32);
-          expect(() => cumsum(a, axis: 0, out: outBad), throwsArgumentError);
-          expect(() => cumprod(a, axis: 0, out: outBad), throwsArgumentError);
+          expect(
+            () => cumsum(a.asAnySpec, axis: 0, out: outBad.asAnySpec),
+            throwsArgumentError,
+          );
+          expect(
+            () => cumprod(a.asAnySpec, axis: 0, out: outBad.asAnySpec),
+            throwsArgumentError,
+          );
           expect(() => cummin(a, axis: 0, out: outBad), throwsArgumentError);
           expect(() => cummax(a, axis: 0, out: outBad), throwsArgumentError);
 
@@ -2023,7 +2037,8 @@ void main() {
             final a = NDArray<Float64>.fromList([1.0, 2.0], [2], DType.float64);
             final outBadDType = NDArray.zeros([4], DType.int32);
             expect(
-              () => pad(a, PadWidth.all(1), out: outBadDType),
+              () =>
+                  pad(a.asAnySpec, PadWidth.all(1), out: outBadDType.asAnySpec),
               throwsArgumentError,
             );
 
@@ -2581,10 +2596,10 @@ void main() {
             DType.complex128,
           );
 
-          final nmAx0 = nanmean<DTypeTag>(cpx2D, axis: 0);
+          final nmAx0 = nanmean(cpx2D, axis: 0);
           expect(nmAx0.shape, [2]);
 
-          final nmAx1 = nanmean<DTypeTag>(cpx2D, axis: 1);
+          final nmAx1 = nanmean(cpx2D, axis: 1);
           expect(nmAx1.shape, [2]);
         });
       });

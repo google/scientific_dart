@@ -60,6 +60,7 @@ const String _positiveOverlaySource = '''
 // ignore_for_file: non_constant_identifier_names, unused_element
 import 'package:gpuarray/fft.dart' as gfft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart' as gjit;
 import 'package:gpuarray/linalg.dart' as glinalg;
 import 'package:gpuarray/nn.dart' as gnn;
 import 'package:gpuarray/random.dart' as grandom;
@@ -75,6 +76,7 @@ late final GpuArray<Boolean> gb;
 late final GpuArray<Complex64> gc64;
 late final GpuArray<AnySpec> ganySpec;
 late final GpuArray<DTypeTag> gdyn;
+late final gjit.Expr gexpr;
 
 // --- GpuArray<Float32>
 // expect: GpuArray<Float32>
@@ -348,13 +350,29 @@ final t_where_default = where(gb, g32, g32);
 final t_permutation_default = grandom.permutation(4);
 // expect: GpuArray<Int64>
 final t_permutation_out_i64 = grandom.permutation(4, out: gi64);
+// expect: GpuArray<Float32>
+final t_sort_out_f32 = sort(g32, out: g32);
+// expect: GpuArray<Float32>
+final t_sin_out_f32 = sin(g32, out: g32);
+// expect: GpuArray<Float64>
+final t_divide_i32_out_f64 = divide(gi32, gi32, out: g64);
+// expect: GpuArray<Int64>
+final t_sumAs_out_i64 = sumAs(gi32, DType.int64, out: gi64);
+// expect: ({GpuArray<Int64> indices, GpuArray<Float32> values})
+final t_topk_out_f32 = topk(g32, 2, outValues: g32, outIndices: gi64);
+// expect: GpuArray<Float32>
+final t_jit_out_f32 = gjit.WgslJitCompiler.instance.execute(gexpr, {'x': g32}, out: g32);
+// expect: GpuArray<Float64>
+final t_jit_dtype_f64 = gjit.WgslJitCompiler.instance.execute(gexpr, {'x': g32}, dtype: DType.float64);
 ''';
 
 const String _negativeOverlaySource = '''
 // ignore_for_file: non_constant_identifier_names, unused_element
 import 'package:gpuarray/fft.dart' as gfft;
 import 'package:gpuarray/gpuarray.dart';
+import 'package:gpuarray/jit.dart' as gjit;
 import 'package:gpuarray/linalg.dart' as glinalg;
+import 'package:gpuarray/random.dart' as grandom;
 
 late final GpuArray<DTypeTag> gdyn;
 late final GpuArray<Float64> gf64;
@@ -364,6 +382,7 @@ late final GpuArray<Int32> gi32;
 late final GpuArray<Uint8> gu8;
 late final GpuArray<Boolean> gb;
 late final GpuArray<AnySpec> ganySpec;
+late final gjit.Expr gexpr;
 
 final t_neg_divide_dyn = divide(gdyn, gdyn); // error: could_not_infer, argument_type_not_assignable
 final t_neg_real_dyn = real(gdyn); // error: argument_type_not_assignable
@@ -412,6 +431,17 @@ GpuArray<T> badGenericAnd<T extends BitwiseDType>(GpuArray<T> a) => bitwiseAnd(a
 
 // A bare GpuArray<DTypeTag> is no longer accepted as a run-time-typed `out:`:
 final t_neg_concatenate_out_dyn = concatenate([gf32, gf32], out: gdyn); // error: argument_type_not_assignable
+
+// `out:` buffers are typed by a dependent `Out extends T` parameter, so a
+// mismatched dtype fails inference instead of widening `T` to the LUB:
+final t_neg_sort_out = sort(gf64, out: gf32); // error: could_not_infer
+final t_neg_sin_out = sin(gf64, out: gf32); // error: could_not_infer
+final t_neg_divide_out = divide(gi32, gi32, out: gf32); // error: could_not_infer
+final t_neg_sumAs_out = sumAs(gi32, DType.int64, out: gi32); // error: could_not_infer
+final t_neg_topk_outValues = topk(gf64, 2, outValues: gf32); // error: could_not_infer
+final t_neg_sort_out_dyn = sort(gf32, out: gdyn); // error: could_not_infer
+final t_neg_jit_dtype_out = gjit.WgslJitCompiler.instance.execute(gexpr, {'x': gf32}, dtype: DType.float64, out: gf32); // error: could_not_infer
+final t_neg_jit_dyn_out = gjit.WgslJitCompiler.instance.execute(gexpr, {'x': gf32}, out: gdyn); // error: argument_type_not_assignable
 ''';
 
 String _native(String path) => Uri.file(path).toFilePath();

@@ -46,7 +46,7 @@ void main() {
           expect(outView.isContiguous, isFalse);
 
           // Sum along axis 0 (reducing 2x3 -> 3) into outView
-          final res = sum<Float16>(a, axis: 0, out: outView);
+          final res = sum(a, axis: 0, out: outView);
           expect(identical(res, outView), isTrue);
 
           // Column sums: [1+4, 2+5, 3+6] = [5.0, 7.0, 9.0]

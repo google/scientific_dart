@@ -199,7 +199,10 @@ void main() {
         expect(() => tan(a, out: badShapeOut), throwsArgumentError);
 
         final badDTypeOut = NDArray.zeros([3], DType.float32);
-        expect(() => sin(a, out: badDTypeOut), throwsArgumentError);
+        expect(
+          () => sin(a.asAnySpec, out: badDTypeOut.asAnySpec),
+          throwsArgumentError,
+        );
       });
     });
 
@@ -359,11 +362,11 @@ void main() {
         final rArray = NDArray.fromList([1.0], [1], DType.float64);
         expect(() => atan2(cArray, cArray), throwsUnsupportedError);
         expect(
-          () => atan2<AnySpec, DTypeTag>(cArray, rArray),
+          () => atan2(cArray.asAnySpec, rArray.asAnySpec),
           throwsArgumentError,
         );
         expect(
-          () => atan2<AnySpec, DTypeTag>(rArray, cArray),
+          () => atan2(rArray.asAnySpec, cArray.asAnySpec),
           throwsArgumentError,
         );
 

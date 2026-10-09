@@ -50,7 +50,7 @@ void main() {
       test(
         'integer linspace',
         () => NDArray.scope(() {
-          final a = linspace<DTypeTag>(0, 10, 5, dtype: DType.int64);
+          final a = linspace(0, 10, 5, dtype: DType.int64);
           expect(a.dtype, DType.int64);
           expect(a.data, [
             0,
@@ -155,7 +155,7 @@ void main() {
       test(
         'linspace complex',
         () => NDArray.scope(() {
-          final a = linspace<DTypeTag>(
+          final a = linspace(
             Complex(0, 0),
             Complex(1, 1),
             3,
@@ -171,7 +171,7 @@ void main() {
       test(
         'logspace complex',
         () => NDArray.scope(() {
-          final a = logspace<DTypeTag>(
+          final a = logspace(
             Complex(0, 0),
             Complex(0, 2),
             3,
@@ -192,7 +192,7 @@ void main() {
       test(
         'geomspace complex',
         () => NDArray.scope(() {
-          final a = geomspace<DTypeTag>(
+          final a = geomspace(
             Complex(1, 0),
             Complex(-1, 0),
             3,

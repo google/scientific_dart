@@ -587,7 +587,7 @@ void main() {
             final wrongShapeOut = GpuArray.zeros([4], DType.float32);
             expect(() => src.copy(out: wrongShapeOut), _throwsShapeOrArgError);
             expect(
-              () => src.astype<Float32>(DType.float32, out: wrongShapeOut),
+              () => src.astype(DType.float32, out: wrongShapeOut),
               _throwsShapeOrArgError,
             );
 

@@ -56,8 +56,8 @@ void main() async {
 
       final innerA = NDArray<Float64>.ones([200, 100], DType.float64);
       final innerB = NDArray<Float64>.ones([200, 100], DType.float64);
-      final vdotA = linspace<Float64>(0.0, 10.0, size, dtype: DType.float64);
-      final vdotB = linspace<Float64>(1.0, 11.0, size, dtype: DType.float64);
+      final vdotA = linspace(0.0, 10.0, size, dtype: DType.float64);
+      final vdotB = linspace(1.0, 11.0, size, dtype: DType.float64);
 
       c.group('1. Eigenvalues, Condition Numbers & Matrix Chains', () {
         c.bench('eigh(A) [100x100 symmetric]', () {
@@ -119,7 +119,7 @@ void main() async {
         );
 
         c.bench('partition(arr, kth=50000) [100k Float64]', () {
-          final res = partition<Float64>(randVec, 50000);
+          final res = partition(randVec, 50000);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
@@ -130,12 +130,7 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(size));
 
-        final sortedTarget = linspace<Float64>(
-          0.0,
-          1000.0,
-          size,
-          dtype: DType.float64,
-        );
+        final sortedTarget = linspace(0.0, 1000.0, size, dtype: DType.float64);
         c.bench('searchsorted(sorted, queries) [100k in 100k]', () {
           final res = searchsorted<Float64>(sortedTarget, randVec);
           blackhole(res);

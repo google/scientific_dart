@@ -53,11 +53,30 @@ class NotebookKernel {
   String? _savedWorkspaceContent;
 
   static const String _gpuArrayDefaultImport =
-      "import 'package:gpuarray/gpuarray.dart' show GpuArray, GpuDevice, GpuBuffer, GpuBackend, GpuDeviceType, GpuMemoryPool, NDArrayGpuInterop, GpuArrayNDArrayInterop;";
+      "import 'package:gpuarray/gpuarray.dart' show "
+      'BrowserWebGpuBackend, GradFn, GpuArray, GpuArrayBaseDivide, '
+      'GpuArrayBFloat16ReductionExtension, GpuArrayBitwise, '
+      'GpuArrayBitwiseSpec, GpuArrayComplex128ReductionExtension, '
+      'GpuArrayComplex64ReductionExtension, GpuArrayDefaultComponentExtension, '
+      'GpuArrayDefaultReductionExtension, GpuArrayDivide, '
+      'GpuArrayFloat16ReductionExtension, GpuArrayFloat32ReductionExtension, '
+      'GpuArrayFloat64ReductionExtension, GpuArrayNDArrayInterop, '
+      'GpuArrayShift, GpuArrayShiftSpec, GpuArraySpecComponentExtension, '
+      'GpuArrayTypedOperationsExtension, GpuBackend, GpuBuffer, '
+      'GpuBufferUsage, GpuDevice, GpuDeviceDisposedException, '
+      'GpuDeviceException, GpuDeviceType, GpuException, GpuMemoryException, '
+      'GpuMemoryPool, GpuShaderCompilationException, '
+      'GpuShapeMismatchException, GpuSlice, LossReduction, NDArrayGpuInterop, '
+      'createDefaultGpuBackend, createWebGpuDevice, enableGrad, isGradEnabled, '
+      'noGrad;';
+
+  static const String _gpuArrayJitDefaultImport =
+      "import 'package:gpuarray/jit.dart' hide Expr;";
 
   final Set<String> _imports = {
     "import 'package:ndarray/ndarray.dart';",
     _gpuArrayDefaultImport,
+    _gpuArrayJitDefaultImport,
     "import 'dart:math' as math;",
   };
   final Map<String, String> _definitions = {};
@@ -95,21 +114,90 @@ class NotebookKernel {
     return null;
   }
 
+  static bool _nativeAssetsPathsExist(String yamlContent) {
+    final matches = RegExp(
+      r'"(/tmp/dart_native_assets_[^"]+)"',
+    ).allMatches(yamlContent);
+    if (matches.isEmpty) return true;
+    for (final m in matches) {
+      if (!File(m.group(1)!).existsSync()) return false;
+    }
+    return true;
+  }
+
+  static String _stabilizeNativeAssetsContent(
+    File yamlFile,
+    String yamlContent,
+  ) {
+    final cacheDir = Directory(
+      p.join(yamlFile.parent.path, 'notebook_native_assets'),
+    );
+    var updated = yamlContent;
+    final matches = RegExp(
+      r'"(/tmp/dart_native_assets_[^"]+)"',
+    ).allMatches(yamlContent).toList();
+    for (final m in matches) {
+      final srcPath = m.group(1)!;
+      final srcFile = File(srcPath);
+      if (!srcFile.existsSync()) continue;
+      try {
+        if (!cacheDir.existsSync()) {
+          cacheDir.createSync(recursive: true);
+        }
+        final dstPath = p.join(cacheDir.path, p.basename(srcPath));
+        final dstFile = File(dstPath);
+        if (!dstFile.existsSync() ||
+            dstFile.lengthSync() != srcFile.lengthSync()) {
+          final tmpFile = File('$dstPath.tmp.$pid');
+          srcFile.copySync(tmpFile.path);
+          tmpFile.renameSync(dstPath);
+        }
+        updated = updated.replaceAll('"$srcPath"', '"$dstPath"');
+      } catch (_) {}
+    }
+    return updated;
+  }
+
   void _saveNativeAssetsYaml() {
-    if (_savedNativeAssetsContent != null) return;
     final file = _findNativeAssetsYaml();
     if (file != null && file.existsSync()) {
-      _savedNativeAssetsFile = file;
-      _savedNativeAssetsContent = file.readAsStringSync();
+      try {
+        final raw = file.readAsStringSync();
+        if (_nativeAssetsPathsExist(raw)) {
+          final stabilized = _stabilizeNativeAssetsContent(file, raw);
+          if (stabilized != raw) {
+            file.writeAsStringSync(stabilized);
+          }
+          _savedNativeAssetsFile = file;
+          _savedNativeAssetsContent = stabilized;
+        }
+      } catch (_) {}
     }
   }
 
   void _restoreNativeAssetsYaml() {
-    final file = _savedNativeAssetsFile;
-    final content = _savedNativeAssetsContent;
-    if (file != null && content != null) {
+    final file = _savedNativeAssetsFile ?? _findNativeAssetsYaml();
+    if (file != null && file.existsSync()) {
       try {
-        file.writeAsStringSync(content);
+        final current = file.readAsStringSync();
+        if (_nativeAssetsPathsExist(current)) {
+          final stabilized = _stabilizeNativeAssetsContent(file, current);
+          if (stabilized != current) {
+            file.writeAsStringSync(stabilized);
+          }
+          _savedNativeAssetsFile = file;
+          _savedNativeAssetsContent = stabilized;
+          return;
+        }
+      } catch (_) {}
+    }
+    final savedFile = _savedNativeAssetsFile;
+    final content = _savedNativeAssetsContent;
+    if (savedFile != null &&
+        content != null &&
+        _nativeAssetsPathsExist(content)) {
+      try {
+        savedFile.writeAsStringSync(content);
       } catch (_) {}
     }
   }
@@ -1099,6 +1187,7 @@ class NotebookKernel {
       "import 'package:symbolic_dart/symbolic_dart.dart' hide sin, cos, tan, asin, acos, atan, sinh, cosh, tanh, exp, log, sqrt, abs;",
       "import 'package:resource_scope/resource_scope.dart';",
       _gpuArrayDefaultImport,
+      _gpuArrayJitDefaultImport,
     };
     for (final imp in defaultImports) {
       buffer.writeln(imp);
@@ -1106,7 +1195,8 @@ class NotebookKernel {
     for (final imp in _imports) {
       final trimmedImp = imp.trim();
       if (!defaultImports.contains(trimmedImp) &&
-          trimmedImp != "import 'package:gpuarray/gpuarray.dart';") {
+          trimmedImp != "import 'package:gpuarray/gpuarray.dart';" &&
+          trimmedImp != "import 'package:gpuarray/jit.dart';") {
         buffer.writeln(imp);
       }
     }

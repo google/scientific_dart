@@ -647,6 +647,8 @@ void main() {
             if (!resultTypeParams.contains(tp) || determined.contains(tp)) {
               continue;
             }
+            // Dependent `Out extends T` parameters are validated by 6c.
+            if (tp.bound is TypeParameterType) continue;
             if (_isAnySpecBound(tp)) {
               runtimeDTypedResultFunctions.add(name);
             } else {
@@ -925,6 +927,259 @@ void main() {
           }),
           reason:
               'Exactly these exported functions have a run-time-determined result dtype typed only by `out:` (bounded by `AnySpec`); every other result dtype must be a static projection of an input.',
+        );
+      },
+    );
+
+    test(
+      'Static dtype typing parity with package:ndarray (6c): `out:` buffers are typed by dependent `Out extends T` parameters or `AnySpec`-bounded result parameters',
+      () async {
+        final libDir = Directory('${pkgRoot.path}/lib').absolute.path;
+        final collection = AnalysisContextCollection(includedPaths: [libDir]);
+        final session = collection.contextFor(libDir).currentSession;
+        final violations = <String>[];
+
+        // Every exported element (functions, classes, extensions),
+        // de-duplicated across barrels.
+        final exported = <String, Element>{};
+        for (final barrelRel in _barrelLibraries) {
+          final barrelPath = File('${pkgRoot.path}/$barrelRel').absolute.path;
+          final libRes = await session.getResolvedLibrary(barrelPath);
+          if (libRes is! ResolvedLibraryResult) {
+            violations.add('$barrelRel: failed to resolve library');
+            continue;
+          }
+          for (final entry
+              in libRes.element.exportNamespace.definedNames2.entries) {
+            final el = entry.value;
+            if (el is ExecutableElement ||
+                el is InterfaceElement ||
+                el is ExtensionElement) {
+              exported.putIfAbsent('${el.library?.uri}#${entry.key}', () => el);
+            }
+          }
+        }
+        expect(exported, isNotEmpty);
+
+        bool isOutParameter(FormalParameterElement p) {
+          final pName = p.name ?? '';
+          return p.isNamed &&
+              (pName == 'out' ||
+                  (pName.startsWith('out') &&
+                      pName.length > 3 &&
+                      pName[3].toUpperCase() == pName[3]));
+        }
+
+        int inputBindingCount(DartType type, TypeParameterElement tp) {
+          if (type is InterfaceType) {
+            final elName = type.element.name;
+            if ((elName == 'GpuArray' || elName == 'DType') &&
+                type.typeArguments.length == 1) {
+              final arg = type.typeArguments.single;
+              return (arg is TypeParameterType && arg.element == tp) ? 1 : 0;
+            }
+            if ((elName == 'List' || elName == 'Iterable') &&
+                type.typeArguments.length == 1) {
+              return 2 * inputBindingCount(type.typeArguments.single, tp);
+            }
+          } else if (type is RecordType) {
+            var n = 0;
+            for (final f in type.positionalFields) {
+              n += inputBindingCount(f.type, tp);
+            }
+            for (final f in type.namedFields) {
+              n += inputBindingCount(f.type, tp);
+            }
+            return n;
+          }
+          return 0;
+        }
+
+        int arrayBindingCount(DartType type, TypeParameterElement tp) {
+          if (type is InterfaceType) {
+            final elName = type.element.name;
+            if (elName == 'GpuArray' && type.typeArguments.length == 1) {
+              final arg = type.typeArguments.single;
+              return (arg is TypeParameterType && arg.element == tp) ? 1 : 0;
+            }
+            if ((elName == 'List' || elName == 'Iterable') &&
+                type.typeArguments.length == 1) {
+              return 2 * arrayBindingCount(type.typeArguments.single, tp);
+            }
+          } else if (type is RecordType) {
+            var n = 0;
+            for (final f in type.positionalFields) {
+              n += arrayBindingCount(f.type, tp);
+            }
+            for (final f in type.namedFields) {
+              n += arrayBindingCount(f.type, tp);
+            }
+            return n;
+          }
+          return 0;
+        }
+
+        // 6c. `out:` buffers must not widen inference. If a type parameter `T`
+        // binds exactly one input position (or is a projection result `R`)
+        // and also types an `out` parameter, `f(f64, out: f32)` infers the LUB
+        // `DTypeTag` and only fails at run time. Such an `out` must instead be
+        // typed by a dependent parameter `Out extends T` (named `Out` for a
+        // parameter called `out`, `OutXyz` for `outXyz`, `OutField` for a
+        // field of a record-typed `out`), which binds nothing but that `out`
+        // position. The acceptable alternatives are a `SelfOf`-bounded `T`
+        // that binds two or more inputs (rule 6b already covers `out`) and an
+        // `AnySpec`-bounded result parameter. The latter is *required* when `T`
+        // is bound only by an optional `DType<T>?` (creation-style functions
+        // such as `uniform`, `normal`): with `T extends AnySpec` and
+        // `out: GpuArray<T>`, either `dtype:` or `out:` alone infers `T`, a
+        // disagreement between them is rejected (their LUB is never a row),
+        // and the default result composes; a dependent `Out` would instead
+        // make `uniform([5], out: f32)` infer `T = DTypeTag`.
+        //
+        // Method-level type parameters (declared on a method of an exported
+        // class or extension, not on the class) are subject to the same rule;
+        // class-level parameters are fixed by the receiver and are safe.
+        String dependentNameFor(FormalParameterElement p, String? field) {
+          final pName = p.name ?? '';
+          final base = pName == 'out' ? 'Out' : 'Out${pName.substring(3)}';
+          if (field == null) return base;
+          return '$base${field[0].toUpperCase()}${field.substring(1)}';
+        }
+
+        var dependentOutParameters = 0;
+        var optionalDTypeAnySpecParameters = 0;
+        void checkOutParameters(String owner, ExecutableElement el) {
+          if (el.typeParameters.isEmpty) return;
+          final typeParams = el.typeParameters.toSet();
+          final nonOutParams = [
+            for (final p in el.formalParameters)
+              if (!isOutParameter(p)) p,
+          ];
+          for (final tp in el.typeParameters) {
+            var inputs = 0;
+            var arrayInputs = 0;
+            var boundOnlyByOptionalDType = true;
+            for (final p in nonOutParams) {
+              final n = inputBindingCount(p.type, tp);
+              inputs += n;
+              arrayInputs += arrayBindingCount(p.type, tp);
+              if (n > 0 &&
+                  (p.isRequired || arrayBindingCount(p.type, tp) > 0)) {
+                boundOnlyByOptionalDType = false;
+              }
+            }
+            final outSites = <String>[];
+            for (final p in el.formalParameters) {
+              if (!isOutParameter(p)) continue;
+              final t = p.type;
+              if (t is RecordType) {
+                for (final f in t.namedFields) {
+                  if (inputBindingCount(f.type, tp) > 0) {
+                    outSites.add(dependentNameFor(p, f.name));
+                  }
+                }
+                for (final f in t.positionalFields) {
+                  if (inputBindingCount(f.type, tp) > 0) {
+                    outSites.add(dependentNameFor(p, null));
+                  }
+                }
+              } else if (inputBindingCount(t, tp) > 0) {
+                outSites.add(dependentNameFor(p, null));
+              }
+            }
+            final bound = tp.bound;
+            final dependsOn = bound is TypeParameterType ? bound.element : null;
+            if (dependsOn != null) {
+              if (!typeParams.contains(dependsOn)) {
+                violations.add(
+                  '$owner: `${tp.name} extends ${dependsOn.name}` must depend on a type parameter of the same declaration.',
+                );
+              } else if (inputs != 0 || outSites.length != 1) {
+                violations.add(
+                  '$owner: dependent type parameter `${tp.name}` must bind exactly one `out` position and no input position (binds $inputs input(s) and ${outSites.length} out site(s)).',
+                );
+              } else if (outSites.single != tp.name) {
+                violations.add(
+                  '$owner: dependent out type parameter must be named `${outSites.single}` (got `${tp.name}`).',
+                );
+              } else {
+                final baseInputs = nonOutParams.fold<int>(
+                  0,
+                  (n, p) => n + inputBindingCount(p.type, dependsOn),
+                );
+                final baseArrayInputs = nonOutParams.fold<int>(
+                  0,
+                  (n, p) => n + arrayBindingCount(p.type, dependsOn),
+                );
+                final baseOptionalOnly =
+                    baseArrayInputs == 0 &&
+                    baseInputs > 0 &&
+                    nonOutParams.every(
+                      (p) =>
+                          inputBindingCount(p.type, dependsOn) == 0 ||
+                          !p.isRequired,
+                    );
+                if (baseOptionalOnly) {
+                  violations.add(
+                    '$owner: `${dependsOn.name}` is bound only by an optional `DType<${dependsOn.name}>?`; bound it by `AnySpec` and type `out` as `GpuArray<${dependsOn.name}>` instead of the dependent `${tp.name}` so `out:` alone still infers the dtype.',
+                  );
+                } else {
+                  dependentOutParameters++;
+                }
+              }
+              continue;
+            }
+            if (outSites.isEmpty) continue;
+            final isSelfOf =
+                bound is InterfaceType && bound.element.name == 'SelfOf';
+            if (inputs >= 2 && isSelfOf) continue;
+            // A row bound (`AnySpec`) rejects LUBs by itself, whether the
+            // parameter is determined only by `out` or also by a `DType<T>`.
+            if (_isAnySpecBound(tp)) {
+              if (arrayInputs == 0 && inputs > 0 && boundOnlyByOptionalDType) {
+                optionalDTypeAnySpecParameters++;
+              }
+              continue;
+            }
+            violations.add(
+              '$owner: `out` parameter(s) ${outSites.map((s) => '`$s`').join(', ')} are typed by `${tp.name}` which binds $inputs input position(s); a mismatched `out:` dtype would widen inference to the LUB instead of failing. Type each such `out` by a dependent parameter (`${outSites.first} extends ${tp.name}`), or bound `${tp.name}` by `AnySpec` if it is only determined by an optional `dtype:`/`out:`.',
+            );
+          }
+        }
+
+        for (final entry in exported.entries) {
+          final name = entry.key.split('#').last;
+          final el = entry.value;
+          if (el is ExecutableElement) {
+            checkOutParameters('Exported function `$name`', el);
+          } else if (el is InterfaceElement) {
+            for (final m in el.methods) {
+              if (m.isPrivate) continue;
+              checkOutParameters('Exported method `$name.${m.name}`', m);
+            }
+          } else if (el is ExtensionElement) {
+            for (final m in el.methods) {
+              if (m.isPrivate) continue;
+              checkOutParameters(
+                'Exported extension method `$name.${m.name}`',
+                m,
+              );
+            }
+          }
+        }
+
+        expect(violations, isEmpty, reason: violations.join('\n'));
+        expect(
+          optionalDTypeAnySpecParameters,
+          greaterThanOrEqualTo(1),
+          reason:
+              'Expected the creation-style functions (random family, ...) to use `T extends AnySpec` with `out: GpuArray<T>`.',
+        );
+        expect(
+          dependentOutParameters,
+          greaterThanOrEqualTo(1),
+          reason:
+              'Expected rule 6c to find a dependent `Out extends T` parameter on every `out:`-bearing function whose result dtype follows an input or a projection.',
         );
       },
     );
@@ -1859,6 +2114,8 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
         }
         for (final tp in allTypeParams) {
           if (!resultTypeParams.contains(tp)) continue;
+          // Dependent `Out extends T` parameters are validated by 6c.
+          if (tp.bound is TypeParameterType) continue;
           final direct = nonOutInputTypes.any(
             (t) => _isDirectlyDeterminedByInput(t, tp),
           );
@@ -1939,6 +2196,8 @@ class _SemanticInvariantVisitor extends RecursiveAstVisitor<void> {
             hasOutParam)) {
           for (final tp in element.typeParameters) {
             if (!resultTypeParams.contains(tp)) continue;
+            // Dependent `Out extends T` parameters are validated by 6c.
+            if (tp.bound is TypeParameterType) continue;
             final direct = nonOutInputTypes.any(
               (t) => _isDirectlyDeterminedByInput(t, tp),
             );

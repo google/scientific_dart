@@ -216,7 +216,10 @@ void main() {
 
             // Invalid out dtype for degree 0 (complex128 instead of complex64)
             final badDTypeOut0 = NDArray.zeros([0], DType.complex128);
-            expect(() => roots(pDeg0, out: badDTypeOut0), throwsArgumentError);
+            expect(
+              () => roots(pDeg0.asAnySpec, out: badDTypeOut0.asAnySpec),
+              throwsArgumentError,
+            );
 
             // Degree 1: 2x - 6 = 0 => x = 3
             final pDeg1 = NDArray.fromList(
@@ -236,7 +239,10 @@ void main() {
 
             // Invalid out dtype for degree 1 (complex128 instead of complex64)
             final badDTypeOut1 = NDArray.zeros([1], DType.complex128);
-            expect(() => roots(pDeg1, out: badDTypeOut1), throwsArgumentError);
+            expect(
+              () => roots(pDeg1.asAnySpec, out: badDTypeOut1.asAnySpec),
+              throwsArgumentError,
+            );
 
             // Aliased out sharing memory with pDeg1
             final aliasedOut1 = pDeg1.slice([Slice(stop: 1)]);
@@ -276,7 +282,7 @@ void main() {
             // Invalid out dtype for degree 0
             final badDTypeOut0 = NDArray.zeros([0], DType.complex128);
             expect(
-              () => chebroots(cDeg0, out: badDTypeOut0),
+              () => chebroots(cDeg0.asAnySpec, out: badDTypeOut0.asAnySpec),
               throwsArgumentError,
             );
 
@@ -299,7 +305,7 @@ void main() {
             // Invalid out dtype for degree 1
             final badDTypeOut1 = NDArray.zeros([1], DType.complex128);
             expect(
-              () => chebroots(cDeg1, out: badDTypeOut1),
+              () => chebroots(cDeg1.asAnySpec, out: badDTypeOut1.asAnySpec),
               throwsArgumentError,
             );
 

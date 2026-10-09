@@ -155,9 +155,9 @@ void main() {
         final phase = [0.0, 0.5, 1.0, 1.0 + 2 * math.pi, 1.5 + 4 * math.pi];
         final a = NDArray<Float64>.fromList(phase, [5], DType.float64);
         final flippedCopy = flip(a).copy();
-        final expected = unwrap<Float64>(flippedCopy);
+        final expected = unwrap(flippedCopy);
 
-        unwrap<Float64>(flip(a), out: a);
+        unwrap(flip(a), out: a);
 
         for (var i = 0; i < 5; i++) {
           expect(a.getCell([i]), closeTo(expected.getCell([i]), 1e-12));
@@ -170,7 +170,7 @@ void main() {
         final phase = [0.0, 0.5, 1.0, 1.0 + 2 * math.pi, 1.5 + 4 * math.pi];
         final a = NDArray<Float64>.fromList(phase, [5], DType.float64);
         final flippedCopy = flip(a).copy();
-        final expected = unwrap<Float64>(flippedCopy);
+        final expected = unwrap(flippedCopy);
         final aFlipped = flip(a);
 
         final marker = ScratchArena.marker;

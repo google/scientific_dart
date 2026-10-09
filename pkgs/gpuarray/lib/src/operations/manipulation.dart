@@ -459,10 +459,10 @@ List<GpuArray<T>> dsplit<T extends DTypeTag>(
 }
 
 /// Constructs an array by repeating [a] the number of times given by [reps].
-GpuArray<T> tile<T extends DTypeTag>(
+GpuArray<T> tile<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   List<int> reps, {
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(a, 'a');
   for (final r in reps) {
@@ -505,11 +505,11 @@ GpuArray<T> tile<T extends DTypeTag>(
 }
 
 /// Repeats elements of an array [repeats] times along [axis].
-GpuArray<T> repeat<T extends DTypeTag>(
+GpuArray<T> repeat<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   int repeats, {
   int? axis,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(a, 'a');
   RangeError.checkNotNegative(repeats, 'repeats');
@@ -578,12 +578,12 @@ GpuArray<T> repeat<T extends DTypeTag>(
 }
 
 /// Pads an array with [padWidth] according to [mode].
-GpuArray<T> pad<T extends DTypeTag>(
+GpuArray<T> pad<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   List<List<int>> padWidth, {
   PadMode mode = PadMode.constant,
   Object constantValues = 0,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
@@ -636,11 +636,11 @@ GpuArray<T> pad<T extends DTypeTag>(
 }
 
 /// Rolls array elements along a given [axis].
-GpuArray<T> roll<T extends DTypeTag>(
+GpuArray<T> roll<T extends DTypeTag, Out extends T>(
   GpuArray<T> a,
   Object shift, {
   Object? axis,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(a, 'a');
   if (axis == null) {
@@ -817,10 +817,10 @@ GpuArray<T> rot90<T extends DTypeTag>(
 }
 
 /// Extracts a diagonal or constructs a diagonal array.
-GpuArray<T> diag<T extends DTypeTag>(
+GpuArray<T> diag<T extends DTypeTag, Out extends T>(
   GpuArray<T> v, {
   int k = 0,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(v, 'v');
   if (v.shape.length == 1) {
@@ -858,12 +858,12 @@ GpuArray<T> diag<T extends DTypeTag>(
 /// For tensors with rank > 2, the axes [axis1] and [axis2] are removed and the
 /// extracted diagonal dimension is appended at the end of the output shape,
 /// matching `numpy.diagonal`.
-GpuArray<T> diagonal<T extends DTypeTag>(
+GpuArray<T> diagonal<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int offset = 0,
   int axis1 = 0,
   int axis2 = 1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(a, 'a');
   final rank = a.shape.length;
@@ -940,14 +940,14 @@ GpuArray<T> diagonal<T extends DTypeTag>(
 /// For a 2D array, returns a 0D scalar [GpuArray] (use `.scalar` to read the
 /// host scalar value). For N-D arrays (`N > 2`), returns an `(N - 2)`-D array
 /// summing the diagonal along [axis1] and [axis2].
-GpuArray<T> trace<T extends DTypeTag>(
+GpuArray<T> trace<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   int offset = 0,
   int axis1 = 0,
   int axis2 = 1,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
-  final d = diagonal<T>(a, offset: offset, axis1: axis1, axis2: axis2);
+  final d = diagonal(a, offset: offset, axis1: axis1, axis2: axis2);
   try {
     return d.sum(axis: -1, out: out);
   } finally {
@@ -956,10 +956,10 @@ GpuArray<T> trace<T extends DTypeTag>(
 }
 
 /// Extracts the upper triangle of an array.
-GpuArray<T> triu<T extends DTypeTag>(
+GpuArray<T> triu<T extends DTypeTag, Out extends T>(
   GpuArray<T> m, {
   int k = 0,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(m, 'm');
   final rank = m.shape.length;
@@ -991,10 +991,10 @@ GpuArray<T> triu<T extends DTypeTag>(
 }
 
 /// Extracts the lower triangle of an array.
-GpuArray<T> tril<T extends DTypeTag>(
+GpuArray<T> tril<T extends DTypeTag, Out extends T>(
   GpuArray<T> m, {
   int k = 0,
-  GpuArray<T>? out,
+  GpuArray<Out>? out,
 }) {
   _checkNotDisposed(m, 'm');
   final rank = m.shape.length;

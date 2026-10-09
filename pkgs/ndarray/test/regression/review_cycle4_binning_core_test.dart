@@ -33,7 +33,7 @@ void main() {
             8,
           ], DType.int64);
           final stridedOut64 = buf64.slice([Slice(step: 2)]);
-          final res64 = bincount<Int64>(x, out: stridedOut64);
+          final res64 = bincount(x, out: stridedOut64);
           expect(identical(res64, stridedOut64), isTrue);
           expect(stridedOut64.toList(), equals([1, 3, 1, 2]));
           expect(buf64.toList(), equals([1, 99, 3, 99, 1, 99, 2, 99]));
@@ -43,7 +43,7 @@ void main() {
             8,
           ], DType.int32);
           final stridedOut32 = buf32.slice([Slice(step: 2)]);
-          final res32 = bincount<Int32>(x, out: stridedOut32);
+          final res32 = bincount(x, out: stridedOut32);
           expect(identical(res32, stridedOut32), isTrue);
           expect(stridedOut32.toList(), equals([1, 3, 1, 2]));
           expect(buf32.toList(), equals([1, 77, 3, 77, 1, 77, 2, 77]));
@@ -55,7 +55,7 @@ void main() {
             DType.int64,
           );
           final flippedOut64 = flip(flipBuf64);
-          bincount<Int64>(x, out: flippedOut64);
+          bincount(x, out: flippedOut64);
           expect(flippedOut64.toList(), equals([1, 3, 1, 2]));
           expect(flipBuf64.toList(), equals([2, 1, 3, 1]));
 
@@ -66,7 +66,7 @@ void main() {
             DType.int32,
           );
           final flippedOut32 = flip(flipBuf32);
-          bincount<Int32>(x, out: flippedOut32);
+          bincount(x, out: flippedOut32);
           expect(flippedOut32.toList(), equals([1, 3, 1, 2]));
           expect(flipBuf32.toList(), equals([2, 1, 3, 1]));
         });
@@ -79,13 +79,13 @@ void main() {
         NDArray.scope(() {
           // 1. bincount(x, out: x) where x is Int64
           final x64 = NDArray<Int64>.fromList([0, 1, 1, 2], [4], DType.int64);
-          final resX64 = bincount<Int64>(x64, out: x64);
+          final resX64 = bincount(x64, out: x64);
           expect(identical(resX64, x64), isTrue);
           expect(x64.toList(), equals([1, 2, 1, 0]));
 
           // 2. bincount(x, out: x) where x is Int32
           final x32 = NDArray<Int32>.fromList([0, 1, 1, 2], [4], DType.int32);
-          final resX32 = bincount<Int32>(x32, out: x32);
+          final resX32 = bincount(x32, out: x32);
           expect(identical(resX32, x32), isTrue);
           expect(x32.toList(), equals([1, 2, 1, 0]));
 
@@ -96,7 +96,7 @@ void main() {
             [4],
             DType.float64,
           );
-          final resW64 = bincount<Float64>(xForW, weights: w64, out: w64);
+          final resW64 = bincount(xForW, weights: w64, out: w64);
           expect(identical(resW64, w64), isTrue);
           expect(w64.toList(), equals([0.5, 4.0, 3.0, 0.0]));
 
@@ -106,7 +106,7 @@ void main() {
             [4],
             DType.float32,
           );
-          final resW32 = bincount<Float32>(xForW, weights: w32, out: w32);
+          final resW32 = bincount(xForW, weights: w32, out: w32);
           expect(identical(resW32, w32), isTrue);
           expect(w32.toList(), equals([0.5, 4.0, 3.0, 0.0]));
         });

@@ -78,7 +78,7 @@ void main() {
       () {
         NDArray.scope(() {
           final empty1D = NDArray<Float64>.zeros([0], DType.float64);
-          final res1D = pad<Float64>(
+          final res1D = pad(
             empty1D,
             PadWidth.all(2, 3),
             mode: PadMode.constant,
@@ -93,7 +93,7 @@ void main() {
           // Axis 0 pads [0, 2] -> [2, 2] with row 0 = [10, 10], row 1 = [11, 11].
           // Axis 1 pads [2, 2] -> [2, 4] with col 0 = 20, col 3 = 21.
           final empty2D = NDArray<Float64>.zeros([0, 2], DType.float64);
-          final res2D = pad<Float64>(
+          final res2D = pad(
             empty2D,
             PadWidth.all(1),
             mode: PadMode.constant,
@@ -127,7 +127,7 @@ void main() {
             (30.0, 31.0),
           ]);
 
-          final actual = pad<Float64>(
+          final actual = pad(
             src,
             PadWidth.all(1),
             mode: PadMode.constant,
@@ -135,7 +135,7 @@ void main() {
           );
 
           // Compute expected by padding one axis at a time in 0 -> 1 -> 2 order
-          final step0 = pad<Float64>(
+          final step0 = pad(
             src,
             PadWidth.axes([(1, 1), (0, 0), (0, 0)]),
             mode: PadMode.constant,
@@ -145,7 +145,7 @@ void main() {
               (0.0, 0.0),
             ]),
           );
-          final step1 = pad<Float64>(
+          final step1 = pad(
             step0,
             PadWidth.axes([(0, 0), (1, 1), (0, 0)]),
             mode: PadMode.constant,
@@ -155,7 +155,7 @@ void main() {
               (0.0, 0.0),
             ]),
           );
-          final expected = pad<Float64>(
+          final expected = pad(
             step1,
             PadWidth.axes([(0, 0), (0, 0), (1, 1)]),
             mode: PadMode.constant,
@@ -191,26 +191,26 @@ void main() {
             [2, 3, 2],
             DType.float64,
           );
-          final actual = pad<Float64>(
+          final actual = pad(
             src,
             PadWidth.axes([(1, 2), (2, 1), (1, 1)]),
             mode: PadMode.constant,
             constantValues: PadValues.all(1.0, 2.0),
           );
 
-          final step0 = pad<Float64>(
+          final step0 = pad(
             src,
             PadWidth.axes([(1, 2), (0, 0), (0, 0)]),
             mode: PadMode.constant,
             constantValues: PadValues.all(1.0, 2.0),
           );
-          final step1 = pad<Float64>(
+          final step1 = pad(
             step0,
             PadWidth.axes([(0, 0), (2, 1), (0, 0)]),
             mode: PadMode.constant,
             constantValues: PadValues.all(1.0, 2.0),
           );
-          final expected = pad<Float64>(
+          final expected = pad(
             step1,
             PadWidth.axes([(0, 0), (0, 0), (1, 1)]),
             mode: PadMode.constant,

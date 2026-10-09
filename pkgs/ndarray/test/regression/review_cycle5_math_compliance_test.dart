@@ -96,7 +96,7 @@ void main() {
           final mx = NDArray.fromList([8.0], [1], DType.float64);
 
           final flipped = flip(a);
-          clipArray<Float64>(a, min: mn, max: mx, out: flipped);
+          clipArray(a, min: mn, max: mx, out: flipped);
 
           // Original values clipped: [2.0, 5.0, 8.0, 8.0]
           // Written into flipped view -> a should now be reversed: [8.0, 8.0, 5.0, 2.0]

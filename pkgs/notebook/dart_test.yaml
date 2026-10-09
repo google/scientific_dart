@@ -1,0 +1,3 @@
+# NotebookKernel tests mutate the shared `lib/src/workspace.dart` and
+# `notebook_session.ipynb` files in the package directory during hot reload.
+concurrency: 1

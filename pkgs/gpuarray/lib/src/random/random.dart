@@ -853,10 +853,10 @@ final class RandomState {
     }
 
     return ResourceScope.scope(() {
-      GpuArray workingLogits = logitsOrProbs;
+      GpuArray<DTypeTag> workingLogits = logitsOrProbs;
       if (workingLogits.dtype != DType.float32 &&
           workingLogits.dtype != DType.float64) {
-        workingLogits = workingLogits.astype<Float32>(DType.float32);
+        workingLogits = workingLogits.astype(DType.float32);
       }
       if (!workingLogits.isContiguous && workingLogits.ndim > 2) {
         workingLogits = workingLogits.copy();
@@ -905,13 +905,13 @@ final class RandomState {
   ///
   /// The input [a] must be 1-dimensional and non-empty. When [replace] is `false`,
   /// the requested sample size must not exceed `a.size`.
-  GpuArray<T> choice<T extends DTypeTag>(
+  GpuArray<T> choice<T extends DTypeTag, Out extends T>(
     GpuArray<T> a, {
     List<int> shape = const <int>[1],
     bool replace = true,
     List<double>? p,
     GpuDevice? device,
-    GpuArray<T>? out,
+    GpuArray<Out>? out,
   }) {
     if (a.isDisposed) {
       throw StateError('Cannot sample from a disposed GpuArray.');
@@ -973,7 +973,7 @@ final class RandomState {
 
     final targetDevice = device ?? out?.device ?? a.device;
     _validateOut(out, shape, a.dtype, targetDevice);
-    final destination =
+    final GpuArray<T> destination =
         out ?? GpuArray.zeros(shape, a.dtype, device: targetDevice);
     if (sampleCount == 0) {
       return destination;
@@ -1121,7 +1121,7 @@ final class RandomState {
           if (out.dtype == DType.int64) {
             outPerm.copy(out: out as GpuArray<Int64>);
           } else {
-            final converted = outPerm.astype<T>(out.dtype);
+            final converted = outPerm.astype(out.dtype);
             try {
               converted.copy(out: out);
             } finally {
@@ -1414,14 +1414,14 @@ GpuArray<Int64> categorical(
 );
 
 /// Generates a random sample from a 1-D [GpuArray] [a] on the GPU.
-GpuArray<T> choice<T extends DTypeTag>(
+GpuArray<T> choice<T extends DTypeTag, Out extends T>(
   GpuArray<T> a, {
   List<int> shape = const <int>[1],
   bool replace = true,
   List<double>? p,
   GpuDevice? device,
-  GpuArray<T>? out,
-}) => defaultRng.choice<T>(
+  GpuArray<Out>? out,
+}) => defaultRng.choice(
   a,
   shape: shape,
   replace: replace,

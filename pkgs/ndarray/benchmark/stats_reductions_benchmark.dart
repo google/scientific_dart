@@ -94,7 +94,7 @@ void main() async {
       c.group('3. Covariance & Correlation', () {
         const nVars = 50;
         const nObs = 500;
-        final obsMat = linspace<Float64>(
+        final obsMat = linspace(
           0.0,
           100.0,
           nVars * nObs,

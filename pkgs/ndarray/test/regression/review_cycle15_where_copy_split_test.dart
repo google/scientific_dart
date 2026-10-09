@@ -118,7 +118,7 @@ void main() {
               64,
             ], DType.boolean);
 
-            final resInv = invert<Int32>(a, where: where);
+            final resInv = invert(a, where: where);
             final resOr = bitwiseOr<Int32>(a, b, where: where);
 
             for (var i = 0; i < 64; i++) {
