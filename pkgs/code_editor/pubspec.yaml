@@ -15,6 +15,7 @@
 name: code_editor
 description: High-performance multi-backend code editor package in Dart.
 version: 0.1.0
+publish_to: none
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/code_editor
 

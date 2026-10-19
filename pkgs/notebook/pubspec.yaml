@@ -15,6 +15,7 @@
 name: notebook
 description: A notebook and REPL interface for Dart and NDArray.
 version: 0.0.1
+publish_to: none
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/notebook
 

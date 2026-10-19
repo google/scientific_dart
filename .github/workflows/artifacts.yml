@@ -18,7 +18,6 @@ on:
   push:
     tags:
       - 'artifacts-v*'
-      - 'v*'
   pull_request:
     paths:
       - 'pkgs/pocketfft/hook/**'

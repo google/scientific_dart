@@ -15,6 +15,7 @@
 name: scientific_dart_analysis_plugin
 description: Analyzer plugin providing memory-safety, view-lifecycle, DType, and performance lints for scientific_dart (ndarray, resource_scope, symbolic_dart, etc.) consumers.
 version: 0.0.1
+publish_to: none
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/scientific_dart_analysis_plugin
 

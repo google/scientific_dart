@@ -15,6 +15,7 @@
 name: symbolic_dart
 description: Symbolic mathematics library for Dart with high-performance native CAS bindings (SymEngine & FLINT).
 version: 0.0.1
+publish_to: none
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/symbolic_dart
 
