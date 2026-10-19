@@ -36,6 +36,13 @@
   - Creation-style functions whose dtype is chosen only by an optional `dtype:` — `uniform`, `randint`, `normal`, `exponential`, `poisson`, `binomial`, `multinomial`, `indices`, `hanning`, `hamming` and the `RandomGenerator` methods — are instead bounded by `T extends AnySpec` with `out: NDArray<T>`, so `dtype: DType.float32` or `out: f32` alone infers `NDArray<Float32>`, `uniform(shape, dtype: DType.float64, out: f32)` is rejected, and the default result is the composable `NDArray<AnySpec>`.
   - Added `DType.asAnySpec` (the `DType` counterpart of `NDArray.asAnySpec`) for passing a run-time-chosen dtype to these functions.
 
+- **Mixed-DType `*As` Binary Operations & Expanded `*As` Coverage**:
+  - Allowed mixed input dtypes (`<Ta, Tb, R>`) in `addAs`, `subtractAs`, `multiplyAs`, and `divideAs` when the target `DType<R>` is explicitly specified, dispatching directly to single-pass mixed-dtype C++/SIMD kernels when the kernel output matches `dtype`.
+  - Added `floorDivideAs`, `remainderAs`, `modAs`, `fmodAs`, `divmodAs`, `powerAs`, `floatPower`, `floatPowerAs`, `minimum`, `minimumAs`, `maximum`, `maximumAs`, `fmin`, `fminAs`, `fmax`, `fmaxAs`, `matmulAs`, `dot`, `dotAs`, `tensordotAs`, `innerAs`, `vdotAs`, `kronAs`, `outerAs`, `crossAs`, `atan2As`, `hypotAs`, `logaddexpAs`, `logaddexp2As`, `copysignAs`, `heavisideAs`, `gcdAs`, `lcmAs`, `bitwiseAndAs`, `bitwiseOrAs`, `bitwiseXorAs`, `leftShiftAs`, and `rightShiftAs`.
+
+- **`dart2wasm` FFI Compatibility**:
+  - Updated `r_nanmedian_complex128` and `r_nanmedian_complex64` C/C++ reduction kernels and `@ffi.Native` bindings to write results via an output pointer (`cpx_t*` / `cpx_f_t*`) rather than returning `ffi.Struct` by value, satisfying `dart2wasm`'s `@ffi.Native` restrictions.
+
 - **Migration Guide**:
   - **Explicit type arguments on `out:`-bearing functions**: `sin<Float64>(x)`, `sumAs<Int32, Int64>(a, DType.int64)`, `schur<Float64, Float64>(a)` no longer match the parameter count. Drop them — inference produces the same types — or add the new trailing parameter(s).
   - **`out:` buffers must match statically**: create the buffer with the concrete dtype of the input (`NDArray.zeros(shape, DType.float64)` for a `Float64` input), or, when the dtype is only known at run time, widen both the input and the buffer with `.asAnySpec` so the dtype is validated at run time as before. An `NDArray<DTypeTag>` input still accepts any `out:` (`sort(dyn, out: f32)`).
@@ -46,12 +53,6 @@
   - **`schur(a, output: SchurForm.complex)`** becomes `complexSchur(a)`; `schur(a, output: SchurForm.real)` and explicit `schur<T, R>(a)` type arguments become `schur(a)`.
   - **Capability Marker Type Arguments**: Remove generic type arguments from `BitwiseDType<...>` and `IntegerDType<...>`. Reference them as plain non-generic markers (`BitwiseDType`, `IntegerDType`) or use `AnyBitwiseSpec` / `AnyIntegerSpec` when `SelfOf` compatibility is required.
   - **Element Access on `NDArray<BitwiseDType>` / `NDArray<AnyBitwiseSpec>`**: Static element-access expressions (`asBitwiseDType.toList()`, `getCell`, `scalar`) on `NDArray<BitwiseDType>` / `NDArray<AnyBitwiseSpec>` now infer `List<dynamic>` / `dynamic` rather than `List<Object>` / `Object`. This occurs because `BitwiseDType` encompasses both integer tags (`ElementOf<int>`) and `Boolean` (`ElementOf<bool>`), and Dart interface type parameters are invariant. When integer element types are needed, use `NDArray<IntegerDType>` or `.asIntegerDType` (which provides `ElementOf<int>`).
-
-## 0.2.1
-
-- **Mixed-DType `*As` Binary Operations**: Allowed mixed input dtypes (`<Ta, Tb, R>`) in `addAs`, `subtractAs`, `multiplyAs`, and `divideAs` when the target `DType<R>` is explicitly specified, dispatching directly to single-pass mixed-dtype C++/SIMD kernels when the kernel output matches `dtype`.
-- **Expanded `*As` & Binary Operation Coverage**: Added `floorDivideAs`, `remainderAs`, `modAs`, `fmodAs`, `divmodAs`, `powerAs`, `floatPower`, `floatPowerAs`, `minimum`, `minimumAs`, `maximum`, `maximumAs`, `fmin`, `fminAs`, `fmax`, `fmaxAs`, `matmulAs`, `dot`, `dotAs`, `tensordotAs`, `innerAs`, `vdotAs`, `kronAs`, `outerAs`, `crossAs`, `atan2As`, `hypotAs`, `logaddexpAs`, `logaddexp2As`, `copysignAs`, `heavisideAs`, `gcdAs`, `lcmAs`, `bitwiseAndAs`, `bitwiseOrAs`, `bitwiseXorAs`, `leftShiftAs`, and `rightShiftAs`.
-- **Static Same-DType Type Parameter Tightening**: Tightened non-`*As` same-dtype binary operations (`divide`, `logaddexp`, `logaddexp2`, `atan2`, `hypot`, `logicalAnd`, `logicalOr`, and `logicalXor`) so both operands share a single input type parameter `T` statically, matching their runtime same-dtype requirement.
 
 ## 0.2.0
 

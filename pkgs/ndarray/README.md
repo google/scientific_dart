@@ -65,7 +65,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  ndarray: ^0.2.0
+  ndarray: ^0.3.0
 ```
 
 ### Native Assets, Prebuilt Binaries, & `hooks.user_defines`
@@ -247,7 +247,7 @@ void main() {
 
     // Compute raw attention logits: Q * K^T across batch and head dimensions
     // (Also supports batch ellipsis notation: '...id,...jd->...ij')
-    final rawScores = einsum<Float64, Float64>(
+    final rawScores = einsum(
       EinsumSubscripts.parse('bhid,bhjd->bhij'),
       [q, k],
     );

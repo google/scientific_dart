@@ -150,7 +150,7 @@ Under the hood, `package:ndarray` models type promotion through **8 single-slot 
 - `DoublePrecisionOf<R>`: Double-precision computation dtype (e.g., `mean`, `variance`, `floatPower`).
 - `DivideOf<R>`: True-division result dtype (e.g., `divide`, `/`).
 
-Each of the 15 concrete dtype tags implements `DTypeSpec<RealTag, Element, RealFloatTag, ComplexTag, InexactTag, AccumulatorTag, DoublePrecisionTag, DivideTag>`, which acts as the unified per-dtype projection table implementing all eight interfaces. Library operations simply bound their input to the single projection they require—such as `NDArray<R> sin<T extends InexactOf<R>, R extends DTypeTag>(NDArray<T> a)`—allowing the Dart compiler to infer `R` directly from `T`. Only operations requiring two distinct projections of one input (such as `slogdet`, `svd`, and `eigh`) retain the full 8-slot `DTypeSpec` table type.
+Each of the 15 concrete dtype tags implements `DTypeSpec<RealTag, Element, RealFloatTag, ComplexTag, InexactTag, AccumulatorTag, DoublePrecisionTag, DivideTag>`, which acts as the unified per-dtype projection table implementing all eight interfaces. Library operations simply bound their input to the single projection they require—such as `NDArray<R> sin<R extends DTypeTag, Out extends R>(NDArray<InexactOf<R>> x, {NDArray<Out>? out})`—allowing the Dart compiler to infer `R` directly from the input array's `InexactOf<R>` projection. Only operations requiring two distinct projections of one input (such as `slogdet`, `svd`, and `eigh`) retain the full 8-slot `DTypeSpec` table type.
 
 Additionally, integer and boolean tags implement non-generic capability markers that pin their constant projections:
 - `BitwiseDType`: Implemented by `Boolean` and the 8 integer tags for bitwise operations (`&`, `|`, `^`, `~`), pinning `RealFloatOf<Float64>`, `ComplexOf<Complex128>`, `InexactOf<Float64>`, `DoublePrecisionOf<Float64>`, and `DivideOf<Float64>`.
@@ -160,8 +160,8 @@ Because constant projections are pinned on the markers, generic code bounded by 
 
 For dynamic or dtype-agnostic code, three explicit escape hatches allow bypassing compile-time constraints with runtime dtype validation:
 - `array.asAnySpec`: Views an array with the wildcard `AnySpec` tag (`DTypeSpec<DTypeTag, dynamic, DTypeTag, ...>`), accepted by every projecting operation (returning `NDArray<DTypeTag>`).
-- `array.asBitwiseDType`: Validates at runtime that the array has integer or boolean dtype, returning `NDArray<BitwiseDType>`.
-- `array.asIntegerDType`: Validates at runtime that the array has integer dtype, returning `NDArray<IntegerDType>`.
+- `array.asBitwiseDType`: Validates at runtime that the array has integer or boolean dtype, returning `NDArray<AnyBitwiseSpec>`.
+- `array.asIntegerDType`: Validates at runtime that the array has integer dtype, returning `NDArray<AnyIntegerSpec>`.
 
 ```dart
 final i32 = NDArray.fromList([1, 2, 4], [3], DType.int32);   // NDArray<Int32>
@@ -191,8 +191,8 @@ final shifted = i32 << 1;     // NDArrayShift on IntegerDType -> NDArray<Int32>
 final anyArr = i32.asAnySpec; // NDArray<AnySpec>
 final dynSin = sin(anyArr);   // returns NDArray<DTypeTag> with runtime validation
 
-final bitwiseArr = i32.asBitwiseDType; // NDArray<BitwiseDType>
-final intArr     = i32.asIntegerDType; // NDArray<IntegerDType>
+final bitwiseArr = i32.asBitwiseDType; // NDArray<AnyBitwiseSpec>
+final intArr     = i32.asIntegerDType; // NDArray<AnyIntegerSpec>
 ```
 
 ---
