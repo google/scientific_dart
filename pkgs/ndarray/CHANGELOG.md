@@ -43,6 +43,9 @@
 - **`dart2wasm` FFI Compatibility**:
   - Updated `r_nanmedian_complex128` and `r_nanmedian_complex64` C/C++ reduction kernels and `@ffi.Native` bindings to write results via an output pointer (`cpx_t*` / `cpx_f_t*`) rather than returning `ffi.Struct` by value, satisfying `dart2wasm`'s `@ffi.Native` restrictions.
 
+- **Native C++ Kernel Size & Compile-Time Optimization**:
+  - Factored `s_cast_generic`, `ndarray_compare`, `s_histogram_uniform`, `s_histogram_binsearch`, and masked/overlapping ufunc loops in `hook/custom_ufuncs.cpp` to eliminate quadratic template instantiation and cold-loop unrolling, reducing native library binary size by ~74% (from ~19 MB to ~5 MB) and C++ source-build compile time by ~20x while preserving contiguous SIMD fast paths.
+
 - **Migration Guide**:
   - **Explicit type arguments on `out:`-bearing functions**: `sin<Float64>(x)`, `sumAs<Int32, Int64>(a, DType.int64)`, `schur<Float64, Float64>(a)` no longer match the parameter count. Drop them — inference produces the same types — or add the new trailing parameter(s).
   - **`out:` buffers must match statically**: create the buffer with the concrete dtype of the input (`NDArray.zeros(shape, DType.float64)` for a `Float64` input), or, when the dtype is only known at run time, widen both the input and the buffer with `.asAnySpec` so the dtype is validated at run time as before. An `NDArray<DTypeTag>` input still accepts any `out:` (`sort(dyn, out: f32)`).

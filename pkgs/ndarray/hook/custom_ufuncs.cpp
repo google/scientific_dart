@@ -516,57 +516,97 @@ static inline bool strided_buffers_overlap_not_identical(
     return !(ptr1 == ptr2 && same_strides);
 }
 
-template <typename SrcType, typename DestType>
-static void s_cast_generic_impl(
-    const void *src_ptr, const int64_t *stridesSrc,
-    void *dest_ptr,
+#if defined(__clang__)
+#define NDARRAY_SCALAR_LOOP _Pragma("clang loop vectorize(disable) unroll(disable)")
+#elif defined(__GNUC__)
+#define NDARRAY_SCALAR_LOOP _Pragma("GCC unroll 1")
+#else
+#define NDARRAY_SCALAR_LOOP
+#endif
+
+#if defined(_MSC_VER)
+#define NDARRAY_NOINLINE __declspec(noinline)
+#elif defined(__GNUC__) || defined(__clang__)
+#define NDARRAY_NOINLINE __attribute__((noinline))
+#else
+#define NDARRAY_NOINLINE
+#endif
+
+static inline int64_t dtype_elem_size(int dtype) {
+    switch (dtype) {
+        case DTYPE_FLOAT64:
+        case DTYPE_INT64:
+        case DTYPE_UINT64:
+        case DTYPE_COMPLEX64:
+            return 8;
+        case DTYPE_FLOAT32:
+        case DTYPE_INT32:
+        case DTYPE_UINT32:
+            return 4;
+        case DTYPE_FLOAT16:
+        case DTYPE_BFLOAT16:
+        case DTYPE_INT16:
+        case DTYPE_UINT16:
+            return 2;
+        case DTYPE_INT8:
+        case DTYPE_UINT8:
+        case DTYPE_BOOLEAN:
+            return 1;
+        case DTYPE_COMPLEX128:
+            return 16;
+        default:
+            return -1;
+    }
+}
+
+template <typename TRes, typename TempT = TRes>
+static NDARRAY_NOINLINE void copy_contiguous_to_strided(
+    const TempT *temp, TRes *res, const int64_t *stridesRes,
     const int64_t *shape, int rank, int64_t total_elements
 ) {
-    const SrcType *src = (const SrcType *)src_ptr;
-    DestType *dest = (DestType *)dest_ptr;
     if (rank == 0) {
-        dest[0] = caster<DestType, SrcType>::cast(src[0]);
+        res[0] = static_cast<TRes>(temp[0]);
         return;
     }
-    if (rank <= 0) return;
-    DECLARE_RANK_BUFFER(int64_t, stridesDest, rank);
-    int64_t s = 1;
-    for (int d = rank - 1; d >= 0; d--) {
-        stridesDest[d] = s;
-        s *= shape[d];
-    }
-    if (strided_buffers_overlap_not_identical(src, stridesSrc, sizeof(SrcType), dest, stridesDest, sizeof(DestType), shape, rank)) {
-        NoThrowBuffer<DestType> temp(total_elements);
-        if (!temp.ok()) return;
-        DECLARE_RANK_BUFFER(int64_t, coord, rank);
-        int64_t offsetSrc = 0;
-        for (int64_t el = 0; el < total_elements; el++) {
-            temp[el] = caster<DestType, SrcType>::cast(src[offsetSrc]);
-            for (int d = rank - 1; d >= 0; d--) {
-                coord[d]++;
-                if (coord[d] < shape[d]) {
-                    offsetSrc += stridesSrc[d];
-                    break;
-                }
-                coord[d] = 0;
-                offsetSrc -= (shape[d] - 1) * stridesSrc[d];
-            }
-        }
-        std::memcpy(dest, temp.data(), total_elements * sizeof(DestType));
-        return;
-    }
-    DECLARE_RANK_BUFFER(int64_t, coord, rank);
-    int64_t offsetSrc = 0;
+    DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
+    int64_t offsetRes = 0;
+    NDARRAY_SCALAR_LOOP
     for (int64_t el = 0; el < total_elements; el++) {
-        dest[el] = caster<DestType, SrcType>::cast(src[offsetSrc]);
+        res[offsetRes] = static_cast<TRes>(temp[el]);
         for (int d = rank - 1; d >= 0; d--) {
-            coord[d]++;
-            if (coord[d] < shape[d]) {
-                offsetSrc += stridesSrc[d];
+            coord_out[d]++;
+            if (coord_out[d] < shape[d]) {
+                offsetRes += stridesRes[d];
                 break;
             }
-            coord[d] = 0;
-            offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+            coord_out[d] = 0;
+            offsetRes -= (shape[d] - 1) * stridesRes[d];
+        }
+    }
+}
+
+template <typename T>
+static NDARRAY_NOINLINE void transpose_2d_tiled(
+    const T *src, T *res, int64_t M, int64_t N
+) {
+    constexpr int64_t TILE = 32;
+    for (int64_t i0 = 0; i0 < M; i0 += TILE) {
+        int64_t bh = std::min(TILE, M - i0);
+        for (int64_t j0 = 0; j0 < N; j0 += TILE) {
+            int64_t bw = std::min(TILE, N - j0);
+            T tile[TILE][TILE];
+            for (int64_t jj = 0; jj < bw; jj++) {
+                const T *src_row = src + (j0 + jj) * M + i0;
+                for (int64_t ii = 0; ii < bh; ii++) {
+                    tile[jj][ii] = src_row[ii];
+                }
+            }
+            for (int64_t ii = 0; ii < bh; ii++) {
+                T *res_row = res + (i0 + ii) * N + j0;
+                for (int64_t jj = 0; jj < bw; jj++) {
+                    res_row[jj] = tile[jj][ii];
+                }
+            }
         }
     }
 }
@@ -843,19 +883,7 @@ static void strided_cum_op_impl(
         NoThrowBuffer<T> temp(total_size);
         if (!temp.ok()) return;
         strided_cum_op_impl(src, stridesSrc, temp.data(), tempStrides, shape, rank, axis, op);
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        for (int64_t i = 0; i < total_size; i++) {
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetRes += coord_out[d] * stridesRes[d];
-            }
-            res[offsetRes] = temp[i];
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) break;
-                coord_out[d] = 0;
-            }
-        }
+        copy_contiguous_to_strided(temp.data(), res, stridesRes, shape, rank, total_size);
         return;
     }
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
@@ -863,6 +891,7 @@ static void strided_cum_op_impl(
     for (int d = 0; d < rank; d++) {
         if (d != axis) outer_size *= shape[d];
     }
+    NDARRAY_SCALAR_LOOP
     for (int64_t o = 0; o < outer_size; o++) {
         int64_t offsetSrc = 0;
         int64_t offsetRes = 0;
@@ -873,6 +902,7 @@ static void strided_cum_op_impl(
             }
         }
         T acc;
+        NDARRAY_SCALAR_LOOP
         for (int64_t i = 0; i < shape[axis]; i++) {
             int64_t idxSrc = offsetSrc + i * stridesSrc[axis];
             int64_t idxRes = offsetRes + i * stridesRes[axis];
@@ -910,19 +940,7 @@ static void strided_unwrap_op_impl(
         NoThrowBuffer<T> temp(total_size);
         if (!temp.ok()) return;
         strided_unwrap_op_impl(src, stridesSrc, temp.data(), tempStrides, shape, rank, axis, discont);
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        for (int64_t i = 0; i < total_size; i++) {
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetRes += coord_out[d] * stridesRes[d];
-            }
-            res[offsetRes] = temp[i];
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) break;
-                coord_out[d] = 0;
-            }
-        }
+        copy_contiguous_to_strided(temp.data(), res, stridesRes, shape, rank, total_size);
         return;
     }
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
@@ -933,6 +951,7 @@ static void strided_unwrap_op_impl(
     const T pi = (T)3.14159265358979323846;
     const T two_pi = 2 * pi;
 
+    NDARRAY_SCALAR_LOOP
     for (int64_t o = 0; o < outer_size; o++) {
         int64_t offsetSrc = 0;
         int64_t offsetRes = 0;
@@ -944,6 +963,7 @@ static void strided_unwrap_op_impl(
         }
         T prev_val = 0;
         T cum_correction = 0;
+        NDARRAY_SCALAR_LOOP
         for (int64_t i = 0; i < shape[axis]; i++) {
             int64_t idxSrc = offsetSrc + i * stridesSrc[axis];
             int64_t idxRes = offsetRes + i * stridesRes[axis];
@@ -1006,19 +1026,7 @@ static void strided_diff_op_impl(
             return;
         }
         strided_diff_op_impl(src, stridesSrc, temp.data(), tempStrides, shape, rank, axis, op);
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        for (int64_t i = 0; i < total_res_size; i++) {
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetRes += coord_out[d] * stridesRes[d];
-            }
-            res[offsetRes] = temp[i];
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < resShape[d]) break;
-                coord_out[d] = 0;
-            }
-        }
+        copy_contiguous_to_strided(temp.data(), res, stridesRes, resShape, rank, total_res_size);
         return;
     }
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
@@ -1026,6 +1034,7 @@ static void strided_diff_op_impl(
     for (int d = 0; d < rank; d++) {
         if (d != axis) outer_size *= shape[d];
     }
+    NDARRAY_SCALAR_LOOP
     for (int64_t o = 0; o < outer_size; o++) {
         int64_t offsetSrc = 0;
         int64_t offsetRes = 0;
@@ -1035,6 +1044,7 @@ static void strided_diff_op_impl(
                 offsetRes += coord[d] * stridesRes[d];
             }
         }
+        NDARRAY_SCALAR_LOOP
         for (int64_t i = 0; i < shape[axis] - 1; i++) {
             int64_t idxSrcCurr = offsetSrc + i * stridesSrc[axis];
             int64_t idxSrcNext = offsetSrc + (i + 1) * stridesSrc[axis];
@@ -1084,24 +1094,13 @@ static inline bool mask_overlaps_contiguous_buffer(const uint8_t *mask, int64_t 
     return (p1 < p2 + bytes_res && p2 < p1 + (size_t)size);
 }
 
-template <bool HAS_MASK, typename T, typename Op>
-static inline void strided_unary_op_loop(
+template <typename T, typename Op>
+static NDARRAY_NOINLINE void strided_unary_op_masked_or_overlap(
     const T *src, const int64_t *stridesSrc,
     T *res, const int64_t *stridesRes,
-    const int64_t *shape, int rank,
-    const uint8_t *mask, Op op
+    const int64_t *shape, int rank, int64_t total_size,
+    const uint8_t *mask, bool overlap, Op op
 ) {
-    if (rank < 0) return;
-    int64_t total_size = 1;
-    for (int d = 0; d < rank; d++) total_size *= shape[d];
-    if (total_size <= 0) return;
-
-    bool overlap = strided_buffers_overlap_not_identical(
-        src, stridesSrc, sizeof(T),
-        res, stridesRes, sizeof(T),
-        shape, rank
-    ) || (HAS_MASK && mask_overlaps_strided_buffer(mask, total_size, res, stridesRes, sizeof(T), shape, rank));
-
     if (overlap) {
         using TempT = typename std::conditional<std::is_same<T, bool>::value, uint8_t, T>::type;
         NoThrowBuffer<TempT> temp(total_size);
@@ -1110,154 +1109,47 @@ static inline void strided_unary_op_loop(
             return;
         }
         DECLARE_RANK_BUFFER(int64_t, coord, rank);
+        int64_t offsetSrc = 0, offsetRes = 0;
+        NDARRAY_SCALAR_LOOP
         for (int64_t i = 0; i < total_size; i++) {
-            int64_t offsetSrc = 0;
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetSrc += coord[d] * stridesSrc[d];
-                if (HAS_MASK) offsetRes += coord[d] * stridesRes[d];
-            }
-            if (!HAS_MASK || mask[i]) {
+            if (mask == nullptr || mask[i]) {
                 temp[i] = static_cast<TempT>(op(src[offsetSrc]));
             } else {
                 temp[i] = static_cast<TempT>(res[offsetRes]);
             }
             for (int d = rank - 1; d >= 0; d--) {
                 coord[d]++;
-                if (coord[d] < shape[d]) break;
+                if (coord[d] < shape[d]) {
+                    offsetSrc += stridesSrc[d];
+                    offsetRes += stridesRes[d];
+                    break;
+                }
                 coord[d] = 0;
+                offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+                offsetRes -= (shape[d] - 1) * stridesRes[d];
             }
         }
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        for (int64_t i = 0; i < total_size; i++) {
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetRes += coord_out[d] * stridesRes[d];
-            }
-            res[offsetRes] = static_cast<T>(temp[i]);
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) break;
-                coord_out[d] = 0;
-            }
-        }
+        copy_contiguous_to_strided<T, TempT>(temp.data(), res, stridesRes, shape, rank, total_size);
         return;
     }
 
-    if (!HAS_MASK) {
-        if (rank == 0) {
-            res[0] = op(src[0]);
-            return;
-        }
-        if (rank == 1) {
-            const int64_t sSrc = stridesSrc[0];
-            const int64_t sRes = stridesRes[0];
-            if (sSrc == 1 && sRes == 1) {
-                for (int64_t i = 0; i < total_size; i++) {
-                    res[i] = op(src[i]);
-                }
-                return;
-            }
-            for (int64_t i = 0; i < total_size; i++) {
-                res[i * sRes] = op(src[i * sSrc]);
-            }
-            return;
-        }
-        if (rank == 2 && stridesSrc[0] == 1 && stridesSrc[1] == shape[0] &&
-            stridesRes[0] == shape[1] && stridesRes[1] == 1) {
-            const int64_t M = shape[0];
-            const int64_t N = shape[1];
-            constexpr int64_t TILE = 32;
-            for (int64_t i0 = 0; i0 < M; i0 += TILE) {
-                int64_t bh = std::min(TILE, M - i0);
-                for (int64_t j0 = 0; j0 < N; j0 += TILE) {
-                    int64_t bw = std::min(TILE, N - j0);
-                    T tile[TILE][TILE];
-                    for (int64_t jj = 0; jj < bw; jj++) {
-                        const T *src_row = src + (j0 + jj) * M + i0;
-                        for (int64_t ii = 0; ii < bh; ii++) {
-                            tile[jj][ii] = op(src_row[ii]);
-                        }
-                    }
-                    for (int64_t ii = 0; ii < bh; ii++) {
-                        T *res_row = res + (i0 + ii) * N + j0;
-                        for (int64_t jj = 0; jj < bw; jj++) {
-                            res_row[jj] = tile[jj][ii];
-                        }
-                    }
-                }
-            }
-            return;
-        }
-        if (rank >= 2) {
-            const int64_t inner_n = shape[rank - 1];
-            const int64_t sSrc = stridesSrc[rank - 1];
-            const int64_t sRes = stridesRes[rank - 1];
-            int64_t outer_elements = 1;
-            for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
-
-            DECLARE_RANK_BUFFER(int64_t, coord, rank);
-            int64_t offsetSrc = 0, offsetRes = 0;
-
-            if (sSrc == 1 && sRes == 1) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const T *rowSrc = src + offsetSrc;
-                    T *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = op(rowSrc[j]);
-                    }
-                    for (int d = rank - 2; d >= 0; d--) {
-                        coord[d]++;
-                        if (coord[d] < shape[d]) {
-                            offsetSrc += stridesSrc[d];
-                            offsetRes += stridesRes[d];
-                            break;
-                        }
-                        coord[d] = 0;
-                        offsetSrc -= (shape[d] - 1) * stridesSrc[d];
-                        offsetRes -= (shape[d] - 1) * stridesRes[d];
-                    }
-                }
-                return;
-            }
-
-            for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                const T *rowSrc = src + offsetSrc;
-                T *rowRes = res + offsetRes;
-                for (int64_t j = 0; j < inner_n; j++) {
-                    rowRes[j * sRes] = op(rowSrc[j * sSrc]);
-                }
-                for (int d = rank - 2; d >= 0; d--) {
-                    coord[d]++;
-                    if (coord[d] < shape[d]) {
-                        offsetSrc += stridesSrc[d];
-                        offsetRes += stridesRes[d];
-                        break;
-                    }
-                    coord[d] = 0;
-                    offsetSrc -= (shape[d] - 1) * stridesSrc[d];
-                    offsetRes -= (shape[d] - 1) * stridesRes[d];
-                }
-            }
-            return;
-        }
-    }
-
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
+    int64_t offsetSrc = 0, offsetRes = 0;
+    NDARRAY_SCALAR_LOOP
     for (int64_t i = 0; i < total_size; i++) {
-        if (!HAS_MASK || mask[i]) {
-            int64_t offsetSrc = 0;
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetSrc += coord[d] * stridesSrc[d];
-                offsetRes += coord[d] * stridesRes[d];
-            }
+        if (mask == nullptr || mask[i]) {
             res[offsetRes] = op(src[offsetSrc]);
         }
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
-            if (coord[d] < shape[d]) break;
+            if (coord[d] < shape[d]) {
+                offsetSrc += stridesSrc[d];
+                offsetRes += stridesRes[d];
+                break;
+            }
             coord[d] = 0;
+            offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+            offsetRes -= (shape[d] - 1) * stridesRes[d];
         }
     }
 }
@@ -1269,23 +1161,69 @@ static void strided_unary_op_impl(
     const int64_t *shape, int rank,
     const uint8_t *mask, Op op
 ) {
-    if (src == nullptr || res == nullptr || (rank > 0 && shape == nullptr) || rank < 0) return;
-    if (mask != nullptr) {
-        strided_unary_op_loop<true>(src, stridesSrc, res, stridesRes, shape, rank, mask, op);
-    } else {
-        strided_unary_op_loop<false>(src, stridesSrc, res, stridesRes, shape, rank, nullptr, op);
-    }
-}
+    if (src == nullptr || res == nullptr || (rank > 0 && (shape == nullptr || stridesSrc == nullptr || stridesRes == nullptr)) || rank < 0) return;
+    int64_t total_size = 1;
+    for (int d = 0; d < rank; d++) total_size *= shape[d];
+    if (total_size <= 0) return;
 
-template <bool HAS_MASK, typename T, typename Op>
-static inline void v_unary_loop(const T *src, T *res, int64_t size, const uint8_t *mask, Op op) {
-    for (int64_t i = 0; i < size; i++) {
-        if (HAS_MASK) {
-            if (mask[i]) {
-                res[i] = op(src[i]);
+    bool overlap = strided_buffers_overlap_not_identical(
+        src, stridesSrc, sizeof(T),
+        res, stridesRes, sizeof(T),
+        shape, rank
+    ) || (mask != nullptr && mask_overlaps_strided_buffer(mask, total_size, res, stridesRes, sizeof(T), shape, rank));
+
+    if (overlap || mask != nullptr) {
+        strided_unary_op_masked_or_overlap(src, stridesSrc, res, stridesRes, shape, rank, total_size, mask, overlap, op);
+        return;
+    }
+
+    if (rank == 0) {
+        res[0] = op(src[0]);
+        return;
+    }
+
+    if (rank == 2 && shape[0] > 1 && shape[1] > 1 &&
+        stridesSrc[0] == 1 && stridesSrc[1] == shape[0] &&
+        stridesRes[0] == shape[1] && stridesRes[1] == 1) {
+        transpose_2d_tiled(src, res, shape[0], shape[1]);
+        for (int64_t i = 0; i < total_size; i++) {
+            res[i] = op(res[i]);
+        }
+        return;
+    }
+
+    const int64_t inner_n = shape[rank - 1];
+    const int64_t sSrc = stridesSrc[rank - 1];
+    const int64_t sRes = stridesRes[rank - 1];
+    int64_t outer_elements = 1;
+    for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
+
+    DECLARE_RANK_BUFFER(int64_t, coord, rank);
+    int64_t offsetSrc = 0, offsetRes = 0;
+
+    for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
+        const T *rowSrc = src + offsetSrc;
+        T *rowRes = res + offsetRes;
+        if (sSrc == 1 && sRes == 1) {
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j] = op(rowSrc[j]);
             }
         } else {
-            res[i] = op(src[i]);
+            NDARRAY_SCALAR_LOOP
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j * sRes] = op(rowSrc[j * sSrc]);
+            }
+        }
+        for (int d = rank - 2; d >= 0; d--) {
+            coord[d]++;
+            if (coord[d] < shape[d]) {
+                offsetSrc += stridesSrc[d];
+                offsetRes += stridesRes[d];
+                break;
+            }
+            coord[d] = 0;
+            offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+            offsetRes -= (shape[d] - 1) * stridesRes[d];
         }
     }
 }
@@ -1293,48 +1231,44 @@ static inline void v_unary_loop(const T *src, T *res, int64_t size, const uint8_
 template <typename T, typename Op>
 static void v_unary_impl(const T *src, T *res, int64_t size, const uint8_t *mask, Op op) {
     if (src == nullptr || res == nullptr || size <= 0) return;
-    if (contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(T), res, (size_t)size * sizeof(T)) ||
-        mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(T))) {
-        using TempT = typename std::conditional<std::is_same<T, bool>::value, uint8_t, T>::type;
-        NoThrowBuffer<TempT> temp(size);
+    using TempT = typename std::conditional<std::is_same<T, bool>::value, uint8_t, T>::type;
+    bool overlap = contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(T), res, (size_t)size * sizeof(T)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(T));
+    NoThrowBuffer<TempT> temp(overlap ? (size_t)size : 0);
+    T *dst = res;
+    if (overlap) {
         if (!temp.ok()) {
             ndarray_set_oom_flag();
             return;
         }
+        dst = reinterpret_cast<T *>(temp.data());
         if (mask != nullptr) {
-            std::memcpy(temp.data(), res, (size_t)size * sizeof(T));
-            v_unary_loop<true>(src, reinterpret_cast<T *>(temp.data()), size, mask, op);
-        } else {
-            v_unary_loop<false>(src, reinterpret_cast<T *>(temp.data()), size, nullptr, op);
+            std::memcpy(dst, res, (size_t)size * sizeof(T));
         }
-        std::memcpy(res, temp.data(), (size_t)size * sizeof(T));
-        return;
     }
     if (mask != nullptr) {
-        v_unary_loop<true>(src, res, size, mask, op);
+        for (int64_t i = 0; i < size; i++) {
+            if (mask[i]) {
+                dst[i] = op(src[i]);
+            }
+        }
     } else {
-        v_unary_loop<false>(src, res, size, nullptr, op);
+        for (int64_t i = 0; i < size; i++) {
+            dst[i] = op(src[i]);
+        }
+    }
+    if (overlap) {
+        std::memcpy(res, dst, (size_t)size * sizeof(T));
     }
 }
 
-template <bool HAS_MASK, typename T_IN, typename T_OUT, typename Op>
-static inline void strided_unary_cast_loop(
+template <typename T_IN, typename T_OUT, typename Op>
+static NDARRAY_NOINLINE void strided_unary_cast_masked_or_overlap(
     const T_IN *src, const int64_t *stridesSrc,
     T_OUT *res, const int64_t *stridesRes,
-    const int64_t *shape, int rank,
-    const uint8_t *mask, Op op
+    const int64_t *shape, int rank, int64_t total_size,
+    const uint8_t *mask, bool overlap, Op op
 ) {
-    if (rank < 0) return;
-    int64_t total_size = 1;
-    for (int d = 0; d < rank; d++) total_size *= shape[d];
-    if (total_size <= 0) return;
-
-    bool overlap = strided_buffers_overlap_not_identical(
-        src, stridesSrc, sizeof(T_IN),
-        res, stridesRes, sizeof(T_OUT),
-        shape, rank
-    ) || (HAS_MASK && mask_overlaps_strided_buffer(mask, total_size, res, stridesRes, sizeof(T_OUT), shape, rank));
-
     if (overlap) {
         using TempT = typename std::conditional<std::is_same<T_OUT, bool>::value, uint8_t, T_OUT>::type;
         NoThrowBuffer<TempT> temp(total_size);
@@ -1343,55 +1277,47 @@ static inline void strided_unary_cast_loop(
             return;
         }
         DECLARE_RANK_BUFFER(int64_t, coord, rank);
+        int64_t offsetSrc = 0, offsetRes = 0;
+        NDARRAY_SCALAR_LOOP
         for (int64_t i = 0; i < total_size; i++) {
-            int64_t offsetSrc = 0;
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetSrc += coord[d] * stridesSrc[d];
-                if (HAS_MASK) offsetRes += coord[d] * stridesRes[d];
-            }
-            if (!HAS_MASK || mask[i]) {
+            if (mask == nullptr || mask[i]) {
                 temp[i] = static_cast<TempT>(op(src[offsetSrc]));
             } else {
                 temp[i] = static_cast<TempT>(res[offsetRes]);
             }
             for (int d = rank - 1; d >= 0; d--) {
                 coord[d]++;
-                if (coord[d] < shape[d]) break;
+                if (coord[d] < shape[d]) {
+                    offsetSrc += stridesSrc[d];
+                    offsetRes += stridesRes[d];
+                    break;
+                }
                 coord[d] = 0;
+                offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+                offsetRes -= (shape[d] - 1) * stridesRes[d];
             }
         }
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        for (int64_t i = 0; i < total_size; i++) {
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetRes += coord_out[d] * stridesRes[d];
-            }
-            res[offsetRes] = static_cast<T_OUT>(temp[i]);
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) break;
-                coord_out[d] = 0;
-            }
-        }
+        copy_contiguous_to_strided<T_OUT, TempT>(temp.data(), res, stridesRes, shape, rank, total_size);
         return;
     }
 
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
+    int64_t offsetSrc = 0, offsetRes = 0;
+    NDARRAY_SCALAR_LOOP
     for (int64_t i = 0; i < total_size; i++) {
-        if (!HAS_MASK || mask[i]) {
-            int64_t offsetSrc = 0;
-            int64_t offsetRes = 0;
-            for (int d = 0; d < rank; d++) {
-                offsetSrc += coord[d] * stridesSrc[d];
-                offsetRes += coord[d] * stridesRes[d];
-            }
+        if (mask == nullptr || mask[i]) {
             res[offsetRes] = op(src[offsetSrc]);
         }
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
-            if (coord[d] < shape[d]) break;
+            if (coord[d] < shape[d]) {
+                offsetSrc += stridesSrc[d];
+                offsetRes += stridesRes[d];
+                break;
+            }
             coord[d] = 0;
+            offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+            offsetRes -= (shape[d] - 1) * stridesRes[d];
         }
     }
 }
@@ -1403,23 +1329,59 @@ static void strided_unary_cast_impl(
     const int64_t *shape, int rank,
     const uint8_t *mask, Op op
 ) {
-    if (src == nullptr || res == nullptr || (rank > 0 && shape == nullptr) || rank < 0) return;
-    if (mask != nullptr) {
-        strided_unary_cast_loop<true>(src, stridesSrc, res, stridesRes, shape, rank, mask, op);
-    } else {
-        strided_unary_cast_loop<false>(src, stridesSrc, res, stridesRes, shape, rank, nullptr, op);
-    }
-}
+    if (src == nullptr || res == nullptr || (rank > 0 && (shape == nullptr || stridesSrc == nullptr || stridesRes == nullptr)) || rank < 0) return;
+    int64_t total_size = 1;
+    for (int d = 0; d < rank; d++) total_size *= shape[d];
+    if (total_size <= 0) return;
 
-template <bool HAS_MASK, typename T_IN, typename T_OUT, typename Op>
-static inline void v_unary_cast_loop(const T_IN *src, T_OUT *res, int64_t size, const uint8_t *mask, Op op) {
-    for (int64_t i = 0; i < size; i++) {
-        if (HAS_MASK) {
-            if (mask[i]) {
-                res[i] = op(src[i]);
+    bool overlap = strided_buffers_overlap_not_identical(
+        src, stridesSrc, sizeof(T_IN),
+        res, stridesRes, sizeof(T_OUT),
+        shape, rank
+    ) || (mask != nullptr && mask_overlaps_strided_buffer(mask, total_size, res, stridesRes, sizeof(T_OUT), shape, rank));
+
+    if (overlap || mask != nullptr) {
+        strided_unary_cast_masked_or_overlap(src, stridesSrc, res, stridesRes, shape, rank, total_size, mask, overlap, op);
+        return;
+    }
+
+    if (rank == 0) {
+        res[0] = op(src[0]);
+        return;
+    }
+
+    const int64_t inner_n = shape[rank - 1];
+    const int64_t sSrc = stridesSrc[rank - 1];
+    const int64_t sRes = stridesRes[rank - 1];
+    int64_t outer_elements = 1;
+    for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
+
+    DECLARE_RANK_BUFFER(int64_t, coord, rank);
+    int64_t offsetSrc = 0, offsetRes = 0;
+
+    for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
+        const T_IN *rowSrc = src + offsetSrc;
+        T_OUT *rowRes = res + offsetRes;
+        if (sSrc == 1 && sRes == 1) {
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j] = op(rowSrc[j]);
             }
         } else {
-            res[i] = op(src[i]);
+            NDARRAY_SCALAR_LOOP
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j * sRes] = op(rowSrc[j * sSrc]);
+            }
+        }
+        for (int d = rank - 2; d >= 0; d--) {
+            coord[d]++;
+            if (coord[d] < shape[d]) {
+                offsetSrc += stridesSrc[d];
+                offsetRes += stridesRes[d];
+                break;
+            }
+            coord[d] = 0;
+            offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+            offsetRes -= (shape[d] - 1) * stridesRes[d];
         }
     }
 }
@@ -1427,28 +1389,35 @@ static inline void v_unary_cast_loop(const T_IN *src, T_OUT *res, int64_t size, 
 template <typename T_IN, typename T_OUT, typename Op>
 static void v_unary_cast_impl(const T_IN *src, T_OUT *res, int64_t size, const uint8_t *mask, Op op) {
     if (src == nullptr || res == nullptr || size <= 0) return;
-    if (contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(T_IN), res, (size_t)size * sizeof(T_OUT)) ||
-        (static_cast<const void *>(src) == static_cast<const void *>(res) && sizeof(T_IN) != sizeof(T_OUT)) ||
-        mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(T_OUT))) {
-        using TempT = typename std::conditional<std::is_same<T_OUT, bool>::value, uint8_t, T_OUT>::type;
-        NoThrowBuffer<TempT> temp(size);
+    using TempT = typename std::conditional<std::is_same<T_OUT, bool>::value, uint8_t, T_OUT>::type;
+    bool overlap = contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(T_IN), res, (size_t)size * sizeof(T_OUT)) ||
+                   (static_cast<const void *>(src) == static_cast<const void *>(res) && sizeof(T_IN) != sizeof(T_OUT)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(T_OUT));
+    NoThrowBuffer<TempT> temp(overlap ? (size_t)size : 0);
+    T_OUT *dst = res;
+    if (overlap) {
         if (!temp.ok()) {
             ndarray_set_oom_flag();
             return;
         }
+        dst = reinterpret_cast<T_OUT *>(temp.data());
         if (mask != nullptr) {
-            std::memcpy(temp.data(), res, (size_t)size * sizeof(T_OUT));
-            v_unary_cast_loop<true>(src, reinterpret_cast<T_OUT *>(temp.data()), size, mask, op);
-        } else {
-            v_unary_cast_loop<false>(src, reinterpret_cast<T_OUT *>(temp.data()), size, nullptr, op);
+            std::memcpy(dst, res, (size_t)size * sizeof(T_OUT));
         }
-        std::memcpy(res, temp.data(), (size_t)size * sizeof(T_OUT));
-        return;
     }
     if (mask != nullptr) {
-        v_unary_cast_loop<true>(src, res, size, mask, op);
+        for (int64_t i = 0; i < size; i++) {
+            if (mask[i]) {
+                dst[i] = op(src[i]);
+            }
+        }
     } else {
-        v_unary_cast_loop<false>(src, res, size, nullptr, op);
+        for (int64_t i = 0; i < size; i++) {
+            dst[i] = op(src[i]);
+        }
+    }
+    if (overlap) {
+        std::memcpy(res, dst, (size_t)size * sizeof(T_OUT));
     }
 }
 
@@ -1469,18 +1438,9 @@ static void s_fill_impl(T * RESTRICT res, const int64_t * RESTRICT strides, cons
         res[0] = value;
         return;
     }
-    NoThrowBuffer<int64_t> coord_vec;
-    int64_t coord_stack[32] = {0};
-    int64_t *coord = coord_stack;
-    if (rank > 32) {
-        coord_vec.assign(rank, 0);
-        if (!coord_vec.ok()) {
-            ndarray_set_oom_flag();
-            return;
-        }
-        coord = coord_vec.data();
-    }
+    DECLARE_RANK_BUFFER(int64_t, coord, rank);
     int64_t offset = 0;
+    NDARRAY_SCALAR_LOOP
     for (int64_t el = 0; el < total_elements; el++) {
         res[offset] = value;
         for (int d = rank - 1; d >= 0; d--) {
@@ -1509,24 +1469,14 @@ static void v_randint_impl(T *res, int64_t size, BoundsType low, BoundsType high
     }
 }
 
-template <bool HAS_MASK, typename T1, typename T2, typename TRes, typename Op>
-static inline void strided_binary_op_loop(
+template <typename T1, typename T2, typename TRes, typename Op>
+static NDARRAY_NOINLINE void strided_binary_op_masked_or_overlap(
     const T1 *a, const int64_t *stridesA,
     const T2 *b, const int64_t *stridesB,
     TRes *res, const int64_t *stridesRes,
-    const int64_t *shape, int rank,
-    const uint8_t *mask, Op op
+    const int64_t *shape, int rank, int64_t total_elements,
+    const uint8_t *mask, bool overlap, Op op
 ) {
-    if (rank < 0) return;
-    int64_t total_elements = 1;
-    for (int64_t i = 0; i < rank; i++) total_elements *= shape[i];
-    if (total_elements <= 0) return;
-
-    bool overlap =
-        strided_buffers_overlap_not_identical(a, stridesA, sizeof(T1), res, stridesRes, sizeof(TRes), shape, rank) ||
-        strided_buffers_overlap_not_identical(b, stridesB, sizeof(T2), res, stridesRes, sizeof(TRes), shape, rank) ||
-        (HAS_MASK && mask_overlaps_strided_buffer(mask, total_elements, res, stridesRes, sizeof(TRes), shape, rank));
-
     if (overlap) {
         using TempT = typename std::conditional<std::is_same<TRes, bool>::value, uint8_t, TRes>::type;
         NoThrowBuffer<TempT> temp(total_elements);
@@ -1536,8 +1486,9 @@ static inline void strided_binary_op_loop(
         }
         DECLARE_RANK_BUFFER(int64_t, coord, rank);
         int64_t offsetA = 0, offsetB = 0, offsetResIn = 0;
+        NDARRAY_SCALAR_LOOP
         for (int64_t el = 0; el < total_elements; el++) {
-            if (!HAS_MASK || mask[el]) {
+            if (mask == nullptr || mask[el]) {
                 temp[el] = static_cast<TempT>(op(a[offsetA], b[offsetB]));
             } else {
                 temp[el] = static_cast<TempT>(res[offsetResIn]);
@@ -1556,169 +1507,15 @@ static inline void strided_binary_op_loop(
                 offsetResIn -= (shape[d] - 1) * stridesRes[d];
             }
         }
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        int64_t offsetRes = 0;
-        for (int64_t el = 0; el < total_elements; el++) {
-            res[offsetRes] = static_cast<TRes>(temp[el]);
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) {
-                    offsetRes += stridesRes[d];
-                    break;
-                }
-                coord_out[d] = 0;
-                offsetRes -= (shape[d] - 1) * stridesRes[d];
-            }
-        }
+        copy_contiguous_to_strided<TRes, TempT>(temp.data(), res, stridesRes, shape, rank, total_elements);
         return;
-    }
-
-    if (!HAS_MASK) {
-        if (rank == 0) {
-            res[0] = op(a[0], b[0]);
-            return;
-        }
-        if (rank == 1) {
-            const int64_t sA = stridesA[0];
-            const int64_t sB = stridesB[0];
-            const int64_t sR = stridesRes[0];
-            if (sA == 1 && sB == 0 && sR == 1) {
-                const T2 b0 = b[0];
-                for (int64_t i = 0; i < total_elements; i++) {
-                    res[i] = op(a[i], b0);
-                }
-                return;
-            }
-            if (sA == 0 && sB == 1 && sR == 1) {
-                const T1 a0 = a[0];
-                for (int64_t i = 0; i < total_elements; i++) {
-                    res[i] = op(a0, b[i]);
-                }
-                return;
-            }
-            if (sA == 1 && sB == 1 && sR == 1) {
-                for (int64_t i = 0; i < total_elements; i++) {
-                    res[i] = op(a[i], b[i]);
-                }
-                return;
-            }
-            for (int64_t i = 0; i < total_elements; i++) {
-                res[i * sR] = op(a[i * sA], b[i * sB]);
-            }
-            return;
-        }
-        if (rank >= 2) {
-            const int64_t inner_n = shape[rank - 1];
-            const int64_t sA = stridesA[rank - 1];
-            const int64_t sB = stridesB[rank - 1];
-            const int64_t sR = stridesRes[rank - 1];
-            int64_t outer_elements = 1;
-            for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
-
-            DECLARE_RANK_BUFFER(int64_t, coord, rank);
-            int64_t offsetA = 0, offsetB = 0, offsetRes = 0;
-
-            if (sA == 1 && sB == 0 && sR == 1) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const T2 b0 = b[offsetB];
-                    const T1 *rowA = a + offsetA;
-                    TRes *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = op(rowA[j], b0);
-                    }
-                    for (int d = rank - 2; d >= 0; d--) {
-                        coord[d]++;
-                        if (coord[d] < shape[d]) {
-                            offsetA += stridesA[d];
-                            offsetB += stridesB[d];
-                            offsetRes += stridesRes[d];
-                            break;
-                        }
-                        coord[d] = 0;
-                        offsetA -= (shape[d] - 1) * stridesA[d];
-                        offsetB -= (shape[d] - 1) * stridesB[d];
-                        offsetRes -= (shape[d] - 1) * stridesRes[d];
-                    }
-                }
-                return;
-            }
-            if (sA == 0 && sB == 1 && sR == 1) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const T1 a0 = a[offsetA];
-                    const T2 *rowB = b + offsetB;
-                    TRes *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = op(a0, rowB[j]);
-                    }
-                    for (int d = rank - 2; d >= 0; d--) {
-                        coord[d]++;
-                        if (coord[d] < shape[d]) {
-                            offsetA += stridesA[d];
-                            offsetB += stridesB[d];
-                            offsetRes += stridesRes[d];
-                            break;
-                        }
-                        coord[d] = 0;
-                        offsetA -= (shape[d] - 1) * stridesA[d];
-                        offsetB -= (shape[d] - 1) * stridesB[d];
-                        offsetRes -= (shape[d] - 1) * stridesRes[d];
-                    }
-                }
-                return;
-            }
-            if (sA == 1 && sB == 1 && sR == 1) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const T1 *rowA = a + offsetA;
-                    const T2 *rowB = b + offsetB;
-                    TRes *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = op(rowA[j], rowB[j]);
-                    }
-                    for (int d = rank - 2; d >= 0; d--) {
-                        coord[d]++;
-                        if (coord[d] < shape[d]) {
-                            offsetA += stridesA[d];
-                            offsetB += stridesB[d];
-                            offsetRes += stridesRes[d];
-                            break;
-                        }
-                        coord[d] = 0;
-                        offsetA -= (shape[d] - 1) * stridesA[d];
-                        offsetB -= (shape[d] - 1) * stridesB[d];
-                        offsetRes -= (shape[d] - 1) * stridesRes[d];
-                    }
-                }
-                return;
-            }
-            for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                const T1 *rowA = a + offsetA;
-                const T2 *rowB = b + offsetB;
-                TRes *rowRes = res + offsetRes;
-                for (int64_t j = 0; j < inner_n; j++) {
-                    rowRes[j * sR] = op(rowA[j * sA], rowB[j * sB]);
-                }
-                for (int d = rank - 2; d >= 0; d--) {
-                    coord[d]++;
-                    if (coord[d] < shape[d]) {
-                        offsetA += stridesA[d];
-                        offsetB += stridesB[d];
-                        offsetRes += stridesRes[d];
-                        break;
-                    }
-                    coord[d] = 0;
-                    offsetA -= (shape[d] - 1) * stridesA[d];
-                    offsetB -= (shape[d] - 1) * stridesB[d];
-                    offsetRes -= (shape[d] - 1) * stridesRes[d];
-                }
-            }
-            return;
-        }
     }
 
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
     int64_t offsetA = 0, offsetB = 0, offsetRes = 0;
+    NDARRAY_SCALAR_LOOP
     for (int64_t el = 0; el < total_elements; el++) {
-        if (!HAS_MASK || mask[el]) {
+        if (mask == nullptr || mask[el]) {
             res[offsetRes] = op(a[offsetA], b[offsetB]);
         }
         for (int d = rank - 1; d >= 0; d--) {
@@ -1746,24 +1543,73 @@ static void strided_binary_op_impl(
     const uint8_t *mask, Op op
 ) {
     if (a == nullptr || b == nullptr || res == nullptr || (rank > 0 && (shape == nullptr || stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) || rank < 0) return;
-    if (mask != nullptr) {
-        strided_binary_op_loop<true>(a, stridesA, b, stridesB, res, stridesRes, shape, rank, mask, op);
-    } else {
-        strided_binary_op_loop<false>(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, op);
-    }
-}
+    int64_t total_elements = 1;
+    for (int64_t i = 0; i < rank; i++) total_elements *= shape[i];
+    if (total_elements <= 0) return;
 
-template <bool HAS_MASK, typename T1, typename T2, typename TRes, typename Op>
-static inline void strided_binary_cast_loop(
-    const T1 *a, const int64_t *stridesA,
-    const T2 *b, const int64_t *stridesB,
-    TRes *res, const int64_t *stridesRes,
-    const int64_t *shape, int rank,
-    const uint8_t *mask, Op op
-) {
-    strided_binary_op_loop<HAS_MASK, T1, T2, TRes, Op>(
-        a, stridesA, b, stridesB, res, stridesRes, shape, rank, mask, op
-    );
+    bool overlap =
+        strided_buffers_overlap_not_identical(a, stridesA, sizeof(T1), res, stridesRes, sizeof(TRes), shape, rank) ||
+        strided_buffers_overlap_not_identical(b, stridesB, sizeof(T2), res, stridesRes, sizeof(TRes), shape, rank) ||
+        (mask != nullptr && mask_overlaps_strided_buffer(mask, total_elements, res, stridesRes, sizeof(TRes), shape, rank));
+
+    if (overlap || mask != nullptr) {
+        strided_binary_op_masked_or_overlap(a, stridesA, b, stridesB, res, stridesRes, shape, rank, total_elements, mask, overlap, op);
+        return;
+    }
+
+    if (rank == 0) {
+        res[0] = op(a[0], b[0]);
+        return;
+    }
+
+    const int64_t inner_n = shape[rank - 1];
+    const int64_t sA = stridesA[rank - 1];
+    const int64_t sB = stridesB[rank - 1];
+    const int64_t sR = stridesRes[rank - 1];
+    int64_t outer_elements = 1;
+    for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
+
+    DECLARE_RANK_BUFFER(int64_t, coord, rank);
+    int64_t offsetA = 0, offsetB = 0, offsetRes = 0;
+
+    for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
+        const T1 *rowA = a + offsetA;
+        const T2 *rowB = b + offsetB;
+        TRes *rowRes = res + offsetRes;
+        if (sR == 1 && sA == 1 && sB == 1) {
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j] = op(rowA[j], rowB[j]);
+            }
+        } else if (sR == 1 && sA == 1 && sB == 0) {
+            const T2 b0 = rowB[0];
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j] = op(rowA[j], b0);
+            }
+        } else if (sR == 1 && sA == 0 && sB == 1) {
+            const T1 a0 = rowA[0];
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j] = op(a0, rowB[j]);
+            }
+        } else {
+            NDARRAY_SCALAR_LOOP
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j * sR] = op(rowA[j * sA], rowB[j * sB]);
+            }
+        }
+        for (int d = rank - 2; d >= 0; d--) {
+            coord[d]++;
+            if (coord[d] < shape[d]) {
+                offsetA += stridesA[d];
+                offsetB += stridesB[d];
+                offsetRes += stridesRes[d];
+                break;
+            }
+            coord[d] = 0;
+            offsetA -= (shape[d] - 1) * stridesA[d];
+            offsetB -= (shape[d] - 1) * stridesB[d];
+            offsetRes -= (shape[d] - 1) * stridesRes[d];
+        }
+    }
 }
 
 template <typename T1, typename T2, typename TRes, typename Op>
@@ -1779,47 +1625,41 @@ static void strided_binary_cast_impl(
     );
 }
 
-template <bool HAS_MASK, typename T1, typename T2, typename TRes, typename Op>
-static inline void v_binary_loop(const T1 *a, const T2 *b, TRes *res, int64_t size, const uint8_t *mask, Op op) {
-    for (int64_t i = 0; i < size; i++) {
-        if (HAS_MASK) {
-            if (mask[i]) {
-                res[i] = op(a[i], b[i]);
-            }
-        } else {
-            res[i] = op(a[i], b[i]);
-        }
-    }
-}
-
 template <typename T1, typename T2, typename TRes, typename Op>
 static void v_binary_impl(const T1 *a, const T2 *b, TRes *res, int64_t size, const uint8_t *mask, Op op) {
     if (a == nullptr || b == nullptr || res == nullptr || size <= 0) return;
+    using TempT = typename std::conditional<std::is_same<TRes, bool>::value, uint8_t, TRes>::type;
     bool overlap_a = contiguous_buffers_overlap_not_identical(a, (size_t)size * sizeof(T1), res, (size_t)size * sizeof(TRes)) ||
                      (static_cast<const void *>(a) == static_cast<const void *>(res) && sizeof(T1) != sizeof(TRes));
     bool overlap_b = contiguous_buffers_overlap_not_identical(b, (size_t)size * sizeof(T2), res, (size_t)size * sizeof(TRes)) ||
                      (static_cast<const void *>(b) == static_cast<const void *>(res) && sizeof(T2) != sizeof(TRes));
     bool overlap_mask = mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(TRes));
-    if (overlap_a || overlap_b || overlap_mask) {
-        using TempT = typename std::conditional<std::is_same<TRes, bool>::value, uint8_t, TRes>::type;
-        NoThrowBuffer<TempT> temp(size);
+    bool overlap = overlap_a || overlap_b || overlap_mask;
+    NoThrowBuffer<TempT> temp(overlap ? (size_t)size : 0);
+    TRes *dst = res;
+    if (overlap) {
         if (!temp.ok()) {
             ndarray_set_oom_flag();
             return;
         }
+        dst = reinterpret_cast<TRes *>(temp.data());
         if (mask != nullptr) {
-            std::memcpy(temp.data(), res, (size_t)size * sizeof(TRes));
-            v_binary_loop<true>(a, b, reinterpret_cast<TRes *>(temp.data()), size, mask, op);
-        } else {
-            v_binary_loop<false>(a, b, reinterpret_cast<TRes *>(temp.data()), size, nullptr, op);
+            std::memcpy(dst, res, (size_t)size * sizeof(TRes));
         }
-        std::memcpy(res, temp.data(), (size_t)size * sizeof(TRes));
-        return;
     }
     if (mask != nullptr) {
-        v_binary_loop<true>(a, b, res, size, mask, op);
+        for (int64_t i = 0; i < size; i++) {
+            if (mask[i]) {
+                dst[i] = op(a[i], b[i]);
+            }
+        }
     } else {
-        v_binary_loop<false>(a, b, res, size, nullptr, op);
+        for (int64_t i = 0; i < size; i++) {
+            dst[i] = op(a[i], b[i]);
+        }
+    }
+    if (overlap) {
+        std::memcpy(res, dst, (size_t)size * sizeof(TRes));
     }
 }
 
@@ -1853,6 +1693,7 @@ static void s_where_impl(
         }
         DECLARE_RANK_BUFFER(int64_t, coord, rank);
         int64_t offsetCond = 0, offsetX = 0, offsetY = 0;
+        NDARRAY_SCALAR_LOOP
         for (int64_t el = 0; el < total_elements; el++) {
             temp[el] = cond[offsetCond] ? x[offsetX] : y[offsetY];
             for (int d = rank - 1; d >= 0; d--) {
@@ -1869,188 +1710,59 @@ static void s_where_impl(
                 offsetY    -= (shape[d] - 1) * stridesY[d];
             }
         }
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        int64_t offsetRes = 0;
-        for (int64_t el = 0; el < total_elements; el++) {
-            res[offsetRes] = temp[el];
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) {
-                    offsetRes += stridesRes[d];
-                    break;
-                }
-                coord_out[d] = 0;
-                offsetRes -= (shape[d] - 1) * stridesRes[d];
-            }
-        }
-        return;
-    }
-    int is_contiguous = 1;
-    int64_t expected_stride = 1;
-    for (int64_t i = rank - 1; i >= 0; i--) {
-        if (stridesCond[i] != expected_stride ||
-            stridesX[i] != expected_stride ||
-            stridesY[i] != expected_stride ||
-            stridesRes[i] != expected_stride) {
-            is_contiguous = 0;
-            break;
-        }
-        expected_stride *= shape[i];
-    }
-    if (is_contiguous) {
-        for (int64_t i = 0; i < total_elements; i++) {
-            res[i] = cond[i] ? x[i] : y[i];
-        }
-        return;
-    }
-    if (rank == 1) {
-        const int64_t sCond = stridesCond[0];
-        const int64_t sX = stridesX[0];
-        const int64_t sY = stridesY[0];
-        const int64_t sRes = stridesRes[0];
-        if (sCond == 1 && sRes == 1) {
-            if (sX == 1 && sY == 1) {
-                for (int64_t i = 0; i < total_elements; i++) res[i] = cond[i] ? x[i] : y[i];
-                return;
-            }
-            if (sX == 1 && sY == 0) {
-                const T y0 = y[0];
-                for (int64_t i = 0; i < total_elements; i++) res[i] = cond[i] ? x[i] : y0;
-                return;
-            }
-            if (sX == 0 && sY == 1) {
-                const T x0 = x[0];
-                for (int64_t i = 0; i < total_elements; i++) res[i] = cond[i] ? x0 : y[i];
-                return;
-            }
-            if (sX == 0 && sY == 0) {
-                const T x0 = x[0], y0 = y[0];
-                for (int64_t i = 0; i < total_elements; i++) res[i] = cond[i] ? x0 : y0;
-                return;
-            }
-            for (int64_t i = 0; i < total_elements; i++) res[i] = cond[i] ? x[i * sX] : y[i * sY];
-            return;
-        }
-        for (int64_t i = 0; i < total_elements; i++) {
-            res[i * sRes] = cond[i * sCond] ? x[i * sX] : y[i * sY];
-        }
+        copy_contiguous_to_strided(temp.data(), res, stridesRes, shape, rank, total_elements);
         return;
     }
 
-    if (rank >= 2) {
-        const int64_t inner_n = shape[rank - 1];
-        const int64_t sCond = stridesCond[rank - 1];
-        const int64_t sX = stridesX[rank - 1];
-        const int64_t sY = stridesY[rank - 1];
-        const int64_t sRes = stridesRes[rank - 1];
-        int64_t outer_elements = 1;
-        for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
-
-        DECLARE_RANK_BUFFER(int64_t, coord, rank);
-        int64_t offsetCond = 0, offsetX = 0, offsetY = 0, offsetRes = 0;
-
-        auto step_outer = [&]() {
-            for (int d = rank - 2; d >= 0; d--) {
-                coord[d]++;
-                if (coord[d] < shape[d]) {
-                    offsetCond += stridesCond[d];
-                    offsetX    += stridesX[d];
-                    offsetY    += stridesY[d];
-                    offsetRes  += stridesRes[d];
-                    break;
-                }
-                coord[d] = 0;
-                offsetCond -= (shape[d] - 1) * stridesCond[d];
-                offsetX    -= (shape[d] - 1) * stridesX[d];
-                offsetY    -= (shape[d] - 1) * stridesY[d];
-                offsetRes  -= (shape[d] - 1) * stridesRes[d];
-            }
-        };
-
-        if (sCond == 1 && sRes == 1) {
-            if (sX == 1 && sY == 1) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const unsigned char *rowCond = cond + offsetCond;
-                    const T *rowX = x + offsetX;
-                    const T *rowY = y + offsetY;
-                    T *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = rowCond[j] ? rowX[j] : rowY[j];
-                    }
-                    step_outer();
-                }
-                return;
-            }
-            if (sX == 1 && sY == 0) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const unsigned char *rowCond = cond + offsetCond;
-                    const T *rowX = x + offsetX;
-                    const T y0 = y[offsetY];
-                    T *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = rowCond[j] ? rowX[j] : y0;
-                    }
-                    step_outer();
-                }
-                return;
-            }
-            if (sX == 0 && sY == 1) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const unsigned char *rowCond = cond + offsetCond;
-                    const T x0 = x[offsetX];
-                    const T *rowY = y + offsetY;
-                    T *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = rowCond[j] ? x0 : rowY[j];
-                    }
-                    step_outer();
-                }
-                return;
-            }
-            if (sX == 0 && sY == 0) {
-                for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                    const unsigned char *rowCond = cond + offsetCond;
-                    const T x0 = x[offsetX];
-                    const T y0 = y[offsetY];
-                    T *rowRes = res + offsetRes;
-                    for (int64_t j = 0; j < inner_n; j++) {
-                        rowRes[j] = rowCond[j] ? x0 : y0;
-                    }
-                    step_outer();
-                }
-                return;
-            }
-            for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-                const unsigned char *rowCond = cond + offsetCond;
-                const T *rowX = x + offsetX;
-                const T *rowY = y + offsetY;
-                T *rowRes = res + offsetRes;
-                for (int64_t j = 0; j < inner_n; j++) {
-                    rowRes[j] = rowCond[j] ? rowX[j * sX] : rowY[j * sY];
-                }
-                step_outer();
-            }
-            return;
-        }
-
-        for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
-            const unsigned char *rowCond = cond + offsetCond;
-            const T *rowX = x + offsetX;
-            const T *rowY = y + offsetY;
-            T *rowRes = res + offsetRes;
-            for (int64_t j = 0; j < inner_n; j++) {
-                rowRes[j * sRes] = rowCond[j * sCond] ? rowX[j * sX] : rowY[j * sY];
-            }
-            step_outer();
-        }
-        return;
-    }
+    const int64_t inner_n = shape[rank - 1];
+    const int64_t sCond = stridesCond[rank - 1];
+    const int64_t sX = stridesX[rank - 1];
+    const int64_t sY = stridesY[rank - 1];
+    const int64_t sRes = stridesRes[rank - 1];
+    int64_t outer_elements = 1;
+    for (int d = 0; d < rank - 1; d++) outer_elements *= shape[d];
 
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
     int64_t offsetCond = 0, offsetX = 0, offsetY = 0, offsetRes = 0;
-    for (int64_t el = 0; el < total_elements; el++) {
-        res[offsetRes] = cond[offsetCond] ? x[offsetX] : y[offsetY];
-        for (int d = rank - 1; d >= 0; d--) {
+
+    for (int64_t out_idx = 0; out_idx < outer_elements; out_idx++) {
+        const unsigned char *rowCond = cond + offsetCond;
+        const T *rowX = x + offsetX;
+        const T *rowY = y + offsetY;
+        T *rowRes = res + offsetRes;
+        if (sCond == 1 && sRes == 1) {
+            if (sX == 1 && sY == 1) {
+                for (int64_t j = 0; j < inner_n; j++) {
+                    rowRes[j] = rowCond[j] ? rowX[j] : rowY[j];
+                }
+            } else if (sX == 1 && sY == 0) {
+                const T y0 = rowY[0];
+                for (int64_t j = 0; j < inner_n; j++) {
+                    rowRes[j] = rowCond[j] ? rowX[j] : y0;
+                }
+            } else if (sX == 0 && sY == 1) {
+                const T x0 = rowX[0];
+                for (int64_t j = 0; j < inner_n; j++) {
+                    rowRes[j] = rowCond[j] ? x0 : rowY[j];
+                }
+            } else if (sX == 0 && sY == 0) {
+                const T x0 = rowX[0], y0 = rowY[0];
+                for (int64_t j = 0; j < inner_n; j++) {
+                    rowRes[j] = rowCond[j] ? x0 : y0;
+                }
+            } else {
+                NDARRAY_SCALAR_LOOP
+                for (int64_t j = 0; j < inner_n; j++) {
+                    rowRes[j] = rowCond[j] ? rowX[j * sX] : rowY[j * sY];
+                }
+            }
+        } else {
+            NDARRAY_SCALAR_LOOP
+            for (int64_t j = 0; j < inner_n; j++) {
+                rowRes[j * sRes] = rowCond[j * sCond] ? rowX[j * sX] : rowY[j * sY];
+            }
+        }
+        for (int d = rank - 2; d >= 0; d--) {
             coord[d]++;
             if (coord[d] < shape[d]) {
                 offsetCond += stridesCond[d];
@@ -4131,32 +3843,28 @@ void s_add_double(const double *a, const int64_t *stridesA,
                   const double *b, const int64_t *stridesB,
                   double *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, [](double x, double y) { return x + y; });
+    s_add_double_double_double(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 void s_sub_double(const double *a, const int64_t *stridesA,
                   const double *b, const int64_t *stridesB,
                   double *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, [](double x, double y) { return x - y; });
+    s_sub_double_double_double(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 void s_mul_double(const double *a, const int64_t *stridesA,
                   const double *b, const int64_t *stridesB,
                   double *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, [](double x, double y) { return x * y; });
+    s_mul_double_double_double(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 void s_div_double(const double *a, const int64_t *stridesA,
                   const double *b, const int64_t *stridesB,
                   double *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, [](double x, double y) { return x / y; });
+    s_div_double_double_double(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 // ============================================================================
@@ -4199,32 +3907,28 @@ void s_add_complex(const cpx_t *a, const int64_t *stridesA,
                   const cpx_t *b, const int64_t *stridesB,
                   cpx_t *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, cpx_add);
+    s_add_cpx_cpx_cpx(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 void s_sub_complex(const cpx_t *a, const int64_t *stridesA,
                   const cpx_t *b, const int64_t *stridesB,
                   cpx_t *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, cpx_sub);
+    s_sub_cpx_cpx_cpx(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 void s_mul_complex(const cpx_t *a, const int64_t *stridesA,
                   const cpx_t *b, const int64_t *stridesB,
                   cpx_t *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, cpx_mul);
+    s_mul_cpx_cpx_cpx(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 void s_div_complex(const cpx_t *a, const int64_t *stridesA,
                   const cpx_t *b, const int64_t *stridesB,
                   cpx_t *res, const int64_t *stridesRes,
                   const int64_t *shape, int rank) {
-    if (rank > 0 && (stridesA == nullptr || stridesB == nullptr || stridesRes == nullptr)) return;
-    strided_binary_op_impl(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr, cpx_div);
+    s_div_cpx_cpx_cpx(a, stridesA, b, stridesB, res, stridesRes, shape, rank, nullptr);
 }
 
 // ============================================================================
@@ -10333,28 +10037,64 @@ uint8_t v_any_equal_to_zero_int64(const int64_t *arr, int64_t size) {
 #define BOOL_TO_COMPLEX(x) ((cpx_t){(double)(x), 0.0})
 
 
-template <typename DestType>
-static void dispatch_cast_src(
-    const void *src_ptr, const int64_t *stridesSrc, int dtypeSrc,
-    void *dest_ptr,
-    const int64_t *shape, int rank, int64_t total_elements
+template <typename SrcType, typename CanonT>
+static NDARRAY_NOINLINE void cast_read_chunk(
+    const void *src_ptr, const int64_t *stridesSrc,
+    const int64_t *shape, int rank,
+    int64_t *coord, int64_t &offsetSrc,
+    CanonT *buf, int64_t count
 ) {
-    switch (dtypeSrc) {
-        case DTYPE_FLOAT64: s_cast_generic_impl<double, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_FLOAT32: s_cast_generic_impl<float, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_FLOAT16: s_cast_generic_impl<float16_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_BFLOAT16: s_cast_generic_impl<bfloat16_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_INT32: s_cast_generic_impl<int32_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_INT64: s_cast_generic_impl<int64_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_UINT8: s_cast_generic_impl<uint8_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_INT16: s_cast_generic_impl<int16_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_COMPLEX128: s_cast_generic_impl<cpx_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_COMPLEX64: s_cast_generic_impl<cpx_f_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_BOOLEAN: s_cast_generic_impl<uint8_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_INT8: s_cast_generic_impl<int8_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_UINT64: s_cast_generic_impl<uint64_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_UINT32: s_cast_generic_impl<uint32_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
-        case DTYPE_UINT16: s_cast_generic_impl<uint16_t, DestType>(src_ptr, stridesSrc, dest_ptr, shape, rank, total_elements); break;
+    const SrcType *src = static_cast<const SrcType *>(src_ptr);
+    if (rank == 0) {
+        buf[0] = caster<CanonT, SrcType>::cast(src[0]);
+        return;
+    }
+    NDARRAY_SCALAR_LOOP
+    for (int64_t i = 0; i < count; i++) {
+        buf[i] = caster<CanonT, SrcType>::cast(src[offsetSrc]);
+        for (int d = rank - 1; d >= 0; d--) {
+            coord[d]++;
+            if (coord[d] < shape[d]) {
+                offsetSrc += stridesSrc[d];
+                break;
+            }
+            coord[d] = 0;
+            offsetSrc -= (shape[d] - 1) * stridesSrc[d];
+        }
+    }
+}
+
+template <typename CanonT, typename DestType>
+static NDARRAY_NOINLINE void cast_write_chunk(
+    const CanonT *buf, void *dest_ptr, int64_t pos, int64_t count
+) {
+    DestType *dst = static_cast<DestType *>(dest_ptr) + pos;
+    NDARRAY_SCALAR_LOOP
+    for (int64_t i = 0; i < count; i++) {
+        dst[i] = caster<DestType, CanonT>::cast(buf[i]);
+    }
+}
+
+template <typename CanonT>
+static void dispatch_cast_write_chunk(
+    int dtypeDst, const CanonT *buf, void *dest_ptr, int64_t pos, int64_t count
+) {
+    switch (dtypeDst) {
+        case DTYPE_FLOAT64: cast_write_chunk<CanonT, double>(buf, dest_ptr, pos, count); break;
+        case DTYPE_FLOAT32: cast_write_chunk<CanonT, float>(buf, dest_ptr, pos, count); break;
+        case DTYPE_FLOAT16: cast_write_chunk<CanonT, float16_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_BFLOAT16: cast_write_chunk<CanonT, bfloat16_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_INT64: cast_write_chunk<CanonT, int64_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_INT32: cast_write_chunk<CanonT, int32_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_INT16: cast_write_chunk<CanonT, int16_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_INT8: cast_write_chunk<CanonT, int8_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_UINT64: cast_write_chunk<CanonT, uint64_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_UINT32: cast_write_chunk<CanonT, uint32_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_UINT16: cast_write_chunk<CanonT, uint16_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_UINT8: cast_write_chunk<CanonT, uint8_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_COMPLEX128: cast_write_chunk<CanonT, cpx_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_COMPLEX64: cast_write_chunk<CanonT, cpx_f_t>(buf, dest_ptr, pos, count); break;
+        case DTYPE_BOOLEAN: cast_write_chunk<CanonT, bool_byte_t>(buf, dest_ptr, pos, count); break;
         default: return;
     }
 }
@@ -10365,57 +10105,136 @@ extern "C" void s_cast_generic(
     const int64_t *shape, int rank
 ) {
     if (src_ptr == nullptr || dest_ptr == nullptr || rank < 0) return;
-    int64_t total_elements = 1;
-    for (int64_t i = 0; i < rank; i++) total_elements *= shape[i];
+    int64_t src_sz = dtype_elem_size(dtypeSrc);
+    int64_t dst_sz = dtype_elem_size(dtypeDst);
+    if (src_sz <= 0 || dst_sz <= 0) return;
+    size_t src_elem_size = static_cast<size_t>(src_sz);
+    size_t dst_elem_size = static_cast<size_t>(dst_sz);
 
-    switch (dtypeDst) {
-        case DTYPE_FLOAT64:
-            dispatch_cast_src<double>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_FLOAT32:
-            dispatch_cast_src<float>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_FLOAT16:
-            dispatch_cast_src<float16_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_BFLOAT16:
-            dispatch_cast_src<bfloat16_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_INT32:
-            dispatch_cast_src<int32_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_INT64:
-            dispatch_cast_src<int64_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_UINT8:
-            dispatch_cast_src<uint8_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_INT16:
-            dispatch_cast_src<int16_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_COMPLEX128:
-            dispatch_cast_src<cpx_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_COMPLEX64:
-            dispatch_cast_src<cpx_f_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_BOOLEAN:
-            dispatch_cast_src<bool_byte_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_INT8:
-            dispatch_cast_src<int8_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_UINT64:
-            dispatch_cast_src<uint64_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_UINT32:
-            dispatch_cast_src<uint32_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        case DTYPE_UINT16:
-            dispatch_cast_src<uint16_t>(src_ptr, stridesSrc, dtypeSrc, dest_ptr, shape, rank, total_elements);
-            break;
-        default:
-            return;
+    int64_t total_elements = 1;
+    for (int64_t i = 0; i < rank; i++) {
+        if (shape[i] <= 0) return;
+        total_elements *= shape[i];
+    }
+    if (total_elements <= 0) return;
+
+    DECLARE_RANK_BUFFER(int64_t, stridesDest, rank > 0 ? rank : 1);
+    if (rank > 0) {
+        int64_t s = 1;
+        for (int d = rank - 1; d >= 0; d--) {
+            stridesDest[d] = s;
+            s *= shape[d];
+        }
+    }
+
+    bool overlap = strided_buffers_overlap_not_identical(
+        src_ptr, stridesSrc, src_elem_size,
+        dest_ptr, stridesDest, dst_elem_size,
+        shape, rank
+    );
+    NoThrowBuffer<uint8_t> temp(overlap ? (size_t)total_elements * dst_elem_size : 0);
+    if (overlap && !temp.ok()) return;
+    void *out_ptr = overlap ? static_cast<void *>(temp.data()) : dest_ptr;
+
+    DECLARE_RANK_BUFFER(int64_t, coord, rank > 0 ? rank : 1);
+    int64_t offsetSrc = 0;
+    constexpr int64_t CHUNK = 256;
+
+    for (int64_t pos = 0; pos < total_elements; pos += CHUNK) {
+        int64_t count = std::min<int64_t>(CHUNK, total_elements - pos);
+        switch (dtypeSrc) {
+            case DTYPE_FLOAT64: {
+                double buf[CHUNK];
+                cast_read_chunk<double, double>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<double>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_FLOAT32: {
+                double buf[CHUNK];
+                cast_read_chunk<float, double>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<double>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_FLOAT16: {
+                double buf[CHUNK];
+                cast_read_chunk<float16_t, double>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<double>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_BFLOAT16: {
+                double buf[CHUNK];
+                cast_read_chunk<bfloat16_t, double>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<double>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_INT64: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<int64_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_INT32: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<int32_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_INT16: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<int16_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_INT8: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<int8_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_UINT32: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<uint32_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_UINT16: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<uint16_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_UINT8:
+            case DTYPE_BOOLEAN: {
+                int64_t buf[CHUNK];
+                cast_read_chunk<uint8_t, int64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<int64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_UINT64: {
+                uint64_t buf[CHUNK];
+                cast_read_chunk<uint64_t, uint64_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<uint64_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_COMPLEX128: {
+                cpx_t buf[CHUNK];
+                cast_read_chunk<cpx_t, cpx_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<cpx_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            case DTYPE_COMPLEX64: {
+                cpx_t buf[CHUNK];
+                cast_read_chunk<cpx_f_t, cpx_t>(src_ptr, stridesSrc, shape, rank, coord, offsetSrc, buf, count);
+                dispatch_cast_write_chunk<cpx_t>(dtypeDst, buf, out_ptr, pos, count);
+                break;
+            }
+            default:
+                return;
+        }
+    }
+
+    if (overlap) {
+        std::memcpy(dest_ptr, temp.data(), (size_t)total_elements * dst_elem_size);
     }
 }
 
@@ -12991,89 +12810,54 @@ struct OpGe {
     static inline bool apply(const T1& x, const T2& y) { return safe_cmp_helper<T2, T1>::lt(y, x) || safe_cmp_helper<T1, T2>::eq(x, y); }
 };
 
-template <typename T1, typename T2, typename Op>
-void s_compare_impl(const T1 *a, const int64_t *stridesA,
-                    const T2 *b, const int64_t *stridesB,
-                    uint8_t *res, const int64_t *stridesRes,
-                    const int64_t *shape, int rank) {
-    if (a == nullptr || b == nullptr || res == nullptr || rank < 0) return;
-    int64_t total_elements = 1;
-    for (int64_t i = 0; i < rank; i++) total_elements *= shape[i];
-    if (total_elements <= 0) return;
+struct CompareLayout {
+    int64_t total_elements;
+    bool is_a_contig;
+    bool is_b_contig;
+    bool is_res_contig;
+    bool is_a_scal;
+    bool is_b_scal;
+};
 
-    bool overlap_a = strided_buffers_overlap_not_identical(
-        a, stridesA, sizeof(T1), res, stridesRes, sizeof(uint8_t), shape, rank);
-    bool overlap_b = strided_buffers_overlap_not_identical(
-        b, stridesB, sizeof(T2), res, stridesRes, sizeof(uint8_t), shape, rank);
-    if (overlap_a || overlap_b) {
-        NoThrowBuffer<uint8_t> temp(total_elements);
-        if (!temp.ok()) {
-            ndarray_set_oom_flag();
+template <typename T, typename Op>
+static NDARRAY_NOINLINE void s_compare_same(
+    const T *a, const int64_t *stridesA,
+    const T *b, const int64_t *stridesB,
+    uint8_t *res, const int64_t *stridesRes,
+    const int64_t *shape, int rank,
+    const CompareLayout &L
+) {
+    if (L.is_res_contig) {
+        if (L.is_a_contig && L.is_b_contig) {
+            for (int64_t i = 0; i < L.total_elements; i++) {
+                res[i] = Op::apply(a[i], b[i]) ? 1 : 0;
+            }
             return;
         }
-        DECLARE_RANK_BUFFER(int64_t, temp_strides, rank);
-        int64_t s = 1;
-        for (int64_t i = rank - 1; i >= 0; i--) {
-            temp_strides[i] = s;
-            s *= shape[i];
-        }
-        s_compare_impl<T1, T2, Op>(a, stridesA, b, stridesB, temp.data(), temp_strides, shape, rank);
-        DECLARE_RANK_BUFFER(int64_t, coord_out, rank);
-        int64_t offsetRes = 0;
-        for (int64_t el = 0; el < total_elements; el++) {
-            res[offsetRes] = temp[el];
-            for (int d = rank - 1; d >= 0; d--) {
-                coord_out[d]++;
-                if (coord_out[d] < shape[d]) {
-                    offsetRes += stridesRes[d];
-                    break;
-                }
-                coord_out[d] = 0;
-                offsetRes -= (shape[d] - 1) * stridesRes[d];
+        if (L.is_a_contig && L.is_b_scal) {
+            T val = b[0];
+            for (int64_t i = 0; i < L.total_elements; i++) {
+                res[i] = Op::apply(a[i], val) ? 1 : 0;
             }
+            return;
         }
+        if (L.is_a_scal && L.is_b_contig) {
+            T val = a[0];
+            for (int64_t i = 0; i < L.total_elements; i++) {
+                res[i] = Op::apply(val, b[i]) ? 1 : 0;
+            }
+            return;
+        }
+    }
+    if (rank == 0) {
+        res[0] = Op::apply(a[0], b[0]) ? 1 : 0;
         return;
-    }
-
-    int is_a_contig = 1, is_b_contig = 1, is_res_contig = 1;
-    int64_t expected_stride = 1;
-    for (int64_t i = rank - 1; i >= 0; i--) {
-        if (stridesA[i] != expected_stride) is_a_contig = 0;
-        if (stridesB[i] != expected_stride) is_b_contig = 0;
-        if (stridesRes[i] != expected_stride) is_res_contig = 0;
-        expected_stride *= shape[i];
-    }
-    int is_a_scal = 1, is_b_scal = 1;
-    for (int64_t i = 0; i < rank; i++) {
-        if (stridesA[i] != 0) is_a_scal = 0;
-        if (stridesB[i] != 0) is_b_scal = 0;
-    }
-    if (is_res_contig) {
-        if (is_a_contig && is_b_contig) {
-            for (int64_t i = 0; i < total_elements; i++) {
-                res[i] = (Op::apply(a[i], b[i])) ? 1 : 0;
-            }
-            return;
-        }
-        if (is_a_contig && is_b_scal) {
-            T2 val = b[0];
-            for (int64_t i = 0; i < total_elements; i++) {
-                res[i] = (Op::apply(a[i], val)) ? 1 : 0;
-            }
-            return;
-        }
-        if (is_a_scal && is_b_contig) {
-            T1 val = a[0];
-            for (int64_t i = 0; i < total_elements; i++) {
-                res[i] = (Op::apply(val, b[i])) ? 1 : 0;
-            }
-            return;
-        }
     }
     DECLARE_RANK_BUFFER(int64_t, coord, rank);
     int64_t offsetA = 0, offsetB = 0, offsetRes = 0;
-    for (int64_t el = 0; el < total_elements; el++) {
-        res[offsetRes] = (Op::apply(a[offsetA], b[offsetB])) ? 1 : 0;
+    NDARRAY_SCALAR_LOOP
+    for (int64_t el = 0; el < L.total_elements; el++) {
+        res[offsetRes] = Op::apply(a[offsetA], b[offsetB]) ? 1 : 0;
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
             if (coord[d] < shape[d]) {
@@ -13090,99 +12874,155 @@ void s_compare_impl(const T1 *a, const int64_t *stridesA,
     }
 }
 
-template <typename T1, typename Op>
-void dispatch_compare_B_real(const T1 *a, const int64_t *stridesA,
-                             int dtypeB, const void *b, const int64_t *stridesB,
-                             uint8_t *res, const int64_t *stridesRes,
-                             const int64_t *shape, int rank) {
-    switch (dtypeB) {
-        case DTYPE_FLOAT64: s_compare_impl<T1, double, Op>(a, stridesA, (const double*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT32: s_compare_impl<T1, float, Op>(a, stridesA, (const float*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT16: s_compare_impl<T1, float16_t, Op>(a, stridesA, (const float16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BFLOAT16: s_compare_impl<T1, bfloat16_t, Op>(a, stridesA, (const bfloat16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT32: s_compare_impl<T1, int32_t, Op>(a, stridesA, (const int32_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT64: s_compare_impl<T1, int64_t, Op>(a, stridesA, (const int64_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT8: s_compare_impl<T1, uint8_t, Op>(a, stridesA, (const uint8_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT16: s_compare_impl<T1, int16_t, Op>(a, stridesA, (const int16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT8: s_compare_impl<T1, int8_t, Op>(a, stridesA, (const int8_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT16: s_compare_impl<T1, uint16_t, Op>(a, stridesA, (const uint16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT32: s_compare_impl<T1, uint32_t, Op>(a, stridesA, (const uint32_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT64: s_compare_impl<T1, uint64_t, Op>(a, stridesA, (const uint64_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BOOLEAN: s_compare_impl<T1, uint8_t, Op>(a, stridesA, (const uint8_t*)b, stridesB, res, stridesRes, shape, rank); break;
+template <typename CanonT>
+static void cmp_read_chunk(
+    int dtype, const void *ptr, const int64_t *strides,
+    const int64_t *shape, int rank,
+    int64_t *coord, int64_t &offset,
+    CanonT *buf, int64_t count
+) {
+    switch (dtype) {
+        case DTYPE_FLOAT64: cast_read_chunk<double, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_FLOAT32: cast_read_chunk<float, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_FLOAT16: cast_read_chunk<float16_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_BFLOAT16: cast_read_chunk<bfloat16_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_INT64: cast_read_chunk<int64_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_INT32: cast_read_chunk<int32_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_INT16: cast_read_chunk<int16_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_INT8: cast_read_chunk<int8_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_UINT64: cast_read_chunk<uint64_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_UINT32: cast_read_chunk<uint32_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_UINT16: cast_read_chunk<uint16_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_UINT8:
+        case DTYPE_BOOLEAN: cast_read_chunk<uint8_t, CanonT>(ptr, strides, shape, rank, coord, offset, buf, count); break;
+        case DTYPE_COMPLEX128:
+            if constexpr (std::is_same<CanonT, cpx_t>::value) {
+                cast_read_chunk<cpx_t, cpx_t>(ptr, strides, shape, rank, coord, offset, buf, count);
+            }
+            break;
+        case DTYPE_COMPLEX64:
+            if constexpr (std::is_same<CanonT, cpx_t>::value) {
+                cast_read_chunk<cpx_f_t, cpx_t>(ptr, strides, shape, rank, coord, offset, buf, count);
+            }
+            break;
         default: return;
     }
 }
 
-template <typename T1, typename Op>
-void dispatch_compare_B_all(const T1 *a, const int64_t *stridesA,
-                            int dtypeB, const void *b, const int64_t *stridesB,
-                            uint8_t *res, const int64_t *stridesRes,
-                            const int64_t *shape, int rank) {
-    switch (dtypeB) {
-        case DTYPE_FLOAT64: s_compare_impl<T1, double, Op>(a, stridesA, (const double*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT32: s_compare_impl<T1, float, Op>(a, stridesA, (const float*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT16: s_compare_impl<T1, float16_t, Op>(a, stridesA, (const float16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BFLOAT16: s_compare_impl<T1, bfloat16_t, Op>(a, stridesA, (const bfloat16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT32: s_compare_impl<T1, int32_t, Op>(a, stridesA, (const int32_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT64: s_compare_impl<T1, int64_t, Op>(a, stridesA, (const int64_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT8: s_compare_impl<T1, uint8_t, Op>(a, stridesA, (const uint8_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT16: s_compare_impl<T1, int16_t, Op>(a, stridesA, (const int16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT8: s_compare_impl<T1, int8_t, Op>(a, stridesA, (const int8_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT16: s_compare_impl<T1, uint16_t, Op>(a, stridesA, (const uint16_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT32: s_compare_impl<T1, uint32_t, Op>(a, stridesA, (const uint32_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT64: s_compare_impl<T1, uint64_t, Op>(a, stridesA, (const uint64_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BOOLEAN: s_compare_impl<T1, uint8_t, Op>(a, stridesA, (const uint8_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_COMPLEX128: s_compare_impl<T1, cpx_t, Op>(a, stridesA, (const cpx_t*)b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_COMPLEX64: s_compare_impl<T1, cpx_f_t, Op>(a, stridesA, (const cpx_f_t*)b, stridesB, res, stridesRes, shape, rank); break;
+template <typename CanonA, typename CanonB, typename Op>
+static NDARRAY_NOINLINE void s_compare_cross(
+    int dtypeA, const void *a, const int64_t *stridesA,
+    int dtypeB, const void *b, const int64_t *stridesB,
+    uint8_t *res, const int64_t *stridesRes,
+    const int64_t *shape, int rank,
+    const CompareLayout &L
+) {
+    DECLARE_RANK_BUFFER(int64_t, coordA, rank > 0 ? rank : 1);
+    DECLARE_RANK_BUFFER(int64_t, coordB, rank > 0 ? rank : 1);
+    DECLARE_RANK_BUFFER(int64_t, coordRes, rank > 0 ? rank : 1);
+    int64_t offsetA = 0, offsetB = 0, offsetRes = 0;
+    constexpr int64_t CHUNK = 256;
+    CanonA bufA[CHUNK];
+    CanonB bufB[CHUNK];
+
+    for (int64_t pos = 0; pos < L.total_elements; pos += CHUNK) {
+        int64_t count = std::min<int64_t>(CHUNK, L.total_elements - pos);
+        cmp_read_chunk<CanonA>(dtypeA, a, stridesA, shape, rank, coordA, offsetA, bufA, count);
+        cmp_read_chunk<CanonB>(dtypeB, b, stridesB, shape, rank, coordB, offsetB, bufB, count);
+        if (L.is_res_contig) {
+            uint8_t *dst = res + pos;
+            NDARRAY_SCALAR_LOOP
+            for (int64_t i = 0; i < count; i++) {
+                dst[i] = Op::apply(bufA[i], bufB[i]) ? 1 : 0;
+            }
+        } else {
+            NDARRAY_SCALAR_LOOP
+            for (int64_t i = 0; i < count; i++) {
+                res[offsetRes] = Op::apply(bufA[i], bufB[i]) ? 1 : 0;
+                for (int d = rank - 1; d >= 0; d--) {
+                    coordRes[d]++;
+                    if (coordRes[d] < shape[d]) {
+                        offsetRes += stridesRes[d];
+                        break;
+                    }
+                    coordRes[d] = 0;
+                    offsetRes -= (shape[d] - 1) * stridesRes[d];
+                }
+            }
+        }
+    }
+}
+
+template <typename Op>
+static void dispatch_compare_same_real(
+    int dtype,
+    const void *a, const int64_t *stridesA,
+    const void *b, const int64_t *stridesB,
+    uint8_t *res, const int64_t *stridesRes,
+    const int64_t *shape, int rank,
+    const CompareLayout &L
+) {
+    switch (dtype) {
+        case DTYPE_FLOAT64: s_compare_same<double, Op>((const double *)a, stridesA, (const double *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_FLOAT32: s_compare_same<float, Op>((const float *)a, stridesA, (const float *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_FLOAT16: s_compare_same<float16_t, Op>((const float16_t *)a, stridesA, (const float16_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_BFLOAT16: s_compare_same<bfloat16_t, Op>((const bfloat16_t *)a, stridesA, (const bfloat16_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_INT64: s_compare_same<int64_t, Op>((const int64_t *)a, stridesA, (const int64_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_INT32: s_compare_same<int32_t, Op>((const int32_t *)a, stridesA, (const int32_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_INT16: s_compare_same<int16_t, Op>((const int16_t *)a, stridesA, (const int16_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_INT8: s_compare_same<int8_t, Op>((const int8_t *)a, stridesA, (const int8_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_UINT64: s_compare_same<uint64_t, Op>((const uint64_t *)a, stridesA, (const uint64_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_UINT32: s_compare_same<uint32_t, Op>((const uint32_t *)a, stridesA, (const uint32_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_UINT16: s_compare_same<uint16_t, Op>((const uint16_t *)a, stridesA, (const uint16_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
+        case DTYPE_UINT8: s_compare_same<uint8_t, Op>((const uint8_t *)a, stridesA, (const uint8_t *)b, stridesB, res, stridesRes, shape, rank, L); break;
         default: return;
     }
 }
 
 template <typename Op>
-void dispatch_compare_A_real(int dtypeA, const void *a, const int64_t *stridesA,
-                             int dtypeB, const void *b, const int64_t *stridesB,
-                             uint8_t *res, const int64_t *stridesRes,
-                             const int64_t *shape, int rank) {
-    switch (dtypeA) {
-        case DTYPE_FLOAT64: dispatch_compare_B_real<double, Op>((const double*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT32: dispatch_compare_B_real<float, Op>((const float*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT16: dispatch_compare_B_real<float16_t, Op>((const float16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BFLOAT16: dispatch_compare_B_real<bfloat16_t, Op>((const bfloat16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT32: dispatch_compare_B_real<int32_t, Op>((const int32_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT64: dispatch_compare_B_real<int64_t, Op>((const int64_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT8: dispatch_compare_B_real<uint8_t, Op>((const uint8_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT16: dispatch_compare_B_real<int16_t, Op>((const int16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT8: dispatch_compare_B_real<int8_t, Op>((const int8_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT16: dispatch_compare_B_real<uint16_t, Op>((const uint16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT32: dispatch_compare_B_real<uint32_t, Op>((const uint32_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT64: dispatch_compare_B_real<uint64_t, Op>((const uint64_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BOOLEAN: dispatch_compare_B_real<uint8_t, Op>((const uint8_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        default: return;
+static void dispatch_compare_same_all(
+    int dtype,
+    const void *a, const int64_t *stridesA,
+    const void *b, const int64_t *stridesB,
+    uint8_t *res, const int64_t *stridesRes,
+    const int64_t *shape, int rank,
+    const CompareLayout &L
+) {
+    if (dtype == DTYPE_COMPLEX128) {
+        s_compare_same<cpx_t, Op>((const cpx_t *)a, stridesA, (const cpx_t *)b, stridesB, res, stridesRes, shape, rank, L);
+    } else if (dtype == DTYPE_COMPLEX64) {
+        s_compare_same<cpx_f_t, Op>((const cpx_f_t *)a, stridesA, (const cpx_f_t *)b, stridesB, res, stridesRes, shape, rank, L);
+    } else {
+        dispatch_compare_same_real<Op>(dtype, a, stridesA, b, stridesB, res, stridesRes, shape, rank, L);
     }
 }
 
+static inline bool is_float_dtype(int dtype) {
+    return dtype == DTYPE_FLOAT64 || dtype == DTYPE_FLOAT32 || dtype == DTYPE_FLOAT16 || dtype == DTYPE_BFLOAT16;
+}
+
+static inline bool is_signed_int_dtype(int dtype) {
+    return dtype == DTYPE_INT64 || dtype == DTYPE_INT32 || dtype == DTYPE_INT16 || dtype == DTYPE_INT8;
+}
+
 template <typename Op>
-void dispatch_compare_A_all(int dtypeA, const void *a, const int64_t *stridesA,
-                            int dtypeB, const void *b, const int64_t *stridesB,
-                            uint8_t *res, const int64_t *stridesRes,
-                            const int64_t *shape, int rank) {
-    switch (dtypeA) {
-        case DTYPE_FLOAT64: dispatch_compare_B_all<double, Op>((const double*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT32: dispatch_compare_B_all<float, Op>((const float*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_FLOAT16: dispatch_compare_B_all<float16_t, Op>((const float16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BFLOAT16: dispatch_compare_B_all<bfloat16_t, Op>((const bfloat16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT32: dispatch_compare_B_all<int32_t, Op>((const int32_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT64: dispatch_compare_B_all<int64_t, Op>((const int64_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT8: dispatch_compare_B_all<uint8_t, Op>((const uint8_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT16: dispatch_compare_B_all<int16_t, Op>((const int16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_INT8: dispatch_compare_B_all<int8_t, Op>((const int8_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT16: dispatch_compare_B_all<uint16_t, Op>((const uint16_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT32: dispatch_compare_B_all<uint32_t, Op>((const uint32_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_UINT64: dispatch_compare_B_all<uint64_t, Op>((const uint64_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_BOOLEAN: dispatch_compare_B_all<uint8_t, Op>((const uint8_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_COMPLEX128: dispatch_compare_B_all<cpx_t, Op>((const cpx_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case DTYPE_COMPLEX64: dispatch_compare_B_all<cpx_f_t, Op>((const cpx_f_t*)a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        default: return;
+static void dispatch_compare_cross_real(
+    int dtypeA, const void *a, const int64_t *stridesA,
+    int dtypeB, const void *b, const int64_t *stridesB,
+    uint8_t *res, const int64_t *stridesRes,
+    const int64_t *shape, int rank,
+    const CompareLayout &L
+) {
+    if (is_float_dtype(dtypeA) || is_float_dtype(dtypeB)) {
+        s_compare_cross<double, double, Op>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank, L);
+    } else if (is_signed_int_dtype(dtypeA) && is_signed_int_dtype(dtypeB)) {
+        s_compare_cross<int64_t, int64_t, Op>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank, L);
+    } else if (!is_signed_int_dtype(dtypeA) && !is_signed_int_dtype(dtypeB)) {
+        s_compare_cross<uint64_t, uint64_t, Op>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank, L);
+    } else if (is_signed_int_dtype(dtypeA)) {
+        s_compare_cross<int64_t, uint64_t, Op>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank, L);
+    } else {
+        s_compare_cross<uint64_t, int64_t, Op>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank, L);
     }
 }
 
@@ -13193,15 +13033,108 @@ extern "C" void ndarray_compare(
     uint8_t *res, const int64_t *stridesRes,
     const int64_t *shape, int rank
 ) {
+    if (a == nullptr || b == nullptr || res == nullptr || rank < 0) return;
+
     ComparisonOp cop = static_cast<ComparisonOp>(op);
+    if (cop == ComparisonOp::GT) {
+        cop = ComparisonOp::LT;
+        std::swap(dtypeA, dtypeB);
+        std::swap(a, b);
+        std::swap(stridesA, stridesB);
+    } else if (cop == ComparisonOp::GE) {
+        cop = ComparisonOp::LE;
+        std::swap(dtypeA, dtypeB);
+        std::swap(a, b);
+        std::swap(stridesA, stridesB);
+    } else if (cop != ComparisonOp::EQ && cop != ComparisonOp::NE &&
+               cop != ComparisonOp::LT && cop != ComparisonOp::LE) {
+        return;
+    }
+
+    int effA = (dtypeA == DTYPE_BOOLEAN) ? DTYPE_UINT8 : dtypeA;
+    int effB = (dtypeB == DTYPE_BOOLEAN) ? DTYPE_UINT8 : dtypeB;
+    int64_t szA = dtype_elem_size(effA);
+    int64_t szB = dtype_elem_size(effB);
+    if (szA <= 0 || szB <= 0) return;
+    size_t elemA = static_cast<size_t>(szA);
+    size_t elemB = static_cast<size_t>(szB);
+
+    bool has_complex = (effA == DTYPE_COMPLEX128 || effA == DTYPE_COMPLEX64 ||
+                        effB == DTYPE_COMPLEX128 || effB == DTYPE_COMPLEX64);
+    if (has_complex && cop != ComparisonOp::EQ && cop != ComparisonOp::NE) {
+        return;
+    }
+
+    int64_t total_elements = 1;
+    for (int64_t i = 0; i < rank; i++) total_elements *= shape[i];
+    if (total_elements <= 0) return;
+
+    bool overlap_a = strided_buffers_overlap_not_identical(
+        a, stridesA, elemA, res, stridesRes, sizeof(uint8_t), shape, rank);
+    bool overlap_b = strided_buffers_overlap_not_identical(
+        b, stridesB, elemB, res, stridesRes, sizeof(uint8_t), shape, rank);
+    if (overlap_a || overlap_b) {
+        NoThrowBuffer<uint8_t> temp(total_elements);
+        if (!temp.ok()) {
+            ndarray_set_oom_flag();
+            return;
+        }
+        DECLARE_RANK_BUFFER(int64_t, temp_strides, rank > 0 ? rank : 1);
+        int64_t s = 1;
+        for (int64_t i = rank - 1; i >= 0; i--) {
+            temp_strides[i] = s;
+            s *= shape[i];
+        }
+        ndarray_compare(static_cast<int>(cop), effA, effB, a, stridesA, b, stridesB, temp.data(), temp_strides, shape, rank);
+        copy_contiguous_to_strided(temp.data(), res, stridesRes, shape, rank, total_elements);
+        return;
+    }
+
+    CompareLayout L;
+    L.total_elements = total_elements;
+    L.is_a_contig = true;
+    L.is_b_contig = true;
+    L.is_res_contig = true;
+    int64_t expected_stride = 1;
+    for (int64_t i = rank - 1; i >= 0; i--) {
+        if (stridesA[i] != expected_stride) L.is_a_contig = false;
+        if (stridesB[i] != expected_stride) L.is_b_contig = false;
+        if (stridesRes[i] != expected_stride) L.is_res_contig = false;
+        expected_stride *= shape[i];
+    }
+    L.is_a_scal = true;
+    L.is_b_scal = true;
+    for (int64_t i = 0; i < rank; i++) {
+        if (stridesA[i] != 0) L.is_a_scal = false;
+        if (stridesB[i] != 0) L.is_b_scal = false;
+    }
+
+    if (effA == effB) {
+        switch (cop) {
+            case ComparisonOp::EQ: dispatch_compare_same_all<OpEq>(effA, a, stridesA, b, stridesB, res, stridesRes, shape, rank, L); break;
+            case ComparisonOp::NE: dispatch_compare_same_all<OpNe>(effA, a, stridesA, b, stridesB, res, stridesRes, shape, rank, L); break;
+            case ComparisonOp::LT: dispatch_compare_same_real<OpLt>(effA, a, stridesA, b, stridesB, res, stridesRes, shape, rank, L); break;
+            case ComparisonOp::LE: dispatch_compare_same_real<OpLe>(effA, a, stridesA, b, stridesB, res, stridesRes, shape, rank, L); break;
+            default: break;
+        }
+        return;
+    }
+
+    if (has_complex) {
+        if (cop == ComparisonOp::EQ) {
+            s_compare_cross<cpx_t, cpx_t, OpEq>(effA, a, stridesA, effB, b, stridesB, res, stridesRes, shape, rank, L);
+        } else {
+            s_compare_cross<cpx_t, cpx_t, OpNe>(effA, a, stridesA, effB, b, stridesB, res, stridesRes, shape, rank, L);
+        }
+        return;
+    }
+
     switch (cop) {
-        case ComparisonOp::EQ: dispatch_compare_A_all<OpEq>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case ComparisonOp::NE: dispatch_compare_A_all<OpNe>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case ComparisonOp::LT: dispatch_compare_A_real<OpLt>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case ComparisonOp::LE: dispatch_compare_A_real<OpLe>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case ComparisonOp::GT: dispatch_compare_A_real<OpGt>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        case ComparisonOp::GE: dispatch_compare_A_real<OpGe>(dtypeA, a, stridesA, dtypeB, b, stridesB, res, stridesRes, shape, rank); break;
-        default: return;
+        case ComparisonOp::EQ: dispatch_compare_cross_real<OpEq>(effA, a, stridesA, effB, b, stridesB, res, stridesRes, shape, rank, L); break;
+        case ComparisonOp::NE: dispatch_compare_cross_real<OpNe>(effA, a, stridesA, effB, b, stridesB, res, stridesRes, shape, rank, L); break;
+        case ComparisonOp::LT: dispatch_compare_cross_real<OpLt>(effA, a, stridesA, effB, b, stridesB, res, stridesRes, shape, rank, L); break;
+        case ComparisonOp::LE: dispatch_compare_cross_real<OpLe>(effA, a, stridesA, effB, b, stridesB, res, stridesRes, shape, rank, L); break;
+        default: break;
     }
 }
 
@@ -17058,363 +16991,132 @@ void s_lagval_complex64(const cpx_f_t *c, int64_t stride_c, int64_t n_c, const c
 // Histogram Implementations (Uniform and Binary Search)
 // ============================================================================
 
-template <typename T, typename W, typename H>
-static void v_histogram_uniform_kernel(
-    const T *src,
-    const W *weights,
-    int64_t size,
-    int64_t nbins,
-    double min_val,
-    double max_val,
-    double norm,
-    H *hist
-) {
-    double step = (max_val - min_val) / (double)nbins;
-    for (int64_t i = 0; i < size; ++i) {
-        double val = (double)src[i];
-        if (std::isnan(val) || val < min_val || val > max_val) continue;
-        int64_t bin;
-        if (val == max_val) {
-            bin = nbins - 1;
-        } else {
-            double scaled = std::floor((val - min_val) * norm);
-            if (std::isnan(scaled) || scaled < 0.0) {
-                bin = 0;
-            } else if (scaled >= (double)nbins) {
-                bin = nbins - 1;
-            } else {
-                bin = (int64_t)scaled;
-            }
-            if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
-                bin++;
-            } else if (bin > 0 && val < min_val + (double)bin * step) {
-                bin--;
-            }
-        }
-        if (weights != nullptr) {
-            hist[bin] += (H)weights[i];
-        } else {
-            hist[bin] += 1;
-        }
-    }
-}
-
-template <typename T, typename W, typename H>
-static void s_histogram_uniform_kernel(
-    const T *src, int64_t strideSrc,
-    const W *weights, int64_t strideWeights,
-    int64_t size,
-    int64_t nbins,
-    double min_val,
-    double max_val,
-    double norm,
-    H *hist, int64_t strideHist
-) {
-    double step = (max_val - min_val) / (double)nbins;
-    for (int64_t i = 0; i < size; ++i) {
-        double val = (double)src[i * strideSrc];
-        if (std::isnan(val) || val < min_val || val > max_val) continue;
-        int64_t bin;
-        if (val == max_val) {
-            bin = nbins - 1;
-        } else {
-            double scaled = std::floor((val - min_val) * norm);
-            if (std::isnan(scaled) || scaled < 0.0) {
-                bin = 0;
-            } else if (scaled >= (double)nbins) {
-                bin = nbins - 1;
-            } else {
-                bin = (int64_t)scaled;
-            }
-            if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
-                bin++;
-            } else if (bin > 0 && val < min_val + (double)bin * step) {
-                bin--;
-            }
-        }
-        if (weights != nullptr) {
-            hist[bin * strideHist] += (H)weights[i * strideWeights];
-        } else {
-            hist[bin * strideHist] += 1;
-        }
-    }
-}
-
-template <typename T, typename W, typename H>
-static void v_histogram_binsearch_kernel(
-    const T *src,
-    const W *weights,
-    const double *bin_edges,
-    int64_t num_edges,
-    int64_t size,
-    H *hist
-) {
-    int64_t nbins = num_edges - 1;
-    double first_edge = bin_edges[0];
-    double last_edge = bin_edges[num_edges - 1];
-    for (int64_t i = 0; i < size; ++i) {
-        double val = (double)src[i];
-        if (std::isnan(val) || val < first_edge || val > last_edge) continue;
-        int64_t bin;
-        if (val == last_edge) {
-            bin = nbins - 1;
-        } else {
-            const double *p = std::upper_bound(bin_edges, bin_edges + num_edges, val);
-            bin = (int64_t)(p - bin_edges) - 1;
-            if (bin < 0 || bin >= nbins) continue;
-        }
-        if (weights != nullptr) {
-            hist[bin] += (H)weights[i];
-        } else {
-            hist[bin] += 1;
-        }
-    }
-}
-
-template <typename T, typename W, typename H>
-static void s_histogram_binsearch_kernel(
-    const T *src, int64_t strideSrc,
-    const W *weights, int64_t strideWeights,
-    const double *bin_edges,
-    int64_t num_edges,
-    int64_t size,
-    H *hist, int64_t strideHist
-) {
-    int64_t nbins = num_edges - 1;
-    double first_edge = bin_edges[0];
-    double last_edge = bin_edges[num_edges - 1];
-    for (int64_t i = 0; i < size; ++i) {
-        double val = (double)src[i * strideSrc];
-        if (std::isnan(val) || val < first_edge || val > last_edge) continue;
-        int64_t bin;
-        if (val == last_edge) {
-            bin = nbins - 1;
-        } else {
-            const double *p = std::upper_bound(bin_edges, bin_edges + num_edges, val);
-            bin = (int64_t)(p - bin_edges) - 1;
-            if (bin < 0 || bin >= nbins) continue;
-        }
-        if (weights != nullptr) {
-            hist[bin * strideHist] += (H)weights[i * strideWeights];
-        } else {
-            hist[bin * strideHist] += 1;
-        }
-    }
-}
-
-#define DISPATCH_HIST_H_TYPE_V(T, W, KERNEL_NAME, ...) \
-    switch (dtypeHist) { \
-        case DTYPE_INT64: \
-            KERNEL_NAME<T, W, int64_t>(__VA_ARGS__, (int64_t *)hist); \
-            break; \
-        case DTYPE_FLOAT64: \
-            KERNEL_NAME<T, W, double>(__VA_ARGS__, (double *)hist); \
-            break; \
-        case DTYPE_FLOAT32: \
-            KERNEL_NAME<T, W, float>(__VA_ARGS__, (float *)hist); \
-            break; \
-        default: return; \
-    }
-
-#define DISPATCH_HIST_H_TYPE_S(T, W, KERNEL_NAME, ...) \
-    switch (dtypeHist) { \
-        case DTYPE_INT64: \
-            KERNEL_NAME<T, W, int64_t>(__VA_ARGS__, (int64_t *)hist, strideHist); \
-            break; \
-        case DTYPE_FLOAT64: \
-            KERNEL_NAME<T, W, double>(__VA_ARGS__, (double *)hist, strideHist); \
-            break; \
-        case DTYPE_FLOAT32: \
-            KERNEL_NAME<T, W, float>(__VA_ARGS__, (float *)hist, strideHist); \
-            break; \
-        default: return; \
-    }
-
-#define DISPATCH_HIST_W_TYPE_V_UNIFORM(T) \
-    if (weights == nullptr) { \
-        DISPATCH_HIST_H_TYPE_V(T, double, v_histogram_uniform_kernel, (const T *)src, (const double *)nullptr, size, nbins, min_val, max_val, norm) \
-    } else { \
-        switch (dtypeWeights) { \
-            case DTYPE_FLOAT64: \
-                DISPATCH_HIST_H_TYPE_V(T, double, v_histogram_uniform_kernel, (const T *)src, (const double *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_FLOAT32: \
-                DISPATCH_HIST_H_TYPE_V(T, float, v_histogram_uniform_kernel, (const T *)src, (const float *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT32: \
-                DISPATCH_HIST_H_TYPE_V(T, int32_t, v_histogram_uniform_kernel, (const T *)src, (const int32_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT64: \
-                DISPATCH_HIST_H_TYPE_V(T, int64_t, v_histogram_uniform_kernel, (const T *)src, (const int64_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT16: \
-                DISPATCH_HIST_H_TYPE_V(T, int16_t, v_histogram_uniform_kernel, (const T *)src, (const int16_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT8: \
-                DISPATCH_HIST_H_TYPE_V(T, int8_t, v_histogram_uniform_kernel, (const T *)src, (const int8_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT64: \
-                DISPATCH_HIST_H_TYPE_V(T, uint64_t, v_histogram_uniform_kernel, (const T *)src, (const uint64_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT32: \
-                DISPATCH_HIST_H_TYPE_V(T, uint32_t, v_histogram_uniform_kernel, (const T *)src, (const uint32_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT16: \
-                DISPATCH_HIST_H_TYPE_V(T, uint16_t, v_histogram_uniform_kernel, (const T *)src, (const uint16_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT8: \
-            case DTYPE_BOOLEAN: \
-                DISPATCH_HIST_H_TYPE_V(T, uint8_t, v_histogram_uniform_kernel, (const T *)src, (const uint8_t *)weights, size, nbins, min_val, max_val, norm) \
-                break; \
-            default: return; \
-        } \
-    }
-
-#define DISPATCH_HIST_W_TYPE_S_UNIFORM(T) \
-    if (weights == nullptr) { \
-        DISPATCH_HIST_H_TYPE_S(T, double, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const double *)nullptr, 0, size, nbins, min_val, max_val, norm) \
-    } else { \
-        switch (dtypeWeights) { \
-            case DTYPE_FLOAT64: \
-                DISPATCH_HIST_H_TYPE_S(T, double, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const double *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_FLOAT32: \
-                DISPATCH_HIST_H_TYPE_S(T, float, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const float *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT32: \
-                DISPATCH_HIST_H_TYPE_S(T, int32_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const int32_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT64: \
-                DISPATCH_HIST_H_TYPE_S(T, int64_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const int64_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT16: \
-                DISPATCH_HIST_H_TYPE_S(T, int16_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const int16_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_INT8: \
-                DISPATCH_HIST_H_TYPE_S(T, int8_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const int8_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT64: \
-                DISPATCH_HIST_H_TYPE_S(T, uint64_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const uint64_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT32: \
-                DISPATCH_HIST_H_TYPE_S(T, uint32_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const uint32_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT16: \
-                DISPATCH_HIST_H_TYPE_S(T, uint16_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const uint16_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            case DTYPE_UINT8: \
-            case DTYPE_BOOLEAN: \
-                DISPATCH_HIST_H_TYPE_S(T, uint8_t, s_histogram_uniform_kernel, (const T *)src, strideSrc, (const uint8_t *)weights, strideWeights, size, nbins, min_val, max_val, norm) \
-                break; \
-            default: return; \
-        } \
-    }
-
-#define DISPATCH_HIST_W_TYPE_V_BINSEARCH(T) \
-    if (weights == nullptr) { \
-        DISPATCH_HIST_H_TYPE_V(T, double, v_histogram_binsearch_kernel, (const T *)src, (const double *)nullptr, bin_edges, num_edges, size) \
-    } else { \
-        switch (dtypeWeights) { \
-            case DTYPE_FLOAT64: \
-                DISPATCH_HIST_H_TYPE_V(T, double, v_histogram_binsearch_kernel, (const T *)src, (const double *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_FLOAT32: \
-                DISPATCH_HIST_H_TYPE_V(T, float, v_histogram_binsearch_kernel, (const T *)src, (const float *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT32: \
-                DISPATCH_HIST_H_TYPE_V(T, int32_t, v_histogram_binsearch_kernel, (const T *)src, (const int32_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT64: \
-                DISPATCH_HIST_H_TYPE_V(T, int64_t, v_histogram_binsearch_kernel, (const T *)src, (const int64_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT16: \
-                DISPATCH_HIST_H_TYPE_V(T, int16_t, v_histogram_binsearch_kernel, (const T *)src, (const int16_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT8: \
-                DISPATCH_HIST_H_TYPE_V(T, int8_t, v_histogram_binsearch_kernel, (const T *)src, (const int8_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT64: \
-                DISPATCH_HIST_H_TYPE_V(T, uint64_t, v_histogram_binsearch_kernel, (const T *)src, (const uint64_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT32: \
-                DISPATCH_HIST_H_TYPE_V(T, uint32_t, v_histogram_binsearch_kernel, (const T *)src, (const uint32_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT16: \
-                DISPATCH_HIST_H_TYPE_V(T, uint16_t, v_histogram_binsearch_kernel, (const T *)src, (const uint16_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT8: \
-            case DTYPE_BOOLEAN: \
-                DISPATCH_HIST_H_TYPE_V(T, uint8_t, v_histogram_binsearch_kernel, (const T *)src, (const uint8_t *)weights, bin_edges, num_edges, size) \
-                break; \
-            default: return; \
-        } \
-    }
-
-#define DISPATCH_HIST_W_TYPE_S_BINSEARCH(T) \
-    if (weights == nullptr) { \
-        DISPATCH_HIST_H_TYPE_S(T, double, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const double *)nullptr, 0, bin_edges, num_edges, size) \
-    } else { \
-        switch (dtypeWeights) { \
-            case DTYPE_FLOAT64: \
-                DISPATCH_HIST_H_TYPE_S(T, double, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const double *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_FLOAT32: \
-                DISPATCH_HIST_H_TYPE_S(T, float, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const float *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT32: \
-                DISPATCH_HIST_H_TYPE_S(T, int32_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const int32_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT64: \
-                DISPATCH_HIST_H_TYPE_S(T, int64_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const int64_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT16: \
-                DISPATCH_HIST_H_TYPE_S(T, int16_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const int16_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_INT8: \
-                DISPATCH_HIST_H_TYPE_S(T, int8_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const int8_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT64: \
-                DISPATCH_HIST_H_TYPE_S(T, uint64_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const uint64_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT32: \
-                DISPATCH_HIST_H_TYPE_S(T, uint32_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const uint32_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT16: \
-                DISPATCH_HIST_H_TYPE_S(T, uint16_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const uint16_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            case DTYPE_UINT8: \
-            case DTYPE_BOOLEAN: \
-                DISPATCH_HIST_H_TYPE_S(T, uint8_t, s_histogram_binsearch_kernel, (const T *)src, strideSrc, (const uint8_t *)weights, strideWeights, bin_edges, num_edges, size) \
-                break; \
-            default: return; \
-        } \
-    }
-
-extern "C" {
-void v_histogram_uniform(
-    const void *src, int dtypeSrc,
-    const void *weights, int dtypeWeights,
-    void *hist, int dtypeHist,
-    int64_t size, int64_t nbins,
-    double min_val, double max_val, double norm
-) {
-    if (src == nullptr || hist == nullptr || size <= 0 || nbins <= 0) return;
-    switch (dtypeSrc) {
-        case DTYPE_FLOAT64: DISPATCH_HIST_W_TYPE_V_UNIFORM(double); break;
-        case DTYPE_FLOAT32: DISPATCH_HIST_W_TYPE_V_UNIFORM(float); break;
-        case DTYPE_INT32: DISPATCH_HIST_W_TYPE_V_UNIFORM(int32_t); break;
-        case DTYPE_INT64: DISPATCH_HIST_W_TYPE_V_UNIFORM(int64_t); break;
-        case DTYPE_INT16: DISPATCH_HIST_W_TYPE_V_UNIFORM(int16_t); break;
-        case DTYPE_INT8: DISPATCH_HIST_W_TYPE_V_UNIFORM(int8_t); break;
-        case DTYPE_UINT64: DISPATCH_HIST_W_TYPE_V_UNIFORM(uint64_t); break;
-        case DTYPE_UINT32: DISPATCH_HIST_W_TYPE_V_UNIFORM(uint32_t); break;
-        case DTYPE_UINT16: DISPATCH_HIST_W_TYPE_V_UNIFORM(uint16_t); break;
+static inline int is_valid_hist_weight_dtype(int dtype) {
+    switch (dtype) {
+        case DTYPE_FLOAT64:
+        case DTYPE_FLOAT32:
+        case DTYPE_INT32:
+        case DTYPE_INT64:
+        case DTYPE_INT16:
+        case DTYPE_INT8:
+        case DTYPE_UINT64:
+        case DTYPE_UINT32:
+        case DTYPE_UINT16:
         case DTYPE_UINT8:
-        case DTYPE_BOOLEAN: DISPATCH_HIST_W_TYPE_V_UNIFORM(uint8_t); break;
+        case DTYPE_BOOLEAN:
+            return 1;
+        default:
+            return -1;
+    }
+}
+
+template <typename H>
+static inline void add_hist_weight(const void *weights, int dtypeWeights, int64_t idx, H &dst) {
+    switch (dtypeWeights) {
+        case DTYPE_FLOAT64: dst += (H)((const double *)weights)[idx]; break;
+        case DTYPE_FLOAT32: dst += (H)((const float *)weights)[idx]; break;
+        case DTYPE_INT32: dst += (H)((const int32_t *)weights)[idx]; break;
+        case DTYPE_INT64: dst += (H)((const int64_t *)weights)[idx]; break;
+        case DTYPE_INT16: dst += (H)((const int16_t *)weights)[idx]; break;
+        case DTYPE_INT8: dst += (H)((const int8_t *)weights)[idx]; break;
+        case DTYPE_UINT64: dst += (H)((const uint64_t *)weights)[idx]; break;
+        case DTYPE_UINT32: dst += (H)((const uint32_t *)weights)[idx]; break;
+        case DTYPE_UINT16: dst += (H)((const uint16_t *)weights)[idx]; break;
+        case DTYPE_UINT8:
+        case DTYPE_BOOLEAN: dst += (H)((const uint8_t *)weights)[idx]; break;
         default: return;
     }
 }
 
+template <typename T, typename H>
+static NDARRAY_NOINLINE void s_histogram_uniform_kernel(
+    const T *src, int64_t strideSrc,
+    const void *weights, int64_t strideWeights, int dtypeWeights,
+    int64_t size,
+    int64_t nbins,
+    double min_val,
+    double max_val,
+    double norm,
+    H *hist, int64_t strideHist
+) {
+    double step = (max_val - min_val) / (double)nbins;
+    NDARRAY_SCALAR_LOOP
+    for (int64_t i = 0; i < size; ++i) {
+        double val = (double)src[i * strideSrc];
+        if (std::isnan(val) || val < min_val || val > max_val) continue;
+        int64_t bin;
+        if (val == max_val) {
+            bin = nbins - 1;
+        } else {
+            double scaled = std::floor((val - min_val) * norm);
+            if (std::isnan(scaled) || scaled < 0.0) {
+                bin = 0;
+            } else if (scaled >= (double)nbins) {
+                bin = nbins - 1;
+            } else {
+                bin = (int64_t)scaled;
+            }
+            if (bin < nbins - 1 && val >= min_val + (double)(bin + 1) * step) {
+                bin++;
+            } else if (bin > 0 && val < min_val + (double)bin * step) {
+                bin--;
+            }
+        }
+        if (weights != nullptr) {
+            add_hist_weight<H>(weights, dtypeWeights, i * strideWeights, hist[bin * strideHist]);
+        } else {
+            hist[bin * strideHist] += 1;
+        }
+    }
+}
+
+template <typename T, typename H>
+static NDARRAY_NOINLINE void s_histogram_binsearch_kernel(
+    const T *src, int64_t strideSrc,
+    const void *weights, int64_t strideWeights, int dtypeWeights,
+    const double *bin_edges,
+    int64_t num_edges,
+    int64_t size,
+    H *hist, int64_t strideHist
+) {
+    int64_t nbins = num_edges - 1;
+    double first_edge = bin_edges[0];
+    double last_edge = bin_edges[num_edges - 1];
+    NDARRAY_SCALAR_LOOP
+    for (int64_t i = 0; i < size; ++i) {
+        double val = (double)src[i * strideSrc];
+        if (std::isnan(val) || val < first_edge || val > last_edge) continue;
+        int64_t bin;
+        if (val == last_edge) {
+            bin = nbins - 1;
+        } else {
+            const double *p = std::upper_bound(bin_edges, bin_edges + num_edges, val);
+            bin = (int64_t)(p - bin_edges) - 1;
+            if (bin < 0 || bin >= nbins) continue;
+        }
+        if (weights != nullptr) {
+            add_hist_weight<H>(weights, dtypeWeights, i * strideWeights, hist[bin * strideHist]);
+        } else {
+            hist[bin * strideHist] += 1;
+        }
+    }
+}
+
+#define DISPATCH_HIST_H_TYPE_S(T, KERNEL_NAME, ...) \
+    switch (dtypeHist) { \
+        case DTYPE_INT64: \
+            KERNEL_NAME<T, int64_t>(__VA_ARGS__, (int64_t *)hist, strideHist); \
+            break; \
+        case DTYPE_FLOAT64: \
+            KERNEL_NAME<T, double>(__VA_ARGS__, (double *)hist, strideHist); \
+            break; \
+        case DTYPE_FLOAT32: \
+            KERNEL_NAME<T, float>(__VA_ARGS__, (float *)hist, strideHist); \
+            break; \
+        default: return; \
+    }
+
+extern "C" {
 void s_histogram_uniform(
     const void *src, int64_t strideSrc, int dtypeSrc,
     const void *weights, int64_t strideWeights, int dtypeWeights,
@@ -17423,18 +17125,54 @@ void s_histogram_uniform(
     double min_val, double max_val, double norm
 ) {
     if (src == nullptr || hist == nullptr || size <= 0 || nbins <= 0) return;
+    if (weights != nullptr && is_valid_hist_weight_dtype(dtypeWeights) < 0) return;
     switch (dtypeSrc) {
-        case DTYPE_FLOAT64: DISPATCH_HIST_W_TYPE_S_UNIFORM(double); break;
-        case DTYPE_FLOAT32: DISPATCH_HIST_W_TYPE_S_UNIFORM(float); break;
-        case DTYPE_INT32: DISPATCH_HIST_W_TYPE_S_UNIFORM(int32_t); break;
-        case DTYPE_INT64: DISPATCH_HIST_W_TYPE_S_UNIFORM(int64_t); break;
-        case DTYPE_INT16: DISPATCH_HIST_W_TYPE_S_UNIFORM(int16_t); break;
-        case DTYPE_INT8: DISPATCH_HIST_W_TYPE_S_UNIFORM(int8_t); break;
-        case DTYPE_UINT64: DISPATCH_HIST_W_TYPE_S_UNIFORM(uint64_t); break;
-        case DTYPE_UINT32: DISPATCH_HIST_W_TYPE_S_UNIFORM(uint32_t); break;
-        case DTYPE_UINT16: DISPATCH_HIST_W_TYPE_S_UNIFORM(uint16_t); break;
+        case DTYPE_FLOAT64: DISPATCH_HIST_H_TYPE_S(double, s_histogram_uniform_kernel, (const double *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_FLOAT32: DISPATCH_HIST_H_TYPE_S(float, s_histogram_uniform_kernel, (const float *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_INT32: DISPATCH_HIST_H_TYPE_S(int32_t, s_histogram_uniform_kernel, (const int32_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_INT64: DISPATCH_HIST_H_TYPE_S(int64_t, s_histogram_uniform_kernel, (const int64_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_INT16: DISPATCH_HIST_H_TYPE_S(int16_t, s_histogram_uniform_kernel, (const int16_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_INT8: DISPATCH_HIST_H_TYPE_S(int8_t, s_histogram_uniform_kernel, (const int8_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_UINT64: DISPATCH_HIST_H_TYPE_S(uint64_t, s_histogram_uniform_kernel, (const uint64_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_UINT32: DISPATCH_HIST_H_TYPE_S(uint32_t, s_histogram_uniform_kernel, (const uint32_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        case DTYPE_UINT16: DISPATCH_HIST_H_TYPE_S(uint16_t, s_histogram_uniform_kernel, (const uint16_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
         case DTYPE_UINT8:
-        case DTYPE_BOOLEAN: DISPATCH_HIST_W_TYPE_S_UNIFORM(uint8_t); break;
+        case DTYPE_BOOLEAN: DISPATCH_HIST_H_TYPE_S(uint8_t, s_histogram_uniform_kernel, (const uint8_t *)src, strideSrc, weights, strideWeights, dtypeWeights, size, nbins, min_val, max_val, norm); break;
+        default: return;
+    }
+}
+
+void v_histogram_uniform(
+    const void *src, int dtypeSrc,
+    const void *weights, int dtypeWeights,
+    void *hist, int dtypeHist,
+    int64_t size, int64_t nbins,
+    double min_val, double max_val, double norm
+) {
+    s_histogram_uniform(src, 1, dtypeSrc, weights, 1, dtypeWeights, hist, 1, dtypeHist, size, nbins, min_val, max_val, norm);
+}
+
+void s_histogram_binsearch(
+    const void *src, int64_t strideSrc, int dtypeSrc,
+    const void *weights, int64_t strideWeights, int dtypeWeights,
+    void *hist, int64_t strideHist, int dtypeHist,
+    const double *bin_edges, int64_t num_edges,
+    int64_t size
+) {
+    if (src == nullptr || hist == nullptr || bin_edges == nullptr || size <= 0 || num_edges < 2) return;
+    if (weights != nullptr && is_valid_hist_weight_dtype(dtypeWeights) < 0) return;
+    switch (dtypeSrc) {
+        case DTYPE_FLOAT64: DISPATCH_HIST_H_TYPE_S(double, s_histogram_binsearch_kernel, (const double *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_FLOAT32: DISPATCH_HIST_H_TYPE_S(float, s_histogram_binsearch_kernel, (const float *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_INT32: DISPATCH_HIST_H_TYPE_S(int32_t, s_histogram_binsearch_kernel, (const int32_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_INT64: DISPATCH_HIST_H_TYPE_S(int64_t, s_histogram_binsearch_kernel, (const int64_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_INT16: DISPATCH_HIST_H_TYPE_S(int16_t, s_histogram_binsearch_kernel, (const int16_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_INT8: DISPATCH_HIST_H_TYPE_S(int8_t, s_histogram_binsearch_kernel, (const int8_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_UINT64: DISPATCH_HIST_H_TYPE_S(uint64_t, s_histogram_binsearch_kernel, (const uint64_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_UINT32: DISPATCH_HIST_H_TYPE_S(uint32_t, s_histogram_binsearch_kernel, (const uint32_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_UINT16: DISPATCH_HIST_H_TYPE_S(uint16_t, s_histogram_binsearch_kernel, (const uint16_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
+        case DTYPE_UINT8:
+        case DTYPE_BOOLEAN: DISPATCH_HIST_H_TYPE_S(uint8_t, s_histogram_binsearch_kernel, (const uint8_t *)src, strideSrc, weights, strideWeights, dtypeWeights, bin_edges, num_edges, size); break;
         default: return;
     }
 }
@@ -17446,45 +17184,7 @@ void v_histogram_binsearch(
     const double *bin_edges, int64_t num_edges,
     int64_t size
 ) {
-    if (src == nullptr || hist == nullptr || bin_edges == nullptr || size <= 0 || num_edges < 2) return;
-    switch (dtypeSrc) {
-        case DTYPE_FLOAT64: DISPATCH_HIST_W_TYPE_V_BINSEARCH(double); break;
-        case DTYPE_FLOAT32: DISPATCH_HIST_W_TYPE_V_BINSEARCH(float); break;
-        case DTYPE_INT32: DISPATCH_HIST_W_TYPE_V_BINSEARCH(int32_t); break;
-        case DTYPE_INT64: DISPATCH_HIST_W_TYPE_V_BINSEARCH(int64_t); break;
-        case DTYPE_INT16: DISPATCH_HIST_W_TYPE_V_BINSEARCH(int16_t); break;
-        case DTYPE_INT8: DISPATCH_HIST_W_TYPE_V_BINSEARCH(int8_t); break;
-        case DTYPE_UINT64: DISPATCH_HIST_W_TYPE_V_BINSEARCH(uint64_t); break;
-        case DTYPE_UINT32: DISPATCH_HIST_W_TYPE_V_BINSEARCH(uint32_t); break;
-        case DTYPE_UINT16: DISPATCH_HIST_W_TYPE_V_BINSEARCH(uint16_t); break;
-        case DTYPE_UINT8:
-        case DTYPE_BOOLEAN: DISPATCH_HIST_W_TYPE_V_BINSEARCH(uint8_t); break;
-        default: return;
-    }
-}
-
-void s_histogram_binsearch(
-    const void *src, int64_t strideSrc, int dtypeSrc,
-    const void *weights, int64_t strideWeights, int dtypeWeights,
-    void *hist, int64_t strideHist, int dtypeHist,
-    const double *bin_edges, int64_t num_edges,
-    int64_t size
-) {
-    if (src == nullptr || hist == nullptr || bin_edges == nullptr || size <= 0 || num_edges < 2) return;
-    switch (dtypeSrc) {
-        case DTYPE_FLOAT64: DISPATCH_HIST_W_TYPE_S_BINSEARCH(double); break;
-        case DTYPE_FLOAT32: DISPATCH_HIST_W_TYPE_S_BINSEARCH(float); break;
-        case DTYPE_INT32: DISPATCH_HIST_W_TYPE_S_BINSEARCH(int32_t); break;
-        case DTYPE_INT64: DISPATCH_HIST_W_TYPE_S_BINSEARCH(int64_t); break;
-        case DTYPE_INT16: DISPATCH_HIST_W_TYPE_S_BINSEARCH(int16_t); break;
-        case DTYPE_INT8: DISPATCH_HIST_W_TYPE_S_BINSEARCH(int8_t); break;
-        case DTYPE_UINT64: DISPATCH_HIST_W_TYPE_S_BINSEARCH(uint64_t); break;
-        case DTYPE_UINT32: DISPATCH_HIST_W_TYPE_S_BINSEARCH(uint32_t); break;
-        case DTYPE_UINT16: DISPATCH_HIST_W_TYPE_S_BINSEARCH(uint16_t); break;
-        case DTYPE_UINT8:
-        case DTYPE_BOOLEAN: DISPATCH_HIST_W_TYPE_S_BINSEARCH(uint8_t); break;
-        default: return;
-    }
+    s_histogram_binsearch(src, 1, dtypeSrc, weights, 1, dtypeWeights, hist, 1, dtypeHist, bin_edges, num_edges, size);
 }
 }
 
