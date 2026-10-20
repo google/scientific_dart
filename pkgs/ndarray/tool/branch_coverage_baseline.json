@@ -1,10 +1,10 @@
 {
   "summary": {
-    "totalMissedBranches": 3367,
-    "totalBranchesFound": 12629,
-    "totalBranchesHit": 9262,
-    "branchCoveragePercent": 73.34,
-    "lineCoveragePercent": 75.28
+    "totalMissedBranches": 3442,
+    "totalBranchesFound": 12854,
+    "totalBranchesHit": 9412,
+    "branchCoveragePercent": 73.22,
+    "lineCoveragePercent": 75.36
   },
   "files": {
     "lib/src/cpu_check.dart": {
@@ -53,10 +53,10 @@
       "linesHit": 46
     },
     "lib/src/ndarray.dart": {
-      "missedBranches": 215,
+      "missedBranches": 227,
       "branchesFound": 1105,
       "branchesHit": 890,
-      "branchCoveragePercent": 80.54,
+      "branchCoveragePercent": 79.79,
       "missedLines": 361,
       "linesFound": 2396,
       "linesHit": 2035
@@ -170,10 +170,10 @@
       "linesHit": 331
     },
     "lib/src/operations/linalg.dart": {
-      "missedBranches": 304,
+      "missedBranches": 309,
       "branchesFound": 1299,
       "branchesHit": 995,
-      "branchCoveragePercent": 76.6,
+      "branchCoveragePercent": 76.47,
       "missedLines": 593,
       "linesFound": 3782,
       "linesHit": 3189
@@ -188,10 +188,10 @@
       "linesHit": 643
     },
     "lib/src/operations/math/arithmetic.dart": {
-      "missedBranches": 601,
+      "missedBranches": 612,
       "branchesFound": 1487,
       "branchesHit": 886,
-      "branchCoveragePercent": 59.58,
+      "branchCoveragePercent": 60.99,
       "missedLines": 3173,
       "linesFound": 6996,
       "linesHit": 3823
@@ -206,10 +206,10 @@
       "linesHit": 36
     },
     "lib/src/operations/math/bitwise.dart": {
-      "missedBranches": 41,
+      "missedBranches": 56,
       "branchesFound": 164,
       "branchesHit": 123,
-      "branchCoveragePercent": 75.0,
+      "branchCoveragePercent": 70.98,
       "missedLines": 146,
       "linesFound": 693,
       "linesHit": 547
@@ -242,10 +242,10 @@
       "linesHit": 447
     },
     "lib/src/operations/math/floating_point.dart": {
-      "missedBranches": 154,
+      "missedBranches": 155,
       "branchesFound": 358,
       "branchesHit": 204,
-      "branchCoveragePercent": 56.98,
+      "branchCoveragePercent": 57.3,
       "missedLines": 242,
       "linesFound": 929,
       "linesHit": 687
@@ -269,19 +269,19 @@
       "linesHit": 194
     },
     "lib/src/operations/math/trigonometric.dart": {
-      "missedBranches": 75,
+      "missedBranches": 91,
       "branchesFound": 454,
       "branchesHit": 379,
-      "branchCoveragePercent": 83.48,
+      "branchCoveragePercent": 80.96,
       "missedLines": 533,
       "linesFound": 1722,
       "linesHit": 1189
     },
     "lib/src/operations/math/ufunc_methods.dart": {
-      "missedBranches": 162,
+      "missedBranches": 171,
       "branchesFound": 632,
       "branchesHit": 470,
-      "branchCoveragePercent": 74.37,
+      "branchCoveragePercent": 74.17,
       "missedLines": 398,
       "linesFound": 1806,
       "linesHit": 1408
@@ -332,7 +332,7 @@
       "linesHit": 477
     },
     "lib/src/operations/polynomial/poly_orthogonal.dart": {
-      "missedBranches": 17,
+      "missedBranches": 16,
       "branchesFound": 117,
       "branchesHit": 100,
       "branchCoveragePercent": 85.47,
@@ -341,10 +341,10 @@
       "linesHit": 343
     },
     "lib/src/operations/polynomial/poly_standard.dart": {
-      "missedBranches": 18,
+      "missedBranches": 20,
       "branchesFound": 103,
       "branchesHit": 85,
-      "branchCoveragePercent": 82.52,
+      "branchCoveragePercent": 80.95,
       "missedLines": 145,
       "linesFound": 440,
       "linesHit": 295
@@ -413,7 +413,7 @@
       "linesHit": 107
     },
     "lib/src/operations/stats.dart": {
-      "missedBranches": 291,
+      "missedBranches": 284,
       "branchesFound": 1375,
       "branchesHit": 1084,
       "branchCoveragePercent": 78.84,
@@ -422,10 +422,10 @@
       "linesHit": 2923
     },
     "lib/src/operations/tensor_contractions.dart": {
-      "missedBranches": 25,
+      "missedBranches": 37,
       "branchesFound": 340,
       "branchesHit": 315,
-      "branchCoveragePercent": 92.65,
+      "branchCoveragePercent": 89.86,
       "missedLines": 31,
       "linesFound": 776,
       "linesHit": 745
