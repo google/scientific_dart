@@ -433,3 +433,107 @@ final class CastOperandWithAstypeFix extends ResolvedCorrectionProducer {
     });
   }
 }
+
+/// Quick fix that rewrites a mismatched binary operator or function call (such
+/// as `f64 + f32`, `add(f64, f32)`, `matmul(f64, f32)`, or `atan2(i32, i64)`)
+/// to its `0.3.0` mixed-dtype `*As` counterpart (`addAs(f64, f32, DType.float64)`,
+/// `matmulAs(f64, f32, DType.float64)`, `atan2As(i32, i64, DType.float64)`).
+final class ReplaceWithMixedDTypeAsFix extends ResolvedCorrectionProducer {
+  static const FixKind _replaceWithMixedAsKind = FixKind(
+    'scientific_dart_analysis_plugin.fix.replaceWithMixedDTypeAs',
+    49,
+    'Replace with {0}(..., DType.{1})',
+  );
+
+  List<String>? _fixArguments;
+
+  ReplaceWithMixedDTypeAsFix({required super.context});
+
+  @override
+  CorrectionApplicability get applicability =>
+      CorrectionApplicability.singleLocation;
+
+  @override
+  List<String>? get fixArguments => _fixArguments;
+
+  @override
+  FixKind get fixKind => _replaceWithMixedAsKind;
+
+  @override
+  Future<void> compute(ChangeBuilder builder) async {
+    final replacementInfo = findMixedDTypeAsReplacementAt(
+      node,
+      diagnosticOffset ?? selectionOffset,
+    );
+    if (replacementInfo == null) return;
+    _fixArguments = [
+      replacementInfo.asFunctionName,
+      replacementInfo.targetEnumName,
+    ];
+
+    final firstSrc = replacementInfo.firstOperand.toSource();
+    final secondSrc = replacementInfo.secondOperand.toSource();
+    final namedSuffix = replacementInfo.namedArguments.isEmpty
+        ? ''
+        : ', ${replacementInfo.namedArguments.map((a) => a.toSource()).join(', ')}';
+    final replacement =
+        '${replacementInfo.asFunctionName}('
+        '$firstSrc, $secondSrc, DType.${replacementInfo.targetEnumName}'
+        '$namedSuffix)';
+
+    await builder.addDartFileEdit(file, (builder) {
+      builder.addSimpleReplacement(
+        SourceRange(replacementInfo.site.offset, replacementInfo.site.length),
+        replacement,
+      );
+    });
+  }
+}
+
+/// Quick fix that appends `.asAnySpec`, `.asBitwiseDType`, or `.asIntegerDType`
+/// to an unwidened runtime-typed `NDArray` / `MaskedArray` / `DType` operand in
+/// a `0.3.0` call.
+final class WidenWithAsSpecFix extends ResolvedCorrectionProducer {
+  static const FixKind _widenWithAsSpecKind = FixKind(
+    'scientific_dart_analysis_plugin.fix.widenWithAsSpec',
+    50,
+    'Widen with .{0}',
+  );
+
+  List<String>? _fixArguments;
+
+  WidenWithAsSpecFix({required super.context});
+
+  @override
+  CorrectionApplicability get applicability =>
+      CorrectionApplicability.singleLocation;
+
+  @override
+  List<String>? get fixArguments => _fixArguments;
+
+  @override
+  FixKind get fixKind => _widenWithAsSpecKind;
+
+  @override
+  Future<void> compute(ChangeBuilder builder) async {
+    final target = findUnwidenedDynamicDTypeAt(
+      node,
+      diagnosticOffset ?? selectionOffset,
+    );
+    if (target == null) return;
+    _fixArguments = [target.getterName];
+    final expr = target.expression;
+    final suffix = '.${target.getterName}';
+
+    await builder.addDartFileEdit(file, (builder) {
+      if (_needsReceiverParentheses(expr)) {
+        builder.addSimpleReplacement(
+          SourceRange(expr.offset, expr.length),
+          '(${expr.toSource()})$suffix',
+        );
+      } else {
+        builder.addSimpleInsertion(expr.end, suffix);
+      }
+    });
+  }
+}

@@ -52,6 +52,7 @@ List<AnalysisRule> createApiAndPerformanceRules() => [
   HotLoopElementIndexingRule(),
   MismatchedDTypeOperandsRule(),
   UnsupportedDTypeOperationRule(),
+  UnwidenedDynamicDTypeRule(),
 ];
 
 /// Advanced memory-lifetime, view-aliasing, iterator, and symbolic rules.
@@ -72,8 +73,8 @@ List<AnalysisRule> createAllScientificDartRules() => [
 ];
 
 /// Analyzer server plugin registering rules and quick fixes for
-/// `scientific_dart` (`package:ndarray`, `package:resource_scope`, etc.)
-/// consumers.
+/// `scientific_dart` (`package:ndarray`, `package:ndarray_ma`,
+/// `package:resource_scope`, etc.) consumers.
 final class ScientificDartAnalysisPlugin extends Plugin {
   @override
   String get name => 'scientific_dart_analysis_plugin';
@@ -108,6 +109,14 @@ final class ScientificDartAnalysisPlugin extends Plugin {
     registry.registerFixForRule(
       MismatchedDTypeOperandsRule.code,
       CastOperandWithAstypeFix.new,
+    );
+    registry.registerFixForRule(
+      MismatchedDTypeOperandsRule.code,
+      ReplaceWithMixedDTypeAsFix.new,
+    );
+    registry.registerFixForRule(
+      UnwidenedDynamicDTypeRule.code,
+      WidenWithAsSpecFix.new,
     );
   }
 }

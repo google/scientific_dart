@@ -27,25 +27,19 @@ import '../dtype_utils.dart';
 // 16. ndarray_mismatched_dtype_operands
 // =============================================================================
 
-/// Flags same-dtype `NDArray` operations whose operands have different
-/// concrete static dtypes, such as `f64 + f32` or `add(f64, i32)`.
+/// Flags same-dtype `NDArray` and `MaskedArray` operations whose operands have
+/// different concrete static dtypes, such as `f64 + f32`, `f64.eq(f32)`,
+/// `sort(f64, out: f32)`, or `add(f64, i32)`.
 ///
-/// Same-dtype operations are declared with one shared type parameter
-/// (`add<T extends DTypeTag>(NDArray<T> a, NDArray<T> b)`) or take an
-/// `Object?` operand (`NDArray<T>.operator +`). Covariant class type
-/// parameters let such calls compile for mixed dtypes (the shared `T` is
-/// inferred as `DTypeTag`), but they throw an `ArgumentError` at runtime.
-///
-/// Covered sites (see `sameDTypeOperandGroups`):
-/// - the operators `+ - * / ~/ % & | ^ << >> < <= > >=` (and their compound
-///   assignment forms) with `NDArray` operands on both sides;
-/// - the `eq` / `ne` methods with an `NDArray` argument;
-/// - top-level functions declared in `package:ndarray` whose signature ties
-///   two or more array parameters to one dtype, derived from the element
-///   model rather than a fixed list (`add`, `maximum`, `atan2`, `dot`, `where`,
-///   `concatenate(List<NDArray<T>>)`, ...). The mixed-dtype `*As` variants
-///   declare distinct type parameters per operand and are therefore never
-///   flagged.
+/// In `package:ndarray` `0.3.0`:
+/// - Operators (`+ - * / ~/ % & | ^ << >> < <= > >=`), compound assignments,
+///   and `Object?`-taking instance methods (`eq`, `ne`, and `MaskedArray`
+///   binary methods) accept any array operand at compile time and throw an
+///   `ArgumentError` at runtime when dtypes differ.
+/// - Same-dtype multi-array functions (`add`, `matmul`, `atan2`, `where`,
+///   `concatenate`, ...) and `Out extends T`-bounded `out:` buffers also
+///   participate so the IDE surfaces `0.3.0` quick fixes (`.astype(DType.x)`
+///   and the mixed-dtype `*As` functions such as `addAs(a, b, DType.x)`).
 ///
 /// Operands whose dtype is not statically concrete (`NDArray<DTypeTag>`,
 /// `NDArray<AnySpec>`, type variables, `dynamic`) never participate, and
@@ -53,14 +47,13 @@ import '../dtype_utils.dart';
 final class MismatchedDTypeOperandsRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'ndarray_mismatched_dtype_operands',
-    "Operand of type 'NDArray<{1}>' in a same-dtype operation whose reference "
-        "operand is 'NDArray<{0}>'; mixed dtypes compile (the shared type "
-        'parameter is inferred as DTypeTag) but throw an ArgumentError at '
-        'runtime.',
+    "Operand of type '{3}<{1}>' in a same-dtype operation whose reference "
+        "operand is '{3}<{0}>'; mixed dtypes throw an ArgumentError at "
+        'runtime (or fail SelfOf / Out inference).',
     correctionMessage:
         "Cast explicitly with '.astype(DType.{2})' (or cast the other "
         "operand), or use the mixed-dtype '*As' variant (addAs, multiplyAs, "
-        '...) with an explicit result DType.',
+        'matmulAs, ...) with an explicit result DType.',
     severity: DiagnosticSeverity.WARNING,
   );
 
@@ -68,9 +61,9 @@ final class MismatchedDTypeOperandsRule extends AnalysisRule {
     : super(
         name: code.lowerCaseName,
         description:
-            'Do not combine NDArrays of different concrete dtypes in '
-            'same-dtype operations; cast with .astype() or use the *As '
-            'variants.',
+            'Do not combine NDArrays or MaskedArrays of different concrete '
+            'dtypes in same-dtype operations; cast with .astype() or use the '
+            '*As variants.',
       );
 
   @override
@@ -111,12 +104,16 @@ final class _MismatchedDTypeOperandsVisitor extends SimpleAstVisitor<void> {
         if (referenceTag == null) {
           referenceTag = tag;
         } else if (tag != referenceTag) {
+          final arrayClassName =
+              asNDArrayInstance(operand.expression.staticType)?.element.name ??
+              'NDArray';
           rule.reportAtNode(
             operand.expression,
             arguments: [
               referenceTag,
               tag,
               kConcreteDTypeTagToEnumName[referenceTag]!,
+              arrayClassName,
             ],
           );
         }
@@ -129,29 +126,26 @@ final class _MismatchedDTypeOperandsVisitor extends SimpleAstVisitor<void> {
 // 17. ndarray_unsupported_dtype_operation
 // =============================================================================
 
-/// Flags `package:ndarray` operations applied to arrays whose concrete static
-/// dtype the operation rejects at runtime.
+/// Flags `package:ndarray` and `package:ndarray_ma` operations applied to
+/// arrays whose concrete static dtype the operation rejects at runtime.
 ///
-/// The runtime matrix encoded here (verified against
-/// `operations/math/bitwise.dart` and `operations/math/logical.dart`):
+/// While `0.3.0`'s `BitwiseDType` and `IntegerDType` bounds reject floating and
+/// complex operands on same-dtype bitwise (`&`, `|`, `^`, `~`, `bitwiseAnd`,
+/// `bitwiseOr`, `bitwiseXor`, `invert`) and integer (`<<`, `>>`, `leftShift`,
+/// `rightShift`, `gcd`, `lcm`) operations at compile time, several operation
+/// families still accept all `DTypeTag`s (or `SelfOf<DTypeTag>`) statically and
+/// throw at runtime for unsupported concrete dtypes:
 ///
-/// | Operation                                        | Rejected dtypes          |
-/// |--------------------------------------------------|--------------------------|
-/// | `bitwiseAnd`, `bitwiseOr`, `bitwiseXor`, `invert` | floating-point, complex |
-/// | `bitwiseAndAs`, `bitwiseOrAs`, `bitwiseXorAs`     | floating-point, complex |
-/// | `leftShift`, `rightShift` (+ `*As`)               | floating-point, complex, boolean |
-/// | `greater`, `greaterEqual`, `less`, `lessEqual`    | complex                  |
-/// | operators `<`, `<=`, `>`, `>=`                    | complex                  |
-///
-/// Boolean is treated as supported by the bitwise (non-shift) operations, in
-/// line with the `BitwiseDType` marker. The bitwise/shift *operators* are not
-/// covered: their statically constrained extension signatures already reject
-/// unsupported dtypes at compile time.
+/// | Operation family                                                | Rejected dtypes                  |
+/// |-----------------------------------------------------------------|----------------------------------|
+/// | `bitwiseAndAs`, `bitwiseOrAs`, `bitwiseXorAs` (+ `bitwise*`)    | floating-point, complex          |
+/// | `leftShiftAs`, `rightShiftAs`, `gcdAs`, `lcmAs` (+ `leftShift`) | floating-point, complex, boolean |
+/// | `greater`, `greaterEqual`, `less`, `lessEqual`, `<`, `<=`, `>`, `>=`, `sort`, `argsort`, `partition`, `argpartition`, `searchsorted`, `ptp`, `clip` | complex |
+/// | `remainder`, `mod`, `floorDivide`, `fmod`, `divmod`, `atan2`, `hypot`, `~/`, `%` | complex |
 final class UnsupportedDTypeOperationRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'ndarray_unsupported_dtype_operation',
-    "'{0}' does not support NDArray<{1}> operands ({2}) and throws at "
-        'runtime.',
+    "'{0}' does not support {3}<{1}> operands ({2}) and throws at runtime.",
     correctionMessage:
         "Cast to a supported dtype with '.astype(...)' first; for ordering "
         'complex arrays compare real()/imag() parts or abs() magnitudes '
@@ -163,8 +157,8 @@ final class UnsupportedDTypeOperationRule extends AnalysisRule {
     : super(
         name: code.lowerCaseName,
         description:
-            'Do not apply bitwise, shift, or ordering operations to NDArray '
-            'dtypes that reject them at runtime.',
+            'Do not apply bitwise, shift, modulo, or ordering operations to '
+            'array dtypes that reject them at runtime.',
       );
 
   @override
@@ -178,6 +172,7 @@ final class UnsupportedDTypeOperationRule extends AnalysisRule {
     final visitor = _UnsupportedDTypeOperationVisitor(this);
     registry.addMethodInvocation(this, visitor);
     registry.addBinaryExpression(this, visitor);
+    registry.addAssignmentExpression(this, visitor);
   }
 }
 
@@ -189,25 +184,43 @@ enum _UnsupportedDTypeFamily {
     {...kFloatingDTypeTags, ...kComplexDTypeTags},
     'bitwise operations are only defined for integer and boolean dtypes',
   ),
-  shift({'leftShift', 'rightShift'}, {'leftShiftAs', 'rightShiftAs'}, {
-    ...kFloatingDTypeTags,
-    ...kComplexDTypeTags,
-    'Boolean',
-  }, 'shift operations are only defined for integer dtypes'),
+  shift(
+    {'leftShift', 'rightShift', 'gcd', 'lcm'},
+    {'leftShiftAs', 'rightShiftAs', 'gcdAs', 'lcmAs'},
+    {...kFloatingDTypeTags, ...kComplexDTypeTags, 'Boolean'},
+    'shift, gcd, and lcm operations are only defined for integer dtypes',
+  ),
   ordering(
-    {'greater', 'greaterEqual', 'less', 'lessEqual'},
+    {
+      'greater',
+      'greaterEqual',
+      'less',
+      'lessEqual',
+      'lt',
+      'le',
+      'gt',
+      'ge',
+      'sort',
+      'argsort',
+      'partition',
+      'argpartition',
+      'searchsorted',
+      'ptp',
+      'clip',
+      'clipArray',
+    },
     {},
     kComplexDTypeTags,
     'ordering comparisons are undefined for complex dtypes',
   ),
   realOnly(
-    {'remainder', 'floorDivide', 'atan2', 'hypot', 'fmod'},
-    {},
+    {'remainder', 'mod', 'floorDivide', 'divmod', 'atan2', 'hypot', 'fmod'},
+    {'remainderAs', 'modAs', 'floorDivideAs', 'fmodAs', 'atan2As', 'hypotAs'},
     kComplexDTypeTags,
     'operation is undefined for complex dtypes',
   );
 
-  /// Same-dtype function names of the family.
+  /// Same-dtype function/method names of the family.
   final Set<String> functionNames;
 
   /// Mixed-dtype `*As` function names of the family, whose third positional
@@ -258,6 +271,16 @@ final class _UnsupportedDTypeOperationVisitor extends SimpleAstVisitor<void> {
     TokenType.GT_EQ,
   };
 
+  static const Set<TokenType> _realOnlyOperators = {
+    TokenType.TILDE_SLASH,
+    TokenType.PERCENT,
+  };
+
+  static const Set<TokenType> _realOnlyAssignmentOperators = {
+    TokenType.TILDE_SLASH_EQ,
+    TokenType.PERCENT_EQ,
+  };
+
   final UnsupportedDTypeOperationRule rule;
 
   _UnsupportedDTypeOperationVisitor(this.rule);
@@ -265,14 +288,28 @@ final class _UnsupportedDTypeOperationVisitor extends SimpleAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final element = node.methodName.element;
-    if (element is! TopLevelFunctionElement ||
-        !isDeclaredInNDArrayPackage(element)) {
+    if (element is! TopLevelFunctionElement && element is! MethodElement) {
       return;
     }
-    final name = element.name;
+    if (!isDeclaredInNDArrayPackage(element)) return;
+    final name = element?.name;
     if (name == null) return;
     final family = _UnsupportedDTypeFamily.forFunctionName(name);
     if (family == null) return;
+
+    final receiver = node.realTarget;
+    if (receiver != null) {
+      final receiverTag = concreteDTypeTagOf(receiver.staticType);
+      if (receiverTag != null && family.rejectedTags.contains(receiverTag)) {
+        final cls =
+            asNDArrayInstance(receiver.staticType)?.element.name ?? 'NDArray';
+        rule.reportAtNode(
+          receiver,
+          arguments: [name, receiverTag, family.reason, cls],
+        );
+        return;
+      }
+    }
 
     final positionalArguments = node.argumentList.arguments
         .where((argument) => argument is! NamedArgument)
@@ -281,7 +318,9 @@ final class _UnsupportedDTypeOperationVisitor extends SimpleAstVisitor<void> {
     for (final argument in positionalArguments) {
       final tag = concreteDTypeTagOf(argument.staticType);
       if (tag != null && family.rejectedTags.contains(tag)) {
-        rule.reportAtNode(argument, arguments: [name, tag, family.reason]);
+        final cls =
+            asNDArrayInstance(argument.staticType)?.element.name ?? 'NDArray';
+        rule.reportAtNode(argument, arguments: [name, tag, family.reason, cls]);
         break;
       }
     }
@@ -302,6 +341,7 @@ final class _UnsupportedDTypeOperationVisitor extends SimpleAstVisitor<void> {
             name,
             _UnsupportedDTypeFamily.tagOfEnumName(enumName)!,
             family.reason,
+            'NDArray',
           ],
         );
       }
@@ -310,18 +350,130 @@ final class _UnsupportedDTypeOperationVisitor extends SimpleAstVisitor<void> {
 
   @override
   void visitBinaryExpression(BinaryExpression node) {
-    if (!_orderingOperators.contains(node.operator.type)) return;
+    final _UnsupportedDTypeFamily? family;
+    if (_orderingOperators.contains(node.operator.type)) {
+      family = _UnsupportedDTypeFamily.ordering;
+    } else if (_realOnlyOperators.contains(node.operator.type)) {
+      family = _UnsupportedDTypeFamily.realOnly;
+    } else {
+      return;
+    }
     if (!isDeclaredInNDArrayPackage(node.element)) return;
-    const family = _UnsupportedDTypeFamily.ordering;
     for (final operand in [node.leftOperand, node.rightOperand]) {
       final tag = concreteDTypeTagOf(operand.staticType);
       if (tag != null && family.rejectedTags.contains(tag)) {
+        final cls =
+            asNDArrayInstance(operand.staticType)?.element.name ?? 'NDArray';
         rule.reportAtNode(
           operand,
-          arguments: ["operator ${node.operator.lexeme}", tag, family.reason],
+          arguments: [
+            'operator ${node.operator.lexeme}',
+            tag,
+            family.reason,
+            cls,
+          ],
         );
         break;
       }
+    }
+  }
+
+  @override
+  void visitAssignmentExpression(AssignmentExpression node) {
+    if (!_realOnlyAssignmentOperators.contains(node.operator.type)) return;
+    if (!isDeclaredInNDArrayPackage(node.element)) return;
+    const family = _UnsupportedDTypeFamily.realOnly;
+    for (final operand in [node.leftHandSide, node.rightHandSide]) {
+      final tag = concreteDTypeTagOf(operand.staticType);
+      if (tag != null && family.rejectedTags.contains(tag)) {
+        final cls =
+            asNDArrayInstance(operand.staticType)?.element.name ?? 'NDArray';
+        rule.reportAtNode(
+          operand,
+          arguments: [
+            'operator ${node.operator.lexeme}',
+            tag,
+            family.reason,
+            cls,
+          ],
+        );
+        break;
+      }
+    }
+  }
+}
+
+// =============================================================================
+// 18. ndarray_unwidened_dynamic_dtype
+// =============================================================================
+
+/// Flags runtime-typed `NDArray` / `MaskedArray` / `DType` expressions
+/// (`NDArray<DTypeTag>`, `NDArray<IntegerDType>`, `NDArray<BitwiseDType>`,
+/// `DType<DTypeTag>`) passed to `0.3.0` functions, constructors, or operators
+/// whose `SelfOf<...>`, `*Of<...>`, `AnySpec`, `BitwiseDType`, or
+/// `IntegerDType` bounds require explicit widening with `.asAnySpec`,
+/// `.asBitwiseDType`, or `.asIntegerDType`.
+final class UnwidenedDynamicDTypeRule extends AnalysisRule {
+  static const LintCode code = LintCode(
+    'ndarray_unwidened_dynamic_dtype',
+    "Runtime-typed '{0}' does not satisfy the static dtype bound of '{1}' in "
+        '0.3.0; widen explicitly with .{2}.',
+    correctionMessage:
+        "Append '.{2}' to opt into runtime dtype validation for this call.",
+    severity: DiagnosticSeverity.WARNING,
+  );
+
+  UnwidenedDynamicDTypeRule()
+    : super(
+        name: code.lowerCaseName,
+        description:
+            'Widen runtime-typed NDArray/MaskedArray/DType<DTypeTag> operands '
+            'with .asAnySpec, .asBitwiseDType, or .asIntegerDType when '
+            'calling SelfOf- or projection-bounded 0.3.0 APIs.',
+      );
+
+  @override
+  DiagnosticCode get diagnosticCode => code;
+
+  @override
+  void registerNodeProcessors(
+    RuleVisitorRegistry registry,
+    RuleContext context,
+  ) {
+    final visitor = _UnwidenedDynamicDTypeVisitor(this);
+    registry.addMethodInvocation(this, visitor);
+    registry.addInstanceCreationExpression(this, visitor);
+    registry.addBinaryExpression(this, visitor);
+    registry.addPrefixExpression(this, visitor);
+  }
+}
+
+final class _UnwidenedDynamicDTypeVisitor extends SimpleAstVisitor<void> {
+  final UnwidenedDynamicDTypeRule rule;
+
+  _UnwidenedDynamicDTypeVisitor(this.rule);
+
+  @override
+  void visitMethodInvocation(MethodInvocation node) => _check(node);
+
+  @override
+  void visitInstanceCreationExpression(InstanceCreationExpression node) =>
+      _check(node);
+
+  @override
+  void visitBinaryExpression(BinaryExpression node) => _check(node);
+
+  @override
+  void visitPrefixExpression(PrefixExpression node) => _check(node);
+
+  void _check(AstNode node) {
+    for (final site in unwidenedDynamicDTypeSites(node)) {
+      final typeDisplay =
+          site.expression.staticType?.getDisplayString() ?? site.markerTag;
+      rule.reportAtNode(
+        site.expression,
+        arguments: [typeDisplay, site.operationName, site.getterName],
+      );
     }
   }
 }

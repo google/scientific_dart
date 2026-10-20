@@ -115,7 +115,9 @@ void main() {
       (d) =>
           d.diagnosticCode.type == DiagnosticType.COMPILE_TIME_ERROR &&
           (!allowCouldNotInfer ||
-              d.diagnosticCode.lowerCaseName != 'could_not_infer'),
+              (d.diagnosticCode.lowerCaseName != 'could_not_infer' &&
+                  d.diagnosticCode.lowerCaseName !=
+                      'argument_type_not_assignable')),
     );
     expect(
       compileErrors,
@@ -168,6 +170,7 @@ void main() {
             'symbolic_lambdify_in_loop',
             'ndarray_mismatched_dtype_operands',
             'ndarray_unsupported_dtype_operation',
+            'ndarray_unwidened_dynamic_dtype',
           }),
         );
         expect(registry.fixes, isNotEmpty);
@@ -1207,6 +1210,112 @@ NDArray<DTypeTag> f(NDArray<Int64> a, NDArray<Int32> b) => add(a, b);
         CastOperandWithAstypeFix.new,
       );
       expect(fixedMismatchFn, contains('add(a, b.astype(DType.int64))'));
+
+      final fixedMismatchOpAs = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<Float64> a, NDArray<Float32> b) => a + b;
+''',
+        MismatchedDTypeOperandsRule(),
+        ReplaceWithMixedDTypeAsFix.new,
+      );
+      expect(fixedMismatchOpAs, contains('addAs(a, b, DType.float64)'));
+
+      final fixedMismatchFnAs = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<Float64> a, NDArray<Float32> b) => matmul(a, b);
+''',
+        MismatchedDTypeOperandsRule(),
+        ReplaceWithMixedDTypeAsFix.new,
+      );
+      expect(fixedMismatchFnAs, contains('matmulAs(a, b, DType.float64)'));
+
+      final fixedProjectingFnAs = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<Int32> a, NDArray<Int64> b) => atan2(a, b);
+''',
+        MismatchedDTypeOperandsRule(),
+        ReplaceWithMixedDTypeAsFix.new,
+      );
+      expect(fixedProjectingFnAs, contains('atan2As(a, b, DType.float64)'));
+
+      final outBufferMismatchDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+void checkOutMismatch(NDArray<Float64> f64, NDArray<Float32> f32) {
+  sort(f64, out: f32); // VIOLATION 1: Out extends T mismatch
+  add(f64, f64, out: f32); // VIOLATION 2: SelfOf<DTypeTag> out mismatch
+  sort(f64, out: f64); // OK
+}
+''',
+        rules: [MismatchedDTypeOperandsRule()],
+        allowCouldNotInfer: true,
+      );
+      expectOnly(
+        outBufferMismatchDiagnostics,
+        'ndarray_mismatched_dtype_operands',
+        2,
+      );
+
+      final unwidenedDiagnostics = await analyzeCode(
+        '''
+import 'package:ndarray/ndarray.dart';
+
+void checkUnwidened(
+  NDArray<DTypeTag> dyn,
+  NDArray<BitwiseDType> bit,
+  NDArray<IntegerDType> intArr,
+) {
+  final badAdd = add(dyn, dyn); // VIOLATION 1 & 2: both need .asAnySpec
+  final badBit = bitwiseAnd(dyn, dyn); // VIOLATION 3 & 4: both need .asBitwiseDType
+  final badShift = leftShift(bit, bit); // VIOLATION 5 & 6: both need .asIntegerDType
+  final badSin = sin(dyn); // VIOLATION 7: needs .asAnySpec
+
+  final okAdd = add(dyn.asAnySpec, dyn.asAnySpec);
+  final okBit = bitwiseAnd(dyn.asBitwiseDType, dyn.asBitwiseDType);
+  final okShift = leftShift(intArr.asIntegerDType, intArr.asIntegerDType);
+  final okSin = sin(dyn.asAnySpec);
+  final okShape = squeeze(dyn);
+  print([
+    badAdd,
+    badBit,
+    badShift,
+    badSin,
+    okAdd,
+    okBit,
+    okShift,
+    okSin,
+    okShape,
+  ]);
+}
+''',
+        rules: [UnwidenedDynamicDTypeRule()],
+        allowCouldNotInfer: true,
+      );
+      expectOnly(unwidenedDiagnostics, 'ndarray_unwidened_dynamic_dtype', 7);
+
+      final fixedUnwidenedAny = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<DTypeTag> a) => sin(a);
+''',
+        UnwidenedDynamicDTypeRule(),
+        WidenWithAsSpecFix.new,
+      );
+      expect(fixedUnwidenedAny, contains('sin(a.asAnySpec)'));
+
+      final fixedUnwidenedBitwise = await applyFixAtOffset(
+        '''
+import 'package:ndarray/ndarray.dart';
+NDArray<DTypeTag> f(NDArray<DTypeTag> a) => invert(a);
+''',
+        UnwidenedDynamicDTypeRule(),
+        WidenWithAsSpecFix.new,
+      );
+      expect(fixedUnwidenedBitwise, contains('invert(a.asBitwiseDType)'));
     });
 
     test('resolves DType projections through *Of<R> interfaces via asInstanceOf '
