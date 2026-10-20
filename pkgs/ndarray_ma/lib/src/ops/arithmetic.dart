@@ -14,49 +14,262 @@
 
 part of '../masked_array.dart';
 
-MaskedArray<T> _maAdd<T extends DTypeTag>(MaskedArray<T> self, Object? other) =>
-    _maBinary<T, T>(self, other, '+', (a, b) => a + b, isDivision: false);
+MaskedArray<T> _maAdd<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '+',
+  (a, b) => a + b,
+  isDivision: false,
+  out: out,
+);
 
 MaskedArray<T> _maSubtract<T extends DTypeTag>(
   MaskedArray<T> self,
-  Object? other,
-) => _maBinary<T, T>(self, other, '-', (a, b) => a - b, isDivision: false);
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '-',
+  (a, b) => a - b,
+  isDivision: false,
+  out: out,
+);
 
 MaskedArray<T> _maMultiply<T extends DTypeTag>(
   MaskedArray<T> self,
-  Object? other,
-) => _maBinary<T, T>(self, other, '*', (a, b) => a * b, isDivision: false);
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '*',
+  (a, b) => a * b,
+  isDivision: false,
+  out: out,
+);
 
 MaskedArray<T> _maFloorDivide<T extends DTypeTag>(
   MaskedArray<T> self,
-  Object? other,
-) => _maBinary<T, T>(self, other, '~/', (a, b) => a ~/ b, isDivision: true);
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '~/',
+  (a, b) => a ~/ b,
+  isDivision: true,
+  out: out,
+);
 
 MaskedArray<T> _maRemainder<T extends DTypeTag>(
   MaskedArray<T> self,
-  Object? other,
-) => _maBinary<T, T>(self, other, '%', (a, b) => a % b, isDivision: true);
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '%',
+  (a, b) => a % b,
+  isDivision: true,
+  out: out,
+);
 
 /// True division. The runtime dtype of `a / b` on an [NDArray] follows
-/// NumPy's `true_divide` rule, which is exactly the [DivideOf] projection
-/// that [M] is bound to by the callers.
+/// NumPy's `true_divide` rule, which is the [DivideOf] projection that [M]
+/// is bound to by the callers.
 MaskedArray<M> _maDivide<T extends DTypeTag, M extends DTypeTag>(
   MaskedArray<T> self,
-  Object? other,
-) => _maBinary<T, M>(
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, M>(
   self,
   other,
   '/',
   (a, b) => (a / b) as NDArray<M>,
   isDivision: true,
+  out: out,
+);
+
+MaskedArray<T> _maMinimum<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  'minimum',
+  (a, b) =>
+      ndops.minimum(
+            a.asAnySpec,
+            (b is NDArray ? b : _wrapScalar<T>(b, a.dtype)).asAnySpec,
+          )
+          as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maMaximum<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  'maximum',
+  (a, b) =>
+      ndops.maximum(
+            a.asAnySpec,
+            (b is NDArray ? b : _wrapScalar<T>(b, a.dtype)).asAnySpec,
+          )
+          as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maPower<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  'power',
+  (a, b) =>
+      ndops.power(
+            a.asAnySpec,
+            (b is NDArray ? b : _wrapScalar<T>(b, a.dtype)).asAnySpec,
+          )
+          as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<R> _maAtan2<T extends DTypeTag, R extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, R>(
+  self,
+  other,
+  'atan2',
+  (a, b) =>
+      ndops.atan2(
+            a.asAnySpec,
+            (b is NDArray ? b : _wrapScalar<T>(b, a.dtype)).asAnySpec,
+          )
+          as NDArray<R>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<R> _maHypot<T extends DTypeTag, R extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, R>(
+  self,
+  other,
+  'hypot',
+  (a, b) =>
+      ndops.hypot(
+            a.asAnySpec,
+            (b is NDArray ? b : _wrapScalar<T>(b, a.dtype)).asAnySpec,
+          )
+          as NDArray<R>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maBitwiseAnd<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '&',
+  (a, b) => (a.asBitwiseDType & b) as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maBitwiseOr<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '|',
+  (a, b) => (a.asBitwiseDType | b) as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maBitwiseXor<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '^',
+  (a, b) => (a.asBitwiseDType ^ b) as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maInvert<T extends DTypeTag>(
+  MaskedArray<T> self, {
+  MaskedArray<DTypeTag>? out,
+}) =>
+    _maMapUnary<T, T>(self, (d) => (~d.asBitwiseDType) as NDArray<T>, out: out);
+
+MaskedArray<T> _maLeftShift<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '<<',
+  (a, b) => (a.asIntegerDType << b) as NDArray<T>,
+  isDivision: false,
+  out: out,
+);
+
+MaskedArray<T> _maRightShift<T extends DTypeTag>(
+  MaskedArray<T> self,
+  Object? other, {
+  MaskedArray<DTypeTag>? out,
+}) => _maBinary<T, T>(
+  self,
+  other,
+  '>>',
+  (a, b) => (a.asIntegerDType >> b) as NDArray<T>,
+  isDivision: false,
+  out: out,
 );
 
 MaskedArray<Boolean> _maCompare<T extends DTypeTag>(
   MaskedArray<T> self,
   Object? other,
   String operator,
-  NDArray<Boolean> Function(NDArray<T> a, Object operand) compare,
-) => _maBinary<T, Boolean>(self, other, operator, compare, isDivision: false);
+  NDArray<Boolean> Function(NDArray<T> a, Object operand) compare, {
+  MaskedArray<Boolean>? out,
+}) => _maBinary<T, Boolean>(
+  self,
+  other,
+  operator,
+  compare,
+  isDivision: false,
+  out: out,
+);
 
 /// Rejects an array operand whose dtype differs from the receiver's, mirroring
 /// the contract of the [NDArray] operators.
@@ -108,6 +321,7 @@ MaskedArray<R> _maBinary<T extends DTypeTag, R extends DTypeTag>(
   String operator,
   NDArray<R> Function(NDArray<T> a, Object operand) compute, {
   required bool isDivision,
+  MaskedArray<DTypeTag>? out,
 }) {
   final NDArray<T>? otherData;
   final NDArray<Boolean>? otherMask;
@@ -154,16 +368,16 @@ MaskedArray<R> _maBinary<T extends DTypeTag, R extends DTypeTag>(
         final isZero = otherData.eq(_zeroValue(otherData.dtype));
         combinedMask = ndops.logicalOr(combinedMask, isZero);
         final one = _wrapScalar<T>(_oneValue(otherData.dtype), otherData.dtype);
-        operand = ndops.where(combinedMask, one, otherData) as NDArray<T>;
+        operand = ndops.where<T>(combinedMask, one, otherData) as NDArray<T>;
       }
       resultData = compute(self.data, operand);
       resultMask = ndops.broadcastTo(combinedMask, resultData.shape).copy();
     }
-    return dispatchCreateMaskedArray(
-          resultData.detachToParentScope(),
-          resultMask.detachToParentScope(),
-          fillValue: self.fillValue,
-        )
-        as MaskedArray<R>;
+    return _writeOrCreateMaskedArray<R>(
+      resultData,
+      resultMask,
+      fillValue: self.fillValue,
+      out: out,
+    );
   });
 }

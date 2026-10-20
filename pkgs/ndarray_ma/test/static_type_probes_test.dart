@@ -19,22 +19,6 @@
 /// to `pkgs/ndarray_ma/pubspec.yaml`.
 library;
 
-import 'package:ndarray/ndarray.dart'
-    show
-        AnySpec,
-        Boolean,
-        Complex,
-        Complex128,
-        Complex64,
-        DTypeTag,
-        Float16,
-        Float32,
-        Float64,
-        Int32,
-        Int64,
-        IntegerDType,
-        Uint64,
-        Uint8;
 import 'package:ndarray_ma/ndarray_ma.dart';
 import 'package:test/test.dart';
 
@@ -64,7 +48,7 @@ void main() {
         equals(typeOf<MaskedArray<Float32>>()),
       );
       expect(
-        staticTypeOf(() => _m32.sum()),
+        staticTypeOf(() => _m32.sum(out: _m32)),
         equals(typeOf<MaskedArray<Float32>>()),
       );
       expect(
@@ -80,11 +64,11 @@ void main() {
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
-        staticTypeOf(() => _m32.mean()),
+        staticTypeOf(() => _m32.mean(out: _m64)),
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
-        staticTypeOf(() => divide(_m32, _m32)),
+        staticTypeOf(() => divide(_m32, _m32, out: _m32)),
         equals(typeOf<MaskedArray<Float32>>()),
       );
       expect(
@@ -92,24 +76,36 @@ void main() {
         equals(typeOf<MaskedArray<Float32>>()),
       );
       expect(
-        staticTypeOf(() => min(_m32)),
+        staticTypeOf(() => min(_m32, out: _m32)),
+        equals(typeOf<MaskedArray<Float32>>()),
+      );
+      expect(
+        staticTypeOf(() => add(_m32, _m32, out: _m32)),
         equals(typeOf<MaskedArray<Float32>>()),
       );
       expect(
         staticTypeOf(() => _m32 + _m32),
         equals(typeOf<MaskedArray<Float32>>()),
       );
+      expect(
+        staticTypeOf(() => sin(_m32, out: _m32)),
+        equals(typeOf<MaskedArray<Float32>>()),
+      );
       expect(staticTypeOf(() => _m32.scalar), equals(typeOf<double?>()));
       expect(staticTypeOf(() => _m32.getCell([0])), equals(typeOf<double?>()));
+      expect(
+        staticTypeOf(() => _m32.toList()),
+        equals(typeOf<List<double?>>()),
+      );
     });
 
     test('MaskedArray<Int32>', () {
       expect(
-        staticTypeOf(() => sum(_mi32)),
+        staticTypeOf(() => sum(_mi32, out: _mi64)),
         equals(typeOf<MaskedArray<Int64>>()),
       );
       expect(
-        staticTypeOf(() => _mi32.sum()),
+        staticTypeOf(() => _mi32.sum(out: _mi64)),
         equals(typeOf<MaskedArray<Int64>>()),
       );
       expect(
@@ -121,7 +117,7 @@ void main() {
         equals(typeOf<MaskedArray<Int64>>()),
       );
       expect(
-        staticTypeOf(() => mean(_mi32)),
+        staticTypeOf(() => mean(_mi32, out: _m64)),
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
@@ -129,7 +125,7 @@ void main() {
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
-        staticTypeOf(() => divide(_mi32, _mi32)),
+        staticTypeOf(() => divide(_mi32, _mi32, out: _m64)),
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
@@ -144,8 +140,29 @@ void main() {
         staticTypeOf(() => _mi32 + _mi32),
         equals(typeOf<MaskedArray<Int32>>()),
       );
+      expect(
+        staticTypeOf(() => bitwiseAnd(_mi32, _mi32, out: _mi32)),
+        equals(typeOf<MaskedArray<Int32>>()),
+      );
+      expect(
+        staticTypeOf(() => leftShift(_mi32, _mi32, out: _mi32)),
+        equals(typeOf<MaskedArray<Int32>>()),
+      );
+      expect(
+        staticTypeOf(() => _mi32 << 2),
+        equals(typeOf<MaskedArray<Int32>>()),
+      );
+      expect(
+        staticTypeOf(() => sin(_mi32, out: _m64)),
+        equals(typeOf<MaskedArray<Float64>>()),
+      );
+      expect(
+        staticTypeOf(() => atan2(_mi32, _mi32, out: _m64)),
+        equals(typeOf<MaskedArray<Float64>>()),
+      );
       expect(staticTypeOf(() => _mi32.scalar), equals(typeOf<int?>()));
       expect(staticTypeOf(() => _mi32.getCell([0])), equals(typeOf<int?>()));
+      expect(staticTypeOf(() => _mi32.toList()), equals(typeOf<List<int?>>()));
     });
 
     test('MaskedArray<Uint8>', () {
@@ -232,6 +249,14 @@ void main() {
       );
       expect(
         staticTypeOf(() => _mb + _mb),
+        equals(typeOf<MaskedArray<Boolean>>()),
+      );
+      expect(
+        staticTypeOf(() => _mb & _mb),
+        equals(typeOf<MaskedArray<Boolean>>()),
+      );
+      expect(
+        staticTypeOf(() => bitwiseXor(_mb, _mb)),
         equals(typeOf<MaskedArray<Boolean>>()),
       );
       expect(staticTypeOf(() => _mb.scalar), equals(typeOf<bool?>()));
@@ -324,6 +349,10 @@ void main() {
         staticTypeOf(() => _m16 + _m16),
         equals(typeOf<MaskedArray<Float16>>()),
       );
+      expect(
+        staticTypeOf(() => sin(_m16)),
+        equals(typeOf<MaskedArray<Float64>>()),
+      );
       expect(staticTypeOf(() => _m16.scalar), equals(typeOf<double?>()));
       expect(staticTypeOf(() => _m16.getCell([0])), equals(typeOf<double?>()));
     });
@@ -362,6 +391,10 @@ void main() {
         equals(typeOf<MaskedArray<Complex64>>()),
       );
       expect(
+        staticTypeOf(() => abs(_mc64, out: _m32)),
+        equals(typeOf<MaskedArray<Float32>>()),
+      );
+      expect(
         staticTypeOf(() => min(_mc64)),
         equals(typeOf<MaskedArray<Complex64>>()),
       );
@@ -376,7 +409,7 @@ void main() {
       );
     });
 
-    test('MaskedArray<DTypeTag> fallback extensions', () {
+    test('MaskedArray<DTypeTag> fallback extensions & escape hatches', () {
       expect(
         staticTypeOf(() => _mdyn.sum()),
         equals(typeOf<MaskedArray<DTypeTag>>()),
@@ -400,6 +433,22 @@ void main() {
       expect(
         staticTypeOf(() => _mdyn + _mdyn),
         equals(typeOf<MaskedArray<DTypeTag>>()),
+      );
+      expect(
+        staticTypeOf(() => add(_mdyn.asAnySpec, _mdyn.asAnySpec)),
+        equals(typeOf<MaskedArray<AnySpec>>()),
+      );
+      expect(
+        staticTypeOf(
+          () => bitwiseAnd(_mdyn.asBitwiseDType, _mdyn.asBitwiseDType),
+        ),
+        equals(typeOf<MaskedArray<AnyBitwiseSpec>>()),
+      );
+      expect(
+        staticTypeOf(
+          () => leftShift(_mdyn.asIntegerDType, _mdyn.asIntegerDType),
+        ),
+        equals(typeOf<MaskedArray<AnyIntegerSpec>>()),
       );
       expect(staticTypeOf(() => _mdyn.scalar), equals(typeOf<dynamic>()));
       expect(staticTypeOf(() => _mdyn.getCell([0])), equals(typeOf<dynamic>()));
@@ -467,12 +516,25 @@ void main() {
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
-        staticTypeOf(() => divide([_mi64, _mi32].first, [_mi64, _mi32].first)),
+        staticTypeOf(
+          () => divide(
+            [_mi64, _mi32].first.asIntegerDType,
+            [_mi64, _mi32].first.asIntegerDType,
+          ),
+        ),
         equals(typeOf<MaskedArray<Float64>>()),
       );
       expect(
         staticTypeOf(() => [_mi64, _mi32].first / [_mi64, _mi32].first),
         equals(typeOf<MaskedArray<Float64>>()),
+      );
+      expect(
+        staticTypeOf(() => [_mi64, _mi32].first << 1),
+        equals(typeOf<MaskedArray<IntegerDType>>()),
+      );
+      expect(
+        staticTypeOf(() => [_mi64, _mi32].first & 1),
+        equals(typeOf<MaskedArray<IntegerDType>>()),
       );
       expect(
         staticTypeOf(() => [_mi64, _mi32].first.scalar),
