@@ -425,6 +425,18 @@ final class _ViewLifecycleMisuseVisitor extends SimpleAstVisitor<void> {
       }
     }
 
+    if (isScopeEscapeInvocation(node)) {
+      final enclosingBody = node.thisOrAncestorOfType<FunctionBody>();
+      final decls = enclosingBody != null
+          ? SubtreeDeclarations.collect(enclosingBody)
+          : SubtreeDeclarations();
+      final arg = node.argumentList.arguments.first.argumentExpression;
+      if (isViewProducingExpression(arg, decls)) {
+        rule.reportAtNode(node);
+        return;
+      }
+    }
+
     if (isReturningInvocation(node)) {
       final args = node.argumentList.arguments;
       if (args.isEmpty) return;
@@ -669,12 +681,18 @@ final class _IdentityCastDisposeVisitor extends SimpleAstVisitor<void> {
   @override
   void visitMethodInvocation(MethodInvocation node) {
     final name = node.methodName.name;
-    if (name != 'dispose' &&
+    final isEscape = isScopeEscapeInvocation(node);
+    if (!isEscape &&
+        name != 'dispose' &&
         name != 'detachToParentScope' &&
         name != 'detachFromScope') {
       return;
     }
-    final target = node.realTarget;
+    final target = isEscape
+        ? unwrapParenthesized(
+            node.argumentList.arguments.first.argumentExpression,
+          )
+        : node.realTarget;
     if (target == null) return;
 
     // Direct invocation `a.astype(dt, copy: false).dispose()`

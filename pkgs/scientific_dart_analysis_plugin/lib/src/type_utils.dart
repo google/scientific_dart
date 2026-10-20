@@ -180,10 +180,27 @@ Expression unwrapParenthesized(Expression expr) {
   return current;
 }
 
-/// Returns whether [invocation] is `NDArray.scope(...)` or
-/// `ResourceScope.scope(...)`.
+/// Returns whether [type] is `ResourceScope`.
+bool isResourceScopeType(DartType? type) {
+  if (type is! InterfaceType) return false;
+  return type.element.name == 'ResourceScope';
+}
+
+/// Returns whether [invocation] is `scope.escape(resource)` on a
+/// `ResourceScope` receiver.
+bool isScopeEscapeInvocation(MethodInvocation invocation) {
+  if (invocation.methodName.name != 'escape') return false;
+  if (invocation.argumentList.arguments.length != 1) return false;
+  final target = invocation.realTarget;
+  if (target == null) return false;
+  return isResourceScopeType(target.staticType);
+}
+
+/// Returns whether [invocation] is `NDArray.scope(...)`, `NDArray.using(...)`,
+/// `ResourceScope.scope(...)`, or `ResourceScope.using(...)`.
 bool isScopeInvocation(MethodInvocation invocation) {
-  if (invocation.methodName.name != 'scope') return false;
+  final name = invocation.methodName.name;
+  if (name != 'scope' && name != 'using') return false;
   final target = invocation.target;
   if (target is SimpleIdentifier) {
     return target.name == 'NDArray' || target.name == 'ResourceScope';
@@ -296,7 +313,7 @@ final class _DeclarationCollector extends RecursiveAstVisitor<void> {
 
 /// Returns whether [expr] directly detaches a `ScopedResource` (e.g.
 /// `x.detachToParentScope()`, `x.detachFromScope()`, `x..detachToParentScope()`,
-/// `NDArray.returning(...)`, `NDArray.unmanaged(...)`).
+/// `scope.escape(x)`, `NDArray.returning(...)`, `NDArray.unmanaged(...)`).
 bool isDirectlyDetachedExpression(Expression expr) {
   final unwrapped = unwrapParenthesized(expr);
   if (unwrapped is MethodInvocation) {
@@ -305,6 +322,7 @@ bool isDirectlyDetachedExpression(Expression expr) {
         methodName == 'detachFromScope') {
       return true;
     }
+    if (isScopeEscapeInvocation(unwrapped)) return true;
     if (isReturningInvocation(unwrapped)) return true;
     if (methodName == 'unmanaged') return true;
   }
@@ -321,8 +339,9 @@ bool isDirectlyDetachedExpression(Expression expr) {
   return false;
 }
 
-/// Returns whether [element] has `.detachToParentScope()` or
-/// `.detachFromScope()` invoked on it inside [scopeBody] prior to [beforeOffset].
+/// Returns whether [element] has `.detachToParentScope()`,
+/// `.detachFromScope()`, or `scope.escape(...)` invoked on it inside
+/// [scopeBody] prior to [beforeOffset].
 bool wasElementDetachedBefore(
   Element element,
   AstNode scopeBody,
@@ -351,6 +370,15 @@ final class _DetachCallFinder extends RecursiveAstVisitor<void> {
         return;
       }
     }
+    if (isScopeEscapeInvocation(node)) {
+      final arg = unwrapParenthesized(
+        node.argumentList.arguments.first.argumentExpression,
+      );
+      if (arg is SimpleIdentifier && arg.element == targetElement) {
+        found = true;
+        return;
+      }
+    }
     super.visitMethodInvocation(node);
   }
 }
@@ -373,6 +401,10 @@ bool isViewProducingExpression(
       if (target != null) {
         return isViewProducingExpression(target, decls, depth: depth + 1);
       }
+    }
+    if (isScopeEscapeInvocation(unwrapped)) {
+      final arg = unwrapped.argumentList.arguments.first.argumentExpression;
+      return isViewProducingExpression(arg, decls, depth: depth + 1);
     }
     if (kAlwaysViewNames.contains(name)) {
       final targetType = unwrapped.realTarget?.staticType;

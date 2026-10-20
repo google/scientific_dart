@@ -251,11 +251,26 @@ NDArray<Float64> goodOuterViewViaLocal(NDArray<Float64> outer) {
     return v; // OK: root buffer belongs to the caller
   });
 }
+
+(NDArray<Float64>, NDArray<Float64>) goodUsingEscape() {
+  return NDArray.using((scope) {
+    final a = NDArray.ones([4], DType.float64);
+    final b = NDArray.zeros([4], DType.float64);
+    return (scope.escape(a + b), scope.escape(a - b)); // OK
+  });
+}
+
+NDArray<Float64> badUsingUnescaped() {
+  return NDArray.using((scope) {
+    final a = NDArray.ones([4], DType.float64);
+    return a + a; // VIOLATION 4: unescaped in NDArray.using
+  });
+}
 ''',
           rules: [UnescapedScopeReturnRule()],
         );
 
-        expectOnly(diagnostics, 'ndarray_unescaped_scope_return', 3);
+        expectOnly(diagnostics, 'ndarray_unescaped_scope_return', 4);
       },
     );
 
@@ -282,6 +297,13 @@ NDArray<Float64> badDetachTranspose() {
   });
 }
 
+NDArray<Float64> badScopeEscapeSlice() {
+  return NDArray.using((scope) {
+    final a = NDArray.ones([3, 3], DType.float64);
+    return scope.escape(a.slice([Slice(start: 0, stop: 2)])); // VIOLATION 3
+  });
+}
+
 void goodDisposeReshape(NDArray<Float64> a) {
   // OK: reshape copies for non-contiguous input, so dispose may be needed.
   a.reshape([2, 3]).dispose();
@@ -297,7 +319,7 @@ NDArray<Float64> goodCopyBeforeReturn() {
           rules: [ViewLifecycleMisuseRule()],
         );
 
-        expectOnly(diagnostics, 'ndarray_view_lifecycle_misuse', 2);
+        expectOnly(diagnostics, 'ndarray_view_lifecycle_misuse', 3);
       },
     );
 

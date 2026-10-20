@@ -79,7 +79,28 @@ NDArray computeResult() {
 }
 ```
 
-> **Note**: You are now responsible for calling `.dispose()` on the returned array when you are finished with it.
+### `NDArray.using` with `defer` and `escape`
+
+When you need to return multiple arrays (such as a record) or run arbitrary LIFO cleanup callbacks when the scope exits, use `NDArray.using((scope) { ... })`:
+
+```dart
+(NDArray<Float64>, NDArray<Float64>) sumAndDiff() {
+  return NDArray.using((scope) {
+    final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+    final b = NDArray.fromList([4.0, 5.0, 6.0], [3], DType.float64);
+
+    final timer = Stopwatch()..start();
+    scope.defer(() {
+      timer.stop();
+      print('Computation took ${timer.elapsed}');
+    });
+
+    return (scope.escape(a + b), scope.escape(a - b));
+  });
+}
+```
+
+> **Note**: You are now responsible for calling `.dispose()` on the returned array when you are finished with it (unless an enclosing scope owns it).
 
 
 ## Asynchronous Scopes
