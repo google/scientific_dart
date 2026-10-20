@@ -1,3 +1,7 @@
+## 0.3.1-wip
+
+- Added `NDArray.using((scope) { ... })` (and re-exported `ResourceScope`) to support LIFO `scope.defer(...)` cleanup callbacks and `scope.escape(...)` promotion of multiple results (such as records) (#1).
+
 ## 0.3.0
 
 - **Breaking — Layered Single-Slot DType Projections & `SelfOf<R>`**:

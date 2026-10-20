@@ -14,7 +14,6 @@
 
 import 'dart:ffi' as ffi;
 import 'package:ndarray/ndarray.dart';
-import 'package:resource_scope/resource_scope.dart';
 import 'expr.dart';
 import 'ffi/symengine_bindings.dart' as se;
 

@@ -76,7 +76,9 @@ void main() {
         final fixturePath = _native(
           '$resolvedPkgRoot/test/meta/fixtures/static_type_probes_fixture.dart',
         );
-        final sourceLines = File(fixturePath).readAsStringSync().split('\n');
+        final sourceLines = File(
+          fixturePath,
+        ).readAsStringSync().replaceAll('\r\n', '\n').split('\n');
         final expectedByLine = <int, String>{};
         final expectRegex = RegExp(r'//\s*expect:\s*(.+)$');
         for (var i = 0; i < sourceLines.length; i++) {
@@ -374,7 +376,9 @@ void main() {
         final virtualPath = _native(
           '$resolvedPkgRoot/test/meta/fixtures/_negative_probes_overlay.dart',
         );
-        final content = File(txtPath).readAsStringSync();
+        final content = File(
+          txtPath,
+        ).readAsStringSync().replaceAll('\r\n', '\n');
         final lines = content.split('\n');
 
         final expectedCodesByLine = <int, Set<String>>{};

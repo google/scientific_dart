@@ -18,7 +18,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:ndarray/ndarray.dart';
-import 'package:resource_scope/resource_scope.dart';
 import 'package:test/test.dart';
 
 void main() {

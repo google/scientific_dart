@@ -1721,6 +1721,45 @@ void main() {
         expect(ownedCopy.toList(), [10.0, 11.0, 12.0, 13.0, 14.0]);
       }),
     );
+
+    test(
+      'NDArray.using supports LIFO defer, tuple escape, and rejects escaping views',
+      () => NDArray.scope(() {
+        final events = <String>[];
+        late NDArray<Float64> tempA;
+        late NDArray<Float64> tempB;
+
+        final (sumArr, diffArr) = NDArray.using((scope) {
+          tempA = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+          tempB = NDArray.fromList([4.0, 5.0, 6.0], [3], DType.float64);
+
+          scope.defer(() {
+            // Arrays allocated in the scope are still accessible in defer, and
+            // temporary arrays created inside defer (such as mean(tempA)) are
+            // also tracked and disposed when the scope finishes.
+            expect(mean(tempA).scalar, closeTo(2.0, 1e-12));
+            events.add('defer-first');
+          });
+          scope.defer(() {
+            events.add('defer-second');
+          });
+
+          // Escaping a view must throw StateError just like detachToParentScope().
+          final subView = tempA.slice([Slice(start: 0, stop: 2)]);
+          expect(() => scope.escape(subView), throwsStateError);
+
+          return (scope.escape(tempA + tempB), scope.escape(tempA - tempB));
+        });
+
+        expect(events, equals(['defer-second', 'defer-first']));
+        expect(tempA.isDisposed, isTrue);
+        expect(tempB.isDisposed, isTrue);
+        expect(sumArr.isDisposed, isFalse);
+        expect(diffArr.isDisposed, isFalse);
+        expect(sumArr.toList(), equals([5.0, 7.0, 9.0]));
+        expect(diffArr.toList(), equals([-3.0, -3.0, -3.0]));
+      }),
+    );
   });
 
   group('Empty arrays', () {

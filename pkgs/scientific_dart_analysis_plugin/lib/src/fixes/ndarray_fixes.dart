@@ -200,10 +200,13 @@ final class AddCopyBeforeViewLifecycleFix extends ResolvedCorrectionProducer {
       node,
       (inv) =>
           inv.methodName.name == 'detachToParentScope' ||
-          inv.methodName.name == 'detachFromScope',
+          inv.methodName.name == 'detachFromScope' ||
+          isScopeEscapeInvocation(inv),
     );
     if (detachInvocation != null) {
-      final receiver = detachInvocation.realTarget;
+      final receiver = isScopeEscapeInvocation(detachInvocation)
+          ? detachInvocation.argumentList.arguments.first.argumentExpression
+          : detachInvocation.realTarget;
       if (receiver != null) {
         await _appendCopyToExpression(builder, receiver);
         return;

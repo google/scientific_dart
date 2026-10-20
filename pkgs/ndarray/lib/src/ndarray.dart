@@ -1381,7 +1381,24 @@ sealed class NDArray<T extends DTypeTag>
 
   /// Executes [callback] in a lexical [ResourceScope] that disposes all
   /// non-detached [NDArray] instances allocated during [callback] upon exit.
+  ///
+  /// {@example /example/ndarray_example.dart lang=dart}
   static R scope<R>(R Function() callback) => ResourceScope.scope(callback);
+
+  /// Executes [callback] in a lexical [ResourceScope], passing the active
+  /// [ResourceScope] handle so [callback] can register [ResourceScope.defer]
+  /// cleanup callbacks and promote results with [ResourceScope.escape].
+  ///
+  /// All non-escaped [NDArray] instances allocated during [callback] are
+  /// automatically disposed when the scope exits (after deferred callbacks
+  /// have run in LIFO order).
+  ///
+  /// It is an error to pass a view ([isView] is `true`) to `scope.escape`;
+  /// materialize an owning copy first (`scope.escape(view.copy())`).
+  ///
+  /// {@example /example/ndarray_example.dart lang=dart}
+  static R using<R>(R Function(ResourceScope scope) callback) =>
+      ResourceScope.using(callback);
 
   /// Executes [callback] within an automatic resource management scope and
   /// promotes the returned owning [NDArray] to the caller's parent scope (or to
