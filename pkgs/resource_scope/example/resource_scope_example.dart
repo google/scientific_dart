@@ -78,6 +78,21 @@ void main() {
   });
 
   print('Outer scope completed. Final disposed status: ${retained.isDisposed}');
+
+  print('\n=== 3. LIFO defer & Tuple Escape with ResourceScope.using ===');
+  final (first, second) = ResourceScope.using((scope) {
+    final temp = SimpleNativeBuffer('scratch_buffer');
+    final out1 = SimpleNativeBuffer('escaped_1');
+    final out2 = SimpleNativeBuffer('escaped_2');
+
+    scope.defer(() => print('Deferred cleanup 1 (runs second, LIFO)'));
+    scope.defer(() => print('Deferred cleanup 2 (runs first, LIFO)'));
+
+    print('Computing with ${temp.name}...');
+    return (scope.escape(out1), scope.escape(out2));
+  });
+  first.dispose();
+  second.dispose();
 }
 
 String retainedResult(SimpleNativeBuffer buf) =>

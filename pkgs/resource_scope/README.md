@@ -6,8 +6,9 @@ Zone-based automatic scoped resource management for deterministic FFI and native
 
 ## Features
 
-- **Automatic Resource Disposal**: Execute code blocks inside `ResourceScope.scope(() { ... })`, and any object implementing `ScopedResource` created inside that zone will be deterministically disposed (`.dispose()`) when the scope exits.
-- **Scope Escaping / Return Promotion**: Use `ResourceScope.returning(() { ... })` or `.detachFromScope()` / `.detachToParentScope()` to safely return resources to the caller or parent scope while cleaning up all intermediate allocations.
+- **Automatic Resource Disposal**: Execute code blocks inside `ResourceScope.scope(() { ... })` or `ResourceScope.using((scope) { ... })`, and any object implementing `ScopedResource` created inside that zone will be deterministically disposed (`.dispose()`) when the scope exits.
+- **LIFO `defer` & `escape`**: Inside `ResourceScope.using((scope) { ... })`, register LIFO cleanup callbacks with `scope.defer(() { ... })` and promote one or more results (including records) to the parent scope with `scope.escape(resource)`.
+- **Scope Escaping / Return Promotion**: Use `ResourceScope.returning(() { ... })`, `scope.escape(resource)`, or `.detachFromScope()` / `.detachToParentScope()` to safely return resources to the caller or parent scope while cleaning up all intermediate allocations.
 - **Hybrid Collection Scaling**: Tracks small scopes (up to 100 elements) in a fast contiguous `List` for CPU cache locality and zero hashing overhead, automatically promoting to a `HashSet` ($O(1)$ scaling) for larger collections.
 - **Zero Dependencies**: Lightweight and standalone so any FFI wrapper, database client, audio/video stream library, or math package can implement `ScopedResource`.
 

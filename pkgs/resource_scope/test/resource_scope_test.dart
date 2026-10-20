@@ -210,5 +210,125 @@ void main() {
         expect(unmanagedRes.isDisposed, isTrue);
       },
     );
+
+    test(
+      'using supports LIFO defer callbacks and runs them before resource disposal',
+      () {
+        final events = <String>[];
+        late DummyResource r1;
+        late DummyResource r2;
+
+        final (escaped1, escaped2) = ResourceScope.using((scope) {
+          r1 = DummyResource(1);
+          r2 = DummyResource(2);
+          final out1 = DummyResource(3);
+          final out2 = DummyResource(4);
+
+          scope.defer(() {
+            // Tracked resources should still be alive when defer callbacks run.
+            expect(r1.isDisposed, isFalse);
+            expect(r2.isDisposed, isFalse);
+            events.add('defer-1');
+          });
+          scope.defer(() {
+            expect(r1.isDisposed, isFalse);
+            events.add('defer-2');
+          });
+
+          return (scope.escape(out1), scope.escape(out2));
+        });
+
+        expect(events, equals(['defer-2', 'defer-1']));
+        expect(r1.isDisposed, isTrue);
+        expect(r2.isDisposed, isTrue);
+        expect(escaped1.isDisposed, isFalse);
+        expect(escaped2.isDisposed, isFalse);
+
+        escaped1.dispose();
+        escaped2.dispose();
+      },
+    );
+
+    test(
+      'defer callbacks and resource disposals all run even when a defer throws',
+      () {
+        final events = <String>[];
+        late DummyResource r1;
+
+        expect(
+          () => ResourceScope.using((scope) {
+            r1 = DummyResource(10);
+            scope.defer(() => events.add('defer-1'));
+            scope.defer(() {
+              events.add('defer-2-throws');
+              throw StateError('boom in defer-2');
+            });
+            scope.defer(() => events.add('defer-3'));
+          }),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'message',
+              'boom in defer-2',
+            ),
+          ),
+        );
+
+        expect(events, equals(['defer-3', 'defer-2-throws', 'defer-1']));
+        expect(r1.isDisposed, isTrue);
+      },
+    );
+
+    test(
+      'async using runs defer in LIFO order after Future completes',
+      () async {
+        final events = <String>[];
+        late DummyResource temp;
+
+        final escaped = await ResourceScope.using((scope) async {
+          temp = DummyResource(20);
+          scope.defer(() => events.add('async-defer-1'));
+          await Future<void>.delayed(Duration.zero);
+          scope.defer(() => events.add('async-defer-2'));
+          final out = DummyResource(21);
+          return scope.escape(out);
+        });
+
+        expect(events, equals(['async-defer-2', 'async-defer-1']));
+        expect(temp.isDisposed, isTrue);
+        expect(escaped.isDisposed, isFalse);
+        escaped.dispose();
+      },
+    );
+
+    test('nested using promotes escaped resources to parent scope', () {
+      late DummyResource innerTemp;
+      late DummyResource promotedToOuter;
+
+      ResourceScope.using((outer) {
+        final res = ResourceScope.using((inner) {
+          innerTemp = DummyResource(30);
+          final out = DummyResource(31);
+          return inner.escape(out);
+        });
+        promotedToOuter = res;
+        expect(innerTemp.isDisposed, isTrue);
+        expect(promotedToOuter.isDisposed, isFalse);
+      });
+
+      expect(promotedToOuter.isDisposed, isTrue);
+    });
+
+    test('calling defer or escape on a closed scope throws StateError', () {
+      late ResourceScope capturedScope;
+      ResourceScope.using((scope) {
+        capturedScope = scope;
+      });
+
+      final r = DummyResource(40);
+      expect(() => capturedScope.defer(() {}), throwsStateError);
+      expect(() => capturedScope.escape(r), throwsStateError);
+      r.dispose();
+    });
   });
 }

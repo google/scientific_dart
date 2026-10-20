@@ -22,4 +22,5 @@ export 'src/nditer.dart';
 export 'src/exceptions.dart';
 export 'src/sendable_ndarray.dart';
 export 'src/scratch_arena.dart';
-export 'package:resource_scope/resource_scope.dart' show ScopedResource;
+export 'package:resource_scope/resource_scope.dart'
+    show ResourceScope, ScopedResource;

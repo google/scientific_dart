@@ -38,13 +38,26 @@ abstract interface class ScopedResource {
 
 /// Automatic zone-based scoped resource manager for [ScopedResource] instances.
 ///
-/// Use [ResourceScope.scope] to execute code blocks where any created [ScopedResource]
-/// is automatically disposed when the scope finishes.
+/// Use [ResourceScope.scope] or [ResourceScope.using] to execute code blocks
+/// where any created [ScopedResource] is automatically disposed when the scope
+/// finishes.
 ///
-/// Use [ResourceScope.returning] to automatically promote a returned [ScopedResource]
-/// to the outer parent scope while disposing all intermediate allocations.
+/// Inside [ResourceScope.using], the active [ResourceScope] handle provides
+/// [defer] to register LIFO cleanup callbacks and [escape] to promote results
+/// to the parent scope (or to manual ownership if there is no outer scope).
+///
+/// Use [ResourceScope.returning] to automatically promote a single returned
+/// [ScopedResource] to the outer parent scope while disposing all intermediate
+/// allocations.
 final class ResourceScope {
-  ResourceScope._();
+  final ResourceScope? _parentScope;
+  final List<ScopedResource> _list = [];
+  Set<ScopedResource>? _set;
+  List<void Function()>? _defers;
+  bool _isDisposing = false;
+  bool _isClosed = false;
+
+  ResourceScope._(this._parentScope);
 
   /// Whether allocation leak tracking is enabled via `--dart-define=TRACK_RESOURCE_ALLOCATIONS=true`
   /// or `--dart-define=TRACK_NDARRAY_ALLOCATIONS=true`.
@@ -87,7 +100,7 @@ final class ResourceScope {
   /// Constructors of classes implementing [ScopedResource] should call
   /// `ResourceScope.track(this)` during initialization.
   static void track(ScopedResource resource) {
-    final scope = Zone.current[_scopeKey] as _ResourceScopeInstance?;
+    final scope = Zone.current[_scopeKey] as ResourceScope?;
     scope?._track(resource);
     if (trackAllocations) {
       _trackedAllocations.add(resource);
@@ -96,11 +109,47 @@ final class ResourceScope {
 
   /// Removes [resource] from the active [ResourceScope] in [Zone.current], if any.
   static void untrack(ScopedResource resource) {
-    final scope = Zone.current[_scopeKey] as _ResourceScopeInstance?;
+    final scope = Zone.current[_scopeKey] as ResourceScope?;
     scope?._untrack(resource);
     if (trackAllocations) {
       _trackedAllocations.remove(resource);
     }
+  }
+
+  /// Executes [callback] within an automatic resource management scope, passing
+  /// the active [ResourceScope] handle to [callback].
+  ///
+  /// Any [ScopedResource] registered via [track] during the execution of
+  /// [callback] is automatically disposed when the scope exits (or throws),
+  /// unless promoted via [escape] or [ScopedResource.detachToParentScope].
+  /// Callbacks registered with [defer] execute in last-in, first-out (LIFO)
+  /// order before tracked resources are disposed.
+  ///
+  /// Supports both synchronous callbacks and asynchronous [Future]-returning
+  /// callbacks.
+  static R using<R>(R Function(ResourceScope scope) callback) {
+    final parentScope = Zone.current[_scopeKey] as ResourceScope?;
+    final scope = ResourceScope._(parentScope);
+    return runZoned(() {
+      R result;
+      try {
+        result = callback(scope);
+      } catch (e) {
+        try {
+          scope._dispose();
+        } catch (_) {
+          // Preserve the primary exception from callback; all deferred
+          // callbacks and resource disposals still ran inside _dispose().
+        }
+        rethrow;
+      }
+
+      if (result is Future) {
+        return result.whenComplete(scope._dispose) as R;
+      }
+      scope._dispose();
+      return result;
+    }, zoneValues: {_scopeKey: scope});
   }
 
   /// Executes [callback] within an automatic resource management scope.
@@ -109,25 +158,7 @@ final class ResourceScope {
   /// [callback] will be automatically disposed of when the callback finishes (or throws).
   ///
   /// Supports both synchronous callbacks and asynchronous [Future]-returning callbacks.
-  static R scope<R>(R Function() callback) {
-    final parentScope = Zone.current[_scopeKey] as _ResourceScopeInstance?;
-    final scope = _ResourceScopeInstance(parentScope);
-    return runZoned(() {
-      R result;
-      try {
-        result = callback();
-      } catch (e) {
-        scope.dispose();
-        rethrow;
-      }
-
-      if (result is Future) {
-        return result.whenComplete(scope.dispose) as R;
-      }
-      scope.dispose();
-      return result;
-    }, zoneValues: {_scopeKey: scope});
-  }
+  static R scope<R>(R Function() callback) => using((_) => callback());
 
   /// Executes [callback] within an automatic resource management scope, automatically
   /// detaching and returning the resulting [ScopedResource] to the parent scope (if any).
@@ -151,13 +182,13 @@ final class ResourceScope {
   /// Promotes [resource] from the current active scope to its parent outer scope,
   /// or throws a [StateError] if there is no active scope.
   static void promoteToParent(ScopedResource resource) {
-    final scope = Zone.current[_scopeKey] as _ResourceScopeInstance?;
+    final scope = Zone.current[_scopeKey] as ResourceScope?;
     if (scope == null) {
       throw StateError(
         'detachToParentScope() is only valid inside an active NDArray scope.',
       );
     }
-    if (scope._isClosed) {
+    if (scope._isClosed || scope._isDisposing) {
       throw StateError('Cannot promote a ScopedResource from a closed scope.');
     }
     final wasTracked = scope._untrack(resource);
@@ -165,18 +196,59 @@ final class ResourceScope {
       scope._parentScope?._track(resource);
     }
   }
-}
 
-/// Private zone scope instance that tracks [ScopedResource]s using a hybrid
-/// collection: a flat [List] for small scopes (<= 100 resources) and a
-/// [HashSet] for large scopes (> 100 resources) for O(1) scaling.
-final class _ResourceScopeInstance {
-  final _ResourceScopeInstance? _parentScope;
-  final List<ScopedResource> _list = [];
-  Set<ScopedResource>? _set;
-  bool _isClosed = false;
+  /// Registers [callback] to be executed when this scope exits.
+  ///
+  /// Deferred callbacks run in last-in, first-out (LIFO) order before the
+  /// [ScopedResource] instances tracked by this scope are disposed. If a
+  /// deferred callback throws, all remaining deferred callbacks and all
+  /// tracked [ScopedResource.dispose] calls still execute.
+  ///
+  /// It is an error (throws [StateError]) if this scope has already exited.
+  void defer(void Function() callback) {
+    if (_isClosed) {
+      throw StateError('Cannot register a defer callback in a closed scope.');
+    }
+    (_defers ??= []).add(callback);
+  }
 
-  _ResourceScopeInstance(this._parentScope);
+  /// Detaches [resource] from this scope and promotes it to the parent outer
+  /// scope (or to manual ownership if there is no outer scope), returning
+  /// [resource].
+  ///
+  /// Delegates to [ScopedResource.detachToParentScope] so resource-specific
+  /// invariants (such as rejecting non-owning views) are enforced.
+  ///
+  /// It is an error (throws [StateError]) if this scope has already exited.
+  T escape<T extends ScopedResource>(T resource) {
+    if (_isClosed || _isDisposing) {
+      throw StateError('Cannot escape a ScopedResource from a closed scope.');
+    }
+    var current = Zone.current[_scopeKey] as ResourceScope?;
+    if (identical(current, this)) {
+      return resource.detachToParentScope() as T;
+    }
+    final chain = <ResourceScope>[];
+    while (current != null && !identical(current, this)) {
+      chain.add(current);
+      current = current._parentScope;
+    }
+    if (identical(current, this)) {
+      chain.add(this);
+      var result = resource;
+      for (final s in chain) {
+        result = runZoned(
+          () => result.detachToParentScope() as T,
+          zoneValues: {_scopeKey: s},
+        );
+      }
+      return result;
+    }
+    return runZoned(
+      () => resource.detachToParentScope() as T,
+      zoneValues: {_scopeKey: this},
+    );
+  }
 
   void _track(ScopedResource resource) {
     if (_isClosed) {
@@ -226,14 +298,37 @@ final class _ResourceScopeInstance {
     return removed;
   }
 
-  void dispose() {
+  void _dispose() {
+    if (_isClosed || _isDisposing) return;
+    _isDisposing = true;
+    Object? firstError;
+    StackTrace? firstStackTrace;
+
+    final defers = _defers;
+    if (defers != null) {
+      while (defers.isNotEmpty) {
+        final callback = defers.removeLast();
+        try {
+          callback();
+        } catch (e, st) {
+          firstError ??= e;
+          firstStackTrace ??= st;
+        }
+      }
+    }
+
     _isClosed = true;
     if (_set != null) {
       final resources = _set!.toList(growable: false);
       _set!.clear();
       for (final resource in resources) {
         if (!resource.isDisposed) {
-          resource.dispose();
+          try {
+            resource.dispose();
+          } catch (e, st) {
+            firstError ??= e;
+            firstStackTrace ??= st;
+          }
         }
       }
     } else {
@@ -241,9 +336,18 @@ final class _ResourceScopeInstance {
       _list.clear();
       for (final resource in resources) {
         if (!resource.isDisposed) {
-          resource.dispose();
+          try {
+            resource.dispose();
+          } catch (e, st) {
+            firstError ??= e;
+            firstStackTrace ??= st;
+          }
         }
       }
+    }
+
+    if (firstError != null) {
+      Error.throwWithStackTrace(firstError, firstStackTrace!);
     }
   }
 }

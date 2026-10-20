@@ -56,5 +56,14 @@ void main() {
     final m3 = matmul(m1, m2);
     print('Result m1 * m2 shape: ${m3.shape}');
     print('Result m1 * m2 data: ${m3.toList()}');
+
+    print('\n--- Scoped Defer & Escape with NDArray.using ---');
+    final (sum, diff) = NDArray.using((scope) {
+      final x = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
+      final y = NDArray.fromList([4.0, 5.0, 6.0], [3], DType.float64);
+      scope.defer(() => print('Inner using scope completed'));
+      return (scope.escape(x + y), scope.escape(x - y));
+    });
+    print('Escaped sum: ${sum.toList()}, diff: ${diff.toList()}');
   });
 }
