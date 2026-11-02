@@ -26,26 +26,34 @@ DType<DTypeTag> _doublePrecisionDType(DType<DTypeTag> dtype) =>
 MaskedArray<R> _maSum<T extends DTypeTag, R extends DTypeTag>(
   MaskedArray<T> self, {
   int? axis,
+  MaskedArray<DTypeTag>? out,
 }) => _reduction<T, R>(
   self,
   (arr, {axis}) =>
       ndops.sumAs(arr, _accumulatorDType(self.dtype) as DType<R>, axis: axis),
   _zeroValue(self.dtype),
   axis,
+  out: out,
 );
 
 MaskedArray<R> _maProd<T extends DTypeTag, R extends DTypeTag>(
   MaskedArray<T> self, {
   int? axis,
+  MaskedArray<DTypeTag>? out,
 }) => _reduction<T, R>(
   self,
   (arr, {axis}) =>
       ndops.prodAs(arr, _accumulatorDType(self.dtype) as DType<R>, axis: axis),
   _oneValue(self.dtype),
   axis,
+  out: out,
 );
 
-MaskedArray<T> _maMin<T extends DTypeTag>(MaskedArray<T> self, {int? axis}) {
+MaskedArray<T> _maMin<T extends DTypeTag>(
+  MaskedArray<T> self, {
+  int? axis,
+  MaskedArray<DTypeTag>? out,
+}) {
   if (self.dtype.isComplex || self.dtype == DType.boolean) {
     throw UnsupportedError('Unsupported dtype for min: ${self.dtype}');
   }
@@ -54,10 +62,15 @@ MaskedArray<T> _maMin<T extends DTypeTag>(MaskedArray<T> self, {int? axis}) {
     (a, {axis}) => ndops.min(a, axis: axis),
     _maxValue(self.dtype),
     axis,
+    out: out,
   );
 }
 
-MaskedArray<T> _maMax<T extends DTypeTag>(MaskedArray<T> self, {int? axis}) {
+MaskedArray<T> _maMax<T extends DTypeTag>(
+  MaskedArray<T> self, {
+  int? axis,
+  MaskedArray<DTypeTag>? out,
+}) {
   if (self.dtype.isComplex || self.dtype == DType.boolean) {
     throw UnsupportedError('Unsupported dtype for max: ${self.dtype}');
   }
@@ -66,32 +79,44 @@ MaskedArray<T> _maMax<T extends DTypeTag>(MaskedArray<T> self, {int? axis}) {
     (a, {axis}) => ndops.max(a, axis: axis),
     _minValue(self.dtype),
     axis,
+    out: out,
   );
 }
 
-NDArray<Int64> _maCount(MaskedArray self, {int? axis}) {
+NDArray<Int64> _maCount(
+  MaskedArray<DTypeTag> self, {
+  int? axis,
+  NDArray<Int64>? out,
+}) {
   return NDArray.scope(() {
     final zeros = NDArray<Int64>.zeros(self.shape, DType.int64);
     final ones = NDArray<Int64>.ones(self.shape, DType.int64);
-    final validMap = ndops.where(self.mask, zeros, ones) as NDArray<Int64>;
-    final result = ndops.sumAs(validMap, DType.int64, axis: axis);
-    return result.detachToParentScope();
+    final validMap =
+        ndops.where<Int64>(self.mask, zeros, ones) as NDArray<Int64>;
+    final result = ndops.sumAs(validMap, DType.int64, axis: axis, out: out);
+    return out ?? result.detachToParentScope();
   });
 }
 
 MaskedArray<D> _maMean<T extends DTypeTag, D extends DTypeTag>(
   MaskedArray<T> self, {
   int? axis,
+  MaskedArray<DTypeTag>? out,
 }) {
   return NDArray.scope(() {
     final targetDType = _doublePrecisionDType(self.dtype) as DType<D>;
-    final s = _maSum<T, DTypeTag>(self, axis: axis).astype<D>(targetDType);
+    final s = _maSum<T, DTypeTag>(self, axis: axis).astype<D, D>(targetDType);
     final c = self.count(axis: axis).astype<D>(targetDType);
-    return _maDivide<D, D>(s, c).detachToParentScope();
+    final res = _maDivide<D, D>(s, c, out: out);
+    return out == null ? res.detachToParentScope() : res;
   });
 }
 
-MaskedArray<Float64> _maVariance(MaskedArray self, {int? axis}) {
+MaskedArray<Float64> _maVariance(
+  MaskedArray<DTypeTag> self, {
+  int? axis,
+  MaskedArray<Float64>? out,
+}) {
   return NDArray.scope(() {
     final targetDType = _doublePrecisionDType(self.dtype);
     final selfPromoted = self.astype(targetDType);
@@ -100,22 +125,30 @@ MaskedArray<Float64> _maVariance(MaskedArray self, {int? axis}) {
     final diff = selfPromoted.subtract(mExpanded);
     final MaskedArray<Float64> diffSq;
     if (self.dtype.isComplex) {
-      final mag = diff.mapUnary<Float64>(
+      final mag = diff.mapUnary<Float64, Float64>(
         (d) => ndops.abs(d as NDArray<Complex128>),
       );
       diffSq = mag.multiply(mag);
     } else {
       diffSq = diff.multiply(diff) as MaskedArray<Float64>;
     }
-    return _maMean<Float64, Float64>(diffSq, axis: axis).detachToParentScope();
+    final res = _maMean<Float64, Float64>(diffSq, axis: axis, out: out);
+    return out == null ? res.detachToParentScope() : res;
   });
 }
 
-MaskedArray<Float64> _maStd(MaskedArray self, {int? axis}) {
+MaskedArray<Float64> _maStd(
+  MaskedArray<DTypeTag> self, {
+  int? axis,
+  MaskedArray<Float64>? out,
+}) {
   return NDArray.scope(() {
     final v = self.variance(axis: axis);
-    final result = v.mapUnary<Float64>((data) => ndops.sqrt(data));
-    return result.detachToParentScope();
+    final res = v.mapUnary<Float64, Float64>(
+      (data) => ndops.sqrt(data),
+      out: out,
+    );
+    return out == null ? res.detachToParentScope() : res;
   });
 }
 
@@ -123,20 +156,21 @@ MaskedArray<R> _reduction<T extends DTypeTag, R extends DTypeTag>(
   MaskedArray<T> self,
   NDArray<R> Function(NDArray<T>, {int? axis}) ndOp,
   dynamic fillValueForReduction,
-  int? axis,
-) {
+  int? axis, {
+  MaskedArray<DTypeTag>? out,
+}) {
   return NDArray.scope(() {
     final fillArray = _wrapScalar<T>(fillValueForReduction, self.dtype);
     final filledData =
-        ndops.where(self.mask, fillArray, self.data) as NDArray<T>;
+        ndops.where<T>(self.mask, fillArray, self.data) as NDArray<T>;
     final resultData = ndOp(filledData, axis: axis);
     final resultMask = ndops.all(self.mask, axis: axis);
-    return dispatchCreateMaskedArray(
-          resultData.detachToParentScope(),
-          resultMask.detachToParentScope(),
-          fillValue: self.fillValue,
-        )
-        as MaskedArray<R>;
+    return _writeOrCreateMaskedArray<R>(
+      resultData,
+      resultMask,
+      fillValue: self.fillValue,
+      out: out,
+    );
   });
 }
 

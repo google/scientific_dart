@@ -776,15 +776,37 @@ void main() {
     group(
       'Allocation Tracking Integration Tests',
       () {
+        late Directory tempDir;
         late File tempFile;
         late String workingDir;
+        late String packageConfigPath;
 
         setUp(() {
           final inRoot = Directory('pkgs/ndarray').existsSync();
           workingDir = inRoot ? 'pkgs/ndarray' : '.';
-          final dirPath = inRoot ? 'pkgs/ndarray/test/core' : 'test/core';
-          tempFile = File('$dirPath/temp_tracker_helper.dart');
+          Directory dir = Directory.current.absolute;
+          while (true) {
+            final candidate = File(
+              '${dir.path}/.dart_tool/package_config.json',
+            );
+            if (candidate.existsSync()) {
+              packageConfigPath = candidate.path;
+              break;
+            }
+            final parent = dir.parent;
+            if (parent.path == dir.path) {
+              throw StateError(
+                'Could not locate .dart_tool/package_config.json',
+              );
+            }
+            dir = parent;
+          }
+          tempDir = Directory.systemTemp.createTempSync(
+            'ndarray_tracker_test_',
+          );
+          tempFile = File('${tempDir.path}/temp_tracker_helper.dart');
           tempFile.writeAsStringSync('''
+// Copyright 2026 Google LLC
 import 'package:ndarray/ndarray.dart';
 
 void main() {
@@ -819,17 +841,18 @@ void main() {
         });
 
         tearDown(() {
-          if (tempFile.existsSync()) {
-            tempFile.deleteSync();
+          if (tempDir.existsSync()) {
+            tempDir.deleteSync(recursive: true);
           }
         });
 
         test('Verifies tracking is disabled by default', () async {
           final result = await Process.run(Platform.resolvedExecutable, [
+            '--packages=$packageConfigPath',
             tempFile.absolute.path,
           ], workingDirectory: workingDir);
 
-          expect(result.exitCode, 0);
+          expect(result.exitCode, 0, reason: '${result.stderr}');
           expect(result.stdout, contains('trackAllocations: false'));
           expect(result.stdout, contains('trackedCount: 0'));
           expect(result.stdout, contains('trackedCountAfterView: 0'));
@@ -840,11 +863,12 @@ void main() {
 
         test('Verifies tracking works when enabled via define', () async {
           final result = await Process.run(Platform.resolvedExecutable, [
+            '--packages=$packageConfigPath',
             '--define=TRACK_NDARRAY_ALLOCATIONS=true',
             tempFile.absolute.path,
           ], workingDirectory: workingDir);
 
-          expect(result.exitCode, 0);
+          expect(result.exitCode, 0, reason: '${result.stderr}');
           expect(result.stdout, contains('trackAllocations: true'));
           expect(result.stdout, contains('trackedCount: 1'));
           expect(result.stdout, contains('trackedCountAfterView: 1'));

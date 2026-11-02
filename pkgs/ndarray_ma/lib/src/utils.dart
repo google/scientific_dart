@@ -14,7 +14,7 @@
 
 part of 'masked_array.dart';
 
-/// Default fill value mapping based on DType.
+/// Default fill value mapping based on [DType].
 Object _defaultFillValue(DType dtype) {
   switch (dtype) {
     case DType.float64:
@@ -39,7 +39,7 @@ Object _defaultFillValue(DType dtype) {
   }
 }
 
-/// Coerces a scalar value to the correct Dart type for a given DType.
+/// Coerces a scalar value to the correct Dart type for a given [DType].
 Object _coerceScalar(dynamic value, DType dtype) {
   if (dtype.isFloating) {
     return (value as num).toDouble();
@@ -52,7 +52,7 @@ Object _coerceScalar(dynamic value, DType dtype) {
     if (value is bool) return value;
     return (value as num) != 0;
   }
-  throw ArgumentError("Unsupported dtype: $dtype");
+  throw ArgumentError.value(dtype, 'dtype', 'Must be a supported DType.');
 }
 
 /// Helper to coerce or get default fill value.
@@ -65,14 +65,14 @@ Object? _coerceOrGetDefault(Object? value, DType dtype) {
   }
 }
 
-/// Wraps a scalar value into a 0-dimensional NDArray of the given DType.
+/// Wraps a scalar value into a 0-dimensional [NDArray] of the given [DType].
 NDArray<S> _wrapScalar<S extends DTypeTag>(dynamic value, DType<S> dtype) {
   if (value is NDArray<S>) return value;
   final coerced = _coerceScalar(value, dtype);
   return NDArray<S>.fromList([coerced], [], dtype);
 }
 
-/// Helper to get max value for a DType, used in min reduction.
+/// Helper to get max value for a [DType], used in `min` reduction.
 dynamic _maxValue(DType dtype) {
   switch (dtype) {
     case DType.float64:
@@ -97,11 +97,15 @@ dynamic _maxValue(DType dtype) {
     case DType.uint8:
       return 255;
     default:
-      throw ArgumentError("No max value for dtype $dtype");
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be an ordered real or integer DType.',
+      );
   }
 }
 
-/// Helper to get min value for a DType, used in max reduction.
+/// Helper to get min value for a [DType], used in `max` reduction.
 dynamic _minValue(DType dtype) {
   switch (dtype) {
     case DType.float64:
@@ -123,11 +127,54 @@ dynamic _minValue(DType dtype) {
     case DType.uint8:
       return 0;
     default:
-      throw ArgumentError("No min value for dtype $dtype");
+      throw ArgumentError.value(
+        dtype,
+        'dtype',
+        'Must be an ordered real or integer DType.',
+      );
   }
 }
 
-/// Dispatches MaskedArray creation to preserve runtime type parameter.
+/// Writes [resultData] and [resultMask] into [out] if provided, or detaches
+/// them to the parent scope and wraps them in a new [MaskedArray] with the
+/// concrete runtime tag of [resultData].
+///
+/// Must be called from inside an active [NDArray.scope].
+MaskedArray<R> _writeOrCreateMaskedArray<R extends DTypeTag>(
+  NDArray<R> resultData,
+  NDArray<Boolean> resultMask, {
+  required Object? fillValue,
+  MaskedArray<DTypeTag>? out,
+}) {
+  if (out != null) {
+    if (out.dtype != resultData.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have dtype ${resultData.dtype}, but has dtype ${out.dtype}.',
+      );
+    }
+    if (!out.data.hasSameShape(resultData)) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have shape ${resultData.shape}, but has shape ${out.shape}.',
+      );
+    }
+    resultData.copy(out: out.data as NDArray<R>);
+    resultMask.copy(out: out.mask);
+    return out as MaskedArray<R>;
+  }
+  return dispatchCreateMaskedArray(
+        resultData.detachToParentScope(),
+        resultMask.detachToParentScope(),
+        fillValue: fillValue,
+      )
+      as MaskedArray<R>;
+}
+
+/// Dispatches [MaskedArray] creation to preserve the concrete runtime type
+/// parameter.
 MaskedArray<DTypeTag> dispatchCreateMaskedArray(
   NDArray<DTypeTag> data,
   NDArray<Boolean> mask, {
