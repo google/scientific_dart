@@ -2485,27 +2485,50 @@ void _copyStrided2DMatrix(
   } else {
     final marker = ScratchArena.marker;
     try {
-      final cBuf = ScratchArena.allocate<ffi.Int64>(
-        4 * ffi.sizeOf<ffi.Int64>(),
-      );
-      cBuf[0] = stride0;
-      cBuf[1] = stride1;
-      cBuf[2] = n;
-      cBuf[3] = n;
-      final cStrides = cBuf;
-      final cShape = cBuf + 2;
+      final cBuf = ScratchArena.getStridedBuffer(2, 3);
+      final cShape = cBuf;
+      final cStridesSrc = cBuf + 2;
+      final cStridesDst = cBuf + 4;
+      cShape[0] = n;
+      cShape[1] = n;
+      cStridesSrc[0] = stride0;
+      cStridesSrc[1] = stride1;
+      cStridesDst[0] = n;
+      cStridesDst[1] = 1;
       final srcPtr = ffi.Pointer<ffi.Void>.fromAddress(
         src.address + offsetElements * byteWidth,
       );
       switch (dtype) {
-        case DType.float64:
-          s_flatten_double(srcPtr.cast(), cStrides, dest.cast(), cShape, 2);
+        case DType.float64 || DType.complex64:
+          s_positive_int64(
+            srcPtr.cast(),
+            cStridesSrc,
+            dest.cast(),
+            cStridesDst,
+            cShape,
+            2,
+            ffi.nullptr,
+          );
         case DType.float32:
-          s_flatten_float(srcPtr.cast(), cStrides, dest.cast(), cShape, 2);
+          s_positive_int32(
+            srcPtr.cast(),
+            cStridesSrc,
+            dest.cast(),
+            cStridesDst,
+            cShape,
+            2,
+            ffi.nullptr,
+          );
         case DType.complex128:
-          s_flatten_complex128(srcPtr.cast(), cStrides, dest.cast(), cShape, 2);
-        case DType.complex64:
-          s_flatten_complex64(srcPtr.cast(), cStrides, dest.cast(), cShape, 2);
+          s_positive_complex128(
+            srcPtr.cast(),
+            cStridesSrc,
+            dest.cast(),
+            cStridesDst,
+            cShape,
+            2,
+            ffi.nullptr,
+          );
         default:
           throw UnsupportedError('Unsupported type: $dtype');
       }

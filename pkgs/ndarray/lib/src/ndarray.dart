@@ -2481,7 +2481,12 @@ sealed class NDArray<T extends DTypeTag>
 
     if (!isContiguous) {
       final result = NDArray<T>.create(resolvedShape, dtype);
-      _copyStridedToContiguous(result);
+      try {
+        _copyStridedToContiguous(result);
+      } catch (_) {
+        result.dispose();
+        rethrow;
+      }
       return result;
     }
 
@@ -2592,12 +2597,19 @@ sealed class NDArray<T extends DTypeTag>
       });
     }
 
-    if (isContiguous && result.isContiguous) {
-      _copyContiguousNDArray(this, result, totalSize);
-    } else if (result.isContiguous) {
-      _copyStridedToContiguous(result);
-    } else {
-      _copyStrided(result);
+    try {
+      if (isContiguous && result.isContiguous) {
+        _copyContiguousNDArray(this, result, totalSize);
+      } else if (result.isContiguous) {
+        _copyStridedToContiguous(result);
+      } else {
+        _copyStrided(result);
+      }
+    } catch (_) {
+      if (out == null) {
+        result.dispose();
+      }
+      rethrow;
     }
 
     return result;
@@ -2752,60 +2764,74 @@ sealed class NDArray<T extends DTypeTag>
   }
 
   void _copyStridedToContiguous(NDArray<T> dest) {
+    final rank = shape.length;
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.copyInts(shape);
-      final cStridesSrc = ScratchArena.copyInts(strides);
+      final cBuf = ScratchArena.getStridedBuffer(rank, 3);
+      final cShape = cBuf;
+      final cStridesSrc = cBuf + rank;
+      final cStridesDst = cBuf + rank * 2;
+      var dstStride = 1;
+      for (var i = rank - 1; i >= 0; i--) {
+        final dim = shape[i];
+        cShape[i] = dim;
+        cStridesSrc[i] = strides[i];
+        cStridesDst[i] = dstStride;
+        dstStride *= dim;
+      }
       switch (dtype) {
-        case DType.float64 || DType.int64 || DType.uint64:
-          s_flatten_double(
+        case DType.complex128:
+          s_positive_complex128(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
+          );
+        case DType.float64 || DType.int64 || DType.uint64 || DType.complex64:
+          s_positive_int64(
+            pointer.cast(),
+            cStridesSrc,
+            dest.pointer.cast(),
+            cStridesDst,
+            cShape,
+            rank,
+            ffi.nullptr,
           );
         case DType.float32 || DType.int32 || DType.uint32:
-          s_flatten_float(
+          s_positive_int32(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
           );
         case DType.float16 || DType.bfloat16 || DType.int16 || DType.uint16:
-          s_flatten_int16(
+          s_positive_int16(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
           );
         case DType.int8 || DType.uint8 || DType.boolean:
-          s_flatten_uint8(
+          s_positive_uint8(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
-          );
-        case DType.complex128:
-          s_flatten_complex128(
-            pointer.cast(),
-            cStridesSrc,
-            dest.pointer.cast(),
-            cShape,
-            shape.length,
-          );
-        case DType.complex64:
-          s_flatten_complex64(
-            pointer.cast(),
-            cStridesSrc,
-            dest.pointer.cast(),
-            cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
           );
       }
+      helpers.checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
