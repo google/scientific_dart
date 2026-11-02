@@ -32,7 +32,7 @@ void main() {
             expect(aT.strides[1], isNot(1));
 
             final b = NDArray<Float64>.fromList([9.0, 8.0], [2], DType.float64);
-            final x = solve<Float64>(aT, b);
+            final x = solve(aT, b);
             // aT = [[4, 2], [1, 3]], b = [9, 8] => 4x0 + 2x1 = 9, x0 + 3x1 = 8 => x0 = 1.1, x1 = 2.3
             expect(x.getCell([0]), closeTo(1.1, 1e-12));
             expect(x.getCell([1]), closeTo(2.3, 1e-12));
@@ -48,7 +48,7 @@ void main() {
             );
             final aT = aOrig.transpose();
             final b = NDArray<Float32>.fromList([9.0, 8.0], [2], DType.float32);
-            final x = solve<Float32>(aT, b);
+            final x = solve(aT, b);
             expect(x.getCell([0]), closeTo(1.1, 1e-5));
             expect(x.getCell([1]), closeTo(2.3, 1e-5));
           });
@@ -72,7 +72,7 @@ void main() {
               [2],
               DType.complex128,
             );
-            final x = solve<Complex128>(aT, b);
+            final x = solve(aT, b);
             expect(x.getCell([0]).real, closeTo(1.1, 1e-12));
             expect(x.getCell([0]).imag, closeTo(0.0, 1e-12));
             expect(x.getCell([1]).real, closeTo(2.3, 1e-12));
@@ -98,7 +98,7 @@ void main() {
               [2],
               DType.complex64,
             );
-            final x = solve<Complex64>(aT, b);
+            final x = solve(aT, b);
             expect(x.getCell([0]).real, closeTo(1.1, 1e-5));
             expect(x.getCell([0]).imag, closeTo(0.0, 1e-5));
             expect(x.getCell([1]).real, closeTo(2.3, 1e-5));

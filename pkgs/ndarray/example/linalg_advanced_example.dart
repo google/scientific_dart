@@ -45,5 +45,26 @@ void main() {
     final m = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
     final fro = norm(m, ord: NormKind.frobenius);
     print('Matrix Frobenius Norm: ${fro.scalar}'); // sqrt(30)
+
+    // 5. Economy SVD, Singular Values (svdvals), and Matrix Rank (matrix_rank)
+    final tall = NDArray.fromList(
+      [1.0, 0.0, 0.0, 2.0, 0.0, 0.0],
+      [3, 2],
+      DType.float64,
+    );
+    final econ = svd(tall, fullMatrices: false);
+    print(
+      'Economy SVD shapes: U=${econ.u.shape}, S=${econ.s.shape}, Vh=${econ.vh.shape}',
+    );
+    print('Singular values (svdvals): ${svdvals(tall).toList()}'); // [2.0, 1.0]
+    print('Matrix rank (matrix_rank): ${matrix_rank(tall).scalar}'); // 2
+
+    // 6. Tensor Linear Systems (tensorsolve and tensorinv)
+    final eye4 = NDArray.eye(4, DType.float64).reshape([2, 2, 2, 2]);
+    final rhs = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
+    final sol = tensorsolve(eye4, rhs);
+    final invTensor = tensorinv(eye4, ind: 2);
+    print('tensorsolve solution: ${sol.toList()}'); // [1.0, 2.0, 3.0, 4.0]
+    print('tensorinv shape: ${invTensor.shape}'); // [2, 2, 2, 2]
   });
 }

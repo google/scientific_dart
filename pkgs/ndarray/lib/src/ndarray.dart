@@ -2480,14 +2480,7 @@ sealed class NDArray<T extends DTypeTag>
     }
 
     if (!isContiguous) {
-      final result = NDArray<T>.create(resolvedShape, dtype);
-      try {
-        _copyStridedToContiguous(result);
-      } catch (_) {
-        result.dispose();
-        rethrow;
-      }
-      return result;
+      return _allocateAndCopyContiguous(resolvedShape, newSize);
     }
 
     final newStrides = computeCStrides(resolvedShape);
@@ -2517,23 +2510,7 @@ sealed class NDArray<T extends DTypeTag>
       throw StateError('Cannot flatten a disposed NDArray.');
     }
     final totalSize = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
-    final result = NDArray<T>.create([totalSize], dtype);
-
-    if (totalSize == 0) {
-      return result;
-    }
-
-    try {
-      if (isContiguous) {
-        _copyContiguousNDArray(this, result, totalSize);
-      } else {
-        _copyStridedToContiguous(result);
-      }
-    } catch (_) {
-      result.dispose();
-      rethrow;
-    }
-    return result;
+    return _allocateAndCopyContiguous([totalSize], totalSize);
   }
 
   /// Returns a deep, C-contiguous copy of this array.
@@ -2559,59 +2536,62 @@ sealed class NDArray<T extends DTypeTag>
     if (isDisposed) {
       throw StateError('Cannot copy a disposed array.');
     }
-
-    final NDArray<T> result;
-    if (out != null) {
-      if (out.isDisposed) {
-        throw StateError('Cannot copy to a disposed array.');
-      }
-      if (!out.isWriteable ||
-          !listEquals(shape, out.shape) ||
-          dtype != out.dtype) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must be writeable and have matching shape and dtype',
-        );
-      }
-      result = out;
-    } else {
-      result = NDArray<T>.create(shape, dtype);
-    }
-
     final totalSize = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
-    if (totalSize == 0) {
-      return result;
+    if (out == null) {
+      return _allocateAndCopyContiguous(shape, totalSize);
     }
-
-    if (out != null && helpers.sharesMemory(this, result)) {
+    if (out.isDisposed) {
+      throw StateError('Cannot copy to a disposed array.');
+    }
+    if (!out.isWriteable ||
+        !listEquals(shape, out.shape) ||
+        dtype != out.dtype) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must be writeable and have matching shape and dtype',
+      );
+    }
+    if (totalSize == 0) {
+      return out;
+    }
+    if (helpers.sharesMemory(this, out)) {
       if (isContiguous &&
-          result.isContiguous &&
-          pointer == result.pointer &&
-          offsetElements == result.offsetElements) {
-        return result;
+          out.isContiguous &&
+          pointer == out.pointer &&
+          offsetElements == out.offsetElements) {
+        return out;
       }
       return NDArray.scope(() {
         final temp = copy();
-        return temp.copy(out: result);
+        return temp.copy(out: out);
       });
     }
+    if (isContiguous && out.isContiguous) {
+      _copyContiguousNDArray(this, out, totalSize);
+    } else if (out.isContiguous) {
+      _copyStridedToContiguous(out);
+    } else {
+      _copyStrided(out);
+    }
+    return out;
+  }
 
+  NDArray<T> _allocateAndCopyContiguous(List<int> targetShape, int totalSize) {
+    final result = NDArray<T>.create(targetShape, dtype);
+    if (totalSize == 0) {
+      return result;
+    }
     try {
-      if (isContiguous && result.isContiguous) {
+      if (isContiguous) {
         _copyContiguousNDArray(this, result, totalSize);
-      } else if (result.isContiguous) {
-        _copyStridedToContiguous(result);
       } else {
-        _copyStrided(result);
+        _copyStridedToContiguous(result);
       }
     } catch (_) {
-      if (out == null) {
-        result.dispose();
-      }
+      result.dispose();
       rethrow;
     }
-
     return result;
   }
 
@@ -2790,7 +2770,10 @@ sealed class NDArray<T extends DTypeTag>
             rank,
             ffi.nullptr,
           );
-        case DType.float64 || DType.int64 || DType.uint64 || DType.complex64:
+        case DType.float64:
+        case DType.int64:
+        case DType.uint64:
+        case DType.complex64:
           s_positive_int64(
             pointer.cast(),
             cStridesSrc,
@@ -2800,7 +2783,9 @@ sealed class NDArray<T extends DTypeTag>
             rank,
             ffi.nullptr,
           );
-        case DType.float32 || DType.int32 || DType.uint32:
+        case DType.float32:
+        case DType.int32:
+        case DType.uint32:
           s_positive_int32(
             pointer.cast(),
             cStridesSrc,
@@ -2810,7 +2795,10 @@ sealed class NDArray<T extends DTypeTag>
             rank,
             ffi.nullptr,
           );
-        case DType.float16 || DType.bfloat16 || DType.int16 || DType.uint16:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int16:
+        case DType.uint16:
           s_positive_int16(
             pointer.cast(),
             cStridesSrc,
@@ -2820,7 +2808,9 @@ sealed class NDArray<T extends DTypeTag>
             rank,
             ffi.nullptr,
           );
-        case DType.int8 || DType.uint8 || DType.boolean:
+        case DType.int8:
+        case DType.uint8:
+        case DType.boolean:
           s_positive_uint8(
             pointer.cast(),
             cStridesSrc,

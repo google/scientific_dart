@@ -179,7 +179,7 @@ final class KalmanFilter {
 
     // K = P * H^T * S^-1
     // Solve: S * K^T = H * P  => K^T = solve(S, H * P) => K = solve(S, H * P)^T
-    solve<Float64>(_s, _hp, out: _kTransposed);
+    solve(_s, _hp, out: _kTransposed);
     final K = _kTransposed.transposed; // Zero-copy view
 
     // x = x + K * y

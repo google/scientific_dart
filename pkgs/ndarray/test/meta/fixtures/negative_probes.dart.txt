@@ -75,6 +75,13 @@ final t_neg_cov_f32_i32 = cov(f32, y: i32); // error: could_not_infer
 final t_neg_multi_dot_out_dyn = multi_dot([f64, f64], out: dyn); // error: argument_type_not_assignable
 final t_neg_schur_dyn = schur(dyn); // error: argument_type_not_assignable
 final t_neg_complexSchur_dyn = complexSchur(dyn); // error: argument_type_not_assignable
+final t_neg_inv_dyn = inv(dyn); // error: argument_type_not_assignable
+final t_neg_det_dyn = det(dyn); // error: argument_type_not_assignable
+final t_neg_solve_f64_f32 = solve(f64, f32); // error: could_not_infer
+final t_neg_solve_i32_out_f32 = solve(i32, i32, out: f32); // error: could_not_infer
+final t_neg_svdvals_out_f64 = svdvals(f32, out: f64); // error: could_not_infer
+final t_neg_tensorsolve_f64_f32 = tensorsolve(f64, f32); // error: could_not_infer
+final t_neg_tensorinv_i32_out_f32 = tensorinv(i32, out: f32); // error: could_not_infer
 
 // Generic helpers: `T extends DTypeTag` / `T extends IntegerDType` do not
 // satisfy the SelfOf bounds even for a single array used twice.

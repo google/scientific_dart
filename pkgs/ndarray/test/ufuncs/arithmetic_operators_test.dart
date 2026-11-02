@@ -400,15 +400,28 @@ void main() {
       });
     });
 
-    test('svd and qr throw ArgumentError for integer inputs', () {
+    test('svd and qr promote integer inputs to float64 and reject boolean', () {
       NDArray.scope(() {
-        final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-        expect(() => svd(a), throwsArgumentError);
-        expect(() => qr(a), throwsArgumentError);
+        final a = NDArray.fromList([3, 0, 0, 4], [2, 2], DType.int32);
+        final sRes = svd(a);
+        expect(sRes.u.dtype, DType.float64);
+        expect(sRes.s.dtype, DType.float64);
+        expect(sRes.vh.dtype, DType.float64);
+        final qRes = qr(a);
+        expect(qRes.q.dtype, DType.float64);
+        expect(qRes.r.dtype, DType.float64);
 
-        final a8 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.uint8);
-        expect(() => svd(a8), throwsArgumentError);
-        expect(() => qr(a8), throwsArgumentError);
+        final a8 = NDArray.fromList([3, 0, 0, 4], [2, 2], DType.uint8);
+        expect(svd(a8).s.dtype, DType.float64);
+        expect(qr(a8).q.dtype, DType.float64);
+
+        final b = NDArray.fromList(
+          [true, false, false, true],
+          [2, 2],
+          DType.boolean,
+        );
+        expect(svd(b).s.dtype, DType.float64);
+        expect(qr(b).q.dtype, DType.float64);
       });
     });
 

@@ -298,6 +298,30 @@ void main() {
             >(),
           ),
         );
+        expect(
+          staticTypeOf(() => inv(fixture.i32)),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => solve(fixture.i32, fixture.i32)),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => svdvals(fixture.c64)),
+          equals(typeOf<NDArray<Float32>>()),
+        );
+        expect(
+          staticTypeOf(() => matrix_rank(fixture.f32)),
+          equals(typeOf<NDArray<Int64>>()),
+        );
+        expect(
+          staticTypeOf(() => tensorsolve(fixture.i32, fixture.i32)),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => tensorinv(fixture.f32)),
+          equals(typeOf<NDArray<Float32>>()),
+        );
 
         // Generic helpers bounded by IntegerDType / BitwiseDType
         expect(

@@ -322,11 +322,16 @@ void main() {
         });
       });
 
-      test('qr() and svd() validate float/complex dtype preconditions', () {
+      test('qr() and svd() auto-upcast integer matrices to float64', () {
         NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-          expect(() => qr(a), throwsArgumentError);
-          expect(() => svd(a), throwsArgumentError);
+          final qrRes = qr(a);
+          expect(qrRes.q.dtype, DType.float64);
+          expect(qrRes.r.dtype, DType.float64);
+          final svdRes = svd(a);
+          expect(svdRes.u.dtype, DType.float64);
+          expect(svdRes.s.dtype, DType.float64);
+          expect(svdRes.vh.dtype, DType.float64);
         });
       });
     });

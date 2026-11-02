@@ -2041,9 +2041,9 @@ void main() {
         );
         expect(
           verifiedProjectingFunctions.length,
-          equals(90),
+          equals(100),
           reason:
-              'Expected Rule 2 semantic check to verify all 90 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 96 total).',
+              'Expected Rule 2 semantic check to verify all 100 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 106 total).',
         );
         expect(
           runtimeDTypedResultFunctions,

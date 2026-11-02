@@ -247,11 +247,24 @@ void main() {
             expect(identical(res.s, outS), true);
             expect(identical(res.vh, outVh), true);
 
-            final intMat = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
+            final intMat = NDArray.fromList(Int32List.fromList([3, 0, 0, 4]), [
               2,
               2,
             ], DType.int32);
-            expect(() => svd(intMat), throwsArgumentError);
+            final intSvd = svd(intMat);
+            expect(intSvd.u.dtype, DType.float64);
+            expect(intSvd.s.dtype, DType.float64);
+            expect(intSvd.vh.dtype, DType.float64);
+            expect(intSvd.s.toList(), [4.0, 3.0]);
+
+            final boolMat = NDArray.fromList(
+              [true, false, false, true],
+              [2, 2],
+              DType.boolean,
+            );
+            final boolSvd = svd(boolMat);
+            expect(boolSvd.s.dtype, DType.float64);
+            expect(boolSvd.s.toList(), [1.0, 1.0]);
 
             final vec1D = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
               2,

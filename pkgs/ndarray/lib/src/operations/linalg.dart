@@ -1544,15 +1544,96 @@ NDArray<T> multi_dot<T extends AnySpec>(
   });
 }
 
-/// Computes the multiplicative inverse of a square 2D matrix.
+bool _promotesToFloat64(DType<DTypeTag> dtype) =>
+    dtype.isInteger ||
+    dtype == DType.boolean ||
+    dtype == DType.float16 ||
+    dtype == DType.bfloat16;
+
+void _validatePromotedOut(
+  NDArray<DTypeTag> out,
+  List<int> expectedShape,
+  DType<DTypeTag> inputDType, [
+  String paramName = 'out',
+]) {
+  validateOutBuffer(out, paramName);
+  final outDType = out.dtype;
+  final allowOrig =
+      (inputDType == DType.float16 || inputDType == DType.bfloat16) &&
+      outDType == inputDType;
+  if (!listEquals(out.shape, expectedShape) ||
+      (outDType != DType.float64 && !allowOrig)) {
+    throw ArgumentError.value(
+      out,
+      paramName,
+      'Must have compatible shape $expectedShape and float64 or $inputDType dtype (provided $paramName buffer has incompatible shape or dtype, got shape ${out.shape} and dtype ${out.dtype}).',
+    );
+  }
+}
+
+void _copyPromotedResult<R extends DTypeTag>(
+  NDArray<Float64> resF64,
+  NDArray<R> out,
+) {
+  if ((out.dtype as DType<DTypeTag>) == DType.float64) {
+    resF64.copy(out: out as NDArray<Float64>);
+  } else {
+    castNDArray<R>(resF64, out.dtype).copy(out: out);
+  }
+}
+
+NDArray<R> _runUnaryPromotedToFloat64<R extends DTypeTag, Out extends R>(
+  NDArray<DTypeTag> a,
+  List<int> expectedOutShape,
+  NDArray<Out>? out,
+  NDArray<Float64> Function(NDArray<Float64> aF64) computeF64,
+) {
+  if (out != null) {
+    _validatePromotedOut(out, expectedOutShape, a.dtype);
+  }
+  return NDArray.scope(() {
+    final aF64 = castNDArray<Float64>(a, DType.float64);
+    final resF64 = computeF64(aF64);
+    if (out != null) {
+      _copyPromotedResult(resF64, out);
+      return out;
+    }
+    return resF64.detachToParentScope() as NDArray<R>;
+  });
+}
+
+NDArray<R> _runBinaryPromotedToFloat64<R extends DTypeTag, Out extends R>(
+  NDArray<DTypeTag> a,
+  NDArray<DTypeTag> b,
+  List<int> expectedOutShape,
+  NDArray<Out>? out,
+  NDArray<Float64> Function(NDArray<Float64> aF64, NDArray<Float64> bF64)
+  computeF64,
+) {
+  if (out != null) {
+    _validatePromotedOut(out, expectedOutShape, a.dtype);
+  }
+  return NDArray.scope(() {
+    final aF64 = castNDArray<Float64>(a, DType.float64);
+    final bF64 = castNDArray<Float64>(b, DType.float64);
+    final resF64 = computeF64(aF64, bF64);
+    if (out != null) {
+      _copyPromotedResult(resF64, out);
+      return out;
+    }
+    return resF64.detachToParentScope() as NDArray<R>;
+  });
+}
+
+/// Computes the multiplicative inverse of a square 2D matrix or stack of matrices.
 ///
 /// Uses OpenBLAS LAPACK LU decomposition routines
 /// (`LAPACKE_dgetrf`/`LAPACKE_dgetri` for Float64, and `LAPACKE_sgetrf`/`LAPACKE_sgetri` for Float32).
+/// Integer, boolean, `Float16`, and `BFloat16` inputs are promoted to `Float64`.
 ///
 /// **Preconditions:**
 /// - It is an error if [a] or [out] is disposed.
-/// - It is an error if [a] is not square in its last two dimensions (`shape.length == 2` and `shape[0] == shape[1]`).
-/// - It is an error if [a] has an unsupported dtype (only float and complex dtypes are supported).
+/// - It is an error if [a] is not square in its last two dimensions (`rank >= 2` and `shape[rank - 2] == shape[rank - 1]`).
 /// - It is an error if [out] is provided and has incompatible shape or dtype.
 /// - The matrix must be non-singular (invertible).
 ///
@@ -1569,8 +1650,8 @@ NDArray<T> multi_dot<T extends AnySpec>(
 /// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [Matrix Inversion](https://en.wikipedia.org/wiki/Invertible_matrix)
-NDArray<T> inv<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
+NDArray<R> inv<R extends DTypeTag, Out extends R>(
+  NDArray<InexactOf<R>> a, {
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
@@ -1588,53 +1669,22 @@ NDArray<T> inv<T extends DTypeTag, Out extends T>(
     );
   }
 
-  switch (a.dtype) {
-    case DType.float32:
-    case DType.float64:
-    case DType.float16:
-    case DType.bfloat16:
-    case DType.complex64:
-    case DType.complex128:
-      break;
-    default:
-      throw ArgumentError.value(
-        a.dtype,
-        'a.dtype',
-        'Must be float or complex (matrix inversion only supports float or complex dtypes, got ${a.dtype}).',
-      );
-  }
+  final aDType = a.dtype as DType<DTypeTag>;
   checkBlasIntDim(a.shape[rank - 1], 'n', 'inv');
   checkBlasIntStride(a.strides[rank - 2], 'lda', 'inv');
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'inv');
-  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
-    if (out != null) {
-      validateOutBuffer(out);
-      if (!listEquals(out.shape, a.shape) ||
-          (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must have compatible shape ${a.shape} and float64 or ${a.dtype} dtype for matrix inversion (provided out buffer has incompatible shape or dtype).',
-        );
-      }
-    }
-    return NDArray.scope(() {
-      final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = inv<Float64, Float64>(aF64);
-      if (out != null) {
-        if (out.dtype == DType.float64) {
-          resF64.copy(out: out as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64, out.dtype).copy(out: out);
-        }
-        return out;
-      }
-      return castNDArray<T>(resF64, a.dtype).detachToParentScope();
-    });
+  if (_promotesToFloat64(aDType)) {
+    return _runUnaryPromotedToFloat64<R, Out>(
+      a,
+      a.shape,
+      out,
+      (aF64) => inv<Float64, Float64>(aF64),
+    );
   }
   final n = a.shape[rank - 1];
   final stackShape = a.shape.sublist(0, rank - 2);
-  final DType<T> targetDType = a.dtype;
+  final DType<R> targetDType = a.dtype as DType<R>;
+  final aTyped = a as NDArray<R>;
 
   if (out != null) {
     validateOutBuffer(out);
@@ -1647,7 +1697,7 @@ NDArray<T> inv<T extends DTypeTag, Out extends T>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = inv<T, T>(a);
+        final temp = inv<R, R>(a);
         temp.copy(out: out);
         return out;
       });
@@ -1655,12 +1705,12 @@ NDArray<T> inv<T extends DTypeTag, Out extends T>(
   }
 
   return NDArray.scope(() {
-    final NDArray<T> result;
+    final NDArray<R> result;
     if (out != null) {
       result = out;
-      a.copy(out: result);
+      aTyped.copy(out: result);
     } else {
-      result = a.copy();
+      result = aTyped.copy();
     }
 
     if (n == 0) {
@@ -1680,7 +1730,7 @@ NDArray<T> inv<T extends DTypeTag, Out extends T>(
         for (var i = 0; i < coords.length; i++) {
           offsetRes += coords[i] * result.strides[i];
         }
-        final sliceRes = NDArray<T>.view(
+        final sliceRes = NDArray<R>.view(
           result,
           shape: [n, n],
           strides: result.strides.sublist(rank - 2),
@@ -1863,14 +1913,12 @@ NDArray<T> inv<T extends DTypeTag, Out extends T>(
 /// Computes the determinant of a square matrix or a stack of square matrices using OpenBLAS/LAPACK.
 ///
 /// Transforms the matrix and calculates its determinant natively via LAPACK LU decomposition.
-/// Supports both real (float32, float64) and complex (complex64, complex128) data types.
-/// Returns the determinant stack as an array of corresponding types (float64 for real inputs,
-/// and complex64/complex128 for complex inputs).
+/// Supports real (`float32`, `float64`) and complex (`complex64`, `complex128`) data types,
+/// and promotes integer, boolean, `float16`, and `bfloat16` inputs to `float64`.
 ///
 /// **Preconditions:**
 /// - It is an error if [a] or [out] is disposed.
 /// - It is an error if [a] is not square in its last two dimensions or is less than 2-dimensional.
-/// - It is an error if [a.dtype] is not float32, float64, complex64, or complex128.
 /// - It is an error if [out] is provided and has incompatible shape or dtype.
 ///
 /// **Performance considerations:**
@@ -1884,8 +1932,8 @@ NDArray<T> inv<T extends DTypeTag, Out extends T>(
 /// and [LAPACK LU solver](https://en.wikipedia.org/wiki/LU_decomposition) for additional details.
 ///
 /// Returns a 0-dimensional [NDArray] if [a] is a 2D matrix, or a new [NDArray] with stack dimensions if [a] is a stack of matrices.
-NDArray<T> det<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
+NDArray<R> det<R extends DTypeTag, Out extends R>(
+  NDArray<InexactOf<R>> a, {
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
@@ -1894,18 +1942,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
   if (out != null && out.isDisposed) {
     throw StateError('Cannot write determinant to a disposed output array.');
   }
-  if (a.dtype != DType.float64 &&
-      a.dtype != DType.float32 &&
-      a.dtype != DType.float16 &&
-      a.dtype != DType.bfloat16 &&
-      a.dtype != DType.complex128 &&
-      a.dtype != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (det only supports float and complex dtypes)',
-    );
-  }
+  final aDType = a.dtype as DType<DTypeTag>;
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
     throw ArgumentError.value(
@@ -1918,33 +1955,15 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
   checkBlasIntStride(a.strides[rank - 2], 'lda', 'det');
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'det');
   final stackShape = a.shape.sublist(0, rank - 2);
-  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
-    if (out != null) {
-      validateOutBuffer(out);
-      if (!listEquals(out.shape, stackShape) ||
-          (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must have compatible shape $stackShape and float64 or ${a.dtype} dtype (provided out buffer has incompatible shape or dtype).',
-        );
-      }
-    }
-    return NDArray.scope(() {
-      final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = det<Float64, Float64>(aF64);
-      if (out != null) {
-        if (out.dtype == DType.float64) {
-          resF64.copy(out: out as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64, out.dtype).copy(out: out);
-        }
-        return out;
-      }
-      return castNDArray<T>(resF64, a.dtype).detachToParentScope();
-    });
+  if (_promotesToFloat64(aDType)) {
+    return _runUnaryPromotedToFloat64<R, Out>(
+      a,
+      stackShape,
+      out,
+      (aF64) => det<Float64, Float64>(aF64),
+    );
   }
-  final expectedDType = a.dtype;
+  final DType<R> expectedDType = a.dtype as DType<R>;
 
   if (out != null) {
     validateOutBuffer(out);
@@ -1957,7 +1976,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = det<T, T>(a);
+        final temp = det<R, R>(a);
         temp.copy(out: out);
         return out;
       });
@@ -1966,9 +1985,12 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
 
   return NDArray.scope(() {
     if (a.shape[rank - 1] == 0) {
-      final NDArray<T> result = out ?? NDArray.zeros(stackShape, a.dtype);
+      final NDArray<R> result = out ?? NDArray.zeros(stackShape, expectedDType);
       result.fill(
-        castValue(a.dtype.isComplex ? Complex(1.0, 0.0) : 1.0, a.dtype),
+        castValue(
+          expectedDType.isComplex ? Complex(1.0, 0.0) : 1.0,
+          expectedDType,
+        ),
       );
       if (out == null) {
         result.detachToParentScope();
@@ -1978,7 +2000,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
     switch (a.dtype) {
       case DType.float64:
         final result =
-            out ?? (NDArray.zeros(stackShape, DType.float64) as NDArray<T>);
+            out ?? (NDArray.zeros(stackShape, DType.float64) as NDArray<R>);
         final marker = ScratchArena.marker;
         try {
           final cStridesA = ScratchArena.copyInts(a.strides);
@@ -2014,7 +2036,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
         return result;
       case DType.complex128:
         final result =
-            out ?? (NDArray.zeros(stackShape, DType.complex128) as NDArray<T>);
+            out ?? (NDArray.zeros(stackShape, DType.complex128) as NDArray<R>);
         final marker = ScratchArena.marker;
         try {
           final cStridesA = ScratchArena.copyInts(a.strides);
@@ -2050,7 +2072,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
         return result;
       case DType.complex64:
         final result =
-            out ?? (NDArray.zeros(stackShape, DType.complex64) as NDArray<T>);
+            out ?? (NDArray.zeros(stackShape, DType.complex64) as NDArray<R>);
         final marker = ScratchArena.marker;
         try {
           final cStridesA = ScratchArena.copyInts(a.strides);
@@ -2086,7 +2108,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
         return result;
       case DType.float32:
         final result =
-            out ?? (NDArray.zeros(stackShape, DType.float32) as NDArray<T>);
+            out ?? (NDArray.zeros(stackShape, DType.float32) as NDArray<R>);
         final marker = ScratchArena.marker;
         try {
           final cStridesA = ScratchArena.copyInts(a.strides);
@@ -2132,14 +2154,15 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
 
 /// Computes the sign and natural logarithm of the absolute value of the determinant of a square 2D matrix or stack of matrices.
 ///
+/// Integer, boolean, `float16`, and `bfloat16` inputs are promoted to `float64`.
+///
 /// **Preconditions:**
 /// - It is an error if [a], [outSign], or [outLogdet] is disposed.
 /// - It is an error if [a] rank < 2, or the last two dimensions are not square.
-/// - It is an error if [a] dtype is not float32, float64, complex64, or complex128.
 /// - It is an error if [outSign] or [outLogdet] is provided and has incompatible shape or dtype.
 ///
 /// **Returns:**
-/// - A record `(sign, logdet)` of two NDArrays, representing the sign (or phase) and log of the absolute determinant.
+/// - A record `(sign, logabsdet)` of two NDArrays, representing the sign (or phase) and log of the absolute determinant.
 ///
 /// Reference: [NumPy linalg.slogdet](https://numpy.org/doc/stable/reference/generated/numpy.linalg.slogdet.html)
 ({NDArray<T> sign, NDArray<R> logabsdet}) slogdet<
@@ -2149,7 +2172,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
   OutLogdet extends R
 >(
   NDArray<
-    DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
+    DTypeSpec<DTypeTag, Object?, R, DTypeTag, T, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
   NDArray<OutSign>? outSign,
@@ -2164,18 +2187,7 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
   if (outLogdet != null && outLogdet.isDisposed) {
     throw StateError('Cannot write slogdet logdet to a disposed output array.');
   }
-  if ((a.dtype as DType<DTypeTag>) != DType.float64 &&
-      (a.dtype as DType<DTypeTag>) != DType.float32 &&
-      (a.dtype as DType<DTypeTag>) != DType.float16 &&
-      (a.dtype as DType<DTypeTag>) != DType.bfloat16 &&
-      (a.dtype as DType<DTypeTag>) != DType.complex128 &&
-      (a.dtype as DType<DTypeTag>) != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (slogdet only supports float and complex dtypes)',
-    );
-  }
+  final aDType = a.dtype as DType<DTypeTag>;
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
     throw ArgumentError.value(
@@ -2199,62 +2211,26 @@ NDArray<T> det<T extends DTypeTag, Out extends T>(
     );
   }
 
-  if ((a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+  if (_promotesToFloat64(aDType)) {
     if (outSign != null) {
-      validateOutBuffer(outSign, 'outSign');
-      if (!listEquals(outSign.shape, stackShape) ||
-          (outSign.dtype != DType.float64 && outSign.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          outSign,
-          'outSign',
-          'Must have compatible shape $stackShape and float64 or ${a.dtype} dtype (provided outSign buffer has incompatible shape or dtype).',
-        );
-      }
+      _validatePromotedOut(outSign, stackShape, aDType, 'outSign');
     }
     if (outLogdet != null) {
-      validateOutBuffer(outLogdet, 'outLogdet');
-      if (!listEquals(outLogdet.shape, stackShape) ||
-          (outLogdet.dtype != DType.float64 && outLogdet.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          outLogdet,
-          'outLogdet',
-          'Must have compatible shape $stackShape and float64 or ${a.dtype} dtype (provided outLogdet buffer has incompatible shape or dtype).',
-        );
-      }
+      _validatePromotedOut(outLogdet, stackShape, aDType, 'outLogdet');
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
       final resF64 = slogdet<Float64, Float64, Float64, Float64>(aF64);
       if (outSign != null) {
-        if (outSign.dtype == DType.float64) {
-          resF64.sign.copy(out: outSign as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64.sign, outSign.dtype).copy(out: outSign);
-        }
+        _copyPromotedResult(resF64.sign, outSign);
       }
       if (outLogdet != null) {
-        if (outLogdet.dtype == DType.float64) {
-          resF64.logabsdet.copy(out: outLogdet as NDArray<Float64>);
-        } else {
-          castNDArray<R>(
-            resF64.logabsdet,
-            outLogdet.dtype,
-          ).copy(out: outLogdet);
-        }
+        _copyPromotedResult(resF64.logabsdet, outLogdet);
       }
-      final finalSign =
-          outSign ??
-          castNDArray<T>(
-            resF64.sign,
-            a.dtype as DType<T>,
-          ).detachToParentScope();
-      final finalLogdet =
-          outLogdet ??
-          castNDArray<R>(
-            resF64.logabsdet,
-            a.dtype as DType<R>,
-          ).detachToParentScope();
+      final NDArray<T> finalSign =
+          outSign ?? (resF64.sign.detachToParentScope() as NDArray<T>);
+      final NDArray<R> finalLogdet =
+          outLogdet ?? (resF64.logabsdet.detachToParentScope() as NDArray<R>);
       return (sign: finalSign, logabsdet: finalLogdet);
     });
   }
@@ -2621,10 +2597,12 @@ void _lapackeSolve(
 /// matrix (or batch of square matrices) of shape `(..., N, N)`, and $B$ is a vector or
 /// matrix (or batch) of shape `(..., N)` or `(..., N, K)`.
 ///
+/// Integer, boolean, `Float16`, and `BFloat16` inputs are promoted to `Float64`.
+///
 /// **Preconditions:**
 /// - $A$ and $B$ must not be disposed.
 /// - The last two dimensions of $A$ must be square ($M = N$).
-/// - $A$ and $B$ must have matching floating-point or complex data types.
+/// - $A$ and $B$ must have matching data types.
 /// - If [out] is provided, it must match the result shape and data type.
 ///
 /// It is an error if $A$ or $B$ is disposed, non-square, or has incompatible shapes/dtypes.
@@ -2633,11 +2611,11 @@ void _lapackeSolve(
 ///
 /// **Example:**
 /// {@example /example/linalg_example.dart#solve_system lang=dart}
-NDArray<T> solve<T extends SelfOf<DTypeTag>>(
-  NDArray<T> a,
-  NDArray<T> b, {
-  NDArray<T>? out,
-}) {
+NDArray<R> solve<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> a, NDArray<T> b, {NDArray<Out>? out}) {
   if (a.isDisposed || b.isDisposed) {
     throw StateError('Cannot execute solve() on a disposed array.');
   }
@@ -2719,19 +2697,7 @@ NDArray<T> solve<T extends SelfOf<DTypeTag>>(
     );
   }
 
-  if (a.dtype != DType.float64 &&
-      a.dtype != DType.float32 &&
-      a.dtype != DType.float16 &&
-      a.dtype != DType.bfloat16 &&
-      a.dtype != DType.complex128 &&
-      a.dtype != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (solve only supports float64, float32, float16, bfloat16, complex128, or complex64 dtypes, got ${a.dtype}).',
-    );
-  }
-
+  final aDType = a.dtype as DType<DTypeTag>;
   final nrhs = rankB == rankA ? b.shape[rankB - 1] : 1;
   checkBlasIntDim(n, 'n', 'solve');
   checkBlasIntDim(nrhs, 'nrhs', 'solve');
@@ -2744,37 +2710,22 @@ NDArray<T> solve<T extends SelfOf<DTypeTag>>(
     checkBlasIntStride(b.strides[rankB - 1], 'ldb', 'solve');
   }
 
-  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
-    if (out != null) {
-      validateOutBuffer(out);
-      if (!listEquals(out.shape, expectedOutShape) ||
-          (out.dtype != DType.float64 && out.dtype != b.dtype)) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must have compatible shape $expectedOutShape and dtype ${DType.float64} (provided out buffer has incompatible shape or dtype, expected shape $expectedOutShape and dtype ${DType.float64}, got shape ${out.shape} and dtype ${out.dtype}).',
-        );
-      }
-    }
-    return NDArray.scope(() {
-      final aF64 = castNDArray<Float64>(a, DType.float64);
-      final bF64 = castNDArray<Float64>(b, DType.float64);
-      final resF64 = solve<Float64>(aF64, bF64);
-      if (out != null) {
-        if (out.dtype == DType.float64) {
-          resF64.copy(out: out as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64, out.dtype).copy(out: out);
-        }
-        return out;
-      }
-      return castNDArray<T>(resF64, a.dtype).detachToParentScope();
-    });
+  if (_promotesToFloat64(aDType)) {
+    return _runBinaryPromotedToFloat64<R, Out>(
+      a,
+      b,
+      expectedOutShape,
+      out,
+      (aF64, bF64) => solve<Float64, Float64, Float64>(aF64, bF64),
+    );
   }
+
+  final DType<R> targetDType = b.dtype as DType<R>;
+  final bTyped = b as NDArray<R>;
 
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, expectedOutShape) || out.dtype != b.dtype) {
+    if (!listEquals(out.shape, expectedOutShape) || out.dtype != targetDType) {
       throw ArgumentError.value(
         out,
         'out',
@@ -2783,24 +2734,24 @@ NDArray<T> solve<T extends SelfOf<DTypeTag>>(
     }
     if (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out)) {
       return NDArray.scope(() {
-        final temp = solve<T>(a, b);
+        final temp = solve<T, R, R>(a, b);
         temp.copy(out: out);
         return out;
       });
     }
   }
 
-  final NDArray<T> bCopy;
+  final NDArray<R> bCopy;
   if (rankA > 2 && rankB == 1) {
-    bCopy = out ?? NDArray<T>.create(expectedOutShape, b.dtype);
-    final bBroadcast = broadcastTo<T>(b, expectedOutShape);
+    bCopy = out ?? NDArray<R>.create(expectedOutShape, targetDType);
+    final bBroadcast = broadcastTo<R>(bTyped, expectedOutShape);
     bBroadcast.copy(out: bCopy);
     bBroadcast.dispose();
   } else if (out != null) {
     bCopy = out;
-    b.copy(out: bCopy);
+    bTyped.copy(out: bCopy);
   } else {
-    bCopy = b.copy();
+    bCopy = bTyped.copy();
   }
 
   if (n == 0) {
@@ -3569,6 +3520,7 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
 ///
 /// Uses Singular Value Decomposition (SVD) to resolve the pseudo-inverse.
 /// Singular values smaller than [rcond] * max(singular_value) are treated as zero.
+/// Integer, boolean, `Float16`, and `BFloat16` inputs are promoted to `Float64`.
 ///
 /// **Preconditions:**
 /// - It is an error if [a] or [out] is disposed.
@@ -3577,8 +3529,8 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
 ///
 /// **Example:**
 /// {@example /example/linalg_premium_example.dart lang=dart}
-NDArray<T> pinv<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
+NDArray<R> pinv<R extends DTypeTag, Out extends R>(
+  NDArray<InexactOf<R>> a, {
   double? rcond,
   NDArray<Out>? out,
 }) {
@@ -3595,6 +3547,7 @@ NDArray<T> pinv<T extends DTypeTag, Out extends T>(
       'Must be a 2D matrix (Moore-Penrose pseudo-inverse is only defined for 2D matrices, was shape ${a.shape}).',
     );
   }
+  final aDType = a.dtype as DType<DTypeTag>;
   final m = a.shape[0];
   final n = a.shape[1];
   checkBlasIntDim(m, 'm', 'pinv');
@@ -3603,35 +3556,19 @@ NDArray<T> pinv<T extends DTypeTag, Out extends T>(
   checkBlasIntStride(a.strides[1], 'lda', 'pinv');
 
   final targetShape = [n, m];
-  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
-    if (out != null) {
-      validateOutBuffer(out);
-      if (!listEquals(out.shape, targetShape) ||
-          (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must have compatible shape $targetShape and float64 or ${a.dtype} dtype (provided out buffer has incompatible shape or dtype).',
-        );
-      }
-    }
-    return NDArray.scope(() {
-      final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = pinv<Float64, Float64>(aF64, rcond: rcond);
-      if (out != null) {
-        if (out.dtype == DType.float64) {
-          resF64.copy(out: out as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64, out.dtype).copy(out: out);
-        }
-        return out;
-      }
-      return castNDArray<T>(resF64, a.dtype).detachToParentScope();
-    });
+  if (_promotesToFloat64(aDType)) {
+    return _runUnaryPromotedToFloat64<R, Out>(
+      a,
+      targetShape,
+      out,
+      (aF64) => pinv<Float64, Float64>(aF64, rcond: rcond),
+    );
   }
+  final DType<R> targetDType = a.dtype as DType<R>;
+  final aTyped = a as NDArray<R>;
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, targetShape) || out.dtype != a.dtype) {
+    if (!listEquals(out.shape, targetShape) || out.dtype != targetDType) {
       throw ArgumentError.value(
         out,
         'out',
@@ -3640,7 +3577,7 @@ NDArray<T> pinv<T extends DTypeTag, Out extends T>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = pinv<T, T>(a, rcond: rcond);
+        final temp = pinv<R, R>(a, rcond: rcond);
         temp.copy(out: out);
         return out;
       });
@@ -3648,14 +3585,14 @@ NDArray<T> pinv<T extends DTypeTag, Out extends T>(
   }
 
   return NDArray.scope(() {
-    final result = out ?? NDArray<T>.create(targetShape, a.dtype);
+    final result = out ?? NDArray<R>.create(targetShape, targetDType);
     if (m == 0 || n == 0) {
       if (out == null) {
         result.detachToParentScope();
       }
       return result;
     }
-    final svdResult = _svd<T>(a);
+    final svdResult = _svd<R>(aTyped, fullMatrices: false);
     final u = svdResult.u;
     final s = svdResult.s;
     final vt = svdResult.vh;
@@ -3668,15 +3605,15 @@ NDArray<T> pinv<T extends DTypeTag, Out extends T>(
     final resolvedRcond = rcond ?? (maxDim * epsilon);
     final threshold = resolvedRcond * maxSingularVal;
 
-    final aDType = a.dtype;
+    final k = s.shape[0];
     final sIsF32 = s.dtype == DType.float32;
-    final sPlus = NDArray.zeros([n, m], aDType);
-    for (var i = 0; i < s.shape[0]; i++) {
+    final sPlus = NDArray.zeros([k, k], targetDType);
+    for (var i = 0; i < k; i++) {
       final double sVal = sIsF32
           ? s.pointer.cast<ffi.Float>()[i]
           : s.pointer.cast<ffi.Double>()[i];
       if (sVal > threshold) {
-        sPlus.setCell([i, i], castValue(1.0 / sVal, aDType));
+        sPlus.setCell([i, i], castValue(1.0 / sVal, targetDType));
       }
     }
 
@@ -3725,11 +3662,11 @@ NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
       'Must be a 2D square matrix (matrix_power is only defined for 2D square matrices, was shape ${a.shape}).',
     );
   }
-  if (n < 0 && a.dtype.isInteger) {
+  if (n < 0 && (a.dtype.isInteger || a.dtype == DType.boolean)) {
     throw ArgumentError.value(
       n,
       'n',
-      'Must be non-negative for integer matrices (integer matrices cannot be raised to negative powers because matrix inversion requires floating point types. Please convert the matrix to float64 or float32 first).',
+      'Must be non-negative for integer or boolean matrices (integer and boolean matrices cannot be raised to negative powers because matrix inversion requires floating point types. Please convert the matrix to float64 or float32 first).',
     );
   }
 
@@ -3773,7 +3710,7 @@ NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
 
     NDArray base;
     if (n < 0) {
-      final invA = inv(a);
+      final invA = inv(a.asAnySpec);
       base = invA.dtype == a.dtype ? invA : castNDArray<T>(invA, a.dtype);
       n = -n;
     } else {
@@ -3828,24 +3765,23 @@ NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
 ///
 /// Returns the lower triangular factor $L$ such that $A = L L^*$ (or $A = L L^T$).
 /// Natively offloads to LAPACK solvers (`dpotrf`, `spotrf`, `cpotrf`, `zpotrf`) depending on precision and complexity.
+/// Integer, boolean, `Float16`, and `BFloat16` inputs are promoted to `Float64`.
 ///
 /// **Preconditions:**
 /// - The input matrix [a] must not be disposed.
-/// - The input matrix [a] must have rank $\\ge 2$ and square trailing dimensions (`a.shape[a.rank - 2] == a.shape[a.rank - 1]`).
-/// - The input matrix [a] must have a floating-point or complex data type (`float32`, `float64`, `complex64`, or `complex128`).
+/// - The input matrix [a] must have rank $\ge 2$ and square trailing dimensions (`a.shape[a.rank - 2] == a.shape[a.rank - 1]`).
 /// - Each matrix slice in [a] must be symmetric/Hermitian positive-definite.
-/// - If provided, the [out] destination matrix must have the same shape and dtype as [a].
+/// - If provided, the [out] destination matrix must have compatible shape and dtype.
 ///
 /// **Throws:**
 /// - It is an error if [a] or [out] is disposed.
 /// - It is an error if [a] has rank < 2 or trailing dimensions are not square.
-/// - It is an error if [a] has an unsupported dtype (e.g. integer or boolean).
 /// - It is an error if the provided [out] buffer has an incompatible shape or dtype.
 /// - Throws a [NonPositiveDefiniteException] if any matrix slice is not positive-definite or contains `NaN`.
 /// - Throws a [LinAlgException] if the underlying LAPACK routine fails.
 ///
 /// **Performance considerations:**
-/// - Algorithmic complexity is $O(B \\times n^3)$ flops for $B$ batches of $n \times n$ matrices.
+/// - Algorithmic complexity is $O(B \times n^3)$ flops for $B$ batches of $n \times n$ matrices.
 /// - Uses LAPACK solvers.
 /// - Performs zero memory allocations if a pre-allocated [out] buffer is provided and the input [a] is contiguous.
 ///
@@ -3853,8 +3789,8 @@ NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
 /// {@example /example/linalg_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.cholesky](https://numpy.org/doc/stable/reference/generated/numpy.linalg.cholesky.html)
-NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
+NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
+  NDArray<InexactOf<R>> a, {
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
@@ -3873,49 +3809,26 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
       'Must be square in the last 2 dimensions and rank >= 2 (was ${a.shape})',
     );
   }
-  if (!a.dtype.isFloating && !a.dtype.isComplex) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (Cholesky decomposition is only supported for float and complex dtypes, was ${a.dtype})',
-    );
-  }
+  final aDType = a.dtype as DType<DTypeTag>;
   checkBlasIntDim(a.shape[rank - 1], 'n', 'cholesky');
   checkBlasIntStride(a.strides[rank - 2], 'lda', 'cholesky');
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'cholesky');
-  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
-    if (out != null) {
-      validateOutBuffer(out);
-      if (!listEquals(out.shape, a.shape) ||
-          (out.dtype != DType.float64 && out.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out,
-          'out',
-          'Must have compatible shape ${a.shape} and float64 or ${a.dtype} dtype (provided out L buffer has incompatible shape or dtype).',
-        );
-      }
-    }
-    return NDArray.scope(() {
-      final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = cholesky<Float64, Float64>(aF64);
-      if (out != null) {
-        if (out.dtype == DType.float64) {
-          resF64.copy(out: out as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64, out.dtype).copy(out: out);
-        }
-        return out;
-      }
-      return castNDArray<T>(resF64, a.dtype).detachToParentScope();
-    });
+  if (_promotesToFloat64(aDType)) {
+    return _runUnaryPromotedToFloat64<R, Out>(
+      a,
+      a.shape,
+      out,
+      (aF64) => cholesky<Float64, Float64>(aF64),
+    );
   }
   final n = a.shape[rank - 1];
   final stackShape = a.shape.sublist(0, rank - 2);
-  final targetDType = a.dtype;
+  final DType<R> targetDType = a.dtype as DType<R>;
+  final aTyped = a as NDArray<R>;
 
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, a.shape) || out.dtype != a.dtype) {
+    if (!listEquals(out.shape, a.shape) || out.dtype != targetDType) {
       throw ArgumentError.value(
         out,
         'out',
@@ -3924,7 +3837,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = cholesky<T, T>(a);
+        final temp = cholesky<R, R>(a);
         temp.copy(out: out);
         return out;
       });
@@ -3932,12 +3845,12 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
   }
 
   return NDArray.scope(() {
-    final NDArray<T> lMat;
+    final NDArray<R> lMat;
     if (out != null) {
       lMat = out;
-      a.copy(out: lMat);
+      aTyped.copy(out: lMat);
     } else {
-      lMat = a.copy();
+      lMat = aTyped.copy();
     }
 
     if (n == 0) {
@@ -3957,7 +3870,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
       for (var i = 0; i < coords.length; i++) {
         offsetL += coords[i] * lMat.strides[i];
       }
-      final lSlice = NDArray<T>.view(
+      final lSlice = NDArray<R>.view(
         lMat,
         shape: [n, n],
         strides: lMat.strides.sublist(rank - 2),
@@ -4055,9 +3968,10 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 
 /// Computes the QR decomposition of a matrix or a stack of matrices $A = Q R$.
 ///
-/// Decomposes a matrix [a] out an orthogonal matrix `Q` and an upper triangular matrix `R`
+/// Decomposes a matrix [a] into an orthogonal/unitary matrix `Q` and an upper triangular matrix `R`
 /// such that `a = Q * R`.
 /// Uses LAPACK solvers (`dgeqrf` / `sgeqrf` and `dorgqr` / `sorgqr`) depending on precision.
+/// Integer, boolean, `Float16`, and `BFloat16` inputs are promoted to `Float64`.
 ///
 /// **Preconditions:**
 /// - Input matrix [a] must be at least 2-dimensional.
@@ -4069,11 +3983,11 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 ///
 /// **Example:**
 /// {@example /example/linalg_example.dart lang=dart}
-({NDArray<T> q, NDArray<T> r}) qr<
-  T extends DTypeTag,
-  OutQ extends T,
-  OutR extends T
->(NDArray<T> a, {({NDArray<OutQ> q, NDArray<OutR> r})? out}) {
+({NDArray<R> q, NDArray<R> r}) qr<
+  R extends DTypeTag,
+  OutQ extends R,
+  OutR extends R
+>(NDArray<InexactOf<R>> a, {({NDArray<OutQ> q, NDArray<OutR> r})? out}) {
   if (a.isDisposed) {
     throw StateError('Cannot execute qr() on a disposed array.');
   }
@@ -4088,13 +4002,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
       'Must be at least 2D (matrix must be at least 2D, was ${a.shape})',
     );
   }
-  if (!a.dtype.isFloating && !a.dtype.isComplex) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (QR decomposition is only supported for float and complex dtypes, was ${a.dtype})',
-    );
-  }
+  final aDType = a.dtype as DType<DTypeTag>;
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
   checkBlasIntDim(m, 'm', 'qr');
@@ -4115,55 +4023,31 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
     );
   }
 
-  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
+  if (_promotesToFloat64(aDType)) {
     if (out != null) {
-      validateOutBuffer(out.q, 'out.q');
-      validateOutBuffer(out.r, 'out.r');
-      if (!listEquals(out.q.shape, qShape) ||
-          (out.q.dtype != DType.float64 && out.q.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out.q,
-          'out.q',
-          'Must have compatible shape $qShape and float64 or ${a.dtype} dtype (provided out Q buffer has incompatible shape or dtype).',
-        );
-      }
-      if (!listEquals(out.r.shape, rShape) ||
-          (out.r.dtype != DType.float64 && out.r.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out.r,
-          'out.r',
-          'Must have compatible shape $rShape and float64 or ${a.dtype} dtype (provided out R buffer has incompatible shape or dtype).',
-        );
-      }
+      _validatePromotedOut(out.q, qShape, aDType, 'out.q');
+      _validatePromotedOut(out.r, rShape, aDType, 'out.r');
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
       final resF64 = qr<Float64, Float64, Float64>(aF64);
       if (out != null) {
-        if (out.q.dtype == DType.float64) {
-          resF64.q.copy(out: out.q as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64.q, out.q.dtype).copy(out: out.q);
-        }
-        if (out.r.dtype == DType.float64) {
-          resF64.r.copy(out: out.r as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64.r, out.r.dtype).copy(out: out.r);
-        }
+        _copyPromotedResult(resF64.q, out.q);
+        _copyPromotedResult(resF64.r, out.r);
         return (q: out.q, r: out.r);
       }
       return (
-        q: castNDArray<T>(resF64.q, a.dtype).detachToParentScope(),
-        r: castNDArray<T>(resF64.r, a.dtype).detachToParentScope(),
+        q: resF64.q.detachToParentScope() as NDArray<R>,
+        r: resF64.r.detachToParentScope() as NDArray<R>,
       );
     });
   }
 
-  final DType<T> targetDType = a.dtype;
+  final DType<R> targetDType = a.dtype as DType<R>;
 
   return NDArray.scope(() {
-    final NDArray<T> qMat;
-    final NDArray<T> rMat;
+    final NDArray<R> qMat;
+    final NDArray<R> rMat;
     if (out != null) {
       qMat = out.q;
       rMat = out.r;
@@ -4187,14 +4071,14 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
           !rMat.isContiguous ||
           sharesMemory(a, qMat) ||
           sharesMemory(a, rMat)) {
-        final temp = qr<T, T, T>(a);
+        final temp = qr<R, R, R>(a);
         temp.q.copy(out: qMat);
         temp.r.copy(out: rMat);
         return (q: qMat, r: rMat);
       }
     } else {
-      qMat = NDArray<T>.zeros(qShape, targetDType);
-      rMat = NDArray<T>.zeros(rShape, targetDType);
+      qMat = NDArray<R>.zeros(qShape, targetDType);
+      rMat = NDArray<R>.zeros(rShape, targetDType);
     }
 
     if (m == 0 || n == 0) {
@@ -4406,7 +4290,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
           offsetR += coords[i] * rMat.strides[i];
         }
 
-        final qSlice = NDArray<T>.view(
+        final qSlice = NDArray<R>.view(
           qMat,
           shape: [m, k],
           strides: qMat.strides.sublist(rank - 2),
@@ -4415,7 +4299,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
         q2D.copy(out: qSlice);
         qSlice.dispose();
 
-        final rSlice = NDArray<T>.view(
+        final rSlice = NDArray<R>.view(
           rMat,
           shape: [k, n],
           strides: rMat.strides.sublist(rank - 2),
@@ -4442,9 +4326,12 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 
 /// Computes the Singular Value Decomposition (SVD) of a matrix or a stack of matrices $A = U S V^h$.
 ///
-/// Decomposes a matrix [a] out left singular vectors `U`, singular values `S`,
-/// and right singular vectors Vh such that `a = U * diag(S) * Vh`.
-/// Uses LAPACK solvers (`dgesdd` / `sgesdd`) depending on precision.
+/// Decomposes a matrix [a] into left singular vectors `U`, singular values `S`,
+/// and right singular vectors `Vh` such that `a = U * diag(S) * Vh`.
+/// When [fullMatrices] is `true` (the default), `U` and `Vh` have shapes
+/// `(..., M, M)` and `(..., N, N)` respectively. When [fullMatrices] is `false`
+/// (economy / reduced SVD), `U` and `Vh` have shapes `(..., M, K)` and
+/// `(..., K, N)` where $K = \min(M, N)$.
 ///
 /// **Preconditions:**
 /// - Input matrix [a] must be at least 2-dimensional.
@@ -4452,7 +4339,6 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 /// **Throws:**
 /// - It is an error if [a] or any buffer in [out] is disposed.
 /// - It is an error if [a] rank is less than 2.
-/// - It is an error if [a] has an unsupported dtype (e.g. integer or boolean).
 /// - It is an error if any buffer in [out] has incompatible shape or dtype.
 /// - Throws an [IterationsExceededException] if the SVD computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values (`NaN` or `±Infinity`).
@@ -4467,9 +4353,10 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
   OutVh extends T
 >(
   NDArray<
-    DTypeSpec<R, Object?, DTypeTag, DTypeTag, DTypeTag, T, DTypeTag, DTypeTag>
+    DTypeSpec<DTypeTag, Object?, R, DTypeTag, T, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
+  bool fullMatrices = true,
   ({NDArray<OutU> u, NDArray<OutS> s, NDArray<OutVh> vh})? out,
 }) {
   if (a.isDisposed) {
@@ -4480,13 +4367,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
       throw StateError('Cannot write SVD result to a disposed output array.');
     }
   }
-  if (!a.dtype.isFloating && !a.dtype.isComplex) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (SVD decomposition is only supported for float and complex dtypes, was ${a.dtype})',
-    );
-  }
+  final aDType = a.dtype as DType<DTypeTag>;
   final rank = a.shape.length;
   if (rank < 2) {
     throw ArgumentError.value(
@@ -4503,9 +4384,10 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
   checkBlasIntStride(a.strides[rank - 1], 'lda', 'svd');
   final stackShape = a.shape.sublist(0, rank - 2);
 
-  final uShape = [...stackShape, m, m];
-  final sShape = m < n ? [...stackShape, m] : [...stackShape, n];
-  final vtShape = [...stackShape, n, n];
+  final k = m < n ? m : n;
+  final uShape = fullMatrices ? [...stackShape, m, m] : [...stackShape, m, k];
+  final sShape = [...stackShape, k];
+  final vtShape = fullMatrices ? [...stackShape, n, n] : [...stackShape, k, n];
 
   if (out != null &&
       (sharesMemory(out.u, out.s) ||
@@ -4518,65 +4400,25 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
     );
   }
 
-  if ((a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16) {
+  if (_promotesToFloat64(aDType)) {
     if (out != null) {
-      validateOutBuffer(out.u, 'out.u');
-      validateOutBuffer(out.s, 'out.s');
-      validateOutBuffer(out.vh, 'out.vh');
-      if (!listEquals(out.u.shape, uShape) ||
-          (out.u.dtype != DType.float64 && out.u.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out.u,
-          'out.u',
-          'Must have compatible shape $uShape and float64 or ${a.dtype} dtype (provided out U buffer has incompatible shape or dtype).',
-        );
-      }
-      if (!listEquals(out.s.shape, sShape) ||
-          (out.s.dtype != DType.float64 && out.s.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out.s,
-          'out.s',
-          'Must have compatible shape $sShape and float64 or ${a.dtype} dtype (provided out S buffer has incompatible shape or dtype).',
-        );
-      }
-      if (!listEquals(out.vh.shape, vtShape) ||
-          (out.vh.dtype != DType.float64 && out.vh.dtype != a.dtype)) {
-        throw ArgumentError.value(
-          out.vh,
-          'out.vh',
-          'Must have compatible shape $vtShape and float64 or ${a.dtype} dtype (provided out Vh buffer has incompatible shape or dtype).',
-        );
-      }
+      _validatePromotedOut(out.u, uShape, aDType, 'out.u');
+      _validatePromotedOut(out.s, sShape, aDType, 'out.s');
+      _validatePromotedOut(out.vh, vtShape, aDType, 'out.vh');
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final resF64 = _svd<Float64>(aF64);
+      final resF64 = _svd<Float64>(aF64, fullMatrices: fullMatrices);
       if (out != null) {
-        if (out.u.dtype == DType.float64) {
-          resF64.u.copy(out: out.u as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64.u, out.u.dtype).copy(out: out.u);
-        }
-        if (out.s.dtype == DType.float64) {
-          resF64.s.copy(out: out.s);
-        } else {
-          castNDArray<R>(resF64.s, out.s.dtype).copy(out: out.s);
-        }
-        if (out.vh.dtype == DType.float64) {
-          resF64.vh.copy(out: out.vh as NDArray<Float64>);
-        } else {
-          castNDArray<T>(resF64.vh, out.vh.dtype).copy(out: out.vh);
-        }
+        _copyPromotedResult<T>(resF64.u, out.u);
+        _copyPromotedResult<R>(resF64.s as NDArray<Float64>, out.s);
+        _copyPromotedResult<T>(resF64.vh, out.vh);
         return (u: out.u, s: out.s, vh: out.vh);
       }
       return (
-        u: castNDArray<T>(resF64.u, a.dtype as DType<T>).detachToParentScope(),
-        s: castNDArray<R>(resF64.s, a.dtype as DType<R>).detachToParentScope(),
-        vh: castNDArray<T>(
-          resF64.vh,
-          a.dtype as DType<T>,
-        ).detachToParentScope(),
+        u: resF64.u.detachToParentScope() as NDArray<T>,
+        s: resF64.s.detachToParentScope() as NDArray<R>,
+        vh: resF64.vh.detachToParentScope() as NDArray<T>,
       );
     });
   }
@@ -4619,7 +4461,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
         sharesMemory(a, out.s) ||
         sharesMemory(a, out.vh)) {
       return NDArray.scope(() {
-        final temp = _svd<T>(a as NDArray<T>);
+        final temp = _svd<T>(a as NDArray<T>, fullMatrices: fullMatrices);
         temp.u.copy(out: out.u);
         temp.s.copy(out: out.s);
         temp.vh.copy(out: out.vh);
@@ -4630,6 +4472,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 
   final res = _svd<T>(
     a as NDArray<T>,
+    fullMatrices: fullMatrices,
     out: out == null ? null : (u: out.u, s: out.s, vh: out.vh),
   );
   return (u: res.u, s: res.s as NDArray<R>, vh: res.vh);
@@ -4637,6 +4480,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 
 ({NDArray<T> u, NDArray<DTypeTag> s, NDArray<T> vh}) _svd<T extends DTypeTag>(
   NDArray<T> a, {
+  bool fullMatrices = true,
   ({NDArray<T> u, NDArray<DTypeTag> s, NDArray<T> vh})? out,
 }) {
   final rank = a.shape.length;
@@ -4653,17 +4497,22 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
       final dtypeS = a.dtype.isComplex
           ? (a.dtype == DType.complex128 ? DType.float64 : DType.float32)
           : a.dtype;
-      final uShape = [...stackShape, m, m];
+      final uShape = fullMatrices
+          ? [...stackShape, m, m]
+          : [...stackShape, m, 0];
       final sShape = [...stackShape, 0];
-      final vtShape = [...stackShape, n, n];
+      final vtShape = fullMatrices
+          ? [...stackShape, n, n]
+          : [...stackShape, 0, n];
 
       final uMat = out?.u ?? NDArray<T>.zeros(uShape, a.dtype);
-      final sMat =
-          out?.s ?? NDArray<Float64>.zeros(sShape, dtypeS as DType<Float64>);
+      final sMat = out?.s ?? NDArray<DTypeTag>.zeros(sShape, dtypeS);
       final vhMat = out?.vh ?? NDArray<T>.zeros(vtShape, a.dtype);
 
+      final zeroTyped = castValue(0.0, a.dtype);
       final oneTyped = castValue(1.0, a.dtype);
-      if (m > 0) {
+      if (fullMatrices && m > 0) {
+        uMat.fill(zeroTyped);
         walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
           coords,
         ) {
@@ -4683,7 +4532,8 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
           uSlice.dispose();
         });
       }
-      if (n > 0) {
+      if (fullMatrices && n > 0) {
+        vhMat.fill(zeroTyped);
         walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
           coords,
         ) {
@@ -4721,7 +4571,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
           ? conjugate(a.transpose(axes))
           : a.transpose(axes).copy();
       try {
-        final resT = _svd<T>(aT);
+        final resT = _svd<T>(aT, fullMatrices: fullMatrices);
         final uNew = a.dtype.isComplex
             ? conjugate(resT.vh.transpose(axes))
             : resT.vh.transpose(axes);
@@ -4763,7 +4613,10 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
         ? (a.dtype == DType.complex128 ? DType.float64 : DType.float32)
         : a.dtype;
 
-    final uShape = [...stackShape, m, m];
+    final uCols = fullMatrices ? m : n;
+    final jobu = fullMatrices ? 65 : 83; // 'A' = 65, 'S' = 83
+    final jobvt = fullMatrices ? 65 : 83;
+    final uShape = [...stackShape, m, uCols];
     final sShape = [...stackShape, n];
     final vtShape = [...stackShape, n, n];
 
@@ -4806,7 +4659,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
             (a.dtype == DType.float32 || a.dtype == DType.complex64)
             ? NDArray<Float32>.zeros([n], DType.float32)
             : NDArray<Float64>.zeros([n], DType.float64);
-        final NDArray u2D = NDArray.zeros([m, m], a.dtype);
+        final NDArray u2D = NDArray.zeros([m, uCols], a.dtype);
         final NDArray vt2D = NDArray.zeros([n, n], a.dtype);
 
         final nf = _analyzeNonFinitePtr(aCopy.pointer, m * n, a.dtype);
@@ -4826,15 +4679,15 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
             routine = 'LAPACKE_dgesvd';
             info = LAPACKE_dgesvd(
               101,
-              65,
-              65,
+              jobu,
+              jobvt,
               m,
               n,
               aCopy.pointer.cast<ffi.Double>(),
               n,
               s2D.pointer.cast<ffi.Double>(),
               u2D.pointer.cast<ffi.Double>(),
-              m,
+              uCols,
               vt2D.pointer.cast<ffi.Double>(),
               n,
               superb.cast<ffi.Double>(),
@@ -4844,15 +4697,15 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
             routine = 'LAPACKE_sgesvd';
             info = LAPACKE_sgesvd(
               101,
-              65,
-              65,
+              jobu,
+              jobvt,
               m,
               n,
               aCopy.pointer.cast<ffi.Float>(),
               n,
               s2D.pointer.cast<ffi.Float>(),
               u2D.pointer.cast<ffi.Float>(),
-              m,
+              uCols,
               vt2D.pointer.cast<ffi.Float>(),
               n,
               superb.cast<ffi.Float>(),
@@ -4862,15 +4715,15 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
             routine = 'LAPACKE_zgesvd';
             info = LAPACKE_zgesvd(
               101,
-              65,
-              65,
+              jobu,
+              jobvt,
               m,
               n,
               aCopy.pointer.cast<ffi.Double>(),
               n,
               s2D.pointer.cast<ffi.Double>(),
               u2D.pointer.cast<ffi.Double>(),
-              m,
+              uCols,
               vt2D.pointer.cast<ffi.Double>(),
               n,
               superb.cast<ffi.Double>(),
@@ -4880,15 +4733,15 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
             routine = 'LAPACKE_cgesvd';
             info = LAPACKE_cgesvd(
               101,
-              65,
-              65,
+              jobu,
+              jobvt,
               m,
               n,
               aCopy.pointer.cast<ffi.Float>(),
               n,
               s2D.pointer.cast<ffi.Float>(),
               u2D.pointer.cast<ffi.Float>(),
-              m,
+              uCols,
               vt2D.pointer.cast<ffi.Float>(),
               n,
               superb.cast<ffi.Float>(),
@@ -4930,7 +4783,7 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
 
         final uSlice = NDArray<T>.view(
           uMat,
-          shape: [m, m],
+          shape: [m, uCols],
           strides: uMat.strides.sublist(rank - 2),
           offsetElements: offsetU,
         );
@@ -4973,7 +4826,10 @@ NDArray<T> cholesky<T extends DTypeTag, Out extends T>(
   });
 }
 
-NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
+NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
+  NDArray<T> a, {
+  bool rejectInf = false,
+}) {
   final rank = a.shape.length;
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
@@ -4985,7 +4841,7 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
-      final sF64 = _svdVals<Float64>(aF64);
+      final sF64 = _svdVals<Float64>(aF64, rejectInf: rejectInf);
       return sF64.detachToParentScope();
     });
   }
@@ -5011,7 +4867,7 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
           ? conjugate(a.transpose(axes))
           : a.transpose(axes).copy();
       try {
-        final resT = _svdVals<T>(aT);
+        final resT = _svdVals<T>(aT, rejectInf: rejectInf);
         resT.detachToParentScope();
         return resT;
       } finally {
@@ -5062,10 +4918,10 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(NDArray<T> a) {
             : NDArray<DTypeTag>.zeros([n], DType.float64);
 
         final nf = _analyzeNonFinitePtr(aCopy.pointer, m * n, a.dtype);
-        if (nf.hasNaN) {
+        if (nf.hasNaN || (rejectInf && nf.hasInf)) {
           s2D.dispose();
           throw const IterationsExceededException(
-            'SVD did not converge (input contains NaN).',
+            'SVD did not converge (input contains non-finite values).',
           );
         }
         if (nf.hasInf) {
@@ -8547,10 +8403,7 @@ NDArray<R> cond<R extends DTypeTag, Out extends R>(
             try {
               final invSliceA = inv<DTypeTag, DTypeTag>(aSlice);
               final normInvAVal =
-                  norm<DTypeTag, DTypeTag>(
-                        invSliceA as NDArray<AnySpec>,
-                        ord: ord,
-                      ).scalar
+                  norm<DTypeTag, DTypeTag>(invSliceA.asAnySpec, ord: ord).scalar
                       as double;
               invSliceA.dispose();
               val = normAVal * normInvAVal;
@@ -8583,6 +8436,570 @@ NDArray<R> cond<R extends DTypeTag, Out extends R>(
       if (aliased) {
         result.copy(out: out);
       }
+      return out;
+    }
+    return result.detachToParentScope();
+  });
+}
+
+/// Computes the singular values of a matrix or stack of matrices.
+///
+/// Unlike [svd], this function computes only the singular values without
+/// computing the left or right singular vectors `U` and `Vh`, reducing memory
+/// allocation and computation time.
+///
+/// **Preconditions:**
+/// - Neither [a] nor [out] (if provided) may be disposed.
+/// - [a] must have rank $\ge 2$.
+/// - Integer, boolean, and half-precision inputs (`Float16`, `BFloat16`) are
+///   promoted to `Float64`.
+/// - If [out] is provided, it must be writeable and have shape
+///   `[..., min(M, N)]` and the real floating-point [DType] corresponding to
+///   [a] (`Float32` for `Float32`/`Complex64`, `Float64` otherwise).
+///
+/// **Throws:**
+/// - Throws an [IterationsExceededException] if the SVD algorithm fails to
+///   converge or if [a] contains non-finite values.
+///
+/// **Performance considerations:**
+/// - Dispatches to LAPACK `dgesvd`/`sgesvd`/`zgesvd`/`cgesvd` with `jobu = 'N'`
+///   and `jobvt = 'N'`, avoiding singular vector formation ($O(M N \min(M, N))$).
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy linalg.svdvals](https://numpy.org/doc/stable/reference/generated/numpy.linalg.svdvals.html)
+NDArray<R> svdvals<R extends DTypeTag, Out extends R>(
+  NDArray<RealFloatOf<R>> a, {
+  NDArray<Out>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute svdvals() on a disposed array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError('Cannot write svdvals result to a disposed output array.');
+  }
+  final rank = a.shape.length;
+  if (rank < 2) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be at least 2D (matrix must be at least 2D, was ${a.shape}).',
+    );
+  }
+  final aDType = a.dtype as DType<DTypeTag>;
+  final m = a.shape[rank - 2];
+  final n = a.shape[rank - 1];
+  checkBlasIntDim(m, 'm', 'svdvals');
+  checkBlasIntDim(n, 'n', 'svdvals');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svdvals');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svdvals');
+
+  final k = m < n ? m : n;
+  final stackShape = a.shape.sublist(0, rank - 2);
+  final sShape = [...stackShape, k];
+
+  if (_promotesToFloat64(aDType)) {
+    return _runUnaryPromotedToFloat64<R, Out>(
+      a,
+      sShape,
+      out,
+      (aF64) => svdvals<Float64, Float64>(aF64),
+    );
+  }
+
+  final DType<DTypeTag> resDType =
+      (aDType == DType.float32 || aDType == DType.complex64)
+      ? DType.float32
+      : DType.float64;
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, sShape) || out.dtype != resDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $sShape and dtype $resDType (provided out buffer has incompatible shape or dtype, got shape ${out.shape} and dtype ${out.dtype}).',
+      );
+    }
+  }
+
+  return NDArray.scope(() {
+    final sRes = _svdVals(a, rejectInf: true);
+    if (out != null) {
+      sRes.copy(out: out);
+      return out;
+    }
+    return sRes.detachToParentScope() as NDArray<R>;
+  });
+}
+
+/// Alias for [svdvals].
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+NDArray<R> svdValues<R extends DTypeTag, Out extends R>(
+  NDArray<RealFloatOf<R>> a, {
+  NDArray<Out>? out,
+}) => svdvals<R, Out>(a, out: out);
+
+/// Computes the matrix rank of an array using Singular Value Decomposition
+/// (or eigenvalue decomposition when [hermitian] is `true`).
+///
+/// Rank of the array is the number of singular values of the array that are
+/// greater than the threshold. When [tol] is provided, it is used directly as
+/// the absolute threshold. Otherwise, the threshold is `rtol * max(S)` (where
+/// [rtol] defaults to `max(M, N) * eps` for the singular values' floating-point
+/// precision).
+///
+/// It is an error to specify both [tol] and [rtol].
+///
+/// For 0-D or 1-D inputs, returns a 0-D `Int64` scalar array equal to `0` if
+/// all elements are zero, or `1` otherwise (matching `numpy.linalg.matrix_rank`).
+///
+/// **Preconditions:**
+/// - Neither [a] nor [out] (if provided) may be disposed.
+/// - Not both [tol] and [rtol] may be non-null.
+/// - When [hermitian] is `true` and `a.rank >= 2`, [a] must be square in its
+///   last two dimensions.
+/// - If [out] is provided, it must be writeable and have [DType.int64] and
+///   shape `a.shape.sublist(0, a.rank - 2)` (or `[]` when `a.rank <= 2`).
+///
+/// **Throws:**
+/// - Throws a [LinAlgException] (such as [IterationsExceededException]) if the
+///   underlying SVD or eigenvalue decomposition fails to converge.
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy linalg.matrix_rank](https://numpy.org/doc/stable/reference/generated/numpy.linalg.matrix_rank.html)
+NDArray<Int64> matrix_rank<T extends DTypeTag>(
+  NDArray<T> a, {
+  double? tol,
+  double? rtol,
+  bool hermitian = false,
+  NDArray<Int64>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute matrix_rank() on a disposed array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write matrix_rank result to a disposed output array.',
+    );
+  }
+  if (tol != null && rtol != null) {
+    throw ArgumentError.value(
+      rtol,
+      'rtol',
+      'Must not be specified when tol is also provided.',
+    );
+  }
+  final aDType = a.dtype as DType<DTypeTag>;
+
+  final rank = a.shape.length;
+  final stackShape = rank >= 2 ? a.shape.sublist(0, rank - 2) : const <int>[];
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, stackShape) || out.dtype != DType.int64) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $stackShape and dtype int64 (got shape ${out.shape} and dtype ${out.dtype}).',
+      );
+    }
+  }
+
+  if (rank < 2) {
+    var nonZero = false;
+    if (a.size > 0) {
+      final flat = a.ravel();
+      try {
+        for (var i = 0; i < flat.size; i++) {
+          final v = flat.getCell([i]);
+          if (v is Complex) {
+            if (v.real != 0.0 || v.imag != 0.0) {
+              nonZero = true;
+              break;
+            }
+          } else if (v is bool) {
+            if (v) {
+              nonZero = true;
+              break;
+            }
+          } else if ((v as num) != 0) {
+            nonZero = true;
+            break;
+          }
+        }
+      } finally {
+        flat.dispose();
+      }
+    }
+    final rVal = nonZero ? 1 : 0;
+    if (out != null) {
+      out.setCell(const <int>[], rVal);
+      return out;
+    }
+    return NDArray<Int64>.scalar(rVal, dtype: DType.int64);
+  }
+
+  final m = a.shape[rank - 2];
+  final n = a.shape[rank - 1];
+  checkBlasIntDim(m, 'm', 'matrix_rank');
+  checkBlasIntDim(n, 'n', 'matrix_rank');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'matrix_rank');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'matrix_rank');
+  if (hermitian && m != n) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square in the last two dimensions when hermitian is true (got ${a.shape}).',
+    );
+  }
+
+  return NDArray.scope(() {
+    final bool aliased =
+        out != null && (!out.isContiguous || sharesMemory(a, out));
+    final NDArray<Int64> result = (out != null && !aliased)
+        ? out
+        : NDArray<Int64>.zeros(stackShape, DType.int64);
+
+    final k = m < n ? m : n;
+    if (k == 0) {
+      result.fill(0);
+      if (out != null) {
+        if (aliased) result.copy(out: out);
+        return out;
+      }
+      return result.detachToParentScope();
+    }
+
+    final NDArray<DTypeTag> aUse = _promotesToFloat64(aDType)
+        ? castNDArray<Float64>(a, DType.float64)
+        : a;
+    final NDArray<DTypeTag> sValues;
+    if (hermitian) {
+      final eigVals = eigvalsh(aUse.asAnySpec);
+      sValues = abs(eigVals.asAnySpec);
+    } else {
+      sValues = svdvals(aUse.asAnySpec);
+    }
+
+    final bool isF32 = sValues.dtype == DType.float32;
+    final double eps = isF32 ? 1.1920928955078125e-7 : 2.220446049250313e-16;
+    final int maxMN = m > n ? m : n;
+
+    walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
+      coords,
+    ) {
+      var offsetS = 0;
+      var offsetRes = 0;
+      for (var i = 0; i < coords.length; i++) {
+        offsetS += coords[i] * sValues.strides[i];
+        offsetRes += coords[i] * result.strides[i];
+      }
+      final strideK = sValues.strides.last;
+      double maxS = 0.0;
+      if (isF32) {
+        final sPtr = sValues.pointer.cast<ffi.Float>();
+        for (var j = 0; j < k; j++) {
+          final v = sPtr[offsetS + j * strideK];
+          if (v > maxS) maxS = v;
+        }
+        final threshold = tol ?? ((rtol ?? (maxMN * eps)) * maxS);
+        var count = 0;
+        for (var j = 0; j < k; j++) {
+          if (sPtr[offsetS + j * strideK] > threshold) count++;
+        }
+        (result.pointer.cast<ffi.Int64>() + offsetRes).value = count;
+      } else {
+        final sPtr = sValues.pointer.cast<ffi.Double>();
+        for (var j = 0; j < k; j++) {
+          final v = sPtr[offsetS + j * strideK];
+          if (v > maxS) maxS = v;
+        }
+        final threshold = tol ?? ((rtol ?? (maxMN * eps)) * maxS);
+        var count = 0;
+        for (var j = 0; j < k; j++) {
+          if (sPtr[offsetS + j * strideK] > threshold) count++;
+        }
+        (result.pointer.cast<ffi.Int64>() + offsetRes).value = count;
+      }
+    });
+
+    if (out != null) {
+      if (aliased) result.copy(out: out);
+      return out;
+    }
+    return result.detachToParentScope();
+  });
+}
+
+/// Alias for [matrix_rank].
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+NDArray<Int64> matrixRank<T extends DTypeTag>(
+  NDArray<T> a, {
+  double? tol,
+  double? rtol,
+  bool hermitian = false,
+  NDArray<Int64>? out,
+}) => matrix_rank<T>(a, tol: tol, rtol: rtol, hermitian: hermitian, out: out);
+
+/// Solves the tensor equation `a x = b` for `x`.
+///
+/// It is assumed that all indices of `x` are summed over in the product,
+/// together with the rightmost indices of [a], as is done in
+/// `tensordot(a, x, axes: x.rank)`.
+///
+/// If [axes] is provided, those axes of [a] are moved to the trailing
+/// positions before solving.
+///
+/// **Preconditions:**
+/// - Neither [a], [b], nor [out] (if provided) may be disposed.
+/// - [a] and [b] must have the same [DType] (integer, boolean, and
+///   half-precision inputs are promoted to `Float64`).
+/// - After reordering [axes] (if specified), the leading `b.rank` dimensions
+///   of [a] must equal `b.shape`, and the product of the remaining trailing
+///   dimensions of [a] must equal `b.size` so the resulting linear system is
+///   square.
+/// - If [out] is provided, it must be writeable and match the output shape
+///   `a.shape.sublist(b.rank)` and result [DType].
+///
+/// **Throws:**
+/// - Throws a [SingularMatrixException] if the reshaped square system is
+///   singular.
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy linalg.tensorsolve](https://numpy.org/doc/stable/reference/generated/numpy.linalg.tensorsolve.html)
+NDArray<R> tensorsolve<
+  T extends SelfOf<InexactOf<R>>,
+  R extends DTypeTag,
+  Out extends R
+>(NDArray<T> a, NDArray<T> b, {List<int>? axes, NDArray<Out>? out}) {
+  if (a.isDisposed || b.isDisposed) {
+    throw StateError('Cannot execute tensorsolve() on a disposed array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write tensorsolve result to a disposed output array.',
+    );
+  }
+  if (a.dtype != b.dtype) {
+    throw ArgumentError.value(
+      b.dtype,
+      'b.dtype',
+      'Must match dtype of a (${a.dtype}) (got ${b.dtype}).',
+    );
+  }
+  final aDType = a.dtype as DType<DTypeTag>;
+
+  return NDArray.scope(() {
+    NDArray<T> aWork = a;
+    if (axes != null) {
+      final ndim = a.rank;
+      final moved = <int>[];
+      final seen = <int>{};
+      for (final rawAx in axes) {
+        final ax = rawAx < 0 ? rawAx + ndim : rawAx;
+        if (ax < 0 || ax >= ndim) {
+          throw RangeError.range(rawAx, -ndim, ndim - 1, 'axes');
+        }
+        if (!seen.add(ax)) {
+          throw ArgumentError.value(
+            axes,
+            'axes',
+            'Must not contain duplicate axes.',
+          );
+        }
+        moved.add(ax);
+      }
+      final allAxes = <int>[
+        for (var i = 0; i < ndim; i++)
+          if (!seen.contains(i)) i,
+        ...moved,
+      ];
+      aWork = a.transpose(allAxes);
+    }
+
+    if (aWork.rank < b.rank) {
+      throw ArgumentError.value(
+        aWork.shape,
+        'a.shape',
+        'Must have rank at least b.rank (${b.rank}), got ${aWork.shape}.',
+      );
+    }
+    final leadingShape = aWork.shape.sublist(0, b.rank);
+    if (!listEquals(leadingShape, b.shape)) {
+      throw ArgumentError.value(
+        b.shape,
+        'b.shape',
+        'Must match leading dimensions $leadingShape of a (${aWork.shape}), got ${b.shape}.',
+      );
+    }
+    final qShape = aWork.shape.sublist(b.rank);
+    var prodLeading = 1;
+    for (final d in leadingShape) {
+      prodLeading *= d;
+    }
+    var prodTrailing = 1;
+    for (final d in qShape) {
+      prodTrailing *= d;
+    }
+    if (prodLeading != prodTrailing) {
+      throw ArgumentError.value(
+        aWork.shape,
+        'a.shape',
+        'Must have equal products of leading ($leadingShape -> $prodLeading) and trailing ($qShape -> $prodTrailing) tensor dimensions so the linear system is square.',
+      );
+    }
+    checkBlasIntDim(prodLeading, 'n', 'tensorsolve');
+
+    if (_promotesToFloat64(aDType)) {
+      return _runBinaryPromotedToFloat64<R, Out>(
+        aWork,
+        b,
+        qShape,
+        out,
+        (aF64, bF64) => tensorsolve<Float64, Float64, Float64>(aF64, bF64),
+      );
+    }
+
+    if (out != null) {
+      validateOutBuffer(out);
+      if (!listEquals(out.shape, qShape) || out.dtype != aDType) {
+        throw ArgumentError.value(
+          out,
+          'out',
+          'Must have compatible shape $qShape and dtype $aDType (got shape ${out.shape} and dtype ${out.dtype}).',
+        );
+      }
+    }
+
+    final a2D = aWork.reshape([prodLeading, prodTrailing]);
+    final b1D = b.reshape([prodLeading]);
+    final bool aliased =
+        out != null &&
+        (!out.isContiguous || sharesMemory(a, out) || sharesMemory(b, out));
+    final NDArray<R> result = (out != null && !aliased)
+        ? out
+        : NDArray<R>.create(qShape, aDType as DType<R>, zeroInit: false);
+    solve<T, R, R>(a2D, b1D, out: result.reshape([prodTrailing]));
+    if (out != null) {
+      if (aliased) result.copy(out: out);
+      return out;
+    }
+    return result.detachToParentScope();
+  });
+}
+
+/// Computes the multiplicative inverse of an N-dimensional tensor [a] with
+/// respect to `tensordot(a, a_inv, axes: ind)`.
+///
+/// The result has shape `[...a.shape.sublist(ind), ...a.shape.sublist(0, ind)]`
+/// such that `tensordot(a, tensorinv(a, ind: ind), axes: ind)` is the
+/// N-dimensional identity tensor.
+///
+/// **Preconditions:**
+/// - Neither [a] nor [out] (if provided) may be disposed.
+/// - [ind] must be a positive integer (`1 <= ind <= a.rank`).
+/// - The product of the first [ind] dimensions of [a] must equal the product
+///   of the remaining dimensions (`a.shape.sublist(ind)`).
+/// - Integer, boolean, and half-precision inputs are promoted to `Float64`.
+/// - If [out] is provided, it must be writeable and match the output shape and
+///   result [DType].
+///
+/// **Throws:**
+/// - Throws a [SingularMatrixException] if the reshaped matrix is singular.
+///
+/// **Example:**
+/// {@example /example/linalg_advanced_example.dart lang=dart}
+///
+/// Reference: [NumPy linalg.tensorinv](https://numpy.org/doc/stable/reference/generated/numpy.linalg.tensorinv.html)
+NDArray<R> tensorinv<R extends DTypeTag, Out extends R>(
+  NDArray<InexactOf<R>> a, {
+  int ind = 2,
+  NDArray<Out>? out,
+}) {
+  if (a.isDisposed) {
+    throw StateError('Cannot execute tensorinv() on a disposed array.');
+  }
+  if (out != null && out.isDisposed) {
+    throw StateError(
+      'Cannot write tensorinv result to a disposed output array.',
+    );
+  }
+  if (ind <= 0) {
+    throw ArgumentError.value(
+      ind,
+      'ind',
+      'Must be a positive integer (got $ind).',
+    );
+  }
+  if (ind > a.rank) {
+    throw ArgumentError.value(
+      ind,
+      'ind',
+      'Must not exceed tensor rank (${a.rank}), got $ind.',
+    );
+  }
+  final aDType = a.dtype as DType<DTypeTag>;
+
+  final oldShape = a.shape.sublist(0, ind);
+  final trailingShape = a.shape.sublist(ind);
+  var prod1 = 1;
+  for (final d in oldShape) {
+    prod1 *= d;
+  }
+  var prod2 = 1;
+  for (final d in trailingShape) {
+    prod2 *= d;
+  }
+  if (prod1 != prod2) {
+    throw ArgumentError.value(
+      a.shape,
+      'a.shape',
+      'Must be square in tensor dimensions: product of first $ind dimensions ($oldShape -> $prod1) must equal product of remaining dimensions ($trailingShape -> $prod2).',
+    );
+  }
+  checkBlasIntDim(prod1, 'n', 'tensorinv');
+
+  final invShape = <int>[...trailingShape, ...oldShape];
+
+  if (_promotesToFloat64(aDType)) {
+    return _runUnaryPromotedToFloat64<R, Out>(
+      a,
+      invShape,
+      out,
+      (aF64) => tensorinv<Float64, Float64>(aF64, ind: ind),
+    );
+  }
+
+  if (out != null) {
+    validateOutBuffer(out);
+    if (!listEquals(out.shape, invShape) || out.dtype != aDType) {
+      throw ArgumentError.value(
+        out,
+        'out',
+        'Must have compatible shape $invShape and dtype $aDType (got shape ${out.shape} and dtype ${out.dtype}).',
+      );
+    }
+  }
+
+  return NDArray.scope(() {
+    final a2D = a.reshape([prod1, prod2]);
+    final bool aliased =
+        out != null && (!out.isContiguous || sharesMemory(a, out));
+    final NDArray<R> result = (out != null && !aliased)
+        ? out
+        : NDArray<R>.create(invShape, aDType as DType<R>, zeroInit: false);
+    inv<R, R>(a2D, out: result.reshape([prod2, prod1]));
+    if (out != null) {
+      if (aliased) result.copy(out: out);
       return out;
     }
     return result.detachToParentScope();

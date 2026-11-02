@@ -45,7 +45,7 @@ void main() {
           NDArray.scope(() {
             final a = NDArray.fromList([4.0, 2.0, 2.0, 5.0], [2, 2], dtype);
             final l = cholesky(a);
-            expect(l.dtype, equals(dtype));
+            expect(l.dtype, equals(DType.float64));
             expect(l.getCell([0, 0]), closeTo(2.0, 1e-2));
             expect(l.getCell([1, 0]), closeTo(1.0, 1e-2));
             expect(l.getCell([0, 1]), closeTo(0.0, 1e-5));
@@ -57,9 +57,9 @@ void main() {
           NDArray.scope(() {
             final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], dtype);
             final res = qr(a);
-            expect(res.q.dtype, equals(dtype));
-            expect(res.r.dtype, equals(dtype));
-            final recon = matmul(res.q, res.r);
+            expect(res.q.dtype, equals(DType.float64));
+            expect(res.r.dtype, equals(DType.float64));
+            final recon = matmul(res.q.asAnySpec, res.r.asAnySpec);
             expect(recon.getCell([0, 0]), closeTo(1.0, 1e-2));
             expect(recon.getCell([0, 1]), closeTo(2.0, 1e-2));
             expect(recon.getCell([1, 0]), closeTo(3.0, 1e-2));
@@ -71,9 +71,9 @@ void main() {
           NDArray.scope(() {
             final a = NDArray.fromList([3.0, 0.0, 0.0, 4.0], [2, 2], dtype);
             final res = svd(a);
-            expect(res.u.dtype, equals(dtype));
-            expect(res.s.dtype, equals(dtype));
-            expect(res.vh.dtype, equals(dtype));
+            expect(res.u.dtype, equals(DType.float64));
+            expect(res.s.dtype, equals(DType.float64));
+            expect(res.vh.dtype, equals(DType.float64));
             expect(res.s.getCell([0]), closeTo(4.0, 1e-2));
             expect(res.s.getCell([1]), closeTo(3.0, 1e-2));
           });
@@ -138,16 +138,16 @@ void main() {
             expect(sd.logabsdet.scalar, closeTo(2.302585, 1e-2));
 
             final aInv = inv(a);
-            expect(aInv.dtype, equals(dtype));
+            expect(aInv.dtype, equals(DType.float64));
             expect(aInv.getCell([0, 0]), closeTo(0.3, 1e-2));
 
             final x = solve(a, b);
-            expect(x.dtype, equals(dtype));
+            expect(x.dtype, equals(DType.float64));
             expect(x.getCell([0]), closeTo(0.1, 1e-2));
             expect(x.getCell([1]), closeTo(0.6, 1e-2));
 
             final p = pinv(a);
-            expect(p.dtype, equals(dtype));
+            expect(p.dtype, equals(DType.float64));
             expect(p.getCell([0, 0]), closeTo(0.3, 1e-2));
 
             final nVal = norm(b);
