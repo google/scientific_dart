@@ -129,95 +129,6 @@ void _scaleDoublesInPlace(
   }
 }
 
-/// Copies [src] into contiguous [dst] using the tiled 2D transpose / hoisted
-/// inner-stride native kernels (`s_positive_*`) instead of the per-element
-/// odometer `s_flatten_*`.
-void _copyStridedToContiguousFast(NDArray src, NDArray dst) {
-  if (src.size == 0) return;
-  if (src.isContiguous && dst.isContiguous) {
-    src.copyToContiguous(dst);
-    return;
-  }
-  if (!dst.isContiguous) {
-    src.copy(out: dst);
-    return;
-  }
-  final rank = src.rank;
-  if (rank == 0) {
-    src.copy(out: dst);
-    return;
-  }
-  final marker = ScratchArena.marker;
-  try {
-    final cBuf = ScratchArena.getStridedBuffer(rank, 3);
-    final cShape = cBuf;
-    final cStridesSrc = cBuf + rank;
-    final cStridesDst = cBuf + rank * 2;
-    for (var i = 0; i < rank; i++) {
-      cShape[i] = src.shape[i];
-      cStridesSrc[i] = src.strides[i];
-      cStridesDst[i] = dst.strides[i];
-    }
-    switch (src.dtype.byteWidth) {
-      case 16:
-        s_positive_complex128(
-          src.pointer.cast(),
-          cStridesSrc,
-          dst.pointer.cast(),
-          cStridesDst,
-          cShape,
-          rank,
-          ffi.nullptr,
-        );
-      case 8:
-        s_positive_int64(
-          src.pointer.cast(),
-          cStridesSrc,
-          dst.pointer.cast(),
-          cStridesDst,
-          cShape,
-          rank,
-          ffi.nullptr,
-        );
-      case 4:
-        s_positive_int32(
-          src.pointer.cast(),
-          cStridesSrc,
-          dst.pointer.cast(),
-          cStridesDst,
-          cShape,
-          rank,
-          ffi.nullptr,
-        );
-      case 2:
-        s_positive_int16(
-          src.pointer.cast(),
-          cStridesSrc,
-          dst.pointer.cast(),
-          cStridesDst,
-          cShape,
-          rank,
-          ffi.nullptr,
-        );
-      case 1:
-        s_positive_uint8(
-          src.pointer.cast(),
-          cStridesSrc,
-          dst.pointer.cast(),
-          cStridesDst,
-          cShape,
-          rank,
-          ffi.nullptr,
-        );
-      default:
-        src.copy(out: dst);
-    }
-    checkNativeOom();
-  } finally {
-    ScratchArena.reset(marker);
-  }
-}
-
 /// Helper to allocate a KissFFT plan configuration on the ScratchArena stack.
 
 int _getSignalOffset(int s, List<int> shape, List<int> strides) {
@@ -662,30 +573,18 @@ NDArray<R> fft<R extends DTypeTag, Out extends R>(
     axes[rank - 1] = normAxis;
 
     return NDArray.scope(() {
-      final transposedInput = a.transpose(axes);
-      final contigIn = _createUninitialized(transposedInput.shape, a.dtype);
-      _copyStridedToContiguousFast(transposedInput, contigIn);
-      final transposedOutShape = List<int>.from(transposedInput.shape);
+      final contigIn = a.transpose(axes).copy();
+      final transposedOutShape = List<int>.from(contigIn.shape);
       transposedOutShape[rank - 1] = targetLen;
       final contigOut =
           _createUninitialized(transposedOutShape, targetDType) as NDArray<R>;
-      fft<R, R>(
-        contigIn as NDArray<ComplexOf<R>>,
-        n: n,
-        axis: -1,
-        out: contigOut,
-      );
+      fft<R, R>(contigIn, n: n, axis: -1, out: contigOut);
       final finalView = contigOut.transpose(axes);
-      if (out != null && out.isContiguous && out.dtype == targetDType) {
-        _copyStridedToContiguousFast(finalView, out);
-        return out;
-      }
-      final result = _createUninitialized(outShape, targetDType) as NDArray<R>;
-      _copyStridedToContiguousFast(finalView, result);
       if (out != null) {
-        result.copy(out: out);
+        finalView.copy(out: out);
         return out;
       }
+      final result = finalView.copy();
       result.detachToParentScope();
       return result;
     });
@@ -945,30 +844,18 @@ NDArray<R> ifft<R extends DTypeTag, Out extends R>(
     axes[rank - 1] = normAxis;
 
     return NDArray.scope(() {
-      final transposedInput = a.transpose(axes);
-      final contigIn = _createUninitialized(transposedInput.shape, a.dtype);
-      _copyStridedToContiguousFast(transposedInput, contigIn);
-      final transposedOutShape = List<int>.from(transposedInput.shape);
+      final contigIn = a.transpose(axes).copy();
+      final transposedOutShape = List<int>.from(contigIn.shape);
       transposedOutShape[rank - 1] = targetLen;
       final contigOut =
           _createUninitialized(transposedOutShape, targetDType) as NDArray<R>;
-      ifft<R, R>(
-        contigIn as NDArray<ComplexOf<R>>,
-        n: n,
-        axis: -1,
-        out: contigOut,
-      );
+      ifft<R, R>(contigIn, n: n, axis: -1, out: contigOut);
       final finalView = contigOut.transpose(axes);
-      if (out != null && out.isContiguous && out.dtype == targetDType) {
-        _copyStridedToContiguousFast(finalView, out);
-        return out;
-      }
-      final result = _createUninitialized(outShape, targetDType) as NDArray<R>;
-      _copyStridedToContiguousFast(finalView, result);
       if (out != null) {
-        result.copy(out: out);
+        finalView.copy(out: out);
         return out;
       }
+      final result = finalView.copy();
       result.detachToParentScope();
       return result;
     });
@@ -1504,9 +1391,7 @@ NDArray<R> _promoteToComplex<T extends DTypeTag, R extends DTypeTag>(
   DType<R> targetDType,
 ) {
   if (a.dtype == targetDType) {
-    final result = _createUninitialized(a.shape, targetDType) as NDArray<R>;
-    _copyStridedToContiguousFast(a, result);
-    return result;
+    return a.copy() as NDArray<R>;
   }
   return castNDArray(a, targetDType);
 }
@@ -1548,11 +1433,7 @@ NDArray<R> _padOrTruncate<T extends DTypeTag, R extends DTypeTag>(
             }
             return const Slice.all();
           });
-          final sliced = current.slice(slices);
-          final next =
-              _createUninitialized(sliced.shape, targetDType) as NDArray<R>;
-          _copyStridedToContiguousFast(sliced, next);
-          current = next;
+          current = current.slice(slices).copy();
         } else if (targetSize > currentSize) {
           final padWidthList = List<(int, int)>.generate(current.rank, (dim) {
             if (dim == axis) {
@@ -1847,24 +1728,18 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
     axes[rank - 1] = normAxis;
 
     return NDArray.scope(() {
-      final transposedInput = a.transpose(axes);
-      final contigIn =
-          _createUninitialized(transposedInput.shape, a.dtype)
-              as NDArray<ComplexOf<R>>;
-      _copyStridedToContiguousFast(transposedInput, contigIn);
-      final transposedOutShape = List<int>.from(transposedInput.shape);
+      final contigIn = a.transpose(axes).copy();
+      final transposedOutShape = List<int>.from(contigIn.shape);
       transposedOutShape[rank - 1] = targetLen ~/ 2 + 1;
       final transposedResult =
           _createUninitialized(transposedOutShape, targetDType) as NDArray<R>;
       _rfftImpl<R>(contigIn, n: n, out: transposedResult, isIhfft: isIhfft);
       final finalResult = transposedResult.transpose(axes);
       if (out != null) {
-        _copyStridedToContiguousFast(finalResult, out);
+        finalResult.copy(out: out);
         return out;
       } else {
-        final resCopy =
-            _createUninitialized(outShape, targetDType) as NDArray<R>;
-        _copyStridedToContiguousFast(finalResult, resCopy);
+        final resCopy = finalResult.copy();
         resCopy.detachToParentScope();
         return resCopy;
       }
@@ -1872,15 +1747,7 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final NDArray<ComplexOf<R>> inputA;
-    if (a.isContiguous) {
-      inputA = a;
-    } else {
-      final tmpIn =
-          _createUninitialized(a.shape, a.dtype) as NDArray<ComplexOf<R>>;
-      _copyStridedToContiguousFast(a, tmpIn);
-      inputA = tmpIn;
-    }
+    final inputA = a.isContiguous ? a : a.copy();
     final result =
         out ?? _createUninitialized(outShape, targetDType) as NDArray<R>;
 
@@ -2140,24 +2007,18 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
     axes[rank - 1] = normAxis;
 
     return NDArray.scope(() {
-      final transposedInput = a.transpose(axes);
-      final contigIn =
-          _createUninitialized(transposedInput.shape, a.dtype)
-              as NDArray<RealFloatOf<R>>;
-      _copyStridedToContiguousFast(transposedInput, contigIn);
-      final transposedOutShape = List<int>.from(transposedInput.shape);
+      final contigIn = a.transpose(axes).copy();
+      final transposedOutShape = List<int>.from(contigIn.shape);
       transposedOutShape[rank - 1] = targetLen;
       final transposedResult =
           _createUninitialized(transposedOutShape, targetDType) as NDArray<R>;
       _irfftImpl<R>(contigIn, n: n, out: transposedResult, isHfft: isHfft);
       final finalResult = transposedResult.transpose(axes);
       if (out != null) {
-        _copyStridedToContiguousFast(finalResult, out);
+        finalResult.copy(out: out);
         return out;
       } else {
-        final resCopy =
-            _createUninitialized(outShape, targetDType) as NDArray<R>;
-        _copyStridedToContiguousFast(finalResult, resCopy);
+        final resCopy = finalResult.copy();
         resCopy.detachToParentScope();
         return resCopy;
       }
@@ -2165,15 +2026,7 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
   }
 
   return NDArray.scope(() {
-    final NDArray<RealFloatOf<R>> inputA;
-    if (a.isContiguous) {
-      inputA = a;
-    } else {
-      final tmpIn =
-          _createUninitialized(a.shape, a.dtype) as NDArray<RealFloatOf<R>>;
-      _copyStridedToContiguousFast(a, tmpIn);
-      inputA = tmpIn;
-    }
+    final inputA = a.isContiguous ? a : a.copy();
     final result =
         out ?? _createUninitialized(outShape, targetDType) as NDArray<R>;
 
@@ -2517,24 +2370,12 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
 
     final NDArray<R> contiguousTransposed;
     if (isIdentityPerm) {
-      if (prepA.isContiguous) {
-        contiguousTransposed = prepA;
-      } else {
-        final tmp =
-            _createUninitialized(prepA.shape, targetDType) as NDArray<R>;
-        _copyStridedToContiguousFast(prepA, tmp);
-        contiguousTransposed = tmp;
-      }
+      contiguousTransposed = prepA.isContiguous ? prepA : prepA.copy();
     } else {
       final transposed = prepA.transpose(permutation);
-      if (transposed.isContiguous) {
-        contiguousTransposed = transposed;
-      } else {
-        final tmp =
-            _createUninitialized(transposed.shape, targetDType) as NDArray<R>;
-        _copyStridedToContiguousFast(transposed, tmp);
-        contiguousTransposed = tmp;
-      }
+      contiguousTransposed = transposed.isContiguous
+          ? transposed
+          : transposed.copy();
     }
 
     final NDArray<R> resultTransposed;
@@ -2614,12 +2455,10 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
     final resultView = resultTransposed.transpose(invPermutation);
 
     if (out != null) {
-      _copyStridedToContiguousFast(resultView, out);
+      resultView.copy(out: out);
       return out;
     } else {
-      final finalOut =
-          _createUninitialized(outShape, targetDType) as NDArray<R>;
-      _copyStridedToContiguousFast(resultView, finalOut);
+      final finalOut = resultView.copy();
       return finalOut.detachToParentScope();
     }
   });

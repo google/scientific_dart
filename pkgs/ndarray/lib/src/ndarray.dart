@@ -2480,7 +2480,7 @@ sealed class NDArray<T extends DTypeTag>
     }
 
     if (!isContiguous) {
-      final result = NDArray<T>.create(resolvedShape, dtype);
+      final result = NDArray<T>.create(resolvedShape, dtype, zeroInit: false);
       _copyStridedToContiguous(result);
       return result;
     }
@@ -2512,7 +2512,7 @@ sealed class NDArray<T extends DTypeTag>
       throw StateError('Cannot flatten a disposed NDArray.');
     }
     final totalSize = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
-    final result = NDArray<T>.create([totalSize], dtype);
+    final result = NDArray<T>.create([totalSize], dtype, zeroInit: false);
 
     if (totalSize == 0) {
       return result;
@@ -2571,7 +2571,7 @@ sealed class NDArray<T extends DTypeTag>
       }
       result = out;
     } else {
-      result = NDArray<T>.create(shape, dtype);
+      result = NDArray<T>.create(shape, dtype, zeroInit: false);
     }
 
     final totalSize = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
@@ -2752,60 +2752,74 @@ sealed class NDArray<T extends DTypeTag>
   }
 
   void _copyStridedToContiguous(NDArray<T> dest) {
+    final rank = shape.length;
     final marker = ScratchArena.marker;
     try {
-      final cShape = ScratchArena.copyInts(shape);
-      final cStridesSrc = ScratchArena.copyInts(strides);
+      final cBuf = ScratchArena.getStridedBuffer(rank == 0 ? 1 : rank, 3);
+      final cShape = rank == 0 ? ffi.nullptr : cBuf;
+      final cStridesSrc = rank == 0 ? ffi.nullptr : cBuf + rank;
+      final cStridesDst = rank == 0 ? ffi.nullptr : cBuf + rank * 2;
+      var dstStride = 1;
+      for (var i = rank - 1; i >= 0; i--) {
+        final dim = shape[i];
+        cShape[i] = dim;
+        cStridesSrc[i] = strides[i];
+        cStridesDst[i] = dstStride;
+        dstStride *= dim;
+      }
       switch (dtype) {
-        case DType.float64 || DType.int64 || DType.uint64:
-          s_flatten_double(
+        case DType.complex128:
+          s_positive_complex128(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
+          );
+        case DType.float64 || DType.int64 || DType.uint64 || DType.complex64:
+          s_positive_int64(
+            pointer.cast(),
+            cStridesSrc,
+            dest.pointer.cast(),
+            cStridesDst,
+            cShape,
+            rank,
+            ffi.nullptr,
           );
         case DType.float32 || DType.int32 || DType.uint32:
-          s_flatten_float(
+          s_positive_int32(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
           );
         case DType.float16 || DType.bfloat16 || DType.int16 || DType.uint16:
-          s_flatten_int16(
+          s_positive_int16(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
           );
         case DType.int8 || DType.uint8 || DType.boolean:
-          s_flatten_uint8(
+          s_positive_uint8(
             pointer.cast(),
             cStridesSrc,
             dest.pointer.cast(),
+            cStridesDst,
             cShape,
-            shape.length,
-          );
-        case DType.complex128:
-          s_flatten_complex128(
-            pointer.cast(),
-            cStridesSrc,
-            dest.pointer.cast(),
-            cShape,
-            shape.length,
-          );
-        case DType.complex64:
-          s_flatten_complex64(
-            pointer.cast(),
-            cStridesSrc,
-            dest.pointer.cast(),
-            cShape,
-            shape.length,
+            rank,
+            ffi.nullptr,
           );
       }
+      helpers.checkNativeOom();
     } finally {
       ScratchArena.reset(marker);
     }
