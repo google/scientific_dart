@@ -276,6 +276,57 @@ final t_slogdet_c64 = slogdet(c64);
 // expect: ({NDArray<Float32> s, NDArray<Float32> u, NDArray<Float32> vh})
 final t_svd_f32 = svd(f32);
 
+// expect: ({NDArray<Float64> s, NDArray<Float64> u, NDArray<Float64> vh})
+final t_svd_i32_econ = svd(i32, fullMatrices: false);
+
+// expect: NDArray<Float64>
+final t_inv_i32 = inv(i32);
+
+// expect: NDArray<Float64>
+final t_det_i32 = det(i32);
+
+// expect: ({NDArray<Float64> logabsdet, NDArray<Float64> sign})
+final t_slogdet_i32 = slogdet(i32);
+
+// expect: NDArray<Float64>
+final t_solve_i32 = solve(i32, i32);
+
+// expect: NDArray<Float64>
+final t_pinv_i32 = pinv(i32);
+
+// expect: NDArray<Float64>
+final t_cholesky_i32 = cholesky(i32);
+
+// expect: ({NDArray<Float64> q, NDArray<Float64> r})
+final t_qr_i32 = qr(i32);
+
+// expect: NDArray<Float32>
+final t_svdvals_f32 = svdvals(f32);
+
+// expect: NDArray<Float32>
+final t_svdvals_c64 = svdvals(c64);
+
+// expect: NDArray<Float64>
+final t_svdvals_i32 = svdvals(i32);
+
+// expect: NDArray<Int64>
+final t_matrix_rank_f32 = matrix_rank(f32);
+
+// expect: NDArray<Int64>
+final t_matrix_rank_c64 = matrix_rank(c64);
+
+// expect: NDArray<Float32>
+final t_tensorsolve_f32 = tensorsolve(f32, f32);
+
+// expect: NDArray<Float64>
+final t_tensorsolve_i32 = tensorsolve(i32, i32);
+
+// expect: NDArray<Float32>
+final t_tensorinv_f32 = tensorinv(f32);
+
+// expect: NDArray<Float64>
+final t_tensorinv_i32 = tensorinv(i32);
+
 // expect: NDArray<DTypeSpec<IntegerDType, int, Float64, Complex128, Float64, DTypeTag, Float64, Float64>>
 final t_leftShift_asInteger = leftShift(i32.asIntegerDType, u8.asIntegerDType);
 

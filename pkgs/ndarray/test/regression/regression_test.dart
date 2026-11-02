@@ -272,10 +272,17 @@ void main() {
       expect(d.scalar, closeTo(-2.0, 1e-5));
     });
 
-    test('svd and qr throw ArgumentError for integer inputs', () {
-      final a = NDArray<Int32>.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-      expect(() => svd(a), throwsArgumentError);
-      expect(() => qr(a), throwsArgumentError);
+    test('svd and qr promote integer inputs to float64', () {
+      NDArray.scope(() {
+        final a = NDArray<Int32>.fromList([1, 2, 3, 4], [2, 2], DType.int32);
+        final svdRes = svd(a);
+        expect(svdRes.u.dtype, DType.float64);
+        expect(svdRes.s.dtype, DType.float64);
+        expect(svdRes.vh.dtype, DType.float64);
+        final qrRes = qr(a);
+        expect(qrRes.q.dtype, DType.float64);
+        expect(qrRes.r.dtype, DType.float64);
+      });
     });
 
     test('complex SVD (complex128)', () {

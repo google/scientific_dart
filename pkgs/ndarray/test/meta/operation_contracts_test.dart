@@ -487,6 +487,20 @@ void main() {
     MatrixOpSpec('solve(a, a)', (a, {out}) => solve(a, a, out: out)),
     MatrixOpSpec('cholesky', (a, {out}) => cholesky(a, out: out)),
     MatrixOpSpec('det', (a, {out}) => det(a, out: out)),
+    MatrixOpSpec('pinv', (a, {out}) => pinv(a, out: out)),
+    MatrixOpSpec('svdvals', (a, {out}) => svdvals(a, out: out)),
+    MatrixOpSpec(
+      'tensorinv(a, ind: 1)',
+      (a, {out}) => tensorinv(a, ind: 1, out: out),
+    ),
+    MatrixOpSpec('tensorsolve(a, b1D)', (a, {out}) {
+      final b = NDArray<Float64>.ones([a.shape[0]], DType.float64);
+      try {
+        return tensorsolve(a, b, out: out);
+      } finally {
+        b.dispose();
+      }
+    }),
     MatrixOpSpec('eigvalsh', (a, {out}) => eigvalsh(a, out: out)),
     MatrixOpSpec(
       'eigh (eigenvalues)',
@@ -2515,10 +2529,14 @@ void main() {
           expect(() => cholesky(squareBig), throwsUnsupportedError);
           expect(() => qr(tall), throwsUnsupportedError);
           expect(() => svd(tall), throwsUnsupportedError);
+          expect(() => svdvals(tall), throwsUnsupportedError);
+          expect(() => matrix_rank(tall), throwsUnsupportedError);
           expect(() => det(squareBig), throwsUnsupportedError);
           expect(() => slogdet(squareBig), throwsUnsupportedError);
           expect(() => inv(squareBig), throwsUnsupportedError);
           expect(() => solve(squareBig, tall), throwsUnsupportedError);
+          expect(() => tensorsolve(squareBig, vecBig), throwsUnsupportedError);
+          expect(() => tensorinv(squareBig, ind: 1), throwsUnsupportedError);
           expect(() => lstsq(tall, vecBig), throwsUnsupportedError);
           expect(() => pinv(tall), throwsUnsupportedError);
           expect(() => matrix_power(squareBig, 2), throwsUnsupportedError);

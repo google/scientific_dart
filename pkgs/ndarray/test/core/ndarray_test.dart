@@ -1779,6 +1779,34 @@ void main() {
 
         final it = NDIter(e2);
         expect(it.moveNext(), isFalse);
+
+        final e1Out = NDArray<Float64>.zeros([0], DType.float64);
+        expect(identical(e1.copy(out: e1Out), e1Out), isTrue);
+        expect(e1.flatten().shape, equals([0]));
+      }),
+    );
+
+    test(
+      'strided copy, flatten, and reshape across all 15 DTypes',
+      () => NDArray.scope(() {
+        final base = NDArray.fromList([0, 1, 2, 3], [2, 2], DType.int64);
+        for (final dt in DType.values) {
+          final a = base.astype(dt);
+          final t = a.transposed;
+          expect(t.isContiguous, isFalse);
+          final c = t.copy();
+          expect(c.isContiguous, isTrue);
+          expect(c.toList(), equals(t.toList()));
+          final cOut = NDArray<DTypeTag>.zeros([2, 2], dt);
+          t.copy(out: cOut);
+          expect(cOut.toList(), equals(t.toList()));
+          final f = t.flatten();
+          expect(f.shape, equals([4]));
+          expect(f.toList(), equals(t.toList()));
+          final r = t.reshape([4]);
+          expect(r.shape, equals([4]));
+          expect(r.toList(), equals(t.toList()));
+        }
       }),
     );
   });

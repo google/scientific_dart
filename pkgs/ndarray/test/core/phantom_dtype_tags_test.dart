@@ -84,7 +84,7 @@ void main() {
     });
 
     test(
-      'Bucket A: float16 linalg ops preserve Float16 runtime and static tag',
+      'Bucket A: float16 linalg ops promote to Float64 runtime and static tag',
       () {
         NDArray.scope(() {
           final a = NDArray.fromList(
@@ -95,37 +95,37 @@ void main() {
           final b = NDArray.fromList([1.0, 2.0], [2], DType.float16);
 
           final invA = inv(a);
-          expect(invA.dtype, DType.float16);
-          expect((invA as Object) is NDArray<Float16>, isTrue);
+          expect(invA.dtype, DType.float64);
+          expect((invA as Object) is NDArray<Float64>, isTrue);
 
           final detA = det(a);
-          expect(detA.dtype, DType.float16);
-          expect((detA as Object) is NDArray<Float16>, isTrue);
+          expect(detA.dtype, DType.float64);
+          expect((detA as Object) is NDArray<Float64>, isTrue);
 
           final slog = slogdet(a);
-          expect(slog.sign.dtype, DType.float16);
-          expect(slog.logabsdet.dtype, DType.float16);
+          expect(slog.sign.dtype, DType.float64);
+          expect(slog.logabsdet.dtype, DType.float64);
 
           final x = solve(a, b);
-          expect(x.dtype, DType.float16);
-          expect((x as Object) is NDArray<Float16>, isTrue);
+          expect(x.dtype, DType.float64);
+          expect((x as Object) is NDArray<Float64>, isTrue);
 
           final p = pinv(a);
-          expect(p.dtype, DType.float16);
-          expect((p as Object) is NDArray<Float16>, isTrue);
+          expect(p.dtype, DType.float64);
+          expect((p as Object) is NDArray<Float64>, isTrue);
 
           final l = cholesky(a);
-          expect(l.dtype, DType.float16);
-          expect((l as Object) is NDArray<Float16>, isTrue);
+          expect(l.dtype, DType.float64);
+          expect((l as Object) is NDArray<Float64>, isTrue);
 
           final qrRes = qr(a);
-          expect(qrRes.q.dtype, DType.float16);
-          expect(qrRes.r.dtype, DType.float16);
+          expect(qrRes.q.dtype, DType.float64);
+          expect(qrRes.r.dtype, DType.float64);
 
           final svdRes = svd(a);
-          expect(svdRes.u.dtype, DType.float16);
-          expect(svdRes.s.dtype, DType.float16);
-          expect(svdRes.vh.dtype, DType.float16);
+          expect(svdRes.u.dtype, DType.float64);
+          expect(svdRes.s.dtype, DType.float64);
+          expect(svdRes.vh.dtype, DType.float64);
         });
       },
     );

@@ -1,7 +1,10 @@
 ## 0.3.1-wip
 
 - Added `NDArray.using((scope) { ... })` (and re-exported `ResourceScope`) to support LIFO `scope.defer(...)` cleanup callbacks and `scope.escape(...)` promotion of multiple results (such as records) (#1).
-- Optimized 1D and multi-dimensional FFT routines (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `ifft2`, `fftn`, `ifftn`, `rfft2`, `irfft2`, `rfftn`, `irfftn`, `hfft`, `ihfft`) with unboxed FFI pointer loops, SIMD scaling, hoisted inner-stride transposes and strided copies, and direct `r2c` + Hermitian conjugate symmetry fast paths for real inputs.
+- Optimized 1D and multi-dimensional FFT routines (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `ifft2`, `fftn`, `ifftn`, `rfft2`, `irfft2`, `rfftn`, `irfftn`, `hfft`, `ihfft`) with unboxed FFI pointer loops, SIMD scaling, hoisted inner-stride transposes and strided copies, and direct `r2c` + Hermitian conjugate symmetry fast paths for real inputs (#5).
+- **Breaking — Unified `linalg` Static Type Bounds & `Float64` Promotion**: Unified `linalg` static type bounds (`InexactOf<R>`, `RealFloatOf<R>`, and `SelfOf<InexactOf<R>>`) and integer/`Boolean`/`Float16`/`BFloat16` promotion to `Float64` across `inv`, `det`, `slogdet`, `solve`, `pinv`, `cholesky`, `qr`, and `svd`.
+- Added economy/reduced SVD (`svd(a, fullMatrices: false)`) and routed `pinv` through reduced SVD.
+- Added `svdvals` (`svdValues`), `matrix_rank` (`matrixRank`), `tensorsolve`, and `tensorinv` to `linalg`.
 
 ## 0.3.0
 

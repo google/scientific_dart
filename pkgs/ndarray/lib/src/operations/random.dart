@@ -1353,7 +1353,7 @@ NDArray<T> multivariateNormal<T extends SelfOf<DTypeTag>>(
     } else {
       NDArray<T>? chol;
       try {
-        chol = cholesky(covCast);
+        chol = cholesky(covCast.asAnySpec) as NDArray<T>;
       } on Object {
         chol = null;
       }

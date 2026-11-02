@@ -691,7 +691,7 @@ void main() {
       );
 
       test(
-        'Solve integer matrices throws ArgumentError',
+        'Solve integer matrices promotes to Float64 and rejects boolean',
         () => NDArray.scope(() {
           final a = NDArray.fromList(Int32List.fromList([3, 1, 1, 2]), [
             2,
@@ -701,7 +701,21 @@ void main() {
             2,
             1,
           ], DType.int32);
-          expect(() => solve(a, b), throwsArgumentError);
+          final x = solve(a, b);
+          expect(x.dtype, DType.float64);
+          expect(x.shape, [2, 1]);
+          expect(x.getCell([0, 0]), closeTo(2.0, 1e-12));
+          expect(x.getCell([1, 0]), closeTo(3.0, 1e-12));
+
+          final boolA = NDArray.fromList(
+            [true, false, false, true],
+            [2, 2],
+            DType.boolean,
+          );
+          final boolB = NDArray.fromList([true, false], [2, 1], DType.boolean);
+          final boolSol = solve(boolA, boolB);
+          expect(boolSol.dtype, DType.float64);
+          expect(boolSol.toList(), [1.0, 0.0]);
         }),
       );
 
@@ -928,13 +942,26 @@ void main() {
       );
 
       test(
-        'cholesky() throws ArgumentError on integer matrices (int32)',
+        'cholesky() promotes integer and boolean matrices to float64',
         () => NDArray.scope(() {
           final a = NDArray.fromList(Int32List.fromList([4, 2, 2, 2]), [
             2,
             2,
           ], DType.int32);
-          expect(() => cholesky(a), throwsArgumentError);
+          final l = cholesky(a);
+          expect(l.dtype, DType.float64);
+          expect(l.getCell([0, 0]), closeTo(2.0, 1e-12));
+          expect(l.getCell([1, 0]), closeTo(1.0, 1e-12));
+          expect(l.getCell([1, 1]), closeTo(1.0, 1e-12));
+
+          final b = NDArray.fromList(
+            [true, false, false, true],
+            [2, 2],
+            DType.boolean,
+          );
+          final lb = cholesky(b);
+          expect(lb.dtype, DType.float64);
+          expect(lb.toList(), [1.0, 0.0, 0.0, 1.0]);
         }),
       );
 
@@ -2659,4 +2686,383 @@ void main() {
       });
     });
   });
+
+  group(
+    'Economy SVD, svdvals, matrix_rank, tensorsolve, tensorinv & integer promotion',
+    () {
+      test(
+        'Integer promotion across inv, det, slogdet, solve, pinv, cholesky, qr, svd',
+        () => NDArray.scope(() {
+          final aInt = NDArray.fromList([4, 2, 2, 2], [2, 2], DType.int32);
+          final bInt = NDArray.fromList([6, 4], [2], DType.int32);
+
+          final aInv = inv(aInt);
+          expect(aInv.dtype, DType.float64);
+          expect(aInv.getCell([0, 0]), closeTo(0.5, 1e-12));
+          expect(aInv.getCell([0, 1]), closeTo(-0.5, 1e-12));
+          expect(aInv.getCell([1, 0]), closeTo(-0.5, 1e-12));
+          expect(aInv.getCell([1, 1]), closeTo(1.0, 1e-12));
+
+          final d = det(aInt);
+          expect(d.dtype, DType.float64);
+          expect(d.scalar, closeTo(4.0, 1e-12));
+
+          final sd = slogdet(aInt);
+          expect(sd.sign.dtype, DType.float64);
+          expect(sd.logabsdet.dtype, DType.float64);
+          expect(sd.sign.scalar, closeTo(1.0, 1e-12));
+          expect(sd.logabsdet.scalar, closeTo(math.log(4.0), 1e-12));
+
+          final x = solve(aInt, bInt);
+          expect(x.dtype, DType.float64);
+          expect(x.getCell([0]), closeTo(1.0, 1e-12));
+          expect(x.getCell([1]), closeTo(1.0, 1e-12));
+
+          final p = pinv(aInt);
+          expect(p.dtype, DType.float64);
+          expect(allClose(p, aInv, atol: 1e-11), isTrue);
+
+          final l = cholesky(aInt);
+          expect(l.dtype, DType.float64);
+          expect(l.getCell([0, 0]), closeTo(2.0, 1e-12));
+          expect(l.getCell([1, 0]), closeTo(1.0, 1e-12));
+          expect(l.getCell([1, 1]), closeTo(1.0, 1e-12));
+
+          final qrRes = qr(aInt);
+          expect(qrRes.q.dtype, DType.float64);
+          expect(qrRes.r.dtype, DType.float64);
+          final aFloat = aInt.astype(DType.float64);
+          expect(
+            allClose(matmul(qrRes.q, qrRes.r), aFloat, atol: 1e-11),
+            isTrue,
+          );
+
+          final svdRes = svd(aInt);
+          expect(svdRes.u.dtype, DType.float64);
+          expect(svdRes.s.dtype, DType.float64);
+          expect(svdRes.vh.dtype, DType.float64);
+        }),
+      );
+
+      test(
+        'Economy SVD (fullMatrices: false) on tall, wide, complex, and batched matrices',
+        () => NDArray.scope(() {
+          // Tall 4x2 Float64 matrix: U is 4x2, S is 2, Vh is 2x2
+          final tall = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            [4, 2],
+            DType.float64,
+          );
+          final resTall = svd(tall, fullMatrices: false);
+          expect(resTall.u.shape, [4, 2]);
+          expect(resTall.s.shape, [2]);
+          expect(resTall.vh.shape, [2, 2]);
+          final reconTall = matmul(
+            matmul(resTall.u, diag(resTall.s)),
+            resTall.vh,
+          );
+          expect(allClose(reconTall, tall, atol: 1e-11), isTrue);
+
+          // Wide 2x4 Float32 matrix: U is 2x2, S is 2, Vh is 2x4
+          final wide = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            [2, 4],
+            DType.float32,
+          );
+          final resWide = svd(wide, fullMatrices: false);
+          expect(resWide.u.shape, [2, 2]);
+          expect(resWide.s.shape, [2]);
+          expect(resWide.vh.shape, [2, 4]);
+          final reconWide = matmul(
+            matmul(resWide.u, diag(resWide.s)),
+            resWide.vh,
+          );
+          expect(allClose(reconWide, wide, atol: 1e-5), isTrue);
+
+          // Tall 3x2 Complex128 matrix
+          final tallC = NDArray.fromList(
+            [
+              const Complex(1.0, 1.0),
+              const Complex(2.0, -1.0),
+              const Complex(3.0, 0.5),
+              const Complex(4.0, 2.0),
+              const Complex(5.0, -0.5),
+              const Complex(6.0, 1.5),
+            ],
+            [3, 2],
+            DType.complex128,
+          );
+          final resTallC = svd(tallC, fullMatrices: false);
+          expect(resTallC.u.shape, [3, 2]);
+          expect(resTallC.s.shape, [2]);
+          expect(resTallC.vh.shape, [2, 2]);
+          final sDiagC = diag(resTallC.s.astype(DType.complex128));
+          final reconTallC = matmul(matmul(resTallC.u, sDiagC), resTallC.vh);
+          expect(allClose(reconTallC, tallC, atol: 1e-11), isTrue);
+
+          // Wide 2x3 Complex128 matrix (exercises m < n conjugate-transpose branch)
+          final wideC = tallC.transpose([1, 0]);
+          final resWideC = svd(wideC, fullMatrices: false);
+          expect(resWideC.u.shape, [2, 2]);
+          expect(resWideC.s.shape, [2]);
+          expect(resWideC.vh.shape, [2, 3]);
+          final reconWideC = matmul(
+            matmul(resWideC.u, diag(resWideC.s.astype(DType.complex128))),
+            resWideC.vh,
+          );
+          expect(allClose(reconWideC, wideC, atol: 1e-11), isTrue);
+
+          // Empty Float32 / Complex64 matrices (fullMatrices: false and true + out zeroing)
+          final emptyF32 = NDArray.zeros([0, 3], DType.float32);
+          final resEmptyF32 = svd(emptyF32, fullMatrices: false);
+          expect(resEmptyF32.u.shape, [0, 0]);
+          expect(resEmptyF32.s.shape, [0]);
+          expect(resEmptyF32.s.dtype, DType.float32);
+          expect(resEmptyF32.vh.shape, [0, 3]);
+
+          final emptyC64 = NDArray.zeros([3, 0], DType.complex64);
+          final dirtyU = NDArray.full(
+            [3, 3],
+            const Complex(9.0, 9.0),
+            dtype: DType.complex64,
+          );
+          final emptyS = NDArray.zeros([0], DType.float32);
+          final emptyVh = NDArray.zeros([0, 0], DType.complex64);
+          final resEmptyC64 = svd(
+            emptyC64,
+            fullMatrices: true,
+            out: (u: dirtyU, s: emptyS, vh: emptyVh),
+          );
+          expect(resEmptyC64.s.dtype, DType.float32);
+          expect(
+            allClose(
+              resEmptyC64.u,
+              NDArray.eye(3, DType.complex64),
+              atol: 1e-6,
+            ),
+            isTrue,
+          );
+
+          // Batched 2x4x2 with out buffers
+          final batched = stack([tall, tall]);
+          final outU = NDArray.zeros([2, 4, 2], DType.float64);
+          final outS = NDArray.zeros([2, 2], DType.float64);
+          final outVh = NDArray.zeros([2, 2, 2], DType.float64);
+          final resBatched = svd(
+            batched,
+            fullMatrices: false,
+            out: (u: outU, s: outS, vh: outVh),
+          );
+          expect(identical(resBatched.u, outU), isTrue);
+          expect(identical(resBatched.s, outS), isTrue);
+          expect(identical(resBatched.vh, outVh), isTrue);
+          expect(
+            allClose(
+              resBatched.s.slice([const Index(0)]),
+              resTall.s,
+              atol: 1e-12,
+            ),
+            isTrue,
+          );
+          expect(
+            allClose(
+              resBatched.s.slice([const Index(1)]),
+              resTall.s,
+              atol: 1e-12,
+            ),
+            isTrue,
+          );
+        }),
+      );
+
+      test(
+        'svdvals and svdValues compute singular values matching svd().s',
+        () => NDArray.scope(() {
+          final a = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [3, 2],
+            DType.float64,
+          );
+          final sExpected = svd(a, fullMatrices: false).s;
+          final sActual = svdvals(a);
+          expect(sActual.dtype, DType.float64);
+          expect(sActual.shape, [2]);
+          expect(allClose(sActual, sExpected, atol: 1e-12), isTrue);
+
+          final outBuf = NDArray.zeros([2], DType.float64);
+          final sAlias = svdValues(a, out: outBuf);
+          expect(identical(sAlias, outBuf), isTrue);
+          expect(allClose(sAlias, sExpected, atol: 1e-12), isTrue);
+
+          // Complex64 input returns Float32 singular values
+          final c64 = a.astype(DType.complex64);
+          final sC64 = svdvals(c64);
+          expect(sC64.dtype, DType.float32);
+          expect(sC64.shape, [2]);
+          expect(
+            allClose(sC64.astype(DType.float64), sExpected, atol: 1e-5),
+            isTrue,
+          );
+
+          // Non-finite inputs throw IterationsExceededException
+          final nanMat = NDArray.fromList(
+            [1.0, double.nan, 0.0, 1.0],
+            [2, 2],
+            DType.float64,
+          );
+          final infMat = NDArray.fromList(
+            [1.0, double.infinity, 0.0, 1.0],
+            [2, 2],
+            DType.float64,
+          );
+          expect(
+            () => svdvals(nanMat),
+            throwsA(isA<IterationsExceededException>()),
+          );
+          expect(
+            () => svdvals(infMat),
+            throwsA(isA<IterationsExceededException>()),
+          );
+        }),
+      );
+
+      test(
+        'matrix_rank and matrixRank handle full-rank, rank-deficient, hermitian, 1D/0D, and batched inputs',
+        () => NDArray.scope(() {
+          // Full-rank 3x3
+          final eye3 = NDArray.eye(3, DType.float64);
+          expect(matrix_rank(eye3).scalar, equals(3));
+
+          // Rank-1 3x2 matrix
+          final rank1 = NDArray.fromList(
+            [1.0, 2.0, 2.0, 4.0, 3.0, 6.0],
+            [3, 2],
+            DType.float64,
+          );
+          expect(matrix_rank(rank1).scalar, equals(1));
+          expect(matrixRank(rank1).scalar, equals(1));
+
+          // Zero matrix has rank 0
+          final zeros = NDArray.zeros([3, 3], DType.float64);
+          expect(matrix_rank(zeros).scalar, equals(0));
+
+          // Hermitian matrix with negative eigenvalues
+          final herm = NDArray.fromList(
+            [2.0, 0.0, 0.0, 0.0, -3.0, 0.0, 0.0, 0.0, 0.0],
+            [3, 3],
+            DType.float64,
+          );
+          expect(matrix_rank(herm, hermitian: true).scalar, equals(2));
+
+          // Custom tolerance and rtol filter small singular value
+          final nearSingular = NDArray.fromList(
+            [10.0, 0.0, 0.0, 1e-2],
+            [2, 2],
+            DType.float64,
+          );
+          expect(matrix_rank(nearSingular).scalar, equals(2));
+          expect(matrix_rank(nearSingular, tol: 1e-1).scalar, equals(1));
+          expect(matrix_rank(nearSingular, rtol: 1e-2).scalar, equals(1));
+          expect(
+            () => matrix_rank(nearSingular, tol: 1e-2, rtol: 1e-2),
+            throwsArgumentError,
+          );
+
+          // 1D and 0D edge cases (including Boolean)
+          final vecNonZero = NDArray.fromList(
+            [0.0, 2.0, 0.0],
+            [3],
+            DType.float64,
+          );
+          final vecZero = NDArray.zeros([3], DType.float64);
+          final vecBool = NDArray.fromList([false, true], [2], DType.boolean);
+          expect(matrix_rank(vecNonZero).scalar, equals(1));
+          expect(matrix_rank(vecZero).scalar, equals(0));
+          expect(matrix_rank(vecBool).scalar, equals(1));
+          expect(
+            matrix_rank(NDArray.scalar(5.0, dtype: DType.float64)).scalar,
+            equals(1),
+          );
+          expect(
+            matrix_rank(NDArray.scalar(0.0, dtype: DType.float64)).scalar,
+            equals(0),
+          );
+
+          // Batched 2x3x3 with out buffer
+          final batch = stack([eye3, herm]);
+          final outRanks = NDArray.zeros([2], DType.int64);
+          final batchRanks = matrix_rank(batch, out: outRanks);
+          expect(identical(batchRanks, outRanks), isTrue);
+          expect(batchRanks.toList(), equals([3, 2]));
+        }),
+      );
+
+      test(
+        'tensorsolve and tensorinv solve and invert N-dimensional tensor equations',
+        () => NDArray.scope(() {
+          // 4D tensor A of shape [2, 2, 2, 2] (4x4 identity * 2 reshaped to [2, 2, 2, 2])
+          final eye4 = NDArray.eye(4, DType.float64);
+          final a = multiply(
+            eye4.reshape([2, 2, 2, 2]),
+            NDArray.scalar(2.0, dtype: DType.float64),
+          );
+          final b = NDArray.fromList(
+            [2.0, 4.0, 6.0, 8.0],
+            [2, 2],
+            DType.float64,
+          );
+
+          final x = tensorsolve(a, b);
+          expect(x.dtype, DType.float64);
+          expect(x.shape, [2, 2]);
+          expect(x.toList(), [1.0, 2.0, 3.0, 4.0]);
+
+          // Verify tensordot(a, x, axes: 2) == b
+          final bRecon = tensordot(a, x);
+          expect(allClose(bRecon, b, atol: 1e-12), isTrue);
+
+          // Test tensorsolve with explicit axes (including negative axis index)
+          final aPerm = a.transpose([0, 2, 1, 3]);
+          final xAxes = tensorsolve(aPerm, b, axes: [1, -1]);
+          expect(allClose(xAxes, x, atol: 1e-12), isTrue);
+
+          // Test tensorinv on [2, 2, 2, 2] with ind = 2
+          final aInv = tensorinv(a, ind: 2);
+          expect(aInv.shape, [2, 2, 2, 2]);
+          final prod = tensordot(a, aInv, axes: const TensordotAxes.count(2));
+          expect(allClose(prod.reshape([4, 4]), eye4, atol: 1e-12), isTrue);
+
+          // Test tensorinv with ind = 1 on shape [4, 2, 2]
+          final a3D = eye4.reshape([4, 2, 2]);
+          final outInv = NDArray.zeros([2, 2, 4], DType.float64);
+          final a3DInv = tensorinv(a3D, ind: 1, out: outInv);
+          expect(identical(a3DInv, outInv), isTrue);
+          expect(a3DInv.shape, [2, 2, 4]);
+          final prod3D = tensordot(
+            a3DInv,
+            a3D,
+            axes: const TensordotAxes.count(1),
+          );
+          expect(allClose(prod3D.reshape([4, 4]), eye4, atol: 1e-12), isTrue);
+
+          // Error checks
+          expect(() => tensorinv(a, ind: 0), throwsArgumentError);
+          expect(() => tensorinv(a, ind: 5), throwsArgumentError);
+          expect(
+            () => tensorinv(NDArray.zeros([2, 3, 2, 2], DType.float64), ind: 2),
+            throwsArgumentError,
+          );
+          expect(() => tensorsolve(a, b, axes: [1, 1]), throwsArgumentError);
+          expect(() => tensorsolve(a, b, axes: [4]), throwsRangeError);
+          expect(
+            () => tensorsolve(
+              NDArray.zeros([2, 3, 2, 2], DType.float64),
+              NDArray.zeros([2, 2], DType.float64),
+            ),
+            throwsArgumentError,
+          );
+        }),
+      );
+    },
+  );
 }
