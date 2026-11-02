@@ -1388,12 +1388,29 @@ void main() {
     test(
       'Real-input fft/ifft/fft2/ifft2/fftn/ifftn fast paths match Complex128 reference across even/odd shapes',
       () => NDArray.scope(() {
-        for (final len in [8, 9]) {
+        for (final len in [1, 8, 9]) {
           final x = linspace(-1.5, 2.5, len, dtype: DType.float64);
           final xc = x.astype(DType.complex128);
           expect(allClose(fft(x), fft(xc), atol: 1e-11), isTrue);
           expect(allClose(ifft(x), ifft(xc), atol: 1e-11), isTrue);
+
+          final outFft = NDArray.create([len], DType.complex128);
+          final outIfft = NDArray.create([len], DType.complex128);
+          fft(x, out: outFft);
+          ifft(x, out: outIfft);
+          expect(allClose(outFft, fft(xc), atol: 1e-11), isTrue);
+          expect(allClose(outIfft, ifft(xc), atol: 1e-11), isTrue);
         }
+
+        // Verify DC and Nyquist imaginary components are +0.0 (not -0.0).
+        final negMean = NDArray.fromList(
+          [-1.0, -2.0, -3.0, -4.0],
+          [4],
+          DType.float64,
+        );
+        final inv1d = ifft(negMean);
+        expect(inv1d.getCell([0]).imag.isNegative, isFalse);
+        expect(inv1d.getCell([2]).imag.isNegative, isFalse);
 
         for (final shape in [
           [4, 6],
@@ -1408,9 +1425,31 @@ void main() {
             dtype: DType.float64,
           ).reshape(shape);
           final mc = m.astype(DType.complex128);
+          expect(allClose(fft2(m), fft2(mc), atol: 1e-11), isTrue);
+          expect(allClose(ifft2(m), ifft2(mc), atol: 1e-11), isTrue);
+          expect(
+            allClose(fft2(m, s: [3, 8]), fft2(mc, s: [3, 8]), atol: 1e-11),
+            isTrue,
+          );
+          expect(
+            allClose(ifft2(m, s: [3, 8]), ifft2(mc, s: [3, 8]), atol: 1e-11),
+            isTrue,
+          );
+
+          final out2 = NDArray.create(shape, DType.complex128);
+          final outInv2 = NDArray.create(shape, DType.complex128);
+          fft2(m, out: out2);
+          ifft2(m, out: outInv2);
+          expect(allClose(out2, fft2(mc), atol: 1e-11), isTrue);
+          expect(allClose(outInv2, ifft2(mc), atol: 1e-11), isTrue);
+
           expect(allClose(fftn(m), fftn(mc), atol: 1e-11), isTrue);
           expect(allClose(ifftn(m), ifftn(mc), atol: 1e-11), isTrue);
         }
+
+        final negMean2d = negMean.reshape([2, 2]);
+        final inv2d = ifft2(negMean2d);
+        expect(inv2d.getCell([0, 0]).imag.isNegative, isFalse);
 
         // Non-last-axis rfft and irfft roundtrip (both even and odd axis length)
         for (final rows in [3, 4]) {

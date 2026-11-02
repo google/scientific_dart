@@ -44,49 +44,21 @@ NDArray _createZeros(List<int> shape, DType dtype) => switch (dtype) {
 };
 
 NDArray _createUninitialized(List<int> shape, DType dtype) => switch (dtype) {
-  DType.float64 => NDArray<Float64>.create(
-    shape,
-    DType.float64,
-    zeroInit: false,
-  ),
-  DType.float32 => NDArray<Float32>.create(
-    shape,
-    DType.float32,
-    zeroInit: false,
-  ),
-  DType.float16 => NDArray<Float16>.create(
-    shape,
-    DType.float16,
-    zeroInit: false,
-  ),
-  DType.bfloat16 => NDArray<BFloat16>.create(
-    shape,
-    DType.bfloat16,
-    zeroInit: false,
-  ),
-  DType.int64 => NDArray<Int64>.create(shape, DType.int64, zeroInit: false),
-  DType.int32 => NDArray<Int32>.create(shape, DType.int32, zeroInit: false),
-  DType.int16 => NDArray<Int16>.create(shape, DType.int16, zeroInit: false),
-  DType.int8 => NDArray<Int8>.create(shape, DType.int8, zeroInit: false),
-  DType.uint64 => NDArray<Uint64>.create(shape, DType.uint64, zeroInit: false),
-  DType.uint32 => NDArray<Uint32>.create(shape, DType.uint32, zeroInit: false),
-  DType.uint16 => NDArray<Uint16>.create(shape, DType.uint16, zeroInit: false),
-  DType.uint8 => NDArray<Uint8>.create(shape, DType.uint8, zeroInit: false),
-  DType.complex128 => NDArray<Complex128>.create(
-    shape,
-    DType.complex128,
-    zeroInit: false,
-  ),
-  DType.complex64 => NDArray<Complex64>.create(
-    shape,
-    DType.complex64,
-    zeroInit: false,
-  ),
-  DType.boolean => NDArray<Boolean>.create(
-    shape,
-    DType.boolean,
-    zeroInit: false,
-  ),
+  DType.float64 => NDArray<Float64>.create(shape, DType.float64),
+  DType.float32 => NDArray<Float32>.create(shape, DType.float32),
+  DType.float16 => NDArray<Float16>.create(shape, DType.float16),
+  DType.bfloat16 => NDArray<BFloat16>.create(shape, DType.bfloat16),
+  DType.int64 => NDArray<Int64>.create(shape, DType.int64),
+  DType.int32 => NDArray<Int32>.create(shape, DType.int32),
+  DType.int16 => NDArray<Int16>.create(shape, DType.int16),
+  DType.int8 => NDArray<Int8>.create(shape, DType.int8),
+  DType.uint64 => NDArray<Uint64>.create(shape, DType.uint64),
+  DType.uint32 => NDArray<Uint32>.create(shape, DType.uint32),
+  DType.uint16 => NDArray<Uint16>.create(shape, DType.uint16),
+  DType.uint8 => NDArray<Uint8>.create(shape, DType.uint8),
+  DType.complex128 => NDArray<Complex128>.create(shape, DType.complex128),
+  DType.complex64 => NDArray<Complex64>.create(shape, DType.complex64),
+  DType.boolean => NDArray<Boolean>.create(shape, DType.boolean),
 };
 
 void _scaleDoublesInPlace(
@@ -466,7 +438,7 @@ kiss_fft_cfg _getKissFFTPlan(int nfft, int inverse_fft) {
 ///
 /// **Performance considerations:**
 /// - Algorithmic complexity is $O(N \log N)$ where $N$ is the transform length, scaling linearly even for prime lengths.
-/// - Swapping the selected [axis] to the final dimension is a zero-copy, zero-allocation transpose view ($O(1)$ complexity).
+/// - When [axis] is not the last dimension, materializes contiguous transposed temporary buffers ($O(N)$ time and space) so the 1D transforms execute at unit stride.
 ///
 /// **Example:**
 /// {@example /example/fft_example.dart lang=dart}
@@ -650,7 +622,7 @@ NDArray<R> fft<R extends DTypeTag, Out extends R>(
           for (var k = half; k < targetLen; k++) {
             final sym = targetLen - k;
             pOutD[2 * k] = pOutD[2 * sym];
-            pOutD[2 * k + 1] = -pOutD[2 * sym + 1];
+            pOutD[2 * k + 1] = 0.0 - pOutD[2 * sym + 1];
           }
         }
       } finally {
@@ -739,7 +711,7 @@ NDArray<R> fft<R extends DTypeTag, Out extends R>(
 ///
 /// **Performance considerations:**
 /// - Algorithmic complexity is $O(N \log N)$ where $N$ is the transform length.
-/// - Swapping the selected [axis] to the final dimension is a zero-copy, zero-allocation transpose view ($O(1)$ complexity).
+/// - When [axis] is not the last dimension, materializes contiguous transposed temporary buffers ($O(N)$ time and space) so the 1D transforms execute at unit stride.
 ///
 /// **Example:**
 /// {@example /example/fft_example.dart lang=dart}
@@ -928,12 +900,12 @@ NDArray<R> ifft<R extends DTypeTag, Out extends R>(
           final pOutD = rowPout.cast<ffi.Double>();
           for (var k = 0; k < half; k++) {
             pOutD[2 * k] = pOutD[2 * k] * scaleFactor;
-            pOutD[2 * k + 1] = -pOutD[2 * k + 1] * scaleFactor;
+            pOutD[2 * k + 1] = 0.0 - pOutD[2 * k + 1] * scaleFactor;
           }
           for (var k = half; k < targetLen; k++) {
             final sym = targetLen - k;
             pOutD[2 * k] = pOutD[2 * sym];
-            pOutD[2 * k + 1] = -pOutD[2 * sym + 1];
+            pOutD[2 * k + 1] = 0.0 - pOutD[2 * sym + 1];
           }
         }
       } finally {
@@ -1396,6 +1368,12 @@ NDArray<R> _promoteToComplex<T extends DTypeTag, R extends DTypeTag>(
   return castNDArray(a, targetDType);
 }
 
+/// Crops or zero-pads [arr] along [axes] to match target lengths [s] and
+/// promotes to [targetDType].
+///
+/// When no cropping, padding, or dtype conversion is required, returns [arr]
+/// (or a zero-copy view of [arr]) directly. Callers must treat the returned
+/// array as read-only because it may alias [arr].
 NDArray<R> _padOrTruncate<T extends DTypeTag, R extends DTypeTag>(
   NDArray<T> arr,
   List<int> s,
@@ -2289,6 +2267,7 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
         s: sResolved,
         axes: axesResolved,
       );
+      assert(rfftOut.isContiguous && rfftOut.dtype == DType.complex128);
       final dest =
           out ?? _createUninitialized(outShape, targetDType) as NDArray<R>;
       final batches = dest.size ~/ (n0 * n1);
@@ -2313,7 +2292,7 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
             for (var j = half; j < n1; j++) {
               final symCol = n1 - j;
               rowOut[2 * j] = symRowIn[2 * symCol];
-              rowOut[2 * j + 1] = -symRowIn[2 * symCol + 1];
+              rowOut[2 * j + 1] = 0.0 - symRowIn[2 * symCol + 1];
             }
           }
         }
@@ -2327,7 +2306,7 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
             final rowOut = bOut + i * n1 * 2;
             for (var j = 0; j < half; j++) {
               rowOut[2 * j] = rowIn[2 * j] * scale;
-              rowOut[2 * j + 1] = -rowIn[2 * j + 1] * scale;
+              rowOut[2 * j + 1] = 0.0 - rowIn[2 * j + 1] * scale;
             }
             final symRowIdx = i == 0 ? 0 : n0 - i;
             final symRowIn = bIn + symRowIdx * half * 2;

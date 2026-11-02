@@ -2480,8 +2480,13 @@ sealed class NDArray<T extends DTypeTag>
     }
 
     if (!isContiguous) {
-      final result = NDArray<T>.create(resolvedShape, dtype, zeroInit: false);
-      _copyStridedToContiguous(result);
+      final result = NDArray<T>.create(resolvedShape, dtype);
+      try {
+        _copyStridedToContiguous(result);
+      } catch (_) {
+        result.dispose();
+        rethrow;
+      }
       return result;
     }
 
@@ -2512,7 +2517,7 @@ sealed class NDArray<T extends DTypeTag>
       throw StateError('Cannot flatten a disposed NDArray.');
     }
     final totalSize = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
-    final result = NDArray<T>.create([totalSize], dtype, zeroInit: false);
+    final result = NDArray<T>.create([totalSize], dtype);
 
     if (totalSize == 0) {
       return result;
@@ -2571,7 +2576,7 @@ sealed class NDArray<T extends DTypeTag>
       }
       result = out;
     } else {
-      result = NDArray<T>.create(shape, dtype, zeroInit: false);
+      result = NDArray<T>.create(shape, dtype);
     }
 
     final totalSize = shape.isEmpty ? 1 : shape.reduce((a, b) => a * b);
@@ -2592,12 +2597,19 @@ sealed class NDArray<T extends DTypeTag>
       });
     }
 
-    if (isContiguous && result.isContiguous) {
-      _copyContiguousNDArray(this, result, totalSize);
-    } else if (result.isContiguous) {
-      _copyStridedToContiguous(result);
-    } else {
-      _copyStrided(result);
+    try {
+      if (isContiguous && result.isContiguous) {
+        _copyContiguousNDArray(this, result, totalSize);
+      } else if (result.isContiguous) {
+        _copyStridedToContiguous(result);
+      } else {
+        _copyStrided(result);
+      }
+    } catch (_) {
+      if (out == null) {
+        result.dispose();
+      }
+      rethrow;
     }
 
     return result;
@@ -2755,10 +2767,10 @@ sealed class NDArray<T extends DTypeTag>
     final rank = shape.length;
     final marker = ScratchArena.marker;
     try {
-      final cBuf = ScratchArena.getStridedBuffer(rank == 0 ? 1 : rank, 3);
-      final cShape = rank == 0 ? ffi.nullptr : cBuf;
-      final cStridesSrc = rank == 0 ? ffi.nullptr : cBuf + rank;
-      final cStridesDst = rank == 0 ? ffi.nullptr : cBuf + rank * 2;
+      final cBuf = ScratchArena.getStridedBuffer(rank, 3);
+      final cShape = cBuf;
+      final cStridesSrc = cBuf + rank;
+      final cStridesDst = cBuf + rank * 2;
       var dstStride = 1;
       for (var i = rank - 1; i >= 0; i--) {
         final dim = shape[i];
