@@ -1384,5 +1384,48 @@ void main() {
         expect(allClose(rRec, x, atol: 1e-11), isTrue);
       });
     });
+
+    test(
+      'Real-input fft/ifft/fft2/ifft2/fftn/ifftn fast paths match Complex128 reference across even/odd shapes',
+      () => NDArray.scope(() {
+        for (final len in [8, 9]) {
+          final x = linspace(-1.5, 2.5, len, dtype: DType.float64);
+          final xc = x.astype(DType.complex128);
+          expect(allClose(fft(x), fft(xc), atol: 1e-11), isTrue);
+          expect(allClose(ifft(x), ifft(xc), atol: 1e-11), isTrue);
+        }
+
+        for (final shape in [
+          [4, 6],
+          [5, 7],
+          [2, 4, 5],
+        ]) {
+          final count = shape.reduce((a, b) => a * b);
+          final m = linspace(
+            -1.0,
+            3.0,
+            count,
+            dtype: DType.float64,
+          ).reshape(shape);
+          final mc = m.astype(DType.complex128);
+          expect(allClose(fftn(m), fftn(mc), atol: 1e-11), isTrue);
+          expect(allClose(ifftn(m), ifftn(mc), atol: 1e-11), isTrue);
+        }
+
+        // Non-last-axis rfft and irfft roundtrip (both even and odd axis length)
+        for (final rows in [3, 4]) {
+          final mat = linspace(
+            0.5,
+            6.5,
+            rows * 5,
+            dtype: DType.float64,
+          ).reshape([rows, 5]);
+          final r0 = rfft(mat, axis: 0);
+          expect(r0.shape, [rows ~/ 2 + 1, 5]);
+          final rec0 = irfft(r0, n: rows, axis: 0);
+          expect(allClose(rec0, mat, atol: 1e-11), isTrue);
+        }
+      }),
+    );
   });
 }

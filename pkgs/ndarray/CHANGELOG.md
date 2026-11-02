@@ -1,6 +1,7 @@
 ## 0.3.1-wip
 
 - Added `NDArray.using((scope) { ... })` (and re-exported `ResourceScope`) to support LIFO `scope.defer(...)` cleanup callbacks and `scope.escape(...)` promotion of multiple results (such as records) (#1).
+- Optimized 1D and multi-dimensional FFT routines (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `ifft2`, `fftn`, `ifftn`, `rfft2`, `irfft2`, `rfftn`, `irfftn`, `hfft`, `ihfft`) with unboxed FFI pointer loops, SIMD scaling, cache-tiled 2D transposes, and direct `r2c` + Hermitian conjugate symmetry fast paths for real inputs.
 
 ## 0.3.0
 
