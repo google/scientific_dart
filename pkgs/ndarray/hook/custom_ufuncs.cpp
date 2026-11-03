@@ -53,6 +53,9 @@
 
 namespace hn = hwy::HWY_NAMESPACE;
 
+#define float16_t ndarray_float16_t
+#define bfloat16_t ndarray_bfloat16_t
+
 #define MAKE_BINARY_OP_NAME(code, name) name,
 static const char* BINARY_OP_NAMES[] = {
     FOR_EACH_BINARY_OP(MAKE_BINARY_OP_NAME)
@@ -2425,11 +2428,54 @@ static inline cpx_t cpx_mul_cast(cpx_t x, cpx_t y) {
     return {cres.real(), cres.imag()};
 }
 
+template <typename T>
+static inline void cpx_div_scaled_impl(T ar, T ai, T br, T bi, T *out_r, T *out_i) {
+    T abs_br = std::fabs(br);
+    T abs_bi = std::fabs(bi);
+    T max_b = std::fmax(abs_br, abs_bi);
+    T max_a = std::fmax(std::fabs(ar), std::fabs(ai));
+    if (std::isfinite(max_a) && std::isfinite(max_b) && max_b > static_cast<T>(0.0)) {
+        int exp_b = std::ilogb(max_b);
+        T br_s = std::scalbn(br, -exp_b);
+        T bi_s = std::scalbn(bi, -exp_b);
+        int exp_a = 0;
+        if (max_a > std::numeric_limits<T>::max() / static_cast<T>(4.0)) {
+            exp_a = 2;
+            ar = std::scalbn(ar, -2);
+            ai = std::scalbn(ai, -2);
+        } else if (max_a > static_cast<T>(0.0) &&
+                   max_a < std::numeric_limits<T>::min() / std::numeric_limits<T>::epsilon()) {
+            exp_a = std::ilogb(max_a);
+            ar = std::scalbn(ar, -exp_a);
+            ai = std::scalbn(ai, -exp_a);
+        }
+        T qr, qi;
+        if (abs_br >= abs_bi) {
+            T r = (exp_b < 0) ? (bi_s / br_s) : (bi / br);
+            T denom = br_s + bi_s * r;
+            qr = (ar + ai * r) / denom;
+            qi = (ai - ar * r) / denom;
+        } else {
+            T r = (exp_b < 0) ? (br_s / bi_s) : (br / bi);
+            T denom = bi_s + br_s * r;
+            qr = (ar * r + ai) / denom;
+            qi = (ai * r - ar) / denom;
+        }
+        *out_r = std::scalbn(qr, exp_a - exp_b);
+        *out_i = std::scalbn(qi, exp_a - exp_b);
+        return;
+    }
+    std::complex<T> cx(ar, ai);
+    std::complex<T> cy(br, bi);
+    std::complex<T> cres = cx / cy;
+    *out_r = cres.real();
+    *out_i = cres.imag();
+}
+
 static inline cpx_t cpx_div_cast(cpx_t x, cpx_t y) {
-    std::complex<double> cx(x.r, x.i);
-    std::complex<double> cy(y.r, y.i);
-    std::complex<double> cres = cx / cy;
-    return {cres.real(), cres.imag()};
+    cpx_t res;
+    cpx_div_scaled_impl<double>(x.r, x.i, y.r, y.i, &res.r, &res.i);
+    return res;
 }
 
 static inline cpx_f_t cpx_add_f_cast(cpx_f_t x, cpx_f_t y) {
@@ -2454,10 +2500,9 @@ static inline cpx_f_t cpx_mul_f_cast(cpx_f_t x, cpx_f_t y) {
 }
 
 static inline cpx_f_t cpx_div_f_cast(cpx_f_t x, cpx_f_t y) {
-    std::complex<float> cx(x.r, x.i);
-    std::complex<float> cy(y.r, y.i);
-    std::complex<float> cres = cx / cy;
-    return {cres.real(), cres.imag()};
+    cpx_f_t res;
+    cpx_div_scaled_impl<float>(x.r, x.i, y.r, y.i, &res.r, &res.i);
+    return res;
 }
 
 static inline cpx_t cpx_add(cpx_t a, cpx_t b) {
@@ -2474,10 +2519,9 @@ static inline cpx_t cpx_mul(cpx_t a, cpx_t b) {
     return (cpx_t){rr1 - rr2, ri1 + ri2};
 }
 static inline cpx_t cpx_div(cpx_t x, cpx_t y) {
-    std::complex<double> cx(x.r, x.i);
-    std::complex<double> cy(y.r, y.i);
-    std::complex<double> cres = cx / cy;
-    return {cres.real(), cres.imag()};
+    cpx_t res;
+    cpx_div_scaled_impl<double>(x.r, x.i, y.r, y.i, &res.r, &res.i);
+    return res;
 }
 static inline cpx_f_t cpx_add_f(cpx_f_t a, cpx_f_t b) {
     return (cpx_f_t){a.r + b.r, a.i + b.i};
@@ -2493,10 +2537,9 @@ static inline cpx_f_t cpx_mul_f(cpx_f_t a, cpx_f_t b) {
     return (cpx_f_t){rr1 - rr2, ri1 + ri2};
 }
 static inline cpx_f_t cpx_div_f(cpx_f_t x, cpx_f_t y) {
-    std::complex<float> cx(x.r, x.i);
-    std::complex<float> cy(y.r, y.i);
-    std::complex<float> cres = cx / cy;
-    return {cres.real(), cres.imag()};
+    cpx_f_t res;
+    cpx_div_scaled_impl<float>(x.r, x.i, y.r, y.i, &res.r, &res.i);
+    return res;
 }
 
 // 1. DOUBLE PRECISION (FLOAT64) FLAT CONTIGUOUS KERNELS

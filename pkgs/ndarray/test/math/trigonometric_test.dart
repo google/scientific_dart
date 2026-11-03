@@ -1317,6 +1317,79 @@ void main() {
               closeTo(gContigBig.getCell([i]), 1e275),
             );
           }
+
+          // Float32 isClose / allClose with equalNan: true and false
+          final f32a = NDArray.fromList(
+            [1.0, double.nan, 2.0, 3.0, 4.0],
+            [5],
+            DType.float32,
+          );
+          final f32b = NDArray.fromList(
+            [1.0, double.nan, 2.0, 3.0, 4.0],
+            [5],
+            DType.float32,
+          );
+          expect(allClose(f32a, f32b, equalNan: false), isFalse);
+          expect(allClose(f32a, f32b, equalNan: true), isTrue);
+          expect(isClose(f32a, f32b, equalNan: false).getCell([1]), isFalse);
+          expect(isClose(f32a, f32b, equalNan: true).getCell([1]), isTrue);
+
+          // Mixed float64/float32 and masked isClose/allClose exercising _isCloseDouble
+          final f64Special = NDArray.fromList(
+            [1.0, double.nan, double.infinity, double.negativeInfinity, 1.0],
+            [5],
+            DType.float64,
+          );
+          final f32Special = NDArray.fromList(
+            [1.0, double.nan, double.infinity, double.infinity, double.nan],
+            [5],
+            DType.float32,
+          );
+          expect(allClose(f64Special, f32Special, equalNan: true), isFalse);
+          expect(allClose(f64Special, f32Special, equalNan: false), isFalse);
+          final mask5 = NDArray.fromList(
+            [true, true, true, true, true],
+            [5],
+            DType.boolean,
+          );
+          expect(
+            isClose(
+              f64Special,
+              f64Special,
+              equalNan: true,
+              where: mask5,
+            ).getCell([1]),
+            isTrue,
+          );
+          expect(
+            isClose(
+              f64Special,
+              f32Special,
+              equalNan: false,
+              where: mask5,
+            ).getCell([1]),
+            isFalse,
+          );
+          expect(
+            isClose(
+              f64Special,
+              f64Special,
+              atol: double.infinity,
+              where: mask5,
+            ).getCell([0]),
+            isTrue,
+          );
+
+          // Non-contiguous stack along axis 0 and axis 1
+          final m = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [2, 3],
+            DType.float64,
+          ).transpose();
+          final s0 = stack([m, m], axis: 0);
+          final s1 = stack([m, m], axis: 1);
+          expect(s0.shape, equals([2, 3, 2]));
+          expect(s1.shape, equals([3, 2, 2]));
         });
       },
     );
