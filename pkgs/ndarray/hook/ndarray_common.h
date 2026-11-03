@@ -85,7 +85,7 @@ struct NoThrowBuffer {
     NoThrowBuffer(const NoThrowBuffer &) = delete;
     NoThrowBuffer &operator=(const NoThrowBuffer &) = delete;
 
-    bool resize(size_t n) noexcept {
+    bool resize_impl(size_t n, bool zero, bool set_oom_flag) noexcept {
         std::free(ptr_);
         ptr_ = nullptr;
         size_ = 0;
@@ -96,19 +96,32 @@ struct NoThrowBuffer {
         }
         if (n > static_cast<size_t>(-1) / sizeof(T)) {
             ok_ = false;
-            ndarray_set_oom_flag();
+            if (set_oom_flag) ndarray_set_oom_flag();
             return false;
         }
-        ptr_ = static_cast<T *>(std::calloc(n, sizeof(T)));
+        ptr_ = static_cast<T *>(zero ? std::calloc(n, sizeof(T))
+                                     : std::malloc(n * sizeof(T)));
         if (!ptr_) {
             ok_ = false;
-            ndarray_set_oom_flag();
+            if (set_oom_flag) ndarray_set_oom_flag();
             return false;
         }
         size_ = n;
         cap_ = n;
         ok_ = true;
         return true;
+    }
+
+    bool resize(size_t n) noexcept {
+        return resize_impl(n, /*zero=*/true, /*set_oom_flag=*/true);
+    }
+
+    bool resize_uninit(size_t n) noexcept {
+        return resize_impl(n, /*zero=*/false, /*set_oom_flag=*/true);
+    }
+
+    bool try_resize_uninit(size_t n) noexcept {
+        return resize_impl(n, /*zero=*/false, /*set_oom_flag=*/false);
     }
 
     bool allocate(size_t n) noexcept {
@@ -135,11 +148,14 @@ struct NoThrowBuffer {
 
     bool assign(const T *first, const T *last) noexcept {
         size_t n = static_cast<size_t>(last - first);
-        if (!resize(n)) return false;
-        if (n > 0 && first != nullptr) {
-            std::memcpy(ptr_, first, n * sizeof(T));
+        if (first != nullptr) {
+            if (!resize_uninit(n)) return false;
+            if (n > 0) {
+                std::memcpy(ptr_, first, n * sizeof(T));
+            }
+            return true;
         }
-        return true;
+        return resize(n);
     }
 
     bool push_back(const T &val) noexcept {

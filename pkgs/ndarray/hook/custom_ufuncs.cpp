@@ -10552,6 +10552,123 @@ static inline bool is_nan_check(T val) {
     return false;
 }
 
+template <typename T>
+static inline bool copy_and_check_nan(const T *base, int64_t stride, T *buf, int64_t len) {
+    if constexpr (!std::is_floating_point_v<T>) {
+        if (stride == 1) {
+            std::memcpy(buf, base, static_cast<size_t>(len) * sizeof(T));
+        } else {
+            for (int64_t i = 0; i < len; i++) {
+                buf[i] = base[i * stride];
+            }
+        }
+        return false;
+    } else {
+        bool has_nan = false;
+        if (stride == 1) {
+            int64_t i = 0;
+#if defined(__AVX2__)
+            if constexpr (std::is_same_v<T, double>) {
+                __m256d nan_acc = _mm256_setzero_pd();
+                for (; i + 16 <= len; i += 16) {
+                    __m256d v0 = _mm256_loadu_pd(base + i);
+                    __m256d v1 = _mm256_loadu_pd(base + i + 4);
+                    __m256d v2 = _mm256_loadu_pd(base + i + 8);
+                    __m256d v3 = _mm256_loadu_pd(base + i + 12);
+                    _mm256_storeu_pd(buf + i, v0);
+                    _mm256_storeu_pd(buf + i + 4, v1);
+                    _mm256_storeu_pd(buf + i + 8, v2);
+                    _mm256_storeu_pd(buf + i + 12, v3);
+                    __m256d n01 = _mm256_or_pd(_mm256_cmp_pd(v0, v0, _CMP_UNORD_Q),
+                                               _mm256_cmp_pd(v1, v1, _CMP_UNORD_Q));
+                    __m256d n23 = _mm256_or_pd(_mm256_cmp_pd(v2, v2, _CMP_UNORD_Q),
+                                               _mm256_cmp_pd(v3, v3, _CMP_UNORD_Q));
+                    nan_acc = _mm256_or_pd(nan_acc, _mm256_or_pd(n01, n23));
+                }
+                if (_mm256_movemask_pd(nan_acc) != 0) has_nan = true;
+            } else if constexpr (std::is_same_v<T, float>) {
+                __m256 nan_acc = _mm256_setzero_ps();
+                for (; i + 32 <= len; i += 32) {
+                    __m256 v0 = _mm256_loadu_ps(base + i);
+                    __m256 v1 = _mm256_loadu_ps(base + i + 8);
+                    __m256 v2 = _mm256_loadu_ps(base + i + 16);
+                    __m256 v3 = _mm256_loadu_ps(base + i + 24);
+                    _mm256_storeu_ps(buf + i, v0);
+                    _mm256_storeu_ps(buf + i + 8, v1);
+                    _mm256_storeu_ps(buf + i + 16, v2);
+                    _mm256_storeu_ps(buf + i + 24, v3);
+                    __m256 n01 = _mm256_or_ps(_mm256_cmp_ps(v0, v0, _CMP_UNORD_Q),
+                                              _mm256_cmp_ps(v1, v1, _CMP_UNORD_Q));
+                    __m256 n23 = _mm256_or_ps(_mm256_cmp_ps(v2, v2, _CMP_UNORD_Q),
+                                              _mm256_cmp_ps(v3, v3, _CMP_UNORD_Q));
+                    nan_acc = _mm256_or_ps(nan_acc, _mm256_or_ps(n01, n23));
+                }
+                if (_mm256_movemask_ps(nan_acc) != 0) has_nan = true;
+            }
+#endif
+            for (; i < len; i++) {
+                T v = base[i];
+                if (std::isnan(v)) has_nan = true;
+                buf[i] = v;
+            }
+        } else {
+            for (int64_t i = 0; i < len; i++) {
+                T v = base[i * stride];
+                if (std::isnan(v)) has_nan = true;
+                buf[i] = v;
+            }
+        }
+        return has_nan;
+    }
+}
+
+template <typename T>
+static inline void partition_single(T *buf, int64_t len, int64_t k) {
+    if constexpr (std::is_same_v<T, double>) {
+        native_partition_double(buf, len, &k, 1);
+    } else if constexpr (std::is_same_v<T, float>) {
+        native_partition_float(buf, len, &k, 1);
+    } else if constexpr (std::is_same_v<T, int64_t>) {
+        native_partition_int64(reinterpret_cast<long long *>(buf), len, &k, 1);
+    } else if constexpr (std::is_same_v<T, int32_t>) {
+        native_partition_int32(reinterpret_cast<int *>(buf), len, &k, 1);
+    } else if constexpr (std::is_same_v<T, int16_t>) {
+        native_partition_int16(buf, len, &k, 1);
+    } else if constexpr (std::is_same_v<T, uint8_t>) {
+        native_partition_uint8(buf, len, &k, 1);
+    } else {
+        static_assert(sizeof(T) == 0, "Unsupported type in partition_single");
+    }
+}
+
+// Precondition: after index clipping in get_quantile_specs, idx_high is either
+// idx_low or idx_low + 1 across all 13 quantile methods.
+template <typename T>
+static inline void select_order_pair(T *buf, int64_t len, int64_t idx_low, int64_t idx_high, T &out_low, T &out_high) {
+    if (idx_low == idx_high) {
+        partition_single<T>(buf, len, idx_low);
+        out_low = out_high = buf[idx_low];
+        return;
+    }
+    if (idx_low < len / 2) {
+        partition_single<T>(buf, len, idx_high);
+        out_high = buf[idx_high];
+        T m = buf[0];
+        for (int64_t i = 1; i < idx_high; i++) {
+            if (buf[i] > m) m = buf[i];
+        }
+        out_low = m;
+    } else {
+        partition_single<T>(buf, len, idx_low);
+        out_low = buf[idx_low];
+        T m = buf[idx_low + 1];
+        for (int64_t i = idx_low + 2; i < len; i++) {
+            if (buf[i] < m) m = buf[i];
+        }
+        out_high = m;
+    }
+}
+
 template <typename PtrT, typename T>
 static inline void invoke_sorter(void (*sorter)(PtrT, int64_t, int), T *buf, int64_t len, int kind) {
     sorter(reinterpret_cast<PtrT>(buf), len, kind);
@@ -10606,7 +10723,7 @@ static inline int64_t stats_median_midpoint_int64_impl(int64_t a, int64_t b) {
 #endif
 }
 
-#define DEFINE_NUMERIC_STATS(TYPE, NAME_SUFFIX, SORTER, CAST_TYPE) static inline TYPE stats_min_##NAME_SUFFIX(const TYPE *base, int64_t stride, int64_t len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int64_t i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v < m) m = v;     }     return m; } static inline TYPE stats_max_##NAME_SUFFIX(const TYPE *base, int64_t stride, int64_t len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int64_t i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v > m) m = v;     }     return m; } static inline TYPE stats_mean_##NAME_SUFFIX(const TYPE *base, int64_t stride, int64_t len) {     if (len <= 0) return (TYPE)0;     if constexpr (std::is_same_v<TYPE, int64_t>) {         return (TYPE)stats_mean_int64_impl((const int64_t*)base, stride, len);     } else if constexpr (std::is_floating_point_v<TYPE>) {         double sum = 0;         for (int64_t i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)(sum / len);     } else {         double sum = 0;         for (int64_t i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)round_half_to_even_d(sum / len);     } } static inline TYPE stats_median_##NAME_SUFFIX(const TYPE *base, int64_t _stride, int64_t len) {     if (len <= 0) return (TYPE)0;     TYPE *buf = (TYPE*)malloc(len * sizeof(TYPE));     if (buf == nullptr) { ndarray_set_oom_flag(); return (TYPE)0; }     bool has_nan = false;     for (int64_t i = 0; i < len; i++) {         TYPE v = *(base + i * _stride);         if (is_nan_check(v)) has_nan = true;         buf[i] = v;     }     if (has_nan) {         free(buf);         if constexpr (std::is_floating_point_v<TYPE>) {             return (TYPE)NAN;         }         return (TYPE)0;     }     invoke_sorter(SORTER, (CAST_TYPE)buf, len, 0); /* 0 = quicksort */     TYPE res;     if (len % 2 == 1) {         res = buf[len / 2];     } else if constexpr (std::is_same_v<TYPE, int64_t>) {         res = (TYPE)stats_median_midpoint_int64_impl((int64_t)buf[len / 2 - 1], (int64_t)buf[len / 2]);     } else if constexpr (std::is_floating_point_v<TYPE>) {         res = (TYPE)(((double)buf[len / 2 - 1] + (double)buf[len / 2]) / 2.0);     } else {         res = (TYPE)round_half_to_even_d(((double)buf[len / 2 - 1] + (double)buf[len / 2]) / 2.0);     }     free(buf);     return res; }
+#define DEFINE_NUMERIC_STATS(TYPE, NAME_SUFFIX, SORTER, CAST_TYPE) static inline TYPE stats_min_##NAME_SUFFIX(const TYPE *base, int64_t stride, int64_t len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int64_t i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v < m) m = v;     }     return m; } static inline TYPE stats_max_##NAME_SUFFIX(const TYPE *base, int64_t stride, int64_t len) {     if (len <= 0) return (TYPE)0;     TYPE m = *base;     for (int64_t i = 1; i < len; i++) {         if (is_nan_check(m)) break;         TYPE v = *(base + i * stride);         if (is_nan_check(v)) { m = v; break; }         if (v > m) m = v;     }     return m; } static inline TYPE stats_mean_##NAME_SUFFIX(const TYPE *base, int64_t stride, int64_t len) {     if (len <= 0) return (TYPE)0;     if constexpr (std::is_same_v<TYPE, int64_t>) {         return (TYPE)stats_mean_int64_impl((const int64_t*)base, stride, len);     } else if constexpr (std::is_floating_point_v<TYPE>) {         double sum = 0;         for (int64_t i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)(sum / len);     } else {         double sum = 0;         for (int64_t i = 0; i < len; i++) {             sum += (double)*(base + i * stride);         }         return (TYPE)round_half_to_even_d(sum / len);     } } static inline TYPE stats_median_##NAME_SUFFIX(const TYPE *base, int64_t _stride, int64_t len) {     if (len <= 0) return (TYPE)0;     TYPE *buf = (TYPE*)malloc(len * sizeof(TYPE));     if (buf == nullptr) { ndarray_set_oom_flag(); return (TYPE)0; }     bool has_nan = copy_and_check_nan<TYPE>(base, _stride, buf, len);     if (has_nan) {         free(buf);         if constexpr (std::is_floating_point_v<TYPE>) {             return (TYPE)NAN;         }         return (TYPE)0;     }     TYPE res;     if (len % 2 == 1) {         partition_single<TYPE>(buf, len, len / 2);         res = buf[len / 2];     } else {         TYPE low_val, high_val;         select_order_pair<TYPE>(buf, len, len / 2 - 1, len / 2, low_val, high_val);         if constexpr (std::is_same_v<TYPE, int64_t>) {             res = (TYPE)stats_median_midpoint_int64_impl((int64_t)low_val, (int64_t)high_val);         } else if constexpr (std::is_floating_point_v<TYPE>) {             res = (TYPE)(((double)low_val + (double)high_val) / 2.0);         } else {             res = (TYPE)round_half_to_even_d(((double)low_val + (double)high_val) / 2.0);         }     }     free(buf);     return res; }
 
 DEFINE_NUMERIC_STATS(double, double, native_sort_double, double*)
 DEFINE_NUMERIC_STATS(float, float, native_sort_float, float*)
@@ -11390,15 +11507,15 @@ void NAME(const TYPE *src, const int64_t *stridesSrc, \
             } \
         } \
         int64_t stride_axis = stridesSrc[axis]; \
-        for (int64_t i = 0; i < size_axis; i++) { \
-            tmp_buf[i] = src[offsetSrc + i * stride_axis]; \
-        } \
-        invoke_sorter(SORT_FUNC, (CAST_TYPE)tmp_buf, size_axis, 0); \
+        copy_and_check_nan<TYPE>(src + offsetSrc, stride_axis, tmp_buf, size_axis); \
         TYPE median_val; \
         if (size_axis % 2 == 1) { \
+            partition_single<TYPE>(tmp_buf, size_axis, size_axis / 2); \
             median_val = tmp_buf[size_axis / 2]; \
         } else { \
-            median_val = (TYPE)(((double)tmp_buf[size_axis / 2 - 1] + (double)tmp_buf[size_axis / 2]) / 2.0); \
+            TYPE low_val, high_val; \
+            select_order_pair<TYPE>(tmp_buf, size_axis, size_axis / 2 - 1, size_axis / 2, low_val, high_val); \
+            median_val = (TYPE)(((double)low_val + (double)high_val) / 2.0); \
         } \
         dest[offsetRes] = median_val; \
         for (int d = rank - 1; d >= 0; d--) { \
@@ -11441,21 +11558,18 @@ void s_median_double(const double *src, const int64_t *stridesSrc,
             }
         }
         int64_t stride_axis = stridesSrc[axis];
-        bool has_nan = false;
-        for (int64_t i = 0; i < size_axis; i++) {
-            double v = src[offsetSrc + i * stride_axis];
-            if (std::isnan(v)) has_nan = true;
-            tmp_buf[i] = v;
-        }
+        bool has_nan = copy_and_check_nan<double>(src + offsetSrc, stride_axis, tmp_buf, size_axis);
         if (has_nan) {
             dest[offsetRes] = NAN;
         } else {
-            native_sort_double(tmp_buf, size_axis, 0);
             double median_val;
             if (size_axis % 2 == 1) {
+                partition_single<double>(tmp_buf, size_axis, size_axis / 2);
                 median_val = tmp_buf[size_axis / 2];
             } else {
-                median_val = (tmp_buf[size_axis / 2 - 1] + tmp_buf[size_axis / 2]) / 2.0;
+                double low_val, high_val;
+                select_order_pair<double>(tmp_buf, size_axis, size_axis / 2 - 1, size_axis / 2, low_val, high_val);
+                median_val = (low_val + high_val) / 2.0;
             }
             dest[offsetRes] = median_val;
         }
@@ -11498,21 +11612,18 @@ void s_median_float(const float *src, const int64_t *stridesSrc,
             }
         }
         int64_t stride_axis = stridesSrc[axis];
-        bool has_nan = false;
-        for (int64_t i = 0; i < size_axis; i++) {
-            float v = src[offsetSrc + i * stride_axis];
-            if (std::isnan(v)) has_nan = true;
-            tmp_buf[i] = v;
-        }
+        bool has_nan = copy_and_check_nan<float>(src + offsetSrc, stride_axis, tmp_buf, size_axis);
         if (has_nan) {
             dest[offsetRes] = NAN;
         } else {
-            native_sort_float(tmp_buf, size_axis, 0);
             float median_val;
             if (size_axis % 2 == 1) {
+                partition_single<float>(tmp_buf, size_axis, size_axis / 2);
                 median_val = tmp_buf[size_axis / 2];
             } else {
-                median_val = (tmp_buf[size_axis / 2 - 1] + tmp_buf[size_axis / 2]) / 2.0f;
+                float low_val, high_val;
+                select_order_pair<float>(tmp_buf, size_axis, size_axis / 2 - 1, size_axis / 2, low_val, high_val);
+                median_val = (low_val + high_val) / 2.0f;
             }
             dest[offsetRes] = median_val;
         }
@@ -11724,6 +11835,21 @@ static QuantileInterpolationSpecs get_quantile_specs(int64_t N, double p, int me
     return specs;
 }
 
+template <typename T>
+static inline double eval_quantile_from_buf(T *buf, int64_t len, const QuantileInterpolationSpecs &specs) {
+    if (specs.idx_low == specs.idx_high || specs.weight == 0.0) {
+        partition_single<T>(buf, len, specs.idx_low);
+        return (double)buf[specs.idx_low];
+    }
+    if (specs.weight == 1.0) {
+        partition_single<T>(buf, len, specs.idx_high);
+        return (double)buf[specs.idx_high];
+    }
+    T low_val, high_val;
+    select_order_pair<T>(buf, len, specs.idx_low, specs.idx_high, low_val, high_val);
+    return (1.0 - specs.weight) * (double)low_val + specs.weight * (double)high_val;
+}
+
 #define DEFINE_NUMERIC_QUANTILE(TYPE, NAME_SUFFIX, SORTER, CAST_TYPE) \
 static inline double stats_quantile_##NAME_SUFFIX(const TYPE *base, int64_t _stride, int64_t len, double q, int method) { \
     if (len <= 0) return 0.0; \
@@ -11732,12 +11858,7 @@ static inline double stats_quantile_##NAME_SUFFIX(const TYPE *base, int64_t _str
     if (q > 1.0) q = 1.0; \
     TYPE *buf = (TYPE*)malloc(len * sizeof(TYPE)); \
     if (buf == nullptr) { ndarray_set_oom_flag(); return 0.0; } \
-    bool has_nan = false; \
-    for (int64_t i = 0; i < len; i++) { \
-        TYPE v = *(base + i * _stride); \
-        if (is_nan_check(v)) has_nan = true; \
-        buf[i] = v; \
-    } \
+    bool has_nan = copy_and_check_nan<TYPE>(base, _stride, buf, len); \
     if (has_nan) { \
         free(buf); \
         if constexpr (std::is_floating_point_v<TYPE>) { \
@@ -11745,9 +11866,8 @@ static inline double stats_quantile_##NAME_SUFFIX(const TYPE *base, int64_t _str
         } \
         return 0.0; \
     } \
-    invoke_sorter(SORTER, (CAST_TYPE)buf, len, 0); \
     QuantileInterpolationSpecs specs = get_quantile_specs(len, q, method); \
-    double res = (1.0 - specs.weight) * (double)buf[specs.idx_low] + specs.weight * (double)buf[specs.idx_high]; \
+    double res = eval_quantile_from_buf<TYPE>(buf, len, specs); \
     free(buf); \
     return res; \
 }
@@ -11800,12 +11920,7 @@ void NAME(const TYPE *src, const int64_t *stridesSrc, \
             } \
         } \
         int64_t stride_axis = stridesSrc[axis]; \
-        bool has_nan = false; \
-        for (int64_t i = 0; i < size_axis; i++) { \
-            TYPE v = src[offsetSrc + i * stride_axis]; \
-            if (is_nan_check(v)) has_nan = true; \
-            tmp_buf[i] = v; \
-        } \
+        bool has_nan = copy_and_check_nan<TYPE>(src + offsetSrc, stride_axis, tmp_buf, size_axis); \
         if (has_nan) { \
             if constexpr (std::is_floating_point_v<TYPE>) { \
                 dest[offsetRes] = NAN; \
@@ -11813,9 +11928,7 @@ void NAME(const TYPE *src, const int64_t *stridesSrc, \
                 dest[offsetRes] = 0.0; \
             } \
         } else { \
-            invoke_sorter(SORT_FUNC, (CAST_TYPE)tmp_buf, size_axis, 0); \
-            double val = (1.0 - specs.weight) * (double)tmp_buf[specs.idx_low] + specs.weight * (double)tmp_buf[specs.idx_high]; \
-            dest[offsetRes] = val; \
+            dest[offsetRes] = eval_quantile_from_buf<TYPE>(tmp_buf, size_axis, specs); \
         } \
         for (int d = rank - 1; d >= 0; d--) { \
             if (d == axis) continue; \
@@ -11853,12 +11966,14 @@ double r_nanmedian_double(const double *src, int64_t size) {
         free(tmp_buf);
         return NAN;
     }
-    native_sort_double(tmp_buf, valid, 0);
     double res;
     if (valid % 2 == 1) {
+        partition_single<double>(tmp_buf, valid, valid / 2);
         res = tmp_buf[valid / 2];
     } else {
-        res = (tmp_buf[valid / 2 - 1] + tmp_buf[valid / 2]) / 2.0;
+        double low_val, high_val;
+        select_order_pair<double>(tmp_buf, valid, valid / 2 - 1, valid / 2, low_val, high_val);
+        res = (low_val + high_val) / 2.0;
     }
     free(tmp_buf);
     return res;
@@ -11882,12 +11997,14 @@ float r_nanmedian_float(const float *src, int64_t size) {
         free(tmp_buf);
         return NAN;
     }
-    native_sort_float(tmp_buf, valid, 0);
     float res;
     if (valid % 2 == 1) {
+        partition_single<float>(tmp_buf, valid, valid / 2);
         res = tmp_buf[valid / 2];
     } else {
-        res = (tmp_buf[valid / 2 - 1] + tmp_buf[valid / 2]) / 2.0f;
+        float low_val, high_val;
+        select_order_pair<float>(tmp_buf, valid, valid / 2 - 1, valid / 2, low_val, high_val);
+        res = (low_val + high_val) / 2.0f;
     }
     free(tmp_buf);
     return res;
@@ -12011,12 +12128,14 @@ void s_nanmedian_double(const double *src, const int64_t *stridesSrc,
         if (valid == 0) {
             dest[offsetRes] = NAN;
         } else {
-            native_sort_double(tmp_buf, valid, 0);
             double median_val;
             if (valid % 2 == 1) {
+                partition_single<double>(tmp_buf, valid, valid / 2);
                 median_val = tmp_buf[valid / 2];
             } else {
-                median_val = (tmp_buf[valid / 2 - 1] + tmp_buf[valid / 2]) / 2.0;
+                double low_val, high_val;
+                select_order_pair<double>(tmp_buf, valid, valid / 2 - 1, valid / 2, low_val, high_val);
+                median_val = (low_val + high_val) / 2.0;
             }
             dest[offsetRes] = median_val;
         }
@@ -12072,12 +12191,14 @@ void s_nanmedian_float(const float *src, const int64_t *stridesSrc,
         if (valid == 0) {
             dest[offsetRes] = NAN;
         } else {
-            native_sort_float(tmp_buf, valid, 0);
             float median_val;
             if (valid % 2 == 1) {
+                partition_single<float>(tmp_buf, valid, valid / 2);
                 median_val = tmp_buf[valid / 2];
             } else {
-                median_val = (tmp_buf[valid / 2 - 1] + tmp_buf[valid / 2]) / 2.0f;
+                float low_val, high_val;
+                select_order_pair<float>(tmp_buf, valid, valid / 2 - 1, valid / 2, low_val, high_val);
+                median_val = (low_val + high_val) / 2.0f;
             }
             dest[offsetRes] = median_val;
         }
@@ -12239,9 +12360,8 @@ double r_nanquantile_double(const double *src, int64_t size, double q, int metho
         free(tmp_buf);
         return NAN;
     }
-    native_sort_double(tmp_buf, valid, 0);
     QuantileInterpolationSpecs specs = get_quantile_specs(valid, q, method);
-    double res = (1.0 - specs.weight) * tmp_buf[specs.idx_low] + specs.weight * tmp_buf[specs.idx_high];
+    double res = eval_quantile_from_buf<double>(tmp_buf, valid, specs);
     free(tmp_buf);
     return res;
 }
@@ -12265,9 +12385,8 @@ double r_nanquantile_float(const float *src, int64_t size, double q, int method)
         free(tmp_buf);
         return NAN;
     }
-    native_sort_float(tmp_buf, valid, 0);
     QuantileInterpolationSpecs specs = get_quantile_specs(valid, q, method);
-    double res = (1.0 - specs.weight) * (double)tmp_buf[specs.idx_low] + specs.weight * (double)tmp_buf[specs.idx_high];
+    double res = eval_quantile_from_buf<float>(tmp_buf, valid, specs);
     free(tmp_buf);
     return res;
 }
@@ -12314,10 +12433,8 @@ void s_nanquantile_double(const double *src, const int64_t *stridesSrc,
         if (valid == 0) {
             dest[offsetRes] = NAN;
         } else {
-            native_sort_double(tmp_buf, valid, 0);
             QuantileInterpolationSpecs specs = get_quantile_specs(valid, q, method);
-            double val = (1.0 - specs.weight) * tmp_buf[specs.idx_low] + specs.weight * tmp_buf[specs.idx_high];
-            dest[offsetRes] = val;
+            dest[offsetRes] = eval_quantile_from_buf<double>(tmp_buf, valid, specs);
         }
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -12371,10 +12488,8 @@ void s_nanquantile_float(const float *src, const int64_t *stridesSrc,
         if (valid == 0) {
             dest[offsetRes] = NAN;
         } else {
-            native_sort_float(tmp_buf, valid, 0);
             QuantileInterpolationSpecs specs = get_quantile_specs(valid, q, method);
-            double val = (1.0 - specs.weight) * (double)tmp_buf[specs.idx_low] + specs.weight * (double)tmp_buf[specs.idx_high];
-            dest[offsetRes] = val;
+            dest[offsetRes] = eval_quantile_from_buf<float>(tmp_buf, valid, specs);
         }
         for (int d = rank - 1; d >= 0; d--) {
             if (d == axis) continue;
@@ -13229,6 +13344,45 @@ int ndarray_equals(
 
 // Reduction Min/Max
 
+#if defined(__AVX2__)
+static inline double hmin_avx2_pd(__m256d v) {
+    __m128d lo = _mm256_castpd256_pd128(v);
+    __m128d hi = _mm256_extractf128_pd(v, 1);
+    lo = _mm_min_pd(hi, lo);
+    __m128d shuf = _mm_unpackhi_pd(lo, lo);
+    lo = _mm_min_sd(shuf, lo);
+    return _mm_cvtsd_f64(lo);
+}
+static inline double hmax_avx2_pd(__m256d v) {
+    __m128d lo = _mm256_castpd256_pd128(v);
+    __m128d hi = _mm256_extractf128_pd(v, 1);
+    lo = _mm_max_pd(hi, lo);
+    __m128d shuf = _mm_unpackhi_pd(lo, lo);
+    lo = _mm_max_sd(shuf, lo);
+    return _mm_cvtsd_f64(lo);
+}
+static inline float hmin_avx2_ps(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    lo = _mm_min_ps(hi, lo);
+    __m128 shuf = _mm_movehdup_ps(lo);
+    lo = _mm_min_ps(shuf, lo);
+    shuf = _mm_movehl_ps(shuf, lo);
+    lo = _mm_min_ss(shuf, lo);
+    return _mm_cvtss_f32(lo);
+}
+static inline float hmax_avx2_ps(__m256 v) {
+    __m128 lo = _mm256_castps256_ps128(v);
+    __m128 hi = _mm256_extractf128_ps(v, 1);
+    lo = _mm_max_ps(hi, lo);
+    __m128 shuf = _mm_movehdup_ps(lo);
+    lo = _mm_max_ps(shuf, lo);
+    shuf = _mm_movehl_ps(shuf, lo);
+    lo = _mm_max_ss(shuf, lo);
+    return _mm_cvtss_f32(lo);
+}
+#endif
+
 #define DEFINE_R_MINMAX(NAME, TYPE, OP) \
 TYPE r_##NAME##_##TYPE(const TYPE *src, int64_t size) { \
     if (src == nullptr || size <= 0) return (TYPE)0; \
@@ -13257,15 +13411,179 @@ TYPE r_##NAME##_##TYPE(const TYPE *src, int64_t size) { \
     return acc0; \
 }
 
-DEFINE_R_MINMAX(min, double, <)
-DEFINE_R_MINMAX(min, float, <)
+double r_min_double(const double *src, int64_t size) {
+    if (src == nullptr || size <= 0) return 0.0;
+    double acc = src[0];
+    if (std::isnan(acc)) return acc;
+    int64_t i = 1;
+#if defined(__AVX2__)
+    if (size >= 17) {
+        __m256d acc0 = _mm256_set1_pd(acc);
+        __m256d acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        __m256d any_nan = _mm256_setzero_pd();
+        for (; i + 15 < size; i += 16) {
+            __m256d v0 = _mm256_loadu_pd(src + i);
+            __m256d v1 = _mm256_loadu_pd(src + i + 4);
+            __m256d v2 = _mm256_loadu_pd(src + i + 8);
+            __m256d v3 = _mm256_loadu_pd(src + i + 12);
+            any_nan = _mm256_or_pd(any_nan, _mm256_or_pd(_mm256_cmp_pd(v0, v1, _CMP_UNORD_Q), _mm256_cmp_pd(v2, v3, _CMP_UNORD_Q)));
+            acc0 = _mm256_min_pd(v0, acc0);
+            acc1 = _mm256_min_pd(v1, acc1);
+            acc2 = _mm256_min_pd(v2, acc2);
+            acc3 = _mm256_min_pd(v3, acc3);
+        }
+        if (_mm256_movemask_pd(any_nan) != 0) {
+            for (int64_t k = 1; k < i; k++) {
+                if (std::isnan(src[k])) return src[k];
+            }
+            return NAN;
+        }
+        acc0 = _mm256_min_pd(acc1, acc0);
+        acc2 = _mm256_min_pd(acc3, acc2);
+        acc0 = _mm256_min_pd(acc2, acc0);
+        double simd_min = hmin_avx2_pd(acc0);
+        if (simd_min < acc) acc = simd_min;
+    }
+#endif
+    for (; i < size; i++) {
+        double v = src[i];
+        if (std::isnan(v)) return v;
+        if (v < acc) acc = v;
+    }
+    return acc;
+}
+
+double r_max_double(const double *src, int64_t size) {
+    if (src == nullptr || size <= 0) return 0.0;
+    double acc = src[0];
+    if (std::isnan(acc)) return acc;
+    int64_t i = 1;
+#if defined(__AVX2__)
+    if (size >= 17) {
+        __m256d acc0 = _mm256_set1_pd(acc);
+        __m256d acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        __m256d any_nan = _mm256_setzero_pd();
+        for (; i + 15 < size; i += 16) {
+            __m256d v0 = _mm256_loadu_pd(src + i);
+            __m256d v1 = _mm256_loadu_pd(src + i + 4);
+            __m256d v2 = _mm256_loadu_pd(src + i + 8);
+            __m256d v3 = _mm256_loadu_pd(src + i + 12);
+            any_nan = _mm256_or_pd(any_nan, _mm256_or_pd(_mm256_cmp_pd(v0, v1, _CMP_UNORD_Q), _mm256_cmp_pd(v2, v3, _CMP_UNORD_Q)));
+            acc0 = _mm256_max_pd(v0, acc0);
+            acc1 = _mm256_max_pd(v1, acc1);
+            acc2 = _mm256_max_pd(v2, acc2);
+            acc3 = _mm256_max_pd(v3, acc3);
+        }
+        if (_mm256_movemask_pd(any_nan) != 0) {
+            for (int64_t k = 1; k < i; k++) {
+                if (std::isnan(src[k])) return src[k];
+            }
+            return NAN;
+        }
+        acc0 = _mm256_max_pd(acc1, acc0);
+        acc2 = _mm256_max_pd(acc3, acc2);
+        acc0 = _mm256_max_pd(acc2, acc0);
+        double simd_max = hmax_avx2_pd(acc0);
+        if (simd_max > acc) acc = simd_max;
+    }
+#endif
+    for (; i < size; i++) {
+        double v = src[i];
+        if (std::isnan(v)) return v;
+        if (v > acc) acc = v;
+    }
+    return acc;
+}
+
+float r_min_float(const float *src, int64_t size) {
+    if (src == nullptr || size <= 0) return 0.0f;
+    float acc = src[0];
+    if (std::isnan(acc)) return acc;
+    int64_t i = 1;
+#if defined(__AVX2__)
+    if (size >= 33) {
+        __m256 acc0 = _mm256_set1_ps(acc);
+        __m256 acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        __m256 any_nan = _mm256_setzero_ps();
+        for (; i + 31 < size; i += 32) {
+            __m256 v0 = _mm256_loadu_ps(src + i);
+            __m256 v1 = _mm256_loadu_ps(src + i + 8);
+            __m256 v2 = _mm256_loadu_ps(src + i + 16);
+            __m256 v3 = _mm256_loadu_ps(src + i + 24);
+            any_nan = _mm256_or_ps(any_nan, _mm256_or_ps(_mm256_cmp_ps(v0, v1, _CMP_UNORD_Q), _mm256_cmp_ps(v2, v3, _CMP_UNORD_Q)));
+            acc0 = _mm256_min_ps(v0, acc0);
+            acc1 = _mm256_min_ps(v1, acc1);
+            acc2 = _mm256_min_ps(v2, acc2);
+            acc3 = _mm256_min_ps(v3, acc3);
+        }
+        if (_mm256_movemask_ps(any_nan) != 0) {
+            for (int64_t k = 1; k < i; k++) {
+                if (std::isnan(src[k])) return src[k];
+            }
+            return NAN;
+        }
+        acc0 = _mm256_min_ps(acc1, acc0);
+        acc2 = _mm256_min_ps(acc3, acc2);
+        acc0 = _mm256_min_ps(acc2, acc0);
+        float simd_min = hmin_avx2_ps(acc0);
+        if (simd_min < acc) acc = simd_min;
+    }
+#endif
+    for (; i < size; i++) {
+        float v = src[i];
+        if (std::isnan(v)) return v;
+        if (v < acc) acc = v;
+    }
+    return acc;
+}
+
+float r_max_float(const float *src, int64_t size) {
+    if (src == nullptr || size <= 0) return 0.0f;
+    float acc = src[0];
+    if (std::isnan(acc)) return acc;
+    int64_t i = 1;
+#if defined(__AVX2__)
+    if (size >= 33) {
+        __m256 acc0 = _mm256_set1_ps(acc);
+        __m256 acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        __m256 any_nan = _mm256_setzero_ps();
+        for (; i + 31 < size; i += 32) {
+            __m256 v0 = _mm256_loadu_ps(src + i);
+            __m256 v1 = _mm256_loadu_ps(src + i + 8);
+            __m256 v2 = _mm256_loadu_ps(src + i + 16);
+            __m256 v3 = _mm256_loadu_ps(src + i + 24);
+            any_nan = _mm256_or_ps(any_nan, _mm256_or_ps(_mm256_cmp_ps(v0, v1, _CMP_UNORD_Q), _mm256_cmp_ps(v2, v3, _CMP_UNORD_Q)));
+            acc0 = _mm256_max_ps(v0, acc0);
+            acc1 = _mm256_max_ps(v1, acc1);
+            acc2 = _mm256_max_ps(v2, acc2);
+            acc3 = _mm256_max_ps(v3, acc3);
+        }
+        if (_mm256_movemask_ps(any_nan) != 0) {
+            for (int64_t k = 1; k < i; k++) {
+                if (std::isnan(src[k])) return src[k];
+            }
+            return NAN;
+        }
+        acc0 = _mm256_max_ps(acc1, acc0);
+        acc2 = _mm256_max_ps(acc3, acc2);
+        acc0 = _mm256_max_ps(acc2, acc0);
+        float simd_max = hmax_avx2_ps(acc0);
+        if (simd_max > acc) acc = simd_max;
+    }
+#endif
+    for (; i < size; i++) {
+        float v = src[i];
+        if (std::isnan(v)) return v;
+        if (v > acc) acc = v;
+    }
+    return acc;
+}
+
 DEFINE_R_MINMAX(min, int64_t, <)
 DEFINE_R_MINMAX(min, int32_t, <)
 DEFINE_R_MINMAX(min, uint8_t, <)
 DEFINE_R_MINMAX(min, int16_t, <)
 
-DEFINE_R_MINMAX(max, double, >)
-DEFINE_R_MINMAX(max, float, >)
 DEFINE_R_MINMAX(max, int64_t, >)
 DEFINE_R_MINMAX(max, int32_t, >)
 DEFINE_R_MINMAX(max, uint8_t, >)
@@ -13326,44 +13644,162 @@ DEFINE_S_MINMAX(max, int16_t, >)
 
 // Nanmin/Nanmax Reduction (float/double only)
 
-#define DEFINE_R_NANMINMAX(NAME, TYPE, OP) \
-TYPE r_##NAME##_##TYPE(const TYPE *src, int64_t size) { \
-    if (src == nullptr || size <= 0) return (TYPE)NAN; \
-    TYPE acc = (TYPE)NAN; \
-    int64_t i = 0; \
-    for (; i < size; i++) { \
-        if (!std::isnan(src[i])) { \
-            acc = src[i]; \
-            i++; \
-            break; \
-        } \
-    } \
-    if (std::isnan(acc)) return (TYPE)NAN; \
-    TYPE acc0 = acc, acc1 = acc, acc2 = acc, acc3 = acc; \
-    for (; i + 3 < size; i += 4) { \
-        TYPE v0 = src[i], v1 = src[i + 1], v2 = src[i + 2], v3 = src[i + 3]; \
-        if (v0 OP acc0) acc0 = v0; \
-        if (v1 OP acc1) acc1 = v1; \
-        if (v2 OP acc2) acc2 = v2; \
-        if (v3 OP acc3) acc3 = v3; \
-    } \
-    if (acc1 OP acc0) acc0 = acc1; \
-    if (acc2 OP acc0) acc0 = acc2; \
-    if (acc3 OP acc0) acc0 = acc3; \
-    for (; i < size; i++) { \
-        if (src[i] OP acc0) { \
-            acc0 = src[i]; \
-        } \
-    } \
-    return acc0; \
+double r_nanmin_double(const double *src, int64_t size) {
+    if (src == nullptr || size <= 0) return NAN;
+    double acc = NAN;
+    int64_t i = 0;
+    for (; i < size; i++) {
+        if (!std::isnan(src[i])) {
+            acc = src[i];
+            i++;
+            break;
+        }
+    }
+    if (std::isnan(acc)) return NAN;
+#if defined(__AVX2__)
+    if (i + 15 < size) {
+        __m256d acc0 = _mm256_set1_pd(acc);
+        __m256d acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        for (; i + 15 < size; i += 16) {
+            __m256d v0 = _mm256_loadu_pd(src + i);
+            __m256d v1 = _mm256_loadu_pd(src + i + 4);
+            __m256d v2 = _mm256_loadu_pd(src + i + 8);
+            __m256d v3 = _mm256_loadu_pd(src + i + 12);
+            // VMINPD(v, acc) = (v < acc) ? v : acc -> NaN in v preserves non-NaN acc
+            acc0 = _mm256_min_pd(v0, acc0);
+            acc1 = _mm256_min_pd(v1, acc1);
+            acc2 = _mm256_min_pd(v2, acc2);
+            acc3 = _mm256_min_pd(v3, acc3);
+        }
+        acc0 = _mm256_min_pd(acc1, acc0);
+        acc2 = _mm256_min_pd(acc3, acc2);
+        acc0 = _mm256_min_pd(acc2, acc0);
+        double simd_min = hmin_avx2_pd(acc0);
+        if (simd_min < acc) acc = simd_min;
+    }
+#endif
+    for (; i < size; i++) {
+        if (src[i] < acc) acc = src[i];
+    }
+    return acc;
 }
 
-DEFINE_R_NANMINMAX(nanmin, double, <)
-DEFINE_R_NANMINMAX(nanmin, float, <)
-DEFINE_R_NANMINMAX(nanmax, double, >)
-DEFINE_R_NANMINMAX(nanmax, float, >)
+double r_nanmax_double(const double *src, int64_t size) {
+    if (src == nullptr || size <= 0) return NAN;
+    double acc = NAN;
+    int64_t i = 0;
+    for (; i < size; i++) {
+        if (!std::isnan(src[i])) {
+            acc = src[i];
+            i++;
+            break;
+        }
+    }
+    if (std::isnan(acc)) return NAN;
+#if defined(__AVX2__)
+    if (i + 15 < size) {
+        __m256d acc0 = _mm256_set1_pd(acc);
+        __m256d acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        for (; i + 15 < size; i += 16) {
+            __m256d v0 = _mm256_loadu_pd(src + i);
+            __m256d v1 = _mm256_loadu_pd(src + i + 4);
+            __m256d v2 = _mm256_loadu_pd(src + i + 8);
+            __m256d v3 = _mm256_loadu_pd(src + i + 12);
+            acc0 = _mm256_max_pd(v0, acc0);
+            acc1 = _mm256_max_pd(v1, acc1);
+            acc2 = _mm256_max_pd(v2, acc2);
+            acc3 = _mm256_max_pd(v3, acc3);
+        }
+        acc0 = _mm256_max_pd(acc1, acc0);
+        acc2 = _mm256_max_pd(acc3, acc2);
+        acc0 = _mm256_max_pd(acc2, acc0);
+        double simd_max = hmax_avx2_pd(acc0);
+        if (simd_max > acc) acc = simd_max;
+    }
+#endif
+    for (; i < size; i++) {
+        if (src[i] > acc) acc = src[i];
+    }
+    return acc;
+}
 
-#undef DEFINE_R_NANMINMAX
+float r_nanmin_float(const float *src, int64_t size) {
+    if (src == nullptr || size <= 0) return NAN;
+    float acc = NAN;
+    int64_t i = 0;
+    for (; i < size; i++) {
+        if (!std::isnan(src[i])) {
+            acc = src[i];
+            i++;
+            break;
+        }
+    }
+    if (std::isnan(acc)) return NAN;
+#if defined(__AVX2__)
+    if (i + 31 < size) {
+        __m256 acc0 = _mm256_set1_ps(acc);
+        __m256 acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        for (; i + 31 < size; i += 32) {
+            __m256 v0 = _mm256_loadu_ps(src + i);
+            __m256 v1 = _mm256_loadu_ps(src + i + 8);
+            __m256 v2 = _mm256_loadu_ps(src + i + 16);
+            __m256 v3 = _mm256_loadu_ps(src + i + 24);
+            acc0 = _mm256_min_ps(v0, acc0);
+            acc1 = _mm256_min_ps(v1, acc1);
+            acc2 = _mm256_min_ps(v2, acc2);
+            acc3 = _mm256_min_ps(v3, acc3);
+        }
+        acc0 = _mm256_min_ps(acc1, acc0);
+        acc2 = _mm256_min_ps(acc3, acc2);
+        acc0 = _mm256_min_ps(acc2, acc0);
+        float simd_min = hmin_avx2_ps(acc0);
+        if (simd_min < acc) acc = simd_min;
+    }
+#endif
+    for (; i < size; i++) {
+        if (src[i] < acc) acc = src[i];
+    }
+    return acc;
+}
+
+float r_nanmax_float(const float *src, int64_t size) {
+    if (src == nullptr || size <= 0) return NAN;
+    float acc = NAN;
+    int64_t i = 0;
+    for (; i < size; i++) {
+        if (!std::isnan(src[i])) {
+            acc = src[i];
+            i++;
+            break;
+        }
+    }
+    if (std::isnan(acc)) return NAN;
+#if defined(__AVX2__)
+    if (i + 31 < size) {
+        __m256 acc0 = _mm256_set1_ps(acc);
+        __m256 acc1 = acc0, acc2 = acc0, acc3 = acc0;
+        for (; i + 31 < size; i += 32) {
+            __m256 v0 = _mm256_loadu_ps(src + i);
+            __m256 v1 = _mm256_loadu_ps(src + i + 8);
+            __m256 v2 = _mm256_loadu_ps(src + i + 16);
+            __m256 v3 = _mm256_loadu_ps(src + i + 24);
+            acc0 = _mm256_max_ps(v0, acc0);
+            acc1 = _mm256_max_ps(v1, acc1);
+            acc2 = _mm256_max_ps(v2, acc2);
+            acc3 = _mm256_max_ps(v3, acc3);
+        }
+        acc0 = _mm256_max_ps(acc1, acc0);
+        acc2 = _mm256_max_ps(acc3, acc2);
+        acc0 = _mm256_max_ps(acc2, acc0);
+        float simd_max = hmax_avx2_ps(acc0);
+        if (simd_max > acc) acc = simd_max;
+    }
+#endif
+    for (; i < size; i++) {
+        if (src[i] > acc) acc = src[i];
+    }
+    return acc;
+}
 
 // Strided Nanmin/Nanmax Reduction (float/double only)
 

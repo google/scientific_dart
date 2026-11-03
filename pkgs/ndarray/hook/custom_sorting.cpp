@@ -23,7 +23,12 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#define VQSORT_ENABLED 1
+#if defined(__AVX2__) && (!defined(__PCLMUL__) || !defined(__AES__)) && !defined(HWY_DISABLE_PCLMUL_AES)
+#define HWY_DISABLE_PCLMUL_AES
+#endif
+#if defined(__AVX2__) && !defined(__BMI2__) && !defined(HWY_DISABLE_BMI2_FMA)
+#define HWY_DISABLE_BMI2_FMA
+#endif
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wundef"
@@ -31,6 +36,7 @@
 #include "hwy/contrib/sort/vqsort.h"
 #include "hwy/highway.h"
 #include "hwy/per_target.h"
+#include "hwy/contrib/sort/vqsort-inl.h"
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
@@ -322,6 +328,373 @@ static inline int standard_compare(T a, T b) {
     return 0;
 }
 
+template <typename T>
+static inline bool is_nan_check(T val) {
+    if constexpr (std::is_floating_point_v<T>) {
+        return std::isnan(val);
+    }
+    return false;
+}
+
+// ----------------------------------------------------------------------------
+// Order-preserving unsigned key bijections for SIMD VQSort argsort
+// ----------------------------------------------------------------------------
+
+static inline uint16_t sortable_key_half(uint16_t bits) {
+    if ((bits & 0x7FFFu) == 0) return 0x8000u; // canonicalize -0.0 and +0.0
+    return (bits & 0x8000u) ? static_cast<uint16_t>(~bits)
+                            : static_cast<uint16_t>(bits | 0x8000u);
+}
+
+template <typename T>
+static inline uint32_t sortable_key32(T val) {
+    if constexpr (std::is_same_v<T, float>) {
+        uint32_t bits;
+        std::memcpy(&bits, &val, sizeof(uint32_t));
+        if ((bits << 1) == 0) return 0x80000000u; // canonicalize -0.0f and +0.0f
+        uint32_t mask = static_cast<uint32_t>(static_cast<int32_t>(bits) >> 31) | 0x80000000u;
+        return bits ^ mask;
+    } else if constexpr (sizeof(T) == 4 && std::is_signed_v<T>) {
+        return static_cast<uint32_t>(val) ^ 0x80000000u;
+    } else if constexpr (sizeof(T) == 4 && !std::is_signed_v<T>) {
+        return static_cast<uint32_t>(val);
+    } else if constexpr (sizeof(T) == 2 && std::is_signed_v<T>) {
+        return static_cast<uint32_t>(static_cast<uint16_t>(val) ^ 0x8000u);
+    } else {
+        return static_cast<uint32_t>(static_cast<uint16_t>(val));
+    }
+}
+
+template <typename T>
+static inline uint64_t sortable_key64(T val) {
+    if constexpr (std::is_same_v<T, double>) {
+        uint64_t bits;
+        std::memcpy(&bits, &val, sizeof(uint64_t));
+        if ((bits << 1) == 0) return 0x8000000000000000ULL; // canonicalize -0.0 and +0.0
+        uint64_t mask = static_cast<uint64_t>(static_cast<int64_t>(bits) >> 63) | 0x8000000000000000ULL;
+        return bits ^ mask;
+    } else if constexpr (std::is_signed_v<T>) {
+        return static_cast<uint64_t>(val) ^ 0x8000000000000000ULL;
+    } else {
+        return static_cast<uint64_t>(val);
+    }
+}
+
+static inline uint32_t to_sortable_bits32(float val) {
+    uint32_t bits;
+    std::memcpy(&bits, &val, sizeof(uint32_t));
+    uint32_t mask = static_cast<uint32_t>(static_cast<int32_t>(bits) >> 31) | 0x80000000u;
+    return bits ^ mask;
+}
+
+static inline float from_sortable_bits32(uint32_t key) {
+    uint32_t mask = static_cast<uint32_t>(static_cast<int32_t>(~key) >> 31) | 0x80000000u;
+    uint32_t bits = key ^ mask;
+    float val;
+    std::memcpy(&val, &bits, sizeof(float));
+    return val;
+}
+
+static inline uint64_t to_sortable_bits64(double val) {
+    uint64_t bits;
+    std::memcpy(&bits, &val, sizeof(uint64_t));
+    uint64_t mask = static_cast<uint64_t>(static_cast<int64_t>(bits) >> 63) | 0x8000000000000000ULL;
+    return bits ^ mask;
+}
+
+static inline double from_sortable_bits64(uint64_t key) {
+    uint64_t mask = static_cast<uint64_t>(static_cast<int64_t>(~key) >> 63) | 0x8000000000000000ULL;
+    uint64_t bits = key ^ mask;
+    double val;
+    std::memcpy(&val, &bits, sizeof(double));
+    return val;
+}
+
+// ----------------------------------------------------------------------------
+// Highway SIMD Vectorized Quickselect (VQSelect) & Helpers
+// ----------------------------------------------------------------------------
+
+HWY_BEFORE_NAMESPACE();
+namespace ndarray_hwy {
+namespace hn = hwy::HWY_NAMESPACE;
+
+#if VQSORT_ENABLED
+namespace hd = hwy::HWY_NAMESPACE::detail;
+
+template <class Traits, typename T>
+HWY_INLINE size_t SelectPivotRank(Traits st, const T *HWY_RESTRICT samples,
+                                  size_t target_lanes, size_t num_lanes) {
+    constexpr size_t kSampleLanes = hd::Constants::SampleLanes<T>();
+    constexpr size_t N1 = st.LanesPerKey();
+    constexpr size_t kNumSamples = kSampleLanes / N1;
+
+    const double frac = static_cast<double>(target_lanes) / static_cast<double>(num_lanes);
+    const double biased = 0.5 + 0.65 * (frac - 0.5);
+    size_t target_sample = static_cast<size_t>(biased * static_cast<double>(kNumSamples));
+    if (target_sample < 1) target_sample = 1;
+    if (target_sample > kNumSamples - 2) target_sample = kNumSamples - 2;
+    const size_t rank_mid = target_sample * N1;
+
+    size_t rank_prev = rank_mid - N1;
+    for (; st.Equal1(samples + rank_prev, samples + rank_mid); rank_prev -= N1) {
+        if (rank_prev == 0) return 0;
+    }
+
+    size_t rank_next = rank_prev + N1;
+    for (; st.Equal1(samples + rank_next, samples + rank_mid); rank_next += N1) {
+        if (rank_next == kSampleLanes - N1) return rank_prev;
+    }
+
+    const size_t excess_if_median = rank_next - rank_mid;
+    const size_t excess_if_prev = rank_mid - rank_prev;
+    return excess_if_median < excess_if_prev ? rank_mid : rank_prev;
+}
+
+template <class D, class Traits, typename T>
+HWY_NOINLINE void RecurseSelect(D d, Traits st, T *HWY_RESTRICT keys,
+                                const size_t num, const int64_t base_key,
+                                const int64_t *HWY_RESTRICT k_list,
+                                const int64_t k_start, const int64_t k_end,
+                                T *HWY_RESTRICT buf,
+                                uint64_t *HWY_RESTRICT state,
+                                const size_t remaining_levels) {
+    if (k_start > k_end || num == 0) return;
+
+    const size_t N = hn::Lanes(d);
+    constexpr size_t kLPK = st.LanesPerKey();
+    if (HWY_UNLIKELY(num <= hd::Constants::BaseCaseNumLanes<kLPK>(N))) {
+        hd::BaseCase(d, st, keys, num, buf);
+        return;
+    }
+
+    hd::DrawSamples(d, st, keys, num, buf, state);
+
+    hn::Vec<D> pivot;
+    hd::PivotResult result = hd::PivotResult::kNormal;
+    if (HWY_UNLIKELY(hd::UnsortedSampleEqual(d, st, buf))) {
+        pivot = st.SetKey(d, buf);
+        size_t idx_second = 0;
+        if (HWY_UNLIKELY(hd::AllEqual(d, st, pivot, keys, num, &idx_second))) {
+            return;
+        }
+        const hn::Vec<D> second = st.SetKey(d, keys + idx_second);
+        hn::Vec<D> third;
+        if (HWY_UNLIKELY(!st.IsKV() &&
+                         hd::PartitionIfTwoKeys(d, st, pivot, keys, num, idx_second,
+                                                second, third, buf))) {
+            return;
+        }
+        pivot = hd::ChoosePivotForEqualSamples(d, st, keys, num, buf, second, third,
+                                               result);
+    } else {
+        hd::SortSamples(d, st, buf);
+        if (HWY_UNLIKELY(!st.IsKV() &&
+                         hd::PartitionIfTwoSamples(d, st, keys, num, buf))) {
+            return;
+        }
+        const int64_t mid_k = k_list[k_start + (k_end - k_start) / 2];
+        const size_t target_lanes = static_cast<size_t>(mid_k - base_key) * kLPK;
+        const size_t pivot_rank = SelectPivotRank(st, buf, target_lanes, num);
+        pivot = st.SetKey(d, buf + pivot_rank);
+    }
+
+    if (HWY_UNLIKELY(remaining_levels == 0)) {
+        hd::HeapSort(st, keys, num);
+        return;
+    }
+
+    const size_t bound = hd::Partition(d, st, keys, num, pivot, buf);
+    const int64_t split_key = base_key + static_cast<int64_t>(bound / kLPK);
+
+    int64_t mid = k_start;
+    while (mid <= k_end && k_list[mid] < split_key) {
+        mid++;
+    }
+
+    if (mid > k_start && HWY_LIKELY(result != hd::PivotResult::kIsFirst)) {
+        RecurseSelect(d, st, keys, bound, base_key, k_list, k_start, mid - 1,
+                      buf, state, remaining_levels - 1);
+    }
+    if (mid <= k_end && HWY_LIKELY(result != hd::PivotResult::kWasLast)) {
+        RecurseSelect(d, st, keys + bound, num - bound, split_key, k_list, mid, k_end,
+                      buf, state, remaining_levels - 1);
+    }
+}
+
+template <class D, class Traits, typename T>
+void Select(D d, Traits st, T *HWY_RESTRICT keys, size_t num,
+            const int64_t *HWY_RESTRICT k_list, int64_t k_start, int64_t k_end,
+            T *HWY_RESTRICT buf) {
+#if HWY_MAX_BYTES > 64
+    if (HWY_UNLIKELY(hn::Lanes(d) > 64 / sizeof(T))) {
+        return Select(hn::CappedTag<T, 64 / sizeof(T)>(), st, keys, num, k_list, k_start, k_end, buf);
+    }
+#endif
+    if (!hd::HandleSpecialCases(d, st, keys, num, buf)) {
+        uint64_t *HWY_RESTRICT state = hwy::detail::GetGeneratorStateStatic();
+        const size_t max_levels = 50;
+        RecurseSelect(d, st, keys, num, 0, k_list, k_start, k_end, buf, state, max_levels);
+    }
+}
+
+template <typename T>
+void VQSelectStatic(T *HWY_RESTRICT keys, size_t num,
+                    const int64_t *HWY_RESTRICT k_list, int64_t k_start, int64_t k_end) {
+    using Adapter = hd::KeyAdapter<T>;
+    using Order = typename Adapter::Ascending;
+    const hd::SharedTraits<typename Adapter::template Traits<Order>> st;
+    using LaneType = typename decltype(st)::LaneType;
+    const hn::SortTag<LaneType> d;
+    constexpr size_t kLPK = st.LanesPerKey();
+    HWY_ALIGN LaneType buf[hwy::SortConstants::BufBytes<LaneType, kLPK>(HWY_MAX_BYTES) / sizeof(LaneType)];
+    Select(d, st, reinterpret_cast<LaneType *>(keys), num * kLPK, k_list, k_start, k_end, buf);
+}
+#endif  // VQSORT_ENABLED
+
+template <typename T>
+bool CopyAndCheckNaN64(const T *HWY_RESTRICT src, T *HWY_RESTRICT dst, int64_t size) {
+    if constexpr (!std::is_floating_point_v<T>) {
+        std::memcpy(dst, src, static_cast<size_t>(size) * sizeof(T));
+        return false;
+    } else {
+        const hn::ScalableTag<T> d;
+        const int64_t N = hn::Lanes(d);
+        int64_t i = 0;
+        auto any_nan0 = hn::Zero(d);
+        auto any_nan1 = hn::Zero(d);
+        for (; i + 4 * N <= size; i += 4 * N) {
+            const auto v0 = hn::LoadU(d, src + i);
+            const auto v1 = hn::LoadU(d, src + i + N);
+            const auto v2 = hn::LoadU(d, src + i + 2 * N);
+            const auto v3 = hn::LoadU(d, src + i + 3 * N);
+            hn::StoreU(v0, d, dst + i);
+            hn::StoreU(v1, d, dst + i + N);
+            hn::StoreU(v2, d, dst + i + 2 * N);
+            hn::StoreU(v3, d, dst + i + 3 * N);
+            any_nan0 = hn::Or(any_nan0, hn::Or(hn::VecFromMask(d, hn::IsNaN(v0)), hn::VecFromMask(d, hn::IsNaN(v1))));
+            any_nan1 = hn::Or(any_nan1, hn::Or(hn::VecFromMask(d, hn::IsNaN(v2)), hn::VecFromMask(d, hn::IsNaN(v3))));
+        }
+        any_nan0 = hn::Or(any_nan0, any_nan1);
+        if (HWY_UNLIKELY(!hn::AllFalse(d, hn::MaskFromVec(any_nan0)))) {
+            return true;
+        }
+        for (; i < size; i++) {
+            T v = src[i];
+            if (HWY_UNLIKELY(std::isnan(v))) return true;
+            dst[i] = v;
+        }
+        return false;
+    }
+}
+
+template <typename T>
+void ArgPartitionAroundPivot64(const T *HWY_RESTRICT data,
+                               int64_t *HWY_RESTRICT indices,
+                               int64_t size, T pivot) {
+    using HwT = std::conditional_t<std::is_same_v<T, long long>, int64_t,
+                std::conditional_t<std::is_same_v<T, unsigned long long>, uint64_t, T>>;
+    const hn::ScalableTag<HwT> d_val;
+    const hn::Repartition<int64_t, decltype(d_val)> d_idx;
+    const int64_t N = hn::Lanes(d_val);
+
+    int64_t left = 0;
+    int64_t right = size;
+    int64_t first_eq = -1;
+    int64_t i = 0;
+
+    if constexpr (hn::CompressIsPartition<int64_t>::value) {
+        if (i <= size - 2 * N) {
+            const auto v_pivot = hn::Set(d_val, static_cast<HwT>(pivot));
+            auto v_idx = hn::Iota(d_idx, i);
+            const auto v_step = hn::Set(d_idx, N);
+            const int64_t simd_limit = size - 2 * N;
+            for (; i <= simd_limit; i += N) {
+                const auto v = hn::LoadU(d_val, reinterpret_cast<const HwT *>(data + i));
+                const auto eq = hn::Eq(v, v_pivot);
+                if (HWY_LIKELY(hn::AllFalse(d_val, eq))) {
+                    const auto gt = hn::RebindMask(d_idx, hn::Gt(v, v_pivot));
+                    const auto lr = hn::CompressNot(v_idx, gt);
+                    const int64_t n_gt = static_cast<int64_t>(hn::CountTrue(d_idx, gt));
+                    hn::StoreU(lr, d_idx, indices + left);
+                    hn::StoreU(lr, d_idx, indices + right - N);
+                    left += (N - n_gt);
+                    right -= n_gt;
+                } else {
+                    for (int64_t k = 0; k < N; ++k) {
+                        T val = data[i + k];
+                        if (val < pivot) {
+                            indices[left++] = i + k;
+                        } else if (val > pivot) {
+                            indices[--right] = i + k;
+                        } else {
+                            first_eq = i + k;
+                        }
+                    }
+                }
+                v_idx = hn::Add(v_idx, v_step);
+            }
+        }
+    } else {
+        while (i < size && (size - right) < N) {
+            T v = data[i];
+            if (v < pivot) {
+                indices[left++] = i;
+            } else if (v > pivot) {
+                indices[--right] = i;
+            } else {
+                first_eq = i;
+            }
+            i++;
+        }
+
+        if (i <= size - 2 * N) {
+            const auto v_pivot = hn::Set(d_val, static_cast<HwT>(pivot));
+            auto v_idx = hn::Iota(d_idx, i);
+            const auto v_step = hn::Set(d_idx, N);
+            const int64_t simd_limit = size - 2 * N;
+            for (; i <= simd_limit; i += N) {
+                const auto v = hn::LoadU(d_val, reinterpret_cast<const HwT *>(data + i));
+                const auto lt = hn::RebindMask(d_idx, hn::Lt(v, v_pivot));
+                const auto gt = hn::RebindMask(d_idx, hn::Gt(v, v_pivot));
+                const size_t n_lt = hn::CompressStore(v_idx, lt, d_idx, indices + left);
+                left += static_cast<int64_t>(n_lt);
+                const size_t n_gt = hn::CountTrue(d_idx, gt);
+                right -= static_cast<int64_t>(n_gt);
+                (void)hn::CompressBlendedStore(v_idx, gt, d_idx, indices + right);
+                if (HWY_UNLIKELY(static_cast<int64_t>(n_lt + n_gt) != N)) {
+                    const auto eq = hn::RebindMask(d_idx, hn::Eq(v, v_pivot));
+                    first_eq = i + static_cast<int64_t>(hn::FindKnownFirstTrue(d_idx, eq));
+                }
+                v_idx = hn::Add(v_idx, v_step);
+            }
+        }
+    }
+
+    for (; i < size; i++) {
+        T v = data[i];
+        if (v < pivot) {
+            indices[left++] = i;
+        } else if (v > pivot) {
+            indices[--right] = i;
+        } else {
+            first_eq = i;
+        }
+    }
+
+    if (right - left == 1) {
+        indices[left] = first_eq;
+    } else if (right > left) {
+        for (int64_t j = 0; j < size; j++) {
+            if (data[j] == pivot) {
+                indices[left++] = j;
+            }
+        }
+    }
+}
+
+} // namespace ndarray_hwy
+HWY_AFTER_NAMESPACE();
+
 template <typename T, typename Compare>
 static void multi_nth_element(T *arr, int64_t left, int64_t right, const int64_t *k_list, int64_t k_start, int64_t k_end, Compare cmp) {
     if (k_start > k_end || left >= right) return;
@@ -364,6 +737,25 @@ static void arg_multi_nth_element(int64_t *indices, int64_t left, int64_t right,
     if (k < right) {
         arg_multi_nth_element(indices, k + 1, right, k_list, mid_k_idx + 1, k_end, cmp);
     }
+}
+
+template <typename T>
+static inline void vqselect_dispatch(T *array, int64_t valid_len, const int64_t *k_list, int64_t k_start, int64_t k_end) {
+#if VQSORT_ENABLED
+    if constexpr (std::is_same_v<T, long long> || std::is_same_v<T, int64_t>) {
+        ndarray_hwy::VQSelectStatic(reinterpret_cast<int64_t *>(array), static_cast<size_t>(valid_len), k_list, k_start, k_end);
+    } else if constexpr (std::is_same_v<T, unsigned long long> || std::is_same_v<T, uint64_t>) {
+        ndarray_hwy::VQSelectStatic(reinterpret_cast<uint64_t *>(array), static_cast<size_t>(valid_len), k_list, k_start, k_end);
+    } else {
+        ndarray_hwy::VQSelectStatic(array, static_cast<size_t>(valid_len), k_list, k_start, k_end);
+    }
+#else
+    if (k_end == k_start) {
+        std::nth_element(array, array + k_list[k_start], array + valid_len);
+    } else {
+        multi_nth_element(array, 0, valid_len - 1, k_list, k_start, k_end, std::less<T>());
+    }
+#endif
 }
 
 template <typename T>
@@ -410,11 +802,37 @@ static void partition_impl(T *array, int64_t size, const int64_t *k_list, int64_
 
     if (k_end <= k_start) return;
 
-    auto cmp = std::less<T>();
+    if constexpr (sizeof(T) >= 2) {
+        if (valid_len >= 64) {
+            if constexpr (std::is_same_v<T, float>) {
+                uint32_t *u_ptr = reinterpret_cast<uint32_t *>(array);
+                for (int64_t i = 0; i < valid_len; i++) {
+                    u_ptr[i] = to_sortable_bits32(array[i]);
+                }
+                vqselect_dispatch(u_ptr, valid_len, k_ptr, k_start, k_end - 1);
+                for (int64_t i = 0; i < valid_len; i++) {
+                    array[i] = from_sortable_bits32(u_ptr[i]);
+                }
+            } else if constexpr (std::is_same_v<T, double>) {
+                uint64_t *u_ptr = reinterpret_cast<uint64_t *>(array);
+                for (int64_t i = 0; i < valid_len; i++) {
+                    u_ptr[i] = to_sortable_bits64(array[i]);
+                }
+                vqselect_dispatch(u_ptr, valid_len, k_ptr, k_start, k_end - 1);
+                for (int64_t i = 0; i < valid_len; i++) {
+                    array[i] = from_sortable_bits64(u_ptr[i]);
+                }
+            } else {
+                vqselect_dispatch(array, valid_len, k_ptr, k_start, k_end - 1);
+            }
+            return;
+        }
+    }
+
     if (k_end - k_start == 1) {
-        std::nth_element(array, array + k_ptr[k_start], array + valid_len, cmp);
+        std::nth_element(array, array + k_ptr[k_start], array + valid_len);
     } else {
-        multi_nth_element(array, 0, valid_len - 1, k_ptr, k_start, k_end - 1, cmp);
+        multi_nth_element(array, 0, valid_len - 1, k_ptr, k_start, k_end - 1, std::less<T>());
     }
 }
 
@@ -426,6 +844,132 @@ static void argpartition_impl(const T *data, int64_t *indices, int64_t size, con
         return;
     }
 
+    NoThrowBuffer<int64_t> sorted_k;
+    const int64_t *k_ptr = k_list;
+    int64_t num_k = k_size;
+    if (!std::is_sorted(k_list, k_list + k_size)) {
+        sorted_k.assign(k_list, k_list + k_size);
+        if (!sorted_k.ok()) return;
+        std::sort(sorted_k.begin(), sorted_k.end());
+        k_ptr = sorted_k.data();
+    }
+
+    // Fast path for 16-bit and 32-bit types (zero heap allocation, in-place packed uint64_t VQSelect)
+    if constexpr (sizeof(T) >= 2 && sizeof(T) <= 4) {
+        if (size >= 64 && size <= 0xFFFFFFFFLL) {
+            uint64_t *packed = reinterpret_cast<uint64_t *>(indices);
+            int64_t valid_len = size;
+            if constexpr (std::is_floating_point_v<T>) {
+                int64_t left = 0;
+                int64_t right = size - 1;
+                for (int64_t i = 0; i < size; i++) {
+                    T v = data[i];
+                    if (HWY_UNLIKELY(std::isnan(v))) {
+                        indices[right--] = i;
+                    } else {
+                        packed[left++] = (static_cast<uint64_t>(sortable_key32(v)) << 32) | static_cast<uint32_t>(i);
+                    }
+                }
+                valid_len = left;
+                if (valid_len < size) {
+                    std::reverse(indices + valid_len, indices + size);
+                }
+            } else {
+                for (int64_t i = 0; i < size; i++) {
+                    packed[i] = (static_cast<uint64_t>(sortable_key32(data[i])) << 32) | static_cast<uint32_t>(i);
+                }
+            }
+            if (valid_len <= 1) {
+                if (valid_len == 1) indices[0] = static_cast<int64_t>(packed[0] & 0xFFFFFFFFULL);
+                return;
+            }
+            int64_t k_start = 0;
+            while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
+            int64_t k_end = k_start;
+            while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
+            if (k_end > k_start) {
+                vqselect_dispatch(packed, valid_len, k_ptr, k_start, k_end - 1);
+            }
+            for (int64_t i = 0; i < valid_len; i++) {
+                indices[i] = static_cast<int64_t>(packed[i] & 0xFFFFFFFFULL);
+            }
+            return;
+        }
+    }
+
+    // Fast path for 64-bit types
+    if constexpr (sizeof(T) == 8) {
+        if (size >= 64) {
+            // Zero-allocation single-k fast path using indices buffer in-place as scratch
+            int64_t k_0 = 0;
+            while (k_0 < num_k && k_ptr[k_0] < 0) k_0++;
+            int64_t k_1 = k_0;
+            while (k_1 < num_k && k_ptr[k_1] < size) k_1++;
+
+            if (k_1 - k_0 == 1) {
+                T *k_buf_inplace = reinterpret_cast<T *>(indices);
+                const bool has_nan = ndarray_hwy::CopyAndCheckNaN64(data, k_buf_inplace, size);
+                if (HWY_LIKELY(!has_nan)) {
+                    vqselect_dispatch(k_buf_inplace, size, k_ptr, k_0, k_0);
+                    const T pivot = k_buf_inplace[k_ptr[k_0]];
+                    ndarray_hwy::ArgPartitionAroundPivot64(data, indices, size, pivot);
+                    return;
+                }
+            }
+
+#if VQSORT_ENABLED
+            // Multi-k or NaN-containing path for 64-bit types via VQSelect on K64V64
+            NoThrowBuffer<hwy::K64V64> kv;
+            if (kv.try_resize_uninit(static_cast<size_t>(size))) {
+                hwy::K64V64 *kv_ptr = kv.data();
+                int64_t valid_len = size;
+                if constexpr (std::is_floating_point_v<T>) {
+                    int64_t left = 0;
+                    int64_t right = size - 1;
+                    for (int64_t i = 0; i < size; i++) {
+                        T v = data[i];
+                        if (HWY_UNLIKELY(std::isnan(v))) {
+                            indices[right--] = i;
+                        } else {
+                            kv_ptr[left].key = sortable_key64(v);
+                            kv_ptr[left].value = static_cast<uint64_t>(i);
+                            left++;
+                        }
+                    }
+                    valid_len = left;
+                    if (valid_len < size) {
+                        std::reverse(indices + valid_len, indices + size);
+                    }
+                } else {
+                    for (int64_t i = 0; i < size; i++) {
+                        kv_ptr[i].key = sortable_key64(data[i]);
+                        kv_ptr[i].value = static_cast<uint64_t>(i);
+                    }
+                }
+
+                if (valid_len <= 1) {
+                    if (valid_len == 1) indices[0] = static_cast<int64_t>(kv_ptr[0].value);
+                    return;
+                }
+
+                int64_t k_start = 0;
+                while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
+                int64_t k_end = k_start;
+                while (k_end < num_k && k_ptr[k_end] < valid_len) k_end++;
+
+                if (k_end > k_start) {
+                    ndarray_hwy::VQSelectStatic(kv_ptr, static_cast<size_t>(valid_len), k_ptr, k_start, k_end - 1);
+                }
+                for (int64_t i = 0; i < valid_len; i++) {
+                    indices[i] = static_cast<int64_t>(kv_ptr[i].value);
+                }
+                return;
+            }
+#endif
+        }
+    }
+
+    // Fallback if scratch allocation fails or size < 64
     int64_t valid_len = size;
     if constexpr (std::is_floating_point_v<T>) {
         int64_t left = 0;
@@ -448,16 +992,6 @@ static void argpartition_impl(const T *data, int64_t *indices, int64_t size, con
     }
 
     if (valid_len <= 1) return;
-
-    NoThrowBuffer<int64_t> sorted_k;
-    const int64_t *k_ptr = k_list;
-    int64_t num_k = k_size;
-    if (!std::is_sorted(k_list, k_list + k_size)) {
-        sorted_k.assign(k_list, k_list + k_size);
-        if (!sorted_k.ok()) return;
-        std::sort(sorted_k.begin(), sorted_k.end());
-        k_ptr = sorted_k.data();
-    }
 
     int64_t k_start = 0;
     while (k_start < num_k && k_ptr[k_start] < 0) k_start++;
@@ -485,6 +1019,178 @@ static void argsort_impl(const T *data, int64_t *indices, int64_t size, int kind
         return;
     }
 
+    // Fast pre-check on data directly before writing indices (exits in ~2 elements on random inputs)
+    bool is_sorted = true;
+    bool is_rev_sorted = true;
+    bool seen_nan = false;
+    if constexpr (std::is_floating_point_v<T>) {
+        seen_nan = std::isnan(data[0]);
+    }
+    if (!seen_nan) {
+        for (int64_t i = 0; i < size - 1; i++) {
+            T val_cur = data[i];
+            T val_next = data[i + 1];
+            if constexpr (std::is_floating_point_v<T>) {
+                if (std::isnan(val_next)) {
+                    seen_nan = true;
+                    is_sorted = false;
+                    is_rev_sorted = false;
+                    break;
+                }
+            }
+            if (val_cur > val_next) {
+                is_sorted = false;
+                if (!is_rev_sorted) break;
+            }
+            if (val_cur <= val_next) {
+                is_rev_sorted = false;
+                if (!is_sorted) break;
+            }
+        }
+        if (is_sorted) {
+            for (int64_t i = 0; i < size; i++) indices[i] = i;
+            return;
+        }
+        if (is_rev_sorted) {
+            for (int64_t i = 0; i < size; i++) indices[i] = size - 1 - i;
+            return;
+        }
+    }
+
+    // Fast path for 8-bit integer types (O(N) stable counting argsort, zero heap allocation)
+    if constexpr (sizeof(T) == 1 && !std::is_floating_point_v<T>) {
+        if (size > 32 && (kind == 0 || kind == 1)) {
+            int64_t counts[257] = {0};
+            for (int64_t i = 0; i < size; i++) {
+                uint8_t bucket = static_cast<uint8_t>(data[i]) ^ (std::is_signed_v<T> ? 0x80u : 0x00u);
+                counts[bucket + 1]++;
+            }
+            for (int b = 0; b < 256; b++) {
+                counts[b + 1] += counts[b];
+            }
+            for (int64_t i = 0; i < size; i++) {
+                uint8_t bucket = static_cast<uint8_t>(data[i]) ^ (std::is_signed_v<T> ? 0x80u : 0x00u);
+                indices[counts[bucket]++] = i;
+            }
+            return;
+        }
+    }
+
+    // Fast path for 16-bit and 32-bit types: single pass packs (key << 32) | idx into front of indices
+    // and places NaN indices at back, followed by in-place VQSort (zero heap allocation).
+    if constexpr (sizeof(T) >= 2 && sizeof(T) <= 4) {
+        if (size > 32 && size <= 0xFFFFFFFFLL && (kind == 0 || kind == 1)) {
+            uint64_t *packed = reinterpret_cast<uint64_t *>(indices);
+            int64_t valid_len = size;
+            if constexpr (std::is_floating_point_v<T>) {
+                int64_t left = 0;
+                int64_t right = size - 1;
+                for (int64_t i = 0; i < size; i++) {
+                    T v = data[i];
+                    if (HWY_UNLIKELY(std::isnan(v))) {
+                        indices[right--] = i;
+                    } else {
+                        packed[left++] = (static_cast<uint64_t>(sortable_key32(v)) << 32) | static_cast<uint32_t>(i);
+                    }
+                }
+                valid_len = left;
+                if (valid_len < size) {
+                    std::reverse(indices + valid_len, indices + size);
+                }
+            } else {
+                for (int64_t i = 0; i < size; i++) {
+                    packed[i] = (static_cast<uint64_t>(sortable_key32(data[i])) << 32) | static_cast<uint32_t>(i);
+                }
+            }
+            if (valid_len > 1) {
+                hwy::VQSort(packed, static_cast<size_t>(valid_len), hwy::SortAscending());
+            }
+            for (int64_t i = 0; i < valid_len; i++) {
+                indices[i] = static_cast<int64_t>(packed[i] & 0xFFFFFFFFULL);
+            }
+            return;
+        }
+    }
+
+    // Fast path for 64-bit types: single pass fills K64V64/uint128_t for non-NaNs and places NaNs at back of indices.
+    if constexpr (sizeof(T) == 8) {
+        if (size > 32 && (kind == 0 || kind == 1)) {
+            if (kind == 0) {
+                NoThrowBuffer<hwy::K64V64> kv;
+                if (kv.try_resize_uninit(static_cast<size_t>(size))) {
+                    hwy::K64V64 *kv_ptr = kv.data();
+                    int64_t valid_len = size;
+                    if constexpr (std::is_floating_point_v<T>) {
+                        int64_t left = 0;
+                        int64_t right = size - 1;
+                        for (int64_t i = 0; i < size; i++) {
+                            T v = data[i];
+                            if (HWY_UNLIKELY(std::isnan(v))) {
+                                indices[right--] = i;
+                            } else {
+                                kv_ptr[left].key = sortable_key64(v);
+                                kv_ptr[left].value = static_cast<uint64_t>(i);
+                                left++;
+                            }
+                        }
+                        valid_len = left;
+                        if (valid_len < size) {
+                            std::reverse(indices + valid_len, indices + size);
+                        }
+                    } else {
+                        for (int64_t i = 0; i < size; i++) {
+                            kv_ptr[i].key = sortable_key64(data[i]);
+                            kv_ptr[i].value = static_cast<uint64_t>(i);
+                        }
+                    }
+                    if (valid_len > 1) {
+                        hwy::VQSort(kv_ptr, static_cast<size_t>(valid_len), hwy::SortAscending());
+                    }
+                    for (int64_t i = 0; i < valid_len; i++) {
+                        indices[i] = static_cast<int64_t>(kv_ptr[i].value);
+                    }
+                    return;
+                }
+            } else {
+                NoThrowBuffer<hwy::uint128_t> u128;
+                if (u128.try_resize_uninit(static_cast<size_t>(size))) {
+                    hwy::uint128_t *u_ptr = u128.data();
+                    int64_t valid_len = size;
+                    if constexpr (std::is_floating_point_v<T>) {
+                        int64_t left = 0;
+                        int64_t right = size - 1;
+                        for (int64_t i = 0; i < size; i++) {
+                            T v = data[i];
+                            if (HWY_UNLIKELY(std::isnan(v))) {
+                                indices[right--] = i;
+                            } else {
+                                u_ptr[left].hi = sortable_key64(v);
+                                u_ptr[left].lo = static_cast<uint64_t>(i);
+                                left++;
+                            }
+                        }
+                        valid_len = left;
+                        if (valid_len < size) {
+                            std::reverse(indices + valid_len, indices + size);
+                        }
+                    } else {
+                        for (int64_t i = 0; i < size; i++) {
+                            u_ptr[i].hi = sortable_key64(data[i]);
+                            u_ptr[i].lo = static_cast<uint64_t>(i);
+                        }
+                    }
+                    if (valid_len > 1) {
+                        hwy::VQSort(u_ptr, static_cast<size_t>(valid_len), hwy::SortAscending());
+                    }
+                    for (int64_t i = 0; i < valid_len; i++) {
+                        indices[i] = static_cast<int64_t>(u_ptr[i].lo);
+                    }
+                    return;
+                }
+            }
+        }
+    }
+
     int64_t valid_len = size;
     if constexpr (std::is_floating_point_v<T>) {
         int64_t left = 0;
@@ -507,29 +1213,6 @@ static void argsort_impl(const T *data, int64_t *indices, int64_t size, int kind
     }
 
     if (valid_len <= 1) return;
-
-    // O(N) pre-pass to check if already non-decreasing or strictly decreasing
-    bool is_sorted = true;
-    bool is_rev_sorted = true;
-    for (int64_t i = 0; i < valid_len - 1; i++) {
-        T val_cur = data[indices[i]];
-        T val_next = data[indices[i + 1]];
-        if (val_cur > val_next) {
-            is_sorted = false;
-            if (!is_rev_sorted) break;
-        }
-        if (val_cur <= val_next) {
-            is_rev_sorted = false;
-            if (!is_sorted) break;
-        }
-    }
-    if (is_sorted) {
-        return;
-    }
-    if (is_rev_sorted) {
-        std::reverse(indices, indices + valid_len);
-        return;
-    }
 
     auto cmp = [data](int64_t a, int64_t b) {
         return data[a] < data[b];
@@ -732,13 +1415,128 @@ static void to_bool_mask(
     }
 }
 
+HWY_BEFORE_NAMESPACE();
+namespace ndarray_hwy {
+
 template <typename T>
-static inline bool is_nan_check(T val) {
+static int64_t ArgMinMax1D(const T *src, int64_t n, int is_max) {
+    T best_val = src[0];
     if constexpr (std::is_floating_point_v<T>) {
-        return std::isnan(val);
+        if (std::isnan(best_val)) return 0;
     }
-    return false;
+    int64_t best_idx = 0;
+    int64_t i = 1;
+
+    const hn::ScalableTag<T> d;
+    const int64_t L = hn::Lanes(d);
+
+    if (n >= 1 + 4 * L) {
+        auto v_best = hn::Set(d, best_val);
+        if (is_max) {
+            for (; i + 4 * L <= n; i += 4 * L) {
+                const auto v0 = hn::LoadU(d, src + i);
+                const auto v1 = hn::LoadU(d, src + i + L);
+                const auto v2 = hn::LoadU(d, src + i + 2 * L);
+                const auto v3 = hn::LoadU(d, src + i + 3 * L);
+                if constexpr (std::is_floating_point_v<T>) {
+                    const auto vmax = hn::Max(hn::Max(v0, v1), hn::Max(v2, v3));
+                    const auto gt = hn::Gt(vmax, v_best);
+                    const auto nan01 = hn::Or(hn::IsNaN(v0), hn::IsNaN(v1));
+                    const auto nan23 = hn::Or(hn::IsNaN(v2), hn::IsNaN(v3));
+                    const auto any = hn::Or(gt, hn::Or(nan01, nan23));
+                    if (HWY_UNLIKELY(!hn::AllFalse(d, any))) {
+                        for (int64_t k = i; k < i + 4 * L; k++) {
+                            T val = src[k];
+                            if (std::isnan(val)) return k;
+                            if (val > best_val) {
+                                best_val = val;
+                                best_idx = k;
+                            }
+                        }
+                        v_best = hn::Set(d, best_val);
+                    }
+                } else {
+                    const auto vmax = hn::Max(hn::Max(v0, v1), hn::Max(v2, v3));
+                    if (HWY_UNLIKELY(!hn::AllFalse(d, hn::Gt(vmax, v_best)))) {
+                        for (int64_t k = i; k < i + 4 * L; k++) {
+                            T val = src[k];
+                            if (val > best_val) {
+                                best_val = val;
+                                best_idx = k;
+                            }
+                        }
+                        v_best = hn::Set(d, best_val);
+                    }
+                }
+            }
+        } else {
+            for (; i + 4 * L <= n; i += 4 * L) {
+                const auto v0 = hn::LoadU(d, src + i);
+                const auto v1 = hn::LoadU(d, src + i + L);
+                const auto v2 = hn::LoadU(d, src + i + 2 * L);
+                const auto v3 = hn::LoadU(d, src + i + 3 * L);
+                if constexpr (std::is_floating_point_v<T>) {
+                    const auto vmin = hn::Min(hn::Min(v0, v1), hn::Min(v2, v3));
+                    const auto lt = hn::Lt(vmin, v_best);
+                    const auto nan01 = hn::Or(hn::IsNaN(v0), hn::IsNaN(v1));
+                    const auto nan23 = hn::Or(hn::IsNaN(v2), hn::IsNaN(v3));
+                    const auto any = hn::Or(lt, hn::Or(nan01, nan23));
+                    if (HWY_UNLIKELY(!hn::AllFalse(d, any))) {
+                        for (int64_t k = i; k < i + 4 * L; k++) {
+                            T val = src[k];
+                            if (std::isnan(val)) return k;
+                            if (val < best_val) {
+                                best_val = val;
+                                best_idx = k;
+                            }
+                        }
+                        v_best = hn::Set(d, best_val);
+                    }
+                } else {
+                    const auto vmin = hn::Min(hn::Min(v0, v1), hn::Min(v2, v3));
+                    if (HWY_UNLIKELY(!hn::AllFalse(d, hn::Lt(vmin, v_best)))) {
+                        for (int64_t k = i; k < i + 4 * L; k++) {
+                            T val = src[k];
+                            if (val < best_val) {
+                                best_val = val;
+                                best_idx = k;
+                            }
+                        }
+                        v_best = hn::Set(d, best_val);
+                    }
+                }
+            }
+        }
+    }
+
+    if (is_max) {
+        for (; i < n; i++) {
+            T val = src[i];
+            if constexpr (std::is_floating_point_v<T>) {
+                if (std::isnan(val)) return i;
+            }
+            if (val > best_val) {
+                best_val = val;
+                best_idx = i;
+            }
+        }
+    } else {
+        for (; i < n; i++) {
+            T val = src[i];
+            if constexpr (std::is_floating_point_v<T>) {
+                if (std::isnan(val)) return i;
+            }
+            if (val < best_val) {
+                best_val = val;
+                best_idx = i;
+            }
+        }
+    }
+    return best_idx;
 }
+
+} // namespace ndarray_hwy
+HWY_AFTER_NAMESPACE();
 
 template <typename T, typename Compare>
 static void argminmax(
@@ -757,62 +1555,7 @@ static void argminmax(
     if (is_contiguous && axis == -1) {
         int64_t n = shape[0];
         if (n <= 0) return;
-        T val0 = src[0];
-        if (is_nan_check(val0)) {
-            dest[0] = 0;
-            return;
-        }
-        int64_t idx0 = 0, idx1 = 0, idx2 = 0, idx3 = 0;
-        T val1 = val0, val2 = val0, val3 = val0;
-        int64_t i = 1;
-        if (is_max) {
-            for (; i + 3 < n; i += 4) {
-                T v0 = src[i], v1 = src[i + 1], v2 = src[i + 2], v3 = src[i + 3];
-                if (is_nan_check(v0) || is_nan_check(v1) || is_nan_check(v2) || is_nan_check(v3)) break;
-                if (v0 > val0) { val0 = v0; idx0 = i; }
-                if (v1 > val1) { val1 = v1; idx1 = i + 1; }
-                if (v2 > val2) { val2 = v2; idx2 = i + 2; }
-                if (v3 > val3) { val3 = v3; idx3 = i + 3; }
-            }
-            if (val1 > val0 || (val1 == val0 && idx1 < idx0)) { val0 = val1; idx0 = idx1; }
-            if (val2 > val0 || (val2 == val0 && idx2 < idx0)) { val0 = val2; idx0 = idx2; }
-            if (val3 > val0 || (val3 == val0 && idx3 < idx0)) { val0 = val3; idx0 = idx3; }
-            for (; i < n; i++) {
-                T val = src[i];
-                if (is_nan_check(val)) {
-                    idx0 = i;
-                    break;
-                }
-                if (cmp(val, val0) > 0) {
-                    val0 = val;
-                    idx0 = i;
-                }
-            }
-        } else {
-            for (; i + 3 < n; i += 4) {
-                T v0 = src[i], v1 = src[i + 1], v2 = src[i + 2], v3 = src[i + 3];
-                if (is_nan_check(v0) || is_nan_check(v1) || is_nan_check(v2) || is_nan_check(v3)) break;
-                if (v0 < val0) { val0 = v0; idx0 = i; }
-                if (v1 < val1) { val1 = v1; idx1 = i + 1; }
-                if (v2 < val2) { val2 = v2; idx2 = i + 2; }
-                if (v3 < val3) { val3 = v3; idx3 = i + 3; }
-            }
-            if (val1 < val0 || (val1 == val0 && idx1 < idx0)) { val0 = val1; idx0 = idx1; }
-            if (val2 < val0 || (val2 == val0 && idx2 < idx0)) { val0 = val2; idx0 = idx2; }
-            if (val3 < val0 || (val3 == val0 && idx3 < idx0)) { val0 = val3; idx0 = idx3; }
-            for (; i < n; i++) {
-                T val = src[i];
-                if (is_nan_check(val)) {
-                    idx0 = i;
-                    break;
-                }
-                if (cmp(val, val0) < 0) {
-                    val0 = val;
-                    idx0 = i;
-                }
-            }
-        }
-        dest[0] = idx0;
+        dest[0] = ndarray_hwy::ArgMinMax1D<T>(src, n, is_max);
         return;
     }
     if (axis < 0 || axis >= rank || shape[axis] <= 0) return;
@@ -847,12 +1590,13 @@ static void argminmax(
             rank_dest++;
         }
     }
+    const int64_t axis_len = shape[axis];
+    const int64_t axis_stride = stridesSrc[axis];
     for (int64_t el = 0; el < dest_size; el++) {
         int64_t dest_offset = 0;
         for (int d = 0; d < rank_dest; d++) {
             dest_offset += coord_dest[d] * strides_dest_clean[d];
         }
-        int64_t best_idx = 0;
         int64_t base_src_offset = 0;
         int rank_dest_idx = 0;
         for (int d = 0; d < rank; d++) {
@@ -861,30 +1605,35 @@ static void argminmax(
                 rank_dest_idx++;
             }
         }
-        T best_val = src[base_src_offset];
-        if (is_nan_check(best_val)) {
-            dest[dest_offset] = 0;
+        if (axis_stride == 1) {
+            dest[dest_offset] = ndarray_hwy::ArgMinMax1D<T>(src + base_src_offset, axis_len, is_max);
         } else {
-            for (int64_t i = 1; i < shape[axis]; i++) {
-                int64_t src_offset = base_src_offset + i * stridesSrc[axis];
-                T val = src[src_offset];
-                if (is_nan_check(val)) {
-                    best_idx = i;
-                    break;
-                }
-                if (is_max) {
-                    if (cmp(val, best_val) > 0) {
-                        best_val = val;
+            int64_t best_idx = 0;
+            T best_val = src[base_src_offset];
+            if (is_nan_check(best_val)) {
+                dest[dest_offset] = 0;
+            } else {
+                for (int64_t i = 1; i < axis_len; i++) {
+                    int64_t src_offset = base_src_offset + i * axis_stride;
+                    T val = src[src_offset];
+                    if (is_nan_check(val)) {
                         best_idx = i;
+                        break;
                     }
-                } else {
-                    if (cmp(val, best_val) < 0) {
-                        best_val = val;
-                        best_idx = i;
+                    if (is_max) {
+                        if (cmp(val, best_val) > 0) {
+                            best_val = val;
+                            best_idx = i;
+                        }
+                    } else {
+                        if (cmp(val, best_val) < 0) {
+                            best_val = val;
+                            best_idx = i;
+                        }
                     }
                 }
+                dest[dest_offset] = best_idx;
             }
-            dest[dest_offset] = best_idx;
         }
         if (rank_dest > 0) {
             for (int d = rank_dest - 1; d >= 0; d--) {
@@ -1378,13 +2127,13 @@ extern "C" void native_argsort_float16(const uint16_t *data, int64_t *indices, i
     bool is_sorted = true;
     bool is_rev_sorted = true;
     for (int64_t i = 0; i < valid_len - 1; i++) {
-        float val_cur = decode_f16_to_f32(data[indices[i]]);
-        float val_next = decode_f16_to_f32(data[indices[i + 1]]);
-        if (val_cur > val_next) {
+        uint16_t k_cur = sortable_key_half(data[indices[i]]);
+        uint16_t k_next = sortable_key_half(data[indices[i + 1]]);
+        if (k_cur > k_next) {
             is_sorted = false;
             if (!is_rev_sorted) break;
         }
-        if (val_cur <= val_next) {
+        if (k_cur <= k_next) {
             is_rev_sorted = false;
             if (!is_sorted) break;
         }
@@ -1395,8 +2144,22 @@ extern "C" void native_argsort_float16(const uint16_t *data, int64_t *indices, i
         return;
     }
 
+    if (kind != 2 && static_cast<uint64_t>(size) <= 0xFFFFFFFFULL) {
+        uint64_t *packed = reinterpret_cast<uint64_t *>(indices);
+        for (int64_t i = 0; i < valid_len; i++) {
+            uint32_t idx = static_cast<uint32_t>(indices[i]);
+            uint32_t key = static_cast<uint32_t>(sortable_key_half(data[idx]));
+            packed[i] = (static_cast<uint64_t>(key) << 32) | idx;
+        }
+        hwy::VQSort(packed, static_cast<size_t>(valid_len), hwy::SortAscending());
+        for (int64_t i = 0; i < valid_len; i++) {
+            indices[i] = static_cast<int64_t>(packed[i] & 0xFFFFFFFFULL);
+        }
+        return;
+    }
+
     auto cmp = [data](int64_t a, int64_t b) {
-        return decode_f16_to_f32(data[a]) < decode_f16_to_f32(data[b]);
+        return sortable_key_half(data[a]) < sortable_key_half(data[b]);
     };
 
     if (kind == 0) {
@@ -1435,13 +2198,13 @@ extern "C" void native_argsort_bfloat16(const uint16_t *data, int64_t *indices, 
     bool is_sorted = true;
     bool is_rev_sorted = true;
     for (int64_t i = 0; i < valid_len - 1; i++) {
-        float val_cur = decode_bf16_to_f32(data[indices[i]]);
-        float val_next = decode_bf16_to_f32(data[indices[i + 1]]);
-        if (val_cur > val_next) {
+        uint16_t k_cur = sortable_key_half(data[indices[i]]);
+        uint16_t k_next = sortable_key_half(data[indices[i + 1]]);
+        if (k_cur > k_next) {
             is_sorted = false;
             if (!is_rev_sorted) break;
         }
-        if (val_cur <= val_next) {
+        if (k_cur <= k_next) {
             is_rev_sorted = false;
             if (!is_sorted) break;
         }
@@ -1452,8 +2215,22 @@ extern "C" void native_argsort_bfloat16(const uint16_t *data, int64_t *indices, 
         return;
     }
 
+    if (kind != 2 && static_cast<uint64_t>(size) <= 0xFFFFFFFFULL) {
+        uint64_t *packed = reinterpret_cast<uint64_t *>(indices);
+        for (int64_t i = 0; i < valid_len; i++) {
+            uint32_t idx = static_cast<uint32_t>(indices[i]);
+            uint32_t key = static_cast<uint32_t>(sortable_key_half(data[idx]));
+            packed[i] = (static_cast<uint64_t>(key) << 32) | idx;
+        }
+        hwy::VQSort(packed, static_cast<size_t>(valid_len), hwy::SortAscending());
+        for (int64_t i = 0; i < valid_len; i++) {
+            indices[i] = static_cast<int64_t>(packed[i] & 0xFFFFFFFFULL);
+        }
+        return;
+    }
+
     auto cmp = [data](int64_t a, int64_t b) {
-        return decode_bf16_to_f32(data[a]) < decode_bf16_to_f32(data[b]);
+        return sortable_key_half(data[a]) < sortable_key_half(data[b]);
     };
 
     if (kind == 0) {
@@ -1786,8 +2563,22 @@ extern "C" void native_argpartition_float16(const uint16_t *data, int64_t *indic
 
     if (k_end <= k_start) return;
 
+    if (valid_len >= 64 && static_cast<uint64_t>(size) <= 0xFFFFFFFFULL) {
+        uint64_t *packed = reinterpret_cast<uint64_t *>(indices);
+        for (int64_t i = 0; i < valid_len; i++) {
+            uint32_t idx = static_cast<uint32_t>(indices[i]);
+            uint32_t key = static_cast<uint32_t>(sortable_key_half(data[idx]));
+            packed[i] = (static_cast<uint64_t>(key) << 32) | idx;
+        }
+        vqselect_dispatch(packed, valid_len, k_ptr, k_start, k_end - 1);
+        for (int64_t i = 0; i < valid_len; i++) {
+            indices[i] = static_cast<int64_t>(packed[i] & 0xFFFFFFFFULL);
+        }
+        return;
+    }
+
     auto cmp = [data](int64_t a, int64_t b) {
-        return decode_f16_to_f32(data[a]) < decode_f16_to_f32(data[b]);
+        return sortable_key_half(data[a]) < sortable_key_half(data[b]);
     };
 
     if (k_end - k_start == 1) {
@@ -1837,8 +2628,22 @@ extern "C" void native_argpartition_bfloat16(const uint16_t *data, int64_t *indi
 
     if (k_end <= k_start) return;
 
+    if (valid_len >= 64 && static_cast<uint64_t>(size) <= 0xFFFFFFFFULL) {
+        uint64_t *packed = reinterpret_cast<uint64_t *>(indices);
+        for (int64_t i = 0; i < valid_len; i++) {
+            uint32_t idx = static_cast<uint32_t>(indices[i]);
+            uint32_t key = static_cast<uint32_t>(sortable_key_half(data[idx]));
+            packed[i] = (static_cast<uint64_t>(key) << 32) | idx;
+        }
+        vqselect_dispatch(packed, valid_len, k_ptr, k_start, k_end - 1);
+        for (int64_t i = 0; i < valid_len; i++) {
+            indices[i] = static_cast<int64_t>(packed[i] & 0xFFFFFFFFULL);
+        }
+        return;
+    }
+
     auto cmp = [data](int64_t a, int64_t b) {
-        return decode_bf16_to_f32(data[a]) < decode_bf16_to_f32(data[b]);
+        return sortable_key_half(data[a]) < sortable_key_half(data[b]);
     };
 
     if (k_end - k_start == 1) {
@@ -2041,16 +2846,16 @@ extern "C" void native_argminmax_float(const void *src, const int64_t *stridesSr
     argminmax((const float *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<float>);
 }
 extern "C" void native_argminmax_int64(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
-    argminmax((const long long *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<long long>);
+    argminmax((const int64_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<int64_t>);
 }
 extern "C" void native_argminmax_int32(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
-    argminmax((const int *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<int>);
+    argminmax((const int32_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<int32_t>);
 }
 extern "C" void native_argminmax_uint8(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
-    argminmax((const unsigned char *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<unsigned char>);
+    argminmax((const uint8_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<uint8_t>);
 }
 extern "C" void native_argminmax_int16(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_max, int is_contiguous) {
-    argminmax((const short *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<short>);
+    argminmax((const int16_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_max, is_contiguous, standard_compare<int16_t>);
 }
 
 extern "C" void native_count_nonzero_double(const void *src, const int64_t *stridesSrc, int64_t *dest, const int64_t *stridesDest, const int64_t *shape, int rank, int axis, int is_contiguous) {

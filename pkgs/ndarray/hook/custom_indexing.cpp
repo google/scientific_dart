@@ -937,6 +937,114 @@ extern "C" int native_tile_contiguous(
         int64_t N = src_shape[1];
         int64_t R_rows = reps[0];
         int64_t R_cols = reps[1];
+
+        // Specialized contiguous element-repeat path (N == 1, R_rows == 1)
+        if (N == 1 && R_rows == 1) {
+            switch (itemsize) {
+                case 8: {
+                    const uint64_t *RESTRICT s64 = (const uint64_t *)src;
+                    uint64_t *RESTRICT d64 = (uint64_t *)dest;
+                    if (R_cols == 2) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint64_t v = s64[i];
+                            d64[2 * i] = v;
+                            d64[2 * i + 1] = v;
+                        }
+                    } else if (R_cols == 3) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint64_t v = s64[i];
+                            d64[3 * i] = v;
+                            d64[3 * i + 1] = v;
+                            d64[3 * i + 2] = v;
+                        }
+                    } else if (R_cols == 4) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint64_t v = s64[i];
+                            d64[4 * i] = v;
+                            d64[4 * i + 1] = v;
+                            d64[4 * i + 2] = v;
+                            d64[4 * i + 3] = v;
+                        }
+                    } else {
+                        for (int64_t i = 0; i < M; i++) {
+                            std::fill_n(d64 + i * R_cols, R_cols, s64[i]);
+                        }
+                    }
+                    return 0;
+                }
+                case 4: {
+                    const uint32_t *RESTRICT s32 = (const uint32_t *)src;
+                    uint32_t *RESTRICT d32 = (uint32_t *)dest;
+                    if (R_cols == 2) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint32_t v = s32[i];
+                            d32[2 * i] = v;
+                            d32[2 * i + 1] = v;
+                        }
+                    } else if (R_cols == 4) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint32_t v = s32[i];
+                            d32[4 * i] = v;
+                            d32[4 * i + 1] = v;
+                            d32[4 * i + 2] = v;
+                            d32[4 * i + 3] = v;
+                        }
+                    } else {
+                        for (int64_t i = 0; i < M; i++) {
+                            std::fill_n(d32 + i * R_cols, R_cols, s32[i]);
+                        }
+                    }
+                    return 0;
+                }
+                case 2: {
+                    const uint16_t *RESTRICT s16 = (const uint16_t *)src;
+                    uint16_t *RESTRICT d16 = (uint16_t *)dest;
+                    if (R_cols == 2) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint16_t v = s16[i];
+                            d16[2 * i] = v;
+                            d16[2 * i + 1] = v;
+                        }
+                    } else {
+                        for (int64_t i = 0; i < M; i++) {
+                            std::fill_n(d16 + i * R_cols, R_cols, s16[i]);
+                        }
+                    }
+                    return 0;
+                }
+                case 1: {
+                    const uint8_t *RESTRICT s8 = (const uint8_t *)src;
+                    uint8_t *RESTRICT d8 = (uint8_t *)dest;
+                    if (R_cols == 2) {
+                        for (int64_t i = 0; i < M; i++) {
+                            uint8_t v = s8[i];
+                            d8[2 * i] = v;
+                            d8[2 * i + 1] = v;
+                        }
+                    } else {
+                        for (int64_t i = 0; i < M; i++) {
+                            std::memset(d8 + i * R_cols, s8[i], (size_t)R_cols);
+                        }
+                    }
+                    return 0;
+                }
+                case 16: {
+                    const uint64_t *RESTRICT s128 = (const uint64_t *)src;
+                    uint64_t *RESTRICT d128 = (uint64_t *)dest;
+                    for (int64_t i = 0; i < M; i++) {
+                        uint64_t r = s128[2 * i];
+                        uint64_t im = s128[2 * i + 1];
+                        uint64_t *row = d128 + i * R_cols * 2;
+                        for (int64_t c = 0; c < R_cols; c++) {
+                            row[2 * c] = r;
+                            row[2 * c + 1] = im;
+                        }
+                    }
+                    return 0;
+                }
+            }
+        }
+
         size_t row_src_bytes = (size_t)N * itemsize;
         size_t row_dest_bytes = (size_t)N * R_cols * itemsize;
         const uint8_t *s = (const uint8_t *)src;

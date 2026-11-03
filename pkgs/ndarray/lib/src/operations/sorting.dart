@@ -649,6 +649,8 @@ NDArray<T> partition<T extends DTypeTag, Out extends T>(
     final NDArray<T> result;
     if (tempResult != null) {
       result = tempResult;
+    } else if (out == null && !identical(src, a)) {
+      result = src;
     } else {
       result = out ?? NDArray<T>.create(src.shape, src.dtype);
       if (!identical(result, src)) {

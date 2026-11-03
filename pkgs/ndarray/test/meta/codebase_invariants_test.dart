@@ -3895,11 +3895,30 @@ class _ResolvedSemanticVisitor extends RecursiveAstVisitor<void> {
       if (allocType != null && arg != null) {
         final sizeOfFinder = _FindSizeOfTypeVisitor();
         arg.accept(sizeOfFinder);
+        final displayType = allocType.getDisplayString();
+        const singleByteTypes = {
+          'Uint8',
+          'Int8',
+          'Void',
+          'Bool',
+          'Char',
+          'UnsignedChar',
+          'SignedChar',
+        };
+        if (sizeOfFinder.sizeOfTypes.isEmpty &&
+            !singleByteTypes.contains(displayType) &&
+            !arg.toSource().contains('Bytes') &&
+            !arg.toSource().contains('byteWidth')) {
+          final line = lineInfo.getLocation(node.offset).lineNumber;
+          violations.add(
+            '$filePath:$line — `ScratchArena.allocate<$displayType>` byte count expression (`${arg.toSource()}`) is missing `ffi.sizeOf<$displayType>()`.',
+          );
+        }
         for (final sizeType in sizeOfFinder.sizeOfTypes) {
           if (allocType != sizeType) {
             final line = lineInfo.getLocation(node.offset).lineNumber;
             violations.add(
-              '$filePath:$line — `ScratchArena.allocate<${allocType.getDisplayString()}>` byte count uses mismatched `sizeOf<${sizeType.getDisplayString()}>()`.',
+              '$filePath:$line — `ScratchArena.allocate<$displayType>` byte count uses mismatched `sizeOf<${sizeType.getDisplayString()}>()`.',
             );
           }
         }

@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+import 'dart:ffi' as ffi;
 import 'dart:typed_data';
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
@@ -395,6 +396,253 @@ void main() {
           final flat = a.flatten();
           expect(flat.shape, [4]);
           expect(flat.toList(), [1.0, 0.0, 3.0, 0.0]);
+        }),
+      );
+    });
+
+    group('Track 2 Native Kernel Edge Cases & Regressions', () {
+      test(
+        'partition on float64/float32 preserves -0.0 and +0.0 bit multiset on two-value arrays',
+        () => NDArray.scope(() {
+          for (final n in [16, 17, 32, 33, 63, 64, 65, 128]) {
+            final f64 = NDArray.zeros([n], DType.float64);
+            final ptr64 = f64.pointer.cast<ffi.Uint64>();
+            var expectedNegZeros = 0;
+            for (var i = 0; i < n; i++) {
+              if (i.isEven) {
+                ptr64[i] = 0x8000000000000000; // -0.0
+                expectedNegZeros++;
+              } else {
+                ptr64[i] = 0; // +0.0
+              }
+            }
+            final p64 = partition(f64, [0, n ~/ 2, n - 1]);
+            final outPtr64 = p64.pointer.cast<ffi.Uint64>();
+            var actualNegZeros64 = 0;
+            for (var i = 0; i < n; i++) {
+              if (outPtr64[i] == 0x8000000000000000) {
+                actualNegZeros64++;
+              } else {
+                expect(outPtr64[i], 0);
+              }
+            }
+            expect(actualNegZeros64, expectedNegZeros);
+
+            final f32 = NDArray.zeros([n], DType.float32);
+            final ptr32 = f32.pointer.cast<ffi.Uint32>();
+            for (var i = 0; i < n; i++) {
+              ptr32[i] = i.isEven ? 0x80000000 : 0;
+            }
+            final p32 = partition(f32, [0, n ~/ 2, n - 1]);
+            final outPtr32 = p32.pointer.cast<ffi.Uint32>();
+            var actualNegZeros32 = 0;
+            for (var i = 0; i < n; i++) {
+              if (outPtr32[i] == 0x80000000) {
+                actualNegZeros32++;
+              } else {
+                expect(outPtr32[i], 0);
+              }
+            }
+            expect(actualNegZeros32, expectedNegZeros);
+          }
+        }),
+      );
+
+      test(
+        'stable argsort preserves relative order of -0.0 and +0.0 ties across threshold sizes',
+        () => NDArray.scope(() {
+          for (final n in [16, 32, 33, 64, 65]) {
+            final f64 = NDArray.zeros([n], DType.float64);
+            final ptr64 = f64.pointer.cast<ffi.Uint64>();
+            for (var i = 0; i < n; i++) {
+              ptr64[i] = i.isOdd ? 0x8000000000000000 : 0;
+            }
+            final idx64 = argsort(f64, kind: SortKind.stable);
+            expect(idx64.toList(), List<int>.generate(n, (i) => i));
+
+            final f32 = NDArray.zeros([n], DType.float32);
+            final ptr32 = f32.pointer.cast<ffi.Uint32>();
+            for (var i = 0; i < n; i++) {
+              ptr32[i] = i.isOdd ? 0x80000000 : 0;
+            }
+            final idx32 = argsort(f32, kind: SortKind.stable);
+            expect(idx32.toList(), List<int>.generate(n, (i) => i));
+          }
+        }),
+      );
+
+      test(
+        'partition, argpartition, and argsort across threshold sizes with NaNs, unsorted/duplicate kth, uint64 high-bit, and int8 min',
+        () => NDArray.scope(() {
+          for (final n in [16, 17, 32, 33, 63, 64, 65]) {
+            // Float64 with NaN at various positions and unsorted duplicate kth
+            for (final nanPos in [0, 1, n ~/ 2, n - 1]) {
+              final data = List<double>.generate(n, (i) => (n - i).toDouble());
+              data[nanPos] = double.nan;
+              final expectedMin = nanPos == n - 1 ? 2.0 : 1.0;
+              final a = NDArray.fromList(data, [n], DType.float64);
+              final kth = [n - 1, 0, n ~/ 2, 0];
+              final p = partition(a, kth);
+              expect(p.getCellFlat(n - 1).isNaN, isTrue);
+              expect(p.getCellFlat(0), expectedMin);
+
+              final ap = argpartition(a, kth);
+              expect(ap.getCellFlat(n - 1), nanPos);
+              expect(a.getCellFlat(ap.getCellFlat(0)), expectedMin);
+
+              final asIdx = argsort(a, kind: SortKind.stable);
+              expect(asIdx.getCellFlat(n - 1), nanPos);
+              expect(a.getCellFlat(asIdx.getCellFlat(0)), expectedMin);
+            }
+
+            // Uint64 with high bit set (>= 2^63)
+            final u64 = NDArray.zeros([n], DType.uint64);
+            final uPtr = u64.pointer.cast<ffi.Uint64>();
+            for (var i = 0; i < n; i++) {
+              // Alternate high-bit values and small values
+              uPtr[i] = i.isEven ? (0x8000000000000000 + (n - i)) : i;
+            }
+            final uSortIdx = argsort(u64);
+            for (var i = 0; i < n - 1; i++) {
+              final aIdx = uSortIdx.getCellFlat(i);
+              final bIdx = uSortIdx.getCellFlat(i + 1);
+              final va = BigInt.from(uPtr[aIdx]).toUnsigned(64);
+              final vb = BigInt.from(uPtr[bIdx]).toUnsigned(64);
+              expect(va <= vb, isTrue);
+            }
+            final uPartIdx = argpartition(u64, n ~/ 2);
+            final pivotU = BigInt.from(
+              uPtr[uPartIdx.getCellFlat(n ~/ 2)],
+            ).toUnsigned(64);
+            for (var i = 0; i < n ~/ 2; i++) {
+              final v = BigInt.from(
+                uPtr[uPartIdx.getCellFlat(i)],
+              ).toUnsigned(64);
+              expect(v <= pivotU, isTrue);
+            }
+
+            // Int8 including -128 and 127
+            final i8Data = Int8List.fromList(
+              List<int>.generate(
+                n,
+                (i) => i == 0 ? 127 : (i == n - 1 ? -128 : (i % 50) - 25),
+              ),
+            );
+            final i8 = NDArray.fromList(i8Data, [n], DType.int8);
+            final i8Idx = argsort(i8, kind: SortKind.stable);
+            expect(i8.getCellFlat(i8Idx.getCellFlat(0)), -128);
+            expect(i8.getCellFlat(i8Idx.getCellFlat(n - 1)), 127);
+          }
+        }),
+      );
+
+      test(
+        'min and max preserve custom NaN payload across SIMD threshold sizes',
+        () => NDArray.scope(() {
+          for (final n in [16, 17, 32, 33, 64, 65]) {
+            final f64 = NDArray.ones([n], DType.float64);
+            final ptr64 = f64.pointer.cast<ffi.Uint64>();
+            const customNan64 = 0xfff8000000000042;
+            ptr64[n ~/ 2] = customNan64;
+
+            final minRes64 = min(f64);
+            final maxRes64 = max(f64);
+            expect(minRes64.pointer.cast<ffi.Uint64>()[0], customNan64);
+            expect(maxRes64.pointer.cast<ffi.Uint64>()[0], customNan64);
+
+            final f32 = NDArray.ones([n], DType.float32);
+            final ptr32 = f32.pointer.cast<ffi.Uint32>();
+            const customNan32 = 0xffc0002a;
+            ptr32[n ~/ 2] = customNan32;
+
+            final minRes32 = min(f32);
+            final maxRes32 = max(f32);
+            expect(minRes32.pointer.cast<ffi.Uint32>()[0], customNan32);
+            expect(maxRes32.pointer.cast<ffi.Uint32>()[0], customNan32);
+          }
+        }),
+      );
+
+      test(
+        'argmin and argmax across SIMD threshold sizes and NaN positions',
+        () => NDArray.scope(() {
+          for (final n in [16, 17, 32, 33, 63, 64, 65, 129]) {
+            for (final nanPos in [0, 1, n ~/ 2, n - 1]) {
+              final f64 = NDArray.fromList(
+                List<double>.generate(n, (i) => i.toDouble()),
+                [n],
+                DType.float64,
+              );
+              f64.setCellFlat(nanPos, double.nan);
+              expect(argmin(f64).scalar, nanPos);
+              expect(argmax(f64).scalar, nanPos);
+            }
+          }
+        }),
+      );
+
+      test(
+        'quantile on array with infinity and discrete/continuous methods',
+        () => NDArray.scope(() {
+          final a = NDArray.fromList(
+            [1.0, double.infinity],
+            [2],
+            DType.float64,
+          );
+          for (final method in [
+            QuantileMethod.lower,
+            QuantileMethod.higher,
+            QuantileMethod.nearest,
+            QuantileMethod.invertedCdf,
+            QuantileMethod.closestObservation,
+          ]) {
+            expect(quantile(a, 0.0, method: method).scalar, 1.0);
+            expect(quantile(a, 1.0, method: method).scalar, double.infinity);
+          }
+        }),
+      );
+
+      test(
+        'repeat scalar and list across all 15 dtypes, non-contiguous axis: null, and tile itemsizes',
+        () => NDArray.scope(() {
+          for (final dtype in DType.values) {
+            final a = NDArray.zeros([2, 3], dtype);
+            final rUniform = repeat(a, 3, axis: 1);
+            expect(rUniform.shape, [2, 9]);
+            expect(rUniform.dtype, dtype);
+
+            final rList = repeat(a, [1, 2, 0], axis: 1);
+            expect(rList.shape, [2, 3]);
+            expect(rList.dtype, dtype);
+
+            final t = tile(a, [2, 3]);
+            expect(t.shape, [4, 9]);
+            expect(t.dtype, dtype);
+          }
+
+          // Non-contiguous input with axis: null
+          final base = NDArray.arange(
+            0,
+            12,
+            dtype: DType.int32,
+          ).reshape([3, 4]);
+          final nonContig = base.transpose();
+          expect(nonContig.isContiguous, isFalse);
+          final repFlat = repeat(nonContig, 2);
+          expect(repFlat.shape, [24]);
+          final expected = <int>[];
+          for (final v in nonContig.ravel().toList()) {
+            expected.add(v);
+            expected.add(v);
+          }
+          expect(repFlat.toList(), expected);
+
+          // Non-contiguous partition with out == null and out != null
+          final pNonContig = partition(nonContig, 1);
+          expect(pNonContig.shape, [4, 3]);
+          final outContig = NDArray.zeros([4, 3], DType.int32);
+          partition(nonContig, 1, out: outContig);
+          expect(outContig.toList(), pNonContig.toList());
         }),
       );
     });
