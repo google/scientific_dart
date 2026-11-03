@@ -81,7 +81,7 @@ NDArray<T> repeat<T extends DTypeTag, Out extends T>(
     int normAxis;
 
     if (axis == null) {
-      src = a.flatten();
+      src = a.ravel();
       normAxis = 0;
     } else {
       final rank = a.rank;
@@ -94,30 +94,42 @@ NDArray<T> repeat<T extends DTypeTag, Out extends T>(
       }
     }
 
+    final int dim = src.shape[normAxis];
+    final bool isUniformRepeat = rawRepeats.length == 1 && dim != 0;
+    final int uniformRep = rawRepeats.length == 1 ? rawRepeats[0] : 0;
+
     List<int> repsList = rawRepeats;
-    if (repsList.length == 1) {
-      repsList = List<int>.filled(src.shape[normAxis], repsList[0]);
-    }
-
-    if (repsList.length != src.shape[normAxis]) {
+    if (!isUniformRepeat) {
+      if (repsList.length == 1) {
+        repsList = const <int>[];
+      }
+      if (repsList.length != dim) {
+        throw ArgumentError.value(
+          repsList,
+          'repeats',
+          'repeats length (${repsList.length}) must match the dimension along axis ($normAxis) which is $dim',
+        );
+      }
+      final bool hasNegative = repsList.any((x) => x < 0);
+      if (hasNegative) {
+        throw ArgumentError.value(
+          repsList,
+          'repeats',
+          'repeats values must be non-negative',
+        );
+      }
+    } else if (uniformRep < 0) {
       throw ArgumentError.value(
-        repsList,
-        'repeats',
-        'repeats length (${repsList.length}) must match the dimension along axis ($normAxis) which is ${src.shape[normAxis]}',
-      );
-    }
-
-    final bool hasNegative = repsList.any((x) => x < 0);
-    if (hasNegative) {
-      throw ArgumentError.value(
-        repsList,
+        repeats,
         'repeats',
         'repeats values must be non-negative',
       );
     }
 
     final outputShape = List<int>.from(src.shape);
-    final newDimSize = repsList.isEmpty ? 0 : repsList.reduce((x, y) => x + y);
+    final newDimSize = isUniformRepeat
+        ? dim * uniformRep
+        : (repsList.isEmpty ? 0 : repsList.reduce((x, y) => x + y));
     outputShape[normAxis] = newDimSize;
 
     if (out != null) {
@@ -161,171 +173,77 @@ NDArray<T> repeat<T extends DTypeTag, Out extends T>(
     }
 
     final outer = src.shape.sublist(0, normAxis).fold<int>(1, (x, y) => x * y);
-    final dim = src.shape[normAxis];
     final inner = src.shape.sublist(normAxis + 1).fold<int>(1, (x, y) => x * y);
 
-    final destDim = target.shape[normAxis];
-
-    if (inner == 1) {
-      switch (src.dtype) {
-        case DType.float64:
-          final srcPtr = src.pointer.cast<ffi.Double>();
-          final dstPtr = target.pointer.cast<ffi.Double>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.float32:
-          final srcPtr = src.pointer.cast<ffi.Float>();
-          final dstPtr = target.pointer.cast<ffi.Float>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.int64:
-        case DType.uint64:
-          final srcPtr = src.pointer.cast<ffi.Int64>();
-          final dstPtr = target.pointer.cast<ffi.Int64>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.int32:
-        case DType.uint32:
-          final srcPtr = src.pointer.cast<ffi.Int32>();
-          final dstPtr = target.pointer.cast<ffi.Int32>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.int16:
-        case DType.uint16:
-        case DType.float16:
-        case DType.bfloat16:
-          final srcPtr = src.pointer.cast<ffi.Int16>();
-          final dstPtr = target.pointer.cast<ffi.Int16>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.int8:
-        case DType.uint8:
-        case DType.boolean:
-          final srcPtr = src.pointer.cast<ffi.Int8>();
-          final dstPtr = target.pointer.cast<ffi.Int8>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.complex64:
-          final srcPtr = src.pointer.cast<ffi.Int64>();
-          final dstPtr = target.pointer.cast<ffi.Int64>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim;
-            var destPos = o * destDim;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final val = srcPtr[srcBase + i];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = val;
-              }
-            }
-          }
-        case DType.complex128:
-          final srcPtr = src.pointer.cast<ffi.Double>();
-          final dstPtr = target.pointer.cast<ffi.Double>();
-          for (var o = 0; o < outer; o++) {
-            final srcBase = o * dim * 2;
-            var destPos = o * destDim * 2;
-            for (var i = 0; i < dim; i++) {
-              final rep = repsList[i];
-              if (rep == 0) continue;
-              final rVal = srcPtr[srcBase + i * 2];
-              final iVal = srcPtr[srcBase + i * 2 + 1];
-              for (var r = 0; r < rep; r++) {
-                dstPtr[destPos++] = rVal;
-                dstPtr[destPos++] = iVal;
-              }
-            }
-          }
-      }
-    } else {
-      final srcBytePtr = src.pointer.cast<ffi.Uint8>();
-      final dstBytePtr = target.pointer.cast<ffi.Uint8>();
-      final itemBytes = src.dtype.byteWidth;
-      final sliceBytes = inner * itemBytes;
-      final destDimBytes = destDim * sliceBytes;
-      final dimBytes = dim * sliceBytes;
-      for (var o = 0; o < outer; o++) {
-        final srcOuterPtr = srcBytePtr + o * dimBytes;
-        final dstOuterPtr = dstBytePtr + o * destDimBytes;
-        var destByteOffset = 0;
-        for (var i = 0; i < dim; i++) {
-          final rep = repsList[i];
-          if (rep == 0) continue;
-          final sPtr = srcOuterPtr + i * sliceBytes;
-          final dPtr = dstOuterPtr + destByteOffset;
-          custom_memcpy(dPtr.cast(), sPtr.cast(), sliceBytes);
-          var copied = sliceBytes;
-          final totalBytes = rep * sliceBytes;
-          while (copied < totalBytes) {
-            final toCopy = (copied <= totalBytes - copied)
-                ? copied
-                : (totalBytes - copied);
-            custom_memcpy((dPtr + copied).cast(), dPtr.cast(), toCopy);
-            copied += toCopy;
-          }
-          destByteOffset += totalBytes;
+    if (isUniformRepeat) {
+      final marker = ScratchArena.marker;
+      try {
+        final cBuf = ScratchArena.allocate<ffi.Int64>(
+          6 * ffi.sizeOf<ffi.Int64>(),
+        );
+        final cSrcShape = cBuf;
+        final cReps = cBuf + 2;
+        final cOutShape = cBuf + 4;
+        cSrcShape[0] = outer * dim;
+        cSrcShape[1] = inner;
+        cReps[0] = 1;
+        cReps[1] = uniformRep;
+        cOutShape[0] = outer * dim;
+        cOutShape[1] = uniformRep * inner;
+        final rc = native_tile_contiguous(
+          src.dtype.index,
+          src.pointer.cast(),
+          cSrcShape,
+          cReps,
+          target.pointer.cast(),
+          cOutShape,
+          2,
+        );
+        if (rc == -4) {
+          throw OutOfMemoryError();
         }
+        if (rc != 0) {
+          throw StateError('Native repeat operation failed with code $rc');
+        }
+      } finally {
+        ScratchArena.reset(marker);
+      }
+      if (out != null) {
+        if (useTempOut) {
+          target.copy(out: out);
+        }
+        return out;
+      }
+      return target.detachToParentScope();
+    }
+
+    final destDim = target.shape[normAxis];
+    final srcBytePtr = src.pointer.cast<ffi.Uint8>();
+    final dstBytePtr = target.pointer.cast<ffi.Uint8>();
+    final itemBytes = src.dtype.byteWidth;
+    final sliceBytes = inner * itemBytes;
+    final destDimBytes = destDim * sliceBytes;
+    final dimBytes = dim * sliceBytes;
+    for (var o = 0; o < outer; o++) {
+      final srcOuterPtr = srcBytePtr + o * dimBytes;
+      final dstOuterPtr = dstBytePtr + o * destDimBytes;
+      var destByteOffset = 0;
+      for (var i = 0; i < dim; i++) {
+        final rep = repsList[i];
+        if (rep == 0) continue;
+        final sPtr = srcOuterPtr + i * sliceBytes;
+        final dPtr = dstOuterPtr + destByteOffset;
+        custom_memcpy(dPtr.cast(), sPtr.cast(), sliceBytes);
+        var copied = sliceBytes;
+        final totalBytes = rep * sliceBytes;
+        while (copied < totalBytes) {
+          final toCopy = (copied <= totalBytes - copied)
+              ? copied
+              : (totalBytes - copied);
+          custom_memcpy((dPtr + copied).cast(), dPtr.cast(), toCopy);
+          copied += toCopy;
+        }
+        destByteOffset += totalBytes;
       }
     }
 
