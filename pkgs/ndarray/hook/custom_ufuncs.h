@@ -2272,6 +2272,11 @@ void s_binary_minmax(
     const int64_t* out_strides
 );
 
+void v_isclose_double(const double *a, const double *b, uint8_t *res, int64_t size, double rtol, double atol, int equal_nan);
+void v_isclose_float(const float *a, const float *b, uint8_t *res, int64_t size, double rtol, double atol, int equal_nan);
+int v_allclose_double(const double *a, const double *b, int64_t size, double rtol, double atol, int equal_nan);
+int v_allclose_float(const float *a, const float *b, int64_t size, double rtol, double atol, int equal_nan);
+
 #ifdef __cplusplus
 }
 #endif

@@ -23,12 +23,6 @@
 #include <algorithm>
 #include <cmath>
 #include <limits>
-#if defined(__AVX2__) && (!defined(__PCLMUL__) || !defined(__AES__)) && !defined(HWY_DISABLE_PCLMUL_AES)
-#define HWY_DISABLE_PCLMUL_AES
-#endif
-#if defined(__AVX2__) && !defined(__BMI2__) && !defined(HWY_DISABLE_BMI2_FMA)
-#define HWY_DISABLE_BMI2_FMA
-#endif
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wundef"

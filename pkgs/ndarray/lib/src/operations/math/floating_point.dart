@@ -1041,11 +1041,15 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
           final ptrA = a.pointer.cast<ffi.Double>();
           final ptrB = b.pointer.cast<ffi.Double>();
           if (maskPtr == ffi.nullptr) {
-            for (var i = 0; i < size; i++) {
-              resPtr[i] = _isCloseDouble(ptrA[i], ptrB[i], rtol, atol, equalNan)
-                  ? 1
-                  : 0;
-            }
+            v_isclose_double(
+              ptrA,
+              ptrB,
+              resPtr,
+              size,
+              rtol,
+              atol,
+              equalNan ? 1 : 0,
+            );
           } else {
             for (var i = 0; i < size; i++) {
               if (maskPtr[i] != 0) {
@@ -1060,11 +1064,15 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
           final ptrA = a.pointer.cast<ffi.Float>();
           final ptrB = b.pointer.cast<ffi.Float>();
           if (maskPtr == ffi.nullptr) {
-            for (var i = 0; i < size; i++) {
-              resPtr[i] = _isCloseDouble(ptrA[i], ptrB[i], rtol, atol, equalNan)
-                  ? 1
-                  : 0;
-            }
+            v_isclose_float(
+              ptrA,
+              ptrB,
+              resPtr,
+              size,
+              rtol,
+              atol,
+              equalNan ? 1 : 0,
+            );
           } else {
             for (var i = 0; i < size; i++) {
               if (maskPtr[i] != 0) {
@@ -1334,23 +1342,25 @@ bool allClose<Ta extends DTypeTag, Tb extends DTypeTag>(
     final size = a.size;
     switch ((a.dtype, b.dtype)) {
       case (DType.float64, DType.float64):
-        final ptrA = a.pointer.cast<ffi.Double>();
-        final ptrB = b.pointer.cast<ffi.Double>();
-        for (var i = 0; i < size; i++) {
-          if (!_isCloseDouble(ptrA[i], ptrB[i], rtol, atol, equalNan)) {
-            return false;
-          }
-        }
-        return true;
+        return v_allclose_double(
+              a.pointer.cast<ffi.Double>(),
+              b.pointer.cast<ffi.Double>(),
+              size,
+              rtol,
+              atol,
+              equalNan ? 1 : 0,
+            ) !=
+            0;
       case (DType.float32, DType.float32):
-        final ptrA = a.pointer.cast<ffi.Float>();
-        final ptrB = b.pointer.cast<ffi.Float>();
-        for (var i = 0; i < size; i++) {
-          if (!_isCloseDouble(ptrA[i], ptrB[i], rtol, atol, equalNan)) {
-            return false;
-          }
-        }
-        return true;
+        return v_allclose_float(
+              a.pointer.cast<ffi.Float>(),
+              b.pointer.cast<ffi.Float>(),
+              size,
+              rtol,
+              atol,
+              equalNan ? 1 : 0,
+            ) !=
+            0;
       case (DType.float64, DType.float32):
         final ptrA = a.pointer.cast<ffi.Double>();
         final ptrB = b.pointer.cast<ffi.Float>();

@@ -315,6 +315,16 @@ NDArray<T> stack<T extends SelfOf<DTypeTag>>(
 
     for (var r = 0; r < numArrays; r++) {
       final arr = arrays[r];
+      if (targetAxis == 0 && !arr.isContiguous) {
+        final sliceView = NDArray<T>.view(
+          result,
+          shape: first.shape,
+          strides: result.strides.sublist(1),
+          offsetElements: r * inner,
+        );
+        arr.copy(out: sliceView);
+        continue;
+      }
       final srcContiguous = arr.isContiguous ? arr : arr.copy();
       try {
         final srcPtr = srcContiguous.pointer.cast<ffi.Uint8>();
