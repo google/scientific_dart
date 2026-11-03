@@ -30745,3 +30745,83 @@ external void s_binary_minmax(
   ffi.Pointer<ffi.Void> outData,
   ffi.Pointer<ffi.Int64> outStrides,
 );
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Double,
+    ffi.Int,
+  )
+>()
+external void v_isclose_double(
+  ffi.Pointer<ffi.Double> a,
+  ffi.Pointer<ffi.Double> b,
+  ffi.Pointer<ffi.Uint8> res,
+  int size,
+  double rtol,
+  double atol,
+  int equalNan,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Double,
+    ffi.Int,
+  )
+>()
+external void v_isclose_float(
+  ffi.Pointer<ffi.Float> a,
+  ffi.Pointer<ffi.Float> b,
+  ffi.Pointer<ffi.Uint8> res,
+  int size,
+  double rtol,
+  double atol,
+  int equalNan,
+);
+
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Double,
+    ffi.Int,
+  )
+>()
+external int v_allclose_double(
+  ffi.Pointer<ffi.Double> a,
+  ffi.Pointer<ffi.Double> b,
+  int size,
+  double rtol,
+  double atol,
+  int equalNan,
+);
+
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Pointer<ffi.Float>,
+    ffi.Pointer<ffi.Float>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Double,
+    ffi.Int,
+  )
+>()
+external int v_allclose_float(
+  ffi.Pointer<ffi.Float> a,
+  ffi.Pointer<ffi.Float> b,
+  int size,
+  double rtol,
+  double atol,
+  int equalNan,
+);

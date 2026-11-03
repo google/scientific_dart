@@ -1089,4 +1089,309 @@ void main() {
       });
     });
   });
+
+  group('Track 4 Highway SIMD Edge-Case Regression Tests', () {
+    test('cos(0.0) == 1.0 and sin(-0.0) preserves -0.0 in SIMD and tail', () {
+      NDArray.scope(() {
+        final z8 = NDArray.fromList(
+          [0.0, -0.0, 0.0, -0.0, 0.0, -0.0, 0.0, -0.0, 0.0],
+          [9],
+          DType.float64,
+        );
+        final c8 = cos(z8);
+        for (var i = 0; i < 9; i++) {
+          expect(c8.getCell([i]), equals(1.0), reason: 'cos at index $i');
+        }
+        final s8 = sin(z8);
+        for (var i = 0; i < 9; i++) {
+          final v = s8.getCell([i]);
+          expect(v, equals(0.0));
+          expect(
+            (1.0 / v).isNegative,
+            equals(i.isOdd),
+            reason: 'sin sign bit at index $i',
+          );
+        }
+      });
+    });
+
+    test('Complex128 exp(0+0i) == (1, 0) and exp(1-0i) preserves -0.0 im', () {
+      NDArray.scope(() {
+        final cz = NDArray.fromList(
+          [
+            Complex(0.0, 0.0),
+            Complex(1.0, -0.0),
+            Complex(0.0, 0.0),
+            Complex(1.0, -0.0),
+            Complex(1.0, -0.0),
+          ],
+          [5],
+          DType.complex128,
+        );
+        final ce = exp(cz);
+        for (final idx in [0, 2]) {
+          final v = ce.getCell([idx]);
+          expect(v.real, equals(1.0));
+          expect(v.imag, equals(0.0));
+        }
+        for (final idx in [1, 3, 4]) {
+          final v = ce.getCell([idx]);
+          expect(v.real, closeTo(math.e, 1e-15));
+          expect(v.imag, equals(0.0));
+          expect(
+            (1.0 / v.imag).isNegative,
+            isTrue,
+            reason: 'exp(1 - 0i) imaginary sign at index $idx',
+          );
+        }
+      });
+    });
+
+    test('Complex128 and Complex64 division near DBL_MAX / FLT_MAX', () {
+      NDArray.scope(() {
+        final a = NDArray.fromList(
+          [
+            Complex(1e308, 1e308),
+            Complex(1.0, 0.0),
+            Complex(1e308, 1e308),
+            Complex(1.0, 0.0),
+            Complex(1e308, 1e308),
+          ],
+          [5],
+          DType.complex128,
+        );
+        final b = NDArray.fromList(
+          [
+            Complex(1e308, 1e308),
+            Complex(1e308, 1e308),
+            Complex(1e308, 1e308),
+            Complex(1e308, 1e308),
+            Complex(1e308, 1e308),
+          ],
+          [5],
+          DType.complex128,
+        );
+        final q = a / b;
+        for (final idx in [0, 2, 4]) {
+          final v = q.getCell([idx]);
+          expect(v.real, closeTo(1.0, 1e-15));
+          expect(v.imag, closeTo(0.0, 1e-15));
+        }
+        for (final idx in [1, 3]) {
+          final v = q.getCell([idx]);
+          expect(v.real, closeTo(5e-309, 1e-320));
+          expect(v.imag, closeTo(-5e-309, 1e-320));
+        }
+      });
+    });
+
+    test('SIMD kernels are position- and neighbor-independent', () {
+      NDArray.scope(() {
+        // Real f64 exp/sin/cos/tan: compare [x] (len 1), [x, x, x, x] (len 4),
+        // and [x, 800.0, double.nan, 1e9] (len 4 with out-of-range neighbors).
+        const x = 1.2345678901234567;
+        final a1 = NDArray.fromList([x], [1], DType.float64);
+        final a4 = NDArray.fromList([x, x, x, x], [4], DType.float64);
+        final aOut = NDArray.fromList(
+          [x, 800.0, double.nan, 1e9],
+          [4],
+          DType.float64,
+        );
+
+        expect(exp(a1).getCell([0]), equals(exp(a4).getCell([0])));
+        expect(exp(a4).getCell([0]), equals(exp(aOut).getCell([0])));
+
+        expect(sin(a1).getCell([0]), equals(sin(a4).getCell([0])));
+        expect(sin(a4).getCell([0]), equals(sin(aOut).getCell([0])));
+
+        expect(cos(a1).getCell([0]), equals(cos(a4).getCell([0])));
+        expect(cos(a4).getCell([0]), equals(cos(aOut).getCell([0])));
+
+        expect(tan(a1).getCell([0]), equals(tan(a4).getCell([0])));
+        expect(tan(a4).getCell([0]), equals(tan(aOut).getCell([0])));
+
+        // Complex128 mul / div / abs / angle / exp position & neighbor independence
+        final ca = Complex(1.0 + 1e-16, 1.0 - 3e-16);
+        final cb = Complex(1.0 + 3e-16, 1.0 + 1e-16);
+        final c1a = NDArray.fromList([ca], [1], DType.complex128);
+        final c1b = NDArray.fromList([cb], [1], DType.complex128);
+        final c3a = NDArray.fromList([ca, ca, ca], [3], DType.complex128);
+        final c3b = NDArray.fromList(
+          [cb, Complex(double.nan, 0.0), cb],
+          [3],
+          DType.complex128,
+        );
+
+        expect((c1a * c1b).getCell([0]), equals((c3a * c3b).getCell([0])));
+        expect((c1a / c1b).getCell([0]), equals((c3a / c3b).getCell([0])));
+        expect(abs(c1a).getCell([0]), equals(abs(c3a).getCell([0])));
+        expect(angle(c1a).getCell([0]), equals(angle(c3a).getCell([0])));
+        expect(exp(c1a).getCell([0]), equals(exp(c3a).getCell([0])));
+      });
+    });
+
+    test(
+      'isClose and allClose SIMD vs scalar parity at tolerance boundary',
+      () {
+        NDArray.scope(() {
+          const aVal = 0.0;
+          const bVal = 1.0 + 3 * 2.220446049250313e-16;
+          const rtol = 1.0 - 1.1102230246251565e-16;
+          const atol = 2.220446049250313e-16;
+
+          final a1 = NDArray.fromList([aVal], [1], DType.float64);
+          final b1 = NDArray.fromList([bVal], [1], DType.float64);
+          final a4 = NDArray.fromList(
+            [aVal, aVal, aVal, aVal],
+            [4],
+            DType.float64,
+          );
+          final b4 = NDArray.fromList(
+            [bVal, bVal, bVal, bVal],
+            [4],
+            DType.float64,
+          );
+
+          final res1 = isClose(a1, b1, rtol: rtol, atol: atol).getCell([0]);
+          final res4 = isClose(a4, b4, rtol: rtol, atol: atol).getCell([0]);
+          expect(res4, equals(res1));
+          expect(
+            allClose(a4, b4, rtol: rtol, atol: atol),
+            equals(allClose(a1, b1, rtol: rtol, atol: atol)),
+          );
+        });
+      },
+    );
+
+    test(
+      'gradient contiguous and strided paths agree on Inf and near-DBL_MAX',
+      () {
+        NDArray.scope(() {
+          // Interior Inf: central difference uses (f[i+1] - f[i-1]) / (2 * dx),
+          // independent of f[i].
+          final contigInf = NDArray.fromList(
+            [1.0, double.infinity, 3.0, 4.0],
+            [4],
+            DType.float64,
+          );
+          final rawInf = NDArray.fromList(
+            [1.0, 0.0, double.infinity, 0.0, 3.0, 0.0, 4.0, 0.0],
+            [8],
+            DType.float64,
+          );
+          final stridedInf = rawInf.slice([
+            const Slice(start: 0, stop: 8, step: 2),
+          ]);
+          expect(stridedInf.isContiguous, isFalse);
+
+          final gContigInf = gradient(contigInf);
+          final gStridedInf = gradient(stridedInf);
+          expect(gContigInf.getCell([1]), equals(1.0));
+          expect(gStridedInf.getCell([1]), equals(1.0));
+
+          // Large values & dx: avoid h^2 * f overflow in uniform-dx strided path
+          final contigBig = NDArray.fromList(
+            [1e300, 2e300, 3e300, 4e300],
+            [4],
+            DType.float64,
+          );
+          final rawBig = NDArray.fromList(
+            [1e300, 0.0, 2e300, 0.0, 3e300, 0.0, 4e300, 0.0],
+            [8],
+            DType.float64,
+          );
+          final stridedBig = rawBig.slice([
+            const Slice(start: 0, stop: 8, step: 2),
+          ]);
+          final gContigBig = gradient(
+            contigBig,
+            spacing: const Spacing.step(1e10),
+          );
+          final gStridedBig = gradient(
+            stridedBig,
+            spacing: const Spacing.step(1e10),
+          );
+          for (var i = 0; i < 4; i++) {
+            expect(
+              gStridedBig.getCell([i]),
+              closeTo(gContigBig.getCell([i]), 1e275),
+            );
+          }
+
+          // Float32 isClose / allClose with equalNan: true and false
+          final f32a = NDArray.fromList(
+            [1.0, double.nan, 2.0, 3.0, 4.0],
+            [5],
+            DType.float32,
+          );
+          final f32b = NDArray.fromList(
+            [1.0, double.nan, 2.0, 3.0, 4.0],
+            [5],
+            DType.float32,
+          );
+          expect(allClose(f32a, f32b, equalNan: false), isFalse);
+          expect(allClose(f32a, f32b, equalNan: true), isTrue);
+          expect(isClose(f32a, f32b, equalNan: false).getCell([1]), isFalse);
+          expect(isClose(f32a, f32b, equalNan: true).getCell([1]), isTrue);
+
+          // Mixed float64/float32 and masked isClose/allClose exercising _isCloseDouble
+          final f64Special = NDArray.fromList(
+            [1.0, double.nan, double.infinity, double.negativeInfinity, 1.0],
+            [5],
+            DType.float64,
+          );
+          final f32Special = NDArray.fromList(
+            [1.0, double.nan, double.infinity, double.infinity, double.nan],
+            [5],
+            DType.float32,
+          );
+          expect(allClose(f64Special, f32Special, equalNan: true), isFalse);
+          expect(allClose(f64Special, f32Special, equalNan: false), isFalse);
+          final mask5 = NDArray.fromList(
+            [true, true, true, true, true],
+            [5],
+            DType.boolean,
+          );
+          expect(
+            isClose(
+              f64Special,
+              f64Special,
+              equalNan: true,
+              where: mask5,
+            ).getCell([1]),
+            isTrue,
+          );
+          expect(
+            isClose(
+              f64Special,
+              f32Special,
+              equalNan: false,
+              where: mask5,
+            ).getCell([1]),
+            isFalse,
+          );
+          expect(
+            isClose(
+              f64Special,
+              f64Special,
+              atol: double.infinity,
+              where: mask5,
+            ).getCell([0]),
+            isTrue,
+          );
+
+          // Non-contiguous stack along axis 0 and axis 1
+          final m = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [2, 3],
+            DType.float64,
+          ).transpose();
+          final s0 = stack([m, m], axis: 0);
+          final s1 = stack([m, m], axis: 1);
+          expect(s0.shape, equals([2, 3, 2]));
+          expect(s1.shape, equals([3, 2, 2]));
+        });
+      },
+    );
+  });
 }

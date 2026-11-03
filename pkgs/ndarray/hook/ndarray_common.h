@@ -31,6 +31,13 @@
 #define RESTRICT restrict
 #endif
 
+#if (defined(__AVX2__) || defined(__SSE4_2__)) && (!defined(__PCLMUL__) || !defined(__AES__)) && !defined(HWY_DISABLE_PCLMUL_AES)
+#define HWY_DISABLE_PCLMUL_AES
+#endif
+#if defined(__AVX2__) && !defined(__BMI2__) && !defined(HWY_DISABLE_BMI2_FMA)
+#define HWY_DISABLE_BMI2_FMA
+#endif
+
 #ifndef NDARRAY_EXPORT
 #if defined(_WIN32)
 #define NDARRAY_EXPORT __declspec(dllexport)
