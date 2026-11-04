@@ -118,9 +118,6 @@ NDArray<U> _asView<U extends DTypeTag>(NDArray a) {
 
 R _withView<U extends DTypeTag, R>(NDArray a, R Function(NDArray<U> view) fn) {
   if (a is NDArray<U>) return fn(a);
-  if (a.isDisposed) {
-    throw StateError('Cannot operate on a disposed array.');
-  }
   if (a.dtype is! DType<U>) {
     throw ArgumentError.value(a, 'out', 'Must have compatible dtype');
   }
@@ -148,13 +145,10 @@ R _withViewNullable<U extends DTypeTag, R>(
 
 NDArray<R> _coerceOwned<R extends DTypeTag>(NDArray res) {
   if (res is NDArray<R>) return res;
-  try {
-    final typed = _createTyped<R>(res.shape, res.dtype);
-    res.copy(out: typed);
-    return typed;
-  } finally {
-    res.dispose();
-  }
+  final typed = _createTyped<R>(res.shape, res.dtype);
+  res.copy(out: typed);
+  res.dispose();
+  return typed;
 }
 
 NDArray<R> _createTyped<R extends DTypeTag>(
@@ -304,13 +298,6 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.gcd:
-      if (a.dtype != b.dtype) {
-        throw ArgumentError.value(
-          b.dtype,
-          'b',
-          'Must have the same dtype as a (${a.dtype})',
-        );
-      }
       if (!a.dtype.isInteger) {
         throw UnsupportedError('gcd only supports integer arrays.');
       }
@@ -327,13 +314,6 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
       );
       return out ?? _coerceOwned<R>(res);
     case BinaryOp.lcm:
-      if (a.dtype != b.dtype) {
-        throw ArgumentError.value(
-          b.dtype,
-          'b',
-          'Must have the same dtype as a (${a.dtype})',
-        );
-      }
       if (!a.dtype.isInteger) {
         throw UnsupportedError('lcm only supports integer arrays.');
       }
@@ -1061,26 +1041,16 @@ NDArray<R> _nativeMinMax<T extends DTypeTag, R extends DTypeTag>(
   NDArray<R>? out,
 }) {
   final targetShape = broadcastShapes(a.shape, b.shape);
-  final targetDType = out?.dtype ?? a.dtype;
+  final targetDType = a.dtype;
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, targetShape)) {
+    if (!listEquals(out.shape, targetShape) || out.dtype != targetDType) {
       throw ArgumentError.value(
         out,
         'out',
-        'Output array shape ${out.shape} must match broadcast shape $targetShape',
+        'Must have compatible shape and dtype',
       );
     }
-  }
-  if (targetDType != a.dtype) {
-    // If output dtype differs, fall back to casted elementwise
-    return _elementwiseMinMax(
-      a,
-      b,
-      isMax: opCode == 3 || opCode == 5,
-      ignoreNaN: opCode == 4 || opCode == 5,
-      out: out,
-    );
   }
   if (out != null && (sharesMemory(a, out) || sharesMemory(b, out))) {
     return NDArray.scope(() {
@@ -1183,22 +1153,15 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
   NDArray<DTypeTag>? whereMask,
   NDArray<R>? out,
 }) {
-  if (a.dtype != b.dtype) {
-    throw ArgumentError.value(
-      b.dtype,
-      'b',
-      'Must have the same dtype as a (${a.dtype})',
-    );
-  }
   final targetShape = broadcastShapes(a.shape, b.shape);
-  final targetDType = out?.dtype ?? a.dtype;
+  final targetDType = a.dtype;
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, targetShape)) {
+    if (!listEquals(out.shape, targetShape) || out.dtype != targetDType) {
       throw ArgumentError.value(
         out,
         'out',
-        'Output array shape ${out.shape} must match broadcast shape $targetShape',
+        'Must have compatible shape and dtype',
       );
     }
   }
@@ -1222,12 +1185,6 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
       return out;
     });
   }
-  final aCasted = a.dtype != targetDType
-      ? castNDArray<R>(a, targetDType as DType<R>)
-      : _asView<R>(a);
-  final bCasted = b.dtype != targetDType
-      ? castNDArray<R>(b, targetDType as DType<R>)
-      : _asView<R>(b);
   NDArray<Boolean>? wBool;
   NDArray<Boolean>? wBroadcast;
   try {
@@ -1240,7 +1197,7 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
     final result =
         out ??
         _createTyped<R>(targetShape, targetDType, zeroInit: whereMask != null);
-    final iter = NDIter.broadcast3(result, aCasted, bCasted);
+    final iter = NDIter.broadcast3(result, a, b);
     final wIter = wBroadcast != null ? NDIter(wBroadcast) : null;
     while (iter.moveNext()) {
       if (wIter != null) {
@@ -1250,20 +1207,14 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
       final idxRes = iter.getIndex(0);
       final idxA = iter.getIndex(1);
       final idxB = iter.getIndex(2);
-      final valA = aCasted.getCellRaw(idxA);
-      final valB = bCasted.getCellRaw(idxB);
+      final valA = a.getCellRaw(idxA);
+      final valB = b.getCellRaw(idxB);
       final nanA = _isValueNaN(valA);
       final nanB = _isValueNaN(valB);
       final Object? chosen;
       if (nanA || nanB) {
         if (ignoreNaN) {
-          if (nanA && nanB) {
-            chosen = valA;
-          } else if (nanA) {
-            chosen = valB;
-          } else {
-            chosen = valA;
-          }
+          chosen = nanA ? valB : valA;
         } else {
           chosen = nanA ? valA : valB;
         }
@@ -1279,8 +1230,6 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
     }
     return result;
   } finally {
-    if (!identical(aCasted, a)) aCasted.dispose();
-    if (!identical(bCasted, b)) bCasted.dispose();
     if (wBroadcast != null && !identical(wBroadcast, whereMask)) {
       wBroadcast.dispose();
     }
@@ -2326,12 +2275,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
       final stepRes = binaryUfunc(current.asAnySpec, sub.asAnySpec, op: op);
       sub.dispose();
       current.dispose();
-      if (stepRes.dtype == a.dtype) {
-        current = stepRes as NDArray<T>;
-      } else {
-        current = castNDArray<T>(stepRes, a.dtype);
-        stepRes.dispose();
-      }
+      current = stepRes as NDArray<T>;
     }
   } else {
     final selectors0 = List<Selector>.generate(
@@ -2350,11 +2294,11 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
       final stepRes = binaryUfunc(current.asAnySpec, sub.asAnySpec, op: op);
       current.dispose();
       sub.dispose();
-      if (stepRes.dtype == a.dtype) {
-        current = stepRes as NDArray<T>;
-      } else {
+      if (stepRes.dtype != a.dtype) {
         current = castNDArray<T>(stepRes, a.dtype);
         stepRes.dispose();
+      } else {
+        current = stepRes as NDArray<T>;
       }
     }
   }
@@ -3016,12 +2960,12 @@ NDArray<T> accumulateUfunc<T extends DTypeTag, Out extends T>(
         (d) => d == normAxis ? Index(i) : Slice(),
       );
       final resSliceI = result.slice(selResI);
-      if (stepRes.dtype == result.dtype) {
-        stepRes.copy(out: resSliceI.asAnySpec);
-      } else {
-        final casted = castNDArray<T>(stepRes, result.dtype);
+      if (stepRes.dtype != a.dtype) {
+        final casted = castNDArray<T>(stepRes, a.dtype);
         casted.copy(out: resSliceI);
         casted.dispose();
+      } else {
+        stepRes.copy(out: resSliceI.asAnySpec);
       }
       resSliceI.dispose();
       prev.dispose();
@@ -3175,9 +3119,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
             opCode,
           );
           checkNativeOom();
-          if (get_and_reset_division_error() == 1) {
-            throw UnsupportedError('Integer division by zero');
-          }
           return result;
         case DType.int32:
         case DType.uint32 when isBitwiseOrWrapCompatible:
@@ -3190,9 +3131,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
             opCode,
           );
           checkNativeOom();
-          if (get_and_reset_division_error() == 1) {
-            throw UnsupportedError('Integer division by zero');
-          }
           return result;
         case DType.int16:
         case DType.uint16 when isBitwiseOrWrapCompatible:
@@ -3205,9 +3143,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
             opCode,
           );
           checkNativeOom();
-          if (get_and_reset_division_error() == 1) {
-            throw UnsupportedError('Integer division by zero');
-          }
           return result;
         case DType.uint8:
         case DType.int8 when isBitwiseOrWrapCompatible:
@@ -3220,9 +3155,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
             opCode,
           );
           checkNativeOom();
-          if (get_and_reset_division_error() == 1) {
-            throw UnsupportedError('Integer division by zero');
-          }
           return result;
         case DType.boolean:
           v_reduceat_boolean(
@@ -3348,9 +3280,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
           opCode,
         );
         checkNativeOom();
-        if (get_and_reset_division_error() == 1) {
-          throw UnsupportedError('Integer division by zero');
-        }
         return result;
       case DType.int32:
       case DType.uint32 when isBitwiseOrWrapCompatible:
@@ -3367,9 +3296,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
           opCode,
         );
         checkNativeOom();
-        if (get_and_reset_division_error() == 1) {
-          throw UnsupportedError('Integer division by zero');
-        }
         return result;
       case DType.int16:
       case DType.uint16 when isBitwiseOrWrapCompatible:
@@ -3386,9 +3312,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
           opCode,
         );
         checkNativeOom();
-        if (get_and_reset_division_error() == 1) {
-          throw UnsupportedError('Integer division by zero');
-        }
         return result;
       case DType.uint8:
       case DType.int8 when isBitwiseOrWrapCompatible:
@@ -3405,9 +3328,6 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
           opCode,
         );
         checkNativeOom();
-        if (get_and_reset_division_error() == 1) {
-          throw UnsupportedError('Integer division by zero');
-        }
         return result;
       case DType.boolean:
         s_reduceat_boolean(
@@ -3488,13 +3408,8 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
         NDArray.scope(() {
           final sliceShape = List<int>.of(a.shape)..[normAxis] = 1;
           for (var i = 0; i < numIndices; i++) {
-            var start = indicesPtr[i];
-            if (start < 0) start += axisLen;
-            var end = (i < numIndices - 1) ? indicesPtr[i + 1] : axisLen;
-            if (end < 0) end += axisLen;
-            if (start < 0) start = 0;
-            if (start >= axisLen) start = axisLen - 1;
-            if (end > axisLen) end = axisLen;
+            final start = indicesPtr[i];
+            final end = (i < numIndices - 1) ? indicesPtr[i + 1] : axisLen;
 
             final outSlice = NDArray<T>.view(
               result,
@@ -4240,25 +4155,17 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
                 final bits = bd.getUint32(0);
                 final signBit = bits & 0x80000000;
                 final expBits = (bits >> 23) & 0xFF;
-                if (expBits == 0xFF) {
-                  ulp = double.nan;
-                } else {
-                  final ulpBits = expBits <= 24 ? 1 : ((expBits - 23) << 23);
-                  bd.setUint32(0, signBit | ulpBits);
-                  ulp = bd.getFloat32(0);
-                }
+                final ulpBits = expBits <= 24 ? 1 : ((expBits - 23) << 23);
+                bd.setUint32(0, signBit | ulpBits);
+                ulp = bd.getFloat32(0);
               } else {
                 bd.setFloat64(0, v);
                 final bits = bd.getUint64(0);
                 final signBit = bits & 0x8000000000000000;
                 final expBits = (bits >> 52) & 0x7FF;
-                if (expBits == 0x7FF) {
-                  ulp = double.nan;
-                } else {
-                  final ulpBits = expBits <= 53 ? 1 : ((expBits - 52) << 52);
-                  bd.setUint64(0, signBit | ulpBits);
-                  ulp = bd.getFloat64(0);
-                }
+                final ulpBits = expBits <= 53 ? 1 : ((expBits - 52) << 52);
+                bd.setUint64(0, signBit | ulpBits);
+                ulp = bd.getFloat64(0);
               }
               temp.setCellRaw(tIter.index, ulp);
             }

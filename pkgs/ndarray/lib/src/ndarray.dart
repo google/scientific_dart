@@ -59,9 +59,7 @@ import 'wasm_pointer_lists.dart';
 /// array but carries no projection information, so operations that infer
 /// their result dtype from the input reject it at compile time; use
 /// [NDArray.asAnySpec] to call them with run-time dtype validation instead.
-sealed class DTypeTag {
-  const DTypeTag();
-}
+sealed class DTypeTag {}
 
 /// A dtype tag whose real-valued counterpart is [R].
 ///
@@ -218,8 +216,8 @@ abstract interface class DTypeSpec<
   DoublePrecisionTag extends DTypeTag,
   DivideTag extends DTypeTag
 >
-    extends DTypeTag
     implements
+        DTypeTag,
         RealOf<RealTag>,
         ElementOf<Element>,
         RealFloatOf<RealFloatTag>,
@@ -1419,7 +1417,6 @@ sealed class NDArray<T extends DTypeTag>
       ResourceScope.unmanaged(callback);
 
   static bool _checkContiguous(List<int> shape, List<int> strides) {
-    if (strides.length != shape.length) return false;
     if (shape.contains(0)) return true;
     final cStrides = computeCStrides(shape);
     for (var i = 0; i < strides.length; i++) {
@@ -1648,79 +1645,10 @@ sealed class NDArray<T extends DTypeTag>
         : -minRelativeOffset;
 
     final allocator = zeroInit ? calloc : malloc;
-    ffi.Pointer<ffi.Void> pointer;
-    List<Object?> data;
-
-    if (isWasmRuntime) {
-      pointer = allocator<ffi.Uint8>(allocSize * dtype.byteWidth).cast();
-      data = createWasmDataView(pointer, dtype, allocSize);
-    } else {
-      switch (dtype) {
-        case DType.float64:
-          final p = allocator<ffi.Double>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.float32:
-          final p = allocator<ffi.Float>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.float16:
-          final p = allocator<ffi.Uint16>(allocSize);
-          pointer = p.cast();
-          data = Float16List(p.asTypedList(allocSize));
-        case DType.bfloat16:
-          final p = allocator<ffi.Uint16>(allocSize);
-          pointer = p.cast();
-          data = BFloat16List(p.asTypedList(allocSize));
-        case DType.int64:
-          final p = allocator<ffi.Int64>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.int32:
-          final p = allocator<ffi.Int32>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.int16:
-          final p = allocator<ffi.Int16>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.int8:
-          final p = allocator<ffi.Int8>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.uint64:
-          final p = allocator<ffi.Uint64>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.uint32:
-          final p = allocator<ffi.Uint32>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.uint16:
-          final p = allocator<ffi.Uint16>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.uint8:
-          final p = allocator<ffi.Uint8>(allocSize);
-          pointer = p.cast();
-          data = p.asTypedList(allocSize);
-        case DType.complex128:
-          final p = allocator<ffi.Double>(allocSize * 2);
-          pointer = p.cast();
-          final doubleList = p.asTypedList(allocSize * 2);
-          data = ComplexList(doubleList);
-        case DType.complex64:
-          final p = allocator<ffi.Float>(allocSize * 2);
-          pointer = p.cast();
-          final floatList = p.asTypedList(allocSize * 2);
-          data = ComplexList(floatList);
-        case DType.boolean:
-          final p = allocator<ffi.Uint8>(allocSize);
-          pointer = p.cast();
-          final uint8List = p.asTypedList(allocSize);
-          data = BoolList(uint8List);
-      }
-    }
+    final ffi.Pointer<ffi.Void> pointer = allocator<ffi.Uint8>(
+      allocSize * dtype.byteWidth,
+    ).cast();
+    final List<Object?> data = _createDataView(pointer, dtype, allocSize);
 
     final logicalPointer = initialOffsetElements == 0
         ? pointer
@@ -2104,62 +2032,11 @@ sealed class NDArray<T extends DTypeTag>
     final int viewSize = isEmpty
         ? 0
         : (maxPhysicalOffset - minPhysicalOffset + 1);
-    final List<Object?> data;
-
-    if (isWasmRuntime) {
-      data = createWasmDataView(physicalPointer, parent.dtype, viewSize);
-    } else {
-      switch (parent.dtype) {
-        case DType.float64:
-          data = physicalPointer.cast<ffi.Double>().asTypedList(viewSize);
-        case DType.float32:
-          data = physicalPointer.cast<ffi.Float>().asTypedList(viewSize);
-        case DType.float16:
-          data = Float16List(
-            physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize),
-          );
-        case DType.bfloat16:
-          data = BFloat16List(
-            physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize),
-          );
-        case DType.int64:
-          data = physicalPointer.cast<ffi.Int64>().asTypedList(viewSize);
-        case DType.int32:
-          data = physicalPointer.cast<ffi.Int32>().asTypedList(viewSize);
-        case DType.int16:
-          data = physicalPointer.cast<ffi.Int16>().asTypedList(viewSize);
-        case DType.int8:
-          data = physicalPointer.cast<ffi.Int8>().asTypedList(viewSize);
-        case DType.uint64:
-          data = physicalPointer.cast<ffi.Uint64>().asTypedList(viewSize);
-        case DType.uint32:
-          data = physicalPointer.cast<ffi.Uint32>().asTypedList(viewSize);
-        case DType.uint16:
-          data = physicalPointer.cast<ffi.Uint16>().asTypedList(viewSize);
-        case DType.uint8:
-          data = physicalPointer.cast<ffi.Uint8>().asTypedList(viewSize);
-        case DType.complex128:
-          final p = _offsetPointer(
-            rootPhysicalStart,
-            minPhysicalOffset * 2,
-            DType.float64,
-          );
-          final doubleList = p.cast<ffi.Double>().asTypedList(viewSize * 2);
-          data = ComplexList(doubleList);
-        case DType.complex64:
-          final p = _offsetPointer(
-            rootPhysicalStart,
-            minPhysicalOffset * 2,
-            DType.float32,
-          );
-          final floatList = p.cast<ffi.Float>().asTypedList(viewSize * 2);
-          data = ComplexList(floatList);
-        case DType.boolean:
-          data = BoolList(
-            physicalPointer.cast<ffi.Uint8>().asTypedList(viewSize),
-          );
-      }
-    }
+    final List<Object?> data = _createDataView(
+      physicalPointer,
+      parent.dtype,
+      viewSize,
+    );
 
     final viewOffsetElements = isEmpty ? 0 : -minRelativeOffset;
 
@@ -2249,49 +2126,7 @@ sealed class NDArray<T extends DTypeTag>
         ? 0
         : -minRelativeOffset;
 
-    List<Object?> data;
-    if (isWasmRuntime) {
-      data = createWasmDataView(pointer, dtype, allocSize);
-    } else {
-      switch (dtype) {
-        case DType.float64:
-          data = pointer.cast<ffi.Double>().asTypedList(allocSize);
-        case DType.float32:
-          data = pointer.cast<ffi.Float>().asTypedList(allocSize);
-        case DType.float16:
-          data = Float16List(pointer.cast<ffi.Uint16>().asTypedList(allocSize));
-        case DType.bfloat16:
-          data = BFloat16List(
-            pointer.cast<ffi.Uint16>().asTypedList(allocSize),
-          );
-        case DType.int64:
-          data = pointer.cast<ffi.Int64>().asTypedList(allocSize);
-        case DType.int32:
-          data = pointer.cast<ffi.Int32>().asTypedList(allocSize);
-        case DType.int16:
-          data = pointer.cast<ffi.Int16>().asTypedList(allocSize);
-        case DType.int8:
-          data = pointer.cast<ffi.Int8>().asTypedList(allocSize);
-        case DType.uint64:
-          data = pointer.cast<ffi.Uint64>().asTypedList(allocSize);
-        case DType.uint32:
-          data = pointer.cast<ffi.Uint32>().asTypedList(allocSize);
-        case DType.uint16:
-          data = pointer.cast<ffi.Uint16>().asTypedList(allocSize);
-        case DType.uint8:
-          data = pointer.cast<ffi.Uint8>().asTypedList(allocSize);
-        case DType.complex128:
-          data = ComplexList(
-            pointer.cast<ffi.Double>().asTypedList(allocSize * 2),
-          );
-        case DType.complex64:
-          data = ComplexList(
-            pointer.cast<ffi.Float>().asTypedList(allocSize * 2),
-          );
-        case DType.boolean:
-          data = BoolList(pointer.cast<ffi.Uint8>().asTypedList(allocSize));
-      }
-    }
+    final List<Object?> data = _createDataView(pointer, dtype, allocSize);
 
     final logicalPointer = initialOffsetElements == 0
         ? pointer
@@ -2340,43 +2175,46 @@ sealed class NDArray<T extends DTypeTag>
     return strides;
   }
 
+  static List<Object?> _createDataView(
+    ffi.Pointer<ffi.Void> pointer,
+    DType dtype,
+    int size,
+  ) {
+    if (isWasmRuntime) {
+      return createWasmDataView(pointer, dtype, size);
+    }
+    return switch (dtype) {
+      DType.float64 => pointer.cast<ffi.Double>().asTypedList(size),
+      DType.float32 => pointer.cast<ffi.Float>().asTypedList(size),
+      DType.float16 => Float16List(
+        pointer.cast<ffi.Uint16>().asTypedList(size),
+      ),
+      DType.bfloat16 => BFloat16List(
+        pointer.cast<ffi.Uint16>().asTypedList(size),
+      ),
+      DType.int64 => pointer.cast<ffi.Int64>().asTypedList(size),
+      DType.int32 => pointer.cast<ffi.Int32>().asTypedList(size),
+      DType.int16 => pointer.cast<ffi.Int16>().asTypedList(size),
+      DType.int8 => pointer.cast<ffi.Int8>().asTypedList(size),
+      DType.uint64 => pointer.cast<ffi.Uint64>().asTypedList(size),
+      DType.uint32 => pointer.cast<ffi.Uint32>().asTypedList(size),
+      DType.uint16 => pointer.cast<ffi.Uint16>().asTypedList(size),
+      DType.uint8 => pointer.cast<ffi.Uint8>().asTypedList(size),
+      DType.complex128 => ComplexList(
+        pointer.cast<ffi.Double>().asTypedList(size * 2),
+      ),
+      DType.complex64 => ComplexList(
+        pointer.cast<ffi.Float>().asTypedList(size * 2),
+      ),
+      DType.boolean => BoolList(pointer.cast<ffi.Uint8>().asTypedList(size)),
+    };
+  }
+
   static ffi.Pointer<ffi.Void> _offsetPointer(
     ffi.Pointer<ffi.Void> ptr,
     int offsetElements,
     DType dtype,
-  ) {
-    switch (dtype) {
-      case DType.float64:
-        return (ptr.cast<ffi.Double>() + offsetElements).cast();
-      case DType.float32:
-        return (ptr.cast<ffi.Float>() + offsetElements).cast();
-      case DType.float16:
-      case DType.bfloat16:
-        return (ptr.cast<ffi.Uint16>() + offsetElements).cast();
-      case DType.int64:
-        return (ptr.cast<ffi.Int64>() + offsetElements).cast();
-      case DType.int32:
-        return (ptr.cast<ffi.Int32>() + offsetElements).cast();
-      case DType.int16:
-        return (ptr.cast<ffi.Int16>() + offsetElements).cast();
-      case DType.int8:
-        return (ptr.cast<ffi.Int8>() + offsetElements).cast();
-      case DType.uint64:
-        return (ptr.cast<ffi.Uint64>() + offsetElements).cast();
-      case DType.uint32:
-        return (ptr.cast<ffi.Uint32>() + offsetElements).cast();
-      case DType.uint16:
-        return (ptr.cast<ffi.Uint16>() + offsetElements).cast();
-      case DType.uint8:
-        return (ptr.cast<ffi.Uint8>() + offsetElements).cast();
-      case DType.complex128:
-        return (ptr.cast<ffi.Double>() + (offsetElements * 2)).cast();
-      case DType.complex64:
-        return (ptr.cast<ffi.Float>() + (offsetElements * 2)).cast();
-      case DType.boolean:
-        return (ptr.cast<ffi.Uint8>() + offsetElements).cast();
-    }
-  }
+  ) => (ptr.cast<ffi.Uint8>() + offsetElements * dtype.byteWidth).cast();
 
   /// Expose the raw pointer for FFI use.
   ffi.Pointer<ffi.Void> get pointer {
@@ -2543,9 +2381,7 @@ sealed class NDArray<T extends DTypeTag>
     if (out.isDisposed) {
       throw StateError('Cannot copy to a disposed array.');
     }
-    if (!out.isWriteable ||
-        !listEquals(shape, out.shape) ||
-        dtype != out.dtype) {
+    if (!out.isWriteable || !listEquals(shape, out.shape)) {
       throw ArgumentError.value(
         out,
         'out',
@@ -2556,10 +2392,7 @@ sealed class NDArray<T extends DTypeTag>
       return out;
     }
     if (helpers.sharesMemory(this, out)) {
-      if (isContiguous &&
-          out.isContiguous &&
-          pointer == out.pointer &&
-          offsetElements == out.offsetElements) {
+      if (isContiguous && out.isContiguous && pointer == out.pointer) {
         return out;
       }
       return NDArray.scope(() {
@@ -2582,15 +2415,10 @@ sealed class NDArray<T extends DTypeTag>
     if (totalSize == 0) {
       return result;
     }
-    try {
-      if (isContiguous) {
-        _copyContiguousNDArray(this, result, totalSize);
-      } else {
-        _copyStridedToContiguous(result);
-      }
-    } catch (_) {
-      result.dispose();
-      rethrow;
+    if (isContiguous) {
+      _copyContiguousNDArray(this, result, totalSize);
+    } else {
+      _copyStridedToContiguous(result);
     }
     return result;
   }
@@ -3752,7 +3580,6 @@ sealed class NDArray<T extends DTypeTag>
             sourceDType: sourceDType,
           );
         }
-        if (value is num) return value.toInt();
       case DType.complex128:
       case DType.complex64:
         if (value is Complex) return value;
@@ -3985,23 +3812,10 @@ sealed class NDArray<T extends DTypeTag>
               broadcastedVal = ops.broadcastTo(typedVal, view.shape);
               valArr = broadcastedVal;
             }
-            if (helpers.sharesMemory(this, valArr)) {
-              final temp = valArr.copy();
-              try {
-                temp.copy(out: view);
-              } finally {
-                temp.dispose();
-              }
-            } else {
-              valArr.copy(out: view);
-            }
+            valArr.copy(out: view);
           } finally {
-            if (broadcastedVal != null && !identical(broadcastedVal, value)) {
-              broadcastedVal.dispose();
-            }
-            if (castedVal != null && !identical(castedVal, value)) {
-              castedVal.dispose();
-            }
+            broadcastedVal?.dispose();
+            castedVal?.dispose();
           }
         } else {
           view.fill(_coerceScalar(value, dtype, scalarSourceDType));
@@ -4016,36 +3830,7 @@ sealed class NDArray<T extends DTypeTag>
             ? processedSelectors[i]
             : Slice.all();
         if (sel is Slice) {
-          final step = sel.step;
-          final int realStart;
-          final int realStop;
-          final int dimSize;
-          if (step > 0) {
-            final startIdx = sel.start == null
-                ? 0
-                : (sel.start! < 0 ? shape[i] + sel.start! : sel.start!);
-            final stopIdx = sel.stop == null
-                ? shape[i]
-                : (sel.stop! < 0 ? shape[i] + sel.stop! : sel.stop!);
-            realStart = startIdx.clamp(0, shape[i]);
-            realStop = stopIdx.clamp(0, shape[i]);
-            dimSize = realStop > realStart
-                ? ((realStop - realStart + step - 1) ~/ step)
-                : 0;
-          } else {
-            final startIdx = sel.start == null
-                ? shape[i] - 1
-                : (sel.start! < 0 ? shape[i] + sel.start! : sel.start!);
-            final stopIdx = sel.stop == null
-                ? -1
-                : (sel.stop! < 0 ? shape[i] + sel.stop! : sel.stop!);
-            realStart = startIdx.clamp(-1, shape[i] - 1);
-            realStop = stopIdx.clamp(-1, shape[i] - 1);
-            dimSize = realStart > realStop
-                ? ((realStart - realStop - step - 1) ~/ -step)
-                : 0;
-          }
-          targetShape.add(dimSize);
+          targetShape.add(sel._resolveBounds(shape[i]).dimSize);
         } else if (sel is Indices) {
           targetShape.add(sel.values.length);
         }
@@ -4098,35 +3883,15 @@ sealed class NDArray<T extends DTypeTag>
             walk(dim + 1, valDim);
           } else if (sel is Slice) {
             final step = sel.step;
-            final int realStart;
-            final int realStop;
-            if (step > 0) {
-              final startIdx = sel.start == null
-                  ? 0
-                  : (sel.start! < 0 ? shape[dim] + sel.start! : sel.start!);
-              final stopIdx = sel.stop == null
-                  ? shape[dim]
-                  : (sel.stop! < 0 ? shape[dim] + sel.stop! : sel.stop!);
-              realStart = startIdx.clamp(0, shape[dim]);
-              realStop = stopIdx.clamp(0, shape[dim]);
-            } else {
-              final startIdx = sel.start == null
-                  ? shape[dim] - 1
-                  : (sel.start! < 0 ? shape[dim] + sel.start! : sel.start!);
-              final stopIdx = sel.stop == null
-                  ? -1
-                  : (sel.stop! < 0 ? shape[dim] + sel.stop! : sel.stop!);
-              realStart = startIdx.clamp(-1, shape[dim] - 1);
-              realStop = stopIdx.clamp(-1, shape[dim] - 1);
-            }
+            final (:start, :stop, dimSize: _) = sel._resolveBounds(shape[dim]);
             var stepIdx = 0;
             for (
-              var idx = realStart;
-              step > 0 ? idx < realStop : idx > realStop;
+              var idx = start;
+              step > 0 ? idx < stop : idx > stop;
               idx += step
             ) {
               currentCoords[dim] = idx;
-              if (valDim < valIndices.length) valIndices[valDim] = stepIdx;
+              valIndices[valDim] = stepIdx;
               walk(dim + 1, valDim + 1);
               stepIdx++;
             }
@@ -4135,7 +3900,7 @@ sealed class NDArray<T extends DTypeTag>
               final idx = sel.values[i];
               final realIdx = idx < 0 ? shape[dim] + idx : idx;
               currentCoords[dim] = realIdx;
-              if (valDim < valIndices.length) valIndices[valDim] = i;
+              valIndices[valDim] = i;
               walk(dim + 1, valDim + 1);
             }
           }
@@ -4143,9 +3908,7 @@ sealed class NDArray<T extends DTypeTag>
 
         walk(0, 0);
       } finally {
-        if (broadcastedVal != null && !identical(broadcastedVal, value)) {
-          broadcastedVal.dispose();
-        }
+        broadcastedVal?.dispose();
         tempCopy?.dispose();
       }
     }
@@ -4185,14 +3948,7 @@ sealed class NDArray<T extends DTypeTag>
         spec is Indices ||
         spec is Mask ||
         spec is BooleanMask) {
-      final temps = <NDArray>[];
-      try {
-        return slice([_toSelector(spec, temps)]);
-      } finally {
-        for (final t in temps) {
-          t.dispose();
-        }
-      }
+      return slice([_toSelector(spec)]);
     } else if (spec is List) {
       if (spec.length == 1 && spec.first is List) {
         final subList = spec.first as List;
@@ -4309,100 +4065,24 @@ sealed class NDArray<T extends DTypeTag>
       throw StateError('Cannot mutate a read-only broadcast view.');
     }
     if (spec is int) {
-      final indices = NDArray<Int64>.fromList([spec], [1], DType.int64);
-      NDArray? broadcastedVal;
-      try {
-        if (value is NDArray) {
-          final targetShape = <int>[1, ...shape.sublist(1)];
-          final NDArray valArr;
-          if (listEquals(value.shape, targetShape)) {
-            valArr = value;
-          } else {
-            broadcastedVal = ops.broadcastTo(value, targetShape);
-            valArr = broadcastedVal;
-          }
-          setIndices(indices, valArr);
-        } else {
-          setIndicesScalar(indices, _coerceScalar(value));
-        }
-      } finally {
-        indices.dispose();
-        if (broadcastedVal != null && !identical(broadcastedVal, value)) {
-          broadcastedVal.dispose();
-        }
-      }
+      _assignIntIndicesList([spec], value);
     } else if (spec is Slice ||
         spec is Index ||
         spec is Indices ||
         spec is Mask ||
         spec is BooleanMask) {
-      final temps = <NDArray>[];
-      try {
-        _sliceAssign([_toSelector(spec, temps)], value);
-      } finally {
-        for (final t in temps) {
-          t.dispose();
-        }
-      }
+      _sliceAssign([_toSelector(spec)], value);
     } else if (spec is List) {
       if (spec.length == 1 && spec.first is List) {
         final subList = spec.first as List;
         if (subList.every((e) => e is int)) {
-          final intIndices = subList.cast<int>();
-          final indices = NDArray<Int64>.fromList(intIndices, [
-            intIndices.length,
-          ], DType.int64);
-          NDArray? broadcastedVal;
-          try {
-            if (value is NDArray) {
-              final targetShape = <int>[intIndices.length, ...shape.sublist(1)];
-              final NDArray valArr;
-              if (listEquals(value.shape, targetShape)) {
-                valArr = value;
-              } else {
-                broadcastedVal = ops.broadcastTo(value, targetShape);
-                valArr = broadcastedVal;
-              }
-              setIndices(indices, valArr);
-            } else {
-              setIndicesScalar(indices, _coerceScalar(value));
-            }
-          } finally {
-            indices.dispose();
-            if (broadcastedVal != null && !identical(broadcastedVal, value)) {
-              broadcastedVal.dispose();
-            }
-          }
+          _assignIntIndicesList(subList.cast<int>(), value);
           return;
         }
       }
       if (spec.every((e) => e is int)) {
         if (shape.length == 1 && spec.length > 1) {
-          final intIndices = spec.cast<int>();
-          final indices = NDArray<Int64>.fromList(intIndices, [
-            intIndices.length,
-          ], DType.int64);
-          NDArray? broadcastedVal;
-          try {
-            if (value is NDArray) {
-              final targetShape = <int>[intIndices.length, ...shape.sublist(1)];
-              final NDArray valArr;
-              if (listEquals(value.shape, targetShape)) {
-                valArr = value;
-              } else {
-                broadcastedVal = ops.broadcastTo(value, targetShape);
-                valArr = broadcastedVal;
-              }
-              setIndices(indices, valArr);
-            } else {
-              setIndicesScalar(indices, _coerceScalar(value));
-            }
-          } finally {
-            indices.dispose();
-            if (broadcastedVal != null && !identical(broadcastedVal, value)) {
-              broadcastedVal.dispose();
-            }
-          }
+          _assignIntIndicesList(spec.cast<int>(), value);
           return;
         }
         if (spec.length != shape.length) {
@@ -4509,9 +4189,7 @@ sealed class NDArray<T extends DTypeTag>
         if (castedOwned) {
           casted.dispose();
         }
-        if (broadcastedVal != null && !identical(broadcastedVal, value)) {
-          broadcastedVal.dispose();
-        }
+        broadcastedVal?.dispose();
       }
     } else {
       throw ArgumentError.value(
@@ -4522,86 +4200,73 @@ sealed class NDArray<T extends DTypeTag>
     }
   }
 
-  static bool _scalarIntFitsDType(int value, DType dtype) {
-    switch (dtype) {
-      case DType.int8:
-        return value >= -128 && value <= 127;
-      case DType.uint8:
-        return value >= 0 && value <= 255;
-      case DType.int16:
-        return value >= -32768 && value <= 32767;
-      case DType.uint16:
-        return value >= 0 && value <= 65535;
-      case DType.int32:
-        return value >= -2147483648 && value <= 2147483647;
-      case DType.uint32:
-        return value >= 0 && value <= 4294967295;
-      case DType.int64:
-        return true;
-      case DType.uint64:
-        return value >= 0;
-      default:
-        return false;
+  void _assignIntIndicesList(List<int> intIndices, Object? value) {
+    final indices = NDArray<Int64>.fromList(intIndices, [
+      intIndices.length,
+    ], DType.int64);
+    NDArray? broadcastedVal;
+    try {
+      if (value is NDArray) {
+        final targetShape = <int>[intIndices.length, ...shape.sublist(1)];
+        final valArr = listEquals(value.shape, targetShape)
+            ? value
+            : (broadcastedVal = ops.broadcastTo(value, targetShape));
+        setIndices(indices, valArr);
+      } else {
+        setIndicesScalar(indices, _coerceScalar(value));
+      }
+    } finally {
+      indices.dispose();
+      broadcastedVal?.dispose();
     }
   }
+
+  static bool _scalarIntFitsDType(int value, DType dtype) => switch (dtype) {
+    DType.int8 => value >= -128 && value <= 127,
+    DType.uint8 => value >= 0 && value <= 255,
+    DType.int16 => value >= -32768 && value <= 32767,
+    DType.uint16 => value >= 0 && value <= 65535,
+    DType.int32 => value >= -2147483648 && value <= 2147483647,
+    DType.uint32 => value >= 0 && value <= 4294967295,
+    DType.uint64 => value >= 0,
+    _ => true,
+  };
 
   static bool _scalarDoubleFitsDType(double value, DType dtype) {
     if (value.isNaN || value.isInfinite) return true;
     final absVal = value.abs();
-    switch (dtype) {
-      case DType.float16:
-        return absVal <= 65504.0;
-      case DType.bfloat16:
-        return absVal <= 3.38953139e38;
-      case DType.float32:
-        return absVal <= 3.4028234663852886e38;
-      case DType.float64:
-        return true;
-      default:
-        return false;
-    }
+    return switch (dtype) {
+      DType.float16 => absVal <= 65504.0,
+      DType.bfloat16 => absVal <= 3.38953139e38,
+      DType.float32 => absVal <= 3.4028234663852886e38,
+      _ => true,
+    };
   }
 
   NDArray _wrapScalarArena(
     dynamic value,
-    List<int> targetShape, [
-    DType? targetDType,
-  ]) {
+    List<int> targetShape,
+    DType targetDType,
+  ) {
     final shape1 = List<int>.filled(targetShape.length, 1);
     final rawPtr = ScratchArena.allocate<ffi.Uint8>(16);
 
     DType chosenDType;
-    if (targetDType != null) {
-      if (targetDType.isFloating && value is num) {
-        final dVal = value.toDouble();
-        if (_scalarDoubleFitsDType(dVal, targetDType)) {
-          chosenDType = targetDType;
-        } else {
-          chosenDType = DType.float64;
-        }
-      } else if (targetDType.isInteger &&
-          value is int &&
-          _scalarIntFitsDType(value, targetDType)) {
+    if (targetDType.isFloating && value is num) {
+      final dVal = value.toDouble();
+      if (_scalarDoubleFitsDType(dVal, targetDType)) {
         chosenDType = targetDType;
-      } else if (targetDType.isComplex && (value is Complex || value is num)) {
-        chosenDType = targetDType;
-      } else if (targetDType == DType.boolean && value is bool) {
-        chosenDType = DType.boolean;
-      } else if (value is Complex) {
-        chosenDType = DType.complex128;
-      } else if (value is int) {
-        chosenDType = DType.int64;
-      } else if (value is double) {
-        chosenDType = DType.float64;
-      } else if (value is bool) {
-        chosenDType = DType.boolean;
       } else {
-        throw ArgumentError.value(
-          value,
-          'value',
-          'Must be a supported scalar type',
-        );
+        chosenDType = DType.float64;
       }
+    } else if (targetDType.isInteger &&
+        value is int &&
+        _scalarIntFitsDType(value, targetDType)) {
+      chosenDType = targetDType;
+    } else if (targetDType.isComplex && (value is Complex || value is num)) {
+      chosenDType = targetDType;
+    } else if (targetDType == DType.boolean && value is bool) {
+      chosenDType = DType.boolean;
     } else if (value is Complex) {
       chosenDType = DType.complex128;
     } else if (value is int) {
@@ -4722,20 +4387,14 @@ sealed class NDArray<T extends DTypeTag>
     Object? other, {
     required bool resultWhenScalarBelowMin,
     required bool resultWhenScalarAboveMax,
-    required bool allowComplex,
   }) {
     if (other is! int ||
-        !dtype.isInteger ||
-        _scalarIntFitsDType(other, dtype)) {
+        _scalarIntFitsDType(other, dtype) ||
+        !dtype.isInteger) {
       return null;
     }
     if (isDisposed) {
       throw StateError('Cannot execute comparison on a disposed array.');
-    }
-    if (!allowComplex && dtype.isComplex) {
-      throw UnsupportedError(
-        'Complex numbers do not support ordering comparisons.',
-      );
     }
     final fillVal = other < 0
         ? resultWhenScalarBelowMin
@@ -4834,7 +4493,6 @@ sealed class NDArray<T extends DTypeTag>
           other,
           resultWhenScalarBelowMin: true,
           resultWhenScalarAboveMax: false,
-          allowComplex: false,
         )
         case final fast?) {
       return fast;
@@ -4875,7 +4533,6 @@ sealed class NDArray<T extends DTypeTag>
           other,
           resultWhenScalarBelowMin: false,
           resultWhenScalarAboveMax: true,
-          allowComplex: false,
         )
         case final fast?) {
       return fast;
@@ -4916,7 +4573,6 @@ sealed class NDArray<T extends DTypeTag>
           other,
           resultWhenScalarBelowMin: true,
           resultWhenScalarAboveMax: false,
-          allowComplex: false,
         )
         case final fast?) {
       return fast;
@@ -4957,7 +4613,6 @@ sealed class NDArray<T extends DTypeTag>
           other,
           resultWhenScalarBelowMin: false,
           resultWhenScalarAboveMax: true,
-          allowComplex: false,
         )
         case final fast?) {
       return fast;
@@ -5003,7 +4658,6 @@ sealed class NDArray<T extends DTypeTag>
           other,
           resultWhenScalarBelowMin: false,
           resultWhenScalarAboveMax: false,
-          allowComplex: true,
         )
         case final fast?) {
       return fast;
@@ -5032,7 +4686,6 @@ sealed class NDArray<T extends DTypeTag>
           other,
           resultWhenScalarBelowMin: true,
           resultWhenScalarAboveMax: true,
-          allowComplex: true,
         )
         case final fast?) {
       return fast;
@@ -5118,59 +4771,14 @@ sealed class NDArray<T extends DTypeTag>
         offsetElements += idx * strides[i];
         // Rank reduction: don't add to newShape or newStrides
       } else if (selector is Slice) {
-        final step = selector.step;
-        if (step == 0) {
-          throw ArgumentError.value(step, 'step', 'Must not be zero');
-        }
-        final start = selector.start;
-        final stop = selector.stop;
-        final length = shape[i];
-
-        final int realStart;
-        final int realStop;
-        final int dimSize;
-
-        if (step > 0) {
-          if (start == null) {
-            realStart = 0;
-          } else {
-            final s = start < 0 ? length + start : start;
-            realStart = s.clamp(0, length);
-          }
-          if (stop == null) {
-            realStop = length;
-          } else {
-            final s = stop < 0 ? length + stop : stop;
-            realStop = s.clamp(0, length);
-          }
-          dimSize = realStop > realStart
-              ? ((realStop - realStart + step - 1) ~/ step)
-              : 0;
-        } else {
-          if (start == null) {
-            realStart = length - 1;
-          } else {
-            final s = start < 0 ? length + start : start;
-            realStart = s.clamp(-1, length - 1);
-          }
-          if (stop == null) {
-            realStop = -1;
-          } else {
-            final s = stop < 0 ? length + stop : stop;
-            realStop = s.clamp(-1, length - 1);
-          }
-          dimSize = realStart > realStop
-              ? ((realStart - realStop - step - 1) ~/ -step)
-              : 0;
-        }
-
+        final (:start, stop: _, :dimSize) = selector._resolveBounds(shape[i]);
         if (dimSize <= 0) {
           newShape.add(0);
           newStrides.add(0);
         } else {
           newShape.add(dimSize);
-          newStrides.add(strides[i] * step);
-          offsetElements += realStart * strides[i];
+          newStrides.add(strides[i] * selector.step);
+          offsetElements += start * strides[i];
         }
       } else if (selector is Indices) {
         isAdvanced = true;
@@ -5230,35 +4838,12 @@ sealed class NDArray<T extends DTypeTag>
           } else if (selector is Slice) {
             pTypes.cast<ffi.Int32>()[i] = 1;
             pIndexVals[i] = 0;
-
-            final step = selector.step;
-            final int startIdx;
-            if (selector.start == null) {
-              startIdx = step > 0 ? 0 : shape[i] - 1;
-            } else {
-              final s = selector.start!;
-              startIdx = s < 0 ? shape[i] + s : s;
-            }
-
-            final int stopIdx;
-            if (selector.stop == null) {
-              stopIdx = step > 0 ? shape[i] : -1;
-            } else {
-              final s = selector.stop!;
-              stopIdx = s < 0 ? shape[i] + s : s;
-            }
-
-            if (shape[i] == 0) {
-              pSliceStarts[i] = 0;
-              pSliceStops[i] = 0;
-            } else if (step > 0) {
-              pSliceStarts[i] = startIdx.clamp(0, shape[i]);
-              pSliceStops[i] = stopIdx.clamp(0, shape[i]);
-            } else {
-              pSliceStarts[i] = startIdx.clamp(-1, shape[i] - 1);
-              pSliceStops[i] = stopIdx.clamp(-1, shape[i] - 1);
-            }
-            pSliceSteps[i] = step;
+            final (:start, :stop, dimSize: _) = selector._resolveBounds(
+              shape[i],
+            );
+            pSliceStarts[i] = start;
+            pSliceStops[i] = stop;
+            pSliceSteps[i] = selector.step;
             setPointerAt(pIndicesPtrs, i, ffi.Pointer.fromAddress(0));
             pIndicesLens[i] = 0;
           } else if (selector is Indices) {
@@ -5835,8 +5420,6 @@ sealed class NDArray<T extends DTypeTag>
             for (var i = 0; i < totalSize; i++) {
               hashBits(rawBuffer[i]);
             }
-          } else if (shape.isEmpty) {
-            hashBits(rawBuffer[0]);
           } else if (totalSize > 0) {
             final rank = shape.length;
             final coord = List<int>.filled(rank, 0);
@@ -5905,21 +5488,10 @@ sealed class NDArray<T extends DTypeTag>
 
   @override
   dynamic noSuchMethod(Invocation invocation) {
-    if (invocation.isMethod && invocation.positionalArguments.length == 1) {
-      final arg = invocation.positionalArguments[0];
-      if (invocation.memberName == #+) {
-        return this + arg;
-      } else if (invocation.memberName == #-) {
-        return this - arg;
-      } else if (invocation.memberName == #*) {
-        return this * arg;
-      } else if (invocation.memberName == #/) {
-        return NDArrayBaseDivide(this) / arg;
-      } else if (invocation.memberName == #~/) {
-        return this ~/ arg;
-      } else if (invocation.memberName == #%) {
-        return this % arg;
-      }
+    if (invocation.isMethod &&
+        invocation.positionalArguments.length == 1 &&
+        invocation.memberName == #/) {
+      return NDArrayBaseDivide(this) / invocation.positionalArguments[0];
     }
     if (invocation.isGetter) {
       if (invocation.memberName == #scalar) return scalarRaw;
@@ -6447,19 +6019,15 @@ String _formatScalar(dynamic value, DType dtype) {
       return '${d.toInt()}.';
     }
     return d.toString();
-  } else if (dtype.isInteger) {
-    if (value is int) return value.toString();
-    return (value as num).toInt().toString();
-  } else if (value is bool || dtype == DType.boolean) {
-    return value == true ? 'true' : 'false';
-  } else if (value is Complex || dtype.isComplex) {
+  } else if (dtype.isInteger || dtype == DType.boolean) {
+    return value.toString();
+  } else {
     final c = value as Complex;
     final rStr = _formatScalar(c.real, DType.float64);
     final iStr = _formatScalar(c.imag.abs(), DType.float64);
     final sign = c.imag < 0 ? '-' : '+';
     return '$rStr $sign ${iStr}j';
   }
-  return value.toString();
 }
 
 String _format1D(NDArray arr) {
@@ -6531,8 +6099,7 @@ String _format2D(NDArray arr, {String indent = ' '}) {
     final isLast = rIdx == rowIndices.length - 1;
 
     if (r == -1) {
-      sb.write('$indent...');
-      if (!isLast) sb.write(',\n');
+      sb.write('$indent...,\n');
       continue;
     }
 
@@ -6625,11 +6192,7 @@ final class BooleanMask {
   final NDArray<Boolean> mask;
 
   /// Creates a new boolean mask. Precondition: mask dtype must be `DType.boolean.`
-  BooleanMask(this.mask) {
-    if (mask.dtype != DType.boolean) {
-      throw ArgumentError.value(mask, 'mask', 'Must have DType.boolean');
-    }
-  }
+  BooleanMask(this.mask);
 }
 
 /// Represents a complex number with double precision real and imaginary parts.
@@ -6886,6 +6449,39 @@ final class Slice extends Selector {
 
   /// Creates a slice representing all elements along a dimension.
   const Slice.all({int step = 1}) : this(start: null, stop: null, step: step);
+
+  ({int start, int stop, int dimSize}) _resolveBounds(int length) {
+    if (length == 0) {
+      return (start: 0, stop: 0, dimSize: 0);
+    }
+    final int realStart;
+    final int realStop;
+    final int dimSize;
+    if (step > 0) {
+      final startIdx = start == null
+          ? 0
+          : (start! < 0 ? length + start! : start!);
+      final stopIdx = stop == null
+          ? length
+          : (stop! < 0 ? length + stop! : stop!);
+      realStart = startIdx.clamp(0, length);
+      realStop = stopIdx.clamp(0, length);
+      dimSize = realStop > realStart
+          ? ((realStop - realStart + step - 1) ~/ step)
+          : 0;
+    } else {
+      final startIdx = start == null
+          ? length - 1
+          : (start! < 0 ? length + start! : start!);
+      final stopIdx = stop == null ? -1 : (stop! < 0 ? length + stop! : stop!);
+      realStart = startIdx.clamp(-1, length - 1);
+      realStop = stopIdx.clamp(-1, length - 1);
+      dimSize = realStart > realStop
+          ? ((realStart - realStop - step - 1) ~/ -step)
+          : 0;
+    }
+    return (start: realStart, stop: realStop, dimSize: dimSize);
+  }
 }
 
 /// Selects specific coordinate indices along an [NDArray] dimension (advanced indexing).
@@ -6923,7 +6519,6 @@ final class Mask extends Selector {
 }
 
 void _copyContiguousNDArray(NDArray src, NDArray dest, int size) {
-  if (size <= 0) return;
   custom_memcpy(dest._pointer, src._pointer, size * src.dtype.byteWidth);
 }
 

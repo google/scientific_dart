@@ -25,41 +25,11 @@ import 'padding.dart';
 import 'helpers.dart';
 import 'manipulation.dart';
 
-NDArray _createZeros(List<int> shape, DType dtype) => switch (dtype) {
-  DType.float64 => NDArray<Float64>.zeros(shape, DType.float64),
-  DType.float32 => NDArray<Float32>.zeros(shape, DType.float32),
-  DType.float16 => NDArray<Float16>.zeros(shape, DType.float16),
-  DType.bfloat16 => NDArray<BFloat16>.zeros(shape, DType.bfloat16),
-  DType.int64 => NDArray<Int64>.zeros(shape, DType.int64),
-  DType.int32 => NDArray<Int32>.zeros(shape, DType.int32),
-  DType.int16 => NDArray<Int16>.zeros(shape, DType.int16),
-  DType.int8 => NDArray<Int8>.zeros(shape, DType.int8),
-  DType.uint64 => NDArray<Uint64>.zeros(shape, DType.uint64),
-  DType.uint32 => NDArray<Uint32>.zeros(shape, DType.uint32),
-  DType.uint16 => NDArray<Uint16>.zeros(shape, DType.uint16),
-  DType.uint8 => NDArray<Uint8>.zeros(shape, DType.uint8),
-  DType.complex128 => NDArray<Complex128>.zeros(shape, DType.complex128),
-  DType.complex64 => NDArray<Complex64>.zeros(shape, DType.complex64),
-  DType.boolean => NDArray<Boolean>.zeros(shape, DType.boolean),
-};
+NDArray _createZeros(List<int> shape, DType dtype) =>
+    NDArray.create(shape, dtype, zeroInit: true);
 
-NDArray _createUninitialized(List<int> shape, DType dtype) => switch (dtype) {
-  DType.float64 => NDArray<Float64>.create(shape, DType.float64),
-  DType.float32 => NDArray<Float32>.create(shape, DType.float32),
-  DType.float16 => NDArray<Float16>.create(shape, DType.float16),
-  DType.bfloat16 => NDArray<BFloat16>.create(shape, DType.bfloat16),
-  DType.int64 => NDArray<Int64>.create(shape, DType.int64),
-  DType.int32 => NDArray<Int32>.create(shape, DType.int32),
-  DType.int16 => NDArray<Int16>.create(shape, DType.int16),
-  DType.int8 => NDArray<Int8>.create(shape, DType.int8),
-  DType.uint64 => NDArray<Uint64>.create(shape, DType.uint64),
-  DType.uint32 => NDArray<Uint32>.create(shape, DType.uint32),
-  DType.uint16 => NDArray<Uint16>.create(shape, DType.uint16),
-  DType.uint8 => NDArray<Uint8>.create(shape, DType.uint8),
-  DType.complex128 => NDArray<Complex128>.create(shape, DType.complex128),
-  DType.complex64 => NDArray<Complex64>.create(shape, DType.complex64),
-  DType.boolean => NDArray<Boolean>.create(shape, DType.boolean),
-};
+NDArray _createUninitialized(List<int> shape, DType dtype) =>
+    NDArray.create(shape, dtype);
 
 void _scaleDoublesInPlace(
   ffi.Pointer<ffi.Double> ptr,
@@ -126,196 +96,101 @@ void _loadSignalToKissInput<T extends DTypeTag>(
   int elemStride = 1,
 }) {
   final pinD = pin.cast<ffi.Double>();
-  if (elemStride == 1) {
-    switch (inputA.dtype) {
-      case DType.complex128:
-        final inPtr = inputA.pointer.cast<ffi.Double>() + (srcStart * 2);
-        final copyDoubles = copyLen * 2;
-        for (var i = 0; i < copyDoubles; i++) {
-          pinD[i] = inPtr[i];
-        }
-      case DType.complex64:
-        final inPtr = inputA.pointer.cast<ffi.Float>() + (srcStart * 2);
-        final copyDoubles = copyLen * 2;
-        for (var i = 0; i < copyDoubles; i++) {
-          pinD[i] = inPtr[i];
-        }
-      case DType.float64:
-        final inPtr = inputA.pointer.cast<ffi.Double>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i];
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.float32:
-        final inPtr = inputA.pointer.cast<ffi.Float>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i];
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int64:
-        final inPtr = inputA.pointer.cast<ffi.Int64>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int32:
-        final inPtr = inputA.pointer.cast<ffi.Int32>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int16:
-        final inPtr = inputA.pointer.cast<ffi.Int16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint8:
-        final inPtr = inputA.pointer.cast<ffi.Uint8>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int8:
-        final inPtr = inputA.pointer.cast<ffi.Int8>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint64:
-        final inPtr = inputA.pointer.cast<ffi.Uint64>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = BigInt.from(inPtr[i]).toUnsigned(64).toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint32:
-        final inPtr = inputA.pointer.cast<ffi.Uint32>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint16:
-        final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.float16:
-        final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = Float16Utils.decodeFloat16(inPtr[i]);
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.bfloat16:
-        final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = Float16Utils.decodeBFloat16(inPtr[i]);
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.boolean:
-        final inPtr = inputA.pointer.cast<ffi.Uint8>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i] != 0 ? 1.0 : 0.0;
-          pinD[2 * i + 1] = 0.0;
-        }
-    }
-  } else {
-    switch (inputA.dtype) {
-      case DType.complex128:
-        final inPtr = inputA.pointer.cast<ffi.Double>() + (srcStart * 2);
-        for (var i = 0; i < copyLen; i++) {
-          final idx = (i * elemStride) * 2;
-          pinD[2 * i] = inPtr[idx];
-          pinD[2 * i + 1] = inPtr[idx + 1];
-        }
-      case DType.complex64:
-        final inPtr = inputA.pointer.cast<ffi.Float>() + (srcStart * 2);
-        for (var i = 0; i < copyLen; i++) {
-          final idx = (i * elemStride) * 2;
-          pinD[2 * i] = inPtr[idx];
-          pinD[2 * i + 1] = inPtr[idx + 1];
-        }
-      case DType.float64:
-        final inPtr = inputA.pointer.cast<ffi.Double>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride];
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.float32:
-        final inPtr = inputA.pointer.cast<ffi.Float>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride];
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int64:
-        final inPtr = inputA.pointer.cast<ffi.Int64>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int32:
-        final inPtr = inputA.pointer.cast<ffi.Int32>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int16:
-        final inPtr = inputA.pointer.cast<ffi.Int16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint8:
-        final inPtr = inputA.pointer.cast<ffi.Uint8>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.int8:
-        final inPtr = inputA.pointer.cast<ffi.Int8>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint64:
-        final inPtr = inputA.pointer.cast<ffi.Uint64>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = BigInt.from(
-            inPtr[i * elemStride],
-          ).toUnsigned(64).toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint32:
-        final inPtr = inputA.pointer.cast<ffi.Uint32>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.uint16:
-        final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride].toDouble();
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.float16:
-        final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = Float16Utils.decodeFloat16(inPtr[i * elemStride]);
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.bfloat16:
-        final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = Float16Utils.decodeBFloat16(inPtr[i * elemStride]);
-          pinD[2 * i + 1] = 0.0;
-        }
-      case DType.boolean:
-        final inPtr = inputA.pointer.cast<ffi.Uint8>() + srcStart;
-        for (var i = 0; i < copyLen; i++) {
-          pinD[2 * i] = inPtr[i * elemStride] != 0 ? 1.0 : 0.0;
-          pinD[2 * i + 1] = 0.0;
-        }
-    }
+  switch (inputA.dtype) {
+    case DType.complex128:
+      final inPtr = inputA.pointer.cast<ffi.Double>() + (srcStart * 2);
+      for (var i = 0; i < copyLen; i++) {
+        final idx = (i * elemStride) * 2;
+        pinD[2 * i] = inPtr[idx];
+        pinD[2 * i + 1] = inPtr[idx + 1];
+      }
+    case DType.complex64:
+      final inPtr = inputA.pointer.cast<ffi.Float>() + (srcStart * 2);
+      for (var i = 0; i < copyLen; i++) {
+        final idx = (i * elemStride) * 2;
+        pinD[2 * i] = inPtr[idx];
+        pinD[2 * i + 1] = inPtr[idx + 1];
+      }
+    case DType.float64:
+      final inPtr = inputA.pointer.cast<ffi.Double>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride];
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.float32:
+      final inPtr = inputA.pointer.cast<ffi.Float>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride];
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.int64:
+      final inPtr = inputA.pointer.cast<ffi.Int64>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.int32:
+      final inPtr = inputA.pointer.cast<ffi.Int32>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.int16:
+      final inPtr = inputA.pointer.cast<ffi.Int16>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.uint8:
+      final inPtr = inputA.pointer.cast<ffi.Uint8>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.int8:
+      final inPtr = inputA.pointer.cast<ffi.Int8>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.uint64:
+      final inPtr = inputA.pointer.cast<ffi.Uint64>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = BigInt.from(
+          inPtr[i * elemStride],
+        ).toUnsigned(64).toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.uint32:
+      final inPtr = inputA.pointer.cast<ffi.Uint32>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.uint16:
+      final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride].toDouble();
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.float16:
+      final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = Float16Utils.decodeFloat16(inPtr[i * elemStride]);
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.bfloat16:
+      final inPtr = inputA.pointer.cast<ffi.Uint16>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = Float16Utils.decodeBFloat16(inPtr[i * elemStride]);
+        pinD[2 * i + 1] = 0.0;
+      }
+    case DType.boolean:
+      final inPtr = inputA.pointer.cast<ffi.Uint8>() + srcStart;
+      for (var i = 0; i < copyLen; i++) {
+        pinD[2 * i] = inPtr[i * elemStride] != 0 ? 1.0 : 0.0;
+        pinD[2 * i + 1] = 0.0;
+      }
   }
   final padStart = copyLen * 2;
   final padEnd = targetLen * 2;
@@ -333,78 +208,34 @@ void _storeKissOutputToResult<R extends DTypeTag>(
   int elemStride = 1,
 }) {
   final poutD = pout.cast<ffi.Double>();
-  if (elemStride == 1) {
-    switch (result.dtype) {
-      case DType.complex128:
-        final outPtr = result.pointer.cast<ffi.Double>() + (destStart * 2);
-        final count = targetLen * 2;
-        if (scale == 1.0) {
-          for (var i = 0; i < count; i++) {
-            outPtr[i] = poutD[i];
-          }
-        } else {
-          for (var i = 0; i < count; i++) {
-            outPtr[i] = poutD[i] * scale;
-          }
-        }
-      case DType.complex64:
-        final outPtr = result.pointer.cast<ffi.Float>() + (destStart * 2);
-        final count = targetLen * 2;
-        if (scale == 1.0) {
-          for (var i = 0; i < count; i++) {
-            outPtr[i] = poutD[i];
-          }
-        } else {
-          for (var i = 0; i < count; i++) {
-            outPtr[i] = poutD[i] * scale;
-          }
-        }
-      case DType.float64:
-      case DType.float32:
-      case DType.float16:
-      case DType.bfloat16:
-      case DType.int64:
-      case DType.int32:
-      case DType.int16:
-      case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
-      case DType.uint8:
-      case DType.boolean:
-        throw UnsupportedError('Unsupported FFT output dtype: ${result.dtype}');
-    }
-  } else {
-    switch (result.dtype) {
-      case DType.complex128:
-        final outPtr = result.pointer.cast<ffi.Double>() + (destStart * 2);
-        for (var i = 0; i < targetLen; i++) {
-          final idx = (i * elemStride) * 2;
-          outPtr[idx] = poutD[2 * i] * scale;
-          outPtr[idx + 1] = poutD[2 * i + 1] * scale;
-        }
-      case DType.complex64:
-        final outPtr = result.pointer.cast<ffi.Float>() + (destStart * 2);
-        for (var i = 0; i < targetLen; i++) {
-          final idx = (i * elemStride) * 2;
-          outPtr[idx] = poutD[2 * i] * scale;
-          outPtr[idx + 1] = poutD[2 * i + 1] * scale;
-        }
-      case DType.float64:
-      case DType.float32:
-      case DType.float16:
-      case DType.bfloat16:
-      case DType.int64:
-      case DType.int32:
-      case DType.int16:
-      case DType.int8:
-      case DType.uint64:
-      case DType.uint32:
-      case DType.uint16:
-      case DType.uint8:
-      case DType.boolean:
-        throw UnsupportedError('Unsupported FFT output dtype: ${result.dtype}');
-    }
+  switch (result.dtype) {
+    case DType.complex128:
+      final outPtr = result.pointer.cast<ffi.Double>() + (destStart * 2);
+      for (var i = 0; i < targetLen; i++) {
+        final idx = (i * elemStride) * 2;
+        outPtr[idx] = poutD[2 * i] * scale;
+        outPtr[idx + 1] = poutD[2 * i + 1] * scale;
+      }
+    case DType.complex64:
+    case DType.float64:
+    case DType.float32:
+    case DType.float16:
+    case DType.bfloat16:
+    case DType.int64:
+    case DType.int32:
+    case DType.int16:
+    case DType.int8:
+    case DType.uint64:
+    case DType.uint32:
+    case DType.uint16:
+    case DType.uint8:
+    case DType.boolean:
+      final outPtr = result.pointer.cast<ffi.Float>() + (destStart * 2);
+      for (var i = 0; i < targetLen; i++) {
+        final idx = (i * elemStride) * 2;
+        outPtr[idx] = poutD[2 * i] * scale;
+        outPtr[idx + 1] = poutD[2 * i + 1] * scale;
+      }
   }
 }
 
@@ -527,7 +358,7 @@ NDArray<R> fft<R extends DTypeTag, Out extends R>(
     }
   }
 
-  if (a.size == 0 || lastAxisDim == 0) {
+  if (a.size == 0) {
     return NDArray.scope(() {
       final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
       if (out != null) {
@@ -798,7 +629,7 @@ NDArray<R> ifft<R extends DTypeTag, Out extends R>(
     }
   }
 
-  if (a.size == 0 || lastAxisDim == 0) {
+  if (a.size == 0) {
     return NDArray.scope(() {
       final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
       if (out != null) {
@@ -1245,115 +1076,11 @@ void _copyRealToDouble(
         dest[i] = Float16Utils.decodeBFloat16(pIn[i]);
       }
     case DType.boolean:
+    case DType.complex128:
+    case DType.complex64:
       final pIn = a.pointer.cast<ffi.Uint8>() + offset;
       for (var i = 0; i < count; i++) {
         dest[i] = pIn[i] != 0 ? 1.0 : 0.0;
-      }
-    case DType.complex128:
-    case DType.complex64:
-      throw UnsupportedError(
-        'Unsupported dtype for rfft input copy: ${a.dtype}',
-      );
-  }
-}
-
-void _copyComplexToDoubleCpx(
-  NDArray a,
-  int offset,
-  int count,
-  ffi.Pointer<kiss_fft_cpx> dest,
-) {
-  final destD = dest.cast<ffi.Double>();
-  switch (a.dtype) {
-    case DType.complex128:
-      final pIn = a.pointer.cast<ffi.Double>() + offset * 2;
-      final numDoubles = count * 2;
-      for (var i = 0; i < numDoubles; i++) {
-        destD[i] = pIn[i];
-      }
-    case DType.complex64:
-      final pIn = a.pointer.cast<ffi.Float>() + offset * 2;
-      final numFloats = count * 2;
-      for (var i = 0; i < numFloats; i++) {
-        destD[i] = pIn[i];
-      }
-    case DType.float64:
-      final pIn = a.pointer.cast<ffi.Double>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i];
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.float32:
-      final pIn = a.pointer.cast<ffi.Float>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i];
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.int64:
-      final pIn = a.pointer.cast<ffi.Int64>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.int32:
-      final pIn = a.pointer.cast<ffi.Int32>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.int16:
-      final pIn = a.pointer.cast<ffi.Int16>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.int8:
-      final pIn = a.pointer.cast<ffi.Int8>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.uint64:
-      final pIn = a.pointer.cast<ffi.Uint64>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = BigInt.from(pIn[i]).toUnsigned(64).toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.uint32:
-      final pIn = a.pointer.cast<ffi.Uint32>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.uint16:
-      final pIn = a.pointer.cast<ffi.Uint16>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.uint8:
-      final pIn = a.pointer.cast<ffi.Uint8>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i].toDouble();
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.float16:
-      final pIn = a.pointer.cast<ffi.Uint16>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = Float16Utils.decodeFloat16(pIn[i]);
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.bfloat16:
-      final pIn = a.pointer.cast<ffi.Uint16>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = Float16Utils.decodeBFloat16(pIn[i]);
-        destD[2 * i + 1] = 0.0;
-      }
-    case DType.boolean:
-      final pIn = a.pointer.cast<ffi.Uint8>() + offset;
-      for (var i = 0; i < count; i++) {
-        destD[2 * i] = pIn[i] != 0 ? 1.0 : 0.0;
-        destD[2 * i + 1] = 0.0;
       }
   }
 }
@@ -1688,7 +1415,7 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
     }
   }
 
-  if (a.size == 0 || lastAxisDim == 0) {
+  if (a.size == 0) {
     return NDArray.scope(() {
       final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
       if (out != null) {
@@ -1735,7 +1462,6 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
     final isZeroCopyFastPath =
         (inputA.dtype as DType<DTypeTag>) == DType.float64 &&
         targetLen == lastAxisDim &&
-        inputA.isContiguous &&
         result.dtype == DType.complex128;
 
     kiss_fftr_cfg cfg = ffi.nullptr.cast();
@@ -1782,6 +1508,7 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
       final pPoutD = pout.cast<ffi.Double>();
 
       final copyLen = targetLen < lastAxisDim ? targetLen : lastAxisDim;
+      final imagScale = isIhfft ? -scale : 1.0;
 
       for (var s = 0; s < signalsCount; s++) {
         final srcStart = s * lastAxisDim;
@@ -1796,29 +1523,15 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
 
         if (result.dtype == DType.complex128) {
           final pOut = result.pointer.cast<ffi.Double>() + destStart * 2;
-          if (!isIhfft) {
-            final numDoubles = outLen * 2;
-            for (var i = 0; i < numDoubles; i++) {
-              pOut[i] = pPoutD[i];
-            }
-          } else {
-            for (var i = 0; i < outLen; i++) {
-              pOut[2 * i] = pPoutD[2 * i] * scale;
-              pOut[2 * i + 1] = -pPoutD[2 * i + 1] * scale;
-            }
+          for (var i = 0; i < outLen; i++) {
+            pOut[2 * i] = pPoutD[2 * i] * scale;
+            pOut[2 * i + 1] = pPoutD[2 * i + 1] * imagScale;
           }
         } else {
           final pOut = result.pointer.cast<ffi.Float>() + destStart * 2;
-          if (!isIhfft) {
-            final numFloats = outLen * 2;
-            for (var i = 0; i < numFloats; i++) {
-              pOut[i] = pPoutD[i];
-            }
-          } else {
-            for (var i = 0; i < outLen; i++) {
-              pOut[2 * i] = pPoutD[2 * i] * scale;
-              pOut[2 * i + 1] = -pPoutD[2 * i + 1] * scale;
-            }
+          for (var i = 0; i < outLen; i++) {
+            pOut[2 * i] = pPoutD[2 * i] * scale;
+            pOut[2 * i + 1] = pPoutD[2 * i + 1] * imagScale;
           }
         }
       }
@@ -1965,7 +1678,7 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
     }
   }
 
-  if (a.size == 0 || lastAxisDim == 0) {
+  if (a.size == 0) {
     return NDArray.scope(() {
       final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
       if (out != null) {
@@ -2015,7 +1728,6 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
         !isHfft &&
         (inputA.dtype as DType<DTypeTag>) == DType.complex128 &&
         targetInputLen == lastAxisDim &&
-        inputA.isContiguous &&
         result.dtype == DType.float64;
 
     kiss_fftr_cfg cfg = ffi.nullptr.cast();
@@ -2062,39 +1774,24 @@ NDArray<R> _irfftImpl<R extends DTypeTag>(
         final srcStart = s * lastAxisDim;
         final destStart = s * targetLen;
 
-        _copyComplexToDoubleCpx(inputA, srcStart, copyLen, pin);
+        _loadSignalToKissInput(inputA, srcStart, copyLen, targetInputLen, pin);
         if (isHfft) {
           for (var i = 0; i < copyLen; i++) {
             pinD[2 * i + 1] = -pinD[2 * i + 1];
           }
-        }
-        for (var i = copyLen * 2; i < targetInputLen * 2; i++) {
-          pinD[i] = 0.0;
         }
 
         kiss_fftri(cfg, pin, pout);
 
         if (result.dtype == DType.float64) {
           final pOut = result.pointer.cast<ffi.Double>() + destStart;
-          if (isHfft) {
-            for (var i = 0; i < targetLen; i++) {
-              pOut[i] = pout[i];
-            }
-          } else {
-            for (var i = 0; i < targetLen; i++) {
-              pOut[i] = pout[i] * scaleFactor;
-            }
+          for (var i = 0; i < targetLen; i++) {
+            pOut[i] = pout[i] * scaleFactor;
           }
         } else {
           final pOut = result.pointer.cast<ffi.Float>() + destStart;
-          if (isHfft) {
-            for (var i = 0; i < targetLen; i++) {
-              pOut[i] = pout[i];
-            }
-          } else {
-            for (var i = 0; i < targetLen; i++) {
-              pOut[i] = pout[i] * scaleFactor;
-            }
+          for (var i = 0; i < targetLen; i++) {
+            pOut[i] = pout[i] * scaleFactor;
           }
         }
       }
@@ -2225,7 +1922,7 @@ NDArray<R> _fftnND<T extends DTypeTag, R extends DTypeTag>(
     }
   }
 
-  if (a.size == 0 || outShape.contains(0)) {
+  if (a.size == 0) {
     final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
     if (out != null) {
       zeroOut.copy(out: out);
@@ -2687,7 +2384,7 @@ NDArray<R> rfftn<R extends DTypeTag, Out extends R>(
     }
   }
 
-  if (a.size == 0 || outShape.contains(0)) {
+  if (a.size == 0) {
     return NDArray.scope(() {
       final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
       if (out != null) {
@@ -2872,7 +2569,7 @@ NDArray<R> irfftn<R extends DTypeTag, Out extends R>(
     }
   }
 
-  if (a.size == 0 || outShape.contains(0)) {
+  if (a.size == 0) {
     return NDArray.scope(() {
       final zeroOut = _createZeros(outShape, targetDType) as NDArray<R>;
       if (out != null) {

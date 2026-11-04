@@ -113,9 +113,7 @@ NDArray<T> concatenate<T extends SelfOf<DTypeTag>>(
       throw StateError('Cannot concatenate into a disposed out array.');
     }
     validateOutBuffer(out);
-    if (!out.isWriteable ||
-        !listEquals(out.shape, targetShape) ||
-        out.dtype != dtype) {
+    if (!listEquals(out.shape, targetShape) || out.dtype != dtype) {
       throw ArgumentError.value(
         out,
         'out',
@@ -276,9 +274,7 @@ NDArray<T> stack<T extends SelfOf<DTypeTag>>(
       throw StateError('Cannot execute stack() with a disposed out array.');
     }
     validateOutBuffer(out);
-    if (!out.isWriteable ||
-        !listEquals(out.shape, stackedShape) ||
-        out.dtype != dtype) {
+    if (!listEquals(out.shape, stackedShape) || out.dtype != dtype) {
       throw ArgumentError.value(
         out,
         'out',
@@ -1059,9 +1055,7 @@ NDArray<T> tril<T extends DTypeTag, Out extends T>(
     final rows = a.shape[rank - 2];
     final cols = a.shape[rank - 1];
 
-    final batchCount = a.shape.isEmpty
-        ? 1
-        : a.shape.sublist(0, rank - 2).isEmpty
+    final batchCount = rank == 2
         ? 1
         : a.shape.sublist(0, rank - 2).reduce((x, y) => x * y);
 
@@ -1188,9 +1182,7 @@ NDArray<T> triu<T extends DTypeTag, Out extends T>(
     final rows = a.shape[rank - 2];
     final cols = a.shape[rank - 1];
 
-    final batchCount = a.shape.isEmpty
-        ? 1
-        : a.shape.sublist(0, rank - 2).isEmpty
+    final batchCount = rank == 2
         ? 1
         : a.shape.sublist(0, rank - 2).reduce((x, y) => x * y);
 
@@ -1692,85 +1684,28 @@ NDArray<T> roll<T extends DTypeTag, Out extends T>(
     if (a.rank == 1) {
       return _roll1D(a, shifts[0], out: out);
     }
-    if (a.isContiguous) {
+    return NDArray.scope(() {
+      final contigA = a.isContiguous ? a : a.copy();
       final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
-      if (targetResult.isContiguous) {
-        final rc = native_roll_1d(
-          a.dtype.index,
-          a.pointer.cast(),
-          a.size,
-          shifts[0],
-          targetResult.pointer.cast(),
-        );
-        if (rc != 0) {
-          if (out == null) targetResult.dispose();
-          if (rc == -4) throw OutOfMemoryError();
-          throw StateError('Native roll operation failed with code $rc');
-        }
-        return targetResult;
-      } else {
-        final contigRes = NDArray<T>.create(a.shape, a.dtype);
-        try {
-          final rc = native_roll_1d(
-            a.dtype.index,
-            a.pointer.cast(),
-            a.size,
-            shifts[0],
-            contigRes.pointer.cast(),
-          );
-          if (rc != 0) {
-            if (out == null) targetResult.dispose();
-            if (rc == -4) throw OutOfMemoryError();
-            throw StateError('Native roll operation failed with code $rc');
-          }
-          contigRes.copy(out: targetResult);
-          return targetResult;
-        } finally {
-          contigRes.dispose();
-        }
+      final dest = targetResult.isContiguous
+          ? targetResult
+          : NDArray<T>.create(a.shape, a.dtype);
+      final rc = native_roll_1d(
+        contigA.dtype.index,
+        contigA.pointer.cast(),
+        contigA.size,
+        shifts[0],
+        dest.pointer.cast(),
+      );
+      if (rc != 0) {
+        if (rc == -4) throw OutOfMemoryError();
+        throw StateError('Native roll operation failed with code $rc');
       }
-    } else {
-      final contigA = a.copy();
-      try {
-        final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
-        if (targetResult.isContiguous) {
-          final rc = native_roll_1d(
-            contigA.dtype.index,
-            contigA.pointer.cast(),
-            contigA.size,
-            shifts[0],
-            targetResult.pointer.cast(),
-          );
-          if (rc != 0) {
-            if (out == null) targetResult.dispose();
-            if (rc == -4) throw OutOfMemoryError();
-            throw StateError('Native roll operation failed with code $rc');
-          }
-        } else {
-          final contigRes = NDArray<T>.create(a.shape, a.dtype);
-          try {
-            final rc = native_roll_1d(
-              contigA.dtype.index,
-              contigA.pointer.cast(),
-              contigA.size,
-              shifts[0],
-              contigRes.pointer.cast(),
-            );
-            if (rc != 0) {
-              if (out == null) targetResult.dispose();
-              if (rc == -4) throw OutOfMemoryError();
-              throw StateError('Native roll operation failed with code $rc');
-            }
-            contigRes.copy(out: targetResult);
-          } finally {
-            contigRes.dispose();
-          }
-        }
-        return targetResult;
-      } finally {
-        contigA.dispose();
+      if (!identical(dest, targetResult)) {
+        dest.copy(out: targetResult);
       }
-    }
+      return out != null ? targetResult : targetResult.detachToParentScope();
+    });
   }
 
   final nonNullAxes = axes;
@@ -1779,23 +1714,6 @@ NDArray<T> roll<T extends DTypeTag, Out extends T>(
   }
   if (nonNullAxes.length == 1) {
     return _rollSingleND(a, shifts[0], nonNullAxes[0], out: out);
-  }
-
-  if (nonNullAxes.length == 2) {
-    final temp = NDArray<T>.create(a.shape, a.dtype);
-    try {
-      _rollSingleND(a, shifts[0], nonNullAxes[0], out: temp);
-      final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
-      try {
-        _rollSingleND(temp, shifts[1], nonNullAxes[1], out: targetResult);
-      } catch (_) {
-        if (out == null) targetResult.dispose();
-        rethrow;
-      }
-      return targetResult;
-    } finally {
-      temp.dispose();
-    }
   }
 
   return NDArray.scope(() {
@@ -1820,13 +1738,7 @@ NDArray<T> _roll1D<T extends DTypeTag>(
   int shift, {
   NDArray<T>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute _roll1D() on a disposed array.');
-  }
   final size = a.size;
-  if (size == 0) {
-    return a.copy(out: out);
-  }
   final s = shift % size;
   final realShift = s < 0 ? size + s : s;
   if (realShift == 0) {
@@ -1883,26 +1795,12 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
   int axis, {
   NDArray<T>? out,
 }) {
-  if (a.isDisposed) {
-    throw StateError('Cannot execute _rollSingleND() on a disposed array.');
-  }
   final rank = a.rank;
+  if (rank == 1) {
+    return _roll1D(a, shift, out: out);
+  }
   final normAx = axis < 0 ? rank + axis : axis;
-  if (normAx < 0 || normAx >= rank) {
-    throw RangeError.range(
-      axis,
-      -rank,
-      rank - 1,
-      'axis',
-      'Must be within valid rank range',
-    );
-  }
-
   final dimSize = a.shape[normAx];
-  if (dimSize == 0 || a.size == 0) {
-    return a.copy(out: out);
-  }
-
   final s = shift % dimSize;
   final realShift = s < 0 ? dimSize + s : s;
   if (realShift == 0) {
@@ -1910,22 +1808,6 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
   }
 
   final targetResult = out ?? NDArray<T>.create(a.shape, a.dtype);
-
-  if (rank == 1 && a.isContiguous && targetResult.isContiguous) {
-    final rc = native_roll_1d(
-      a.dtype.index,
-      a.pointer.cast(),
-      a.size,
-      realShift,
-      targetResult.pointer.cast(),
-    );
-    if (rc != 0) {
-      if (out == null) targetResult.dispose();
-      if (rc == -4) throw OutOfMemoryError();
-      throw StateError('Native roll operation failed with code $rc');
-    }
-    return targetResult;
-  }
 
   final marker = ScratchArena.marker;
   try {

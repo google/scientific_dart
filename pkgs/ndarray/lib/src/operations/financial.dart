@@ -282,9 +282,6 @@ NDArray<Float64> npv(
     final sumAxis = divided.rank - 1;
     final NDArray<Float64> result = sum(divided, axis: sumAxis, out: out);
     if (out != null) {
-      if (!identical(result, out)) {
-        result.copy(out: out);
-      }
       return out;
     }
     return result.detachToParentScope();
@@ -751,21 +748,6 @@ NDArray<Float64> irr(
     }
 
     final n = coeffs.shape[0] - 1;
-    if (n <= 0) {
-      if (raiseExceptions) {
-        throw const NoRealSolutionException(
-          'No real solution is found for IRR.',
-        );
-      }
-      if (out != null) {
-        out.setCell([], double.nan);
-        return out;
-      }
-      final result = NDArray<Float64>.create([], DType.float64);
-      result.setCell([], double.nan);
-      return result.detachToParentScope();
-    }
-
     final companion = NDArray<Float64>.zeros([n, n], DType.float64);
     for (var j = 0; j < n; j++) {
       companion.setCellFlat(
@@ -819,10 +801,7 @@ NDArray<Float64> irr(
 /// Returns `null` if [values] contains only zeros.
 NDArray<Float64>? _getStrippedCoeffs(NDArray<Float64> values) {
   // Leverage FFI-accelerated nonzero search to find non-zero elements.
-  final nonZeroIndicesList = nonzero(values);
-  if (nonZeroIndicesList.isEmpty) return null;
-
-  final indices = nonZeroIndicesList[0];
+  final indices = nonzero(values)[0];
   if (indices.shape[0] == 0) {
     return null; // All cash flows are zero.
   }
@@ -855,7 +834,7 @@ bool _hasSameSign(NDArray<Float64> coeffs) {
   final length = coeffs.shape[0];
   if (length <= 1) return true;
 
-  final first = coeffs.getCell([0]) as num;
+  final first = coeffs.getCell([0]);
   if (first > 0) {
     return findIndex(coeffs, CompareOp.lessEqual, 0.0) == null;
   } else if (first < 0) {
@@ -865,38 +844,12 @@ bool _hasSameSign(NDArray<Float64> coeffs) {
 }
 
 double _irrDefaultSelection(List<double> eirr) {
-  bool sameSign;
-  if (eirr.isEmpty) {
-    throw StateError('Cannot select from empty list of roots');
-  }
   final first = eirr[0];
-  if (first > 0) {
-    sameSign = eirr.every((x) => x > 0);
-  } else {
-    sameSign = eirr.every((x) => x < 0);
-  }
+  final sameSign = first > 0
+      ? eirr.every((x) => x > 0)
+      : eirr.every((x) => x < 0);
 
-  List<double> filtered = List.from(eirr);
-  if (!sameSign) {
-    var posSum = 0.0;
-    var negSum = 0.0;
-    for (final x in eirr) {
-      if (x > 0) {
-        posSum += x;
-      } else if (x < 0) {
-        negSum += x;
-      }
-    }
-    if (posSum >= negSum) {
-      filtered = eirr.where((x) => x >= 0).toList();
-    } else {
-      filtered = eirr.where((x) => x < 0).toList();
-    }
-  }
-
-  if (filtered.isEmpty) {
-    filtered = List.from(eirr);
-  }
+  final filtered = sameSign ? eirr : eirr.where((x) => x >= 0).toList();
   double minVal = filtered[0];
   double minAbs = minVal.abs();
   for (var i = 1; i < filtered.length; i++) {

@@ -552,6 +552,9 @@ class _AsTypedListEscapeVisitor extends RecursiveAstVisitor<void> {
             ctorName == 'fromPointer') {
           return;
         }
+      } else if (enclosingExec is MethodDeclaration &&
+          enclosingExec.name.lexeme == '_createDataView') {
+        return;
       }
     }
 
