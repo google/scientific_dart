@@ -293,7 +293,7 @@ NDArray<T> stack<T extends SelfOf<DTypeTag>>(
         (!out.isContiguous || arrays.any((arr) => sharesMemory(arr, out)));
     final result = (out != null && !useTempOut)
         ? out
-        : NDArray<T>.create(stackedShape, dtype);
+        : NDArray<T>.create(stackedShape, dtype, zeroInit: false);
     if (result.size == 0) {
       if (out != null) {
         return out;

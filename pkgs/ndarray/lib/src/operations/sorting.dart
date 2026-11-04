@@ -1786,6 +1786,127 @@ dynamic where<T extends DTypeTag>(
   });
 }
 
+void _populateBoolMask<T extends DTypeTag>(
+  NDArray<T> a,
+  ffi.Pointer<ffi.UnsignedChar> condPtr,
+  ffi.Pointer<ffi.Int64> cShape,
+  ffi.Pointer<ffi.Int64> cStrides,
+) {
+  final rank = a.shape.length;
+  final isContiguousVal = a.isContiguous ? 1 : 0;
+
+  switch (a.dtype) {
+    case DType.float64:
+      native_to_bool_mask_double(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.float32:
+      native_to_bool_mask_float(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.int64:
+    case DType.uint64:
+      native_to_bool_mask_int64(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.int32:
+    case DType.uint32:
+      native_to_bool_mask_int32(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.complex128:
+      native_to_bool_mask_complex128(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.complex64:
+      native_to_bool_mask_complex64(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.boolean:
+    case DType.uint8:
+    case DType.int8:
+      native_to_bool_mask_uint8(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.int16:
+    case DType.uint16:
+      native_to_bool_mask_int16(
+        a.pointer.cast(),
+        a.size,
+        cShape,
+        cStrides,
+        rank,
+        isContiguousVal,
+        condPtr,
+      );
+    case DType.float16:
+    case DType.bfloat16:
+      final doubleA = castNDArray(a, DType.float64);
+      try {
+        final doubleStrides = ScratchArena.allocate<ffi.Int64>(
+          rank * ffi.sizeOf<ffi.Int64>(),
+        );
+        for (var i = 0; i < rank; i++) {
+          doubleStrides[i] = doubleA.strides[i];
+        }
+        native_to_bool_mask_double(
+          doubleA.pointer.cast(),
+          doubleA.size,
+          cShape,
+          doubleStrides,
+          rank,
+          doubleA.isContiguous ? 1 : 0,
+          condPtr,
+        );
+      } finally {
+        doubleA.dispose();
+      }
+  }
+  checkNativeOom();
+}
+
 /// Returns the indices of the elements that are non-zero.
 ///
 /// Returns a `List<NDArray<Int64>>` containing 1D integer arrays, one for each dimension
@@ -1798,148 +1919,16 @@ List<NDArray<Int64>> nonzero<T extends DTypeTag>(NDArray<T> a) {
     throw StateError('Cannot execute nonzero() on a disposed array.');
   }
   final rank = a.shape.length;
-  final count = count_nonzero<T>(a).scalar;
-  final results = List.generate(
-    rank,
-    (_) => NDArray<Int64>.create([count], DType.int64, zeroInit: true),
-  );
-
-  if (count == 0 || rank == 0) {
-    return results;
+  if (a.size == 0 || rank == 0) {
+    return List.generate(
+      rank,
+      (_) => NDArray<Int64>.create([0], DType.int64, zeroInit: false),
+    );
   }
-
-  // Convert input to a contiguous boolean mask using type-specialized native C intrinsics!
-  final cond = NDArray.scope(() {
-    final res = NDArray<Boolean>.create(a.shape, DType.boolean);
-    final marker = ScratchArena.marker;
-    try {
-      final cShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      for (var i = 0; i < rank; i++) {
-        cShape[i] = a.shape[i];
-        cStrides[i] = a.strides[i];
-      }
-
-      final isContiguousVal = a.isContiguous ? 1 : 0;
-
-      switch (a.dtype) {
-        case DType.float64:
-          native_to_bool_mask_double(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.float32:
-          native_to_bool_mask_float(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.int64:
-          native_to_bool_mask_int64(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.int32:
-          native_to_bool_mask_int32(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.complex128:
-          native_to_bool_mask_complex128(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.complex64:
-          native_to_bool_mask_complex64(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.boolean:
-        case DType.uint8:
-          native_to_bool_mask_uint8(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.int16:
-          native_to_bool_mask_int16(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            res.pointer.cast(),
-          );
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
-          final doubleA = castNDArray(a, DType.float64);
-          final doubleStrides = ScratchArena.allocate<ffi.Int64>(
-            rank * ffi.sizeOf<ffi.Int64>(),
-          );
-          for (var i = 0; i < rank; i++) {
-            doubleStrides[i] = doubleA.strides[i];
-          }
-          native_to_bool_mask_double(
-            doubleA.pointer.cast(),
-            doubleA.size,
-            cShape,
-            doubleStrides,
-            rank,
-            doubleA.isContiguous ? 1 : 0,
-            res.pointer.cast(),
-          );
-          doubleA.dispose();
-      }
-    } finally {
-      ScratchArena.reset(marker);
-    }
-    return res.detachToParentScope();
-  });
 
   final marker = ScratchArena.marker;
   try {
+    final condPtr = ScratchArena.allocate<ffi.UnsignedChar>(a.size);
     final cShape = ScratchArena.allocate<ffi.Int64>(
       rank * ffi.sizeOf<ffi.Int64>(),
     );
@@ -1947,8 +1936,25 @@ List<NDArray<Int64>> nonzero<T extends DTypeTag>(NDArray<T> a) {
       rank * ffi.sizeOf<ffi.Int64>(),
     );
     for (var i = 0; i < rank; i++) {
-      cShape[i] = cond.shape[i];
-      cStrides[i] = cond.strides[i];
+      cShape[i] = a.shape[i];
+      cStrides[i] = a.strides[i];
+    }
+
+    _populateBoolMask(a, condPtr, cShape, cStrides);
+    final count = native_count_mask(condPtr.cast<ffi.Uint8>(), a.size);
+
+    final results = List.generate(
+      rank,
+      (_) => NDArray<Int64>.create([count], DType.int64, zeroInit: false),
+    );
+    if (count == 0) {
+      return results;
+    }
+
+    var condStride = 1;
+    for (var i = rank - 1; i >= 0; i--) {
+      cStrides[i] = condStride;
+      condStride *= a.shape[i];
     }
 
     final outCoords = ScratchArena.allocate<ffi.Pointer<ffi.Int64>>(
@@ -1959,19 +1965,18 @@ List<NDArray<Int64>> nonzero<T extends DTypeTag>(NDArray<T> a) {
     }
 
     native_collect_nonzero_coords(
-      cond.pointer.cast(),
-      cond.size,
+      condPtr,
+      a.size,
       cShape,
       cStrides,
       rank,
       outCoords,
     );
+    checkNativeOom();
+    return results;
   } finally {
     ScratchArena.reset(marker);
-    cond.dispose();
   }
-
-  return results;
 }
 
 /// Returns indices that are non-zero in the flattened version of [a].
@@ -2035,9 +2040,8 @@ NDArray<Int64> argwhere<T extends DTypeTag>(NDArray<T> a) {
   final rank = a.shape.length;
 
   return NDArray.scope(() {
-    final count = count_nonzero<T>(a).scalar;
-
     if (rank == 0) {
+      final count = count_nonzero<T>(a).scalar;
       if (count > 0) {
         return NDArray<Int64>.create([1, 0], DType.int64).detachToParentScope();
       } else {
@@ -2045,19 +2049,17 @@ NDArray<Int64> argwhere<T extends DTypeTag>(NDArray<T> a) {
       }
     }
 
-    final result = NDArray<Int64>.create(
-      [count, rank],
-      DType.int64,
-      zeroInit: true,
-    );
-    if (count == 0) {
-      return result.detachToParentScope();
+    if (a.size == 0) {
+      return NDArray<Int64>.create(
+        [0, rank],
+        DType.int64,
+        zeroInit: false,
+      ).detachToParentScope();
     }
 
-    // Convert input to a contiguous boolean mask using type-specialized native C intrinsics!
-    final cond = NDArray<Boolean>.create(a.shape, DType.boolean);
     final marker = ScratchArena.marker;
     try {
+      final condPtr = ScratchArena.allocate<ffi.UnsignedChar>(a.size);
       final cShape = ScratchArena.allocate<ffi.Int64>(
         rank * ffi.sizeOf<ffi.Int64>(),
       );
@@ -2069,139 +2071,37 @@ NDArray<Int64> argwhere<T extends DTypeTag>(NDArray<T> a) {
         cStrides[i] = a.strides[i];
       }
 
-      final isContiguousVal = a.isContiguous ? 1 : 0;
+      _populateBoolMask(a, condPtr, cShape, cStrides);
+      final count = native_count_mask(condPtr.cast<ffi.Uint8>(), a.size);
 
-      switch (a.dtype) {
-        case DType.float64:
-          native_to_bool_mask_double(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.float32:
-          native_to_bool_mask_float(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.int64:
-          native_to_bool_mask_int64(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.int32:
-          native_to_bool_mask_int32(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.complex128:
-          native_to_bool_mask_complex128(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.complex64:
-          native_to_bool_mask_complex64(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.boolean:
-        case DType.uint8:
-          native_to_bool_mask_uint8(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.int16:
-          native_to_bool_mask_int16(
-            a.pointer.cast(),
-            a.size,
-            cShape,
-            cStrides,
-            rank,
-            isContiguousVal,
-            cond.pointer.cast(),
-          );
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
-          final doubleA = castNDArray(a, DType.float64);
-          final doubleStrides = ScratchArena.allocate<ffi.Int64>(
-            rank * ffi.sizeOf<ffi.Int64>(),
-          );
-          for (var i = 0; i < rank; i++) {
-            doubleStrides[i] = doubleA.strides[i];
-          }
-          native_to_bool_mask_double(
-            doubleA.pointer.cast(),
-            doubleA.size,
-            cShape,
-            doubleStrides,
-            rank,
-            doubleA.isContiguous ? 1 : 0,
-            cond.pointer.cast(),
-          );
-          doubleA.dispose();
+      final result = NDArray<Int64>.create(
+        [count, rank],
+        DType.int64,
+        zeroInit: false,
+      );
+      if (count == 0) {
+        return result.detachToParentScope();
       }
 
-      final cCondShape = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      final cCondStrides = ScratchArena.allocate<ffi.Int64>(
-        rank * ffi.sizeOf<ffi.Int64>(),
-      );
-      for (var i = 0; i < rank; i++) {
-        cCondShape[i] = cond.shape[i];
-        cCondStrides[i] = cond.strides[i];
+      var condStride = 1;
+      for (var i = rank - 1; i >= 0; i--) {
+        cStrides[i] = condStride;
+        condStride *= a.shape[i];
       }
 
       native_collect_nonzero_coords_grouped(
-        cond.pointer.cast(),
-        cond.size,
-        cCondShape,
-        cCondStrides,
+        condPtr,
+        a.size,
+        cShape,
+        cStrides,
         rank,
         result.pointer.cast<ffi.Int64>(),
       );
+      checkNativeOom();
+      return result.detachToParentScope();
     } finally {
       ScratchArena.reset(marker);
     }
-
-    return result.detachToParentScope();
   });
 }
 
@@ -2218,6 +2118,8 @@ void _dispatchCountNonzeroFFI(
 ) {
   switch (dtype) {
     case DType.float64:
+    case DType.float16:
+    case DType.bfloat16:
       native_count_nonzero_double(
         src,
         stridesSrc,
@@ -2240,6 +2142,7 @@ void _dispatchCountNonzeroFFI(
         isContig,
       );
     case DType.int64:
+    case DType.uint64:
       native_count_nonzero_int64(
         src,
         stridesSrc,
@@ -2251,6 +2154,7 @@ void _dispatchCountNonzeroFFI(
         isContig,
       );
     case DType.int32:
+    case DType.uint32:
       native_count_nonzero_int32(
         src,
         stridesSrc,
@@ -2263,6 +2167,7 @@ void _dispatchCountNonzeroFFI(
       );
     case DType.boolean:
     case DType.uint8:
+    case DType.int8:
       native_count_nonzero_uint8(
         src,
         stridesSrc,
@@ -2274,6 +2179,7 @@ void _dispatchCountNonzeroFFI(
         isContig,
       );
     case DType.int16:
+    case DType.uint16:
       native_count_nonzero_int16(
         src,
         stridesSrc,
@@ -2306,23 +2212,8 @@ void _dispatchCountNonzeroFFI(
         axis,
         isContig,
       );
-    case DType.float16:
-    case DType.bfloat16:
-    case DType.int8:
-    case DType.uint64:
-    case DType.uint32:
-    case DType.uint16:
-      native_count_nonzero_double(
-        src,
-        stridesSrc,
-        dest,
-        stridesDest,
-        shape,
-        rank,
-        axis,
-        isContig,
-      );
   }
+  checkNativeOom();
 }
 
 /// Count the number of non-zero elements in the array [a].
@@ -2389,12 +2280,7 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
     }
   }
 
-  if (a.dtype == DType.float16 ||
-      a.dtype == DType.bfloat16 ||
-      a.dtype == DType.int8 ||
-      a.dtype == DType.uint64 ||
-      a.dtype == DType.uint32 ||
-      a.dtype == DType.uint16) {
+  if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     final doubleA = castNDArray(a, DType.float64);
     try {
       return count_nonzero(doubleA, axis: axis, out: out);
