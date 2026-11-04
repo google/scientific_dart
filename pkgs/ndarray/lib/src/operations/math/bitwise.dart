@@ -64,19 +64,17 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
     allowBool: true,
   );
   final maskHolder = prep.maskHolder;
-  final aCast = prep.aCast;
-  final bCast = prep.bCast;
   final result = prep.result;
 
   try {
     if (prep.isContig) {
-      final size = aCast.size;
+      final size = a.size;
       switch (result.dtype) {
         case DType.int32:
         case DType.uint32:
           v_bitwise_and_int32(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -84,8 +82,8 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.int64:
         case DType.uint64:
           v_bitwise_and_int64(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -93,8 +91,8 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.uint8:
         case DType.int8:
           v_bitwise_and_uint8(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -102,27 +100,26 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.int16:
         case DType.uint16:
           v_bitwise_and_int16(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.boolean:
-          v_logical_and(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
-            result.pointer.cast(),
-            size,
-            maskHolder.pointer,
-          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
         case DType.complex128:
         case DType.complex64:
-          throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
+          v_logical_and(
+            a.pointer.cast(),
+            b.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
       }
     } else {
       final rank = prep.commonShape.length;
@@ -145,9 +142,9 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int32:
           case DType.uint32:
             s_bitwise_and_int32(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -158,9 +155,9 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int64:
           case DType.uint64:
             s_bitwise_and_int64(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -171,9 +168,9 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.uint8:
           case DType.int8:
             s_bitwise_and_uint8(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -184,9 +181,9 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int16:
           case DType.uint16:
             s_bitwise_and_int16(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -195,25 +192,22 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
               maskHolder.pointer,
             );
           case DType.boolean:
-            s_logical_and(
-              aCast.pointer.cast(),
-              cStridesA,
-              bCast.pointer.cast(),
-              cStridesB,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
           case DType.complex128:
           case DType.complex64:
-            throw UnsupportedError(
-              'Unsupported integer DType: ${result.dtype}',
+            s_logical_and(
+              a.pointer.cast(),
+              cStridesA,
+              b.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
             );
         }
       } finally {
@@ -227,12 +221,6 @@ NDArray<T> bitwiseAnd<T extends SelfOf<RealOf<BitwiseDType>>>(
     prep.maskHolder.dispose();
     if (out != null && !identical(result, out)) {
       result.dispose();
-    }
-    if (aCast != a) {
-      aCast.dispose();
-    }
-    if (bCast != b) {
-      bCast.dispose();
     }
   }
 
@@ -284,19 +272,17 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
     allowBool: true,
   );
   final maskHolder = prep.maskHolder;
-  final aCast = prep.aCast;
-  final bCast = prep.bCast;
   final result = prep.result;
 
   try {
     if (prep.isContig) {
-      final size = aCast.size;
+      final size = a.size;
       switch (result.dtype) {
         case DType.int32:
         case DType.uint32:
           v_bitwise_or_int32(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -304,8 +290,8 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.int64:
         case DType.uint64:
           v_bitwise_or_int64(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -313,8 +299,8 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.uint8:
         case DType.int8:
           v_bitwise_or_uint8(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -322,27 +308,26 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.int16:
         case DType.uint16:
           v_bitwise_or_int16(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.boolean:
-          v_logical_or(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
-            result.pointer.cast(),
-            size,
-            maskHolder.pointer,
-          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
         case DType.complex128:
         case DType.complex64:
-          throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
+          v_logical_or(
+            a.pointer.cast(),
+            b.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
       }
     } else {
       final rank = prep.commonShape.length;
@@ -365,9 +350,9 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int32:
           case DType.uint32:
             s_bitwise_or_int32(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -378,9 +363,9 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int64:
           case DType.uint64:
             s_bitwise_or_int64(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -391,9 +376,9 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.uint8:
           case DType.int8:
             s_bitwise_or_uint8(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -404,9 +389,9 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int16:
           case DType.uint16:
             s_bitwise_or_int16(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -415,25 +400,22 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
               maskHolder.pointer,
             );
           case DType.boolean:
-            s_logical_or(
-              aCast.pointer.cast(),
-              cStridesA,
-              bCast.pointer.cast(),
-              cStridesB,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
           case DType.complex128:
           case DType.complex64:
-            throw UnsupportedError(
-              'Unsupported integer DType: ${result.dtype}',
+            s_logical_or(
+              a.pointer.cast(),
+              cStridesA,
+              b.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
             );
         }
       } finally {
@@ -447,12 +429,6 @@ NDArray<T> bitwiseOr<T extends SelfOf<RealOf<BitwiseDType>>>(
     prep.maskHolder.dispose();
     if (out != null && !identical(result, out)) {
       result.dispose();
-    }
-    if (aCast != a) {
-      aCast.dispose();
-    }
-    if (bCast != b) {
-      bCast.dispose();
     }
   }
 
@@ -504,19 +480,17 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
     allowBool: true,
   );
   final maskHolder = prep.maskHolder;
-  final aCast = prep.aCast;
-  final bCast = prep.bCast;
   final result = prep.result;
 
   try {
     if (prep.isContig) {
-      final size = aCast.size;
+      final size = a.size;
       switch (result.dtype) {
         case DType.int32:
         case DType.uint32:
           v_bitwise_xor_int32(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -524,8 +498,8 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.int64:
         case DType.uint64:
           v_bitwise_xor_int64(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -533,8 +507,8 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.uint8:
         case DType.int8:
           v_bitwise_xor_uint8(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -542,27 +516,26 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
         case DType.int16:
         case DType.uint16:
           v_bitwise_xor_int16(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.boolean:
-          v_logical_xor(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
-            result.pointer.cast(),
-            size,
-            maskHolder.pointer,
-          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
         case DType.complex128:
         case DType.complex64:
-          throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
+          v_logical_xor(
+            a.pointer.cast(),
+            b.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
       }
     } else {
       final rank = prep.commonShape.length;
@@ -585,9 +558,9 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int32:
           case DType.uint32:
             s_bitwise_xor_int32(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -598,9 +571,9 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int64:
           case DType.uint64:
             s_bitwise_xor_int64(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -611,9 +584,9 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.uint8:
           case DType.int8:
             s_bitwise_xor_uint8(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -624,9 +597,9 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
           case DType.int16:
           case DType.uint16:
             s_bitwise_xor_int16(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -635,25 +608,22 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
               maskHolder.pointer,
             );
           case DType.boolean:
-            s_logical_xor(
-              aCast.pointer.cast(),
-              cStridesA,
-              bCast.pointer.cast(),
-              cStridesB,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
           case DType.bfloat16:
           case DType.complex128:
           case DType.complex64:
-            throw UnsupportedError(
-              'Unsupported integer DType: ${result.dtype}',
+            s_logical_xor(
+              a.pointer.cast(),
+              cStridesA,
+              b.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
             );
         }
       } finally {
@@ -667,12 +637,6 @@ NDArray<T> bitwiseXor<T extends SelfOf<RealOf<BitwiseDType>>>(
     prep.maskHolder.dispose();
     if (out != null && !identical(result, out)) {
       result.dispose();
-    }
-    if (aCast != a) {
-      aCast.dispose();
-    }
-    if (bCast != b) {
-      bCast.dispose();
     }
   }
 
@@ -717,19 +681,17 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
   }
   final prep = _prepareBinaryBitwise<T>(a, b, where, out, 'leftShift');
   final maskHolder = prep.maskHolder;
-  final aCast = prep.aCast;
-  final bCast = prep.bCast;
   final result = prep.result;
 
   try {
     if (prep.isContig) {
-      final size = aCast.size;
+      final size = a.size;
       switch (result.dtype) {
         case DType.int32:
         case DType.uint32:
           v_left_shift_int32(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -737,8 +699,8 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
         case DType.int64:
         case DType.uint64:
           v_left_shift_int64(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -746,21 +708,14 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
         case DType.uint8:
         case DType.int8:
           v_left_shift_uint8(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.int16:
         case DType.uint16:
-          v_left_shift_int16(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
-            result.pointer.cast(),
-            size,
-            maskHolder.pointer,
-          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
@@ -768,7 +723,13 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
         case DType.boolean:
         case DType.complex128:
         case DType.complex64:
-          throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
+          v_left_shift_int16(
+            a.pointer.cast(),
+            b.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
       }
     } else {
       final rank = prep.commonShape.length;
@@ -791,9 +752,9 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
           case DType.int32:
           case DType.uint32:
             s_left_shift_int32(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -804,9 +765,9 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
           case DType.int64:
           case DType.uint64:
             s_left_shift_int64(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -817,9 +778,9 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
           case DType.uint8:
           case DType.int8:
             s_left_shift_uint8(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -829,17 +790,6 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
             );
           case DType.int16:
           case DType.uint16:
-            s_left_shift_int16(
-              aCast.pointer.cast(),
-              cStridesA,
-              bCast.pointer.cast(),
-              cStridesB,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
@@ -847,8 +797,16 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
           case DType.boolean:
           case DType.complex128:
           case DType.complex64:
-            throw UnsupportedError(
-              'Unsupported integer DType: ${result.dtype}',
+            s_left_shift_int16(
+              a.pointer.cast(),
+              cStridesA,
+              b.pointer.cast(),
+              cStridesB,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
             );
         }
       } finally {
@@ -863,12 +821,6 @@ NDArray<T> leftShift<T extends SelfOf<RealOf<IntegerDType>>>(
     if (out != null && !identical(result, out)) {
       result.dispose();
     }
-    if (aCast != a) {
-      aCast.dispose();
-    }
-    if (bCast != b) {
-      bCast.dispose();
-    }
   }
 
   return out ?? result;
@@ -881,14 +833,12 @@ int _rightShiftScalar(int a, int b, DType dtype) {
       if (b >= 8) return a < 0 ? -1 : 0;
       return a >> b;
     case DType.uint16:
-      if (b < 0 || b >= 16) return 0;
+      if (b >= 16) return 0;
       return (a & 0xFFFF) >>> b;
     case DType.uint32:
-      if (b < 0 || b >= 32) return 0;
+      if (b >= 32) return 0;
       return (a & 0xFFFFFFFF) >>> b;
     case DType.uint64:
-      if (b < 0 || b >= 64) return 0;
-      return a >>> b;
     case DType.float64:
     case DType.float32:
     case DType.float16:
@@ -900,7 +850,8 @@ int _rightShiftScalar(int a, int b, DType dtype) {
     case DType.boolean:
     case DType.complex128:
     case DType.complex64:
-      throw UnsupportedError('Unsupported integer DType: $dtype');
+      if (b < 0 || b >= 64) return 0;
+      return a >>> b;
   }
 }
 
@@ -942,42 +893,40 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
   }
   final prep = _prepareBinaryBitwise<T>(a, b, where, out, 'rightShift');
   final maskHolder = prep.maskHolder;
-  final aCast = prep.aCast;
-  final bCast = prep.bCast;
   final result = prep.result;
 
   try {
     if (prep.isContig) {
-      final size = aCast.size;
+      final size = a.size;
       switch (result.dtype) {
         case DType.int32:
           v_right_shift_int32(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.int64:
           v_right_shift_int64(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.uint8:
           v_right_shift_uint8(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
           );
         case DType.int16:
           v_right_shift_int16(
-            aCast.pointer.cast(),
-            bCast.pointer.cast(),
+            a.pointer.cast(),
+            b.pointer.cast(),
             result.pointer.cast(),
             size,
             maskHolder.pointer,
@@ -986,21 +935,6 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
         case DType.uint16:
         case DType.uint32:
         case DType.uint64:
-          elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
-            result,
-            aCast,
-            bCast,
-            prep.commonShape,
-            prep.stridesA,
-            prep.stridesB,
-            result.strides,
-            0,
-            aCast.offsetElements,
-            bCast.offsetElements,
-            result.offsetElements,
-            (va, vb) => _rightShiftScalar(va as int, vb as int, result.dtype),
-            maskHolder.pointer,
-          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
@@ -1008,7 +942,21 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
         case DType.boolean:
         case DType.complex128:
         case DType.complex64:
-          throw UnsupportedError('Unsupported integer DType: ${result.dtype}');
+          elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
+            result,
+            a,
+            b,
+            prep.commonShape,
+            prep.stridesA,
+            prep.stridesB,
+            result.strides,
+            0,
+            a.offsetElements,
+            b.offsetElements,
+            result.offsetElements,
+            (va, vb) => _rightShiftScalar(va as int, vb as int, result.dtype),
+            maskHolder.pointer,
+          );
       }
     } else {
       final rank = prep.commonShape.length;
@@ -1030,9 +978,9 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
         switch (result.dtype) {
           case DType.int32:
             s_right_shift_int32(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -1042,9 +990,9 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
             );
           case DType.int64:
             s_right_shift_int64(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -1054,9 +1002,9 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
             );
           case DType.uint8:
             s_right_shift_uint8(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -1066,9 +1014,9 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
             );
           case DType.int16:
             s_right_shift_int16(
-              aCast.pointer.cast(),
+              a.pointer.cast(),
               cStridesA,
-              bCast.pointer.cast(),
+              b.pointer.cast(),
               cStridesB,
               result.pointer.cast(),
               cStridesRes,
@@ -1080,21 +1028,6 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
           case DType.uint16:
           case DType.uint32:
           case DType.uint64:
-            elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
-              result,
-              aCast,
-              bCast,
-              prep.commonShape,
-              prep.stridesA,
-              prep.stridesB,
-              result.strides,
-              0,
-              aCast.offsetElements,
-              bCast.offsetElements,
-              result.offsetElements,
-              (va, vb) => _rightShiftScalar(va as int, vb as int, result.dtype),
-              maskHolder.pointer,
-            );
           case DType.float64:
           case DType.float32:
           case DType.float16:
@@ -1102,8 +1035,20 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
           case DType.boolean:
           case DType.complex128:
           case DType.complex64:
-            throw UnsupportedError(
-              'Unsupported integer DType: ${result.dtype}',
+            elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
+              result,
+              a,
+              b,
+              prep.commonShape,
+              prep.stridesA,
+              prep.stridesB,
+              result.strides,
+              0,
+              a.offsetElements,
+              b.offsetElements,
+              result.offsetElements,
+              (va, vb) => _rightShiftScalar(va as int, vb as int, result.dtype),
+              maskHolder.pointer,
             );
         }
       } finally {
@@ -1117,12 +1062,6 @@ NDArray<T> rightShift<T extends SelfOf<RealOf<IntegerDType>>>(
     prep.maskHolder.dispose();
     if (out != null && !identical(result, out)) {
       result.dispose();
-    }
-    if (aCast != a) {
-      aCast.dispose();
-    }
-    if (bCast != b) {
-      bCast.dispose();
     }
   }
 
@@ -1232,19 +1171,18 @@ NDArray<T> invert<T extends RealOf<BitwiseDType>, Out extends T>(
             maskHolder.pointer,
           );
         case DType.boolean:
-          v_logical_not(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            size,
-            maskHolder.pointer,
-          );
         case DType.float64:
         case DType.float32:
         case DType.float16:
         case DType.bfloat16:
         case DType.complex128:
         case DType.complex64:
-          throw UnsupportedError('Unsupported integer DType: ${a.dtype}');
+          v_logical_not(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            size,
+            maskHolder.pointer,
+          );
       }
     } else {
       final rank = a.shape.length;
@@ -1307,6 +1245,12 @@ NDArray<T> invert<T extends RealOf<BitwiseDType>, Out extends T>(
               maskHolder.pointer,
             );
           case DType.boolean:
+          case DType.float64:
+          case DType.float32:
+          case DType.float16:
+          case DType.bfloat16:
+          case DType.complex128:
+          case DType.complex64:
             s_logical_not(
               a.pointer.cast(),
               cStridesSrc,
@@ -1316,13 +1260,6 @@ NDArray<T> invert<T extends RealOf<BitwiseDType>, Out extends T>(
               rank,
               maskHolder.pointer,
             );
-          case DType.float64:
-          case DType.float32:
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.complex128:
-          case DType.complex64:
-            throw UnsupportedError('Unsupported integer DType: ${a.dtype}');
         }
       } finally {
         ScratchArena.reset(marker);
@@ -1651,8 +1588,6 @@ void _validateBitwiseAsDTypes(
 }
 
 ({
-  NDArray aCast,
-  NDArray bCast,
   NDArray<T> result,
   List<int> commonShape,
   List<int> stridesA,
@@ -1668,9 +1603,6 @@ _prepareBinaryBitwise<T extends DTypeTag>(
   String opName, {
   bool allowBool = false,
 }) {
-  if (a.isDisposed || b.isDisposed) {
-    throw StateError('Cannot perform $opName on disposed arrays.');
-  }
   if (a.dtype != b.dtype) {
     throw ArgumentError.value(
       b.dtype,
@@ -1693,8 +1625,8 @@ _prepareBinaryBitwise<T extends DTypeTag>(
   }
 
   final DType<T> targetDType = a.dtype;
-  final preBroadcast = broadcast(a, b);
-  final commonShape = preBroadcast.shape;
+  final broadcastResult = broadcast(a, b);
+  final commonShape = broadcastResult.shape;
 
   if (out != null) {
     validateOutBuffer(out);
@@ -1707,55 +1639,38 @@ _prepareBinaryBitwise<T extends DTypeTag>(
     }
   }
   final maskHolder = prepareMask(where, commonShape);
+  final stridesA = broadcastResult.stridesA;
+  final stridesB = broadcastResult.stridesB;
 
-  try {
-    // Upcast inputs if they do not match the resolved target integer type
-    final NDArray aCast = a.dtype != targetDType
-        ? castNDArray(a, targetDType)
-        : a;
-    final NDArray bCast = b.dtype != targetDType
-        ? castNDArray(b, targetDType)
-        : b;
+  final bool needsTempOut =
+      out != null &&
+      (sharesMemory(a, out) ||
+          sharesMemory(b, out) ||
+          (where != null && sharesMemory(where, out)));
 
-    final broadcastResult = broadcast(aCast, bCast);
-    final stridesA = broadcastResult.stridesA;
-    final stridesB = broadcastResult.stridesB;
+  final NDArray<T> result = needsTempOut
+      ? (where != null
+            ? out.copy()
+            : NDArray<T>.create(commonShape, targetDType))
+      : (out ??
+            NDArray<T>.create(
+              commonShape,
+              targetDType,
+              zeroInit: where != null,
+            ));
 
-    final bool needsTempOut =
-        out != null &&
-        (sharesMemory(aCast, out) ||
-            sharesMemory(bCast, out) ||
-            (where != null && sharesMemory(where, out)));
+  final isContig =
+      a.isContiguous &&
+      b.isContiguous &&
+      result.isContiguous &&
+      listEquals(a.shape, b.shape);
 
-    final NDArray<T> result = needsTempOut
-        ? (where != null
-              ? out.copy()
-              : NDArray<T>.create(commonShape, targetDType))
-        : (out ??
-              NDArray<T>.create(
-                commonShape,
-                targetDType,
-                zeroInit: where != null,
-              ));
-
-    final isContig =
-        aCast.isContiguous &&
-        bCast.isContiguous &&
-        result.isContiguous &&
-        listEquals(aCast.shape, bCast.shape);
-
-    return (
-      aCast: aCast,
-      bCast: bCast,
-      result: result,
-      commonShape: commonShape,
-      stridesA: stridesA,
-      stridesB: stridesB,
-      isContig: isContig,
-      maskHolder: maskHolder,
-    );
-  } catch (_) {
-    maskHolder.dispose();
-    rethrow;
-  }
+  return (
+    result: result,
+    commonShape: commonShape,
+    stridesA: stridesA,
+    stridesB: stridesB,
+    isContig: isContig,
+    maskHolder: maskHolder,
+  );
 }

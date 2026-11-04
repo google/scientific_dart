@@ -43,7 +43,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
   }
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+    if (!listEquals(out.shape, a.shape)) {
       throw ArgumentError.value(
         out,
         'out',
@@ -127,7 +127,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
           try {
             return isnan(doubleA, where: where, out: result);
           } finally {
-            if (!identical(doubleA, a)) doubleA.dispose();
+            doubleA.dispose();
           }
       }
     } else {
@@ -210,7 +210,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
             try {
               return isnan(doubleA, where: where, out: result);
             } finally {
-              if (!identical(doubleA, a)) doubleA.dispose();
+              doubleA.dispose();
             }
         }
       } finally {
@@ -243,7 +243,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
   }
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+    if (!listEquals(out.shape, a.shape)) {
       throw ArgumentError.value(
         out,
         'out',
@@ -327,7 +327,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
           try {
             return isinf(doubleA, where: where, out: result);
           } finally {
-            if (!identical(doubleA, a)) doubleA.dispose();
+            doubleA.dispose();
           }
       }
     } else {
@@ -410,7 +410,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
             try {
               return isinf(doubleA, where: where, out: result);
             } finally {
-              if (!identical(doubleA, a)) doubleA.dispose();
+              doubleA.dispose();
             }
         }
       } finally {
@@ -443,7 +443,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
   }
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, a.shape) || out.dtype != DType.boolean) {
+    if (!listEquals(out.shape, a.shape)) {
       throw ArgumentError.value(
         out,
         'out',
@@ -527,7 +527,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
           try {
             return isfinite(doubleA, where: where, out: result);
           } finally {
-            if (!identical(doubleA, a)) doubleA.dispose();
+            doubleA.dispose();
           }
       }
     } else {
@@ -610,7 +610,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
             try {
               return isfinite(doubleA, where: where, out: result);
             } finally {
-              if (!identical(doubleA, a)) doubleA.dispose();
+              doubleA.dispose();
             }
         }
       } finally {
@@ -685,49 +685,30 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
   try {
     final NDArray<T> result =
         out ?? NDArray<T>.create(shape, targetDType, zeroInit: where != null);
-    if (x1.dtype == targetDType &&
-        x2.dtype == targetDType &&
-        x1.isContiguous &&
+    if (x1.isContiguous &&
         x2.isContiguous &&
         listEquals(x1.shape, x2.shape) &&
         result.isContiguous) {
-      switch (targetDType) {
-        case DType.float64:
-          v_copysign_double(
-            x1.pointer.cast(),
-            x2.pointer.cast(),
-            result.pointer.cast(),
-            x1.size,
-            maskHolder.pointer,
-          );
-          return result;
-        case DType.float32:
-          v_copysign_float(
-            x1.pointer.cast(),
-            x2.pointer.cast(),
-            result.pointer.cast(),
-            x1.size,
-            maskHolder.pointer,
-          );
-          return result;
-        case DType.float16:
-        case DType.bfloat16:
-        case DType.int64:
-        case DType.int32:
-        case DType.int16:
-        case DType.int8:
-        case DType.uint64:
-        case DType.uint32:
-        case DType.uint16:
-        case DType.uint8:
-        case DType.boolean:
-        case DType.complex128:
-        case DType.complex64:
-          break;
+      if (targetDType == DType.float64) {
+        v_copysign_double(
+          x1.pointer.cast(),
+          x2.pointer.cast(),
+          result.pointer.cast(),
+          x1.size,
+          maskHolder.pointer,
+        );
+        return result;
+      } else if (targetDType == DType.float32) {
+        v_copysign_float(
+          x1.pointer.cast(),
+          x2.pointer.cast(),
+          result.pointer.cast(),
+          x1.size,
+          maskHolder.pointer,
+        );
+        return result;
       }
-    } else if (x1.dtype == targetDType &&
-        x2.dtype == targetDType &&
-        shape.length <= 8) {
+    } else if (shape.length <= 8) {
       final rank = shape.length;
       final marker = ScratchArena.marker;
       try {
@@ -735,47 +716,32 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
         final cStridesA = ScratchArena.copyInts(stridesA);
         final cStridesB = ScratchArena.copyInts(stridesB);
         final cStridesRes = ScratchArena.copyInts(result.strides);
-        switch (targetDType) {
-          case DType.float64:
-            s_copysign_double(
-              x1.pointer.cast(),
-              cStridesA,
-              x2.pointer.cast(),
-              cStridesB,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
-          case DType.float32:
-            s_copysign_float(
-              x1.pointer.cast(),
-              cStridesA,
-              x2.pointer.cast(),
-              cStridesB,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int64:
-          case DType.int32:
-          case DType.int16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-          case DType.uint8:
-          case DType.boolean:
-          case DType.complex128:
-          case DType.complex64:
-            break;
+        if (targetDType == DType.float64) {
+          s_copysign_double(
+            x1.pointer.cast(),
+            cStridesA,
+            x2.pointer.cast(),
+            cStridesB,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            rank,
+            maskHolder.pointer,
+          );
+          return result;
+        } else if (targetDType == DType.float32) {
+          s_copysign_float(
+            x1.pointer.cast(),
+            cStridesA,
+            x2.pointer.cast(),
+            cStridesB,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            rank,
+            maskHolder.pointer,
+          );
+          return result;
         }
       } finally {
         ScratchArena.reset(marker);
@@ -788,13 +754,6 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
       }
       return b < 0.0 ? -a.abs() : a.abs();
     }
-
-    double toDblA(Object? v) => (x1.dtype as DType<DTypeTag>) == DType.uint64
-        ? uint64ToDouble(v as int)
-        : (v is bool ? (v ? 1.0 : 0.0) : (v as num).toDouble());
-    double toDblB(Object? v) => x2.dtype == DType.uint64
-        ? uint64ToDouble(v as int)
-        : (v is bool ? (v ? 1.0 : 0.0) : (v as num).toDouble());
 
     if (targetDType.isFloating) {
       elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
@@ -809,7 +768,10 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
         x1.offsetElements,
         x2.offsetElements,
         result.offsetElements,
-        (x, y) => castValue(copysignOp(toDblA(x), toDblB(y)), targetDType),
+        (x, y) => castValue(
+          copysignOp((x as num).toDouble(), (y as num).toDouble()),
+          targetDType,
+        ),
         maskHolder.pointer,
       );
     } else if (targetDType == DType.uint64 ||
@@ -955,7 +917,7 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
 
   if (out != null) {
     validateOutBuffer(out);
-    if (!listEquals(out.shape, commonShape) || out.dtype != DType.boolean) {
+    if (!listEquals(out.shape, commonShape)) {
       throw ArgumentError.value(
         out,
         'out',
@@ -985,32 +947,25 @@ NDArray<Boolean> isClose<Ta extends DTypeTag, Tb extends DTypeTag>(
       final diffBits = cmp >= 0 ? (u1 - u2) : (u2 - u1);
       return _numToUnsignedDouble(diffBits, DType.uint64);
     }
-    if (dtype1 == DType.uint64 || dtype2 == DType.uint64) {
-      final d1 = v1 is Complex ? v1 : _numToUnsignedDouble(v1, dtype1);
-      final d2 = v2 is Complex ? v2 : _numToUnsignedDouble(v2, dtype2);
-      if (d1 is num && d2 is num) return (d1 - d2).abs().toDouble();
-      if (d1 is num && d2 is Complex) {
-        return (Complex(d1.toDouble(), 0.0) - d2).abs;
-      }
-      if (d1 is Complex && d2 is num) {
-        return (d1 - Complex(d2.toDouble(), 0.0)).abs;
-      }
-      return 0.0;
+    final d1 = (dtype1 == DType.uint64 && v1 is! Complex)
+        ? _numToUnsignedDouble(v1, dtype1)
+        : v1;
+    final d2 = (dtype2 == DType.uint64 && v2 is! Complex)
+        ? _numToUnsignedDouble(v2, dtype2)
+        : v2;
+    if (d1 is int && d2 is int) {
+      return ((d1 ^ d2) >= 0)
+          ? (d1 - d2).abs().toDouble()
+          : d1.toDouble().abs() + d2.toDouble().abs();
     }
-    if (v1 is int && v2 is int) {
-      return ((v1 ^ v2) >= 0)
-          ? (v1 - v2).abs().toDouble()
-          : v1.toDouble().abs() + v2.toDouble().abs();
+    if (d1 is num && d2 is num) return (d1 - d2).abs().toDouble();
+    if (d1 is Complex && d2 is Complex) return (d1 - d2).abs;
+    if (d1 is num && d2 is Complex) {
+      return (Complex(d1.toDouble(), 0.0) - d2).abs;
     }
-    if (v1 is num && v2 is num) return (v1 - v2).abs().toDouble();
-    if (v1 is Complex && v2 is Complex) return (v1 - v2).abs;
-    if (v1 is num && v2 is Complex) {
-      return (Complex(v1.toDouble(), 0.0) - v2).abs;
-    }
-    if (v1 is Complex && v2 is num) {
-      return (v1 - Complex(v2.toDouble(), 0.0)).abs;
-    }
-    return 0.0;
+    final c1 = d1 as Complex;
+    final n2 = d2 as num;
+    return (c1 - Complex(n2.toDouble(), 0.0)).abs;
   }
 
   final maskHolder = prepareMask(where, commonShape);
@@ -1451,16 +1406,10 @@ bool _allCloseFallback<Ta extends DTypeTag, Tb extends DTypeTag>(
 }) {
   final closeMask = isClose(a, b, rtol: rtol, atol: atol, equalNan: equalNan);
   try {
-    if (closeMask.isContiguous) {
-      final ptr = closeMask.pointer.cast<ffi.Uint8>();
-      final n = closeMask.size;
-      for (var i = 0; i < n; i++) {
-        if (ptr[i] == 0) return false;
-      }
-      return true;
-    }
-    for (var i = 0; i < closeMask.size; i++) {
-      if (!closeMask.getCellFlat(i)) return false;
+    final ptr = closeMask.pointer.cast<ffi.Uint8>();
+    final n = closeMask.size;
+    for (var i = 0; i < n; i++) {
+      if (ptr[i] == 0) return false;
     }
     return true;
   } finally {
@@ -1538,8 +1487,8 @@ modf<R extends DTypeTag, Out1 extends R, Out2 extends R>(
   if (!resolvedDType.isFloating ||
       (resolvedDType != defaultDType && resolvedDType != x.dtype)) {
     throw ArgumentError.value(
-      out1 ?? out2 ?? resolvedDType,
-      out1 != null ? 'out1' : (out2 != null ? 'out2' : 'targetDType'),
+      out1 ?? out2,
+      out1 != null ? 'out1' : 'out2',
       'Must have compatible shape and dtype for modf',
     );
   }
@@ -1694,14 +1643,14 @@ frexp<R extends DTypeTag, Out1 extends R>(
   if (!resolvedDType.isFloating ||
       (resolvedDType != defaultDType && resolvedDType != x.dtype)) {
     throw ArgumentError.value(
-      out1 ?? resolvedDType,
-      out1 != null ? 'out1' : 'targetDType',
+      out1,
+      'out1',
       'Must have compatible shape and dtype for frexp',
     );
   }
   if (out1 != null) {
     validateOutBuffer(out1, 'out1');
-    if (!listEquals(out1.shape, x.shape) || out1.dtype != resolvedDType) {
+    if (!listEquals(out1.shape, x.shape)) {
       throw ArgumentError.value(
         out1,
         'out1',
@@ -1711,7 +1660,7 @@ frexp<R extends DTypeTag, Out1 extends R>(
   }
   if (out2 != null) {
     validateOutBuffer(out2, 'out2');
-    if (!listEquals(out2.shape, x.shape) || out2.dtype != DType.int32) {
+    if (!listEquals(out2.shape, x.shape)) {
       throw ArgumentError.value(
         out2,
         'out2',

@@ -26,56 +26,6 @@ import 'broadcasting.dart';
 import 'math.dart';
 import 'helpers.dart';
 
-NDArray<DTypeTag> _createZeros(List<int> shape, DType<DTypeTag> dtype) =>
-    switch (dtype) {
-      DType.float64 => NDArray<Float64>.zeros(shape, DType.float64),
-      DType.float32 => NDArray<Float32>.zeros(shape, DType.float32),
-      DType.float16 => NDArray<Float16>.zeros(shape, DType.float16),
-      DType.bfloat16 => NDArray<BFloat16>.zeros(shape, DType.bfloat16),
-      DType.int64 => NDArray<Int64>.zeros(shape, DType.int64),
-      DType.int32 => NDArray<Int32>.zeros(shape, DType.int32),
-      DType.int16 => NDArray<Int16>.zeros(shape, DType.int16),
-      DType.int8 => NDArray<Int8>.zeros(shape, DType.int8),
-      DType.uint64 => NDArray<Uint64>.zeros(shape, DType.uint64),
-      DType.uint32 => NDArray<Uint32>.zeros(shape, DType.uint32),
-      DType.uint16 => NDArray<Uint16>.zeros(shape, DType.uint16),
-      DType.uint8 => NDArray<Uint8>.zeros(shape, DType.uint8),
-      DType.complex128 => NDArray<Complex128>.zeros(shape, DType.complex128),
-      DType.complex64 => NDArray<Complex64>.zeros(shape, DType.complex64),
-      DType.boolean => NDArray<Boolean>.zeros(shape, DType.boolean),
-    };
-
-(int, int) _physicalByteSpan(NDArray<DTypeTag> x) {
-  if (x.size == 0) {
-    return (x.pointer.address, x.pointer.address);
-  }
-  var minElemOffset = 0;
-  var maxElemOffset = 0;
-  for (var d = 0; d < x.shape.length; d++) {
-    final stride = x.strides[d];
-    final size = x.shape[d];
-    if (stride > 0) {
-      maxElemOffset += (size - 1) * stride;
-    } else if (stride < 0) {
-      minElemOffset += (size - 1) * stride;
-    }
-  }
-  final byteWidth = x.dtype.byteWidth;
-  final startAddr = x.pointer.address + minElemOffset * byteWidth;
-  final endAddr = x.pointer.address + (maxElemOffset + 1) * byteWidth;
-  return (startAddr, endAddr);
-}
-
-bool _isMemoryAliased(NDArray<DTypeTag> out, NDArray<DTypeTag> other) {
-  if (identical(out, other) || out.pointer.address == other.pointer.address) {
-    return true;
-  }
-  if (out.size == 0 || other.size == 0) return false;
-  final (startOut, endOut) = _physicalByteSpan(out);
-  final (startOther, endOther) = _physicalByteSpan(other);
-  return startOut < endOther && startOther < endOut;
-}
-
 ({bool hasNaN, bool hasInf}) _analyzeNonFinitePtr(
   ffi.Pointer<ffi.Void> ptr,
   int elementCount,
@@ -88,47 +38,39 @@ bool _isMemoryAliased(NDArray<DTypeTag> out, NDArray<DTypeTag> other) {
   // sum is non-finite (either due to an actual NaN/Inf element or overflow of
   // large finite values like 1e308 + 1e308), fall back to an exact element-wise
   // scan to classify hasNaN and hasInf with zero false positives or negatives.
-  switch (dtype) {
-    case DType.float64:
-    case DType.complex128:
-      final p = ptr.cast<ffi.Double>();
-      final n = dtype == DType.complex128 ? elementCount * 2 : elementCount;
-      if (!r_sum_double(p, n).isFinite) {
-        for (var i = 0; i < n; i++) {
-          final v = p[i];
-          if (v.isNaN) {
-            hasNaN = true;
-          } else if (v.isInfinite) {
-            hasInf = true;
-          }
-          if (hasNaN && hasInf) break;
+  if (dtype == DType.float64 || dtype == DType.complex128) {
+    final p = ptr.cast<ffi.Double>();
+    final n = dtype == DType.complex128 ? elementCount * 2 : elementCount;
+    if (!r_sum_double(p, n).isFinite) {
+      for (var i = 0; i < n; i++) {
+        final v = p[i];
+        if (v.isNaN) {
+          hasNaN = true;
+        } else if (v.isInfinite) {
+          hasInf = true;
         }
+        if (hasNaN && hasInf) break;
       }
-    case DType.float32:
-    case DType.complex64:
-      final p = ptr.cast<ffi.Float>();
-      final n = dtype == DType.complex64 ? elementCount * 2 : elementCount;
-      if (!r_sum_float(p, n).isFinite) {
-        for (var i = 0; i < n; i++) {
-          final v = p[i];
-          if (v.isNaN) {
-            hasNaN = true;
-          } else if (v.isInfinite) {
-            hasInf = true;
-          }
-          if (hasNaN && hasInf) break;
+    }
+  } else {
+    final p = ptr.cast<ffi.Float>();
+    final n = dtype == DType.complex64 ? elementCount * 2 : elementCount;
+    if (!r_sum_float(p, n).isFinite) {
+      for (var i = 0; i < n; i++) {
+        final v = p[i];
+        if (v.isNaN) {
+          hasNaN = true;
+        } else if (v.isInfinite) {
+          hasInf = true;
         }
+        if (hasNaN && hasInf) break;
       }
-    default:
-      throw UnsupportedError('Unsupported dtype: $dtype');
+    }
   }
   return (hasNaN: hasNaN, hasInf: hasInf);
 }
 
 ({bool hasNaN, bool hasInf}) _analyzeNonFinite(NDArray<DTypeTag> arr) {
-  if (!arr.dtype.isFloating && !arr.dtype.isComplex) {
-    return (hasNaN: false, hasInf: false);
-  }
   if (arr.isContiguous) {
     return _analyzeNonFinitePtr(arr.pointer, arr.size, arr.dtype);
   }
@@ -159,13 +101,12 @@ void _fillPtrWithNaN(ffi.Pointer<ffi.Void> ptr, int elementCount, DType dtype) {
         p[i] = double.nan;
       }
     case DType.complex64:
+    default:
       final p = ptr.cast<ffi.Float>();
       final n = elementCount * 2;
       for (var i = 0; i < n; i++) {
         p[i] = double.nan;
       }
-    default:
-      throw UnsupportedError('Unsupported dtype: $dtype');
   }
 }
 
@@ -200,6 +141,7 @@ void _fillUpperTriangleWithNaN(
         }
       }
     case DType.complex64:
+    default:
       final p = ptr.cast<ffi.Float>();
       for (var i = 0; i < rows; i++) {
         for (var j = i; j < cols; j++) {
@@ -208,8 +150,6 @@ void _fillUpperTriangleWithNaN(
           p[idx + 1] = double.nan;
         }
       }
-    default:
-      throw UnsupportedError('Unsupported dtype: $dtype');
   }
 }
 
@@ -217,13 +157,12 @@ enum _LapackFailureKind {
   singularMatrix,
   nonPositiveDefinite,
   iterationsExceeded,
-  general,
 }
 
 void _checkLapackInfo(
   int info,
   String routine, {
-  _LapackFailureKind positiveKind = _LapackFailureKind.general,
+  _LapackFailureKind positiveKind = _LapackFailureKind.iterationsExceeded,
   String? positiveMessage,
 }) {
   if (info == 0) return;
@@ -240,8 +179,6 @@ void _checkLapackInfo(
       throw NonPositiveDefiniteException(msg);
     case _LapackFailureKind.iterationsExceeded:
       throw IterationsExceededException(msg);
-    case _LapackFailureKind.general:
-      throw LinAlgException(msg);
   }
 }
 
@@ -390,28 +327,18 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
       break;
   }
 
-  NDArray? aCast;
-  NDArray? bCast;
   NDArray? aCopy;
   NDArray? bCopy;
   NDArray? aPromotedView;
   NDArray? bPromotedView;
   NDArray<T>? result;
-  var success = false;
 
   try {
-    aCast = a.dtype == targetDType ? a : castNDArray(a, targetDType);
-    bCast = b.dtype == targetDType ? b : castNDArray(b, targetDType);
+    final aCast = a;
+    final bCast = b;
 
     if (aCast.shape.length == 1 && bCast.shape.length == 1) {
       final n = aCast.shape[0];
-      if (n != bCast.shape[0]) {
-        throw ArgumentError.value(
-          [aCast.shape, bCast.shape],
-          'a, b',
-          'Must have compatible vector dimensions for 1D dot product in matmul: ${aCast.shape} and ${bCast.shape}',
-        );
-      }
       if (out != null) {
         if (!listEquals(out.shape, []) || out.dtype != targetDType) {
           throw ArgumentError.value(
@@ -449,7 +376,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
             result =
                 (NDArray.scalar(scalarRes, dtype: DType.float64) as NDArray<T>);
           }
-          success = true;
           return result;
         case DType.float32:
           final scalarRes = cblas_sdot(
@@ -466,7 +392,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
             result =
                 (NDArray.scalar(scalarRes, dtype: DType.float32) as NDArray<T>);
           }
-          success = true;
           return result;
         case DType.complex128:
           final aPtr = aVec.pointer.cast<ffi.Double>();
@@ -491,7 +416,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
             result =
                 (NDArray.scalar(resVal, dtype: DType.complex128) as NDArray<T>);
           }
-          success = true;
           return result;
         case DType.complex64:
           final aPtr = aVec.pointer.cast<ffi.Float>();
@@ -516,7 +440,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
             result =
                 (NDArray.scalar(resVal, dtype: DType.complex64) as NDArray<T>);
           }
-          success = true;
           return result;
         default:
           break;
@@ -584,14 +507,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
     final kB = bView.shape[rankB - 2];
     final n = bView.shape[rankB - 1];
 
-    if (kA != kB) {
-      throw ArgumentError.value(
-        [aCast.shape, bCast.shape],
-        'a, b',
-        'Must have compatible inner matrix dimensions for matmul: kA($kA) != kB($kB). Shapes: ${aCast.shape} and ${bCast.shape}',
-      );
-    }
-
     final stackA = aView.shape.sublist(0, rankA - 2);
     final stackB = bView.shape.sublist(0, rankB - 2);
     final broadcastStack = broadcastStackShapes(stackA, stackB);
@@ -620,21 +535,13 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
 
     final resShape = [...broadcastStack, m, n];
     final bool isAliased =
-        out != null &&
-        (sharesMemory(a, out) ||
-            sharesMemory(b, out) ||
-            _isMemoryAliased(out, a) ||
-            _isMemoryAliased(out, b) ||
-            _isMemoryAliased(out, aToUse) ||
-            _isMemoryAliased(out, bToUse));
+        out != null && (sharesMemory(a, out) || sharesMemory(b, out));
     final bool canUseOutDirectly =
         out != null &&
         !isAliased &&
         out.isContiguous &&
         listEquals(out.shape, resShape);
-    result = canUseOutDirectly
-        ? out
-        : _createZeros(resShape, targetDType) as NDArray<T>;
+    result = canUseOutDirectly ? out : NDArray<T>.zeros(resShape, targetDType);
 
     // Stride resolution logic for 100% copy-free BLAS matrix multiplication
     var transA = 111; // CblasNoTrans
@@ -735,18 +642,7 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
         if (dim == lenResult) {
           switch (targetDType) {
             case DType.float64:
-              if (aPromoted && bPromoted) {
-                final incA = aView.strides[rankA - 1];
-                final incB = bView.strides[rankB - 2];
-                final dot = cblas_ddot(
-                  kA,
-                  aView.pointer.cast<ffi.Double>() + offsetA,
-                  incA,
-                  bView.pointer.cast<ffi.Double>() + offsetB,
-                  incB,
-                );
-                result!.pointer.cast<ffi.Double>()[offsetRes] = dot;
-              } else if (bPromoted) {
+              if (bPromoted) {
                 final incB = bView.strides[rankB - 2];
                 if (transA == 111) {
                   cblas_dgemv(
@@ -831,18 +727,7 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
                 );
               }
             case DType.float32:
-              if (aPromoted && bPromoted) {
-                final incA = aView.strides[rankA - 1];
-                final incB = bView.strides[rankB - 2];
-                final dot = cblas_sdot(
-                  kA,
-                  aView.pointer.cast<ffi.Float>() + offsetA,
-                  incA,
-                  bView.pointer.cast<ffi.Float>() + offsetB,
-                  incB,
-                );
-                result!.pointer.cast<ffi.Float>()[offsetRes] = dot;
-              } else if (bPromoted) {
+              if (bPromoted) {
                 final incB = bView.strides[rankB - 2];
                 if (transA == 111) {
                   cblas_sgemv(
@@ -927,26 +812,7 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
                 );
               }
             case DType.complex128:
-              if (aPromoted && bPromoted) {
-                final incA = aView.strides[rankA - 1];
-                final incB = bView.strides[rankB - 2];
-                final aPtr = aView.pointer.cast<ffi.Double>() + (offsetA * 2);
-                final bPtr = bView.pointer.cast<ffi.Double>() + (offsetB * 2);
-                final resPtr =
-                    result!.pointer.cast<ffi.Double>() + (offsetRes * 2);
-                var realSum = 0.0;
-                var imagSum = 0.0;
-                for (var i = 0; i < kA; i++) {
-                  final ar = aPtr[i * incA * 2];
-                  final ai = aPtr[i * incA * 2 + 1];
-                  final br = bPtr[i * incB * 2];
-                  final bi = bPtr[i * incB * 2 + 1];
-                  realSum += ar * br - ai * bi;
-                  imagSum += ar * bi + ai * br;
-                }
-                resPtr[0] = realSum;
-                resPtr[1] = imagSum;
-              } else if (bPromoted) {
+              if (bPromoted) {
                 final incB = bView.strides[rankB - 2];
                 if (transA == 111) {
                   cblas_zgemv(
@@ -1031,26 +897,7 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
                 );
               }
             case DType.complex64:
-              if (aPromoted && bPromoted) {
-                final incA = aView.strides[rankA - 1];
-                final incB = bView.strides[rankB - 2];
-                final aPtr = aView.pointer.cast<ffi.Float>() + (offsetA * 2);
-                final bPtr = bView.pointer.cast<ffi.Float>() + (offsetB * 2);
-                final resPtr =
-                    result!.pointer.cast<ffi.Float>() + (offsetRes * 2);
-                var realSum = 0.0;
-                var imagSum = 0.0;
-                for (var i = 0; i < kA; i++) {
-                  final ar = aPtr[i * incA * 2];
-                  final ai = aPtr[i * incA * 2 + 1];
-                  final br = bPtr[i * incB * 2];
-                  final bi = bPtr[i * incB * 2 + 1];
-                  realSum += ar * br - ai * bi;
-                  imagSum += ar * bi + ai * br;
-                }
-                resPtr[0] = realSum;
-                resPtr[1] = imagSum;
-              } else if (bPromoted) {
+              if (bPromoted) {
                 final incB = bView.strides[rankB - 2];
                 if (transA == 111) {
                   cblas_cgemv(
@@ -1136,111 +983,92 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
               }
             case DType.uint64:
             case DType.int64:
+              matmul_int64(
+                result!.pointer.cast<ffi.Int64>() + offsetRes,
+                result.strides[resShape.length - 2],
+                result.strides[resShape.length - 1],
+                aView.pointer.cast<ffi.Int64>() + offsetA,
+                aView.strides[rankA - 2],
+                aView.strides[rankA - 1],
+                bView.pointer.cast<ffi.Int64>() + offsetB,
+                bView.strides[rankB - 2],
+                bView.strides[rankB - 1],
+                m,
+                n,
+                kA,
+              );
             case DType.uint32:
             case DType.int32:
+              matmul_int32(
+                result!.pointer.cast<ffi.Int32>() + offsetRes,
+                result.strides[resShape.length - 2],
+                result.strides[resShape.length - 1],
+                aView.pointer.cast<ffi.Int32>() + offsetA,
+                aView.strides[rankA - 2],
+                aView.strides[rankA - 1],
+                bView.pointer.cast<ffi.Int32>() + offsetB,
+                bView.strides[rankB - 2],
+                bView.strides[rankB - 1],
+                m,
+                n,
+                kA,
+              );
             case DType.uint16:
             case DType.int16:
+              matmul_int16(
+                result!.pointer.cast<ffi.Int16>() + offsetRes,
+                result.strides[resShape.length - 2],
+                result.strides[resShape.length - 1],
+                aView.pointer.cast<ffi.Int16>() + offsetA,
+                aView.strides[rankA - 2],
+                aView.strides[rankA - 1],
+                bView.pointer.cast<ffi.Int16>() + offsetB,
+                bView.strides[rankB - 2],
+                bView.strides[rankB - 1],
+                m,
+                n,
+                kA,
+              );
             case DType.uint8:
             case DType.int8:
+              matmul_uint8(
+                result!.pointer.cast<ffi.Uint8>() + offsetRes,
+                result.strides[resShape.length - 2],
+                result.strides[resShape.length - 1],
+                aView.pointer.cast<ffi.Uint8>() + offsetA,
+                aView.strides[rankA - 2],
+                aView.strides[rankA - 1],
+                bView.pointer.cast<ffi.Uint8>() + offsetB,
+                bView.strides[rankB - 2],
+                bView.strides[rankB - 1],
+                m,
+                n,
+                kA,
+              );
             case DType.boolean:
+            default:
               final strideARow = aView.strides[rankA - 2];
               final strideACol = aView.strides[rankA - 1];
-
               final strideBRow = bView.strides[rankB - 2];
               final strideBCol = bView.strides[rankB - 1];
-
               final strideResRow = result!.strides[resShape.length - 2];
               final strideResCol = result.strides[resShape.length - 1];
-
-              switch (targetDType) {
-                case DType.uint64:
-                case DType.int64:
-                  matmul_int64(
-                    result.pointer.cast<ffi.Int64>() + offsetRes,
-                    strideResRow,
-                    strideResCol,
-                    aView.pointer.cast<ffi.Int64>() + offsetA,
-                    strideARow,
-                    strideACol,
-                    bView.pointer.cast<ffi.Int64>() + offsetB,
-                    strideBRow,
-                    strideBCol,
-                    m,
-                    n,
-                    kA,
-                  );
-                case DType.uint32:
-                case DType.int32:
-                  matmul_int32(
-                    result.pointer.cast<ffi.Int32>() + offsetRes,
-                    strideResRow,
-                    strideResCol,
-                    aView.pointer.cast<ffi.Int32>() + offsetA,
-                    strideARow,
-                    strideACol,
-                    bView.pointer.cast<ffi.Int32>() + offsetB,
-                    strideBRow,
-                    strideBCol,
-                    m,
-                    n,
-                    kA,
-                  );
-                case DType.uint16:
-                case DType.int16:
-                  matmul_int16(
-                    result.pointer.cast<ffi.Int16>() + offsetRes,
-                    strideResRow,
-                    strideResCol,
-                    aView.pointer.cast<ffi.Int16>() + offsetA,
-                    strideARow,
-                    strideACol,
-                    bView.pointer.cast<ffi.Int16>() + offsetB,
-                    strideBRow,
-                    strideBCol,
-                    m,
-                    n,
-                    kA,
-                  );
-                case DType.uint8:
-                case DType.int8:
-                  matmul_uint8(
-                    result.pointer.cast<ffi.Uint8>() + offsetRes,
-                    strideResRow,
-                    strideResCol,
-                    aView.pointer.cast<ffi.Uint8>() + offsetA,
-                    strideARow,
-                    strideACol,
-                    bView.pointer.cast<ffi.Uint8>() + offsetB,
-                    strideBRow,
-                    strideBCol,
-                    m,
-                    n,
-                    kA,
-                  );
-                case DType.boolean:
-                  final aPtr = aView.pointer.cast<ffi.Uint8>() + offsetA;
-                  final bPtr = bView.pointer.cast<ffi.Uint8>() + offsetB;
-                  final resPtr = result.pointer.cast<ffi.Uint8>() + offsetRes;
-                  for (var r = 0; r < m; r++) {
-                    for (var c = 0; c < n; c++) {
-                      var acc = 0;
-                      for (var i = 0; i < kA; i++) {
-                        if (aPtr[r * strideARow + i * strideACol] != 0 &&
-                            bPtr[i * strideBRow + c * strideBCol] != 0) {
-                          acc = 1;
-                          break;
-                        }
-                      }
-                      resPtr[r * strideResRow + c * strideResCol] = acc;
+              final aPtr = aView.pointer.cast<ffi.Uint8>() + offsetA;
+              final bPtr = bView.pointer.cast<ffi.Uint8>() + offsetB;
+              final resPtr = result.pointer.cast<ffi.Uint8>() + offsetRes;
+              for (var r = 0; r < m; r++) {
+                for (var c = 0; c < n; c++) {
+                  var acc = 0;
+                  for (var i = 0; i < kA; i++) {
+                    if (aPtr[r * strideARow + i * strideACol] != 0 &&
+                        bPtr[i * strideBRow + c * strideBCol] != 0) {
+                      acc = 1;
+                      break;
                     }
                   }
-                default:
-                  throw UnsupportedError(
-                    'Unsupported integer type: $targetDType',
-                  );
+                  resPtr[r * strideResRow + c * strideResCol] = acc;
+                }
               }
-            default:
-              throw UnsupportedError('Unsupported type: $targetDType');
           }
           return;
         }
@@ -1272,7 +1100,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
         reshaped.dispose();
         result.dispose();
       }
-      success = true;
       return out;
     }
 
@@ -1282,7 +1109,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
       final finalRes = reshaped.copy();
       reshaped.dispose();
       result.dispose();
-      success = true;
       return finalRes; // 0D scalar array for pure vector dot products
     } else if (aPromoted) {
       final newShape = List<int>.from(result.shape)
@@ -1291,7 +1117,6 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
       final finalRes = reshaped.copy();
       reshaped.dispose();
       result.dispose();
-      success = true;
       return finalRes;
     } else if (bPromoted) {
       final newShape = List<int>.from(result.shape)
@@ -1300,24 +1125,15 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
       final finalRes = reshaped.copy();
       reshaped.dispose();
       result.dispose();
-      success = true;
       return finalRes;
     }
 
-    success = true;
     return result;
   } finally {
     aPromotedView?.dispose();
     bPromotedView?.dispose();
-    if (aCast != null && !identical(aCast, a)) aCast.dispose();
-    if (bCast != null && !identical(bCast, b)) bCast.dispose();
     aCopy?.dispose();
     bCopy?.dispose();
-    if (!success) {
-      if (result != null && !identical(result, out)) {
-        result.dispose();
-      }
-    }
   }
 }
 
@@ -1561,13 +1377,13 @@ void _validatePromotedOut(
 }
 
 void _copyPromotedResult<R extends DTypeTag>(
-  NDArray<Float64> resF64,
+  NDArray<DTypeTag> res,
   NDArray<R> out,
 ) {
-  if ((out.dtype as DType<DTypeTag>) == DType.float64) {
-    resF64.copy(out: out as NDArray<Float64>);
+  if ((out.dtype as DType<DTypeTag>) == res.dtype) {
+    res.copy(out: out);
   } else {
-    castNDArray<R>(resF64, out.dtype).copy(out: out);
+    castNDArray<R>(res, out.dtype).copy(out: out);
   }
 }
 
@@ -1841,6 +1657,7 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               );
             }
           case DType.complex128:
+          default:
             final info = LAPACKE_zgetrf(
               101,
               n,
@@ -1877,10 +1694,6 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
                 positiveMessage: 'Matrix is singular and cannot be inverted',
               );
             }
-          default:
-            throw UnsupportedError(
-              'Unsupported type for matrix inversion: $targetDType',
-            );
         }
       }
 
@@ -2091,6 +1904,7 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
         }
         return result;
       case DType.float32:
+      default:
         final result =
             out ?? (NDArray.zeros(stackShape, DType.float32) as NDArray<R>);
         final marker = ScratchArena.marker;
@@ -2126,12 +1940,6 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
           result.detachToParentScope();
         }
         return result;
-      default:
-        throw ArgumentError.value(
-          a.dtype,
-          'a.dtype',
-          'Must be a supported float or complex dtype (unsupported dtype for determinant)',
-        );
     }
   });
 }
@@ -2354,6 +2162,7 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
             get_zgetrf_ptr().cast(),
           );
         case DType.complex64:
+        default:
           final cCopy = ScratchArena.allocate<cpx_f_t>(
             n * n * ffi.sizeOf<cpx_f_t>(),
           );
@@ -2373,8 +2182,6 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
             cIpiv,
             get_cgetrf_ptr().cast(),
           );
-        default:
-          throw UnsupportedError('Unsupported dtype ${a.dtype}');
       }
       checkNativeOom();
     } finally {
@@ -2480,6 +2287,7 @@ void _copyStrided2DMatrix(
             ffi.nullptr,
           );
         case DType.complex128:
+        default:
           s_positive_complex128(
             srcPtr.cast(),
             cStridesSrc,
@@ -2489,8 +2297,6 @@ void _copyStrided2DMatrix(
             2,
             ffi.nullptr,
           );
-        default:
-          throw UnsupportedError('Unsupported type: $dtype');
       }
       checkNativeOom();
     } finally {
@@ -2553,6 +2359,7 @@ void _lapackeSolve(
         nrhs,
       );
     case DType.complex64:
+    default:
       routine = 'LAPACKE_cgesv';
       info = LAPACKE_cgesv(
         101,
@@ -2564,8 +2371,6 @@ void _lapackeSolve(
         bPtr.cast<ffi.Float>(),
         nrhs,
       );
-    default:
-      throw UnsupportedError('Unsupported type for solve: $dtype');
   }
   _checkLapackInfo(
     info,
@@ -2943,17 +2748,12 @@ eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
     final jobvl = 'N'.codeUnitAt(0);
     final jobvr = 'V'.codeUnitAt(0);
 
-    final bool wasCast =
-        a.dtype.isInteger ||
-        (a.dtype as DType<DTypeTag>) == DType.float16 ||
-        (a.dtype as DType<DTypeTag>) == DType.bfloat16;
-    final NDArray src = wasCast ? castNDArray(a, DType.float64) : a;
-    if (src.dtype != DType.complex128 &&
-        src.dtype != DType.complex64 &&
-        src.dtype != DType.float64 &&
-        src.dtype != DType.float32) {
-      throw UnimplementedError('Type ${src.dtype} not supported for eig');
+    final aDType = a.dtype as DType<DTypeTag>;
+    if (aDType == DType.boolean) {
+      throw UnimplementedError('eig not supported for dtype ${a.dtype}');
     }
+    final bool wasCast = _promotesToFloat64(aDType);
+    final NDArray src = wasCast ? castNDArray(a, DType.float64) : a;
     try {
       walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
         coords,
@@ -3132,6 +2932,7 @@ eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
                 vrReal.dispose();
               }
             case DType.float32:
+            default:
               final wr = NDArray<Float32>.zeros([n], DType.float32);
               final wi = NDArray<Float32>.zeros([n], DType.float32);
               final vrReal = NDArray<Float32>.create([n, n], DType.float32);
@@ -3178,10 +2979,6 @@ eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
                 wi.dispose();
                 vrReal.dispose();
               }
-            default:
-              throw UnimplementedError(
-                'Type ${src.dtype} not supported for eig',
-              );
           }
         } finally {
           sliceCopy.dispose();
@@ -3283,19 +3080,13 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
     final jobvl = 'N'.codeUnitAt(0);
     final jobvr = 'N'.codeUnitAt(0);
 
-    final bool wasCast =
-        a.dtype.isInteger ||
-        (a.dtype as DType<DTypeTag>) == DType.float16 ||
-        (a.dtype as DType<DTypeTag>) == DType.bfloat16;
+    final aDType = a.dtype as DType<DTypeTag>;
+    if (aDType == DType.boolean) {
+      throw UnimplementedError('eigvals not supported for dtype ${a.dtype}');
+    }
+    final bool wasCast = _promotesToFloat64(aDType);
     final NDArray src = wasCast ? castNDArray(a, DType.float64) : a;
     try {
-      if (src.dtype != DType.complex128 &&
-          src.dtype != DType.complex64 &&
-          src.dtype != DType.float64 &&
-          src.dtype != DType.float32) {
-        throw UnimplementedError('Type ${src.dtype} not supported for eigvals');
-      }
-
       walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
         coords,
       ) {
@@ -3442,6 +3233,7 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
               }
 
             case DType.float32:
+            default:
               final wr = NDArray<Float32>.zeros([n], DType.float32);
               final wi = NDArray<Float32>.zeros([n], DType.float32);
               try {
@@ -3480,10 +3272,6 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
                 wr.dispose();
                 wi.dispose();
               }
-            default:
-              throw UnimplementedError(
-                'Type ${src.dtype} not supported for eigvals',
-              );
           }
         } finally {
           sliceCopy.dispose();
@@ -3900,6 +3688,7 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
               n,
             );
           case DType.complex64:
+          default:
             routine = 'LAPACKE_cpotrf';
             info = LAPACKE_cpotrf(
               101, // ROW_MAJOR
@@ -3907,10 +3696,6 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
               n,
               lSlice.pointer.cast<ffi.Float>(),
               n,
-            );
-          default:
-            throw UnimplementedError(
-              'Unsupported dtype for Cholesky: $targetDType',
             );
         }
 
@@ -4091,11 +3876,10 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
             2 * k * ffi.sizeOf<ffi.Double>(),
           ).cast<ffi.Void>();
         case DType.complex64:
+        default:
           tau = ScratchArena.allocate<ffi.Float>(
             2 * k * ffi.sizeOf<ffi.Float>(),
           ).cast<ffi.Void>();
-        default:
-          throw UnimplementedError('Unsupported DType for QR: $targetDType');
       }
 
       walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
@@ -4226,6 +4010,7 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
               );
               _checkLapackInfo(infoOrg, 'LAPACKE_zungqr');
             case DType.complex64:
+            default:
               final info = LAPACKE_cgeqrf(
                 101, // ROW_MAJOR
                 m,
@@ -4260,8 +4045,6 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
                 tau.cast<ffi.Float>(),
               );
               _checkLapackInfo(infoOrg, 'LAPACKE_cungqr');
-            default:
-              break;
           }
         }
 
@@ -4646,155 +4429,141 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
         final NDArray u2D = NDArray.zeros([m, uCols], a.dtype);
         final NDArray vt2D = NDArray.zeros([n, n], a.dtype);
 
-        final nf = _analyzeNonFinitePtr(aCopy.pointer, m * n, a.dtype);
-        if (nf.hasNaN || nf.hasInf) {
-          s2D.dispose();
-          u2D.dispose();
-          vt2D.dispose();
-          throw const IterationsExceededException(
-            'SVD did not converge (input contains non-finite values).',
-          );
-        }
+        try {
+          final nf = _analyzeNonFinitePtr(aCopy.pointer, m * n, a.dtype);
+          if (nf.hasNaN || nf.hasInf) {
+            throw const IterationsExceededException(
+              'SVD did not converge (input contains non-finite values).',
+            );
+          }
 
-        final int info;
-        final String routine;
-        switch (a.dtype) {
-          case DType.float64:
-            routine = 'LAPACKE_dgesvd';
-            info = LAPACKE_dgesvd(
-              101,
-              jobu,
-              jobvt,
-              m,
-              n,
-              aCopy.pointer.cast<ffi.Double>(),
-              n,
-              s2D.pointer.cast<ffi.Double>(),
-              u2D.pointer.cast<ffi.Double>(),
-              uCols,
-              vt2D.pointer.cast<ffi.Double>(),
-              n,
-              superb.cast<ffi.Double>(),
-            );
+          final int info;
+          final String routine;
+          switch (a.dtype) {
+            case DType.float64:
+              routine = 'LAPACKE_dgesvd';
+              info = LAPACKE_dgesvd(
+                101,
+                jobu,
+                jobvt,
+                m,
+                n,
+                aCopy.pointer.cast<ffi.Double>(),
+                n,
+                s2D.pointer.cast<ffi.Double>(),
+                u2D.pointer.cast<ffi.Double>(),
+                uCols,
+                vt2D.pointer.cast<ffi.Double>(),
+                n,
+                superb.cast<ffi.Double>(),
+              );
 
-          case DType.float32:
-            routine = 'LAPACKE_sgesvd';
-            info = LAPACKE_sgesvd(
-              101,
-              jobu,
-              jobvt,
-              m,
-              n,
-              aCopy.pointer.cast<ffi.Float>(),
-              n,
-              s2D.pointer.cast<ffi.Float>(),
-              u2D.pointer.cast<ffi.Float>(),
-              uCols,
-              vt2D.pointer.cast<ffi.Float>(),
-              n,
-              superb.cast<ffi.Float>(),
-            );
+            case DType.float32:
+              routine = 'LAPACKE_sgesvd';
+              info = LAPACKE_sgesvd(
+                101,
+                jobu,
+                jobvt,
+                m,
+                n,
+                aCopy.pointer.cast<ffi.Float>(),
+                n,
+                s2D.pointer.cast<ffi.Float>(),
+                u2D.pointer.cast<ffi.Float>(),
+                uCols,
+                vt2D.pointer.cast<ffi.Float>(),
+                n,
+                superb.cast<ffi.Float>(),
+              );
 
-          case DType.complex128:
-            routine = 'LAPACKE_zgesvd';
-            info = LAPACKE_zgesvd(
-              101,
-              jobu,
-              jobvt,
-              m,
-              n,
-              aCopy.pointer.cast<ffi.Double>(),
-              n,
-              s2D.pointer.cast<ffi.Double>(),
-              u2D.pointer.cast<ffi.Double>(),
-              uCols,
-              vt2D.pointer.cast<ffi.Double>(),
-              n,
-              superb.cast<ffi.Double>(),
-            );
+            case DType.complex128:
+              routine = 'LAPACKE_zgesvd';
+              info = LAPACKE_zgesvd(
+                101,
+                jobu,
+                jobvt,
+                m,
+                n,
+                aCopy.pointer.cast<ffi.Double>(),
+                n,
+                s2D.pointer.cast<ffi.Double>(),
+                u2D.pointer.cast<ffi.Double>(),
+                uCols,
+                vt2D.pointer.cast<ffi.Double>(),
+                n,
+                superb.cast<ffi.Double>(),
+              );
 
-          case DType.complex64:
-            routine = 'LAPACKE_cgesvd';
-            info = LAPACKE_cgesvd(
-              101,
-              jobu,
-              jobvt,
-              m,
-              n,
-              aCopy.pointer.cast<ffi.Float>(),
-              n,
-              s2D.pointer.cast<ffi.Float>(),
-              u2D.pointer.cast<ffi.Float>(),
-              uCols,
-              vt2D.pointer.cast<ffi.Float>(),
-              n,
-              superb.cast<ffi.Float>(),
-            );
-          default:
-            s2D.dispose();
-            u2D.dispose();
-            vt2D.dispose();
-            throw ArgumentError.value(
-              a.dtype,
-              'a.dtype',
-              'Must be float or complex (unsupported dtype for SVD: ${a.dtype})',
-            );
-        }
-        if (info != 0) {
-          s2D.dispose();
-          u2D.dispose();
-          vt2D.dispose();
+            case DType.complex64:
+            default:
+              routine = 'LAPACKE_cgesvd';
+              info = LAPACKE_cgesvd(
+                101,
+                jobu,
+                jobvt,
+                m,
+                n,
+                aCopy.pointer.cast<ffi.Float>(),
+                n,
+                s2D.pointer.cast<ffi.Float>(),
+                u2D.pointer.cast<ffi.Float>(),
+                uCols,
+                vt2D.pointer.cast<ffi.Float>(),
+                n,
+                superb.cast<ffi.Float>(),
+              );
+          }
           _checkLapackInfo(
             info,
             routine,
             positiveKind: _LapackFailureKind.iterationsExceeded,
             positiveMessage: '$routine failed to converge (info = $info).',
           );
+
+          var offsetU = 0;
+          for (var i = 0; i < coords.length; i++) {
+            offsetU += coords[i] * uMat.strides[i];
+          }
+          var offsetS = 0;
+          for (var i = 0; i < coords.length; i++) {
+            offsetS += coords[i] * sMat.strides[i];
+          }
+          var offsetVt = 0;
+          for (var i = 0; i < coords.length; i++) {
+            offsetVt += coords[i] * vtMat.strides[i];
+          }
+
+          final uSlice = NDArray<T>.view(
+            uMat,
+            shape: [m, uCols],
+            strides: uMat.strides.sublist(rank - 2),
+            offsetElements: offsetU,
+          );
+          u2D.copy(out: uSlice);
+          uSlice.dispose();
+
+          final sSlice = NDArray<DTypeTag>.view(
+            sMat,
+            shape: [n],
+            strides: sMat.strides.isEmpty ? [1] : [sMat.strides.last],
+            offsetElements: offsetS,
+          );
+          s2D.copy(out: sSlice);
+          sSlice.dispose();
+
+          final vtSlice = NDArray<T>.view(
+            vtMat,
+            shape: [n, n],
+            strides: vtMat.strides.sublist(rank - 2),
+            offsetElements: offsetVt,
+          );
+          vt2D.copy(out: vtSlice);
+          vtSlice.dispose();
+        } finally {
+          s2D.dispose();
+          u2D.dispose();
+          vt2D.dispose();
         }
-
-        var offsetU = 0;
-        for (var i = 0; i < coords.length; i++) {
-          offsetU += coords[i] * uMat.strides[i];
-        }
-        var offsetS = 0;
-        for (var i = 0; i < coords.length; i++) {
-          offsetS += coords[i] * sMat.strides[i];
-        }
-        var offsetVt = 0;
-        for (var i = 0; i < coords.length; i++) {
-          offsetVt += coords[i] * vtMat.strides[i];
-        }
-
-        final uSlice = NDArray<T>.view(
-          uMat,
-          shape: [m, uCols],
-          strides: uMat.strides.sublist(rank - 2),
-          offsetElements: offsetU,
-        );
-        u2D.copy(out: uSlice);
-        uSlice.dispose();
-
-        final sSlice = NDArray<DTypeTag>.view(
-          sMat,
-          shape: [n],
-          strides: sMat.strides.isEmpty ? [1] : [sMat.strides.last],
-          offsetElements: offsetS,
-        );
-        s2D.copy(out: sSlice);
-        sSlice.dispose();
-
-        final vtSlice = NDArray<T>.view(
-          vtMat,
-          shape: [n, n],
-          strides: vtMat.strides.sublist(rank - 2),
-          offsetElements: offsetVt,
-        );
-        vt2D.copy(out: vtSlice);
-        vtSlice.dispose();
-
-        s2D.dispose();
-        u2D.dispose();
-        vt2D.dispose();
       });
     } finally {
       ScratchArena.reset(marker);
@@ -4901,100 +4670,92 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
             ? NDArray<Float32>.zeros([n], DType.float32)
             : NDArray<DTypeTag>.zeros([n], DType.float64);
 
-        final nf = _analyzeNonFinitePtr(aCopy.pointer, m * n, a.dtype);
-        if (nf.hasNaN || (rejectInf && nf.hasInf)) {
-          s2D.dispose();
-          throw const IterationsExceededException(
-            'SVD did not converge (input contains non-finite values).',
-          );
-        }
-        if (nf.hasInf) {
-          _fillPtrWithNaN(s2D.pointer, n, s2D.dtype);
-        } else {
-          final int info;
-          final String routine;
-          switch (a.dtype) {
-            case DType.float64:
-              routine = 'LAPACKE_dgesvd';
-              info = LAPACKE_dgesvd(
-                101,
-                78,
-                78,
-                m,
-                n,
-                aCopy.pointer.cast<ffi.Double>(),
-                n,
-                s2D.pointer.cast<ffi.Double>(),
-                ffi.nullptr,
-                1,
-                ffi.nullptr,
-                1,
-                superb.cast<ffi.Double>(),
-              );
-
-            case DType.float32:
-              routine = 'LAPACKE_sgesvd';
-              info = LAPACKE_sgesvd(
-                101,
-                78,
-                78,
-                m,
-                n,
-                aCopy.pointer.cast<ffi.Float>(),
-                n,
-                s2D.pointer.cast<ffi.Float>(),
-                ffi.nullptr,
-                1,
-                ffi.nullptr,
-                1,
-                superb.cast<ffi.Float>(),
-              );
-
-            case DType.complex128:
-              routine = 'LAPACKE_zgesvd';
-              info = LAPACKE_zgesvd(
-                101,
-                78,
-                78,
-                m,
-                n,
-                aCopy.pointer.cast<ffi.Double>(),
-                n,
-                s2D.pointer.cast<ffi.Double>(),
-                ffi.nullptr,
-                1,
-                ffi.nullptr,
-                1,
-                superb.cast<ffi.Double>(),
-              );
-
-            case DType.complex64:
-              routine = 'LAPACKE_cgesvd';
-              info = LAPACKE_cgesvd(
-                101,
-                78,
-                78,
-                m,
-                n,
-                aCopy.pointer.cast<ffi.Float>(),
-                n,
-                s2D.pointer.cast<ffi.Float>(),
-                ffi.nullptr,
-                1,
-                ffi.nullptr,
-                1,
-                superb.cast<ffi.Float>(),
-              );
-            default:
-              s2D.dispose();
-              throw ArgumentError.value(
-                a.dtype,
-                'a.dtype',
-                'Must be float or complex (unsupported dtype for SVD: ${a.dtype})',
-              );
+        try {
+          final nf = _analyzeNonFinitePtr(aCopy.pointer, m * n, a.dtype);
+          if (nf.hasNaN || (rejectInf && nf.hasInf)) {
+            throw const IterationsExceededException(
+              'SVD did not converge (input contains non-finite values).',
+            );
           }
-          if (info != 0) {
-            s2D.dispose();
+          if (nf.hasInf) {
+            _fillPtrWithNaN(s2D.pointer, n, s2D.dtype);
+          } else {
+            final int info;
+            final String routine;
+            switch (a.dtype) {
+              case DType.float64:
+                routine = 'LAPACKE_dgesvd';
+                info = LAPACKE_dgesvd(
+                  101,
+                  78,
+                  78,
+                  m,
+                  n,
+                  aCopy.pointer.cast<ffi.Double>(),
+                  n,
+                  s2D.pointer.cast<ffi.Double>(),
+                  ffi.nullptr,
+                  1,
+                  ffi.nullptr,
+                  1,
+                  superb.cast<ffi.Double>(),
+                );
+
+              case DType.float32:
+                routine = 'LAPACKE_sgesvd';
+                info = LAPACKE_sgesvd(
+                  101,
+                  78,
+                  78,
+                  m,
+                  n,
+                  aCopy.pointer.cast<ffi.Float>(),
+                  n,
+                  s2D.pointer.cast<ffi.Float>(),
+                  ffi.nullptr,
+                  1,
+                  ffi.nullptr,
+                  1,
+                  superb.cast<ffi.Float>(),
+                );
+
+              case DType.complex128:
+                routine = 'LAPACKE_zgesvd';
+                info = LAPACKE_zgesvd(
+                  101,
+                  78,
+                  78,
+                  m,
+                  n,
+                  aCopy.pointer.cast<ffi.Double>(),
+                  n,
+                  s2D.pointer.cast<ffi.Double>(),
+                  ffi.nullptr,
+                  1,
+                  ffi.nullptr,
+                  1,
+                  superb.cast<ffi.Double>(),
+                );
+
+              case DType.complex64:
+              default:
+                routine = 'LAPACKE_cgesvd';
+                info = LAPACKE_cgesvd(
+                  101,
+                  78,
+                  78,
+                  m,
+                  n,
+                  aCopy.pointer.cast<ffi.Float>(),
+                  n,
+                  s2D.pointer.cast<ffi.Float>(),
+                  ffi.nullptr,
+                  1,
+                  ffi.nullptr,
+                  1,
+                  superb.cast<ffi.Float>(),
+                );
+            }
             _checkLapackInfo(
               info,
               routine,
@@ -5002,23 +4763,23 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
               positiveMessage: '$routine failed to converge (info = $info).',
             );
           }
+
+          var offsetS = 0;
+          for (var i = 0; i < coords.length; i++) {
+            offsetS += coords[i] * sMat.strides[i];
+          }
+
+          final sSlice = NDArray<DTypeTag>.view(
+            sMat,
+            shape: [n],
+            strides: sMat.strides.isEmpty ? [1] : [sMat.strides.last],
+            offsetElements: offsetS,
+          );
+          s2D.copy(out: sSlice);
+          sSlice.dispose();
+        } finally {
+          s2D.dispose();
         }
-
-        var offsetS = 0;
-        for (var i = 0; i < coords.length; i++) {
-          offsetS += coords[i] * sMat.strides[i];
-        }
-
-        final sSlice = NDArray<DTypeTag>.view(
-          sMat,
-          shape: [n],
-          strides: sMat.strides.isEmpty ? [1] : [sMat.strides.last],
-          offsetElements: offsetS,
-        );
-        s2D.copy(out: sSlice);
-        sSlice.dispose();
-
-        s2D.dispose();
       });
     } finally {
       ScratchArena.reset(marker);
@@ -5082,35 +4843,12 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigh');
   checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'eigh');
 
-  final bool promoted =
-      a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16;
-  DType targetDType = a.dtype;
-  if (promoted) {
-    targetDType = DType.float64;
-  }
-
-  if (targetDType != DType.float64 &&
-      targetDType != DType.float32 &&
-      targetDType != DType.complex128 &&
-      targetDType != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (unsupported dtype: ${a.dtype})',
-    );
-  }
-
-  final DType<DTypeTag> eigenvalueDType = switch (targetDType) {
-    DType.float32 || DType.complex64 => DType.float32,
-    DType.float64 || DType.complex128 => DType.float64,
-    _ => throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (unsupported dtype: ${a.dtype})',
-    ),
-  };
+  final bool promoted = _promotesToFloat64(a.dtype as DType<DTypeTag>);
+  final DType<DTypeTag> targetDType = promoted ? DType.float64 : a.dtype;
+  final DType<DTypeTag> eigenvalueDType =
+      (targetDType == DType.float32 || targetDType == DType.complex64)
+      ? DType.float32
+      : DType.float64;
 
   final stackShape = a.shape.sublist(0, a.rank - 2);
 
@@ -5182,24 +4920,10 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
         outEigenvectors: needTempVec ? null : outEigenvectors,
       );
       if (needTempVal) {
-        if (outEigenvalues.dtype == res.eigenvalues.dtype) {
-          res.eigenvalues.copy(out: outEigenvalues);
-        } else {
-          castNDArray(
-            res.eigenvalues,
-            outEigenvalues.dtype,
-          ).copy(out: outEigenvalues);
-        }
+        _copyPromotedResult(res.eigenvalues, outEigenvalues);
       }
       if (needTempVec) {
-        if (outEigenvectors.dtype == res.eigenvectors.dtype) {
-          res.eigenvectors.copy(out: outEigenvectors);
-        } else {
-          castNDArray(
-            res.eigenvectors,
-            outEigenvectors.dtype,
-          ).copy(out: outEigenvectors);
-        }
+        _copyPromotedResult(res.eigenvectors, outEigenvectors);
       }
       final finalVal = outEigenvalues ?? res.eigenvalues.detachToParentScope();
       final finalVec =
@@ -5221,29 +4945,17 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
     }
 
     if (n == 0) {
-      final NDArray vMat =
-          outEigenvectors ?? _zerosTyped(eigenvectorsShape, targetDType);
-      NDArray<DTypeTag> finalW = wMat;
+      final NDArray<DTypeTag> vMat =
+          outEigenvectors ?? NDArray.zeros(eigenvectorsShape, targetDType);
       if (outEigenvalues == null) {
-        if (F == Float16 && finalW.dtype != DType.float16) {
-          finalW = castNDArray<Float16>(finalW, DType.float16);
-        } else if (F == BFloat16 && finalW.dtype != DType.bfloat16) {
-          finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
-        }
-        finalW.detachToParentScope();
+        wMat.detachToParentScope();
       }
-      NDArray<DTypeTag> finalV = vMat;
       if (outEigenvectors == null) {
-        if (R == Float16 && finalV.dtype != DType.float16) {
-          finalV = castNDArray<Float16>(finalV, DType.float16);
-        } else if (R == BFloat16 && finalV.dtype != DType.bfloat16) {
-          finalV = castNDArray<BFloat16>(finalV, DType.bfloat16);
-        }
-        finalV.detachToParentScope();
+        vMat.detachToParentScope();
       }
       return (
-        eigenvalues: finalW as NDArray<F>,
-        eigenvectors: finalV as NDArray<R>,
+        eigenvalues: wMat as NDArray<F>,
+        eigenvectors: vMat as NDArray<R>,
       );
     }
 
@@ -5362,6 +5074,7 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
             wSlicePtr.cast<ffi.Double>(),
           );
         case DType.complex64:
+        default:
           routine = 'LAPACKE_cheevd';
           info = LAPACKE_cheevd(
             101,
@@ -5372,8 +5085,6 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
             n,
             wSlicePtr.cast<ffi.Float>(),
           );
-        default:
-          throw UnimplementedError();
       }
       _checkLapackInfo(
         info,
@@ -5383,28 +5094,13 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
       );
     }
 
-    NDArray<DTypeTag> finalW = wMat;
     if (outEigenvalues == null) {
-      if (F == Float16 && finalW.dtype != DType.float16) {
-        finalW = castNDArray<Float16>(finalW, DType.float16);
-      } else if (F == BFloat16 && finalW.dtype != DType.bfloat16) {
-        finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
-      }
-      finalW.detachToParentScope();
+      wMat.detachToParentScope();
     }
-    NDArray<DTypeTag> finalV = vMat;
     if (outEigenvectors == null) {
-      if (R == Float16 && finalV.dtype != DType.float16) {
-        finalV = castNDArray<Float16>(finalV, DType.float16);
-      } else if (R == BFloat16 && finalV.dtype != DType.bfloat16) {
-        finalV = castNDArray<BFloat16>(finalV, DType.bfloat16);
-      }
-      finalV.detachToParentScope();
+      vMat.detachToParentScope();
     }
-    return (
-      eigenvalues: finalW as NDArray<F>,
-      eigenvectors: finalV as NDArray<R>,
-    );
+    return (eigenvalues: wMat as NDArray<F>, eigenvectors: vMat as NDArray<R>);
   });
 }
 
@@ -5460,35 +5156,12 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigvalsh');
   checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'eigvalsh');
 
-  final bool promoted =
-      a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16;
-  DType targetDType = a.dtype;
-  if (promoted) {
-    targetDType = DType.float64;
-  }
-
-  if (targetDType != DType.float64 &&
-      targetDType != DType.float32 &&
-      targetDType != DType.complex128 &&
-      targetDType != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (unsupported dtype: ${a.dtype})',
-    );
-  }
-
-  final DType<DTypeTag> eigenvalueDType = switch (targetDType) {
-    DType.float32 || DType.complex64 => DType.float32,
-    DType.float64 || DType.complex128 => DType.float64,
-    _ => throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (unsupported dtype: ${a.dtype})',
-    ),
-  };
+  final bool promoted = _promotesToFloat64(a.dtype as DType<DTypeTag>);
+  final DType<DTypeTag> targetDType = promoted ? DType.float64 : a.dtype;
+  final DType<DTypeTag> eigenvalueDType =
+      (targetDType == DType.float32 || targetDType == DType.complex64)
+      ? DType.float32
+      : DType.float64;
 
   final stackShape = a.shape.sublist(0, a.rank - 2);
   final eigenvaluesShape = [...stackShape, n];
@@ -5537,16 +5210,10 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
     }
 
     if (n == 0) {
-      NDArray<DTypeTag> finalW = wMat;
       if (out == null) {
-        if (R == Float16 && finalW.dtype != DType.float16) {
-          finalW = castNDArray<Float16>(finalW, DType.float16);
-        } else if (R == BFloat16 && finalW.dtype != DType.bfloat16) {
-          finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
-        }
-        finalW.detachToParentScope();
+        wMat.detachToParentScope();
       }
-      return finalW as NDArray<R>;
+      return wMat as NDArray<R>;
     }
 
     final uploVal = uplo == MatrixTriangle.lower ? 76 : 85;
@@ -5622,6 +5289,7 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
               wSlicePtr.cast<ffi.Double>(),
             );
           case DType.complex64:
+          default:
             routine = 'LAPACKE_cheevd';
             info = LAPACKE_cheevd(
               101,
@@ -5632,8 +5300,6 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
               n,
               wSlicePtr.cast<ffi.Float>(),
             );
-          default:
-            throw UnimplementedError();
         }
         _checkLapackInfo(
           info,
@@ -5646,16 +5312,10 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
       aWork.dispose();
     }
 
-    NDArray<DTypeTag> finalW = wMat;
     if (out == null) {
-      if (R == Float16 && finalW.dtype != DType.float16) {
-        finalW = castNDArray<Float16>(finalW, DType.float16);
-      } else if (R == BFloat16 && finalW.dtype != DType.bfloat16) {
-        finalW = castNDArray<BFloat16>(finalW, DType.bfloat16);
-      }
-      finalW.detachToParentScope();
+      wMat.detachToParentScope();
     }
-    return finalW as NDArray<R>;
+    return wMat as NDArray<R>;
   });
 }
 
@@ -5742,26 +5402,8 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'schur');
   checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'schur');
 
-  final bool promoted =
-      a.dtype.isInteger ||
-      a.dtype == DType.boolean ||
-      a.dtype == DType.float16 ||
-      a.dtype == DType.bfloat16;
-  DType targetDType = a.dtype;
-  if (promoted) {
-    targetDType = DType.float64;
-  }
-
-  if (targetDType != DType.float64 &&
-      targetDType != DType.float32 &&
-      targetDType != DType.complex128 &&
-      targetDType != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (unsupported dtype: ${a.dtype})',
-    );
-  }
+  final bool promoted = _promotesToFloat64(a.dtype);
+  DType<DTypeTag> targetDType = promoted ? DType.float64 : a.dtype;
 
   if (complexForm && !targetDType.isComplex) {
     if (targetDType == DType.float64) {
@@ -5825,18 +5467,10 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
         outZ: needTempZ ? null : outZ,
       );
       if (needTempT) {
-        if (outT.dtype == res.t.dtype) {
-          res.t.copy(out: outT);
-        } else {
-          castNDArray(res.t, outT.dtype).copy(out: outT);
-        }
+        _copyPromotedResult(res.t, outT);
       }
       if (needTempZ) {
-        if (outZ.dtype == res.z.dtype) {
-          res.z.copy(out: outZ);
-        } else {
-          castNDArray(res.z, outZ.dtype).copy(out: outZ);
-        }
+        _copyPromotedResult(res.z, outZ);
       }
       final finalT = outT ?? res.t.detachToParentScope();
       final finalZ = outZ ?? res.z.detachToParentScope();
@@ -5845,36 +5479,26 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
   }
 
   return NDArray.scope(() {
-    final NDArray<DTypeTag> tMat = outT ?? _zerosTyped(schurShape, targetDType);
-    final NDArray<DTypeTag> zMat = outZ ?? _zerosTyped(schurShape, targetDType);
+    final NDArray<DTypeTag> tMat =
+        outT ?? NDArray.zeros(schurShape, targetDType);
+    final NDArray<DTypeTag> zMat =
+        outZ ?? NDArray.zeros(schurShape, targetDType);
 
     if (n == 0) {
-      NDArray<DTypeTag> finalT = tMat;
       if (outT == null) {
-        if (R == Float16 && finalT.dtype != DType.float16) {
-          finalT = castNDArray<Float16>(finalT, DType.float16);
-        } else if (R == BFloat16 && finalT.dtype != DType.bfloat16) {
-          finalT = castNDArray<BFloat16>(finalT, DType.bfloat16);
-        }
-        finalT.detachToParentScope();
+        tMat.detachToParentScope();
       }
-      NDArray<DTypeTag> finalZ = zMat;
       if (outZ == null) {
-        if (R == Float16 && finalZ.dtype != DType.float16) {
-          finalZ = castNDArray<Float16>(finalZ, DType.float16);
-        } else if (R == BFloat16 && finalZ.dtype != DType.bfloat16) {
-          finalZ = castNDArray<BFloat16>(finalZ, DType.bfloat16);
-        }
-        finalZ.detachToParentScope();
+        zMat.detachToParentScope();
       }
-      return (t: finalT as NDArray<R>, z: finalZ as NDArray<R>);
+      return (t: tMat as NDArray<R>, z: zMat as NDArray<R>);
     }
 
     final jobvsVal = 86; // 'V'
     final sortVal = 78; // 'N'
 
-    final aCopy2D = _createTyped2D(n, n, targetDType);
-    final z2D = _zerosTyped([n, n], targetDType);
+    final aCopy2D = NDArray.create([n, n], targetDType);
+    final z2D = NDArray.zeros([n, n], targetDType);
 
     final marker = ScratchArena.marker;
     try {
@@ -5994,6 +5618,7 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
               n,
             );
           case DType.complex64:
+          default:
             routine = 'LAPACKE_cgees';
             info = LAPACKE_cgees(
               101,
@@ -6008,13 +5633,6 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
               z2D.pointer.cast<ffi.Float>(),
               n,
             );
-          default:
-            throw UnimplementedError();
-        }
-        if (info > n) {
-          throw LinAlgException(
-            'Eigenvalues could not be reordered in $routine: $info',
-          );
         }
         _checkLapackInfo(
           info,
@@ -6046,25 +5664,13 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
       z2D.dispose();
     }
 
-    NDArray<DTypeTag> finalT = tMat;
     if (outT == null) {
-      if (R == Float16 && finalT.dtype != DType.float16) {
-        finalT = castNDArray<Float16>(finalT, DType.float16);
-      } else if (R == BFloat16 && finalT.dtype != DType.bfloat16) {
-        finalT = castNDArray<BFloat16>(finalT, DType.bfloat16);
-      }
-      finalT.detachToParentScope();
+      tMat.detachToParentScope();
     }
-    NDArray<DTypeTag> finalZ = zMat;
     if (outZ == null) {
-      if (R == Float16 && finalZ.dtype != DType.float16) {
-        finalZ = castNDArray<Float16>(finalZ, DType.float16);
-      } else if (R == BFloat16 && finalZ.dtype != DType.bfloat16) {
-        finalZ = castNDArray<BFloat16>(finalZ, DType.bfloat16);
-      }
-      finalZ.detachToParentScope();
+      zMat.detachToParentScope();
     }
-    return (t: finalT as NDArray<R>, z: finalZ as NDArray<R>);
+    return (t: tMat as NDArray<R>, z: zMat as NDArray<R>);
   });
 }
 
@@ -6111,25 +5717,8 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
   checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'hessenberg');
   checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'hessenberg');
 
-  final bool promoted =
-      a.dtype.isInteger ||
-      (a.dtype as DType<DTypeTag>) == DType.float16 ||
-      (a.dtype as DType<DTypeTag>) == DType.bfloat16;
-  DType targetDType = a.dtype;
-  if (promoted) {
-    targetDType = DType.float64;
-  }
-
-  if (targetDType != DType.float64 &&
-      targetDType != DType.float32 &&
-      targetDType != DType.complex128 &&
-      targetDType != DType.complex64) {
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be float or complex (unsupported dtype: ${a.dtype})',
-    );
-  }
+  final bool promoted = _promotesToFloat64(a.dtype as DType<DTypeTag>);
+  final DType<DTypeTag> targetDType = promoted ? DType.float64 : a.dtype;
 
   final stackShape = a.shape.sublist(0, a.rank - 2);
   final hessenbergShape = [...stackShape, n, n];
@@ -6182,18 +5771,10 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
         outQ: needTempQ ? null : outQ,
       );
       if (needTempH) {
-        if (outH.dtype == res.h.dtype) {
-          res.h.copy(out: outH);
-        } else {
-          castNDArray(res.h, outH.dtype).copy(out: outH);
-        }
+        _copyPromotedResult(res.h, outH);
       }
       if (needTempQ) {
-        if (outQ.dtype == res.q.dtype) {
-          res.q.copy(out: outQ);
-        } else {
-          castNDArray(res.q, outQ.dtype).copy(out: outQ);
-        }
+        _copyPromotedResult(res.q, outQ);
       }
       final finalH = outH ?? res.h.detachToParentScope();
       final finalQ = outQ ?? res.q.detachToParentScope();
@@ -6203,34 +5784,22 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
 
   return NDArray.scope(() {
     final NDArray<DTypeTag> hMat =
-        outH ?? _zerosTyped(hessenbergShape, targetDType);
+        outH ?? NDArray.zeros(hessenbergShape, targetDType);
     final NDArray<DTypeTag> qMat =
-        outQ ?? _zerosTyped(hessenbergShape, targetDType);
+        outQ ?? NDArray.zeros(hessenbergShape, targetDType);
 
     if (n == 0) {
-      NDArray<DTypeTag> finalH = hMat;
       if (outH == null) {
-        if (R == Float16 && finalH.dtype != DType.float16) {
-          finalH = castNDArray<Float16>(finalH, DType.float16);
-        } else if (R == BFloat16 && finalH.dtype != DType.bfloat16) {
-          finalH = castNDArray<BFloat16>(finalH, DType.bfloat16);
-        }
-        finalH.detachToParentScope();
+        hMat.detachToParentScope();
       }
-      NDArray<DTypeTag> finalQ = qMat;
       if (outQ == null) {
-        if (R == Float16 && finalQ.dtype != DType.float16) {
-          finalQ = castNDArray<Float16>(finalQ, DType.float16);
-        } else if (R == BFloat16 && finalQ.dtype != DType.bfloat16) {
-          finalQ = castNDArray<BFloat16>(finalQ, DType.bfloat16);
-        }
-        finalQ.detachToParentScope();
+        qMat.detachToParentScope();
       }
-      return (h: finalH as NDArray<R>, q: finalQ as NDArray<R>);
+      return (h: hMat as NDArray<R>, q: qMat as NDArray<R>);
     }
 
-    final aCopy2D = _createTyped2D(n, n, targetDType);
-    final q2D = _zerosTyped([n, n], targetDType);
+    final aCopy2D = NDArray.create([n, n], targetDType);
+    final q2D = NDArray.zeros([n, n], targetDType);
 
     final marker = ScratchArena.marker;
     try {
@@ -6307,6 +5876,7 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
             );
             _checkLapackInfo(info, 'LAPACKE_zgehrd');
           case DType.complex64:
+          default:
             info = LAPACKE_cgehrd(
               101,
               n,
@@ -6317,8 +5887,6 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
               tau.cast<ffi.Float>(),
             );
             _checkLapackInfo(info, 'LAPACKE_cgehrd');
-          default:
-            throw UnimplementedError();
         }
 
         aCopy2D.copy(out: q2D);
@@ -6356,6 +5924,7 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
                 }
               }
             case DType.complex64:
+            default:
               final ptr = hSlice.pointer.cast<ffi.Float>();
               for (var i = 2; i < n; i++) {
                 for (var j = 0; j < i - 1; j++) {
@@ -6363,8 +5932,6 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
                   ptr[2 * (i * n + j) + 1] = 0.0;
                 }
               }
-            default:
-              break;
           }
 
           switch (targetDType) {
@@ -6402,6 +5969,7 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
               );
               _checkLapackInfo(info, 'LAPACKE_zunghr');
             case DType.complex64:
+            default:
               info = LAPACKE_cunghr(
                 101,
                 n,
@@ -6412,8 +5980,6 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
                 tau.cast<ffi.Float>(),
               );
               _checkLapackInfo(info, 'LAPACKE_cunghr');
-            default:
-              throw UnimplementedError();
           }
         } finally {
           hSlice.dispose();
@@ -6433,56 +5999,14 @@ complexSchur<R extends DTypeTag, OutT extends R, OutZ extends R>(
       q2D.dispose();
     }
 
-    NDArray<DTypeTag> finalH = hMat;
     if (outH == null) {
-      if (R == Float16 && finalH.dtype != DType.float16) {
-        finalH = castNDArray<Float16>(finalH, DType.float16);
-      } else if (R == BFloat16 && finalH.dtype != DType.bfloat16) {
-        finalH = castNDArray<BFloat16>(finalH, DType.bfloat16);
-      }
-      finalH.detachToParentScope();
+      hMat.detachToParentScope();
     }
-    NDArray<DTypeTag> finalQ = qMat;
     if (outQ == null) {
-      if (R == Float16 && finalQ.dtype != DType.float16) {
-        finalQ = castNDArray<Float16>(finalQ, DType.float16);
-      } else if (R == BFloat16 && finalQ.dtype != DType.bfloat16) {
-        finalQ = castNDArray<BFloat16>(finalQ, DType.bfloat16);
-      }
-      finalQ.detachToParentScope();
+      qMat.detachToParentScope();
     }
-    return (h: finalH as NDArray<R>, q: finalQ as NDArray<R>);
+    return (h: hMat as NDArray<R>, q: qMat as NDArray<R>);
   });
-}
-
-NDArray<DTypeTag> _createTyped2D(int rows, int cols, DType<DTypeTag> dtype) {
-  switch (dtype) {
-    case DType.float64:
-      return NDArray<Float64>.create([rows, cols], DType.float64);
-    case DType.float32:
-      return NDArray<Float32>.create([rows, cols], DType.float32);
-    case DType.complex128:
-      return NDArray<Complex128>.create([rows, cols], DType.complex128);
-    case DType.complex64:
-      return NDArray<Complex64>.create([rows, cols], DType.complex64);
-    default:
-      throw UnimplementedError('Unsupported dtype: $dtype');
-  }
-}
-
-NDArray<DTypeTag> _zerosTyped(List<int> shape, DType<DTypeTag> dtype) {
-  switch (dtype) {
-    case DType.float64:
-      return NDArray<Float64>.zeros(shape, DType.float64);
-    case DType.float32:
-      return NDArray<Float32>.zeros(shape, DType.float32);
-    case DType.complex128:
-      return NDArray<Complex128>.zeros(shape, DType.complex128);
-    case DType.complex64:
-      return NDArray<Complex64>.zeros(shape, DType.complex64);
-    default:
-      throw UnimplementedError('Unsupported dtype: $dtype');
-  }
 }
 
 //
@@ -6823,30 +6347,28 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
     }
   }
 
-  final result = out ?? NDArray<T>.create(expectedShape, targetDType);
-
   if (targetDType == DType.float16 || targetDType == DType.bfloat16) {
     return NDArray.scope(() {
-      try {
-        final doubleA = castNDArray(a, DType.float64);
-        final doubleB = castNDArray(b, DType.float64);
-        final doubleRes = cross(
-          doubleA,
-          doubleB,
-          axisa: axisa,
-          axisb: axisb,
-          axisc: axisc,
-          axis: axis,
-        );
-        final casted = castNDArray(doubleRes, targetDType);
-        casted.copy(out: result);
-        return result;
-      } catch (_) {
-        if (out == null) result.dispose();
-        rethrow;
+      final doubleA = castNDArray(a, DType.float64);
+      final doubleB = castNDArray(b, DType.float64);
+      final doubleRes = cross(
+        doubleA,
+        doubleB,
+        axisa: axisa,
+        axisb: axisb,
+        axisc: axisc,
+        axis: axis,
+      );
+      final casted = castNDArray<T>(doubleRes, targetDType);
+      if (out != null) {
+        casted.copy(out: out);
+        return out;
       }
+      return casted.detachToParentScope();
     });
   }
+
+  final result = out ?? NDArray<T>.create(expectedShape, targetDType);
 
   final aCast = a;
   final bCast = b;
@@ -7045,6 +6567,7 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
             );
           }
         case DType.boolean:
+        default:
           if (is3D) {
             s_cross_3d_boolean(
               aCast.pointer.cast<ffi.Uint8>() + offsetA,
@@ -7063,9 +6586,6 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
               result.pointer.cast<ffi.Uint8>() + offsetRes,
             );
           }
-        case DType.float16:
-        case DType.bfloat16:
-          break;
       }
       return;
     }
@@ -7969,20 +7489,15 @@ LstsqResult<R> lstsq<
         }
         x = out;
       } else {
-        final DType<R> outXDType = R == Float16
-            ? DType.float16 as DType<R>
-            : R == BFloat16
-            ? DType.bfloat16 as DType<R>
-            : targetDType as DType<R>;
-        x = NDArray<R>.zeros(xShape, outXDType);
+        x = NDArray<R>.zeros(xShape, targetDType as DType<R>);
         x.detachToParentScope();
       }
       final DType<DTypeTag> sDType =
           (targetDType == DType.complex64 || targetDType == DType.float32)
           ? DType.float32
           : DType.float64;
-      final s = _zerosTyped([0], sDType);
-      final residuals = _zerosTyped([0], sDType);
+      final s = NDArray.zeros([0], sDType);
+      final residuals = NDArray.zeros([0], sDType);
       s.detachToParentScope();
       residuals.detachToParentScope();
       return (x: x, residuals: residuals, rank: 0, s: s);
@@ -8017,7 +7532,7 @@ LstsqResult<R> lstsq<
         (targetDType == DType.complex64 || targetDType == DType.float32)
         ? DType.float32
         : DType.float64;
-    final s = _zerosTyped([minMN], sDType);
+    final s = NDArray.zeros([minMN], sDType);
     final marker = ScratchArena.marker;
     try {
       final nfA = _analyzeNonFinitePtr(aCopy.pointer, m * n, targetDType);
@@ -8082,6 +7597,7 @@ LstsqResult<R> lstsq<
             rankPtr,
           );
         case DType.complex64:
+        default:
           routine = 'LAPACKE_cgelsd';
           info = LAPACKE_cgelsd(
             101, // ROW_MAJOR
@@ -8095,10 +7611,6 @@ LstsqResult<R> lstsq<
             s.pointer.cast<ffi.Float>(),
             rcondVal,
             rankPtr,
-          );
-        default:
-          throw UnimplementedError(
-            'Unsupported target DType for lstsq: $targetDType',
           );
       }
 
@@ -8128,10 +7640,6 @@ LstsqResult<R> lstsq<
           castNDArray(bCopySlice, out.dtype).copy(out: out);
         }
         x = out;
-      } else if (R == Float16 && targetDType != DType.float16) {
-        x = castNDArray<Float16>(bCopySlice, DType.float16) as NDArray<R>;
-      } else if (R == BFloat16 && targetDType != DType.bfloat16) {
-        x = castNDArray<BFloat16>(bCopySlice, DType.bfloat16) as NDArray<R>;
       } else {
         x = NDArray<R>.zeros(xShape, targetDType as DType<R>);
         bCopySlice.copy(out: x);
@@ -8142,7 +7650,7 @@ LstsqResult<R> lstsq<
       final NDArray<DTypeTag> residuals;
       if (m > n && rank == n) {
         final resShape = bUse.shape.length > 1 ? [nrhs] : [1];
-        residuals = _zerosTyped(resShape, sDType);
+        residuals = NDArray.zeros(resShape, sDType);
         if (targetDType == DType.complex128) {
           final bPtr = bCopy.pointer.cast<ffi.Double>();
           final resPtr = residuals.pointer.cast<ffi.Double>();
@@ -8191,7 +7699,7 @@ LstsqResult<R> lstsq<
           }
         }
       } else {
-        residuals = _zerosTyped([0], sDType);
+        residuals = NDArray.zeros([0], sDType);
       }
 
       if (out == null) {
@@ -8350,7 +7858,7 @@ NDArray<R> cond<R extends DTypeTag, Out extends R>(
         out != null && (!out.isContiguous || sharesMemory(a, out));
     final NDArray<R> result = (out != null && !aliased)
         ? out
-        : (_createZeros(stackShape, resDType) as NDArray<R>);
+        : NDArray<R>.zeros(stackShape, resDType as DType<R>);
 
     walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
       coords,
@@ -8385,12 +7893,10 @@ NDArray<R> cond<R extends DTypeTag, Out extends R>(
               sMax = sPtr[offsetSMax];
               sMin = sPtr[offsetSMin];
             case DType.float64:
+            default:
               final sPtr = s.pointer.cast<ffi.Double>();
               sMax = sPtr[offsetSMax];
               sMin = sPtr[offsetSMin];
-            default:
-              s.dispose();
-              throw UnimplementedError('Unexpected dtype: $resDType');
           }
           s.dispose();
           if (ord == -2) {
@@ -8434,9 +7940,8 @@ NDArray<R> cond<R extends DTypeTag, Out extends R>(
         case DType.float32:
           (result.pointer.cast<ffi.Float>() + offsetRes).value = val;
         case DType.float64:
-          (result.pointer.cast<ffi.Double>() + offsetRes).value = val;
         default:
-          throw UnimplementedError('Unexpected dtype: $resDType');
+          (result.pointer.cast<ffi.Double>() + offsetRes).value = val;
       }
     });
 

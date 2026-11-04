@@ -123,13 +123,6 @@ NDArray<R> sin<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_sin_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -141,7 +134,13 @@ NDArray<R> sin<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_sin_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -192,16 +191,6 @@ NDArray<R> sin<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_sin_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -213,26 +202,21 @@ NDArray<R> sin<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_sin_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) => math.sin(x as num),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -340,13 +324,6 @@ NDArray<R> sinc<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_sinc_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -358,7 +335,13 @@ NDArray<R> sinc<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_sinc_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -409,16 +392,6 @@ NDArray<R> sinc<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_sinc_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -430,18 +403,21 @@ NDArray<R> sinc<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_sinc_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    throw ArgumentError.value(
-      a.dtype,
-      'a.dtype',
-      'Must be a supported DType for sinc (got ${a.dtype})',
-    );
   } finally {
     maskHolder.dispose();
   }
@@ -549,13 +525,6 @@ NDArray<R> cos<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_cos_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -567,7 +536,13 @@ NDArray<R> cos<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_cos_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -618,16 +593,6 @@ NDArray<R> cos<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_cos_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -639,26 +604,21 @@ NDArray<R> cos<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_cos_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) => math.cos(x as num),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -753,13 +713,6 @@ NDArray<R> tan<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_tan_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -771,7 +724,13 @@ NDArray<R> tan<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_tan_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -822,16 +781,6 @@ NDArray<R> tan<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_tan_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -843,26 +792,21 @@ NDArray<R> tan<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_tan_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) => math.tan(x as num),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -964,13 +908,6 @@ NDArray<R> asin<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_asin_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -982,7 +919,13 @@ NDArray<R> asin<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_asin_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -1033,16 +976,6 @@ NDArray<R> asin<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_asin_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -1054,26 +987,21 @@ NDArray<R> asin<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_asin_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) => math.asin(x as num),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -1175,13 +1103,6 @@ NDArray<R> acos<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_acos_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -1193,7 +1114,13 @@ NDArray<R> acos<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_acos_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -1244,16 +1171,6 @@ NDArray<R> acos<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_acos_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -1265,26 +1182,21 @@ NDArray<R> acos<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_acos_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) => math.acos(x as num),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -1386,13 +1298,6 @@ NDArray<R> atan<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_atan_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -1404,7 +1309,13 @@ NDArray<R> atan<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_atan_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -1455,16 +1366,6 @@ NDArray<R> atan<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_atan_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -1476,26 +1377,21 @@ NDArray<R> atan<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_atan_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) => math.atan(x as num),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -1598,13 +1494,6 @@ NDArray<R> sinh<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_sinh_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -1616,7 +1505,13 @@ NDArray<R> sinh<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_sinh_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -1667,16 +1562,6 @@ NDArray<R> sinh<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_sinh_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -1688,29 +1573,21 @@ NDArray<R> sinh<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_sinh_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) {
-        final val = (x as num).toDouble();
-        return (math.exp(val) - math.exp(-val)) / 2.0;
-      },
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -1813,13 +1690,6 @@ NDArray<R> cosh<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_cosh_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -1831,7 +1701,13 @@ NDArray<R> cosh<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_cosh_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -1882,16 +1758,6 @@ NDArray<R> cosh<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_cosh_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -1903,29 +1769,21 @@ NDArray<R> cosh<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_cosh_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) {
-        final val = (x as num).toDouble();
-        return (math.exp(val) + math.exp(-val)) / 2.0;
-      },
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -2028,13 +1886,6 @@ NDArray<R> tanh<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_tanh_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -2046,7 +1897,13 @@ NDArray<R> tanh<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_tanh_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -2097,16 +1954,6 @@ NDArray<R> tanh<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_tanh_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -2118,30 +1965,21 @@ NDArray<R> tanh<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_tanh_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) {
-        final val = (x as num).toDouble();
-        final exp2val = math.exp(2.0 * val);
-        return (exp2val - 1.0) / (exp2val + 1.0);
-      },
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -2244,13 +2082,6 @@ NDArray<R> asinh<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_asinh_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -2262,7 +2093,13 @@ NDArray<R> asinh<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_asinh_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -2313,16 +2150,6 @@ NDArray<R> asinh<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_asinh_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -2334,29 +2161,21 @@ NDArray<R> asinh<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_asinh_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) {
-        final val = (x as num).toDouble();
-        return math.log(val + math.sqrt(val * val + 1.0));
-      },
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -2459,13 +2278,6 @@ NDArray<R> acosh<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_acosh_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -2477,7 +2289,13 @@ NDArray<R> acosh<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_acosh_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -2528,16 +2346,6 @@ NDArray<R> acosh<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_acosh_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -2549,29 +2357,21 @@ NDArray<R> acosh<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_acosh_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) {
-        final val = (x as num).toDouble();
-        return math.log(val + math.sqrt(val * val - 1.0));
-      },
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -2674,13 +2474,6 @@ NDArray<R> atanh<R extends DTypeTag, Out extends R>(
           );
           return result;
         case DType.complex64:
-          v_atanh_complex64(
-            a.pointer.cast(),
-            result.pointer.cast(),
-            a.size,
-            maskHolder.pointer,
-          );
-          return result;
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -2692,7 +2485,13 @@ NDArray<R> atanh<R extends DTypeTag, Out extends R>(
         case DType.uint16:
         case DType.uint8:
         case DType.boolean:
-          break;
+          v_atanh_complex64(
+            a.pointer.cast(),
+            result.pointer.cast(),
+            a.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     } else {
       final rank = a.shape.length;
@@ -2743,16 +2542,6 @@ NDArray<R> atanh<R extends DTypeTag, Out extends R>(
             );
             return result;
           case DType.complex64:
-            s_atanh_complex64(
-              a.pointer.cast(),
-              cStridesA,
-              result.pointer.cast(),
-              cStridesRes,
-              cShape,
-              rank,
-              maskHolder.pointer,
-            );
-            return result;
           case DType.float16:
           case DType.bfloat16:
           case DType.int64:
@@ -2764,29 +2553,21 @@ NDArray<R> atanh<R extends DTypeTag, Out extends R>(
           case DType.uint16:
           case DType.uint8:
           case DType.boolean:
-            break;
+            s_atanh_complex64(
+              a.pointer.cast(),
+              cStridesA,
+              result.pointer.cast(),
+              cStridesRes,
+              cShape,
+              rank,
+              maskHolder.pointer,
+            );
+            return result;
         }
       } finally {
         ScratchArena.reset(marker);
       }
     }
-
-    unaryOp<DTypeTag, R>(
-      result,
-      a,
-      a.shape,
-      a.strides,
-      result.strides,
-      0,
-      a.offsetElements,
-      result.offsetElements,
-      (x) {
-        final val = (x as num).toDouble();
-        return 0.5 * math.log((1.0 + val) / (1.0 - val));
-      },
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }
@@ -2823,19 +2604,13 @@ NDArray<R> atan2<
       'Must have the same dtype as y (${y.dtype})',
     );
   }
-  if (yDType == DType.complex128 ||
-      yDType == DType.complex64 ||
-      xDType == DType.complex128 ||
-      xDType == DType.complex64) {
+  if (yDType.isComplex) {
     throw UnsupportedError('Complex numbers are not supported for atan2');
   }
   final broadcastResult = broadcast(y, x);
   final shape = broadcastResult.shape;
   final DType<R> targetDType =
-      ((yDType == DType.float32 && xDType == DType.float32)
-              ? DType.float32
-              : DType.float64)
-          as DType<R>;
+      (yDType == DType.float32 ? DType.float32 : DType.float64) as DType<R>;
 
   if (out != null) {
     validateOutBuffer(out);
@@ -2862,11 +2637,7 @@ NDArray<R> atan2<
   if (yDType.isInteger ||
       yDType == DType.boolean ||
       yDType == DType.float16 ||
-      yDType == DType.bfloat16 ||
-      xDType.isInteger ||
-      xDType == DType.boolean ||
-      xDType == DType.float16 ||
-      xDType == DType.bfloat16) {
+      yDType == DType.bfloat16) {
     final yPromoted = promoteToDouble(y);
     final xPromoted = promoteToDouble(x);
     try {
@@ -2880,8 +2651,8 @@ NDArray<R> atan2<
       );
       return res as NDArray<R>;
     } finally {
-      if (!identical(yPromoted, y)) yPromoted.dispose();
-      if (!identical(xPromoted, x)) xPromoted.dispose();
+      yPromoted.dispose();
+      xPromoted.dispose();
     }
   }
   final maskHolder = prepareMask(where, shape);
@@ -2896,27 +2667,15 @@ NDArray<R> atan2<
         listEquals(y.shape, x.shape)) {
       switch (targetDType) {
         case DType.float64:
-          if (yDType == DType.float64 && xDType == DType.float64) {
-            v_atan2_double(
-              y.pointer.cast(),
-              x.pointer.cast(),
-              result.pointer.cast(),
-              y.size,
-              maskHolder.pointer,
-            );
-            return result;
-          }
+          v_atan2_double(
+            y.pointer.cast(),
+            x.pointer.cast(),
+            result.pointer.cast(),
+            y.size,
+            maskHolder.pointer,
+          );
+          return result;
         case DType.float32:
-          if (yDType == DType.float32 && xDType == DType.float32) {
-            v_atan2_float(
-              y.pointer.cast(),
-              x.pointer.cast(),
-              result.pointer.cast(),
-              y.size,
-              maskHolder.pointer,
-            );
-            return result;
-          }
         case DType.float16:
         case DType.bfloat16:
         case DType.int64:
@@ -2930,90 +2689,69 @@ NDArray<R> atan2<
         case DType.boolean:
         case DType.complex128:
         case DType.complex64:
-          break;
+          v_atan2_float(
+            y.pointer.cast(),
+            x.pointer.cast(),
+            result.pointer.cast(),
+            y.size,
+            maskHolder.pointer,
+          );
+          return result;
       }
     }
     final stridesY = broadcastResult.stridesA;
     final stridesX = broadcastResult.stridesB;
 
-    // 0C. General Multidimensional Strided Broadcasting Engine in C (Rank <= 8)
-    if (shape.length <= 8) {
-      final marker = ScratchArena.marker;
-      try {
-        final cShape = ScratchArena.copyInts(shape);
-        final cStridesY = ScratchArena.copyInts(stridesY);
-        final cStridesX = ScratchArena.copyInts(stridesX);
-        final cStridesRes = ScratchArena.copyInts(result.strides);
-        switch (targetDType) {
-          case DType.float64:
-            if (yDType == DType.float64 && xDType == DType.float64) {
-              s_atan2_double(
-                y.pointer.cast(),
-                cStridesY,
-                x.pointer.cast(),
-                cStridesX,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                shape.length,
-                maskHolder.pointer,
-              );
-              return result;
-            }
-          case DType.float32:
-            if (yDType == DType.float32 && xDType == DType.float32) {
-              s_atan2_float(
-                y.pointer.cast(),
-                cStridesY,
-                x.pointer.cast(),
-                cStridesX,
-                result.pointer.cast(),
-                cStridesRes,
-                cShape,
-                shape.length,
-                maskHolder.pointer,
-              );
-              return result;
-            }
-          case DType.float16:
-          case DType.bfloat16:
-          case DType.int64:
-          case DType.int32:
-          case DType.int16:
-          case DType.int8:
-          case DType.uint64:
-          case DType.uint32:
-          case DType.uint16:
-          case DType.uint8:
-          case DType.boolean:
-          case DType.complex128:
-          case DType.complex64:
-            break;
-        }
-      } finally {
-        ScratchArena.reset(marker);
+    final marker = ScratchArena.marker;
+    try {
+      final cShape = ScratchArena.copyInts(shape);
+      final cStridesY = ScratchArena.copyInts(stridesY);
+      final cStridesX = ScratchArena.copyInts(stridesX);
+      final cStridesRes = ScratchArena.copyInts(result.strides);
+      switch (targetDType) {
+        case DType.float64:
+          s_atan2_double(
+            y.pointer.cast(),
+            cStridesY,
+            x.pointer.cast(),
+            cStridesX,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            shape.length,
+            maskHolder.pointer,
+          );
+          return result;
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+        case DType.int64:
+        case DType.int32:
+        case DType.int16:
+        case DType.int8:
+        case DType.uint64:
+        case DType.uint32:
+        case DType.uint16:
+        case DType.uint8:
+        case DType.boolean:
+        case DType.complex128:
+        case DType.complex64:
+          s_atan2_float(
+            y.pointer.cast(),
+            cStridesY,
+            x.pointer.cast(),
+            cStridesX,
+            result.pointer.cast(),
+            cStridesRes,
+            cShape,
+            shape.length,
+            maskHolder.pointer,
+          );
+          return result;
       }
+    } finally {
+      ScratchArena.reset(marker);
     }
-
-    elementWiseOp<DTypeTag, DTypeTag, DTypeTag>(
-      result,
-      y,
-      x,
-      shape,
-      broadcastResult.stridesA,
-      broadcastResult.stridesB,
-      result.strides,
-      0,
-      y.offsetElements,
-      x.offsetElements,
-      result.offsetElements,
-      (a, b) => math.atan2(
-        (a is bool ? (a ? 1.0 : 0.0) : (a as num).toDouble()),
-        (b is bool ? (b ? 1.0 : 0.0) : (b as num).toDouble()),
-      ),
-      maskHolder.pointer,
-    );
-    return result;
   } finally {
     maskHolder.dispose();
   }

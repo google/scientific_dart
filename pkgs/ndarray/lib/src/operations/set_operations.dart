@@ -183,11 +183,7 @@ _uniqueImpl<T extends DTypeTag>(
   return NDArray.scope(() {
     final flat = (ar.rank == 1 && ar.isContiguous) ? ar : ar.flatten();
 
-    if (!returnIndex &&
-        !returnInverse &&
-        flat.dtype.isInteger &&
-        flat.dtype != DType.uint64 &&
-        flat.size > 64) {
+    if (!returnIndex && !returnInverse && flat.size > 64) {
       final tableRes = _tryUniqueTable<T>(
         flat,
         returnCounts: returnCounts,
@@ -659,14 +655,6 @@ NDArray<T> union1d<T extends DTypeTag, Out extends T>(
       throw StateError('Native union1d failed (code $unionCount).');
     }
 
-    if (unionCount == 0) {
-      if (out != null && !listEquals(out.shape, [0])) {
-        throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
-      }
-      return out ??
-          (NDArray<T>.create([0], commonDType)..detachToParentScope());
-    }
-
     if (out != null && !listEquals(out.shape, [unionCount])) {
       throw ArgumentError.value(out, 'out', 'Incompatible out buffer shape');
     }
@@ -798,9 +786,8 @@ bool _tryIsinTable<T extends DTypeTag>(
       final pTest = flatTest.pointer.cast<ffi.Int32>();
       final minVal = r_min_int32_t(pTest, testSize);
       final maxVal = r_max_int32_t(pTest, testSize);
-      if (maxVal < minVal) return false;
       final range = maxVal - minVal + 1;
-      if (range > maxTableRange || range <= 0) return false;
+      if (range > maxTableRange) return false;
       final table = Uint8List(range);
       for (var i = 0; i < testSize; i++) {
         table[pTest[i] - minVal] = 1;
@@ -828,7 +815,6 @@ bool _tryIsinTable<T extends DTypeTag>(
       final pTest = flatTest.pointer.cast<ffi.Int64>();
       final minVal = r_min_int64_t(pTest, testSize);
       final maxVal = r_max_int64_t(pTest, testSize);
-      if (maxVal < minVal) return false;
       final diff = maxVal - minVal;
       if (diff < 0 || diff >= maxTableRange) return false;
       final range = diff + 1;
@@ -859,9 +845,7 @@ bool _tryIsinTable<T extends DTypeTag>(
       final pTest = flatTest.pointer.cast<ffi.Int16>();
       final minVal = r_min_int16_t(pTest, testSize);
       final maxVal = r_max_int16_t(pTest, testSize);
-      if (maxVal < minVal) return false;
       final range = maxVal - minVal + 1;
-      if (range > 65536 || range <= 0) return false;
       final table = Uint8List(range);
       for (var i = 0; i < testSize; i++) {
         table[pTest[i] - minVal] = 1;
@@ -988,9 +972,8 @@ bool _tryIsinTable<T extends DTypeTag>(
         if (v < minVal) minVal = v;
         if (v > maxVal) maxVal = v;
       }
-      if (maxVal < minVal) return false;
       final range = maxVal - minVal + 1;
-      if (range > maxTableRange || range <= 0) return false;
+      if (range > maxTableRange) return false;
       final table = Uint8List(range);
       for (var i = 0; i < testSize; i++) {
         table[pTest[i] - minVal] = 1;
@@ -1019,8 +1002,11 @@ bool _tryIsinTable<T extends DTypeTag>(
       var hasZero = false;
       var hasOne = false;
       for (var i = 0; i < testSize; i++) {
-        if (pTest[i] == 0) hasZero = true;
-        if (pTest[i] != 0) hasOne = true;
+        if (pTest[i] == 0) {
+          hasZero = true;
+        } else {
+          hasOne = true;
+        }
         if (hasZero && hasOne) break;
       }
       final pElem = contigElement.pointer.cast<ffi.Uint8>();
@@ -1040,7 +1026,7 @@ bool _tryIsinTable<T extends DTypeTag>(
             pDest[i] = pElem[i] != 0 ? 1 : 0;
           }
         }
-      } else if (hasZero) {
+      } else {
         if (invert) {
           for (var i = 0; i < elemSize; i++) {
             pDest[i] = pElem[i] == 0 ? 0 : 1;
@@ -1049,11 +1035,6 @@ bool _tryIsinTable<T extends DTypeTag>(
           for (var i = 0; i < elemSize; i++) {
             pDest[i] = pElem[i] == 0 ? 1 : 0;
           }
-        }
-      } else {
-        final fillVal = invert ? 1 : 0;
-        for (var i = 0; i < elemSize; i++) {
-          pDest[i] = fillVal;
         }
       }
       return true;
@@ -1071,7 +1052,6 @@ bool _tryIsinTable<T extends DTypeTag>(
 
 (int, int)? _minMaxInt<T extends DTypeTag>(NDArray<T> values) {
   final size = values.size;
-  if (size == 0) return null;
   final ptr = values.pointer;
   switch (values.dtype) {
     case DType.int32:
@@ -1162,7 +1142,6 @@ bool _tryIsinTable<T extends DTypeTag>(
   final mm = _minMaxInt(values);
   if (mm == null) return null;
   final (minVal, maxVal) = mm;
-  if (maxVal < minVal) return null;
   final span = maxVal - minVal;
   const maxSpan = 16777216;
   if (span < 0 || span > maxSpan) return null;
