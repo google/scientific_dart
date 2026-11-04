@@ -248,5 +248,27 @@ void main() {
         expect(() => eigvalsh(b), throwsArgumentError);
       });
     });
+
+    test('batched eigh with non-finite slice leaves out buffers untouched', () {
+      NDArray.scope(() {
+        final a = NDArray.fromList(
+          [1.0, 0.0, 0.0, 1.0, 1.0, double.nan, 0.0, 1.0],
+          [2, 2, 2],
+          DType.float64,
+        );
+        final outW = NDArray.full([2, 2], -42.0, dtype: DType.float64);
+        final outV = NDArray<Float64>.full(
+          [2, 2, 2],
+          -99.0,
+          dtype: DType.float64,
+        );
+        expect(
+          () => eigh(a, outEigenvalues: outW, outEigenvectors: outV),
+          throwsA(isA<LinAlgException>()),
+        );
+        expect(outW.toList(), List.filled(4, -42.0));
+        expect(outV.toList(), List.filled(8, -99.0));
+      });
+    });
   });
 }

@@ -1095,6 +1095,133 @@ void main() {
           expect(resI16[0].toList(), [1]);
         }),
       );
+
+      test(
+        'SIMD boundary sizes, misaligned views, special floats, and 2D cols (1, <L, >256)',
+        () => NDArray.scope(() {
+          const sizes = [
+            0,
+            1,
+            3,
+            4,
+            7,
+            8,
+            15,
+            16,
+            17,
+            31,
+            32,
+            33,
+            63,
+            64,
+            65,
+            127,
+            128,
+            129,
+            255,
+            256,
+            257,
+            513,
+          ];
+          for (final n in sizes) {
+            final vals = List<double>.generate(n + 3, (i) {
+              return switch (i % 7) {
+                0 => 0.0,
+                1 => -0.0,
+                2 => 5e-324, // min positive subnormal double
+                3 => -5e-324,
+                4 => double.nan,
+                5 => double.infinity,
+                _ => -double.infinity,
+              };
+            });
+            final base64 = NDArray.fromList(vals, [n + 3], DType.float64);
+            final base32 = castNDArray<Float32>(base64, DType.float32);
+            for (var off = 0; off < 3; off++) {
+              final view64 = base64.slice([Slice(start: off, stop: off + n)]);
+              final expectedIdx = <int>[];
+              for (var i = 0; i < n; i++) {
+                final v = vals[off + i];
+                if (v != 0.0 || v.isNaN) {
+                  expectedIdx.add(i);
+                }
+              }
+              expect(count_nonzero(view64).scalar, expectedIdx.length);
+              final nz64 = nonzero(view64);
+              expect(nz64[0].toList(), expectedIdx);
+              final aw64 = argwhere(view64);
+              expect(aw64.shape, [expectedIdx.length, 1]);
+              expect(aw64.toList(), expectedIdx);
+
+              // Also check float32 with subnormal float32 (1.4e-45)
+              final view32 = base32.slice([Slice(start: off, stop: off + n)]);
+              final nz32 = nonzero(view32);
+              final aw32 = argwhere(view32);
+              expect(nz32[0].size, count_nonzero(view32).scalar);
+              expect(aw32.toList(), nz32[0].toList());
+            }
+          }
+
+          // 2D fast path: cols = 1, cols < L (3, 7), boundary cols (63, 64, 65, 255, 256, 257, 300, 513)
+          for (final cols in [
+            1,
+            2,
+            3,
+            7,
+            8,
+            63,
+            64,
+            65,
+            255,
+            256,
+            257,
+            300,
+            513,
+          ]) {
+            const rows = 5;
+            final total = rows * cols;
+            final list = List<int>.generate(
+              total,
+              (i) => (i % 3 == 0 || i % 11 == 0) ? (i + 1) : 0,
+            );
+            final mat = NDArray.fromList(list, [rows, cols], DType.int64);
+            final nz = nonzero(mat);
+            final aw = argwhere(mat);
+            final expectedR = <int>[];
+            final expectedC = <int>[];
+            final expectedAW = <int>[];
+            for (var r = 0; r < rows; r++) {
+              for (var c = 0; c < cols; c++) {
+                if (list[r * cols + c] != 0) {
+                  expectedR.add(r);
+                  expectedC.add(c);
+                  expectedAW.add(r);
+                  expectedAW.add(c);
+                }
+              }
+            }
+            expect(nz[0].toList(), expectedR);
+            expect(nz[1].toList(), expectedC);
+            expect(aw.shape, [expectedR.length, 2]);
+            expect(aw.toList(), expectedAW);
+          }
+
+          // Integer unsigned/signed dtypes (int8, uint16, uint32, uint64)
+          final u64 = NDArray.fromList(
+            [0, 1, 0, 9999999999],
+            [4],
+            DType.uint64,
+          );
+          expect(count_nonzero(u64).scalar, 2);
+          expect(nonzero(u64)[0].toList(), [1, 3]);
+          expect(argwhere(u64).toList(), [1, 3]);
+
+          final i8 = NDArray.fromList([0, -1, 0, 127], [4], DType.int8);
+          expect(count_nonzero(i8).scalar, 2);
+          expect(nonzero(i8)[0].toList(), [1, 3]);
+          expect(argwhere(i8).toList(), [1, 3]);
+        }),
+      );
     });
 
     group('partition & argpartition Expansion', () {

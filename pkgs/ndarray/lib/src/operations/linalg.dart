@@ -83,52 +83,41 @@ bool _isMemoryAliased(NDArray<DTypeTag> out, NDArray<DTypeTag> other) {
 ) {
   var hasNaN = false;
   var hasInf = false;
+  // Fast path: in IEEE 754 arithmetic, a sum containing any NaN, +Inf, or -Inf
+  // is guaranteed to be non-finite (including +Inf + -Inf = NaN). If the SIMD
+  // sum is non-finite (either due to an actual NaN/Inf element or overflow of
+  // large finite values like 1e308 + 1e308), fall back to an exact element-wise
+  // scan to classify hasNaN and hasInf with zero false positives or negatives.
   switch (dtype) {
     case DType.float64:
-      final p = ptr.cast<ffi.Double>();
-      for (var i = 0; i < elementCount; i++) {
-        final v = p[i];
-        if (v.isNaN) {
-          hasNaN = true;
-        } else if (v.isInfinite) {
-          hasInf = true;
-        }
-        if (hasNaN && hasInf) break;
-      }
-    case DType.float32:
-      final p = ptr.cast<ffi.Float>();
-      for (var i = 0; i < elementCount; i++) {
-        final v = p[i];
-        if (v.isNaN) {
-          hasNaN = true;
-        } else if (v.isInfinite) {
-          hasInf = true;
-        }
-        if (hasNaN && hasInf) break;
-      }
     case DType.complex128:
       final p = ptr.cast<ffi.Double>();
-      final n = elementCount * 2;
-      for (var i = 0; i < n; i++) {
-        final v = p[i];
-        if (v.isNaN) {
-          hasNaN = true;
-        } else if (v.isInfinite) {
-          hasInf = true;
+      final n = dtype == DType.complex128 ? elementCount * 2 : elementCount;
+      if (!r_sum_double(p, n).isFinite) {
+        for (var i = 0; i < n; i++) {
+          final v = p[i];
+          if (v.isNaN) {
+            hasNaN = true;
+          } else if (v.isInfinite) {
+            hasInf = true;
+          }
+          if (hasNaN && hasInf) break;
         }
-        if (hasNaN && hasInf) break;
       }
+    case DType.float32:
     case DType.complex64:
       final p = ptr.cast<ffi.Float>();
-      final n = elementCount * 2;
-      for (var i = 0; i < n; i++) {
-        final v = p[i];
-        if (v.isNaN) {
-          hasNaN = true;
-        } else if (v.isInfinite) {
-          hasInf = true;
+      final n = dtype == DType.complex64 ? elementCount * 2 : elementCount;
+      if (!r_sum_float(p, n).isFinite) {
+        for (var i = 0; i < n; i++) {
+          final v = p[i];
+          if (v.isNaN) {
+            hasNaN = true;
+          } else if (v.isInfinite) {
+            hasInf = true;
+          }
+          if (hasNaN && hasInf) break;
         }
-        if (hasNaN && hasInf) break;
       }
     default:
       throw UnsupportedError('Unsupported dtype: $dtype');
@@ -1723,25 +1712,21 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
     final marker = ScratchArena.marker;
     try {
       final ipiv = ScratchArena.allocate<ffi.Int>(n * ffi.sizeOf<ffi.Int>());
-      walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
-        coords,
-      ) {
-        var offsetRes = 0;
-        for (var i = 0; i < coords.length; i++) {
-          offsetRes += coords[i] * result.strides[i];
-        }
-        final sliceRes = NDArray<R>.view(
-          result,
-          shape: [n, n],
-          strides: result.strides.sublist(rank - 2),
-          offsetElements: offsetRes,
+      var totalSlices = 1;
+      for (final dim in stackShape) {
+        totalSlices *= dim;
+      }
+      final sliceBytes = n * n * targetDType.byteWidth;
+      final baseAddr = result.pointer.address;
+      for (var step = 0; step < totalSlices; step++) {
+        final slicePtr = ffi.Pointer<ffi.Void>.fromAddress(
+          baseAddr + step * sliceBytes,
         );
 
-        final nf = _analyzeNonFinitePtr(sliceRes.pointer, n * n, targetDType);
+        final nf = _analyzeNonFinitePtr(slicePtr, n * n, targetDType);
         if (nf.hasNaN) {
-          _fillPtrWithNaN(sliceRes.pointer, n * n, targetDType);
-          sliceRes.dispose();
-          return;
+          _fillPtrWithNaN(slicePtr, n * n, targetDType);
+          continue;
         }
         switch (targetDType) {
           case DType.float32:
@@ -1749,7 +1734,7 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               101,
               n,
               n,
-              sliceRes.pointer.cast<ffi.Float>(),
+              slicePtr.cast<ffi.Float>(),
               n,
               ipiv,
             );
@@ -1760,17 +1745,17 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               positiveMessage: 'Matrix is singular and cannot be inverted',
             );
             final nfAfterLu = _analyzeNonFinitePtr(
-              sliceRes.pointer,
+              slicePtr,
               n * n,
               targetDType,
             );
             if (nfAfterLu.hasNaN) {
-              _fillPtrWithNaN(sliceRes.pointer, n * n, targetDType);
+              _fillPtrWithNaN(slicePtr, n * n, targetDType);
             } else {
               final infoTri = LAPACKE_sgetri(
                 101,
                 n,
-                sliceRes.pointer.cast<ffi.Float>(),
+                slicePtr.cast<ffi.Float>(),
                 n,
                 ipiv,
               );
@@ -1786,7 +1771,7 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               101,
               n,
               n,
-              sliceRes.pointer.cast<ffi.Double>(),
+              slicePtr.cast<ffi.Double>(),
               n,
               ipiv,
             );
@@ -1797,17 +1782,17 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               positiveMessage: 'Matrix is singular and cannot be inverted',
             );
             final nfAfterLu = _analyzeNonFinitePtr(
-              sliceRes.pointer,
+              slicePtr,
               n * n,
               targetDType,
             );
             if (nfAfterLu.hasNaN) {
-              _fillPtrWithNaN(sliceRes.pointer, n * n, targetDType);
+              _fillPtrWithNaN(slicePtr, n * n, targetDType);
             } else {
               final infoTri = LAPACKE_dgetri(
                 101,
                 n,
-                sliceRes.pointer.cast<ffi.Double>(),
+                slicePtr.cast<ffi.Double>(),
                 n,
                 ipiv,
               );
@@ -1823,7 +1808,7 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               101,
               n,
               n,
-              sliceRes.pointer.cast<ffi.Float>(),
+              slicePtr.cast<ffi.Float>(),
               n,
               ipiv,
             );
@@ -1834,17 +1819,17 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               positiveMessage: 'Matrix is singular and cannot be inverted',
             );
             final nfAfterLu = _analyzeNonFinitePtr(
-              sliceRes.pointer,
+              slicePtr,
               n * n,
               targetDType,
             );
             if (nfAfterLu.hasNaN) {
-              _fillPtrWithNaN(sliceRes.pointer, n * n, targetDType);
+              _fillPtrWithNaN(slicePtr, n * n, targetDType);
             } else {
               final infoTri = LAPACKE_cgetri(
                 101,
                 n,
-                sliceRes.pointer.cast<ffi.Float>(),
+                slicePtr.cast<ffi.Float>(),
                 n,
                 ipiv,
               );
@@ -1860,7 +1845,7 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               101,
               n,
               n,
-              sliceRes.pointer.cast<ffi.Double>(),
+              slicePtr.cast<ffi.Double>(),
               n,
               ipiv,
             );
@@ -1871,17 +1856,17 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               positiveMessage: 'Matrix is singular and cannot be inverted',
             );
             final nfAfterLu = _analyzeNonFinitePtr(
-              sliceRes.pointer,
+              slicePtr,
               n * n,
               targetDType,
             );
             if (nfAfterLu.hasNaN) {
-              _fillPtrWithNaN(sliceRes.pointer, n * n, targetDType);
+              _fillPtrWithNaN(slicePtr, n * n, targetDType);
             } else {
               final infoTri = LAPACKE_zgetri(
                 101,
                 n,
-                sliceRes.pointer.cast<ffi.Double>(),
+                slicePtr.cast<ffi.Double>(),
                 n,
                 ipiv,
               );
@@ -1897,8 +1882,7 @@ NDArray<R> inv<R extends DTypeTag, Out extends R>(
               'Unsupported type for matrix inversion: $targetDType',
             );
         }
-        sliceRes.dispose();
-      });
+      }
 
       if (out == null) {
         result.detachToParentScope();
@@ -5229,17 +5213,16 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
     if (outEigenvalues != null) {
       wMat = outEigenvalues;
     } else {
-      wMat = _zerosTyped(eigenvaluesShape, eigenvalueDType);
-    }
-
-    final NDArray vMat;
-    if (outEigenvectors != null) {
-      vMat = outEigenvectors;
-    } else {
-      vMat = _zerosTyped(eigenvectorsShape, targetDType);
+      wMat = NDArray.create(
+        eigenvaluesShape,
+        eigenvalueDType,
+        zeroInit: n == 0,
+      );
     }
 
     if (n == 0) {
+      final NDArray vMat =
+          outEigenvectors ?? _zerosTyped(eigenvectorsShape, targetDType);
       NDArray<DTypeTag> finalW = wMat;
       if (outEigenvalues == null) {
         if (F == Float16 && finalW.dtype != DType.float16) {
@@ -5267,111 +5250,137 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
     final uploVal = uplo == MatrixTriangle.lower ? 76 : 85;
     final jobzVal = 86; // 'V'
 
-    final aCopy2D = _createTyped2D(n, n, targetDType);
-    final w2D = _zerosTyped([n], eigenvalueDType);
+    var totalSlices = 1;
+    for (final dim in stackShape) {
+      totalSlices *= dim;
+    }
 
-    final marker = ScratchArena.marker;
-    try {
-      walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
-        coords,
-      ) {
-        final sliceView = a.slice([
-          ...coords.map((c) => Index(c)),
-          Slice.all(),
-          Slice.all(),
-        ]);
-        if (sliceView.dtype == targetDType) {
-          (sliceView as NDArray<DTypeTag>).copy(out: aCopy2D);
-        } else {
-          final casted = castNDArray(sliceView, targetDType);
-          casted.copy(out: aCopy2D);
+    final NDArray vMat;
+    if (outEigenvectors != null) {
+      vMat = outEigenvectors;
+      if (a.dtype == targetDType) {
+        if (totalSlices > 0) {
+          final nf = a.isContiguous
+              ? _analyzeNonFinitePtr(
+                  a.pointer,
+                  totalSlices * n * n,
+                  targetDType,
+                )
+              : _analyzeNonFinite(a);
+          if (nf.hasNaN || nf.hasInf) {
+            throw const LinAlgException(
+              'Array must not contain infs or NaNs in eigh.',
+            );
+          }
+        }
+        (a as NDArray<DTypeTag>).copy(out: vMat);
+      } else {
+        final casted = castNDArray(a, targetDType);
+        try {
+          if (totalSlices > 0) {
+            final nf = _analyzeNonFinitePtr(
+              casted.pointer,
+              totalSlices * n * n,
+              targetDType,
+            );
+            if (nf.hasNaN || nf.hasInf) {
+              throw const LinAlgException(
+                'Array must not contain infs or NaNs in eigh.',
+              );
+            }
+          }
+          casted.copy(out: vMat);
+        } finally {
           casted.dispose();
         }
-        sliceView.dispose();
-
-        final nf = _analyzeNonFinitePtr(aCopy2D.pointer, n * n, targetDType);
+      }
+    } else {
+      vMat = a.dtype == targetDType
+          ? (a as NDArray<DTypeTag>).copy()
+          : castNDArray(a, targetDType);
+      if (totalSlices > 0) {
+        final nf = _analyzeNonFinitePtr(
+          vMat.pointer,
+          totalSlices * n * n,
+          targetDType,
+        );
         if (nf.hasNaN || nf.hasInf) {
           throw const LinAlgException(
             'Array must not contain infs or NaNs in eigh.',
           );
         }
+      }
+    }
 
-        final int info;
-        final String routine;
-        switch (targetDType) {
-          case DType.float64:
-            routine = 'LAPACKE_dsyevd';
-            info = LAPACKE_dsyevd(
-              101,
-              jobzVal,
-              uploVal,
-              n,
-              aCopy2D.pointer.cast<ffi.Double>(),
-              n,
-              w2D.pointer.cast<ffi.Double>(),
-            );
-          case DType.float32:
-            routine = 'LAPACKE_ssyevd';
-            info = LAPACKE_ssyevd(
-              101,
-              jobzVal,
-              uploVal,
-              n,
-              aCopy2D.pointer.cast<ffi.Float>(),
-              n,
-              w2D.pointer.cast<ffi.Float>(),
-            );
-          case DType.complex128:
-            routine = 'LAPACKE_zheevd';
-            info = LAPACKE_zheevd(
-              101,
-              jobzVal,
-              uploVal,
-              n,
-              aCopy2D.pointer.cast<ffi.Double>(),
-              n,
-              w2D.pointer.cast<ffi.Double>(),
-            );
-          case DType.complex64:
-            routine = 'LAPACKE_cheevd';
-            info = LAPACKE_cheevd(
-              101,
-              jobzVal,
-              uploVal,
-              n,
-              aCopy2D.pointer.cast<ffi.Float>(),
-              n,
-              w2D.pointer.cast<ffi.Float>(),
-            );
-          default:
-            throw UnimplementedError();
-        }
-        _checkLapackInfo(
-          info,
-          routine,
-          positiveKind: _LapackFailureKind.iterationsExceeded,
-          positiveMessage: '$routine failed to converge: $info',
-        );
+    final vSliceBytes = n * n * targetDType.byteWidth;
+    final wSliceBytes = n * eigenvalueDType.byteWidth;
+    final vBaseAddr = vMat.pointer.address;
+    final wBaseAddr = wMat.pointer.address;
 
-        final wSlice = wMat.slice([
-          ...coords.map((c) => Index(c)),
-          Slice.all(),
-        ]);
-        w2D.copyToContiguous(wSlice);
-        wSlice.dispose();
+    for (var step = 0; step < totalSlices; step++) {
+      final vSlicePtr = ffi.Pointer<ffi.Void>.fromAddress(
+        vBaseAddr + step * vSliceBytes,
+      );
+      final wSlicePtr = ffi.Pointer<ffi.Void>.fromAddress(
+        wBaseAddr + step * wSliceBytes,
+      );
 
-        final vSlice = vMat.slice([
-          ...coords.map((c) => Index(c)),
-          Slice.all(),
-          Slice.all(),
-        ]);
-        aCopy2D.copyToContiguous(vSlice);
-        vSlice.dispose();
-      });
-    } finally {
-      ScratchArena.reset(marker);
-      aCopy2D.dispose();
-      w2D.dispose();
+      final int info;
+      final String routine;
+      switch (targetDType) {
+        case DType.float64:
+          routine = 'LAPACKE_dsyevd';
+          info = LAPACKE_dsyevd(
+            101,
+            jobzVal,
+            uploVal,
+            n,
+            vSlicePtr.cast<ffi.Double>(),
+            n,
+            wSlicePtr.cast<ffi.Double>(),
+          );
+        case DType.float32:
+          routine = 'LAPACKE_ssyevd';
+          info = LAPACKE_ssyevd(
+            101,
+            jobzVal,
+            uploVal,
+            n,
+            vSlicePtr.cast<ffi.Float>(),
+            n,
+            wSlicePtr.cast<ffi.Float>(),
+          );
+        case DType.complex128:
+          routine = 'LAPACKE_zheevd';
+          info = LAPACKE_zheevd(
+            101,
+            jobzVal,
+            uploVal,
+            n,
+            vSlicePtr.cast<ffi.Double>(),
+            n,
+            wSlicePtr.cast<ffi.Double>(),
+          );
+        case DType.complex64:
+          routine = 'LAPACKE_cheevd';
+          info = LAPACKE_cheevd(
+            101,
+            jobzVal,
+            uploVal,
+            n,
+            vSlicePtr.cast<ffi.Float>(),
+            n,
+            wSlicePtr.cast<ffi.Float>(),
+          );
+        default:
+          throw UnimplementedError();
+      }
+      _checkLapackInfo(
+        info,
+        routine,
+        positiveKind: _LapackFailureKind.iterationsExceeded,
+        positiveMessage: '$routine failed to converge: $info',
+      );
     }
 
     NDArray<DTypeTag> finalW = wMat;
@@ -5520,7 +5529,11 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
     if (out != null) {
       wMat = out;
     } else {
-      wMat = _zerosTyped(eigenvaluesShape, eigenvalueDType);
+      wMat = NDArray.create(
+        eigenvaluesShape,
+        eigenvalueDType,
+        zeroInit: n == 0,
+      );
     }
 
     if (n == 0) {
@@ -5539,34 +5552,38 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
     final uploVal = uplo == MatrixTriangle.lower ? 76 : 85;
     final jobzVal = 78; // 'N'
 
-    final aCopy2D = _createTyped2D(n, n, targetDType);
-    final w2D = _zerosTyped([n], eigenvalueDType);
-
-    final marker = ScratchArena.marker;
+    final NDArray<DTypeTag> aWork = a.dtype == targetDType
+        ? (a as NDArray<DTypeTag>).copy()
+        : castNDArray(a, targetDType);
     try {
-      walkStackCoords(stackShape, List<int>.filled(stackShape.length, 0), 0, (
-        coords,
-      ) {
-        final sliceView = a.slice([
-          ...coords.map((c) => Index(c)),
-          Slice.all(),
-          Slice.all(),
-        ]);
-        if (sliceView.dtype == targetDType) {
-          (sliceView as NDArray<DTypeTag>).copy(out: aCopy2D);
-        } else {
-          final casted = castNDArray(sliceView, targetDType);
-          casted.copy(out: aCopy2D);
-          casted.dispose();
-        }
-        sliceView.dispose();
-
-        final nf = _analyzeNonFinitePtr(aCopy2D.pointer, n * n, targetDType);
+      var totalSlices = 1;
+      for (final dim in stackShape) {
+        totalSlices *= dim;
+      }
+      if (totalSlices > 0) {
+        final nf = _analyzeNonFinitePtr(
+          aWork.pointer,
+          totalSlices * n * n,
+          targetDType,
+        );
         if (nf.hasNaN || nf.hasInf) {
           throw const LinAlgException(
             'Array must not contain infs or NaNs in eigvalsh.',
           );
         }
+      }
+      final aSliceBytes = n * n * targetDType.byteWidth;
+      final wSliceBytes = n * eigenvalueDType.byteWidth;
+      final aBaseAddr = aWork.pointer.address;
+      final wBaseAddr = wMat.pointer.address;
+
+      for (var step = 0; step < totalSlices; step++) {
+        final aSlicePtr = ffi.Pointer<ffi.Void>.fromAddress(
+          aBaseAddr + step * aSliceBytes,
+        );
+        final wSlicePtr = ffi.Pointer<ffi.Void>.fromAddress(
+          wBaseAddr + step * wSliceBytes,
+        );
 
         final int info;
         final String routine;
@@ -5578,9 +5595,9 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
               jobzVal,
               uploVal,
               n,
-              aCopy2D.pointer.cast<ffi.Double>(),
+              aSlicePtr.cast<ffi.Double>(),
               n,
-              w2D.pointer.cast<ffi.Double>(),
+              wSlicePtr.cast<ffi.Double>(),
             );
           case DType.float32:
             routine = 'LAPACKE_ssyevd';
@@ -5589,9 +5606,9 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
               jobzVal,
               uploVal,
               n,
-              aCopy2D.pointer.cast<ffi.Float>(),
+              aSlicePtr.cast<ffi.Float>(),
               n,
-              w2D.pointer.cast<ffi.Float>(),
+              wSlicePtr.cast<ffi.Float>(),
             );
           case DType.complex128:
             routine = 'LAPACKE_zheevd';
@@ -5600,9 +5617,9 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
               jobzVal,
               uploVal,
               n,
-              aCopy2D.pointer.cast<ffi.Double>(),
+              aSlicePtr.cast<ffi.Double>(),
               n,
-              w2D.pointer.cast<ffi.Double>(),
+              wSlicePtr.cast<ffi.Double>(),
             );
           case DType.complex64:
             routine = 'LAPACKE_cheevd';
@@ -5611,9 +5628,9 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
               jobzVal,
               uploVal,
               n,
-              aCopy2D.pointer.cast<ffi.Float>(),
+              aSlicePtr.cast<ffi.Float>(),
               n,
-              w2D.pointer.cast<ffi.Float>(),
+              wSlicePtr.cast<ffi.Float>(),
             );
           default:
             throw UnimplementedError();
@@ -5624,18 +5641,9 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
           positiveKind: _LapackFailureKind.iterationsExceeded,
           positiveMessage: '$routine failed to converge: $info',
         );
-
-        final wSlice = wMat.slice([
-          ...coords.map((c) => Index(c)),
-          Slice.all(),
-        ]);
-        w2D.copyToContiguous(wSlice);
-        wSlice.dispose();
-      });
+      }
     } finally {
-      ScratchArena.reset(marker);
-      aCopy2D.dispose();
-      w2D.dispose();
+      aWork.dispose();
     }
 
     NDArray<DTypeTag> finalW = wMat;

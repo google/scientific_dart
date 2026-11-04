@@ -1279,6 +1279,12 @@ static void strided_unary_op_impl(
             for (int64_t j = 0; j < inner_n; j++) {
                 rowRes[j] = op(rowSrc[j]);
             }
+        } else if (sSrc == 0 && sRes == 1) {
+            const T val = op(rowSrc[0]);
+            T * RESTRICT rRes = rowRes;
+            for (int64_t j = 0; j < inner_n; j++) {
+                rRes[j] = val;
+            }
         } else {
             NDARRAY_SCALAR_LOOP
             for (int64_t j = 0; j < inner_n; j++) {
@@ -1448,6 +1454,12 @@ static void strided_unary_cast_impl(
         } else if (sSrc == 1 && sRes == 1) {
             for (int64_t j = 0; j < inner_n; j++) {
                 rowRes[j] = op(rowSrc[j]);
+            }
+        } else if (sSrc == 0 && sRes == 1) {
+            const T_OUT val = op(rowSrc[0]);
+            T_OUT * RESTRICT rRes = rowRes;
+            for (int64_t j = 0; j < inner_n; j++) {
+                rRes[j] = val;
             }
         } else {
             NDARRAY_SCALAR_LOOP
@@ -1992,6 +2004,13 @@ static void strided_unary_simd_op_impl(
         T *rowRes = res + offsetRes;
         if (sSrc == 1 && sRes == 1) {
             contig_fn(rowSrc, rowRes, inner_n);
+        } else if (sSrc == 0 && sRes == 1) {
+            T val;
+            contig_fn(rowSrc, &val, 1);
+            T * RESTRICT rRes = rowRes;
+            for (int64_t j = 0; j < inner_n; j++) {
+                rRes[j] = val;
+            }
         } else if (inner_n >= 8) {
             constexpr int64_t CHUNK = 64;
             T buf[CHUNK];
@@ -8428,18 +8447,117 @@ static inline uint8_t fast_isfinite_float(float x) {
     return ((b & 0x7FFFFFFFU) < 0x7F800000U) ? 1 : 0;
 }
 
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_isnan_double, double, uint8_t, fast_isnan_double(x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_isnan_float, float, uint8_t, fast_isnan_float(x))
+template <typename T, typename Op, typename MaskFn>
+static inline void v_float_pred_simd_impl(const T *src, uint8_t *res, int64_t size, const uint8_t *mask, Op scalar_op, MaskFn mask_fn) {
+    if (src == nullptr || res == nullptr || size <= 0) return;
+    bool overlap = contiguous_buffers_overlap_not_identical(src, (size_t)size * sizeof(T), res, (size_t)size * sizeof(uint8_t)) ||
+                   (static_cast<const void *>(src) == static_cast<const void *>(res)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(uint8_t));
+    if (overlap || mask != nullptr) {
+        v_unary_cast_impl(src, res, size, mask, scalar_op);
+        return;
+    }
+    const hn::ScalableTag<T> d;
+    using DU = hn::Rebind<std::conditional_t<sizeof(T) == 8, uint64_t, uint32_t>, decltype(d)>;
+    const DU du;
+    const int64_t N = hn::Lanes(d);
+    const auto one = hn::Set(du, 1);
+    int64_t i = 0;
+    if constexpr (sizeof(T) == 8) {
+        using DU32 = hn::Rebind<uint32_t, decltype(d)>;
+        using DU8 = hn::Rebind<uint8_t, decltype(d)>;
+        const DU32 du32;
+        const DU8 du8;
+#if HWY_TARGET != HWY_SCALAR
+        using DU32Repart = hn::Repartition<uint32_t, decltype(d)>;
+        using DU16Repart = hn::Repartition<uint16_t, decltype(d)>;
+        using DU8Half = hn::Rebind<uint8_t, DU16Repart>;
+        const DU32Repart du32_repart;
+        const DU16Repart du16_repart;
+        const DU8Half du8_half;
+        for (; i + 4 * N <= size; i += 4 * N) {
+            const auto vx0 = hn::LoadU(d, src + i);
+            const auto vx1 = hn::LoadU(d, src + i + N);
+            const auto vx2 = hn::LoadU(d, src + i + 2 * N);
+            const auto vx3 = hn::LoadU(d, src + i + 3 * N);
+            const auto v0 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx0))), one);
+            const auto v1 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx1))), one);
+            const auto v2 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx2))), one);
+            const auto v3 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx3))), one);
+            const auto v32_01 = hn::OrderedDemote2To(du32_repart, v0, v1);
+            const auto v32_23 = hn::OrderedDemote2To(du32_repart, v2, v3);
+            const auto v16_0123 = hn::OrderedDemote2To(du16_repart, v32_01, v32_23);
+            const auto v8_0123 = hn::DemoteTo(du8_half, v16_0123);
+            hn::StoreU(v8_0123, du8_half, res + i);
+        }
+#endif
+        for (; i + N <= size; i += N) {
+            const auto vx = hn::LoadU(d, src + i);
+            const auto m = hn::RebindMask(du, mask_fn(vx));
+            const auto v01 = hn::And(hn::VecFromMask(du, m), one);
+            const auto v8 = hn::DemoteTo(du8, hn::DemoteTo(du32, v01));
+            hn::StoreU(v8, du8, res + i);
+        }
+    } else {
+        using DU8 = hn::Rebind<uint8_t, decltype(d)>;
+        const DU8 du8;
+#if HWY_TARGET != HWY_SCALAR
+        using DU16Repart = hn::Repartition<uint16_t, decltype(d)>;
+        using DU8Repart = hn::Repartition<uint8_t, decltype(d)>;
+        const DU16Repart du16_repart;
+        const DU8Repart du8_repart;
+        for (; i + 4 * N <= size; i += 4 * N) {
+            const auto vx0 = hn::LoadU(d, src + i);
+            const auto vx1 = hn::LoadU(d, src + i + N);
+            const auto vx2 = hn::LoadU(d, src + i + 2 * N);
+            const auto vx3 = hn::LoadU(d, src + i + 3 * N);
+            const auto v0 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx0))), one);
+            const auto v1 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx1))), one);
+            const auto v2 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx2))), one);
+            const auto v3 = hn::And(hn::VecFromMask(du, hn::RebindMask(du, mask_fn(vx3))), one);
+            const auto v16_01 = hn::OrderedDemote2To(du16_repart, v0, v1);
+            const auto v16_23 = hn::OrderedDemote2To(du16_repart, v2, v3);
+            const auto v8_0123 = hn::OrderedDemote2To(du8_repart, v16_01, v16_23);
+            hn::StoreU(v8_0123, du8_repart, res + i);
+        }
+#endif
+        for (; i + N <= size; i += N) {
+            const auto vx = hn::LoadU(d, src + i);
+            const auto m = hn::RebindMask(du, mask_fn(vx));
+            const auto v01 = hn::And(hn::VecFromMask(du, m), one);
+            const auto v8 = hn::DemoteTo(du8, v01);
+            hn::StoreU(v8, du8, res + i);
+        }
+    }
+    for (; i < size; i++) {
+        res[i] = scalar_op(src[i]);
+    }
+}
+
+void v_isnan_double(const double *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_float_pred_simd_impl(src, res, size, mask, fast_isnan_double, [](auto vx) { return hn::IsNaN(vx); });
+}
+void v_isnan_float(const float *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_float_pred_simd_impl(src, res, size, mask, fast_isnan_float, [](auto vx) { return hn::IsNaN(vx); });
+}
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_isnan_complex128, cpx_t, uint8_t, (fast_isnan_double(x.r) | fast_isnan_double(x.i)))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_isnan_complex64, cpx_f_t, uint8_t, (fast_isnan_float(x.r) | fast_isnan_float(x.i)))
 
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_isinf_double, double, uint8_t, fast_isinf_double(x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_isinf_float, float, uint8_t, fast_isinf_float(x))
+void v_isinf_double(const double *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_float_pred_simd_impl(src, res, size, mask, fast_isinf_double, [](auto vx) { return hn::IsInf(vx); });
+}
+void v_isinf_float(const float *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_float_pred_simd_impl(src, res, size, mask, fast_isinf_float, [](auto vx) { return hn::IsInf(vx); });
+}
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_isinf_complex128, cpx_t, uint8_t, (fast_isinf_double(x.r) | fast_isinf_double(x.i)))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_isinf_complex64, cpx_f_t, uint8_t, (fast_isinf_float(x.r) | fast_isinf_float(x.i)))
 
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_isfinite_double, double, uint8_t, fast_isfinite_double(x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_isfinite_float, float, uint8_t, fast_isfinite_float(x))
+void v_isfinite_double(const double *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_float_pred_simd_impl(src, res, size, mask, fast_isfinite_double, [](auto vx) { return hn::IsFinite(vx); });
+}
+void v_isfinite_float(const float *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_float_pred_simd_impl(src, res, size, mask, fast_isfinite_float, [](auto vx) { return hn::IsFinite(vx); });
+}
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_isfinite_complex128, cpx_t, uint8_t, (fast_isfinite_double(x.r) & fast_isfinite_double(x.i)))
 DEFINE_CONTIGUOUS_UNARY_IMPL(v_isfinite_complex64, cpx_f_t, uint8_t, (fast_isfinite_float(x.r) & fast_isfinite_float(x.i)))
 
@@ -15791,9 +15909,18 @@ int ndarray_find_index(
 
 #define COMPUTE_EUCLIDEAN(type, u, strideU, v, strideV, N, result) do { \
     double sum = 0.0; \
-    for (int64_t i = 0; i < N; i++) { \
-        double diff = (double)((const type*)u)[i * strideU] - (double)((const type*)v)[i * strideV]; \
-        sum += diff * diff; \
+    if ((strideU) == 1 && (strideV) == 1) { \
+        const type * RESTRICT u_ptr = (const type*)(u); \
+        const type * RESTRICT v_ptr = (const type*)(v); \
+        for (int64_t i = 0; i < (N); i++) { \
+            double diff = (double)u_ptr[i] - (double)v_ptr[i]; \
+            sum += diff * diff; \
+        } \
+    } else { \
+        for (int64_t i = 0; i < (N); i++) { \
+            double diff = (double)((const type*)(u))[i * (strideU)] - (double)((const type*)(v))[i * (strideV)]; \
+            sum += diff * diff; \
+        } \
     } \
     result = sqrt(sum); \
 } while(0)
@@ -15802,12 +15929,24 @@ int ndarray_find_index(
     double dot = 0.0; \
     double norm_u = 0.0; \
     double norm_v = 0.0; \
-    for (int64_t i = 0; i < N; i++) { \
-        double val_u = (double)((const type*)u)[i * strideU]; \
-        double val_v = (double)((const type*)v)[i * strideV]; \
-        dot += val_u * val_v; \
-        norm_u += val_u * val_u; \
-        norm_v += val_v * val_v; \
+    if ((strideU) == 1 && (strideV) == 1) { \
+        const type * RESTRICT u_ptr = (const type*)(u); \
+        const type * RESTRICT v_ptr = (const type*)(v); \
+        for (int64_t i = 0; i < (N); i++) { \
+            double val_u = (double)u_ptr[i]; \
+            double val_v = (double)v_ptr[i]; \
+            dot += val_u * val_v; \
+            norm_u += val_u * val_u; \
+            norm_v += val_v * val_v; \
+        } \
+    } else { \
+        for (int64_t i = 0; i < (N); i++) { \
+            double val_u = (double)((const type*)(u))[i * (strideU)]; \
+            double val_v = (double)((const type*)(v))[i * (strideV)]; \
+            dot += val_u * val_v; \
+            norm_u += val_u * val_u; \
+            norm_v += val_v * val_v; \
+        } \
     } \
     if (norm_u == 0.0 || norm_v == 0.0) { \
         result = NAN; \
@@ -15817,27 +15956,50 @@ int ndarray_find_index(
 } while(0)
 
 #define COMPUTE_HAMMING(type, u, strideU, v, strideV, N, result) do { \
-    if (N == 0) { \
+    if ((N) == 0) { \
         result = NAN; \
     } else { \
-        double diff_count = 0.0; \
-        for (int64_t i = 0; i < N; i++) { \
-            diff_count += (((const type*)u)[i * strideU] != ((const type*)v)[i * strideV]); \
+        int64_t diff_count = 0; \
+        if ((strideU) == 1 && (strideV) == 1) { \
+            const type * RESTRICT u_ptr = (const type*)(u); \
+            const type * RESTRICT v_ptr = (const type*)(v); \
+            for (int64_t i = 0; i < (N); i++) { \
+                diff_count += (u_ptr[i] != v_ptr[i]); \
+            } \
+        } else { \
+            for (int64_t i = 0; i < (N); i++) { \
+                diff_count += (((const type*)(u))[i * (strideU)] != ((const type*)(v))[i * (strideV)]); \
+            } \
         } \
-        result = diff_count / (double)N; \
+        result = (double)diff_count / (double)(N); \
     } \
 } while(0)
 
 #define COMPUTE_CHEBYSHEV(type, u, strideU, v, strideV, N, result) do { \
     double max_diff = 0.0; \
-    for (int64_t i = 0; i < N; i++) { \
-        double diff = std::abs((double)((const type*)u)[i * strideU] - (double)((const type*)v)[i * strideV]); \
-        if (std::isnan(diff)) { \
-            max_diff = NAN; \
-            break; \
+    if ((strideU) == 1 && (strideV) == 1) { \
+        const type * RESTRICT u_ptr = (const type*)(u); \
+        const type * RESTRICT v_ptr = (const type*)(v); \
+        for (int64_t i = 0; i < (N); i++) { \
+            double diff = std::abs((double)u_ptr[i] - (double)v_ptr[i]); \
+            if (HWY_UNLIKELY(std::isnan(diff))) { \
+                max_diff = NAN; \
+                break; \
+            } \
+            if (diff > max_diff) { \
+                max_diff = diff; \
+            } \
         } \
-        if (diff > max_diff) { \
-            max_diff = diff; \
+    } else { \
+        for (int64_t i = 0; i < (N); i++) { \
+            double diff = std::abs((double)((const type*)(u))[i * (strideU)] - (double)((const type*)(v))[i * (strideV)]); \
+            if (HWY_UNLIKELY(std::isnan(diff))) { \
+                max_diff = NAN; \
+                break; \
+            } \
+            if (diff > max_diff) { \
+                max_diff = diff; \
+            } \
         } \
     } \
     result = max_diff; \

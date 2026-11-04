@@ -307,12 +307,24 @@ inline bool is_nonzero(T val) {
     return val != T(0);
 }
 template <>
+inline bool is_nonzero<double>(double val) {
+    uint64_t b;
+    std::memcpy(&b, &val, sizeof(b));
+    return (b & 0x7FFFFFFFFFFFFFFFULL) != 0;
+}
+template <>
+inline bool is_nonzero<float>(float val) {
+    uint32_t b;
+    std::memcpy(&b, &val, sizeof(b));
+    return (b & 0x7FFFFFFFU) != 0;
+}
+template <>
 inline bool is_nonzero<complex128_t>(complex128_t val) {
-    return val.real != 0.0 || val.imag != 0.0;
+    return is_nonzero<double>(val.real) || is_nonzero<double>(val.imag);
 }
 template <>
 inline bool is_nonzero<complex64_t>(complex64_t val) {
-    return val.real != 0.0f || val.imag != 0.0f;
+    return is_nonzero<float>(val.real) || is_nonzero<float>(val.imag);
 }
 
 template <typename T>
@@ -1368,49 +1380,214 @@ static void searchsorted(const T *arr, int64_t size, const T *values, int64_t *o
     }
 }
 
+HWY_BEFORE_NAMESPACE();
+namespace ndarray_hwy {
+
 template <typename T>
-static void to_bool_mask(
-    const T *src,
-    int64_t size,
-    const int64_t *shape,
-    const int64_t *strides,
-    int rank,
-    int is_contiguous,
-    unsigned char *dest
-) {
-    if (src == nullptr || dest == nullptr || size <= 0) return;
-    if (is_contiguous) {
-        for (int64_t i = 0; i < size; i++) {
-            dest[i] = is_nonzero(src[i]) ? 1 : 0;
+static int64_t CountNonZeroContiguous(const T *src, int64_t n) {
+    int64_t count = 0;
+    int64_t i = 0;
+    if constexpr (std::is_same_v<T, double>) {
+        const hn::ScalableTag<double> df;
+        using DI = hn::Rebind<int64_t, decltype(df)>;
+        using DU = hn::Rebind<uint64_t, decltype(df)>;
+        const DI di;
+        const DU du;
+        const int64_t L = hn::Lanes(df);
+        const auto abs_mask = hn::Set(du, 0x7FFFFFFFFFFFFFFFULL);
+        const auto zero = hn::Zero(du);
+        auto acc0 = hn::Zero(di);
+        auto acc1 = hn::Zero(di);
+        auto acc2 = hn::Zero(di);
+        auto acc3 = hn::Zero(di);
+        for (; i + 4 * L <= n; i += 4 * L) {
+            auto v0 = hn::And(hn::BitCast(du, hn::LoadU(df, src + i)), abs_mask);
+            auto v1 = hn::And(hn::BitCast(du, hn::LoadU(df, src + i + L)), abs_mask);
+            auto v2 = hn::And(hn::BitCast(du, hn::LoadU(df, src + i + 2 * L)), abs_mask);
+            auto v3 = hn::And(hn::BitCast(du, hn::LoadU(df, src + i + 3 * L)), abs_mask);
+            acc0 = hn::Sub(acc0, hn::BitCast(di, hn::VecFromMask(du, v0 != zero)));
+            acc1 = hn::Sub(acc1, hn::BitCast(di, hn::VecFromMask(du, v1 != zero)));
+            acc2 = hn::Sub(acc2, hn::BitCast(di, hn::VecFromMask(du, v2 != zero)));
+            acc3 = hn::Sub(acc3, hn::BitCast(di, hn::VecFromMask(du, v3 != zero)));
         }
-        return;
-    }
-    if (shape == nullptr || strides == nullptr || rank <= 0) return;
-    NoThrowBuffer<int64_t> coord_vec;
-    int64_t coord_stack[32] = {0};
-    int64_t *coord = coord_stack;
-    if (rank > 32) {
-        coord_vec.assign(rank, 0);
-        if (!coord_vec.ok()) return;
-        coord = coord_vec.data();
-    }
-    int64_t offset = 0;
-    for (int64_t i = 0; i < size; i++) {
-        dest[i] = is_nonzero(src[offset]) ? 1 : 0;
-        for (int d = rank - 1; d >= 0; d--) {
-            coord[d]++;
-            if (coord[d] < shape[d]) {
-                offset += strides[d];
-                break;
-            }
-            coord[d] = 0;
-            offset -= (shape[d] - 1) * strides[d];
+        count += hn::ReduceSum(di, hn::Add(hn::Add(acc0, acc1), hn::Add(acc2, acc3)));
+        for (; i + L <= n; i += L) {
+            auto v = hn::And(hn::BitCast(du, hn::LoadU(df, src + i)), abs_mask);
+            count += hn::CountTrue(du, v != zero);
         }
+    } else if constexpr (std::is_same_v<T, float>) {
+        const hn::ScalableTag<float> df;
+        using DU = hn::Rebind<uint32_t, decltype(df)>;
+        const DU du;
+        const int64_t L = hn::Lanes(df);
+        const auto abs_mask = hn::Set(du, 0x7FFFFFFFU);
+        const auto zero = hn::Zero(du);
+        for (; i + L <= n; i += L) {
+            auto v = hn::And(hn::BitCast(du, hn::LoadU(df, src + i)), abs_mask);
+            count += hn::CountTrue(du, v != zero);
+        }
+    } else if constexpr (std::is_integral_v<T>) {
+        using LaneT = std::conditional_t<
+            sizeof(T) == 8, int64_t,
+            std::conditional_t<sizeof(T) == 4, int32_t,
+            std::conditional_t<sizeof(T) == 2, int16_t, uint8_t>>>;
+        const hn::ScalableTag<LaneT> d;
+        const int64_t L = hn::Lanes(d);
+        const LaneT *p = reinterpret_cast<const LaneT *>(src);
+        const auto zero = hn::Zero(d);
+        for (; i + 4 * L <= n; i += 4 * L) {
+            count += hn::CountTrue(d, hn::LoadU(d, p + i) != zero) +
+                     hn::CountTrue(d, hn::LoadU(d, p + i + L) != zero) +
+                     hn::CountTrue(d, hn::LoadU(d, p + i + 2 * L) != zero) +
+                     hn::CountTrue(d, hn::LoadU(d, p + i + 3 * L) != zero);
+        }
+        for (; i + L <= n; i += L) {
+            count += hn::CountTrue(d, hn::LoadU(d, p + i) != zero);
+        }
+    }
+    for (; i < n; i++) {
+        if (is_nonzero(src[i])) count++;
+    }
+    return count;
+}
+
+template <typename T>
+static void ToBoolMaskContiguous(const T *src, int64_t n, unsigned char *dest) {
+    int64_t i = 0;
+    if constexpr (std::is_same_v<T, double> || (std::is_integral_v<T> && sizeof(T) == 8)) {
+        const hn::ScalableTag<uint64_t> du;
+        using DU32 = hn::Rebind<uint32_t, decltype(du)>;
+        using DU8 = hn::Rebind<uint8_t, decltype(du)>;
+        const DU32 du32;
+        const DU8 du8;
+        const int64_t L = hn::Lanes(du);
+        const uint64_t *p = reinterpret_cast<const uint64_t *>(src);
+        const auto zero = hn::Zero(du);
+        const auto one = hn::Set(du, 1);
+        const auto abs_mask = hn::Set(du, std::is_same_v<T, double> ? 0x7FFFFFFFFFFFFFFFULL : 0xFFFFFFFFFFFFFFFFULL);
+#if HWY_TARGET != HWY_SCALAR
+        using DU32Repart = hn::Repartition<uint32_t, decltype(du)>;
+        using DU16Repart = hn::Repartition<uint16_t, decltype(du)>;
+        using DU8Half = hn::Rebind<uint8_t, DU16Repart>;
+        const DU32Repart du32_repart;
+        const DU16Repart du16_repart;
+        const DU8Half du8_half;
+        for (; i + 4 * L <= n; i += 4 * L) {
+            const auto v0 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i), abs_mask) != zero), one);
+            const auto v1 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i + L), abs_mask) != zero), one);
+            const auto v2 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i + 2 * L), abs_mask) != zero), one);
+            const auto v3 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i + 3 * L), abs_mask) != zero), one);
+            const auto v32_01 = hn::OrderedDemote2To(du32_repart, v0, v1);
+            const auto v32_23 = hn::OrderedDemote2To(du32_repart, v2, v3);
+            const auto v16_0123 = hn::OrderedDemote2To(du16_repart, v32_01, v32_23);
+            const auto v8_0123 = hn::DemoteTo(du8_half, v16_0123);
+            hn::StoreU(v8_0123, du8_half, dest + i);
+        }
+#endif
+        for (; i + L <= n; i += L) {
+            const auto v = hn::And(hn::LoadU(du, p + i), abs_mask);
+            const auto v01 = hn::And(hn::VecFromMask(du, v != zero), one);
+            const auto v8 = hn::DemoteTo(du8, hn::DemoteTo(du32, v01));
+            hn::StoreU(v8, du8, dest + i);
+        }
+    } else if constexpr (std::is_same_v<T, float> || (std::is_integral_v<T> && sizeof(T) == 4)) {
+        const hn::ScalableTag<uint32_t> du;
+        using DU8 = hn::Rebind<uint8_t, decltype(du)>;
+        const DU8 du8;
+        const int64_t L = hn::Lanes(du);
+        const uint32_t *p = reinterpret_cast<const uint32_t *>(src);
+        const auto zero = hn::Zero(du);
+        const auto one = hn::Set(du, 1);
+        const auto abs_mask = hn::Set(du, std::is_same_v<T, float> ? 0x7FFFFFFFU : 0xFFFFFFFFU);
+#if HWY_TARGET != HWY_SCALAR
+        using DU16Repart = hn::Repartition<uint16_t, decltype(du)>;
+        using DU8Repart = hn::Repartition<uint8_t, decltype(du)>;
+        const DU16Repart du16_repart;
+        const DU8Repart du8_repart;
+        for (; i + 4 * L <= n; i += 4 * L) {
+            const auto v0 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i), abs_mask) != zero), one);
+            const auto v1 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i + L), abs_mask) != zero), one);
+            const auto v2 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i + 2 * L), abs_mask) != zero), one);
+            const auto v3 = hn::And(hn::VecFromMask(du, hn::And(hn::LoadU(du, p + i + 3 * L), abs_mask) != zero), one);
+            const auto v16_01 = hn::OrderedDemote2To(du16_repart, v0, v1);
+            const auto v16_23 = hn::OrderedDemote2To(du16_repart, v2, v3);
+            const auto v8_0123 = hn::OrderedDemote2To(du8_repart, v16_01, v16_23);
+            hn::StoreU(v8_0123, du8_repart, dest + i);
+        }
+#endif
+        for (; i + L <= n; i += L) {
+            const auto v = hn::And(hn::LoadU(du, p + i), abs_mask);
+            const auto v01 = hn::And(hn::VecFromMask(du, v != zero), one);
+            const auto v8 = hn::DemoteTo(du8, v01);
+            hn::StoreU(v8, du8, dest + i);
+        }
+    } else if constexpr (std::is_integral_v<T> && sizeof(T) == 2) {
+        const hn::ScalableTag<uint16_t> du;
+        using DU8 = hn::Rebind<uint8_t, decltype(du)>;
+        const DU8 du8;
+        const int64_t L = hn::Lanes(du);
+        const uint16_t *p = reinterpret_cast<const uint16_t *>(src);
+        const auto zero = hn::Zero(du);
+        const auto one = hn::Set(du, 1);
+        for (; i + L <= n; i += L) {
+            const auto v = hn::LoadU(du, p + i);
+            const auto v01 = hn::And(hn::VecFromMask(du, v != zero), one);
+            const auto v8 = hn::DemoteTo(du8, v01);
+            hn::StoreU(v8, du8, dest + i);
+        }
+    } else if constexpr (std::is_integral_v<T> && sizeof(T) == 1) {
+        const hn::ScalableTag<uint8_t> du;
+        const int64_t L = hn::Lanes(du);
+        const uint8_t *p = reinterpret_cast<const uint8_t *>(src);
+        const auto zero = hn::Zero(du);
+        const auto one = hn::Set(du, 1);
+        for (; i + L <= n; i += L) {
+            const auto v = hn::LoadU(du, p + i);
+            const auto v01 = hn::And(hn::VecFromMask(du, v != zero), one);
+            hn::StoreU(v01, du, dest + i);
+        }
+    }
+    for (; i < n; i++) {
+        dest[i] = is_nonzero(src[i]) ? 1 : 0;
     }
 }
 
-HWY_BEFORE_NAMESPACE();
-namespace ndarray_hwy {
+static int64_t UnpackMaskImpl(const uint8_t *mask_ptr, int64_t size, int64_t *out_indices) {
+    const hn::ScalableTag<int64_t> d;
+    using Rebind8 = hn::Rebind<uint8_t, decltype(d)>;
+    const Rebind8 d8;
+    const int64_t L = hn::Lanes(d);
+
+    int64_t total_count = 0;
+    int64_t j = 0;
+    if (L <= 64) {
+        alignas(64) int64_t buf[128];
+        auto v_base = hn::Iota(d, 0);
+        const auto zero = hn::Zero(d);
+
+        while (j + L <= size) {
+            int64_t chunk_end = std::min<int64_t>(size - L, j + 64 - L);
+            int64_t chunk_count = 0;
+            for (; j <= chunk_end; j += L) {
+                auto mask_bytes = hn::LoadU(d8, mask_ptr + j);
+                auto mask_i64 = hn::PromoteTo(d, mask_bytes);
+                auto mask = (mask_i64 != zero);
+                auto v_index = hn::Add(v_base, hn::Set(d, j));
+                chunk_count += hn::CompressStore(v_index, mask, d, buf + chunk_count);
+            }
+            if (chunk_count > 0) {
+                std::memcpy(out_indices + total_count, buf, static_cast<size_t>(chunk_count) * sizeof(int64_t));
+                total_count += chunk_count;
+            }
+        }
+    }
+    for (; j < size; j++) {
+        if (mask_ptr[j] != 0) {
+            out_indices[total_count++] = j;
+        }
+    }
+    return total_count;
+}
 
 template <typename T>
 static int64_t ArgMinMax1D(const T *src, int64_t n, int is_max) {
@@ -1653,11 +1830,7 @@ static void count_nonzero(
     if (src == nullptr || dest == nullptr || shape == nullptr || stridesSrc == nullptr || stridesDest == nullptr || rank <= 0) return;
     if (axis < 0) {
         if (is_contiguous) {
-            int64_t count = 0;
-            for (int64_t i = 0; i < shape[0]; i++) {
-                if (is_nonzero(src[i])) count++;
-            }
-            dest[0] = count;
+            dest[0] = ndarray_hwy::CountNonZeroContiguous(src, shape[0]);
             return;
         }
         int64_t total_size = 1;
@@ -2735,6 +2908,26 @@ extern "C" void native_collect_nonzero_coords(
     int64_t **out_coords
 ) {
     if (cond == nullptr || shape == nullptr || strides == nullptr || out_coords == nullptr || total_size <= 0 || rank <= 0) return;
+    if (rank == 1 && strides[0] == 1) {
+        ndarray_hwy::UnpackMaskImpl(cond, total_size, out_coords[0]);
+        return;
+    }
+    if (rank == 2 && strides[0] == shape[1] && strides[1] == 1) {
+        const int64_t rows = shape[0];
+        const int64_t cols = shape[1];
+        int64_t *out_r = out_coords[0];
+        int64_t *out_c = out_coords[1];
+        int64_t write_idx = 0;
+        for (int64_t r = 0; r < rows; r++) {
+            int64_t row_count = ndarray_hwy::UnpackMaskImpl(cond + r * cols, cols, out_c + write_idx);
+            int64_t *r_ptr = out_r + write_idx;
+            for (int64_t k = 0; k < row_count; k++) {
+                r_ptr[k] = r;
+            }
+            write_idx += row_count;
+        }
+        return;
+    }
     NoThrowBuffer<int64_t> coord_vec;
     int64_t coord_stack[32] = {0};
     int64_t *coord = coord_stack;
@@ -2776,6 +2969,29 @@ extern "C" void native_collect_nonzero_coords_grouped(
     int64_t *out_coords
 ) {
     if (cond == nullptr || shape == nullptr || strides == nullptr || out_coords == nullptr || total_size <= 0 || rank <= 0) return;
+    if (rank == 1 && strides[0] == 1) {
+        ndarray_hwy::UnpackMaskImpl(cond, total_size, out_coords);
+        return;
+    }
+    if (rank == 2 && strides[0] == shape[1] && strides[1] == 1) {
+        const int64_t rows = shape[0];
+        const int64_t cols = shape[1];
+        int64_t col_buf[256];
+        int64_t write_idx = 0;
+        for (int64_t r = 0; r < rows; r++) {
+            const unsigned char *row = cond + r * cols;
+            for (int64_t c0 = 0; c0 < cols; c0 += 256) {
+                int64_t chunk = std::min<int64_t>(256, cols - c0);
+                int64_t cnt = ndarray_hwy::UnpackMaskImpl(row + c0, chunk, col_buf);
+                for (int64_t k = 0; k < cnt; k++) {
+                    out_coords[write_idx * 2] = r;
+                    out_coords[write_idx * 2 + 1] = c0 + col_buf[k];
+                    write_idx++;
+                }
+            }
+        }
+        return;
+    }
     NoThrowBuffer<int64_t> coord_vec;
     int64_t coord_stack[32] = {0};
     int64_t *coord = coord_stack;
@@ -2796,6 +3012,48 @@ extern "C" void native_collect_nonzero_coords_grouped(
         }
 
         // Advance odometer multidimensional walk
+        for (int d = rank - 1; d >= 0; d--) {
+            coord[d]++;
+            if (coord[d] < shape[d]) {
+                offset += strides[d];
+                break;
+            }
+            coord[d] = 0;
+            offset -= (shape[d] - 1) * strides[d];
+        }
+    }
+}
+
+template <typename T>
+static void to_bool_mask(
+    const T *src,
+    int64_t size,
+    const int64_t *shape,
+    const int64_t *strides,
+    int rank,
+    int is_contiguous,
+    unsigned char *dest
+) {
+    if (src == nullptr || dest == nullptr || size <= 0) return;
+    if (is_contiguous) {
+        ndarray_hwy::ToBoolMaskContiguous(src, size, dest);
+        return;
+    }
+    if (shape == nullptr || strides == nullptr || rank <= 0) return;
+    NoThrowBuffer<int64_t> coord_vec;
+    int64_t coord_stack[32] = {0};
+    int64_t *coord = coord_stack;
+    if (rank > 32) {
+        coord_vec.assign(rank, 0);
+        if (!coord_vec.ok()) {
+            std::memset(dest, 0, static_cast<size_t>(size));
+            return;
+        }
+        coord = coord_vec.data();
+    }
+    int64_t offset = 0;
+    for (int64_t i = 0; i < size; i++) {
+        dest[i] = is_nonzero(src[offset]) ? 1 : 0;
         for (int d = rank - 1; d >= 0; d--) {
             coord[d]++;
             if (coord[d] < shape[d]) {
@@ -2879,41 +3137,6 @@ extern "C" void native_count_nonzero_complex64(const void *src, const int64_t *s
     count_nonzero((const complex64_t *)src, stridesSrc, dest, stridesDest, shape, rank, axis, is_contiguous);
 }
 
-HWY_BEFORE_NAMESPACE();
-namespace hwy {
-namespace HWY_NAMESPACE {
-namespace hn = hwy::HWY_NAMESPACE;
-
-static int64_t UnpackMaskImpl(const uint8_t *mask_ptr, int64_t size, int64_t *out_indices) {
-    const hn::ScalableTag<int64_t> d;
-    using Rebind8 = hn::Rebind<uint8_t, decltype(d)>;
-    const Rebind8 d8;
-    const int64_t L = hn::Lanes(d);
-
-    int64_t count = 0;
-    int64_t j = 0;
-    int64_t limit = size - L;
-    auto v_base = hn::Iota(d, 0);
-
-    for (; j <= limit; j += L) {
-        auto mask_bytes = hn::LoadU(d8, mask_ptr + j);
-        auto mask_i64 = hn::PromoteTo(d, mask_bytes);
-        auto mask = (mask_i64 != hn::Zero(d));
-        auto v_index = hn::Add(v_base, hn::Set(d, j));
-        count += hn::CompressStore(v_index, mask, d, out_indices + count);
-    }
-    for (; j < size; j++) {
-        if (mask_ptr[j] != 0) {
-            out_indices[count++] = j;
-        }
-    }
-    return count;
-}
-
-} // namespace HWY_NAMESPACE
-} // namespace hwy
-HWY_AFTER_NAMESPACE();
-
 extern "C" {
 int64_t unpack_mask_c(
     const uint8_t *mask_ptr,
@@ -2924,7 +3147,7 @@ int64_t unpack_mask_c(
     if (mask_ptr == nullptr || out_indices == nullptr || size <= 0) return 0;
 
     if (stride == 1) {
-        return hwy::HWY_NAMESPACE::UnpackMaskImpl(mask_ptr, size, out_indices);
+        return ndarray_hwy::UnpackMaskImpl(mask_ptr, size, out_indices);
     } else {
         int64_t count = 0;
         for (int64_t j = 0; j < size; j++) {
@@ -2940,11 +3163,7 @@ int64_t unpack_mask_c(
 extern "C" {
 int64_t native_count_mask(const uint8_t *mask, int64_t size) {
     if (mask == nullptr || size <= 0) return 0;
-    int64_t count = 0;
-    for (int64_t i = 0; i < size; i++) {
-        if (mask[i] != 0) count++;
-    }
-    return count;
+    return ndarray_hwy::CountNonZeroContiguous(mask, size);
 }
 
 void native_apply_mask(
