@@ -30825,3 +30825,121 @@ external int v_allclose_float(
   double atol,
   int equalNan,
 );
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Double>, ffi.Int64, ffi.Int64)>()
+external void v_fft_hermitian_mirror_complex128(
+  ffi.Pointer<ffi.Double> out,
+  int targetLen,
+  int signalsCount,
+);
+
+@ffi.Native<
+  ffi.Void Function(ffi.Pointer<ffi.Double>, ffi.Int64, ffi.Int64, ffi.Double)
+>()
+external void v_ifft_hermitian_mirror_scale_complex128(
+  ffi.Pointer<ffi.Double> out,
+  int targetLen,
+  int signalsCount,
+  double scale,
+);
+
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Double>, ffi.Int64, ffi.Double)>()
+external void v_scale_conj_complex128(
+  ffi.Pointer<ffi.Double> out,
+  int count,
+  double scale,
+);
+
+@ffi.Native<ffi.Int64 Function(ffi.Pointer<ffi.Int64>, ffi.Int64, ffi.Int64)>()
+external int v_check_bounds_int64(
+  ffi.Pointer<ffi.Int64> indices,
+  int numIndices,
+  int axisLen,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+  )
+>()
+external void v_tvm_fv_double(
+  ffi.Pointer<ffi.Double> rate,
+  int sRate,
+  ffi.Pointer<ffi.Double> nper,
+  int sNper,
+  ffi.Pointer<ffi.Double> pmt,
+  int sPmt,
+  ffi.Pointer<ffi.Double> pv,
+  int sPv,
+  double w,
+  ffi.Pointer<ffi.Double> dest,
+  int size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+  )
+>()
+external void v_tvm_pv_double(
+  ffi.Pointer<ffi.Double> rate,
+  int sRate,
+  ffi.Pointer<ffi.Double> nper,
+  int sNper,
+  ffi.Pointer<ffi.Double> pmt,
+  int sPmt,
+  ffi.Pointer<ffi.Double> fv,
+  int sFv,
+  double w,
+  ffi.Pointer<ffi.Double> dest,
+  int size,
+);
+
+@ffi.Native<
+  ffi.Void Function(
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+    ffi.Double,
+    ffi.Pointer<ffi.Double>,
+    ffi.Int64,
+  )
+>()
+external void v_tvm_pmt_double(
+  ffi.Pointer<ffi.Double> rate,
+  int sRate,
+  ffi.Pointer<ffi.Double> nper,
+  int sNper,
+  ffi.Pointer<ffi.Double> pv,
+  int sPv,
+  ffi.Pointer<ffi.Double> fv,
+  int sFv,
+  double w,
+  ffi.Pointer<ffi.Double> dest,
+  int size,
+);

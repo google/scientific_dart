@@ -3558,34 +3558,37 @@ void atUfunc<T extends DTypeTag>(
   NDArray.scope(() {
     final marker = ScratchArena.marker;
     try {
-      final ffi.Pointer<ffi.Int64> idxPtr = numIndices > 0
-          ? ScratchArena.allocate<ffi.Int64>(
-              numIndices * ffi.sizeOf<ffi.Int64>(),
-            )
-          : ffi.nullptr;
-      if (numIndices > 0) {
-        if (indices.isContiguous && indices.dtype == DType.int64) {
-          final rawIdxPtr = indices.pointer.cast<ffi.Int64>();
-          for (var i = 0; i < numIndices; i++) {
-            var idx = rawIdxPtr[i];
-            if (idx < -axis0Len || idx >= axis0Len) {
-              throw RangeError.range(idx, -axis0Len, axis0Len - 1, 'indices');
-            }
-            if (idx < 0) idx += axis0Len;
-            idxPtr[i] = idx;
+      final bool isDirectInt64Idx =
+          indices.isContiguous &&
+          indices.dtype == DType.int64 &&
+          !sharesMemory(a, indices);
+      late final ffi.Pointer<ffi.Int64> idxPtr;
+      if (isDirectInt64Idx) {
+        final rawIdxPtr = indices.pointer.cast<ffi.Int64>();
+        final badPos = v_check_bounds_int64(rawIdxPtr, numIndices, axis0Len);
+        if (badPos >= 0) {
+          throw RangeError.range(
+            rawIdxPtr[badPos],
+            -axis0Len,
+            axis0Len - 1,
+            'indices',
+          );
+        }
+        idxPtr = rawIdxPtr;
+      } else {
+        idxPtr = ScratchArena.allocate<ffi.Int64>(
+          numIndices * ffi.sizeOf<ffi.Int64>(),
+        );
+        for (var i = 0; i < numIndices; i++) {
+          var idx = (indices.getCellFlat(i) as num).toInt();
+          if (indices.dtype == DType.uint64 && idx < 0) {
+            throw RangeError.range(idx, -axis0Len, axis0Len - 1, 'indices');
           }
-        } else {
-          for (var i = 0; i < numIndices; i++) {
-            var idx = (indices.getCellFlat(i) as num).toInt();
-            if (indices.dtype == DType.uint64 && idx < 0) {
-              throw RangeError.range(idx, -axis0Len, axis0Len - 1, 'indices');
-            }
-            if (idx < -axis0Len || idx >= axis0Len) {
-              throw RangeError.range(idx, -axis0Len, axis0Len - 1, 'indices');
-            }
-            if (idx < 0) idx += axis0Len;
-            idxPtr[i] = idx;
+          if (idx < -axis0Len || idx >= axis0Len) {
+            throw RangeError.range(idx, -axis0Len, axis0Len - 1, 'indices');
           }
+          if (idx < 0) idx += axis0Len;
+          idxPtr[i] = idx;
         }
       }
       const effectiveStrideIdx = 1;
@@ -3607,6 +3610,7 @@ void atUfunc<T extends DTypeTag>(
       if (numIndices == 0) {
         return;
       }
+
       if (sharesMemory(a, bReady)) {
         bReady = bReady.copy();
       }
@@ -3809,7 +3813,8 @@ void atUfunc<T extends DTypeTag>(
           final sliceStridesA = a.strides.sublist(1);
           final sliceStridesB = bReady.strides.sublist(1);
           for (var i = 0; i < numIndices; i++) {
-            final idx = idxPtr[i];
+            final rawIdx = idxPtr[i];
+            final idx = rawIdx < 0 ? rawIdx + axis0Len : rawIdx;
             final aSlice = NDArray<T>.view(
               a,
               shape: sliceShape,

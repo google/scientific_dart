@@ -47,6 +47,10 @@
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+#if defined(__AVX2__) && defined(__FMA__) && defined(__F16C__)
+static_assert(HWY_TARGET == HWY_AVX2, "Expected HWY_AVX2 static target when compiled with AVX2+FMA+F16C");
+static_assert(HWY_NATIVE_FMA == 1, "Expected hardware FMA to be enabled when compiled with -mfma");
+#endif
 #if (defined(__x86_64__) || defined(_M_X64) || defined(__i386__) || defined(_M_IX86))
 #include <immintrin.h>
 #endif
@@ -604,11 +608,11 @@ static NDARRAY_NOINLINE void transpose_2d_tiled(
     const T *src, T *res, int64_t M, int64_t N
 ) {
     constexpr int64_t TILE = 32;
+    alignas(64) T tile[TILE][TILE + 1];
     for (int64_t i0 = 0; i0 < M; i0 += TILE) {
         int64_t bh = std::min(TILE, M - i0);
         for (int64_t j0 = 0; j0 < N; j0 += TILE) {
             int64_t bw = std::min(TILE, N - j0);
-            T tile[TILE][TILE];
             for (int64_t jj = 0; jj < bw; jj++) {
                 const T *src_row = src + (j0 + jj) * M + i0;
                 for (int64_t ii = 0; ii < bh; ii++) {
@@ -1603,13 +1607,11 @@ static inline void simd_exp_double(const double *src, double *dst, int64_t size)
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
-        hn::StoreU(hn::Exp(d, vx), d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::And(hn::Ge(vx, vmin), hn::Le(vx, vmax))))) {
+        if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Ge(vx, vmin), hn::Le(vx, vmax))))) {
+            hn::StoreU(hn::Exp(d, vx), d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                double x = src[i + k];
-                if (!(x >= -708.0 && x <= 709.0)) {
-                    dst[i + k] = std::exp(x);
-                }
+                dst[i + k] = std::exp(src[i + k]);
             }
         }
     }
@@ -1640,13 +1642,11 @@ static inline void simd_exp_float(const float *src, float *dst, int64_t size) {
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
-        hn::StoreU(hn::Exp(d, vx), d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::And(hn::Ge(vx, vmin), hn::Le(vx, vmax))))) {
+        if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Ge(vx, vmin), hn::Le(vx, vmax))))) {
+            hn::StoreU(hn::Exp(d, vx), d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                float x = src[i + k];
-                if (!(x >= -87.0f && x <= 88.0f)) {
-                    dst[i + k] = std::exp(x);
-                }
+                dst[i + k] = std::exp(src[i + k]);
             }
         }
     }
@@ -1676,15 +1676,13 @@ static inline void simd_sin_double(const double *src, double *dst, int64_t size)
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
-        hn::Vec<decltype(d)> vs, vc;
-        fast_sincos_double(d, vx, vs, vc);
-        hn::StoreU(vs, d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+        if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+            hn::Vec<decltype(d)> vs, vc;
+            fast_sincos_double(d, vx, vs, vc);
+            hn::StoreU(vs, d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                double x = src[i + k];
-                if (!(std::fabs(x) < 39000.0)) {
-                    dst[i + k] = std::sin(x);
-                }
+                dst[i + k] = std::sin(src[i + k]);
             }
         }
     }
@@ -1716,15 +1714,13 @@ static inline void simd_sin_float(const float *src, float *dst, int64_t size) {
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
-        hn::Vec<decltype(d)> vs, vc;
-        hn::SinCos(d, vx, vs, vc);
-        hn::StoreU(vs, d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+        if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+            hn::Vec<decltype(d)> vs, vc;
+            hn::SinCos(d, vx, vs, vc);
+            hn::StoreU(vs, d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                float x = src[i + k];
-                if (!(std::fabs(x) < 8192.0f)) {
-                    dst[i + k] = std::sin(x);
-                }
+                dst[i + k] = std::sin(src[i + k]);
             }
         }
     }
@@ -1756,15 +1752,13 @@ static inline void simd_cos_double(const double *src, double *dst, int64_t size)
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
-        hn::Vec<decltype(d)> vs, vc;
-        fast_sincos_double(d, vx, vs, vc);
-        hn::StoreU(vc, d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+        if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+            hn::Vec<decltype(d)> vs, vc;
+            fast_sincos_double(d, vx, vs, vc);
+            hn::StoreU(vc, d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                double x = src[i + k];
-                if (!(std::fabs(x) < 39000.0)) {
-                    dst[i + k] = std::cos(x);
-                }
+                dst[i + k] = std::cos(src[i + k]);
             }
         }
     }
@@ -1796,15 +1790,13 @@ static inline void simd_cos_float(const float *src, float *dst, int64_t size) {
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
-        hn::Vec<decltype(d)> vs, vc;
-        hn::SinCos(d, vx, vs, vc);
-        hn::StoreU(vc, d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+        if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
+            hn::Vec<decltype(d)> vs, vc;
+            hn::SinCos(d, vx, vs, vc);
+            hn::StoreU(vc, d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                float x = src[i + k];
-                if (!(std::fabs(x) < 8192.0f)) {
-                    dst[i + k] = std::cos(x);
-                }
+                dst[i + k] = std::cos(src[i + k]);
             }
         }
     }
@@ -1839,15 +1831,11 @@ static inline void simd_tan_double(const double *src, double *dst, int64_t size)
         const auto vx = hn::LoadU(d, src + i);
         hn::Vec<decltype(d)> vs, vc;
         fast_sincos_double(d, vx, vs, vc);
-        hn::StoreU(hn::Div(vs, vc), d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::And(hn::Lt(hn::Abs(vx), vmax), hn::Gt(hn::Abs(vc), vcos_min))))) {
-            alignas(64) double vc_lanes[HWY_MAX_BYTES / sizeof(double)];
-            hn::Store(vc, d, vc_lanes);
+        if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Lt(hn::Abs(vx), vmax), hn::Gt(hn::Abs(vc), vcos_min))))) {
+            hn::StoreU(hn::Div(vs, vc), d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                double x = src[i + k];
-                if (!(std::fabs(x) < 39000.0 && std::fabs(vc_lanes[k]) > 1e-12)) {
-                    dst[i + k] = std::tan(x);
-                }
+                dst[i + k] = std::tan(src[i + k]);
             }
         }
     }
@@ -1884,15 +1872,11 @@ static inline void simd_tan_float(const float *src, float *dst, int64_t size) {
         const auto vx = hn::LoadU(d, src + i);
         hn::Vec<decltype(d)> vs, vc;
         hn::SinCos(d, vx, vs, vc);
-        hn::StoreU(hn::Div(vs, vc), d, dst + i);
-        if (HWY_UNLIKELY(!hn::AllTrue(d, hn::And(hn::Lt(hn::Abs(vx), vmax), hn::Gt(hn::Abs(vc), vcos_min))))) {
-            alignas(64) float vc_lanes[HWY_MAX_BYTES / sizeof(float)];
-            hn::Store(vc, d, vc_lanes);
+        if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Lt(hn::Abs(vx), vmax), hn::Gt(hn::Abs(vc), vcos_min))))) {
+            hn::StoreU(hn::Div(vs, vc), d, dst + i);
+        } else {
             for (int64_t k = 0; k < N; k++) {
-                float x = src[i + k];
-                if (!(std::fabs(x) < 8192.0f && std::fabs(vc_lanes[k]) > 1e-5f)) {
-                    dst[i + k] = std::tan(x);
-                }
+                dst[i + k] = std::tan(src[i + k]);
             }
         }
     }
@@ -1936,19 +1920,19 @@ static NDARRAY_NOINLINE void transpose_2d_tiled_simd_op(
     const T * RESTRICT src, T * RESTRICT res, int64_t M, int64_t N, ContigFn contig_fn
 ) {
     constexpr int64_t TILE = 32;
-    alignas(64) T tile[TILE][TILE];
+    alignas(64) T flat[TILE * TILE];
     for (int64_t i0 = 0; i0 < M; i0 += TILE) {
-        int64_t bh = std::min(TILE, M - i0);
+        const int64_t bh = std::min(TILE, M - i0);
         for (int64_t j0 = 0; j0 < N; j0 += TILE) {
-            int64_t bw = std::min(TILE, N - j0);
+            const int64_t bw = std::min(TILE, N - j0);
             for (int64_t jj = 0; jj < bw; jj++) {
-                const T * RESTRICT src_row = src + (j0 + jj) * M + i0;
-                contig_fn(src_row, tile[jj], bh);
+                std::memcpy(flat + jj * bh, src + (j0 + jj) * M + i0, (size_t)bh * sizeof(T));
             }
+            contig_fn(flat, flat, bw * bh);
             for (int64_t ii = 0; ii < bh; ii++) {
                 T * RESTRICT res_row = res + (i0 + ii) * N + j0;
                 for (int64_t jj = 0; jj < bw; jj++) {
-                    res_row[jj] = tile[jj][ii];
+                    res_row[jj] = flat[jj * bh + ii];
                 }
             }
         }
@@ -4557,19 +4541,123 @@ void s_div_double(const double *a, const int64_t *stridesA,
 // ============================================================================
 
 void v_add_complex(const cpx_t *a, const cpx_t *b, cpx_t *res, int64_t size, const uint8_t *mask) {
-    v_binary_impl(a, b, res, size, mask, cpx_add);
+    if (a == nullptr || b == nullptr || res == nullptr || size <= 0) return;
+    bool overlap = contiguous_buffers_overlap_not_identical(a, (size_t)size * sizeof(cpx_t), res, (size_t)size * sizeof(cpx_t)) ||
+                   contiguous_buffers_overlap_not_identical(b, (size_t)size * sizeof(cpx_t), res, (size_t)size * sizeof(cpx_t)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(cpx_t));
+    if (overlap || mask != nullptr) {
+        v_binary_impl(a, b, res, size, mask, cpx_add);
+        return;
+    }
+    const double *da = reinterpret_cast<const double *>(a);
+    const double *db = reinterpret_cast<const double *>(b);
+    double *dres = reinterpret_cast<double *>(res);
+    const int64_t total = size * 2;
+    const hn::ScalableTag<double> d;
+    const int64_t N = hn::Lanes(d);
+    int64_t i = 0;
+    for (; i + 4 * N <= total; i += 4 * N) {
+        hn::StoreU(hn::Add(hn::LoadU(d, da + i), hn::LoadU(d, db + i)), d, dres + i);
+        hn::StoreU(hn::Add(hn::LoadU(d, da + i + N), hn::LoadU(d, db + i + N)), d, dres + i + N);
+        hn::StoreU(hn::Add(hn::LoadU(d, da + i + 2 * N), hn::LoadU(d, db + i + 2 * N)), d, dres + i + 2 * N);
+        hn::StoreU(hn::Add(hn::LoadU(d, da + i + 3 * N), hn::LoadU(d, db + i + 3 * N)), d, dres + i + 3 * N);
+    }
+    for (; i + N <= total; i += N) {
+        hn::StoreU(hn::Add(hn::LoadU(d, da + i), hn::LoadU(d, db + i)), d, dres + i);
+    }
+    for (; i < total; i++) {
+        dres[i] = da[i] + db[i];
+    }
 }
 
 void v_add_complex64(const cpx_f_t *a, const cpx_f_t *b, cpx_f_t *res, int64_t size, const uint8_t *mask) {
-    v_binary_impl(a, b, res, size, mask, cpx_add_f);
+    if (a == nullptr || b == nullptr || res == nullptr || size <= 0) return;
+    bool overlap = contiguous_buffers_overlap_not_identical(a, (size_t)size * sizeof(cpx_f_t), res, (size_t)size * sizeof(cpx_f_t)) ||
+                   contiguous_buffers_overlap_not_identical(b, (size_t)size * sizeof(cpx_f_t), res, (size_t)size * sizeof(cpx_f_t)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(cpx_f_t));
+    if (overlap || mask != nullptr) {
+        v_binary_impl(a, b, res, size, mask, cpx_add_f);
+        return;
+    }
+    const float *fa = reinterpret_cast<const float *>(a);
+    const float *fb = reinterpret_cast<const float *>(b);
+    float *fres = reinterpret_cast<float *>(res);
+    const int64_t total = size * 2;
+    const hn::ScalableTag<float> d;
+    const int64_t N = hn::Lanes(d);
+    int64_t i = 0;
+    for (; i + 4 * N <= total; i += 4 * N) {
+        hn::StoreU(hn::Add(hn::LoadU(d, fa + i), hn::LoadU(d, fb + i)), d, fres + i);
+        hn::StoreU(hn::Add(hn::LoadU(d, fa + i + N), hn::LoadU(d, fb + i + N)), d, fres + i + N);
+        hn::StoreU(hn::Add(hn::LoadU(d, fa + i + 2 * N), hn::LoadU(d, fb + i + 2 * N)), d, fres + i + 2 * N);
+        hn::StoreU(hn::Add(hn::LoadU(d, fa + i + 3 * N), hn::LoadU(d, fb + i + 3 * N)), d, fres + i + 3 * N);
+    }
+    for (; i + N <= total; i += N) {
+        hn::StoreU(hn::Add(hn::LoadU(d, fa + i), hn::LoadU(d, fb + i)), d, fres + i);
+    }
+    for (; i < total; i++) {
+        fres[i] = fa[i] + fb[i];
+    }
 }
 
 void v_sub_complex(const cpx_t *a, const cpx_t *b, cpx_t *res, int64_t size, const uint8_t *mask) {
-    v_binary_impl(a, b, res, size, mask, cpx_sub);
+    if (a == nullptr || b == nullptr || res == nullptr || size <= 0) return;
+    bool overlap = contiguous_buffers_overlap_not_identical(a, (size_t)size * sizeof(cpx_t), res, (size_t)size * sizeof(cpx_t)) ||
+                   contiguous_buffers_overlap_not_identical(b, (size_t)size * sizeof(cpx_t), res, (size_t)size * sizeof(cpx_t)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(cpx_t));
+    if (overlap || mask != nullptr) {
+        v_binary_impl(a, b, res, size, mask, cpx_sub);
+        return;
+    }
+    const double *da = reinterpret_cast<const double *>(a);
+    const double *db = reinterpret_cast<const double *>(b);
+    double *dres = reinterpret_cast<double *>(res);
+    const int64_t total = size * 2;
+    const hn::ScalableTag<double> d;
+    const int64_t N = hn::Lanes(d);
+    int64_t i = 0;
+    for (; i + 4 * N <= total; i += 4 * N) {
+        hn::StoreU(hn::Sub(hn::LoadU(d, da + i), hn::LoadU(d, db + i)), d, dres + i);
+        hn::StoreU(hn::Sub(hn::LoadU(d, da + i + N), hn::LoadU(d, db + i + N)), d, dres + i + N);
+        hn::StoreU(hn::Sub(hn::LoadU(d, da + i + 2 * N), hn::LoadU(d, db + i + 2 * N)), d, dres + i + 2 * N);
+        hn::StoreU(hn::Sub(hn::LoadU(d, da + i + 3 * N), hn::LoadU(d, db + i + 3 * N)), d, dres + i + 3 * N);
+    }
+    for (; i + N <= total; i += N) {
+        hn::StoreU(hn::Sub(hn::LoadU(d, da + i), hn::LoadU(d, db + i)), d, dres + i);
+    }
+    for (; i < total; i++) {
+        dres[i] = da[i] - db[i];
+    }
 }
 
 void v_sub_complex64(const cpx_f_t *a, const cpx_f_t *b, cpx_f_t *res, int64_t size, const uint8_t *mask) {
-    v_binary_impl(a, b, res, size, mask, cpx_sub_f);
+    if (a == nullptr || b == nullptr || res == nullptr || size <= 0) return;
+    bool overlap = contiguous_buffers_overlap_not_identical(a, (size_t)size * sizeof(cpx_f_t), res, (size_t)size * sizeof(cpx_f_t)) ||
+                   contiguous_buffers_overlap_not_identical(b, (size_t)size * sizeof(cpx_f_t), res, (size_t)size * sizeof(cpx_f_t)) ||
+                   mask_overlaps_contiguous_buffer(mask, size, res, (size_t)size * sizeof(cpx_f_t));
+    if (overlap || mask != nullptr) {
+        v_binary_impl(a, b, res, size, mask, cpx_sub_f);
+        return;
+    }
+    const float *fa = reinterpret_cast<const float *>(a);
+    const float *fb = reinterpret_cast<const float *>(b);
+    float *fres = reinterpret_cast<float *>(res);
+    const int64_t total = size * 2;
+    const hn::ScalableTag<float> d;
+    const int64_t N = hn::Lanes(d);
+    int64_t i = 0;
+    for (; i + 4 * N <= total; i += 4 * N) {
+        hn::StoreU(hn::Sub(hn::LoadU(d, fa + i), hn::LoadU(d, fb + i)), d, fres + i);
+        hn::StoreU(hn::Sub(hn::LoadU(d, fa + i + N), hn::LoadU(d, fb + i + N)), d, fres + i + N);
+        hn::StoreU(hn::Sub(hn::LoadU(d, fa + i + 2 * N), hn::LoadU(d, fb + i + 2 * N)), d, fres + i + 2 * N);
+        hn::StoreU(hn::Sub(hn::LoadU(d, fa + i + 3 * N), hn::LoadU(d, fb + i + 3 * N)), d, fres + i + 3 * N);
+    }
+    for (; i + N <= total; i += N) {
+        hn::StoreU(hn::Sub(hn::LoadU(d, fa + i), hn::LoadU(d, fb + i)), d, fres + i);
+    }
+    for (; i < total; i++) {
+        fres[i] = fa[i] - fb[i];
+    }
 }
 
 void v_mul_complex(const cpx_t *a, const cpx_t *b, cpx_t *res, int64_t size, const uint8_t *mask) {
@@ -4583,33 +4671,59 @@ void v_mul_complex(const cpx_t *a, const cpx_t *b, cpx_t *res, int64_t size, con
     }
     const hn::ScalableTag<double> d;
     const int64_t N = hn::Lanes(d);
-    int64_t i = 0;
-    for (; i + N <= size; i += N) {
-        hn::Vec<decltype(d)> ar, ai, br, bi;
-        hn::LoadInterleaved2(d, reinterpret_cast<const double *>(a + i), ar, ai);
-        hn::LoadInterleaved2(d, reinterpret_cast<const double *>(b + i), br, bi);
-        const auto rr = hn::Sub(hn::Mul(ar, br), hn::Mul(ai, bi));
-        const auto ri = hn::Add(hn::Mul(ar, bi), hn::Mul(ai, br));
-        hn::StoreInterleaved2(rr, ri, d, reinterpret_cast<double *>(res + i));
+    if (N >= 2) {
+        const double *da = reinterpret_cast<const double *>(a);
+        const double *db = reinterpret_cast<const double *>(b);
+        double *dres = reinterpret_cast<double *>(res);
+        const int64_t total = size * 2;
+        int64_t i = 0;
+        for (; i + N <= total; i += N) {
+            const auto va = hn::LoadU(d, da + i);
+            const auto vb = hn::LoadU(d, db + i);
+            const auto ar = hn::DupEven(va);
+            const auto ai = hn::DupOdd(va);
+            const auto b_swap = hn::Reverse2(d, vb);
+            const auto prod1 = hn::Mul(ar, vb);
+            const auto prod2 = hn::Mul(ai, b_swap);
+            const auto vres = hn::OddEven(hn::Add(prod1, prod2), hn::Sub(prod1, prod2));
+            if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
+                hn::StoreU(vres, d, dres + i);
+            } else {
+                for (int64_t k = i / 2; k < (i + N) / 2; k++) {
+                    res[k] = cpx_mul(a[k], b[k]);
+                }
+            }
+        }
+        if (i < total) {
+            const int64_t rem = total - i;
+            alignas(64) double tail_a[HWY_MAX_BYTES / sizeof(double)] = {};
+            alignas(64) double tail_b[HWY_MAX_BYTES / sizeof(double)] = {};
+            alignas(64) double tail_r[HWY_MAX_BYTES / sizeof(double)];
+            for (int64_t k = 0; k < rem; k++) {
+                tail_a[k] = da[i + k];
+                tail_b[k] = db[i + k];
+            }
+            const auto va = hn::Load(d, tail_a);
+            const auto vb = hn::Load(d, tail_b);
+            const auto ar = hn::DupEven(va);
+            const auto ai = hn::DupOdd(va);
+            const auto b_swap = hn::Reverse2(d, vb);
+            const auto prod1 = hn::Mul(ar, vb);
+            const auto prod2 = hn::Mul(ai, b_swap);
+            const auto vres = hn::OddEven(hn::Add(prod1, prod2), hn::Sub(prod1, prod2));
+            if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
+                hn::Store(vres, d, tail_r);
+                for (int64_t k = 0; k < rem; k++) dres[i + k] = tail_r[k];
+            } else {
+                for (int64_t k = i / 2; k < size; k++) {
+                    res[k] = cpx_mul(a[k], b[k]);
+                }
+            }
+        }
+        return;
     }
-    if (i < size) {
-        const int64_t rem = size - i;
-        alignas(64) cpx_t tail_a[HWY_MAX_BYTES / sizeof(double)] = {};
-        alignas(64) cpx_t tail_b[HWY_MAX_BYTES / sizeof(double)] = {};
-        alignas(64) cpx_t tail_r[HWY_MAX_BYTES / sizeof(double)];
-        for (int64_t k = 0; k < rem; k++) {
-            tail_a[k] = a[i + k];
-            tail_b[k] = b[i + k];
-        }
-        hn::Vec<decltype(d)> ar, ai, br, bi;
-        hn::LoadInterleaved2(d, reinterpret_cast<const double *>(tail_a), ar, ai);
-        hn::LoadInterleaved2(d, reinterpret_cast<const double *>(tail_b), br, bi);
-        const auto rr = hn::Sub(hn::Mul(ar, br), hn::Mul(ai, bi));
-        const auto ri = hn::Add(hn::Mul(ar, bi), hn::Mul(ai, br));
-        hn::StoreInterleaved2(rr, ri, d, reinterpret_cast<double *>(tail_r));
-        for (int64_t k = 0; k < rem; k++) {
-            res[i + k] = tail_r[k];
-        }
+    for (int64_t k = 0; k < size; k++) {
+        res[k] = cpx_mul(a[k], b[k]);
     }
 }
 
@@ -4624,33 +4738,59 @@ void v_mul_complex64(const cpx_f_t *a, const cpx_f_t *b, cpx_f_t *res, int64_t s
     }
     const hn::ScalableTag<float> d;
     const int64_t N = hn::Lanes(d);
-    int64_t i = 0;
-    for (; i + N <= size; i += N) {
-        hn::Vec<decltype(d)> ar, ai, br, bi;
-        hn::LoadInterleaved2(d, reinterpret_cast<const float *>(a + i), ar, ai);
-        hn::LoadInterleaved2(d, reinterpret_cast<const float *>(b + i), br, bi);
-        const auto rr = hn::Sub(hn::Mul(ar, br), hn::Mul(ai, bi));
-        const auto ri = hn::Add(hn::Mul(ar, bi), hn::Mul(ai, br));
-        hn::StoreInterleaved2(rr, ri, d, reinterpret_cast<float *>(res + i));
+    if (N >= 2) {
+        const float *fa = reinterpret_cast<const float *>(a);
+        const float *fb = reinterpret_cast<const float *>(b);
+        float *fres = reinterpret_cast<float *>(res);
+        const int64_t total = size * 2;
+        int64_t i = 0;
+        for (; i + N <= total; i += N) {
+            const auto va = hn::LoadU(d, fa + i);
+            const auto vb = hn::LoadU(d, fb + i);
+            const auto ar = hn::DupEven(va);
+            const auto ai = hn::DupOdd(va);
+            const auto b_swap = hn::Reverse2(d, vb);
+            const auto prod1 = hn::Mul(ar, vb);
+            const auto prod2 = hn::Mul(ai, b_swap);
+            const auto vres = hn::OddEven(hn::Add(prod1, prod2), hn::Sub(prod1, prod2));
+            if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
+                hn::StoreU(vres, d, fres + i);
+            } else {
+                for (int64_t k = i / 2; k < (i + N) / 2; k++) {
+                    res[k] = cpx_mul_f(a[k], b[k]);
+                }
+            }
+        }
+        if (i < total) {
+            const int64_t rem = total - i;
+            alignas(64) float tail_a[HWY_MAX_BYTES / sizeof(float)] = {};
+            alignas(64) float tail_b[HWY_MAX_BYTES / sizeof(float)] = {};
+            alignas(64) float tail_r[HWY_MAX_BYTES / sizeof(float)];
+            for (int64_t k = 0; k < rem; k++) {
+                tail_a[k] = fa[i + k];
+                tail_b[k] = fb[i + k];
+            }
+            const auto va = hn::Load(d, tail_a);
+            const auto vb = hn::Load(d, tail_b);
+            const auto ar = hn::DupEven(va);
+            const auto ai = hn::DupOdd(va);
+            const auto b_swap = hn::Reverse2(d, vb);
+            const auto prod1 = hn::Mul(ar, vb);
+            const auto prod2 = hn::Mul(ai, b_swap);
+            const auto vres = hn::OddEven(hn::Add(prod1, prod2), hn::Sub(prod1, prod2));
+            if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
+                hn::Store(vres, d, tail_r);
+                for (int64_t k = 0; k < rem; k++) fres[i + k] = tail_r[k];
+            } else {
+                for (int64_t k = i / 2; k < size; k++) {
+                    res[k] = cpx_mul_f(a[k], b[k]);
+                }
+            }
+        }
+        return;
     }
-    if (i < size) {
-        const int64_t rem = size - i;
-        alignas(64) cpx_f_t tail_a[HWY_MAX_BYTES / sizeof(float)] = {};
-        alignas(64) cpx_f_t tail_b[HWY_MAX_BYTES / sizeof(float)] = {};
-        alignas(64) cpx_f_t tail_r[HWY_MAX_BYTES / sizeof(float)];
-        for (int64_t k = 0; k < rem; k++) {
-            tail_a[k] = a[i + k];
-            tail_b[k] = b[i + k];
-        }
-        hn::Vec<decltype(d)> ar, ai, br, bi;
-        hn::LoadInterleaved2(d, reinterpret_cast<const float *>(tail_a), ar, ai);
-        hn::LoadInterleaved2(d, reinterpret_cast<const float *>(tail_b), br, bi);
-        const auto rr = hn::Sub(hn::Mul(ar, br), hn::Mul(ai, bi));
-        const auto ri = hn::Add(hn::Mul(ar, bi), hn::Mul(ai, br));
-        hn::StoreInterleaved2(rr, ri, d, reinterpret_cast<float *>(tail_r));
-        for (int64_t k = 0; k < rem; k++) {
-            res[i + k] = tail_r[k];
-        }
+    for (int64_t k = 0; k < size; k++) {
+        res[k] = cpx_mul_f(a[k], b[k]);
     }
 }
 
@@ -8824,10 +8964,37 @@ DEFINE_STRIDED_BINARY_IMPL(s_right_shift_uint8, uint8_t, uint8_t, uint8_t, safe_
 DEFINE_STRIDED_BINARY_IMPL(s_right_shift_int16, int16_t, int16_t, int16_t, safe_right_shift_int16(x, y))
 
 /* Invert (Bitwise Negation) implementations */
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_invert_int32, int32_t, int32_t, ~x)
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_invert_int64, int64_t, int64_t, ~x)
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_invert_uint8, uint8_t, uint8_t, (uint8_t)(~x))
-DEFINE_CONTIGUOUS_UNARY_IMPL(v_invert_int16, int16_t, int16_t, (int16_t)(~x))
+template <typename T>
+static inline void simd_not_int(const T *src, T *dst, int64_t size) {
+    const hn::ScalableTag<T> d;
+    const int64_t N = hn::Lanes(d);
+    int64_t i = 0;
+    for (; i + 4 * N <= size; i += 4 * N) {
+        hn::StoreU(hn::Not(hn::LoadU(d, src + i)), d, dst + i);
+        hn::StoreU(hn::Not(hn::LoadU(d, src + i + N)), d, dst + i + N);
+        hn::StoreU(hn::Not(hn::LoadU(d, src + i + 2 * N)), d, dst + i + 2 * N);
+        hn::StoreU(hn::Not(hn::LoadU(d, src + i + 3 * N)), d, dst + i + 3 * N);
+    }
+    for (; i + N <= size; i += N) {
+        hn::StoreU(hn::Not(hn::LoadU(d, src + i)), d, dst + i);
+    }
+    for (; i < size; i++) {
+        dst[i] = static_cast<T>(~src[i]);
+    }
+}
+
+void v_invert_int32(const int32_t *src, int32_t *res, int64_t size, const uint8_t *mask) {
+    v_unary_simd_impl(src, res, size, mask, [](int32_t x) { return ~x; }, simd_not_int<int32_t>);
+}
+void v_invert_int64(const int64_t *src, int64_t *res, int64_t size, const uint8_t *mask) {
+    v_unary_simd_impl(src, res, size, mask, [](int64_t x) { return ~x; }, simd_not_int<int64_t>);
+}
+void v_invert_uint8(const uint8_t *src, uint8_t *res, int64_t size, const uint8_t *mask) {
+    v_unary_simd_impl(src, res, size, mask, [](uint8_t x) { return static_cast<uint8_t>(~x); }, simd_not_int<uint8_t>);
+}
+void v_invert_int16(const int16_t *src, int16_t *res, int64_t size, const uint8_t *mask) {
+    v_unary_simd_impl(src, res, size, mask, [](int16_t x) { return static_cast<int16_t>(~x); }, simd_not_int<int16_t>);
+}
 
 DEFINE_STRIDED_UNARY_IMPL(s_invert_int32, int32_t, int32_t, ~x)
 DEFINE_STRIDED_UNARY_IMPL(s_invert_int64, int64_t, int64_t, ~x)
@@ -17414,6 +17581,48 @@ static void s_at_impl(T *a, const int64_t *stridesA, const int64_t *shapeA, int 
                       const int64_t *indices, int64_t numIndices, int64_t strideIdx,
                       const T *b, const int64_t *stridesB, const int64_t *shapeB, int rankB,
                       int opCode) {
+    if constexpr (std::is_arithmetic<T>::value) {
+        if (a != nullptr && indices != nullptr && b != nullptr && numIndices > 0 &&
+            rankA == 1 && stridesA != nullptr && stridesA[0] == 1 &&
+            shapeA != nullptr && strideIdx == 1) {
+            const int64_t axis0_len = shapeA[0];
+            const int64_t b_stride = (rankB == 1 && shapeB != nullptr && shapeB[0] > 1 && stridesB != nullptr) ? stridesB[0] : 0;
+            if (opCode == 0) { // add
+                if (b_stride == 1) {
+                    for (int64_t i = 0; i < numIndices; i++) {
+                        int64_t idx = indices[i];
+                        if (idx < 0) idx += axis0_len;
+                        if (HWY_UNLIKELY(idx < 0 || idx >= axis0_len)) continue;
+                        a[idx] = apply_at_op(a[idx], b[i], 0);
+                    }
+                } else {
+                    for (int64_t i = 0; i < numIndices; i++) {
+                        int64_t idx = indices[i];
+                        if (idx < 0) idx += axis0_len;
+                        if (HWY_UNLIKELY(idx < 0 || idx >= axis0_len)) continue;
+                        a[idx] = apply_at_op(a[idx], b[i * b_stride], 0);
+                    }
+                }
+                return;
+            } else if (opCode == 1) { // multiply
+                for (int64_t i = 0; i < numIndices; i++) {
+                    int64_t idx = indices[i];
+                    if (idx < 0) idx += axis0_len;
+                    if (HWY_UNLIKELY(idx < 0 || idx >= axis0_len)) continue;
+                    a[idx] = apply_at_op(a[idx], b[i * b_stride], 1);
+                }
+                return;
+            } else if (opCode == 16) { // subtract
+                for (int64_t i = 0; i < numIndices; i++) {
+                    int64_t idx = indices[i];
+                    if (idx < 0) idx += axis0_len;
+                    if (HWY_UNLIKELY(idx < 0 || idx >= axis0_len)) continue;
+                    a[idx] = apply_at_op(a[idx], b[i * b_stride], 16);
+                }
+                return;
+            }
+        }
+    }
     s_at_op_impl(a, stridesA, shapeA, rankA, indices, numIndices, strideIdx, b, stridesB, shapeB, rankB, [opCode](T x, T y) { return apply_at_op(x, y, opCode); });
 }
 
@@ -21395,6 +21604,177 @@ int v_allclose_float(const float *a, const float *b, int64_t size, double rtol, 
         }
     }
     return 1;
+}
+
+void v_fft_hermitian_mirror_complex128(double *out, int64_t target_len, int64_t signals_count) {
+    if (out == nullptr || target_len <= 1 || signals_count <= 0) return;
+    const int64_t half = target_len / 2 + 1;
+    for (int64_t s = 0; s < signals_count; s++) {
+        double * RESTRICT row = out + s * target_len * 2;
+        for (int64_t i = half; i < target_len; i++) {
+            const int64_t sym = target_len - i;
+            row[2 * i] = row[2 * sym];
+            row[2 * i + 1] = 0.0 - row[2 * sym + 1];
+        }
+    }
+}
+
+void v_ifft_hermitian_mirror_scale_complex128(double *out, int64_t target_len, int64_t signals_count, double scale) {
+    if (out == nullptr || target_len <= 0 || signals_count <= 0) return;
+    const int64_t half = target_len / 2 + 1;
+    for (int64_t s = 0; s < signals_count; s++) {
+        double * RESTRICT row = out + s * target_len * 2;
+        for (int64_t i = 0; i < half; i++) {
+            row[2 * i] *= scale;
+            row[2 * i + 1] = 0.0 - row[2 * i + 1] * scale;
+        }
+        for (int64_t i = half; i < target_len; i++) {
+            const int64_t sym = target_len - i;
+            row[2 * i] = row[2 * sym];
+            row[2 * i + 1] = 0.0 - row[2 * sym + 1];
+        }
+    }
+}
+
+void v_scale_conj_complex128(double *out, int64_t count, double scale) {
+    if (out == nullptr || count <= 0) return;
+    for (int64_t i = 0; i < count; i++) {
+        out[2 * i] *= scale;
+        out[2 * i + 1] = -out[2 * i + 1] * scale;
+    }
+}
+
+int64_t v_check_bounds_int64(const int64_t *indices, int64_t num_indices, int64_t axis_len) {
+    if (indices == nullptr || num_indices <= 0) return -1;
+    if (axis_len <= 0) return 0;
+    const hn::ScalableTag<int64_t> d;
+    const int64_t N = hn::Lanes(d);
+    const auto v_min = hn::Set(d, -axis_len);
+    const auto v_max = hn::Set(d, axis_len);
+    int64_t i = 0;
+    for (; i + 4 * N <= num_indices; i += 4 * N) {
+        const auto v0 = hn::LoadU(d, indices + i);
+        const auto v1 = hn::LoadU(d, indices + i + N);
+        const auto v2 = hn::LoadU(d, indices + i + 2 * N);
+        const auto v3 = hn::LoadU(d, indices + i + 3 * N);
+        const auto bad0 = hn::Or(hn::Lt(v0, v_min), hn::Ge(v0, v_max));
+        const auto bad1 = hn::Or(hn::Lt(v1, v_min), hn::Ge(v1, v_max));
+        const auto bad2 = hn::Or(hn::Lt(v2, v_min), hn::Ge(v2, v_max));
+        const auto bad3 = hn::Or(hn::Lt(v3, v_min), hn::Ge(v3, v_max));
+        const auto bad_any = hn::Or(hn::Or(bad0, bad1), hn::Or(bad2, bad3));
+        if (HWY_UNLIKELY(!hn::AllFalse(d, bad_any))) {
+            for (int64_t k = 0; k < 4 * N; k++) {
+                const int64_t idx = indices[i + k];
+                if (idx < -axis_len || idx >= axis_len) return i + k;
+            }
+        }
+    }
+    for (; i < num_indices; i++) {
+        const int64_t idx = indices[i];
+        if (HWY_UNLIKELY(idx < -axis_len || idx >= axis_len)) return i;
+    }
+    return -1;
+}
+
+void v_tvm_fv_double(
+    const double *rate, int64_t s_rate,
+    const double *nper, int64_t s_nper,
+    const double *pmt, int64_t s_pmt,
+    const double *pv, int64_t s_pv,
+    double w, double *dest, int64_t size
+) {
+    if (rate == nullptr || nper == nullptr || pmt == nullptr || pv == nullptr || dest == nullptr || size <= 0) return;
+    if (s_rate == 1 && s_nper == 1 && s_pmt == 1 && s_pv == 1) {
+        for (int64_t i = 0; i < size; i++) {
+            const double r = rate[i];
+            const double n = nper[i];
+            const double p = pmt[i];
+            const double v = pv[i];
+            if (r == 0.0) {
+                dest[i] = -(v + p * n);
+            } else {
+                const double temp = std::pow(1.0 + r, n);
+                const double factor = (p * (1.0 + r * w)) / r;
+                dest[i] = -(v * temp + factor * (temp - 1.0));
+            }
+        }
+    } else {
+        for (int64_t i = 0; i < size; i++) {
+            const double r = rate[i * s_rate];
+            const double n = nper[i * s_nper];
+            const double p = pmt[i * s_pmt];
+            const double v = pv[i * s_pv];
+            if (r == 0.0) {
+                dest[i] = -(v + p * n);
+            } else {
+                const double temp = std::pow(1.0 + r, n);
+                const double factor = (p * (1.0 + r * w)) / r;
+                dest[i] = -(v * temp + factor * (temp - 1.0));
+            }
+        }
+    }
+}
+
+void v_tvm_pv_double(
+    const double *rate, int64_t s_rate,
+    const double *nper, int64_t s_nper,
+    const double *pmt, int64_t s_pmt,
+    const double *fv, int64_t s_fv,
+    double w, double *dest, int64_t size
+) {
+    if (rate == nullptr || nper == nullptr || pmt == nullptr || fv == nullptr || dest == nullptr || size <= 0) return;
+    if (s_rate == 1 && s_nper == 1 && s_pmt == 1 && s_fv == 1) {
+        for (int64_t i = 0; i < size; i++) {
+            const double r = rate[i];
+            const double n = nper[i];
+            const double p = pmt[i];
+            const double f = fv[i];
+            if (r == 0.0) {
+                dest[i] = -(f + p * n);
+            } else {
+                const double temp = std::pow(1.0 + r, n);
+                const double factor = (p * (1.0 + r * w)) / r;
+                dest[i] = -(f + factor * (temp - 1.0)) / temp;
+            }
+        }
+    } else {
+        for (int64_t i = 0; i < size; i++) {
+            const double r = rate[i * s_rate];
+            const double n = nper[i * s_nper];
+            const double p = pmt[i * s_pmt];
+            const double f = fv[i * s_fv];
+            if (r == 0.0) {
+                dest[i] = -(f + p * n);
+            } else {
+                const double temp = std::pow(1.0 + r, n);
+                const double factor = (p * (1.0 + r * w)) / r;
+                dest[i] = -(f + factor * (temp - 1.0)) / temp;
+            }
+        }
+    }
+}
+
+void v_tvm_pmt_double(
+    const double *rate, int64_t s_rate,
+    const double *nper, int64_t s_nper,
+    const double *pv, int64_t s_pv,
+    const double *fv, int64_t s_fv,
+    double w, double *dest, int64_t size
+) {
+    if (rate == nullptr || nper == nullptr || pv == nullptr || dest == nullptr || size <= 0) return;
+    for (int64_t i = 0; i < size; i++) {
+        const double r = rate[i * s_rate];
+        const double n = nper[i * s_nper];
+        const double v = pv[i * s_pv];
+        const double f = fv != nullptr ? fv[i * s_fv] : 0.0;
+        if (r == 0.0) {
+            dest[i] = -(f + v) / n;
+        } else {
+            const double temp = std::pow(1.0 + r, n);
+            const double fact = (1.0 + r * w) * (temp - 1.0) / r;
+            dest[i] = -(f + v * temp) / fact;
+        }
+    }
 }
 
 }

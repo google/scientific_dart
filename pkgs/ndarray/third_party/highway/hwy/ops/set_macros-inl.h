@@ -89,7 +89,11 @@
 #endif
 
 #if defined(HWY_DISABLE_BMI2_FMA)
+#if defined(__FMA__)
+#define HWY_TARGET_STR_BMI2_FMA ",fma"
+#else
 #define HWY_TARGET_STR_BMI2_FMA ""
+#endif
 #else
 #define HWY_TARGET_STR_BMI2_FMA ",bmi,bmi2,fma"
 #endif
@@ -223,7 +227,7 @@
 #define HWY_HAVE_FLOAT64 1
 #define HWY_MEM_OPS_MIGHT_FAULT 1
 
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
 #define HWY_NATIVE_FMA 0
 #else
 #define HWY_NATIVE_FMA 1

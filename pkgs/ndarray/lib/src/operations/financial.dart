@@ -33,11 +33,11 @@ import 'dart:math' as math;
 
 import '../exceptions.dart';
 import '../ndarray.dart';
+import '../ndarray_bindings.dart';
 import 'broadcasting.dart' show broadcastTo;
 import 'helpers.dart' show sharesMemory, validateOutBuffer;
 import 'linalg.dart';
 import 'math.dart';
-import 'sorting.dart';
 import 'stats.dart';
 
 /// Specifies when payments are due within a period in financial calculations.
@@ -468,104 +468,51 @@ void _computeTVMDirect({
 
     switch (mode) {
       case _TVMMode.fv:
-        final ptrPmt = pPmt!;
-        final ptrPv = pPv!;
-        if (sRate == 1 && sNper == 1 && sPmt == 1 && sPv == 1) {
-          for (var i = 0; i < size; i++) {
-            final r = pRate[i];
-            final n = pNper[i];
-            final p = ptrPmt[i];
-            final v = ptrPv[i];
-            if (r == 0.0) {
-              pDest[i] = -(v + p * n);
-            } else {
-              final temp = math.pow(1.0 + r, n).toDouble();
-              final factor = (p * (1.0 + r * w)) / r;
-              pDest[i] = -(v * temp + factor * (temp - 1.0));
-            }
-          }
-        } else {
-          for (var i = 0; i < size; i++) {
-            final r = pRate[i * sRate];
-            final n = pNper[i * sNper];
-            final p = ptrPmt[i * sPmt];
-            final v = ptrPv[i * sPv];
-            if (r == 0.0) {
-              pDest[i] = -(v + p * n);
-            } else {
-              final temp = math.pow(1.0 + r, n).toDouble();
-              final factor = (p * (1.0 + r * w)) / r;
-              pDest[i] = -(v * temp + factor * (temp - 1.0));
-            }
-          }
-        }
+        v_tvm_fv_double(
+          pRate,
+          sRate,
+          pNper,
+          sNper,
+          pPmt!,
+          sPmt,
+          pPv!,
+          sPv,
+          w,
+          pDest,
+          size,
+        );
         return;
 
       case _TVMMode.pv:
-        final ptrPmt = pPmt!;
-        final ptrFv = pFv!;
-        if (sRate == 1 && sNper == 1 && sPmt == 1 && sFv == 1) {
-          for (var i = 0; i < size; i++) {
-            final r = pRate[i];
-            final n = pNper[i];
-            final p = ptrPmt[i];
-            final f = ptrFv[i];
-            if (r == 0.0) {
-              pDest[i] = -(f + p * n);
-            } else {
-              final temp = math.pow(1.0 + r, n).toDouble();
-              final factor = (p * (1.0 + r * w)) / r;
-              pDest[i] = -(f + factor * (temp - 1.0)) / temp;
-            }
-          }
-        } else {
-          for (var i = 0; i < size; i++) {
-            final r = pRate[i * sRate];
-            final n = pNper[i * sNper];
-            final p = ptrPmt[i * sPmt];
-            final f = ptrFv[i * sFv];
-            if (r == 0.0) {
-              pDest[i] = -(f + p * n);
-            } else {
-              final temp = math.pow(1.0 + r, n).toDouble();
-              final factor = (p * (1.0 + r * w)) / r;
-              pDest[i] = -(f + factor * (temp - 1.0)) / temp;
-            }
-          }
-        }
+        v_tvm_pv_double(
+          pRate,
+          sRate,
+          pNper,
+          sNper,
+          pPmt!,
+          sPmt,
+          pFv!,
+          sFv,
+          w,
+          pDest,
+          size,
+        );
         return;
 
       case _TVMMode.pmt:
-        final ptrPv = pPv!;
-        if (sRate == 1 && sNper == 1 && sPv == 1 && sFv == 1 && pFv != null) {
-          for (var i = 0; i < size; i++) {
-            final r = pRate[i];
-            final n = pNper[i];
-            final v = ptrPv[i];
-            final f = pFv[i];
-            if (r == 0.0) {
-              pDest[i] = -(f + v) / n;
-            } else {
-              final temp = math.pow(1.0 + r, n).toDouble();
-              final fact = (1.0 + r * w) * (temp - 1.0) / r;
-              pDest[i] = -(f + v * temp) / fact;
-            }
-          }
-        } else {
-          for (var i = 0; i < size; i++) {
-            final r = pRate[i * sRate];
-            final n = pNper[i * sNper];
-            final v = ptrPv[i * sPv];
-            final f = pFv != null ? pFv[i * sFv] : 0.0;
-            if (r == 0.0) {
-              pDest[i] = -(f + v) / n;
-            } else {
-              final temp = math.pow(1.0 + r, n).toDouble();
-              final fact = (1.0 + r * w) * (temp - 1.0) / r;
-              pDest[i] = -(f + v * temp) / fact;
-            }
-          }
-        }
+        v_tvm_pmt_double(
+          pRate,
+          sRate,
+          pNper,
+          sNper,
+          pPv!,
+          sPv,
+          pFv ?? ffi.nullptr,
+          sFv,
+          w,
+          pDest,
+          size,
+        );
         return;
     }
   }
@@ -728,43 +675,74 @@ NDArray<Float64> irr(
   }
 
   return NDArray.scope(() {
-    // Strip leading zeros to find the actual cash flow start.
-    // This returns a zero-copy sliced view of the original values array.
-    final coeffs = _getStrippedCoeffs(values);
+    final len = values.shape[0];
+    final stride = values.strides[0];
+    final pVal = values.pointer.cast<ffi.Double>();
+    var firstNonZero = -1;
+    var lastNonZero = -1;
+    for (var i = 0; i < len; i++) {
+      if (pVal[i * stride] != 0.0) {
+        if (firstNonZero == -1) firstNonZero = i;
+        lastNonZero = i;
+      }
+    }
 
-    if (coeffs == null || _hasSameSign(coeffs)) {
+    var sameSign = true;
+    if (firstNonZero != -1 && lastNonZero > firstNonZero) {
+      final first = pVal[firstNonZero * stride];
+      if (first > 0.0) {
+        for (var i = firstNonZero + 1; i <= lastNonZero; i++) {
+          if (pVal[i * stride] <= 0.0) {
+            sameSign = false;
+            break;
+          }
+        }
+      } else if (first < 0.0) {
+        for (var i = firstNonZero + 1; i <= lastNonZero; i++) {
+          if (pVal[i * stride] >= 0.0) {
+            sameSign = false;
+            break;
+          }
+        }
+      } else {
+        sameSign = false;
+      }
+    }
+
+    if (firstNonZero == -1 || sameSign) {
       if (raiseExceptions) {
         throw const NoRealSolutionException(
           'No real solution exists for IRR since all cashflows are of the same sign.',
         );
       }
       if (out != null) {
-        out.setCell([], double.nan);
+        out.pointer.cast<ffi.Double>()[0] = double.nan;
         return out;
       }
       final result = NDArray<Float64>.create([], DType.float64);
-      result.setCell([], double.nan);
+      result.pointer.cast<ffi.Double>()[0] = double.nan;
       return result.detachToParentScope();
     }
 
-    final n = coeffs.shape[0] - 1;
+    final n = lastNonZero - firstNonZero;
     final companion = NDArray<Float64>.zeros([n, n], DType.float64);
+    final pComp = companion.pointer.cast<ffi.Double>();
+    final c0 = pVal[firstNonZero * stride];
     for (var j = 0; j < n; j++) {
-      companion.setCellFlat(
-        j,
-        -coeffs.getCellFlat(j + 1) / coeffs.getCellFlat(0),
-      );
+      pComp[j] = -pVal[(firstNonZero + j + 1) * stride] / c0;
     }
     for (var i = 1; i < n; i++) {
-      companion.setCellFlat(i * n + i - 1, 1.0);
+      pComp[i * n + i - 1] = 1.0;
     }
 
     final eigResult = eig(companion);
+    final pEig = eigResult.eigenvalues.pointer.cast<ffi.Double>();
     final List<double> eirr = [];
     for (var i = 0; i < n; i++) {
-      final root = eigResult.eigenvalues.getCellFlat(i);
-      if (root.imag.abs() < 1e-12) {
-        final r = root.real - 1.0;
+      final real = pEig[2 * i];
+      final imag = pEig[2 * i + 1];
+      if (imag.abs() < 1e-12) {
+        final r = real - 1.0;
         if (r >= -1.0) {
           eirr.add(r);
         }
@@ -786,61 +764,13 @@ NDArray<Float64> irr(
     }
 
     if (out != null) {
-      out.setCell([], selectedRate);
+      out.pointer.cast<ffi.Double>()[0] = selectedRate;
       return out;
     }
     final result = NDArray<Float64>.create([], DType.float64);
-    result.setCell([], selectedRate);
+    result.pointer.cast<ffi.Double>()[0] = selectedRate;
     return result.detachToParentScope();
   });
-}
-
-/// Strips leading zero coefficients from the cash flow values.
-///
-/// Returns a zero-copy sliced view of [values] starting from the first non-zero element.
-/// Returns `null` if [values] contains only zeros.
-NDArray<Float64>? _getStrippedCoeffs(NDArray<Float64> values) {
-  // Leverage FFI-accelerated nonzero search to find non-zero elements.
-  final indices = nonzero(values)[0];
-  if (indices.shape[0] == 0) {
-    return null; // All cash flows are zero.
-  }
-
-  final firstNonZeroIndex = indices.getCell([0]);
-  final lastNonZeroIndex = indices.getCell([indices.shape[0] - 1]);
-  if (firstNonZeroIndex == 0 && lastNonZeroIndex == values.shape[0] - 1) {
-    return values; // No leading or trailing zeros to strip.
-  }
-
-  // Return a sliced view spanning from the first to the last non-zero index.
-  // This avoids copying any data from the original NDArray.
-  return values.slice([
-    Slice(start: firstNonZeroIndex, stop: lastNonZeroIndex + 1),
-  ]);
-}
-
-/// Checks if all elements in [coeffs] have the same sign (all positive or all negative).
-///
-/// Returns `true` if empty.
-///
-/// **Implementation Note:**
-/// Iterating manually in Dart is used here instead of bulk FFI operations (like
-/// `min`/`max` or `greater` + `nonzero`) because:
-/// 1. It allows for an immediate early-exit as soon as a sign change is found.
-/// 2. It avoids allocating intermediate boolean/coordinate arrays.
-/// Benchmarks show that for typical cash flows (N < 100), this manual loop is
-/// faster than bulk FFI pipelines.
-bool _hasSameSign(NDArray<Float64> coeffs) {
-  final length = coeffs.shape[0];
-  if (length <= 1) return true;
-
-  final first = coeffs.getCell([0]);
-  if (first > 0) {
-    return findIndex(coeffs, CompareOp.lessEqual, 0.0) == null;
-  } else if (first < 0) {
-    return findIndex(coeffs, CompareOp.greaterEqual, 0.0) == null;
-  }
-  return false;
 }
 
 double _irrDefaultSelection(List<double> eirr) {

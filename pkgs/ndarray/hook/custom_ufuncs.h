@@ -2277,6 +2277,34 @@ void v_isclose_float(const float *a, const float *b, uint8_t *res, int64_t size,
 int v_allclose_double(const double *a, const double *b, int64_t size, double rtol, double atol, int equal_nan);
 int v_allclose_float(const float *a, const float *b, int64_t size, double rtol, double atol, int equal_nan);
 
+void v_fft_hermitian_mirror_complex128(double *out, int64_t target_len, int64_t signals_count);
+void v_ifft_hermitian_mirror_scale_complex128(double *out, int64_t target_len, int64_t signals_count, double scale);
+void v_scale_conj_complex128(double *out, int64_t count, double scale);
+
+int64_t v_check_bounds_int64(const int64_t *indices, int64_t num_indices, int64_t axis_len);
+
+void v_tvm_fv_double(
+    const double *rate, int64_t s_rate,
+    const double *nper, int64_t s_nper,
+    const double *pmt, int64_t s_pmt,
+    const double *pv, int64_t s_pv,
+    double w, double *dest, int64_t size
+);
+void v_tvm_pv_double(
+    const double *rate, int64_t s_rate,
+    const double *nper, int64_t s_nper,
+    const double *pmt, int64_t s_pmt,
+    const double *fv, int64_t s_fv,
+    double w, double *dest, int64_t size
+);
+void v_tvm_pmt_double(
+    const double *rate, int64_t s_rate,
+    const double *nper, int64_t s_nper,
+    const double *pv, int64_t s_pv,
+    const double *fv, int64_t s_fv,
+    double w, double *dest, int64_t size
+);
+
 #ifdef __cplusplus
 }
 #endif
