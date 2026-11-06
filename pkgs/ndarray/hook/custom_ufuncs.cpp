@@ -1607,11 +1607,18 @@ static inline void simd_exp_double(const double *src, double *dst, int64_t size)
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
+        const auto vres = hn::Exp(d, vx);
         if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Ge(vx, vmin), hn::Le(vx, vmax))))) {
-            hn::StoreU(hn::Exp(d, vx), d, dst + i);
+            hn::StoreU(vres, d, dst + i);
         } else {
+            double vx_lanes[HWY_MAX_BYTES / sizeof(double)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vres, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::exp(src[i + k]);
+                double x = vx_lanes[k];
+                if (!(x >= -708.0 && x <= 709.0)) {
+                    dst[i + k] = std::exp(x);
+                }
             }
         }
     }
@@ -1642,11 +1649,18 @@ static inline void simd_exp_float(const float *src, float *dst, int64_t size) {
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
+        const auto vres = hn::Exp(d, vx);
         if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Ge(vx, vmin), hn::Le(vx, vmax))))) {
-            hn::StoreU(hn::Exp(d, vx), d, dst + i);
+            hn::StoreU(vres, d, dst + i);
         } else {
+            float vx_lanes[HWY_MAX_BYTES / sizeof(float)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vres, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::exp(src[i + k]);
+                float x = vx_lanes[k];
+                if (!(x >= -87.0f && x <= 88.0f)) {
+                    dst[i + k] = std::exp(x);
+                }
             }
         }
     }
@@ -1676,13 +1690,19 @@ static inline void simd_sin_double(const double *src, double *dst, int64_t size)
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
+        hn::Vec<decltype(d)> vs, vc;
+        fast_sincos_double(d, vx, vs, vc);
         if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
-            hn::Vec<decltype(d)> vs, vc;
-            fast_sincos_double(d, vx, vs, vc);
             hn::StoreU(vs, d, dst + i);
         } else {
+            double vx_lanes[HWY_MAX_BYTES / sizeof(double)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vs, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::sin(src[i + k]);
+                double x = vx_lanes[k];
+                if (!(std::fabs(x) < 39000.0)) {
+                    dst[i + k] = std::sin(x);
+                }
             }
         }
     }
@@ -1714,13 +1734,19 @@ static inline void simd_sin_float(const float *src, float *dst, int64_t size) {
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
+        hn::Vec<decltype(d)> vs, vc;
+        hn::SinCos(d, vx, vs, vc);
         if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
-            hn::Vec<decltype(d)> vs, vc;
-            hn::SinCos(d, vx, vs, vc);
             hn::StoreU(vs, d, dst + i);
         } else {
+            float vx_lanes[HWY_MAX_BYTES / sizeof(float)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vs, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::sin(src[i + k]);
+                float x = vx_lanes[k];
+                if (!(std::fabs(x) < 8192.0f)) {
+                    dst[i + k] = std::sin(x);
+                }
             }
         }
     }
@@ -1752,13 +1778,19 @@ static inline void simd_cos_double(const double *src, double *dst, int64_t size)
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
+        hn::Vec<decltype(d)> vs, vc;
+        fast_sincos_double(d, vx, vs, vc);
         if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
-            hn::Vec<decltype(d)> vs, vc;
-            fast_sincos_double(d, vx, vs, vc);
             hn::StoreU(vc, d, dst + i);
         } else {
+            double vx_lanes[HWY_MAX_BYTES / sizeof(double)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vc, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::cos(src[i + k]);
+                double x = vx_lanes[k];
+                if (!(std::fabs(x) < 39000.0)) {
+                    dst[i + k] = std::cos(x);
+                }
             }
         }
     }
@@ -1790,13 +1822,19 @@ static inline void simd_cos_float(const float *src, float *dst, int64_t size) {
     int64_t i = 0;
     for (; i + N <= size; i += N) {
         const auto vx = hn::LoadU(d, src + i);
+        hn::Vec<decltype(d)> vs, vc;
+        hn::SinCos(d, vx, vs, vc);
         if (HWY_LIKELY(hn::AllTrue(d, hn::Lt(hn::Abs(vx), vmax)))) {
-            hn::Vec<decltype(d)> vs, vc;
-            hn::SinCos(d, vx, vs, vc);
             hn::StoreU(vc, d, dst + i);
         } else {
+            float vx_lanes[HWY_MAX_BYTES / sizeof(float)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vc, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::cos(src[i + k]);
+                float x = vx_lanes[k];
+                if (!(std::fabs(x) < 8192.0f)) {
+                    dst[i + k] = std::cos(x);
+                }
             }
         }
     }
@@ -1831,11 +1869,20 @@ static inline void simd_tan_double(const double *src, double *dst, int64_t size)
         const auto vx = hn::LoadU(d, src + i);
         hn::Vec<decltype(d)> vs, vc;
         fast_sincos_double(d, vx, vs, vc);
+        const auto vres = hn::Div(vs, vc);
         if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Lt(hn::Abs(vx), vmax), hn::Gt(hn::Abs(vc), vcos_min))))) {
-            hn::StoreU(hn::Div(vs, vc), d, dst + i);
+            hn::StoreU(vres, d, dst + i);
         } else {
+            double vx_lanes[HWY_MAX_BYTES / sizeof(double)];
+            double vc_lanes[HWY_MAX_BYTES / sizeof(double)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vc, d, vc_lanes);
+            hn::StoreU(vres, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::tan(src[i + k]);
+                double x = vx_lanes[k];
+                if (!(std::fabs(x) < 39000.0 && std::fabs(vc_lanes[k]) > 1e-12)) {
+                    dst[i + k] = std::tan(x);
+                }
             }
         }
     }
@@ -1872,11 +1919,20 @@ static inline void simd_tan_float(const float *src, float *dst, int64_t size) {
         const auto vx = hn::LoadU(d, src + i);
         hn::Vec<decltype(d)> vs, vc;
         hn::SinCos(d, vx, vs, vc);
+        const auto vres = hn::Div(vs, vc);
         if (HWY_LIKELY(hn::AllTrue(d, hn::And(hn::Lt(hn::Abs(vx), vmax), hn::Gt(hn::Abs(vc), vcos_min))))) {
-            hn::StoreU(hn::Div(vs, vc), d, dst + i);
+            hn::StoreU(vres, d, dst + i);
         } else {
+            float vx_lanes[HWY_MAX_BYTES / sizeof(float)];
+            float vc_lanes[HWY_MAX_BYTES / sizeof(float)];
+            hn::StoreU(vx, d, vx_lanes);
+            hn::StoreU(vc, d, vc_lanes);
+            hn::StoreU(vres, d, dst + i);
             for (int64_t k = 0; k < N; k++) {
-                dst[i + k] = std::tan(src[i + k]);
+                float x = vx_lanes[k];
+                if (!(std::fabs(x) < 8192.0f && std::fabs(vc_lanes[k]) > 1e-5f)) {
+                    dst[i + k] = std::tan(x);
+                }
             }
         }
     }
@@ -4689,8 +4745,15 @@ void v_mul_complex(const cpx_t *a, const cpx_t *b, cpx_t *res, int64_t size, con
             if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
                 hn::StoreU(vres, d, dres + i);
             } else {
-                for (int64_t k = i / 2; k < (i + N) / 2; k++) {
-                    res[k] = cpx_mul(a[k], b[k]);
+                double vres_lanes[HWY_MAX_BYTES / sizeof(double)];
+                hn::StoreU(vres, d, vres_lanes);
+                for (int64_t m = 0; m < N / 2; m++) {
+                    const int64_t k = i / 2 + m;
+                    if (std::isfinite(vres_lanes[2 * m]) && std::isfinite(vres_lanes[2 * m + 1])) {
+                        res[k] = {vres_lanes[2 * m], vres_lanes[2 * m + 1]};
+                    } else {
+                        res[k] = cpx_mul(a[k], b[k]);
+                    }
                 }
             }
         }
@@ -4711,11 +4774,12 @@ void v_mul_complex(const cpx_t *a, const cpx_t *b, cpx_t *res, int64_t size, con
             const auto prod1 = hn::Mul(ar, vb);
             const auto prod2 = hn::Mul(ai, b_swap);
             const auto vres = hn::OddEven(hn::Add(prod1, prod2), hn::Sub(prod1, prod2));
-            if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
-                hn::Store(vres, d, tail_r);
-                for (int64_t k = 0; k < rem; k++) dres[i + k] = tail_r[k];
-            } else {
-                for (int64_t k = i / 2; k < size; k++) {
+            hn::Store(vres, d, tail_r);
+            for (int64_t m = 0; m < rem / 2; m++) {
+                const int64_t k = i / 2 + m;
+                if (HWY_LIKELY(std::isfinite(tail_r[2 * m]) && std::isfinite(tail_r[2 * m + 1]))) {
+                    res[k] = {tail_r[2 * m], tail_r[2 * m + 1]};
+                } else {
                     res[k] = cpx_mul(a[k], b[k]);
                 }
             }
@@ -4756,8 +4820,15 @@ void v_mul_complex64(const cpx_f_t *a, const cpx_f_t *b, cpx_f_t *res, int64_t s
             if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
                 hn::StoreU(vres, d, fres + i);
             } else {
-                for (int64_t k = i / 2; k < (i + N) / 2; k++) {
-                    res[k] = cpx_mul_f(a[k], b[k]);
+                float vres_lanes[HWY_MAX_BYTES / sizeof(float)];
+                hn::StoreU(vres, d, vres_lanes);
+                for (int64_t m = 0; m < N / 2; m++) {
+                    const int64_t k = i / 2 + m;
+                    if (std::isfinite(vres_lanes[2 * m]) && std::isfinite(vres_lanes[2 * m + 1])) {
+                        res[k] = {vres_lanes[2 * m], vres_lanes[2 * m + 1]};
+                    } else {
+                        res[k] = cpx_mul_f(a[k], b[k]);
+                    }
                 }
             }
         }
@@ -4778,11 +4849,12 @@ void v_mul_complex64(const cpx_f_t *a, const cpx_f_t *b, cpx_f_t *res, int64_t s
             const auto prod1 = hn::Mul(ar, vb);
             const auto prod2 = hn::Mul(ai, b_swap);
             const auto vres = hn::OddEven(hn::Add(prod1, prod2), hn::Sub(prod1, prod2));
-            if (HWY_LIKELY(hn::AllTrue(d, hn::IsFinite(vres)))) {
-                hn::Store(vres, d, tail_r);
-                for (int64_t k = 0; k < rem; k++) fres[i + k] = tail_r[k];
-            } else {
-                for (int64_t k = i / 2; k < size; k++) {
+            hn::Store(vres, d, tail_r);
+            for (int64_t m = 0; m < rem / 2; m++) {
+                const int64_t k = i / 2 + m;
+                if (HWY_LIKELY(std::isfinite(tail_r[2 * m]) && std::isfinite(tail_r[2 * m + 1]))) {
+                    res[k] = {tail_r[2 * m], tail_r[2 * m + 1]};
+                } else {
                     res[k] = cpx_mul_f(a[k], b[k]);
                 }
             }
