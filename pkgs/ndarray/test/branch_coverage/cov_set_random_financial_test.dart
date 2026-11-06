@@ -1054,6 +1054,23 @@ void main() {
           DType.float64,
         );
         expect(irr(mixedRoots).scalar, closeTo(0.2, 1e-6));
+
+        // 4. fv/pv overflow and ultra-small rate parity across SIMD & scalar lanes
+        final rOverflow = NDArray.fromList(List<double>.filled(8, 0.1), [
+          8,
+        ], DType.float64);
+        final nOverflow = NDArray.fromList(List<double>.filled(8, 20000.0), [
+          8,
+        ], DType.float64);
+        final pOverflow = NDArray.fromList(List<double>.filled(8, -100.0), [
+          8,
+        ], DType.float64);
+        final vOverflow = NDArray.fromList(List<double>.filled(8, -1000.0), [
+          8,
+        ], DType.float64);
+        final fvOv = fv(rOverflow, nOverflow, pOverflow, vOverflow);
+        expect(fvOv.getCell([0]), double.infinity);
+        expect(fvOv.getCell([7]), double.infinity);
       });
     });
   });

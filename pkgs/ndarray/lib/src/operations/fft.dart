@@ -442,20 +442,18 @@ NDArray<R> fft<R extends DTypeTag, Out extends R>(
       final marker = ScratchArena.marker;
       try {
         final rCfg = _getKissFFTRPlan(targetLen, 0);
-        final half = targetLen ~/ 2 + 1;
         final pInBase = inputA.pointer.cast<ffi.Double>();
         final pOutBase = result.pointer.cast<kiss_fft_cpx>();
         for (var s = 0; s < signalsCount; s++) {
           final rowPin = pInBase + s * lastAxisDim;
           final rowPout = pOutBase + s * targetLen;
           kiss_fftr(rCfg, rowPin, rowPout);
-          final pOutD = rowPout.cast<ffi.Double>();
-          for (var k = half; k < targetLen; k++) {
-            final sym = targetLen - k;
-            pOutD[2 * k] = pOutD[2 * sym];
-            pOutD[2 * k + 1] = 0.0 - pOutD[2 * sym + 1];
-          }
         }
+        v_fft_hermitian_mirror_complex128(
+          pOutBase.cast<ffi.Double>(),
+          targetLen,
+          signalsCount,
+        );
       } finally {
         ScratchArena.reset(marker);
       }
@@ -720,7 +718,6 @@ NDArray<R> ifft<R extends DTypeTag, Out extends R>(
       final marker = ScratchArena.marker;
       try {
         final rCfg = _getKissFFTRPlan(targetLen, 0);
-        final half = targetLen ~/ 2 + 1;
         final scaleFactor = 1.0 / targetLen;
         final pInBase = inputA.pointer.cast<ffi.Double>();
         final pOutBase = result.pointer.cast<kiss_fft_cpx>();
@@ -728,17 +725,13 @@ NDArray<R> ifft<R extends DTypeTag, Out extends R>(
           final rowPin = pInBase + s * lastAxisDim;
           final rowPout = pOutBase + s * targetLen;
           kiss_fftr(rCfg, rowPin, rowPout);
-          final pOutD = rowPout.cast<ffi.Double>();
-          for (var k = 0; k < half; k++) {
-            pOutD[2 * k] = pOutD[2 * k] * scaleFactor;
-            pOutD[2 * k + 1] = 0.0 - pOutD[2 * k + 1] * scaleFactor;
-          }
-          for (var k = half; k < targetLen; k++) {
-            final sym = targetLen - k;
-            pOutD[2 * k] = pOutD[2 * sym];
-            pOutD[2 * k + 1] = 0.0 - pOutD[2 * sym + 1];
-          }
         }
+        v_ifft_hermitian_mirror_scale_complex128(
+          pOutBase.cast<ffi.Double>(),
+          targetLen,
+          signalsCount,
+          scaleFactor,
+        );
       } finally {
         ScratchArena.reset(marker);
       }
@@ -1478,13 +1471,13 @@ NDArray<R> _rfftImpl<R extends DTypeTag>(
           final rowPin = pInBase + s * lastAxisDim;
           final rowPout = pOutBase + s * outLen;
           kiss_fftr(cfg, rowPin, rowPout);
-          if (isIhfft) {
-            final rowPoutD = rowPout.cast<ffi.Double>();
-            for (var i = 0; i < outLen; i++) {
-              rowPoutD[2 * i] = rowPoutD[2 * i] * scale;
-              rowPoutD[2 * i + 1] = -rowPoutD[2 * i + 1] * scale;
-            }
-          }
+        }
+        if (isIhfft) {
+          v_scale_conj_complex128(
+            pOutBase.cast<ffi.Double>(),
+            signalsCount * outLen,
+            scale,
+          );
         }
       } finally {
         ScratchArena.reset(marker);

@@ -2947,7 +2947,7 @@ HWY_API Vec256<float16_t> NegMulSub(Vec256<float16_t> mul, Vec256<float16_t> x,
 
 HWY_API Vec256<float> MulAdd(Vec256<float> mul, Vec256<float> x,
                              Vec256<float> add) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return mul * x + add;
 #else
   return Vec256<float>{_mm256_fmadd_ps(mul.raw, x.raw, add.raw)};
@@ -2955,7 +2955,7 @@ HWY_API Vec256<float> MulAdd(Vec256<float> mul, Vec256<float> x,
 }
 HWY_API Vec256<double> MulAdd(Vec256<double> mul, Vec256<double> x,
                               Vec256<double> add) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return mul * x + add;
 #else
   return Vec256<double>{_mm256_fmadd_pd(mul.raw, x.raw, add.raw)};
@@ -2964,7 +2964,7 @@ HWY_API Vec256<double> MulAdd(Vec256<double> mul, Vec256<double> x,
 
 HWY_API Vec256<float> NegMulAdd(Vec256<float> mul, Vec256<float> x,
                                 Vec256<float> add) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return add - mul * x;
 #else
   return Vec256<float>{_mm256_fnmadd_ps(mul.raw, x.raw, add.raw)};
@@ -2972,7 +2972,7 @@ HWY_API Vec256<float> NegMulAdd(Vec256<float> mul, Vec256<float> x,
 }
 HWY_API Vec256<double> NegMulAdd(Vec256<double> mul, Vec256<double> x,
                                  Vec256<double> add) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return add - mul * x;
 #else
   return Vec256<double>{_mm256_fnmadd_pd(mul.raw, x.raw, add.raw)};
@@ -2981,7 +2981,7 @@ HWY_API Vec256<double> NegMulAdd(Vec256<double> mul, Vec256<double> x,
 
 HWY_API Vec256<float> MulSub(Vec256<float> mul, Vec256<float> x,
                              Vec256<float> sub) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return mul * x - sub;
 #else
   return Vec256<float>{_mm256_fmsub_ps(mul.raw, x.raw, sub.raw)};
@@ -2989,7 +2989,7 @@ HWY_API Vec256<float> MulSub(Vec256<float> mul, Vec256<float> x,
 }
 HWY_API Vec256<double> MulSub(Vec256<double> mul, Vec256<double> x,
                               Vec256<double> sub) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return mul * x - sub;
 #else
   return Vec256<double>{_mm256_fmsub_pd(mul.raw, x.raw, sub.raw)};
@@ -2998,7 +2998,7 @@ HWY_API Vec256<double> MulSub(Vec256<double> mul, Vec256<double> x,
 
 HWY_API Vec256<float> NegMulSub(Vec256<float> mul, Vec256<float> x,
                                 Vec256<float> sub) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return Neg(mul * x) - sub;
 #else
   return Vec256<float>{_mm256_fnmsub_ps(mul.raw, x.raw, sub.raw)};
@@ -3006,7 +3006,7 @@ HWY_API Vec256<float> NegMulSub(Vec256<float> mul, Vec256<float> x,
 }
 HWY_API Vec256<double> NegMulSub(Vec256<double> mul, Vec256<double> x,
                                  Vec256<double> sub) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return Neg(mul * x) - sub;
 #else
   return Vec256<double>{_mm256_fnmsub_pd(mul.raw, x.raw, sub.raw)};
@@ -3022,7 +3022,7 @@ HWY_API Vec256<float16_t> MulAddSub(Vec256<float16_t> mul, Vec256<float16_t> x,
 
 HWY_API Vec256<float> MulAddSub(Vec256<float> mul, Vec256<float> x,
                                 Vec256<float> sub_or_add) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return AddSub(mul * x, sub_or_add);
 #else
   return Vec256<float>{_mm256_fmaddsub_ps(mul.raw, x.raw, sub_or_add.raw)};
@@ -3031,7 +3031,7 @@ HWY_API Vec256<float> MulAddSub(Vec256<float> mul, Vec256<float> x,
 
 HWY_API Vec256<double> MulAddSub(Vec256<double> mul, Vec256<double> x,
                                  Vec256<double> sub_or_add) {
-#ifdef HWY_DISABLE_BMI2_FMA
+#if defined(HWY_DISABLE_BMI2_FMA) && !defined(__FMA__)
   return AddSub(mul * x, sub_or_add);
 #else
   return Vec256<double>{_mm256_fmaddsub_pd(mul.raw, x.raw, sub_or_add.raw)};

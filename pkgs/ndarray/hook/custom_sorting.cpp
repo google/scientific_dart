@@ -34,6 +34,10 @@
 #if defined(__GNUC__) || defined(__clang__)
 #pragma GCC diagnostic pop
 #endif
+#if defined(__AVX2__) && defined(__FMA__) && defined(__F16C__)
+static_assert(HWY_TARGET == HWY_AVX2, "Expected HWY_AVX2 static target when compiled with AVX2+FMA+F16C");
+static_assert(HWY_NATIVE_FMA == 1, "Expected hardware FMA to be enabled when compiled with -mfma");
+#endif
 #include <type_traits>
 
 static thread_local int g_ndarray_oom_flag = 0;
@@ -357,7 +361,7 @@ static inline uint32_t sortable_key32(T val) {
     if constexpr (std::is_same_v<T, float>) {
         uint32_t bits;
         std::memcpy(&bits, &val, sizeof(uint32_t));
-        if ((bits << 1) == 0) return 0x80000000u; // canonicalize -0.0f and +0.0f
+        if ((bits << 1) == 0) bits = 0; // canonicalize -0.0f and +0.0f branchlessly
         uint32_t mask = static_cast<uint32_t>(static_cast<int32_t>(bits) >> 31) | 0x80000000u;
         return bits ^ mask;
     } else if constexpr (sizeof(T) == 4 && std::is_signed_v<T>) {
@@ -376,7 +380,7 @@ static inline uint64_t sortable_key64(T val) {
     if constexpr (std::is_same_v<T, double>) {
         uint64_t bits;
         std::memcpy(&bits, &val, sizeof(uint64_t));
-        if ((bits << 1) == 0) return 0x8000000000000000ULL; // canonicalize -0.0 and +0.0
+        if ((bits << 1) == 0) bits = 0; // canonicalize -0.0 and +0.0 branchlessly
         uint64_t mask = static_cast<uint64_t>(static_cast<int64_t>(bits) >> 63) | 0x8000000000000000ULL;
         return bits ^ mask;
     } else if constexpr (std::is_signed_v<T>) {
@@ -556,6 +560,33 @@ void VQSelectStatic(T *HWY_RESTRICT keys, size_t num,
     Select(d, st, reinterpret_cast<LaneType *>(keys), num * kLPK, k_list, k_start, k_end, buf);
 }
 #endif  // VQSORT_ENABLED
+
+template <typename T>
+int64_t FindFirstNaN(const T *HWY_RESTRICT src, int64_t size) {
+    if constexpr (!std::is_floating_point_v<T>) {
+        return -1;
+    } else {
+        const hn::ScalableTag<T> d;
+        const int64_t N = hn::Lanes(d);
+        int64_t i = 0;
+        for (; i + 4 * N <= size; i += 4 * N) {
+            const auto m0 = hn::IsNaN(hn::LoadU(d, src + i));
+            const auto m1 = hn::IsNaN(hn::LoadU(d, src + i + N));
+            const auto m2 = hn::IsNaN(hn::LoadU(d, src + i + 2 * N));
+            const auto m3 = hn::IsNaN(hn::LoadU(d, src + i + 3 * N));
+            const auto m_any = hn::Or(hn::Or(m0, m1), hn::Or(m2, m3));
+            if (HWY_UNLIKELY(!hn::AllFalse(d, m_any))) {
+                for (int64_t k = 0; k < 4 * N; k++) {
+                    if (std::isnan(src[i + k])) return i + k;
+                }
+            }
+        }
+        for (; i < size; i++) {
+            if (HWY_UNLIKELY(std::isnan(src[i]))) return i;
+        }
+        return -1;
+    }
+}
 
 template <typename T>
 bool CopyAndCheckNaN64(const T *HWY_RESTRICT src, T *HWY_RESTRICT dst, int64_t size) {
@@ -1121,27 +1152,42 @@ static void argsort_impl(const T *data, int64_t *indices, int64_t size, int kind
     // Fast path for 64-bit types: single pass fills K64V64/uint128_t for non-NaNs and places NaNs at back of indices.
     if constexpr (sizeof(T) == 8) {
         if (size > 32 && (kind == 0 || kind == 1)) {
+            constexpr size_t kMaxThreadLocalScratch = 65536;
             if (kind == 0) {
-                NoThrowBuffer<hwy::K64V64> kv;
-                if (kv.try_resize_uninit(static_cast<size_t>(size))) {
+                static thread_local NoThrowBuffer<hwy::K64V64> tl_kv;
+                NoThrowBuffer<hwy::K64V64> heap_kv;
+                NoThrowBuffer<hwy::K64V64> &kv = (static_cast<size_t>(size) <= kMaxThreadLocalScratch) ? tl_kv : heap_kv;
+                if (kv.size() >= static_cast<size_t>(size) || kv.try_resize_uninit(static_cast<size_t>(size))) {
                     hwy::K64V64 *kv_ptr = kv.data();
                     int64_t valid_len = size;
                     if constexpr (std::is_floating_point_v<T>) {
-                        int64_t left = 0;
-                        int64_t right = size - 1;
-                        for (int64_t i = 0; i < size; i++) {
-                            T v = data[i];
-                            if (HWY_UNLIKELY(std::isnan(v))) {
-                                indices[right--] = i;
-                            } else {
-                                kv_ptr[left].key = sortable_key64(v);
-                                kv_ptr[left].value = static_cast<uint64_t>(i);
-                                left++;
+                        const int64_t first_nan = seen_nan ? 0 : ndarray_hwy::FindFirstNaN(data, size);
+                        if (HWY_LIKELY(first_nan == -1)) {
+                            for (int64_t i = 0; i < size; i++) {
+                                kv_ptr[i].key = sortable_key64(data[i]);
+                                kv_ptr[i].value = static_cast<uint64_t>(i);
                             }
-                        }
-                        valid_len = left;
-                        if (valid_len < size) {
-                            std::reverse(indices + valid_len, indices + size);
+                        } else {
+                            for (int64_t i = 0; i < first_nan; i++) {
+                                kv_ptr[i].key = sortable_key64(data[i]);
+                                kv_ptr[i].value = static_cast<uint64_t>(i);
+                            }
+                            int64_t left = first_nan;
+                            int64_t right = size - 1;
+                            for (int64_t i = first_nan; i < size; i++) {
+                                T v = data[i];
+                                if (HWY_UNLIKELY(std::isnan(v))) {
+                                    indices[right--] = i;
+                                } else {
+                                    kv_ptr[left].key = sortable_key64(v);
+                                    kv_ptr[left].value = static_cast<uint64_t>(i);
+                                    left++;
+                                }
+                            }
+                            valid_len = left;
+                            if (valid_len < size) {
+                                std::reverse(indices + valid_len, indices + size);
+                            }
                         }
                     } else {
                         for (int64_t i = 0; i < size; i++) {
@@ -1158,26 +1204,40 @@ static void argsort_impl(const T *data, int64_t *indices, int64_t size, int kind
                     return;
                 }
             } else {
-                NoThrowBuffer<hwy::uint128_t> u128;
-                if (u128.try_resize_uninit(static_cast<size_t>(size))) {
+                static thread_local NoThrowBuffer<hwy::uint128_t> tl_u128;
+                NoThrowBuffer<hwy::uint128_t> heap_u128;
+                NoThrowBuffer<hwy::uint128_t> &u128 = (static_cast<size_t>(size) <= kMaxThreadLocalScratch) ? tl_u128 : heap_u128;
+                if (u128.size() >= static_cast<size_t>(size) || u128.try_resize_uninit(static_cast<size_t>(size))) {
                     hwy::uint128_t *u_ptr = u128.data();
                     int64_t valid_len = size;
                     if constexpr (std::is_floating_point_v<T>) {
-                        int64_t left = 0;
-                        int64_t right = size - 1;
-                        for (int64_t i = 0; i < size; i++) {
-                            T v = data[i];
-                            if (HWY_UNLIKELY(std::isnan(v))) {
-                                indices[right--] = i;
-                            } else {
-                                u_ptr[left].hi = sortable_key64(v);
-                                u_ptr[left].lo = static_cast<uint64_t>(i);
-                                left++;
+                        const int64_t first_nan = seen_nan ? 0 : ndarray_hwy::FindFirstNaN(data, size);
+                        if (HWY_LIKELY(first_nan == -1)) {
+                            for (int64_t i = 0; i < size; i++) {
+                                u_ptr[i].hi = sortable_key64(data[i]);
+                                u_ptr[i].lo = static_cast<uint64_t>(i);
                             }
-                        }
-                        valid_len = left;
-                        if (valid_len < size) {
-                            std::reverse(indices + valid_len, indices + size);
+                        } else {
+                            for (int64_t i = 0; i < first_nan; i++) {
+                                u_ptr[i].hi = sortable_key64(data[i]);
+                                u_ptr[i].lo = static_cast<uint64_t>(i);
+                            }
+                            int64_t left = first_nan;
+                            int64_t right = size - 1;
+                            for (int64_t i = first_nan; i < size; i++) {
+                                T v = data[i];
+                                if (HWY_UNLIKELY(std::isnan(v))) {
+                                    indices[right--] = i;
+                                } else {
+                                    u_ptr[left].hi = sortable_key64(v);
+                                    u_ptr[left].lo = static_cast<uint64_t>(i);
+                                    left++;
+                                }
+                            }
+                            valid_len = left;
+                            if (valid_len < size) {
+                                std::reverse(indices + valid_len, indices + size);
+                            }
                         }
                     } else {
                         for (int64_t i = 0; i < size; i++) {
@@ -1238,13 +1298,7 @@ template <typename T>
 static void sort_float_impl(T *array, int64_t size, int kind) {
     if (array == nullptr || size <= 1) return;
 
-    int64_t first_nan = -1;
-    for (int64_t i = 0; i < size; i++) {
-        if (std::isnan(array[i])) {
-            first_nan = i;
-            break;
-        }
-    }
+    const int64_t first_nan = ndarray_hwy::FindFirstNaN(array, size);
     int64_t non_nan_size = size;
     if (first_nan != -1) {
         if (kind == 1) { // stable sort: preserve NaN order

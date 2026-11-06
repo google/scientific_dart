@@ -1887,6 +1887,67 @@ void main() {
           () => roll(a4F.asAnySpec, 1, out: a4C.asAnySpec),
           throwsArgumentError,
         );
+
+        // Track 6 regression probes:
+        // 1. at() with int64 indices sharing memory with a
+        final aSelfIdx = NDArray.fromList([0, 1, 2], [3], DType.int64);
+        atUfunc(
+          aSelfIdx,
+          aSelfIdx,
+          NDArray.fromList([10, 10, 10], [3], DType.int64),
+          op: BinaryOp.add,
+        );
+        expect(aSelfIdx.toList(), [10, 11, 12]);
+
+        // 2. at() on uint16 root & view with negative int64 indices (Dart slice fallback)
+        final u16Root = NDArray.fromList([10, 20, 30], [3], DType.uint16);
+        final negIdx = NDArray.fromList([-1, 0], [2], DType.int64);
+        atUfunc(
+          u16Root,
+          negIdx,
+          NDArray.fromList([99, 25], [2], DType.uint16),
+          op: BinaryOp.maximum,
+        );
+        expect(u16Root.toList(), [25, 20, 99]);
+
+        final u16Buf = NDArray.fromList([99, 10, 20, 30], [4], DType.uint16);
+        final u16View = u16Buf.slice([Slice(start: 1)]);
+        atUfunc(
+          u16View,
+          negIdx,
+          NDArray.fromList([88, 15], [2], DType.uint16),
+          op: BinaryOp.maximum,
+        );
+        expect(u16View.toList(), [15, 20, 88]);
+
+        // 3. Transposed 2D unary SIMD with out-of-range / overflow values
+        final bigMat = NDArray.zeros([32, 32], DType.float64);
+        bigMat.setCell([0, 0], 1500.0);
+        bigMat.setCell([1, 2], -1500.0);
+        bigMat.setCell([3, 4], 1e10);
+        final bigMatT = bigMat.transpose();
+        expect(exp(bigMatT).getCell([0, 0]), double.infinity);
+        expect(exp(bigMatT).getCell([2, 1]), 0.0);
+        expect(
+          sin(bigMatT).getCell([4, 3]),
+          closeTo(
+            sin(NDArray.scalar(1e10, dtype: DType.float64)).scalar,
+            1e-12,
+          ),
+        );
+        expect(
+          tan(bigMatT).getCell([4, 3]),
+          closeTo(
+            tan(NDArray.scalar(1e10, dtype: DType.float64)).scalar,
+            1e-12,
+          ),
+        );
+
+        // 4. ihfft preserves -0.0 on DC imaginary component
+        final ihfftRes = ihfft(
+          NDArray.fromList([1.0, 2.0, 3.0, 2.0], [4], DType.float64),
+        );
+        expect(ihfftRes.getCell([0]).imag.isNegative, isTrue);
       });
     });
   });

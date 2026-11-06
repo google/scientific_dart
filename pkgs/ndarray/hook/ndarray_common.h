@@ -37,6 +37,9 @@
 #if defined(__AVX2__) && !defined(__BMI2__) && !defined(HWY_DISABLE_BMI2_FMA)
 #define HWY_DISABLE_BMI2_FMA
 #endif
+#if defined(__AVX2__) && !defined(__BMI2__) && !defined(HWY_DISABLE_PEXT_ON_AVX2)
+#define HWY_DISABLE_PEXT_ON_AVX2
+#endif
 
 #ifndef NDARRAY_EXPORT
 #if defined(_WIN32)
