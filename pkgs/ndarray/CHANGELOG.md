@@ -1,10 +1,20 @@
-## 0.3.1-wip
+## 0.3.1
 
-- Added `NDArray.using((scope) { ... })` (and re-exported `ResourceScope`) to support LIFO `scope.defer(...)` cleanup callbacks and `scope.escape(...)` promotion of multiple results (such as records) (#1).
-- Optimized 1D and multi-dimensional FFT routines (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `ifft2`, `fftn`, `ifftn`, `rfft2`, `irfft2`, `rfftn`, `irfftn`, `hfft`, `ihfft`) with unboxed FFI pointer loops, SIMD scaling, hoisted inner-stride transposes and strided copies, and direct `r2c` + Hermitian conjugate symmetry fast paths for real inputs (#5).
-- **Breaking — Unified `linalg` Static Type Bounds & `Float64` Promotion**: Unified `linalg` static type bounds (`InexactOf<R>`, `RealFloatOf<R>`, and `SelfOf<InexactOf<R>>`) and integer/`Boolean`/`Float16`/`BFloat16` promotion to `Float64` across `inv`, `det`, `slogdet`, `solve`, `pinv`, `cholesky`, `qr`, and `svd`.
-- Added economy/reduced SVD (`svd(a, fullMatrices: false)`) and routed `pinv` through reduced SVD.
-- Added `svdvals` (`svdValues`), `matrix_rank` (`matrixRank`), `tensorsolve`, and `tensorinv` to `linalg`.
+- **Scoped Resource Management (`NDArray.using` & `ResourceScope`)**:
+  - Added `NDArray.using((scope) { ... })` (and re-exported `ResourceScope`) to support LIFO `scope.defer(...)` cleanup callbacks and `scope.escape(...)` promotion of one or more results (such as records) to the parent scope (#1, #2).
+- **Breaking — Unified `linalg` Static Type Bounds & `Float64` Promotion**:
+  - Unified `linalg` static type bounds (`InexactOf<R>`, `RealFloatOf<R>`, and `SelfOf<InexactOf<R>>`) and integer/`Boolean`/`Float16`/`BFloat16` promotion to `Float64` across `inv`, `det`, `slogdet`, `solve`, `pinv`, `cholesky`, `qr`, and `svd` (#6).
+- **Expanded Linear Algebra (`svd(fullMatrices: false)`, `svdvals`, `matrix_rank`, `tensorsolve`, `tensorinv`) & Batched `linalg` Fast Paths**:
+  - Added economy/reduced SVD (`svd(a, fullMatrices: false)`) and routed `pinv` through reduced SVD (#6).
+  - Added `svdvals` (`svdValues`), `matrix_rank` (`matrixRank`), `tensorsolve`, and `tensorinv` to `linalg` (#6).
+  - Eliminated per-slice `NDArray` view and workspace allocations in batched 3D+ `inv`, `det`, `slogdet`, `solve`, `cholesky`, `eigh`, `svdvals`, and `cond`, reusing preallocated column-major scratch buffers across batch slices (#9).
+- **1D & Multi-Dimensional FFT Optimization**:
+  - Optimized `fft`, `ifft`, `rfft`, `irfft`, `fft2`, `ifft2`, `fftn`, `ifftn`, `rfft2`, `irfft2`, `rfftn`, `irfftn`, `hfft`, and `ihfft` with unboxed FFI pointer loops, SIMD scaling, hoisted inner-stride transposes and strided copies, and direct `r2c` + Hermitian conjugate symmetry reconstruction for real inputs (#5, #11).
+- **256-Bit Google Highway `HWY_AVX2` + Hardware FMA & Native C++/SIMD Vectorization**:
+  - Enabled hardware FMA (`HWY_NATIVE_FMA=1`, `_mm256_fmadd_*`) on the 256-bit `HWY_AVX2` static target on x86_64 (`-mavx2 -mfma -mf16c` with `HWY_DISABLE_PEXT_ON_AVX2`) alongside `NEON` on ARM64 (#11).
+  - Vectorized `sort`, `argsort` (radix + `vqsort_kv`), `partition`, `argpartition` (Floyd-Rivest SELECT), `argmax`, `argmin`, `nanargmax`, `nanargmin`, `median`, `nanmedian`, `percentile`, `nanpercentile`, `quantile`, `nanquantile`, `repeat`, `tile`, and `nonzero` in C++/Highway (#7, #9).
+  - Vectorized transcendental and hyperbolic ufuncs (`exp`, `exp2`, `expm1`, `log`, `log2`, `log10`, `log1p`, `cbrt`, `sinh`, `cosh`, `tanh`, `asinh`, `acosh`, `atanh`, `atan2`, `hypot`, `logaddexp`, `logaddexp2`, `ldexp`, `frexp`, `sinc`, `i0`), complex arithmetic (`multiply`, `divide`, `abs`, `exp`, `sin`, `cos`), and IEEE 754 predicates (`isnan`, `isinf`, `isfinite`, `signbit`, `isclose`, `allclose`, `nan_to_num`) with Highway SIMD (#8, #9, #11).
+  - Vectorized reductions and statistical/calculus kernels (`sum`, `prod`, `nansum`, `nanprod`, `nanmean`, `nanvar`, `nanstd`, `ptp`, `any`, `all`, `count_nonzero`, `cumsum`, `cumprod`, `nancumsum`, `nancumprod`, `diff`, `ediff1d`, `gradient`, `trapezoid`, `cumulative_trapezoid`, `interp`, `bincount`, `histogram`, `corrcoef`, `cov`), indexing (`take`, `put`, `compress`, `extract`, `place`, `putmask`, `fill_diagonal`, `packbits`, `unpackbits`, `atUfunc`), spatial distances (`pdist`, `cdist`, `squareform`), and financial vectorized `irr` (#7, #8, #9, #11).
 
 ## 0.3.0
 
