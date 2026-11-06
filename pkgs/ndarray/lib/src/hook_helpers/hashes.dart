@@ -28,11 +28,11 @@ import 'package:crypto/crypto.dart';
 const repository = 'google/scientific_dart';
 
 /// Release tag for prebuilt `ndarray` binaries.
-const version = 'artifacts-v0.3.0';
+const version = 'artifacts-v0.3.1';
 
 /// Combined SHA-256 digest of `hook/` native source files at [version].
 const nativeSourceHash =
-    '0e314a3d4f977a666522c8b53cc9a300036ab65db1b53dd09f33e8e27b753620';
+    '92cf4e2260212c28735f369f95c0c24213485bef66bf8b4b9ee2dc32c9406b56';
 
 /// ASCII marker prefix embedded in compiled `ndarray` binaries.
 const sourceHashMarkerPrefix = 'NDARRAY_SOURCE_HASH=';
@@ -151,13 +151,13 @@ String ndarrayArtifactName(OS os, Architecture arch) {
 /// SHA-256 digests for prebuilt `ndarray` binaries indexed by `(OS, Architecture)`.
 final fileHashes = <(OS, Architecture), String>{
   (OS.linux, Architecture.x64):
-      '05db277ca5381d2f0c5fed69db57a07fae3a84c394f0672e01b4a88208bc6e9f',
+      'bf013c7556ae44d0dc02954deae3855b14302f041728ab67387ca58fa991e4c5',
   (OS.linux, Architecture.arm64):
-      '8f3526cabfa9b61055f6dbd64b8aeee9ad1b46f7bfcb0ae40d2b7d24fd0b5394',
+      '4715277420ea3747e15c866dc617bde0ccc2d336c8d233e22be492f06c9d382b',
   (OS.macOS, Architecture.arm64):
-      'ecc282f55d22c33fe8ef8efb67a63db3abcdbb62a60bd330a1c05e106a5b28c5',
+      '0b8e817719b166e81ca927fb3d1d6f096965ddf6724eff3e6fbd70478361f98a',
   (OS.macOS, Architecture.x64):
-      'c8c9d71094be7860905c1ee81b663a6844b2efe52ffd8383d24241e2c3fc054b',
+      'ac50a6f2337d98f2c2965f34cfa4f54e4c51ef83ae9024d05f05eabb39373de5',
   (OS.windows, Architecture.x64):
-      '57032bacc14eff0f4b1dd72295452fafe0a81118d2e5d5aa0254969a84ee05d3',
+      '7f8907170394155e06597457ce52bcc07b1e3fab9b476fa0e9a91ed7b562d8c7',
 };

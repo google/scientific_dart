@@ -19,12 +19,12 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
   - matrix multiplication (`matmul`),
   - Cholesky factorization (`cholesky`),
   - QR decomposition (`qr`),
-  - Singular Value Decomposition (`svd`),
+  - Singular Value Decomposition (`svd`, `svdvals`),
   - symmetric/Hermitian and general eigenvalue problems (`eigh`, `eig`),
   - least-squares solvers (`lstsq`),
   - Moore-Penrose pseudo-inverse (`pinv`),
-  - linear system solvers (`solve`),
-  - matrix norms, condition numbers (`cond`), and
+  - linear and tensor system solvers (`solve`, `tensorsolve`, `tensorinv`),
+  - matrix norms, matrix rank (`matrix_rank`), condition numbers (`cond`), and
   - multi-matrix chain multiplication (`multi_dot`).
 - **Einstein Summation (`einsum`) & Tensor Contractions**: Express arbitrary multi-dimensional tensor contractions, trace reductions, and batch matrix multiplications concisely using `einsum` (supporting explicit indices and batch ellipsis `...` notation via `EinsumSubscripts.parse('bhid,bhjd->bhij')` or `'...id,...jd->...ij'`) and generalized tensor dot products (`tensordot`), automatically dispatching to optimized BLAS GEMM paths when possible.
 - **Google Highway SIMD Sorting**: Vectorized sorting and order-statistics routines (`vqsort`) leveraging Google Highway with dynamic multi-target runtime SIMD dispatch (SSE4, AVX2, AVX-512, NEON, SVE) for:
@@ -49,7 +49,7 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
   - `NDArray<T>` is backed by an off-heap C buffer with 64-bit N-dimensional `shape` and element `strides` (`int64_t`), supporting large tensors and virtual broadcasted views beyond $2^{31} - 1$ elements.
   - Provides `NDArray<Int64>` index, coordinate, and count operations (`argsort`, `argpartition`, `searchsorted`, `argmax`, `argmin`, `nonzero`, `argwhere`, `count_nonzero`, `digitize`, `unravel_index`, `ravel_multi_index`, `indices`, `diag_indices`, `tril_indices`, `triu_indices`, `mask_indices`).
   - Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapaxes`, `moveaxis`), reshaping (`reshape`), dimension expansion (`expand_dims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
-- **Deterministic Scoped Memory Management**: Zone-based lexical resource arenas (`NDArray.scope`) and explicit escape hatches (`detachToParentScope`) that track and free `NDArray` allocations deterministically when a computation block completes.
+- **Deterministic Scoped Memory Management**: Zone-based lexical resource arenas (`NDArray.scope`, `NDArray.using`) and explicit escape/cleanup helpers (`scope.escape`, `scope.defer`, `detachToParentScope`) that track and free `NDArray` allocations deterministically when a computation block completes.
 
 ---
 
@@ -65,7 +65,7 @@ Or add it to your `pubspec.yaml`:
 
 ```yaml
 dependencies:
-  ndarray: ^0.3.0
+  ndarray: ^0.3.1
 ```
 
 ### Native Assets, Prebuilt Binaries, & `hooks.user_defines`

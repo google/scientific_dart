@@ -1,4 +1,4 @@
-## 0.1.1-wip
+## 0.1.1
 
 - Added `ResourceScope.using((scope) { ... })` with `scope.defer(callback)` (LIFO cleanup callbacks executed before resource disposal) and `scope.escape(resource)` (promoting resources to the parent scope).
 
