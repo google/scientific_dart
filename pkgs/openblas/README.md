@@ -33,7 +33,7 @@ hooks:
 
 ## License
 
-This package is licensed under the **[Apache License, Version 2.0](LICENSE)**.
+This package is licensed under the **[Apache License, Version 2.0](LICENSE)**. Third-party notices for distributed OpenBLAS and LAPACK binaries are listed in [THIRD_PARTY_NOTICES](THIRD_PARTY_NOTICES).
 
 ## Disclaimer
 

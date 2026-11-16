@@ -2505,14 +2505,22 @@ void main() {
         final violations = <String>[];
 
         // 1. Check all LICENSE files in workspace root and pkgs/*
+        final rootLicenseFile = File('${workspaceRoot.path}/LICENSE');
+        final canonicalLicenseText = rootLicenseFile
+            .readAsStringSync()
+            .replaceAll('\r\n', '\n')
+            .trim();
         final licenseFiles = <File>[
-          File('${workspaceRoot.path}/LICENSE'),
+          rootLicenseFile,
           for (final dir in pkgsDir.listSync().whereType<Directory>())
             if (File('${dir.path}/LICENSE').existsSync())
               File('${dir.path}/LICENSE'),
         ];
+        // Packages whose LICENSE intentionally appends OSI-recognized
+        // third-party license text (verified separately via pana).
+        const multiLicensePackages = {'pocketfft'};
         for (final lf in licenseFiles) {
-          final text = lf.readAsStringSync();
+          final text = lf.readAsStringSync().replaceAll('\r\n', '\n');
           if (!text.contains('Copyright [yyyy] [name of copyright owner]')) {
             violations.add(
               '${lf.path} — missing canonical Apache 2.0 boilerplate (`Copyright [yyyy] [name of copyright owner]`).',
@@ -2522,6 +2530,52 @@ void main() {
             violations.add(
               '${lf.path} — contains legacy copyright holder name.',
             );
+          }
+          final pkgName = _posix(lf.parent.path).split('/').last;
+          if (!multiLicensePackages.contains(pkgName) &&
+              text.trim() != canonicalLicenseText) {
+            violations.add(
+              '${lf.path} — diverges from canonical root Apache 2.0 LICENSE '
+              '(keep third-party notices in THIRD_PARTY_NOTICES so pana recognizes Apache-2.0).',
+            );
+          }
+        }
+
+        // 1a. Verify vendored and fetched third-party components across pkgs/*
+        // have corresponding entries in THIRD_PARTY_NOTICES.
+        // Packages in `fetchedComponents` fetch binaries/headers dynamically
+        // (e.g. `pkgs/openblas/third_party/` is gitignored and created locally
+        // by `tool/download_headers.dart`), so skip scanning their
+        // `third_party/` directory to avoid false failures on local checkouts.
+        const fetchedComponents = {
+          'openblas': ['OpenBLAS', 'LAPACK'],
+        };
+        for (final pkg in pkgsDir.listSync().whereType<Directory>()) {
+          final pkgName = _posix(pkg.path).split('/').last;
+          final thirdPartyDir = Directory('${pkg.path}/third_party');
+          final expected = <String>[
+            ...?fetchedComponents[pkgName],
+            if (thirdPartyDir.existsSync() &&
+                !fetchedComponents.containsKey(pkgName))
+              for (final vendored
+                  in thirdPartyDir.listSync().whereType<Directory>())
+                'third_party/${_posix(vendored.path).split('/').last}/',
+          ];
+          if (expected.isEmpty) continue;
+          final noticesFile = File('${pkg.path}/THIRD_PARTY_NOTICES');
+          if (!noticesFile.existsSync()) {
+            violations.add(
+              '${_posix(noticesFile.path)} — missing THIRD_PARTY_NOTICES file.',
+            );
+            continue;
+          }
+          final noticesText = noticesFile.readAsStringSync();
+          for (final component in expected) {
+            if (!noticesText.contains(component)) {
+              violations.add(
+                '${_posix(noticesFile.path)} — missing third-party notice for $component.',
+              );
+            }
           }
         }
 

@@ -404,7 +404,7 @@ For deep dives into architecture and usage patterns, see the guides in [`doc/`](
 
 ## License
 
-This project is licensed under the Apache License, Version 2.0 — see the [LICENSE](https://github.com/google/scientific_dart/blob/main/pkgs/ndarray/LICENSE) file for details.
+This project is licensed under the Apache License, Version 2.0 — see the [LICENSE](https://github.com/google/scientific_dart/blob/main/pkgs/ndarray/LICENSE) file for details. Third-party notices for bundled native components are listed in [THIRD_PARTY_NOTICES](https://github.com/google/scientific_dart/blob/main/pkgs/ndarray/THIRD_PARTY_NOTICES).
 
 ## Disclaimer
 
