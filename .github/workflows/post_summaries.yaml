@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,21 +12,24 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# A CI configuration to write comments on PRs.
+
 name: Comment on the pull request
 permissions:
   contents: read
 
 on:
-  # Trigger this workflow after the Publish workflow completes so PRs from forks
-  # receive the package publishing validation summary comment.
+  # Trigger this workflow after the Health workflow completes. This workflow
+  # will have permissions to do things like create comments on the PR, even if
+  # the original workflow couldn't.
   workflow_run: # zizmor: ignore[dangerous-triggers]
     workflows:
-      - Publish
+      - Health
     types:
       - completed
 
 jobs:
   upload:
-    uses: dart-lang/ecosystem/.github/workflows/post_summaries.yaml@44a076899c67023a21a1b115cae8b7dcc0d79631
+    uses: dart-lang/ecosystem/.github/workflows/post_summaries.yaml@1d2b5ff862c6b93cd86dd06eadac4c9f4d5d6c20 # main
     permissions:
       pull-requests: write
