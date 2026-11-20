@@ -4,7 +4,7 @@
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#      http://www.apache.org/licenses/LICENSE-2.0
+#     https://www.apache.org/licenses/LICENSE-2.0
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -12,33 +12,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# A CI configuration to auto-publish pub packages.
+# A CI configuration to publish packages to pub.dev.
 
 name: Publish
 permissions:
   contents: read
 
 on:
-  pull_request:
-    branches: [ main ]
-    types: [opened, synchronize, reopened, labeled, unlabeled]
   push:
     # Match <package-name>-v<version> publish tags, excluding artifacts-v* tags.
     tags:
-      - '[A-z0-9]+-v[0-9]+.[0-9]+.[0-9]+*'
+      - '*-v[0-9]+.[0-9]+.[0-9]+*'
       - '!artifacts-v*'
 
 jobs:
   check-artifacts:
     name: Verify Prebuilt Native Artifact Hashes
-    if: ${{ github.repository_owner == 'google' && github.event_name == 'push' }}
+    if: ${{ github.repository_owner == 'google' }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Set up Dart SDK
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1.8.2
         with:
           sdk: stable
 
@@ -50,10 +47,10 @@ jobs:
 
   publish:
     needs: check-artifacts
-    if: ${{ always() && github.repository_owner == 'google' && (needs.check-artifacts.result == 'success' || needs.check-artifacts.result == 'skipped') }}
-    uses: dart-lang/ecosystem/.github/workflows/publish.yaml@44a076899c67023a21a1b115cae8b7dcc0d79631
-    with:
-      write-comments: false
+    if: ${{ github.repository_owner == 'google' }}
     permissions:
       id-token: write
-      pull-requests: write
+    uses: dart-lang/setup-dart/.github/workflows/publish.yml@40657d0d0732d6fd3809f5841380e7519e355b50 # main
+    with:
+      working-directory: pkgs/{package}
+      use-flutter: false
