@@ -41,19 +41,11 @@ jobs:
         with:
           sdk: main
 
-      - name: Install LLVM 21 & Wasm32-WASI Toolchain Prerequisites
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-          CODENAME=$(lsb_release -cs)
-          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-          sudo apt-get update
-          sudo apt-get install -y clang-21 lld-21 llvm-21 wasi-libc
-
-      - name: Cache Wasm Sysroot & OpenBLAS Wasm128 Archive
+      - name: Cache WASI SDK & OpenBLAS Wasm128 Archive
         uses: actions/cache@v4
         with:
           path: |
-            .dart_tool/wasm_sysroot
+            .dart_tool/wasm_sdk
             .dart_tool/wasm_build/libopenblas_wasm128.a
             .dart_tool/wasm_build/libopenblas_wasm128.stamp
             .dart_tool/wasm_build/OpenBLAS-0.3.33/.wasm_normalization_stamp
@@ -61,9 +53,9 @@ jobs:
             .dart_tool/wasm_build/objs
             .dart_tool/wasm_build/compiler_worker
             .dart_tool/wasm_build/sdk_3_14
-          key: Linux-wasm-notebook-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h', 'pkgs/notebook/lib/src/wasm_*.dart') }}
+          key: Linux-wasm-notebook-v2-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h', 'pkgs/notebook/lib/src/wasm_*.dart') }}
           restore-keys: |
-            Linux-wasm-notebook-
+            Linux-wasm-notebook-v2-
 
       - name: Install Dart Dependencies
         run: dart pub get

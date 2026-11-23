@@ -557,29 +557,38 @@ void main() {
       expect(_checked.length - table.length, _guardCells);
     });
 
-    test('cells rely on inference and spell their expectation', () {
-      final source = _thisFile().readAsStringSync();
-      final code = source.replaceAll(RegExp(r'^\s*//.*$', multiLine: true), '');
-      // Explicit type arguments on a projection function would replace
-      // inference by a one-sided bound check.
-      final explicitArguments = RegExp(
-        r'\b[a-z]\w*Of<\s*\w+\s*,',
-      ).allMatches(code).map((m) => m.group(0)).toList();
-      expect(explicitArguments, isEmpty);
-      // `.mustBe(exactly)` or `.mustBe((x) => x)` would be instantiated from
-      // the parameter type and assert nothing.
-      final vacuous = RegExp(
-        r'\.mustBe\((?!exactly<)',
-      ).allMatches(code).map((m) => m.group(0)).toList();
-      expect(vacuous, isEmpty);
-      final cells = RegExp(r'\.mustBe\(exactly<').allMatches(code).length;
-      expect(cells, 120 + _guardCells);
-      final subtypePairs = RegExp(
-        r'isSubtype<(\w+),\s*(\w+)<([^>]+)>>',
-      ).allMatches(code).map((m) => (m.group(1)!, m.group(2)!)).toList();
-      expect(subtypePairs, hasLength(120));
-      expect(subtypePairs.toSet(), hasLength(120));
-    });
+    test(
+      'cells rely on inference and spell their expectation',
+      () {
+        final source = _thisFile().readAsStringSync();
+        final code = source.replaceAll(
+          RegExp(r'^\s*//.*$', multiLine: true),
+          '',
+        );
+        // Explicit type arguments on a projection function would replace
+        // inference by a one-sided bound check.
+        final explicitArguments = RegExp(
+          r'\b[a-z]\w*Of<\s*\w+\s*,',
+        ).allMatches(code).map((m) => m.group(0)).toList();
+        expect(explicitArguments, isEmpty);
+        // `.mustBe(exactly)` or `.mustBe((x) => x)` would be instantiated from
+        // the parameter type and assert nothing.
+        final vacuous = RegExp(
+          r'\.mustBe\((?!exactly<)',
+        ).allMatches(code).map((m) => m.group(0)).toList();
+        expect(vacuous, isEmpty);
+        final cells = RegExp(r'\.mustBe\(exactly<').allMatches(code).length;
+        expect(cells, 120 + _guardCells);
+        final subtypePairs = RegExp(
+          r'isSubtype<(\w+),\s*(\w+)<([^>]+)>>',
+        ).allMatches(code).map((m) => (m.group(1)!, m.group(2)!)).toList();
+        expect(subtypePairs, hasLength(120));
+        expect(subtypePairs.toSet(), hasLength(120));
+      },
+      skip: const bool.fromEnvironment('dart.tool.dart2wasm')
+          ? 'Host source file inspection is not supported on Wasm'
+          : false,
+    );
   });
 }
 

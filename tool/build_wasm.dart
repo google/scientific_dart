@@ -15,18 +15,18 @@
 ///
 /// ## Prerequisites
 ///
-/// A Debian/Ubuntu host with:
+/// A Linux (`x86_64`/`arm64`) or macOS (`arm64`/`x86_64`) host with:
 ///
-/// * The LLVM 21 apt packages `clang-21`, `lld-21` (provides `wasm-ld-21`),
-///   and `llvm-21` (provides `llvm-ar`, `llvm-ranlib`, and `llvm-nm`).
-/// * The apt-downloadable Wasm sysroot packages `wasi-libc`,
-///   `libc++-21-dev-wasm32`, `libc++abi-21-dev-wasm32`, and
-///   `libclang-rt-21-dev-wasm32`. They are fetched with `apt-get download`
-///   and unpacked with `dpkg-deb` into `.dart_tool/wasm_sysroot` the first
-///   time the tool runs, so `apt-get` and `dpkg-deb` are only required for
-///   that initial provisioning.
+/// * A pinned official `wasi-sdk` release (`wasi-sdk-34`), automatically
+///   downloaded and SHA-256 verified into `.dart_tool/wasm_sdk` on first run
+///   (override with `--wasi-sdk-dir` or `WASI_SDK_PATH`). Provides
+///   `wasm32-wasip1-clang`, `wasm32-wasip1-clang++`, `wasm-ld`, `llvm-ar`,
+///   `llvm-ranlib`, `llvm-nm`, `wasi-libc`, `-fno-exceptions` `libc++`/
+///   `libc++abi`, and `libclang_rt.builtins.a`.
+/// * A host C compiler (`cc`/`gcc`/`clang`, or `CC` env var) for building
+///   OpenBLAS's host-side `getarch` helper tools.
 /// * `node` >= 20 with the `node:wasi` module.
-/// * `make` and `tar` (OpenBLAS build and source extraction).
+/// * `make` and `tar` (OpenBLAS build and archive extraction).
 /// * A Dart SDK whose `dart compile wasm` accepts
 ///   `--extra-compiler-option=--enable-experimental-ffi`.
 ///
@@ -59,6 +59,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert';
+import 'dart:ffi' show Abi;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
@@ -79,7 +80,40 @@ const Set<String> excludedWasmTests = {
   'pkgs/ndarray/test/meta/codebase_invariants_test.dart',
   'pkgs/ndarray/test/meta/dtype_dispatch_invariants_test.dart',
   'pkgs/ndarray/test/meta/lifetime_invariants_test.dart',
+  'pkgs/ndarray/test/meta/static_type_probes_test.dart',
 };
+
+/// Pinned official `wasi-sdk` release tag and version.
+const String _wasiSdkTag = 'wasi-sdk-34';
+const String _wasiSdkVersion = '34.0';
+
+/// Official `wasi-sdk` release tarballs and SHA-256 digests per host [Abi].
+const Map<Abi, ({String directoryName, String tarballName, String sha256})>
+_wasiSdkTarballs = {
+  Abi.linuxX64: (
+    directoryName: 'wasi-sdk-$_wasiSdkVersion-x86_64-linux',
+    tarballName: 'wasi-sdk-$_wasiSdkVersion-x86_64-linux.tar.gz',
+    sha256: 'b761e3a0721dbae9c09a0059e5fdb2bf917d1b4a8a7b430fb3b5aafb0984b2c4',
+  ),
+  Abi.linuxArm64: (
+    directoryName: 'wasi-sdk-$_wasiSdkVersion-arm64-linux',
+    tarballName: 'wasi-sdk-$_wasiSdkVersion-arm64-linux.tar.gz',
+    sha256: 'f7e243dff54d60bcc576e94d6166b69f410f2500ae4a9ceef34315be10e77971',
+  ),
+  Abi.macosArm64: (
+    directoryName: 'wasi-sdk-$_wasiSdkVersion-arm64-macos',
+    tarballName: 'wasi-sdk-$_wasiSdkVersion-arm64-macos.tar.gz',
+    sha256: '9c59398106b417f8f14913380fdf0097a8cc0ff4af9eb3ce0065a859e88d49e9',
+  ),
+  Abi.macosX64: (
+    directoryName: 'wasi-sdk-$_wasiSdkVersion-x86_64-macos',
+    tarballName: 'wasi-sdk-$_wasiSdkVersion-x86_64-macos.tar.gz',
+    sha256: '87d27fa8adc68dee59bfbf2e22a6d34ef717c34d6bf1d8af2a56fc929d9ce0eb',
+  ),
+};
+
+/// Target triple used with `wasi-sdk`.
+const String _wasiTargetTriple = 'wasm32-wasip1';
 
 /// OpenBLAS release built for Wasm.
 const String _openBlasVersion = '0.3.33';
@@ -107,11 +141,12 @@ const String _openBlasTarballSha256 =
 /// changes: the staged source tree is then re-extracted from the pristine
 /// tarball and OpenBLAS is rebuilt.
 const String _openBlasNormalizationStampVersion =
-    'v3-wasm128-void-subroutines-emscripten-complete-ar';
+    'v4-wasi-sdk-34-wasm128-void-subroutines-sections';
 
 /// Current schema version for incremental `.o` compilation flags and the
 /// layout of the `objs/hashes.json` cache.
-const String _objectBuildSchemaVersion = 'v3-wasm32-wasi-simd128-depfiles';
+const String _objectBuildSchemaVersion =
+    'v4-wasi-sdk-34-wasm32-wasip1-simd128-sections-depfiles';
 
 /// The `package:ffi` version the hand-written overlay sources in
 /// [_WasmWorkspaceBuilder.ensureWasmPackageConfig] were derived from.
@@ -182,6 +217,13 @@ Future<void> main(List<String> args) async {
           'Per-target timeout in seconds, applied separately to '
           '`dart compile wasm` and to the node run.',
     )
+    ..addOption(
+      'wasi-sdk-dir',
+      help:
+          'Path to an existing wasi-sdk installation (defaults to '
+          'WASI_SDK_PATH or an auto-downloaded pinned $_wasiSdkTag in '
+          '.dart_tool/wasm_sdk).',
+    )
     ..addFlag(
       'help',
       abbr: 'h',
@@ -226,6 +268,8 @@ Future<void> main(List<String> args) async {
   final testAll = parsed.flag('test-all');
   final forceRebuild = parsed.flag('force-rebuild');
   final allowMissingSymbols = parsed.flag('allow-missing-symbols');
+  final customWasiSdkPath =
+      parsed.option('wasi-sdk-dir') ?? Platform.environment['WASI_SDK_PATH'];
   final targetFiles = parsed.rest;
 
   if (!buildOnly && !testAll && targetFiles.isEmpty) {
@@ -247,6 +291,7 @@ Future<void> main(List<String> args) async {
       testTimeout: Duration(seconds: testTimeoutSeconds),
       forceRebuild: forceRebuild,
       allowMissingSymbols: allowMissingSymbols,
+      customWasiSdkPath: customWasiSdkPath,
     );
 
     // Validate explicit targets before starting the (slow) native build.
@@ -341,8 +386,9 @@ String _normalizeRepoRelativePath(Directory repoRoot, String inputPath) {
 /// Returns the last path segment of [path].
 String _baseName(String path) => path.substring(path.lastIndexOf('/') + 1);
 
-/// Orchestrates sysroot provisioning, OpenBLAS Wasm128 compilation, incremental
-/// C/C++ object compilation, `wasm-ld-21` linking, and Node.js Wasm execution.
+/// Orchestrates pinned `wasi-sdk` provisioning, OpenBLAS Wasm128 compilation,
+/// incremental C/C++ object compilation, `wasm-ld` linking, and Node.js Wasm
+/// execution.
 final class _WasmWorkspaceBuilder {
   /// Creates a builder for [repoRoot] with maximum native compile concurrency
   /// [jobs] and maximum Dart compile+run concurrency [testJobs].
@@ -353,6 +399,7 @@ final class _WasmWorkspaceBuilder {
     required this.testTimeout,
     this.forceRebuild = false,
     this.allowMissingSymbols = false,
+    this.customWasiSdkPath,
   });
 
   /// Workspace root directory.
@@ -377,15 +424,46 @@ final class _WasmWorkspaceBuilder {
   /// warning instead of failing the link.
   final bool allowMissingSymbols;
 
-  /// Directory containing the provisioned `wasm32-wasi` sysroot.
-  Directory get sysrootDir =>
-      Directory('${repoRoot.path}/.dart_tool/wasm_sysroot');
+  /// Optional user-specified `wasi-sdk` installation directory.
+  final String? customWasiSdkPath;
 
-  /// The `usr` directory inside [sysrootDir] used as `--sysroot`.
-  Directory get sysrootUsrDir => Directory('${sysrootDir.path}/usr');
+  /// Root directory for downloaded `wasi-sdk` releases.
+  Directory get wasmSdkRootDir =>
+      Directory('${repoRoot.path}/.dart_tool/wasm_sdk');
+
+  ({String directoryName, String tarballName, String sha256})
+  get _hostWasiSdkSpec {
+    final spec = _wasiSdkTarballs[Abi.current()];
+    if (spec == null) {
+      throw _BuildException(
+        'No pinned $_wasiSdkTag release is configured for host ABI '
+        '${Abi.current()}. Pass --wasi-sdk-dir or set WASI_SDK_PATH.',
+      );
+    }
+    return spec;
+  }
+
+  /// Active `wasi-sdk` root directory.
+  Directory get wasiSdkDir {
+    final custom = customWasiSdkPath?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      return Directory(custom);
+    }
+    return Directory(
+      '${wasmSdkRootDir.path}/${_hostWasiSdkSpec.directoryName}',
+    );
+  }
+
+  /// The `share/wasi-sysroot` directory inside [wasiSdkDir].
+  Directory get wasiSysrootDir =>
+      Directory('${wasiSdkDir.path}/share/wasi-sysroot');
 
   /// Directory containing intermediate and final Wasm build artifacts.
   Directory get buildDir => Directory('${repoRoot.path}/.dart_tool/wasm_build');
+
+  /// Directory holding stub headers (`sys/ipc.h`, `sys/shm.h`) required by
+  /// OpenBLAS's `common.h` without mutating the `wasi-sdk` sysroot.
+  Directory get stubIncludeDir => Directory('${buildDir.path}/stub_include');
 
   /// Directory containing incrementally compiled `.o` files, their depfiles,
   /// and the `hashes.json` cache.
@@ -416,29 +494,25 @@ final class _WasmWorkspaceBuilder {
   File get wasmPackageConfigFile =>
       File('${buildDir.path}/wasm_package_config.json');
 
-  String get _clangBin => _resolveTool('/usr/bin/clang-21', 'clang');
-  String get _clangCppBin => _resolveTool('/usr/bin/clang++-21', 'clang++');
-  String get _wasmLdBin => _resolveTool('/usr/bin/wasm-ld-21', 'wasm-ld');
-  String get _llvmArBin =>
-      _resolveTool('/usr/lib/llvm-21/bin/llvm-ar', 'llvm-ar');
-  String get _llvmRanlibBin =>
-      _resolveTool('/usr/lib/llvm-21/bin/llvm-ranlib', 'llvm-ranlib');
-  String get _llvmNmBin =>
-      _resolveTool('/usr/lib/llvm-21/bin/llvm-nm', 'llvm-nm');
+  String get _clangBin => '${wasiSdkDir.path}/bin/$_wasiTargetTriple-clang';
+  String get _clangCppBin =>
+      '${wasiSdkDir.path}/bin/$_wasiTargetTriple-clang++';
+  String get _wasmLdBin => '${wasiSdkDir.path}/bin/wasm-ld';
+  String get _llvmArBin => '${wasiSdkDir.path}/bin/llvm-ar';
+  String get _llvmRanlibBin => '${wasiSdkDir.path}/bin/llvm-ranlib';
+  String get _llvmNmBin => '${wasiSdkDir.path}/bin/llvm-nm';
 
-  static String _resolveTool(String preferredPath, String fallbackName) {
-    if (File(preferredPath).existsSync()) {
-      return preferredPath;
+  String get _hostCcBin {
+    final envCc = Platform.environment['CC']?.trim();
+    if (envCc != null && envCc.isNotEmpty) return envCc;
+    for (final candidate in const [
+      '/usr/bin/cc',
+      '/usr/bin/gcc',
+      '/usr/bin/clang',
+    ]) {
+      if (File(candidate).existsSync()) return candidate;
     }
-    final llvmBinCandidate = '/usr/lib/llvm-21/bin/$fallbackName';
-    if (File(llvmBinCandidate).existsSync()) {
-      return llvmBinCandidate;
-    }
-    final usrBinCandidate = '/usr/bin/$fallbackName';
-    if (File(usrBinCandidate).existsSync()) {
-      return usrBinCandidate;
-    }
-    return fallbackName;
+    return 'cc';
   }
 
   String? _cachedToolchainIdentity;
@@ -471,15 +545,18 @@ final class _WasmWorkspaceBuilder {
     return '$_clangBin: ${firstLine.trim()}';
   }
 
-  /// Provisions the sysroot, builds OpenBLAS and package objects, links
-  /// `native_math.wasm`, writes `run_wasm.mjs`, and validates the Wasm module.
+  /// Provisions the pinned `wasi-sdk`, builds OpenBLAS and package objects,
+  /// links `native_math.wasm`, writes `run_wasm.mjs`, and validates the Wasm
+  /// module.
   Future<void> buildAll() async {
-    await _checkPrerequisites();
+    await _checkHostPrerequisites();
 
     buildDir.createSync(recursive: true);
     objectsDir.createSync(recursive: true);
 
-    await ensureSysroot();
+    await ensureWasiSdk();
+    await _checkWasiSdkPrerequisites();
+    _ensureOpenBlasStubIncludes();
     await ensureOpenBlasArchive();
     final (:objectFiles, recompiledCount: _) = await compileNativeSources();
     await linkNativeMathWasm(objectFiles);
@@ -487,44 +564,35 @@ final class _WasmWorkspaceBuilder {
     ensureWasmPackageConfig();
   }
 
-  /// Verifies that every external tool is available (and that `node` is
-  /// recent enough and has `node:wasi`) before any expensive work starts.
-  ///
-  /// Throws a single [_BuildException] listing everything that is missing.
-  Future<void> _checkPrerequisites() async {
+  Future<String?> _probeCommand(
+    String executable,
+    List<String> arguments,
+  ) async {
+    try {
+      final result = await Process.run(executable, arguments);
+      return result.exitCode == 0 ? '${result.stdout}' : null;
+    } on ProcessException {
+      return null;
+    }
+  }
+
+  /// Verifies that host-level external tools (`cc`, `make`, `tar`, `node >= 20`
+  /// with `node:wasi`) are available before downloading or building anything.
+  Future<void> _checkHostPrerequisites() async {
     final missing = <String>[];
 
-    Future<String?> probe(String executable, List<String> arguments) async {
-      try {
-        final result = await Process.run(executable, arguments);
-        return result.exitCode == 0 ? '${result.stdout}' : null;
-      } on ProcessException {
-        return null;
-      }
-    }
-
-    final versionedTools = <String, String>{
-      'clang': _clangBin,
-      'clang++': _clangCppBin,
-      'wasm-ld': _wasmLdBin,
-      'llvm-ar': _llvmArBin,
-      'llvm-ranlib': _llvmRanlibBin,
-      'llvm-nm': _llvmNmBin,
+    final hostTools = <String, String>{
+      'host C compiler (CC)': _hostCcBin,
       'make': 'make',
       'tar': 'tar',
-      if (!_isSysrootProvisioned) ...{
-        'apt-get (for first-time sysroot provisioning)': 'apt-get',
-        'dpkg-deb (for first-time sysroot provisioning)': 'dpkg-deb',
-      },
     };
-    for (final MapEntry(key: name, value: executable)
-        in versionedTools.entries) {
-      if (await probe(executable, ['--version']) == null) {
+    for (final MapEntry(key: name, value: executable) in hostTools.entries) {
+      if (await _probeCommand(executable, ['--version']) == null) {
         missing.add('$name ($executable)');
       }
     }
 
-    final nodeOutput = await probe('node', [
+    final nodeOutput = await _probeCommand('node', [
       '-e',
       "require('node:wasi'); console.log(process.versions.node);",
     ]);
@@ -540,109 +608,153 @@ final class _WasmWorkspaceBuilder {
 
     if (missing.isNotEmpty) {
       throw _BuildException(
-        'Missing prerequisites:\n  - ${missing.join('\n  - ')}\n'
+        'Missing host prerequisites:\n  - ${missing.join('\n  - ')}\n'
         'See the Prerequisites section at the top of tool/build_wasm.dart.',
       );
     }
   }
 
-  /// Whether `.dart_tool/wasm_sysroot` already contains everything
-  /// [ensureSysroot] would provision.
-  bool get _isSysrootProvisioned {
-    final libcArchive = File('${sysrootUsrDir.path}/lib/wasm32-wasi/libc.a');
-    final libcxxArchive = File(
-      '${sysrootUsrDir.path}/lib/wasm32-wasi/libc++.a',
-    );
-    final cxxMathHeader = File(
-      '${sysrootUsrDir.path}/include/wasm32-wasi/c++/v1/cmath',
-    );
-    return libcArchive.existsSync() &&
-        libcxxArchive.existsSync() &&
-        _findBuiltinsArchive() != null &&
-        cxxMathHeader.existsSync() &&
-        _sysrootIpcHeader.existsSync() &&
-        _sysrootShmHeader.existsSync();
+  /// Verifies that the provisioned (or user-provided) `wasi-sdk` contains all
+  /// required LLVM/WASI binaries and `-fno-exceptions` (`noeh`) sysroot
+  /// libraries.
+  Future<void> _checkWasiSdkPrerequisites() async {
+    final missing = <String>[];
+
+    final sdkTools = <String, String>{
+      'clang': _clangBin,
+      'clang++': _clangCppBin,
+      'wasm-ld': _wasmLdBin,
+      'llvm-ar': _llvmArBin,
+      'llvm-ranlib': _llvmRanlibBin,
+      'llvm-nm': _llvmNmBin,
+    };
+    for (final MapEntry(key: name, value: executable) in sdkTools.entries) {
+      if (await _probeCommand(executable, ['--version']) == null) {
+        missing.add('$name ($executable)');
+      }
+    }
+    if (!_isWasiSdkComplete(wasiSdkDir)) {
+      missing.add(
+        'complete $_wasiTargetTriple noeh sysroot and builtins under '
+        '${wasiSdkDir.path}',
+      );
+    }
+
+    if (missing.isNotEmpty) {
+      throw _BuildException(
+        'Incomplete wasi-sdk installation at ${wasiSdkDir.path}:\n'
+        '  - ${missing.join('\n  - ')}',
+      );
+    }
   }
 
-  File get _sysrootIpcHeader =>
-      File('${sysrootUsrDir.path}/include/wasm32-wasi/sys/ipc.h');
+  bool _isWasiSdkComplete(Directory sdkRoot) {
+    final sysrootLib =
+        '${sdkRoot.path}/share/wasi-sysroot/lib/$_wasiTargetTriple';
+    return File('${sdkRoot.path}/bin/$_wasiTargetTriple-clang').existsSync() &&
+        File('${sdkRoot.path}/bin/$_wasiTargetTriple-clang++').existsSync() &&
+        File('${sdkRoot.path}/bin/wasm-ld').existsSync() &&
+        File('$sysrootLib/crt1-reactor.o').existsSync() &&
+        File('$sysrootLib/libc.a').existsSync() &&
+        File('$sysrootLib/noeh/libc++.a').existsSync() &&
+        File('$sysrootLib/noeh/libc++abi.a').existsSync() &&
+        _findBuiltinsArchive(sdkRoot) != null;
+  }
 
-  File get _sysrootShmHeader =>
-      File('${sysrootUsrDir.path}/include/wasm32-wasi/sys/shm.h');
-
-  /// Ensures `.dart_tool/wasm_sysroot` contains `wasi-libc`, `libc++-21-dev-wasm32`,
-  /// `libc++abi-21-dev-wasm32`, and `libclang-rt-21-dev-wasm32`.
-  Future<void> ensureSysroot() async {
-    if (_isSysrootProvisioned) {
+  /// Ensures [wasiSdkDir] contains a verified `wasi-sdk` installation.
+  ///
+  /// When `--wasi-sdk-dir` or `WASI_SDK_PATH` is set, uses that installation
+  /// directly without downloading. Otherwise downloads and SHA-256-verifies the
+  /// pinned `$_wasiSdkTag` release tarball into `.dart_tool/wasm_sdk`.
+  Future<void> ensureWasiSdk() async {
+    final custom = customWasiSdkPath?.trim();
+    if (custom != null && custom.isNotEmpty) {
+      if (!wasiSdkDir.existsSync()) {
+        throw _BuildException(
+          'Configured wasi-sdk directory does not exist: ${wasiSdkDir.path}',
+        );
+      }
       return;
     }
 
-    stdout.writeln(
-      'Provisioning Wasm32-WASI sysroot in ${sysrootDir.path} via apt-get download...',
+    if (_isWasiSdkComplete(wasiSdkDir)) {
+      return;
+    }
+
+    final spec = _hostWasiSdkSpec;
+    wasmSdkRootDir.createSync(recursive: true);
+
+    final tarball = File('${wasmSdkRootDir.path}/${spec.tarballName}');
+    final downloadUrl = Uri.parse(
+      'https://github.com/WebAssembly/wasi-sdk/releases/download/'
+      '$_wasiSdkTag/${spec.tarballName}',
     );
-    final debsDir = Directory('${sysrootDir.path}/debs')
-      ..createSync(recursive: true);
+    await _downloadVerifiedFile(
+      url: downloadUrl,
+      destination: tarball,
+      expectedSha256: spec.sha256,
+      label: '$_wasiSdkTag (${spec.tarballName})',
+    );
 
-    await _runChecked('apt-get', [
-      'download',
-      'wasi-libc',
-      'libc++-21-dev-wasm32',
-      'libc++abi-21-dev-wasm32',
-      'libclang-rt-21-dev-wasm32',
-    ], workingDirectory: debsDir.path);
-
-    final debFiles = debsDir
-        .listSync()
-        .whereType<File>()
-        .where((f) => f.path.endsWith('.deb'))
-        .toList();
-    if (debFiles.isEmpty) {
-      throw const _BuildException(
-        'apt-get download did not produce any .deb packages in '
-        'wasm_sysroot/debs.',
+    final stagingDir = Directory(
+      '${wasmSdkRootDir.path}/.extract_${DateTime.now().microsecondsSinceEpoch}_$pid',
+    );
+    stagingDir.createSync(recursive: true);
+    try {
+      stdout.writeln('Extracting ${tarball.path}...');
+      await _runChecked('tar', ['-xzf', tarball.path, '-C', stagingDir.path]);
+      final extractedDir = Directory(
+        '${stagingDir.path}/${spec.directoryName}',
       );
-    }
-
-    for (final deb in debFiles) {
-      await _runChecked('dpkg-deb', ['-x', deb.path, sysrootDir.path]);
-    }
-
-    // Create stub sys/ipc.h and sys/shm.h headers required by OpenBLAS common.h.
-    Directory(
-      '${sysrootUsrDir.path}/include/wasm32-wasi/sys',
-    ).createSync(recursive: true);
-    if (!_sysrootIpcHeader.existsSync()) {
-      _sysrootIpcHeader.writeAsStringSync(
-        '/* Stub sys/ipc.h for wasm32-wasi */\n',
-      );
-    }
-    if (!_sysrootShmHeader.existsSync()) {
-      _sysrootShmHeader.writeAsStringSync(
-        '/* Stub sys/shm.h for wasm32-wasi */\n',
-      );
+      if (!_isWasiSdkComplete(extractedDir)) {
+        throw _BuildException(
+          'Extracting ${tarball.path} did not produce a complete wasi-sdk at '
+          '${extractedDir.path}.',
+        );
+      }
+      if (wasiSdkDir.existsSync()) {
+        wasiSdkDir.deleteSync(recursive: true);
+      }
+      extractedDir.renameSync(wasiSdkDir.path);
+    } finally {
+      if (stagingDir.existsSync()) {
+        stagingDir.deleteSync(recursive: true);
+      }
+      if (tarball.existsSync()) {
+        tarball.deleteSync();
+      }
     }
   }
 
-  File? _findBuiltinsArchive() {
-    final candidates = [
-      '${sysrootUsrDir.path}/lib/llvm-21/lib/clang/21/lib/wasi/libclang_rt.builtins-wasm32.a',
-      '${sysrootUsrDir.path}/lib/llvm-21/lib/wasi/libclang_rt.builtins-wasm32.a',
-      '${sysrootUsrDir.path}/lib/wasm32-wasi/libclang_rt.builtins-wasm32.a',
-    ];
-    for (final path in candidates) {
-      final f = File(path);
-      if (f.existsSync()) return f;
+  /// Writes stub `sys/ipc.h` and `sys/shm.h` headers required by OpenBLAS
+  /// `common.h` into [stubIncludeDir] so the `wasi-sdk` sysroot stays pristine.
+  void _ensureOpenBlasStubIncludes() {
+    final sysDir = Directory('${stubIncludeDir.path}/sys')
+      ..createSync(recursive: true);
+    final ipcHeader = File('${sysDir.path}/ipc.h');
+    if (!ipcHeader.existsSync()) {
+      ipcHeader.writeAsStringSync('/* Stub sys/ipc.h for wasm32-wasip1 */\n');
     }
-    if (sysrootDir.existsSync()) {
-      for (final entity in sysrootDir.listSync(
-        recursive: true,
-        followLinks: false,
-      )) {
-        if (entity is File &&
-            _baseName(entity.path).startsWith('libclang_rt.builtins') &&
-            entity.path.endsWith('.a')) {
-          return entity;
-        }
+    final shmHeader = File('${sysDir.path}/shm.h');
+    if (!shmHeader.existsSync()) {
+      shmHeader.writeAsStringSync('/* Stub sys/shm.h for wasm32-wasip1 */\n');
+    }
+  }
+
+  File? _findBuiltinsArchive([Directory? sdkRoot]) {
+    final root = sdkRoot ?? wasiSdkDir;
+    final libClangDir = Directory('${root.path}/lib/clang');
+    if (!libClangDir.existsSync()) return null;
+    for (final entity in libClangDir.listSync(
+      recursive: true,
+      followLinks: false,
+    )) {
+      if (entity is File &&
+          _baseName(entity.path).startsWith('libclang_rt.builtins') &&
+          entity.path.endsWith('.a') &&
+          (entity.path.contains('wasm32-unknown-wasip1/') ||
+              entity.path.contains('wasm32-unknown-wasi/'))) {
+        return entity;
       }
     }
     return null;
@@ -731,21 +843,23 @@ final class _WasmWorkspaceBuilder {
       '-j$jobs...',
     );
     final ccFlag =
-        '$_clangBin --target=wasm32-wasi --sysroot=${sysrootUsrDir.path} '
-        '-isystem ${sysrootUsrDir.path}/include/wasm32-wasi '
-        '-O2 -msimd128 -D__EMSCRIPTEN__ -DNO_SYSV_IPC '
+        '$_clangBin --target=$_wasiTargetTriple '
+        '--sysroot=${wasiSysrootDir.path} '
+        '-idirafter ${stubIncludeDir.path} '
+        '-O2 -msimd128 -ffunction-sections -fdata-sections '
+        '-D__EMSCRIPTEN__ -DNO_SYSV_IPC '
         '-D_WASI_EMULATED_MMAN -D_WASI_EMULATED_SIGNAL '
         '-D_WASI_EMULATED_PROCESS_CLOCKS '
         '-Wno-implicit-function-declaration -Wno-incompatible-pointer-types';
 
     final makeEnv = <String, String>{
       ...Platform.environment,
-      'PATH': '/usr/lib/llvm-21/bin:${Platform.environment['PATH'] ?? ''}',
+      'PATH': '${wasiSdkDir.path}/bin:${Platform.environment['PATH'] ?? ''}',
     };
 
     final commonMakeArgs = <String>[
       'CC=$ccFlag',
-      'HOSTCC=$_clangBin',
+      'HOSTCC=$_hostCcBin',
       'HOST_CFLAGS=-DFORCE_WASM128_GENERIC -DGEMM_MULTITHREAD_THRESHOLD=4',
       'AR=$_llvmArBin',
       'RANLIB=$_llvmRanlibBin',
@@ -883,43 +997,76 @@ final class _WasmWorkspaceBuilder {
     return null;
   }
 
-  /// Downloads [_openBlasTarballUrl] to `<tarball>.part`, verifies its
-  /// SHA-256, and renames it to [tarball].
-  ///
-  /// Throws a [_BuildException] (after deleting the partial file) on an HTTP
-  /// or network error or on a checksum mismatch.
-  Future<void> _downloadOpenBlasTarball(File tarball) async {
-    stdout.writeln(
-      'Downloading OpenBLAS $_openBlasVersion from $_openBlasTarballUrl...',
-    );
-    final partFile = File('${tarball.path}.part');
-    final client = HttpClient();
+  /// Downloads [_openBlasTarballUrl] to [tarball] and verifies its SHA-256.
+  Future<void> _downloadOpenBlasTarball(File tarball) => _downloadVerifiedFile(
+    url: Uri.parse(_openBlasTarballUrl),
+    destination: tarball,
+    expectedSha256: _openBlasTarballSha256,
+    label: 'OpenBLAS $_openBlasVersion',
+  );
+
+  /// Downloads [url] (following HTTPS redirects only) to `<destination>.part`,
+  /// verifies its SHA-256 matches [expectedSha256], and atomically renames it
+  /// to [destination].
+  Future<void> _downloadVerifiedFile({
+    required Uri url,
+    required File destination,
+    required String expectedSha256,
+    required String label,
+  }) async {
+    stdout.writeln('Downloading $label from $url...');
+    final partFile = File('${destination.path}.part.$pid');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 30);
     try {
-      final request = await client.getUrl(Uri.parse(_openBlasTarballUrl));
-      final response = await request.close();
+      var currentUrl = url;
+      HttpClientResponse? response;
+      for (var redirect = 0; redirect < 8; redirect++) {
+        if (currentUrl.scheme != 'https') {
+          throw _BuildException('Refusing non-HTTPS download URL: $currentUrl');
+        }
+        final request = await client.getUrl(currentUrl);
+        request.followRedirects = false;
+        final candidate = await request.close();
+        if (candidate.isRedirect) {
+          final location = candidate.headers.value(HttpHeaders.locationHeader);
+          await candidate.drain<void>();
+          if (location == null || location.isEmpty) {
+            throw _BuildException(
+              'Redirect without Location header while downloading $currentUrl.',
+            );
+          }
+          currentUrl = currentUrl.resolve(location);
+          continue;
+        }
+        response = candidate;
+        break;
+      }
+      if (response == null) {
+        throw _BuildException('Too many redirects while downloading $url.');
+      }
       if (response.statusCode != 200) {
+        await response.drain<void>();
         throw _BuildException(
-          'Failed to download $_openBlasTarballUrl '
-          '(HTTP ${response.statusCode}).',
+          'Failed to download $url (HTTP ${response.statusCode}).',
         );
       }
       await response.pipe(partFile.openWrite());
     } on IOException catch (e) {
       if (partFile.existsSync()) partFile.deleteSync();
-      throw _BuildException('Failed to download $_openBlasTarballUrl: $e');
+      throw _BuildException('Failed to download $url: $e');
     } finally {
       client.close();
     }
 
     final actualSha256 = await _sha256OfFile(partFile);
-    if (actualSha256 != _openBlasTarballSha256) {
+    if (actualSha256 != expectedSha256) {
       partFile.deleteSync();
       throw _BuildException(
-        'SHA-256 mismatch for $_openBlasTarballUrl: expected '
-        '$_openBlasTarballSha256, got $actualSha256.',
+        'SHA-256 mismatch for $url: expected $expectedSha256, got $actualSha256.',
       );
     }
-    partFile.renameSync(tarball.path);
+    partFile.renameSync(destination.path);
   }
 
   static Future<String> _sha256OfFile(File file) async =>
@@ -1272,32 +1419,29 @@ int __cxa_thread_atexit(void (*dtor)(void *), void *obj, void *dso_symbol) {
     final units = <_TranslationUnit>[];
 
     final cSysrootFlags = <String>[
-      '--target=wasm32-wasi',
-      '--sysroot=${sysrootUsrDir.path}',
-      '-isystem',
-      '${sysrootUsrDir.path}/include/wasm32-wasi',
+      '--target=$_wasiTargetTriple',
+      '--sysroot=${wasiSysrootDir.path}',
+      '-idirafter',
+      stubIncludeDir.path,
       '-O3',
       '-msimd128',
+      '-ffunction-sections',
+      '-fdata-sections',
       '-D_WASI_EMULATED_MMAN',
       '-D_WASI_EMULATED_SIGNAL',
       '-D_WASI_EMULATED_PROCESS_CLOCKS',
     ];
 
     final cppSysrootFlags = <String>[
-      '--target=wasm32-wasi',
-      '--sysroot=${sysrootUsrDir.path}',
-      '-nostdinc++',
-      '-isystem',
-      '${sysrootUsrDir.path}/include/c++/v1',
-      '-isystem',
-      '${sysrootUsrDir.path}/include/wasm32-wasi/c++/v1',
-      '-isystem',
-      '${sysrootUsrDir.path}/include/wasm32-wasi',
+      '--target=$_wasiTargetTriple',
+      '--sysroot=${wasiSysrootDir.path}',
       '-O3',
       '-std=c++17',
       '-fno-exceptions',
       '-fno-rtti',
       '-msimd128',
+      '-ffunction-sections',
+      '-fdata-sections',
       '-D_WASI_EMULATED_MMAN',
       '-D_WASI_EMULATED_SIGNAL',
       '-D_WASI_EMULATED_PROCESS_CLOCKS',
@@ -1609,21 +1753,22 @@ int __cxa_thread_atexit(void (*dtor)(void *), void *obj, void *dso_symbol) {
     final builtinsArchive = _findBuiltinsArchive();
     if (builtinsArchive == null) {
       throw const _BuildException(
-        'libclang_rt.builtins-wasm32.a not found in sysroot.',
+        'libclang_rt.builtins.a not found in wasi-sdk.',
       );
     }
 
-    final crt1Reactor = File(
-      '${sysrootUsrDir.path}/lib/wasm32-wasi/crt1-reactor.o',
-    );
+    final sysrootLibDir = '${wasiSysrootDir.path}/lib/$_wasiTargetTriple';
+    final crt1Reactor = File('$sysrootLibDir/crt1-reactor.o');
 
     final linkArgs = <String>[
       '--no-entry',
-      '--export-dynamic',
+      '--gc-sections',
       '--fatal-warnings',
+      '--export=_initialize',
       for (final symbol in sortedExports) '--export=$symbol',
-      if (crt1Reactor.existsSync()) crt1Reactor.path,
-      '-L${sysrootUsrDir.path}/lib/wasm32-wasi',
+      crt1Reactor.path,
+      '-L$sysrootLibDir/noeh',
+      '-L$sysrootLibDir',
       for (final objectFile in objectFiles) objectFile.path,
       openBlasArchiveFile.path,
       '-lc++',
@@ -2215,13 +2360,18 @@ extension StringUtf16Pointer on String {
   }
 
   /// Verifies that V8 (`node`) compiles `native_math.wasm` without any Wasm
-  /// bytecode validation or stack-height errors.
+  /// bytecode validation or stack-height errors and exports the required
+  /// allocator and reactor symbols.
   Future<void> validateNativeMathWasm() async {
     await _runChecked('node', [
       '-e',
       'const fs = require("node:fs"); '
           'const bytes = fs.readFileSync(${jsonEncode(nativeWasmFile.path)}); '
-          'new WebAssembly.Module(bytes);',
+          'const mod = new WebAssembly.Module(bytes); '
+          'const exports = new Set(WebAssembly.Module.exports(mod).map((e) => e.name)); '
+          'for (const req of ["memory", "malloc", "calloc", "realloc", "free", "_initialize"]) { '
+          '  if (!exports.has(req)) throw new Error("native_math.wasm missing export: " + req); '
+          '}',
     ]);
   }
 

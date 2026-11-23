@@ -659,6 +659,47 @@ void main() {
           reason:
               'dart.yml must exercise baseline scalar x86-64 builds via NDARRAY_X86_FLAGS',
         );
+
+        final wasmIndex = workflowContent.indexOf('wasm-test:');
+        expect(
+          wasmIndex,
+          greaterThanOrEqualTo(0),
+          reason: 'dart.yml must define a wasm-test job',
+        );
+        final nextJobMatch = RegExp(r'^  [\w-]+:\s*$', multiLine: true)
+            .firstMatch(
+              workflowContent.substring(wasmIndex + 'wasm-test:'.length),
+            );
+        final wasmJobSection = nextJobMatch == null
+            ? workflowContent.substring(wasmIndex)
+            : workflowContent.substring(
+                wasmIndex,
+                wasmIndex + 'wasm-test:'.length + nextJobMatch.start,
+              );
+        expect(
+          wasmJobSection,
+          isNot(contains('continue-on-error: true')),
+          reason:
+              'wasm-test job in dart.yml must not suppress failures with continue-on-error: true',
+        );
+        expect(
+          wasmJobSection,
+          contains('tool/build_wasm.dart --test-all'),
+          reason:
+              'wasm-test job in dart.yml must run tool/build_wasm.dart --test-all',
+        );
+
+        final pagesWorkflowFile = File(
+          '${repoRoot.path}/.github/workflows/pages.yml',
+        );
+        expect(pagesWorkflowFile.existsSync(), isTrue);
+        final pagesContent = pagesWorkflowFile.readAsStringSync();
+        expect(
+          pagesContent,
+          isNot(contains('apt.llvm.org')),
+          reason:
+              'pages.yml must rely on the pinned wasi-sdk provisioned by tool/build_wasm.dart rather than unpinned apt.llvm.org snapshots',
+        );
       },
     );
 
