@@ -89,7 +89,7 @@ void main() {
           a.dispose();
           b.dispose();
 
-          // 2D cross where axisa=0, axisc=1 and out=a (writing across rows would overwrite ax/ay before reading)
+          // 2D cross where axisA=0, axisC=1 and out=a (writing across rows would overwrite ax/ay before reading)
           final aMat = NDArray<Float64>.fromList(
             [
               1.0, 2.0, 3.0, // ax
@@ -111,16 +111,16 @@ void main() {
           final expected = cross<Float64>(
             aMat,
             bMat,
-            axisa: 0,
-            axisb: 0,
-            axisc: 1,
+            axisA: 0,
+            axisB: 0,
+            axisC: 1,
           );
           final aliasedRes = cross<Float64>(
             aMat,
             bMat,
-            axisa: 0,
-            axisb: 0,
-            axisc: 1,
+            axisA: 0,
+            axisB: 0,
+            axisC: 1,
             out: aMat,
           );
           expect(identical(aliasedRes, aMat), isTrue);

@@ -43,7 +43,7 @@ void main() {
 
   group('1D Root Finder: newton()', () {
     test('Newton-Raphson with analytical derivative for sqrt(2)', () {
-      final res = newton((x) => x * x - 2.0, 1.0, fprime: (x) => 2.0 * x);
+      final res = newton((x) => x * x - 2.0, 1.0, fPrime: (x) => 2.0 * x);
       expect(res.converged, isTrue);
       expect(res.root, closeTo(1.414213562373095, 1e-9));
     });
@@ -55,9 +55,9 @@ void main() {
     });
   });
 
-  group('1D Root Finder: root_scalar()', () {
+  group('1D Root Finder: rootScalar()', () {
     test('Unified interface dispatches to brentq', () {
-      final res = root_scalar(
+      final res = rootScalar(
         (x) => x * x - 9.0,
         method: RootMethod.brentq,
         bracketA: 0.0,
@@ -68,11 +68,11 @@ void main() {
     });
 
     test('Unified interface dispatches to newton', () {
-      final res = root_scalar(
+      final res = rootScalar(
         (x) => x * x - 9.0,
         method: RootMethod.newton,
         x0: 1.0,
-        fprime: (x) => 2.0 * x,
+        fPrime: (x) => 2.0 * x,
       );
       expect(res.converged, isTrue);
       expect(res.root, closeTo(3.0, 1e-9));
@@ -80,17 +80,17 @@ void main() {
 
     test('Unified interface dispatches to secant', () {
       double f(double x) => x * x * x - x - 2.0;
-      final result = root_scalar(f, method: RootMethod.secant, x0: 1.5);
+      final result = rootScalar(f, method: RootMethod.secant, x0: 1.5);
       expect(result.converged, isTrue);
       expect(result.root, closeTo(1.5213797068, 1e-6));
     });
   });
 
-  group('Multivariate Minimization: nelder_mead()', () {
+  group('Multivariate Minimization: nelderMead()', () {
     test('Minimizes quadratic 2D bowl f(x,y) = (x-3)^2 + (y+2)^2', () {
       NDArray.scope(() {
         final x0 = NDArray<Float64>.fromList([0.0, 0.0], [2], DType.float64);
-        final res = nelder_mead((x) {
+        final res = nelderMead((x) {
           final px = x.getCell([0]);
           final py = x.getCell([1]);
           return (px - 3.0) * (px - 3.0) + (py + 2.0) * (py + 2.0);
@@ -112,7 +112,7 @@ void main() {
       }
 
       final x0 = NDArray<Float64>.fromList([-1.2, 1.0], [2], DType.float64);
-      final result = nelderMead(rosenbrock, x0, maxiter: 2000);
+      final result = nelderMead(rosenbrock, x0, maxIter: 2000);
 
       expect(result.success, isTrue);
       expect(result.x.getCell([0]), closeTo(1.0, 1e-2));
@@ -122,7 +122,7 @@ void main() {
     test('Minimizes Rosenbrock function', () {
       NDArray.scope(() {
         final x0 = NDArray<Float64>.fromList([-1.2, 1.0], [2], DType.float64);
-        final res = nelder_mead(
+        final res = nelderMead(
           (x) {
             final px = x.getCell([0]);
             final py = x.getCell([1]);
@@ -131,7 +131,7 @@ void main() {
             return term1 * term1 + 100.0 * term2 * term2;
           },
           x0,
-          maxiter: 2000,
+          maxIter: 2000,
         );
 
         expect(res.success, isTrue);

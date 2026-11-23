@@ -19,10 +19,10 @@ import 'package:test/test.dart';
 void main() {
   group('Cycle 20 Regression Tests', () {
     group(
-      'Finding 1: take_along_axis and put_along_axis with all integer index dtypes',
+      'Finding 1: takeAlongAxis and putAlongAxis with all integer index dtypes',
       () {
         test(
-          'take_along_axis supports int8, uint16, uint32, uint64 indices (1D, 2D, 3D)',
+          'takeAlongAxis supports int8, uint16, uint32, uint64 indices (1D, 2D, 3D)',
           () {
             NDArray.scope(() {
               final arr1d = NDArray<Float64>.fromList(
@@ -37,7 +37,7 @@ void main() {
                 DType.uint64,
               ]) {
                 final idx = NDArray.fromList([3, 1, 0], [3], idxDType);
-                final res = take_along_axis(arr1d, idx, 0);
+                final res = takeAlongAxis(arr1d, idx, 0);
                 expect(res[[0]], equals(40.0));
                 expect(res[[1]], equals(20.0));
                 expect(res[[2]], equals(10.0));
@@ -49,7 +49,7 @@ void main() {
                 [2],
                 DType.int8,
               );
-              final resNeg = take_along_axis(arr1d, idxNegInt8, 0);
+              final resNeg = takeAlongAxis(arr1d, idxNegInt8, 0);
               expect(resNeg[[0]], equals(40.0));
               expect(resNeg[[1]], equals(20.0));
 
@@ -64,7 +64,7 @@ void main() {
                 [2, 2],
                 DType.uint32,
               );
-              final res2d = take_along_axis(arr2d, idx2d, 1);
+              final res2d = takeAlongAxis(arr2d, idx2d, 1);
               expect(res2d[[0, 0]], equals(3.0));
               expect(res2d[[0, 1]], equals(1.0));
               expect(res2d[[1, 0]], equals(5.0));
@@ -74,7 +74,7 @@ void main() {
         );
 
         test(
-          'put_along_axis supports int8, uint16, uint32, uint64 indices (1D, 2D)',
+          'putAlongAxis supports int8, uint16, uint32, uint64 indices (1D, 2D)',
           () {
             NDArray.scope(() {
               for (final idxDType in [
@@ -94,7 +94,7 @@ void main() {
                   [2],
                   DType.float64,
                 );
-                put_along_axis(arr, idx, vals, 0);
+                putAlongAxis(arr, idx, vals, 0);
                 expect(arr[[0]], equals(10.0));
                 expect(arr[[1]], equals(88.0));
                 expect(arr[[2]], equals(30.0));
@@ -118,7 +118,7 @@ void main() {
               idx.pointer.cast<ffi.Uint64>()[0] = -2;
 
               expect(
-                () => take_along_axis(arr, idx, 0),
+                () => takeAlongAxis(arr, idx, 0),
                 throwsA(isA<RangeError>()),
               );
 
@@ -128,7 +128,7 @@ void main() {
                 DType.float64,
               );
               expect(
-                () => put_along_axis(arr, idx, vals, 0),
+                () => putAlongAxis(arr, idx, vals, 0),
                 throwsA(isA<RangeError>()),
               );
             });
@@ -192,7 +192,7 @@ void main() {
     });
 
     group(
-      'Finding 3: put_along_axis does not mutate out before validating values shape',
+      'Finding 3: putAlongAxis does not mutate out before validating values shape',
       () {
         test(
           'out buffer remains untouched when values has incompatible shape',
@@ -217,7 +217,7 @@ void main() {
               final badValues = NDArray<Float64>.zeros([2, 3], DType.float64);
 
               expect(
-                () => put_along_axis(arr, indices, badValues, 1, out: out),
+                () => putAlongAxis(arr, indices, badValues, 1, out: out),
                 throwsArgumentError,
               );
 

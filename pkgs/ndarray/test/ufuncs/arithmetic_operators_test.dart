@@ -737,7 +737,7 @@ void main() {
           final resMatmul = matmul(a, b);
           expect(resMatmul.toList(), [70.0, 100.0, 150.0, 220.0]);
 
-          // Mixed Float32 throws ArgumentError; explicit astype works
+          // Mixed Float32 throws ArgumentError; explicit asType works
           final f32 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
@@ -753,13 +753,13 @@ void main() {
             throwsArgumentError,
           );
           expect(() => divide(a.asAnySpec, f32.asAnySpec), throwsArgumentError);
-          final f32As64 = f32.astype(DType.float64);
+          final f32As64 = f32.asType(DType.float64);
           expect(add(a, f32As64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(a, f32As64).toList(), [0.0, 0.0, 0.0, 0.0]);
           expect(multiply(a, f32As64).toList(), [1.0, 4.0, 9.0, 16.0]);
           expect(divide(a, f32As64).toList(), [1.0, 1.0, 1.0, 1.0]);
 
-          // Mixed Int64 throws ArgumentError; explicit astype works
+          // Mixed Int64 throws ArgumentError; explicit asType works
           final i64 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
           expect(() => add(a.asAnySpec, i64.asAnySpec), throwsArgumentError);
           expect(
@@ -771,7 +771,7 @@ void main() {
             throwsArgumentError,
           );
           expect(() => divide(a.asAnySpec, i64.asAnySpec), throwsArgumentError);
-          final i64As64 = i64.astype(DType.float64);
+          final i64As64 = i64.asType(DType.float64);
           expect(add(a, i64As64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(a, i64As64).toList(), [0.0, 0.0, 0.0, 0.0]);
           expect(multiply(a, i64As64).toList(), [1.0, 4.0, 9.0, 16.0]);
@@ -840,7 +840,7 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Float64 throws ArgumentError; explicit astype works
+          // Mixed Float64 throws ArgumentError; explicit asType works
           final f64 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
@@ -856,7 +856,7 @@ void main() {
             throwsArgumentError,
           );
           expect(() => divide(a.asAnySpec, f64.asAnySpec), throwsArgumentError);
-          final aAs64 = a.astype(DType.float64);
+          final aAs64 = a.asType(DType.float64);
           expect(add(aAs64, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(aAs64, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
           expect(multiply(aAs64, f64).toList(), [1.0, 4.0, 9.0, 16.0]);
@@ -925,7 +925,7 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Double throws ArgumentError; explicit astype works
+          // Mixed Double throws ArgumentError; explicit asType works
           final f64 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
             [2, 2],
@@ -940,7 +940,7 @@ void main() {
             () => multiply(a.asAnySpec, f64.asAnySpec),
             throwsArgumentError,
           );
-          final aAs64 = a.astype(DType.float64);
+          final aAs64 = a.asType(DType.float64);
           expect(add(aAs64, f64).toList(), [2.0, 4.0, 6.0, 8.0]);
           expect(subtract(aAs64, f64).toList(), [0.0, 0.0, 0.0, 0.0]);
           expect(multiply(aAs64, f64).toList(), [1.0, 4.0, 9.0, 16.0]);
@@ -1006,7 +1006,7 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Int64 throws ArgumentError; explicit astype works
+          // Mixed Int64 throws ArgumentError; explicit asType works
           final i64 = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
           expect(() => add(a.asAnySpec, i64.asAnySpec), throwsArgumentError);
           expect(
@@ -1017,7 +1017,7 @@ void main() {
             () => multiply(a.asAnySpec, i64.asAnySpec),
             throwsArgumentError,
           );
-          final aAsI64 = a.astype(DType.int64);
+          final aAsI64 = a.asType(DType.int64);
           expect(add(aAsI64, i64).toList(), [2, 4, 6, 8]);
           expect(subtract(aAsI64, i64).toList(), [0, 0, 0, 0]);
           expect(multiply(aAsI64, i64).toList(), [1, 4, 9, 16]);
@@ -1088,7 +1088,7 @@ void main() {
             throwsArgumentError,
           );
 
-          // Mixed Float64 throws ArgumentError; explicit astype works
+          // Mixed Float64 throws ArgumentError; explicit asType works
           final f64 = NDArray.fromList([1.0, 2.0], [2], DType.float64);
           expect(() => add(a.asAnySpec, f64.asAnySpec), throwsArgumentError);
           expect(
@@ -1100,7 +1100,7 @@ void main() {
             throwsArgumentError,
           );
           expect(() => divide(a.asAnySpec, f64.asAnySpec), throwsArgumentError);
-          final f64AsC128 = f64.astype(DType.complex128);
+          final f64AsC128 = f64.asType(DType.complex128);
           final resAddF64 = add(a, f64AsC128);
           expect(resAddF64.toList()[0].real, 2.0);
           expect(resAddF64.toList()[0].imag, 2.0);
@@ -1117,7 +1117,7 @@ void main() {
           expect(resDivF64.toList()[0].real, 1.0);
           expect(resDivF64.toList()[0].imag, 2.0);
 
-          // Mixed Int64 throws ArgumentError; explicit astype works
+          // Mixed Int64 throws ArgumentError; explicit asType works
           final i64 = NDArray.fromList([1, 2], [2], DType.int64);
           expect(() => add(a.asAnySpec, i64.asAnySpec), throwsArgumentError);
           expect(
@@ -1129,7 +1129,7 @@ void main() {
             throwsArgumentError,
           );
           expect(() => divide(a.asAnySpec, i64.asAnySpec), throwsArgumentError);
-          final i64AsC128 = i64.astype(DType.complex128);
+          final i64AsC128 = i64.asType(DType.complex128);
           final resAddI64 = add(a, i64AsC128);
           expect(resAddI64.toList()[0].real, 2.0);
           expect(resAddI64.toList()[0].imag, 2.0);
@@ -1598,7 +1598,7 @@ void main() {
       expect(out.toList(), [1, 1]);
 
       final outMod = NDArray.create([2], DType.int32);
-      final resMod = mod(a, b, out: outMod);
+      final resMod = remainder(a, b, out: outMod);
       expect(identical(resMod, outMod), isTrue);
       expect(outMod.toList(), [1, 1]);
     });
@@ -1658,40 +1658,40 @@ void main() {
       expect(out.toList(), [1.0, -2.0]);
     });
 
-    test('isnan with out parameter', () {
+    test('isNan with out parameter', () {
       final a = NDArray.fromList(Float64List.fromList([1.0, double.nan]), [
         2,
       ], DType.float64);
       final out = NDArray<Boolean>.create([2], DType.boolean);
 
-      final res = isnan(a, out: out);
+      final res = isNan(a, out: out);
       expect(identical(res, out), isTrue);
       expect(out.toList(), [false, true]);
     });
 
-    test('isinf with out parameter', () {
+    test('isInf with out parameter', () {
       final a = NDArray.fromList(Float64List.fromList([1.0, double.infinity]), [
         2,
       ], DType.float64);
       final out = NDArray<Boolean>.create([2], DType.boolean);
 
-      final res = isinf(a, out: out);
+      final res = isInf(a, out: out);
       expect(identical(res, out), isTrue);
       expect(out.toList(), [false, true]);
     });
 
-    test('isfinite with out parameter', () {
+    test('isFinite with out parameter', () {
       final a = NDArray.fromList(Float64List.fromList([1.0, double.infinity]), [
         2,
       ], DType.float64);
       final out = NDArray<Boolean>.create([2], DType.boolean);
 
-      final res = isfinite(a, out: out);
+      final res = isFinite(a, out: out);
       expect(identical(res, out), isTrue);
       expect(out.toList(), [true, false]);
     });
 
-    test('copysign with out parameter', () {
+    test('copySign with out parameter', () {
       final x1 = NDArray.fromList(Float64List.fromList([2.0, -3.0]), [
         2,
       ], DType.float64);
@@ -1700,7 +1700,7 @@ void main() {
       ], DType.float64);
       final out = NDArray.create([2], DType.float64);
 
-      final res = copysign(x1, x2, out: out);
+      final res = copySign(x1, x2, out: out);
       expect(identical(res, out), isTrue);
       expect(out.toList(), [-2.0, 3.0]);
     });
@@ -1765,21 +1765,21 @@ void main() {
         final i = NDArray.fromList([2], [1], DType.int64);
         final d = NDArray.fromList([3.0], [1], DType.float64);
 
-        // Mixed dtypes are rejected on add(); explicit astype works
+        // Mixed dtypes are rejected on add(); explicit asType works
         expect(() => add(c.asAnySpec, i.asAnySpec), throwsArgumentError);
-        final res1 = add(c, i.astype(DType.complex128));
+        final res1 = add(c, i.asType(DType.complex128));
         expect(res1.dtype, DType.complex128);
         expect(res1.getCell([0]).real, 3.0);
         expect(res1.getCell([0]).imag, 1.0);
 
         expect(() => add(d.asAnySpec, c.asAnySpec), throwsArgumentError);
-        final res2 = add(d.astype(DType.complex128), c);
+        final res2 = add(d.asType(DType.complex128), c);
         expect(res2.dtype, DType.complex128);
         expect(res2.getCell([0]).real, 4.0);
         expect(res2.getCell([0]).imag, 1.0);
 
         expect(() => add(i.asAnySpec, c.asAnySpec), throwsArgumentError);
-        final res3 = add(i.astype(DType.complex128), c);
+        final res3 = add(i.asType(DType.complex128), c);
         expect(res3.dtype, DType.complex128);
         expect(res3.getCell([0]).real, 3.0);
       }),
@@ -1795,9 +1795,9 @@ void main() {
         );
         final i = NDArray.fromList([2], [1], DType.int64);
         final d = NDArray.fromList([4.0], [1], DType.float64);
-        final iC = i.astype(DType.complex128);
-        final dC = d.astype(DType.complex128);
-        final iD = i.astype(DType.float64);
+        final iC = i.asType(DType.complex128);
+        final dC = d.asType(DType.complex128);
+        final iD = i.asType(DType.float64);
 
         // --- subtract() Gaps ---
         // 1. Complex - int

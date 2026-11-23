@@ -213,7 +213,7 @@ void main() {
         });
       });
 
-      test('3D Tensor reductions across axes with keepdims', () {
+      test('3D Tensor reductions across axes with keepDims', () {
         NDArray.scope(() {
           final tensor = NDArray<Int32>.fromList(
             List.generate(24, (i) => i + 1),
@@ -221,19 +221,19 @@ void main() {
             DType.int32,
           );
 
-          final r0 = tensor.reduce(op: BinaryOp.add, axis: 0, keepdims: true);
+          final r0 = tensor.reduce(op: BinaryOp.add, axis: 0, keepDims: true);
           expect(r0.shape, equals([1, 3, 4]));
 
-          final r1 = tensor.reduce(op: BinaryOp.add, axis: 1, keepdims: true);
+          final r1 = tensor.reduce(op: BinaryOp.add, axis: 1, keepDims: true);
           expect(r1.shape, equals([2, 1, 4]));
 
-          final r2 = tensor.reduce(op: BinaryOp.add, axis: 2, keepdims: true);
+          final r2 = tensor.reduce(op: BinaryOp.add, axis: 2, keepDims: true);
           expect(r2.shape, equals([2, 3, 1]));
 
           final r0NoKeep = tensor.reduce(
             op: BinaryOp.add,
             axis: 0,
-            keepdims: false,
+            keepDims: false,
           );
           expect(r0NoKeep.shape, equals([3, 4]));
         });
@@ -461,9 +461,9 @@ void main() {
       });
     });
 
-    group('BinaryOp.reduceat Tests', () {
+    group('BinaryOp.reduceAt Tests', () {
       test(
-        '1D reduceat across various DTypes (Float64, Float32, Int64, Int32, Int16, Uint8, Complex)',
+        '1D reduceAt across various DTypes (Float64, Float32, Int64, Int32, Int16, Uint8, Complex)',
         () {
           NDArray.scope(() {
             final f64 = NDArray<Float64>.fromList(
@@ -472,7 +472,7 @@ void main() {
               DType.float64,
             );
             final idx64 = NDArray.fromList([0, 4, 1, 5], [4], DType.int64);
-            final res64 = f64.reduceat(idx64, op: BinaryOp.add);
+            final res64 = f64.reduceAt(idx64, op: BinaryOp.add);
             expect(res64.toList(), equals([6.0, 4.0, 10.0, 18.0]));
 
             final f32 = NDArray<Float32>.fromList(
@@ -481,7 +481,7 @@ void main() {
               DType.float32,
             );
             final idx32 = NDArray.fromList([0, 2], [2], DType.int32);
-            final res32 = f32.reduceat(idx32, op: BinaryOp.multiply);
+            final res32 = f32.reduceAt(idx32, op: BinaryOp.multiply);
             expect(res32.toList(), equals([2.0, 12.0]));
 
             final i32Arr = NDArray<Int32>.fromList(
@@ -491,7 +491,7 @@ void main() {
             );
             final idxI32 = NDArray.fromList([0, 2], [2], DType.int64);
             expect(
-              i32Arr.reduceat(idxI32, op: BinaryOp.add).toList(),
+              i32Arr.reduceAt(idxI32, op: BinaryOp.add).toList(),
               equals([30, 70]),
             );
 
@@ -501,7 +501,7 @@ void main() {
               DType.int16,
             );
             expect(
-              i16Arr.reduceat(idxI32, op: BinaryOp.add).toList(),
+              i16Arr.reduceAt(idxI32, op: BinaryOp.add).toList(),
               equals([3, 7]),
             );
 
@@ -511,7 +511,7 @@ void main() {
               DType.uint8,
             );
             expect(
-              u8Arr.reduceat(idxI32, op: BinaryOp.add).toList(),
+              u8Arr.reduceAt(idxI32, op: BinaryOp.add).toList(),
               equals([3, 7]),
             );
 
@@ -525,7 +525,7 @@ void main() {
               [4],
               DType.complex128,
             );
-            final cRes = c128Arr.reduceat(idxI32, op: BinaryOp.add);
+            final cRes = c128Arr.reduceAt(idxI32, op: BinaryOp.add);
             expect(cRes.getCell([0]), equals(Complex(3.0, 3.0)));
             expect(cRes.getCell([1]), equals(Complex(7.0, 7.0)));
 
@@ -536,14 +536,14 @@ void main() {
             );
             final idx1 = NDArray.fromList([0], [1], DType.int64);
             expect(
-              c64Arr.reduceat(idx1, op: BinaryOp.add).getCell([0]),
+              c64Arr.reduceAt(idx1, op: BinaryOp.add).getCell([0]),
               equals(Complex(3.0, 3.0)),
             );
           });
         },
       );
 
-      test('2D reduceat along axis 0 and axis 1', () {
+      test('2D reduceAt along axis 0 and axis 1', () {
         NDArray.scope(() {
           final mat = NDArray<Float64>.fromList(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
@@ -552,17 +552,17 @@ void main() {
           );
 
           final indices0 = NDArray.fromList([0, 2], [2], DType.int64);
-          final red0 = mat.reduceat(indices0, op: BinaryOp.add, axis: 0);
+          final red0 = mat.reduceAt(indices0, op: BinaryOp.add, axis: 0);
           expect(red0.shape, equals([2, 3]));
           expect(red0.toList(), equals([5.0, 7.0, 9.0, 17.0, 19.0, 21.0]));
 
           final indices1 = NDArray.fromList([0, 1], [2], DType.int64);
-          final red1 = mat.reduceat(indices1, op: BinaryOp.add, axis: 1);
+          final red1 = mat.reduceAt(indices1, op: BinaryOp.add, axis: 1);
           expect(red1.shape, equals([4, 2]));
         });
       });
 
-      test('reduceat with extended DTypes (Float16, Int8, Uint64)', () {
+      test('reduceAt with extended DTypes (Float16, Int8, Uint64)', () {
         NDArray.scope(() {
           final f16 = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0],
@@ -570,13 +570,13 @@ void main() {
             DType.float16,
           );
           final idx = NDArray.fromList([0, 2], [2], DType.int64);
-          final res = f16.reduceat(idx, op: BinaryOp.add);
+          final res = f16.reduceAt(idx, op: BinaryOp.add);
           expect(res.shape, equals([2]));
           expect(res.getCell([0]), closeTo(3.0, 1e-2));
           expect(res.getCell([1]), closeTo(7.0, 1e-2));
 
           final i8 = NDArray.fromList([2, 3, 4, 5], [4], DType.int8);
-          final resI8 = i8.reduceat(idx, op: BinaryOp.add);
+          final resI8 = i8.reduceAt(idx, op: BinaryOp.add);
           expect(resI8.toList(), equals([5, 9]));
         });
       });
@@ -890,10 +890,10 @@ void main() {
               equals([math.sqrt(40.0), math.sqrt(80.0)]),
             );
             expect(
-              binaryUfunc(a, b, op: BinaryOp.copysign).toList(),
+              binaryUfunc(a, b, op: BinaryOp.copySign).toList(),
               equals([6.0, 8.0]),
             );
-            expect(binaryUfunc(a, b, op: BinaryOp.arctan2).shape, equals([2]));
+            expect(binaryUfunc(a, b, op: BinaryOp.atan2).shape, equals([2]));
 
             final iA = NDArray<Int64>.fromList([12, 15], [2], DType.int64);
             final iB = NDArray<Int64>.fromList([18, 20], [2], DType.int64);
@@ -961,11 +961,17 @@ void main() {
         final out = NDArray<Float64>.zeros([2], DType.float64);
 
         a.dispose();
-        expect(() => reduce(a, op: BinaryOp.add), throwsStateError);
-        expect(() => accumulate(a, op: BinaryOp.add), throwsStateError);
-        expect(() => reduceat(a, indices, op: BinaryOp.add), throwsStateError);
+        expect(() => reduceUfunc(a, op: BinaryOp.add), throwsStateError);
+        expect(() => accumulateUfunc(a, op: BinaryOp.add), throwsStateError);
+        expect(
+          () => reduceAtUfunc(a, indices, op: BinaryOp.add),
+          throwsStateError,
+        );
         expect(() => outer(a, b), throwsStateError);
-        expect(() => at(a, indices, b, op: BinaryOp.add), throwsStateError);
+        expect(
+          () => atUfunc(a, indices, b, op: BinaryOp.add),
+          throwsStateError,
+        );
 
         indices.dispose();
         b.dispose();
@@ -973,7 +979,7 @@ void main() {
       });
 
       test(
-        'Non-reducible op on reduce, accumulate, reduceat throws ArgumentError',
+        'Non-reducible op on reduce, accumulate, reduceAt throws ArgumentError',
         () {
           NDArray.scope(() {
             final a = NDArray<Float64>.fromList([1.0, 2.0], [2], DType.float64);
@@ -985,7 +991,7 @@ void main() {
               throwsArgumentError,
             );
             expect(
-              () => a.reduceat(indices, op: BinaryOp.power),
+              () => a.reduceAt(indices, op: BinaryOp.power),
               throwsArgumentError,
             );
           });
@@ -1008,7 +1014,7 @@ void main() {
             throwsRangeError,
           );
           expect(
-            () => a.reduceat(indices, op: BinaryOp.add, axis: 2),
+            () => a.reduceAt(indices, op: BinaryOp.add, axis: 2),
             throwsRangeError,
           );
         });

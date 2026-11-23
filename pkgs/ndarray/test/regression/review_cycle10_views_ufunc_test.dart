@@ -28,7 +28,7 @@ void main() {
             20,
           ], DType.float64);
 
-          at(a32, indices32, b32, op: BinaryOp.add);
+          atUfunc(a32, indices32, b32, op: BinaryOp.add);
           for (var i = 0; i < 10; i++) {
             expect(a32.getCell([i]), closeTo(2.0, 1e-12));
           }
@@ -42,7 +42,7 @@ void main() {
           );
           final b16 = NDArray.scalar(3, dtype: DType.int32);
 
-          at(a16, indices16, b16, op: BinaryOp.add);
+          atUfunc(a16, indices16, b16, op: BinaryOp.add);
           // Indices 0..5: 0,1 take 4 hits (12); 2,3,4,5 take 3 hits (9)
           expect(a16.toList(), equals([12, 12, 9, 9, 9, 9]));
         });
@@ -50,7 +50,7 @@ void main() {
     );
 
     test(
-      '1b. reduceatUfunc with DType.int16 / DType.uint8 indices and out sharing memory with a',
+      '1b. reduceAtUfunc with DType.int16 / DType.uint8 indices and out sharing memory with a',
       () {
         NDArray.scope(() {
           final a = NDArray.fromList(
@@ -59,11 +59,11 @@ void main() {
             DType.float64,
           );
           final idx16 = NDArray.fromList([0, 2, 4], [3], DType.int16);
-          final res16 = reduceat(a, idx16, op: BinaryOp.add);
+          final res16 = reduceAtUfunc(a, idx16, op: BinaryOp.add);
           expect(res16.toList(), equals([3.0, 7.0, 11.0]));
 
           final idxU8 = NDArray.fromList([0, 3], [2], DType.uint8);
-          final resU8 = reduceat(a, idxU8, op: BinaryOp.add);
+          final resU8 = reduceAtUfunc(a, idxU8, op: BinaryOp.add);
           expect(resU8.toList(), equals([6.0, 15.0]));
 
           // Test out sharing memory with a
@@ -74,7 +74,7 @@ void main() {
           );
           final outSlice = aOverlap.slice([Slice(start: 0, stop: 3)]);
           final idxOverlap = NDArray.fromList([0, 2, 4], [3], DType.int16);
-          reduceat(aOverlap, idxOverlap, op: BinaryOp.add, out: outSlice);
+          reduceAtUfunc(aOverlap, idxOverlap, op: BinaryOp.add, out: outSlice);
           expect(outSlice.toList(), equals([30, 70, 110]));
         });
       },

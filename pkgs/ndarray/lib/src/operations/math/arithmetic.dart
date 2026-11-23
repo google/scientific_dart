@@ -1300,15 +1300,6 @@ NDArray<R> trunc<R extends DTypeTag, Out extends R>(
   }
 }
 
-/// Rounds elements of the array to the nearest integer towards zero.
-///
-/// Synonym for [trunc].
-NDArray<R> fix<R extends DTypeTag, Out extends R>(
-  NDArray<RealFloatOf<R>> a, {
-  NDArray<DTypeTag>? where,
-  NDArray<Out>? out,
-}) => trunc(a, where: where, out: out);
-
 /// Computes the element-wise square of the input array.
 ///
 /// It is an error if the array has been disposed (throws [StateError]), or if the provided [out] buffer shape or dtype is incompatible (throws [ArgumentError]).
@@ -3426,29 +3417,6 @@ NDArray<T> remainder<T extends SelfOf<DTypeTag>>(
   }
 }
 
-/// Alias for [remainder].
-///
-/// **Division by Zero:**
-/// - **Integer arrays**: Division by zero is an error.
-/// - **Floating-point arrays**: Returns `double.nan` silently.
-///
-/// **Preconditions:**
-/// - The input arrays [x1] and [x2] must not be disposed and must have the same [DType].
-/// - If [out] is provided, it must not be disposed and must have compatible shape and dtype.
-/// - For integer arrays, the divisor [x2] must not contain any `0` elements.
-///
-/// It is an error if:
-/// - [x1], [x2], or [out] is disposed (throws [StateError]).
-/// - [x1] and [x2] have different dtypes (throws [ArgumentError]).
-/// - [out] has incompatible shape or dtype (throws [ArgumentError]).
-/// - for integer arrays, the divisor [x2] contains any `0` elements (throws [UnsupportedError]).
-NDArray<T> mod<T extends SelfOf<DTypeTag>>(
-  NDArray<T> x1,
-  NDArray<T> x2, {
-  NDArray<DTypeTag>? where,
-  NDArray<T>? out,
-}) => remainder<T>(x1, x2, where: where, out: out);
-
 /// Element-wise floor division and remainder simultaneously (`floor_divide(x1, x2)`, `remainder(x1, x2)`).
 ///
 /// Returns a named record containing:
@@ -3540,7 +3508,7 @@ divmod<T extends SelfOf<DTypeTag>>(
 
 /// Element-wise C-style modulo / remainder of division (`x1 % x2`).
 ///
-/// Unlike [remainder] / [mod], the sign of the result matches the dividend [x1].
+/// Unlike [remainder], the sign of the result matches the dividend [x1].
 ///
 /// **Division by Zero:**
 /// - **Integer arrays**: Division by zero is an error.
@@ -12396,22 +12364,6 @@ NDArray<R> remainderAs<
     return out ?? res.detachToParentScope();
   });
 }
-
-/// Alias for [remainderAs] matching `numpy.mod`.
-///
-/// Reference: [NumPy mod](https://numpy.org/doc/stable/reference/generated/numpy.mod.html)
-NDArray<R> modAs<
-  Ta extends DTypeTag,
-  Tb extends DTypeTag,
-  R extends DTypeTag,
-  Out extends R
->(
-  NDArray<Ta> a,
-  NDArray<Tb> b,
-  DType<R> dtype, {
-  NDArray<DTypeTag>? where,
-  NDArray<Out>? out,
-}) => remainderAs(a, b, dtype, where: where, out: out);
 
 /// Element-wise C-style `fmod` remainder of [x1] divided by [x2] computed into the specified target [dtype].
 ///

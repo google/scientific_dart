@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 
 void main() {
   group('Review Cycle 8: set_operations strided/flipped/aliased out', () {
@@ -108,14 +108,14 @@ void main() {
       },
     );
 
-    test('isin with flip(buf), step=2, and aliased out', () {
+    test('isIn with flip(buf), step=2, and aliased out', () {
       NDArray.scope(() {
         final elem = NDArray.fromList([10, 20, 30, 40], [4], DType.int64);
         final testElem = NDArray.fromList([20, 40], [2], DType.int64);
 
         final bufFlip = NDArray<Boolean>.create([4], DType.boolean);
         final flipped = flip(bufFlip);
-        isin<DTypeTag>(elem, testElem, out: flipped);
+        isIn<DTypeTag>(elem, testElem, out: flipped);
         // Logical flipped result should be [false, true, false, true]
         expect(flipped[0].scalar, isFalse);
         expect(flipped[1].scalar, isTrue);
@@ -130,7 +130,7 @@ void main() {
         final bufStep = NDArray<Boolean>.fromList(List.filled(8, false), [
           8,
         ], DType.boolean);
-        isin<DTypeTag>(elem, testElem, out: bufStep.slice([Slice(step: 2)]));
+        isIn<DTypeTag>(elem, testElem, out: bufStep.slice([Slice(step: 2)]));
         expect(bufStep[0].scalar, isFalse);
         expect(bufStep[2].scalar, isTrue);
         expect(bufStep[4].scalar, isFalse);
@@ -143,7 +143,7 @@ void main() {
           DType.boolean,
         );
         final boolTest = NDArray<Boolean>.fromList([true], [1], DType.boolean);
-        isin<Boolean>(boolBuf, boolTest, out: boolBuf);
+        isIn<Boolean>(boolBuf, boolTest, out: boolBuf);
         expect(boolBuf[0].scalar, isTrue);
         expect(boolBuf[1].scalar, isFalse);
         expect(boolBuf[2].scalar, isTrue);

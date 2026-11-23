@@ -82,8 +82,8 @@ void main() async {
           DType.int32,
         );
 
-        c.bench('isin(setA, setB) [50,000 vs 50,000]', () {
-          final mask = isin(setA, setB);
+        c.bench('isIn(setA, setB) [50,000 vs 50,000]', () {
+          final mask = isIn(setA, setB);
           blackhole(mask);
           mask.dispose();
         }, throughput: Throughput.elements(50000));

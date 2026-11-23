@@ -97,8 +97,8 @@ void main() async {
         }, throughput: Throughput.elements(100 * 100));
 
         final mat50 = makeInvertible(50);
-        c.bench('matrix_power(A, 5) [50x50]', () {
-          final pMat = matrix_power(mat50, 5);
+        c.bench('matrixPower(A, 5) [50x50]', () {
+          final pMat = matrixPower(mat50, 5);
           blackhole(pMat);
           pMat.dispose();
         }, throughput: Throughput.elements(50 * 50 * 50 * 4));

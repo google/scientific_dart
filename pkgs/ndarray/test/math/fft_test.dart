@@ -1272,7 +1272,7 @@ void main() {
             [5],
             DType.complex128,
           );
-          final c64 = c128.astype(DType.complex64);
+          final c64 = c128.asType(DType.complex64);
 
           expect(() => rfft(c128 as dynamic, n: 4), throwsArgumentError);
           expect(() => rfft(c128 as dynamic, n: 5), throwsArgumentError);
@@ -1390,7 +1390,7 @@ void main() {
       () => NDArray.scope(() {
         for (final len in [1, 8, 9]) {
           final x = linspace(-1.5, 2.5, len, dtype: DType.float64);
-          final xc = x.astype(DType.complex128);
+          final xc = x.asType(DType.complex128);
           expect(allClose(fft(x), fft(xc), atol: 1e-11), isTrue);
           expect(allClose(ifft(x), ifft(xc), atol: 1e-11), isTrue);
 
@@ -1424,7 +1424,7 @@ void main() {
             count,
             dtype: DType.float64,
           ).reshape(shape);
-          final mc = m.astype(DType.complex128);
+          final mc = m.asType(DType.complex128);
           expect(allClose(fft2(m), fft2(mc), atol: 1e-11), isTrue);
           expect(allClose(ifft2(m), ifft2(mc), atol: 1e-11), isTrue);
           expect(

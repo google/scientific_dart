@@ -944,7 +944,7 @@ NDArray<C> roots<C extends DTypeTag, Out extends C>(
       aMat.setCellFlat(i * deg + i - 1, castValue(one, targetMatDType));
     }
 
-    final res = eigvals(aMat as NDArray<ComplexOf<C>>, out: out);
+    final res = eigValues(aMat as NDArray<ComplexOf<C>>, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });

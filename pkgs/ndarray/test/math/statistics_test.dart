@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 import 'dart:math' as math;
 
 void main() {
@@ -1488,12 +1488,7 @@ void main() {
       final yNearest = interp(x, xp, fp, method: InterpolationMethod.nearest);
       expect(yNearest.toList(), [10.0, 10.0, 20.0, 30.0, 30.0]);
 
-      final yAlias = interpolate(
-        x,
-        xp,
-        fp,
-        method: InterpolationMethod.nearest,
-      );
+      final yAlias = interp(x, xp, fp, method: InterpolationMethod.nearest);
       expect(yAlias.toList(), [10.0, 10.0, 20.0, 30.0, 30.0]);
 
       x.dispose();
@@ -2581,7 +2576,7 @@ void main() {
       });
     });
 
-    group('isin', () {
+    group('isIn', () {
       test('int32 basic', () {
         final element = NDArray<Int32>.fromList(
           ([1, 2, 3, 4, 2, 1]).map((e) => (e as num).toInt()).toList(),
@@ -2593,7 +2588,7 @@ void main() {
           [2],
           DType.int32,
         );
-        final res = isin(element, testElements);
+        final res = isIn(element, testElements);
         expect(res.shape, [6]);
         expect(res.dtype, DType.boolean);
         expect(res.toList(), [false, true, false, true, true, false]);
@@ -2613,7 +2608,7 @@ void main() {
           [2],
           DType.int32,
         );
-        final res = isin(element, testElements);
+        final res = isIn(element, testElements);
         expect(res.shape, [2, 2]);
         expect(res.dtype, DType.boolean);
         expect(res.toList(), [false, true, true, false]);
@@ -2633,14 +2628,14 @@ void main() {
           [1],
           DType.int32,
         );
-        final res = isin(element, testElements, invert: true);
+        final res = isIn(element, testElements, invert: true);
         expect(res.toList(), [true, false, true]);
         element.dispose();
         testElements.dispose();
         res.dispose();
       });
 
-      test('uint8 isin', () {
+      test('uint8 isIn', () {
         final element = NDArray<Uint8>.fromList(
           ([1, 2, 3, 2]).map((e) => (e as num).toInt()).toList(),
           [4],
@@ -2651,14 +2646,14 @@ void main() {
           [2],
           DType.uint8,
         );
-        final res = isin(element, testElements);
+        final res = isIn(element, testElements);
         expect(res.toList(), [false, true, false, true]);
         element.dispose();
         testElements.dispose();
         res.dispose();
       });
 
-      test('isin assumeUnique with unsorted testElements', () {
+      test('isIn assumeUnique with unsorted testElements', () {
         final element = NDArray<Int32>.fromList(
           ([1, 2, 3]).map((e) => (e as num).toInt()).toList(),
           [3],
@@ -2669,7 +2664,7 @@ void main() {
           [2],
           DType.int32,
         );
-        final res = isin(element, testElements, assumeUnique: true);
+        final res = isIn(element, testElements, assumeUnique: true);
         expect(res.toList(), [true, false, true]);
         element.dispose();
         testElements.dispose();
@@ -2691,7 +2686,7 @@ void main() {
         final sliceElement = element.slice([Slice(step: 2)]); // [1, 3, 5]
         final sliceTest = testElements.slice([Slice(step: 2)]); // [3, 5]
 
-        final res = isin(sliceElement, sliceTest);
+        final res = isIn(sliceElement, sliceTest);
         expect(res.toList(), [false, true, true]);
 
         element.dispose();
@@ -2711,8 +2706,8 @@ void main() {
           DType.int32,
         );
         a.dispose();
-        expect(() => isin(a, b), throwsStateError);
-        expect(() => isin(b, a), throwsStateError);
+        expect(() => isIn(a, b), throwsStateError);
+        expect(() => isIn(b, a), throwsStateError);
         b.dispose();
       });
 
@@ -2729,7 +2724,7 @@ void main() {
           DType.int32,
         );
 
-        final res = isin(a, b);
+        final res = isIn(a, b);
         expect(res.shape, [3]);
         expect(res.toList(), [false, true, true]);
 
@@ -2751,7 +2746,7 @@ void main() {
         );
         final b = bFull.slice([Slice(step: 2)]); // [2, 3, 4] but non-contiguous
 
-        final res = isin(a, b);
+        final res = isIn(a, b);
         expect(res.shape, [3]);
         expect(res.toList(), [false, true, true]);
 
@@ -4377,7 +4372,7 @@ void main() {
         });
       });
 
-      test('2D array cov (rowvar=true)', () {
+      test('2D array cov (rowVar=true)', () {
         NDArray.scope(() {
           final x = NDArray<Float64>.fromList(
             ([
@@ -4400,7 +4395,7 @@ void main() {
         });
       });
 
-      test('2D array cov (rowvar=false)', () {
+      test('2D array cov (rowVar=false)', () {
         NDArray.scope(() {
           final x = NDArray<Float64>.fromList(
             ([
@@ -4414,7 +4409,7 @@ void main() {
             [3, 2],
             DType.float64,
           );
-          final c = cov(x, rowvar: false);
+          final c = cov(x, rowVar: false);
           expect(c.shape, [2, 2]);
           expect(c.getCell([0, 0]), closeTo(1.0, 1e-4));
           expect(c.getCell([0, 1]), closeTo(-1.0, 1e-4));
@@ -4444,36 +4439,36 @@ void main() {
         });
       });
 
-      test('cov with fweights', () {
+      test('cov with fWeights', () {
         NDArray.scope(() {
           final x = NDArray<Float64>.fromList(
             ([1.0, 2.0, 3.0]).map((e) => (e as num).toDouble()).toList(),
             [3],
             DType.float64,
           );
-          final fweights = NDArray<Int64>.fromList(
+          final fWeights = NDArray<Int64>.fromList(
             ([1, 2, 1]).map((e) => (e as num).toInt()).toList(),
             [3],
             DType.int64,
           );
-          final c = cov(x, fweights: fweights);
+          final c = cov(x, fWeights: fWeights);
           expect(c.scalar, closeTo(0.66666667, 1e-4));
         });
       });
 
-      test('cov with aweights', () {
+      test('cov with aWeights', () {
         NDArray.scope(() {
           final x = NDArray<Float64>.fromList(
             ([1.0, 2.0, 3.0]).map((e) => (e as num).toDouble()).toList(),
             [3],
             DType.float64,
           );
-          final aweights = NDArray<Float64>.fromList(
+          final aWeights = NDArray<Float64>.fromList(
             ([1.0, 2.0, 1.0]).map((e) => (e as num).toDouble()).toList(),
             [3],
             DType.float64,
           );
-          final c = cov(x, aweights: aweights);
+          final c = cov(x, aWeights: aWeights);
           expect(c.scalar, closeTo(0.8, 1e-4));
         });
       });
@@ -4533,7 +4528,7 @@ void main() {
             DType.int32,
           );
           expect(() => cov(x.asAnySpec, y: y.asAnySpec), throwsArgumentError);
-          final c = cov(x, y: y.astype(DType.float64));
+          final c = cov(x, y: y.asType(DType.float64));
           expect(c.shape, [2, 2]);
           expect(c.getCell([0, 0]), closeTo(11.71, 1e-4));
           expect(c.getCell([0, 1]), closeTo(-4.45, 1e-4));
@@ -4554,42 +4549,42 @@ void main() {
             [2, 2],
             DType.int64,
           );
-          expect(() => cov(x, fweights: fBadRank), throwsArgumentError);
+          expect(() => cov(x, fWeights: fBadRank), throwsArgumentError);
 
           final fBadSize = NDArray<Int64>.fromList(
             ([1, 2]).map((e) => (e as num).toInt()).toList(),
             [2],
             DType.int64,
           );
-          expect(() => cov(x, fweights: fBadSize), throwsArgumentError);
+          expect(() => cov(x, fWeights: fBadSize), throwsArgumentError);
 
           final fNeg = NDArray<Int64>.fromList(
             ([1, -2, 1]).map((e) => (e as num).toInt()).toList(),
             [3],
             DType.int64,
           );
-          expect(() => cov(x, fweights: fNeg), throwsArgumentError);
+          expect(() => cov(x, fWeights: fNeg), throwsArgumentError);
 
           final aBadRank = NDArray<Float64>.fromList(
             ([1.0, 2.0, 3.0, 4.0]).map((e) => (e as num).toDouble()).toList(),
             [2, 2],
             DType.float64,
           );
-          expect(() => cov(x, aweights: aBadRank), throwsArgumentError);
+          expect(() => cov(x, aWeights: aBadRank), throwsArgumentError);
 
           final aBadSize = NDArray<Float64>.fromList(
             ([1.0, 2.0]).map((e) => (e as num).toDouble()).toList(),
             [2],
             DType.float64,
           );
-          expect(() => cov(x, aweights: aBadSize), throwsArgumentError);
+          expect(() => cov(x, aWeights: aBadSize), throwsArgumentError);
 
           final aNeg = NDArray<Float64>.fromList(
             ([1.0, -2.0, 1.0]).map((e) => (e as num).toDouble()).toList(),
             [3],
             DType.float64,
           );
-          expect(() => cov(x, aweights: aNeg), throwsArgumentError);
+          expect(() => cov(x, aWeights: aNeg), throwsArgumentError);
         });
       });
 
@@ -4606,14 +4601,14 @@ void main() {
         });
       });
 
-      test('cov 1D input, rowvar=false', () {
+      test('cov 1D input, rowVar=false', () {
         NDArray.scope(() {
           final x = NDArray<Float64>.fromList(
             ([1.0, 2.0, 3.0]).map((e) => (e as num).toDouble()).toList(),
             [3],
             DType.float64,
           );
-          final c = cov(x, rowvar: false);
+          final c = cov(x, rowVar: false);
           expect(c.shape, <int>[]);
           expect(c.scalar, closeTo(1.0, 1e-4));
         });

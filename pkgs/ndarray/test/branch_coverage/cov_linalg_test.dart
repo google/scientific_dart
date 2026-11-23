@@ -115,31 +115,31 @@ void main() {
       });
     });
 
-    test('multi_dot validation, promotion, and mixed dtypes', () {
+    test('multiDot validation, promotion, and mixed dtypes', () {
       NDArray.scope(() {
         final a = NDArray.eye(2, DType.float64);
         final disposed = NDArray.eye(2, DType.float64)..dispose();
-        expect(() => multi_dot([a, disposed]), throwsStateError);
-        expect(() => multi_dot([a, a], out: disposed), throwsStateError);
+        expect(() => multiDot([a, disposed]), throwsStateError);
+        expect(() => multiDot([a, a], out: disposed), throwsStateError);
 
         final t3d = NDArray.zeros([2, 2, 2], DType.float64);
-        expect(() => multi_dot([a, t3d, a]), throwsArgumentError);
+        expect(() => multiDot([a, t3d, a]), throwsArgumentError);
 
         final badLast = NDArray.zeros([3, 2], DType.float64);
-        expect(() => multi_dot([a, a, badLast]), throwsArgumentError);
+        expect(() => multiDot([a, a, badLast]), throwsArgumentError);
 
         final badOut = NDArray.zeros([3, 3], DType.float64);
-        expect(() => multi_dot([a, a], out: badOut), throwsArgumentError);
+        expect(() => multiDot([a, a], out: badOut), throwsArgumentError);
 
         // Integer inputs promoted to float64 via T == Float64 or float64 out
         final i32Mat = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
         final f64Out = NDArray.zeros([2, 2], DType.float64);
-        final resPromoted = multi_dot<Float64>([i32Mat, i32Mat], out: f64Out);
+        final resPromoted = multiDot<Float64>([i32Mat, i32Mat], out: f64Out);
         expect(resPromoted.dtype, equals(DType.float64));
         expect(resPromoted.toList(), equals([7.0, 10.0, 15.0, 22.0]));
 
-        // Mixed dtypes in multi_dot (int32 + float64)
-        final resMixed = multi_dot([i32Mat, a]);
+        // Mixed dtypes in multiDot (int32 + float64)
+        final resMixed = multiDot([i32Mat, a]);
         expect(resMixed.dtype, equals(DType.float64));
         expect(resMixed.toList(), equals([1.0, 2.0, 3.0, 4.0]));
       });
@@ -178,13 +178,16 @@ void main() {
         final validScalar = NDArray.zeros([], DType.float64);
         expect(() => slogdet(disposed), throwsStateError);
         expect(() => slogdet(f64MatOut, outSign: disposed), throwsStateError);
-        expect(() => slogdet(f64MatOut, outLogdet: disposed), throwsStateError);
+        expect(
+          () => slogdet(f64MatOut, outLogAbsDet: disposed),
+          throwsStateError,
+        );
         final nonSquare = NDArray.zeros([2, 3], DType.float64);
         expect(() => slogdet(nonSquare), throwsArgumentError);
 
         final signOut = NDArray.zeros([], DType.float64);
         final logdetOut = NDArray.zeros([], DType.float64);
-        slogdet(i32Mat, outSign: signOut, outLogdet: logdetOut);
+        slogdet(i32Mat, outSign: signOut, outLogAbsDet: logdetOut);
         expect(signOut.scalar, closeTo(-1.0, 1e-10));
         expect(validScalar.isDisposed, isFalse);
 
@@ -326,22 +329,22 @@ void main() {
       });
     });
 
-    test('matrix_power, eig, eigvals validation and aliasing', () {
+    test('matrixPower, eig, eigValues validation and aliasing', () {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
         final disposed = NDArray.eye(2, DType.float64)..dispose();
         final disposedC128 = NDArray.zeros([2], DType.complex128)..dispose();
         final badOut = NDArray.zeros([3, 3], DType.float64);
 
-        // matrix_power
-        expect(() => matrix_power(disposed, 2), throwsStateError);
-        expect(() => matrix_power(a, 2, out: disposed), throwsStateError);
-        expect(() => matrix_power(a, 2, out: badOut), throwsArgumentError);
+        // matrixPower
+        expect(() => matrixPower(disposed, 2), throwsStateError);
+        expect(() => matrixPower(a, 2, out: disposed), throwsStateError);
+        expect(() => matrixPower(a, 2, out: badOut), throwsArgumentError);
         final aCopy = a.copy();
-        matrix_power(aCopy, 2, out: aCopy);
+        matrixPower(aCopy, 2, out: aCopy);
         expect(aCopy.toList(), equals([7.0, 10.0, 15.0, 22.0]));
 
-        // eig & eigvals
+        // eig & eigValues
         final wOut = NDArray.zeros([2], DType.complex128);
         final vrOut = NDArray.zeros([2, 2], DType.complex128);
         final badW = NDArray.zeros([3], DType.complex128);
@@ -370,17 +373,17 @@ void main() {
           throwsArgumentError,
         );
 
-        expect(() => eigvals(disposed), throwsStateError);
-        expect(() => eigvals(a, out: disposedC128), throwsStateError);
-        expect(() => eigvals(a, out: badW), throwsArgumentError);
+        expect(() => eigValues(disposed), throwsStateError);
+        expect(() => eigValues(a, out: disposedC128), throwsStateError);
+        expect(() => eigValues(a, out: badW), throwsArgumentError);
         final boolMat = NDArray.zeros([2, 2], DType.boolean);
         expect(() => eig(boolMat), throwsUnimplementedError);
-        expect(() => eigvals(boolMat), throwsUnimplementedError);
+        expect(() => eigValues(boolMat), throwsUnimplementedError);
       });
     });
 
     test(
-      'eigh, eigvalsh, schur, hessenberg validation, promotion, and non-finite',
+      'eigh, eigValuesH, schur, hessenberg validation, promotion, and non-finite',
       () {
         NDArray.scope(() {
           final a = NDArray.fromList(
@@ -451,16 +454,16 @@ void main() {
             throwsA(isA<LinAlgException>()),
           );
 
-          // eigvalsh validation, 3D stack, and float16 out
-          expect(() => eigvalsh(a, out: badVec), throwsArgumentError);
-          eigvalsh(f16Sym.asAnySpec, out: f16W.asAnySpec);
+          // eigValuesH validation, 3D stack, and float16 out
+          expect(() => eigValuesH(a, out: badVec), throwsArgumentError);
+          eigValuesH(f16Sym.asAnySpec, out: f16W.asAnySpec);
           expect(f16W.getCell([1]), closeTo(3.0, 1e-2));
           final sym3D = NDArray.zeros([2, 2, 2], DType.float64);
           sym3D.setCell([0, 0, 0], 1.0);
           sym3D.setCell([0, 1, 1], 2.0);
           sym3D.setCell([1, 0, 0], 3.0);
           sym3D.setCell([1, 1, 1], 4.0);
-          expect(eigvalsh(sym3D).shape, equals([2, 2]));
+          expect(eigValuesH(sym3D).shape, equals([2, 2]));
 
           // schur validation and float16 out
           expect(() => schur(disposed), throwsStateError);
@@ -501,11 +504,11 @@ void main() {
           ..dispose();
         final v3 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
         expect(() => cross(disposed, v3), throwsStateError);
-        expect(() => cross(v3, v3, axisb: 5), throwsRangeError);
+        expect(() => cross(v3, v3, axisB: 5), throwsRangeError);
         final v4 = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
         expect(() => cross(v4, v4), throwsArgumentError);
         expect(() => cross(v, v3), throwsArgumentError);
-        expect(() => cross(v3, v3, axisc: 5), throwsRangeError);
+        expect(() => cross(v3, v3, axisC: 5), throwsRangeError);
         expect(() => cross(v3, v3, out: badOut), throwsArgumentError);
 
         // float16 cross with and without out
@@ -516,10 +519,10 @@ void main() {
         cross(f16V3, f16V3B, out: f16Out);
         expect(f16Out.getCell([2]), closeTo(1.0, 1e-2));
 
-        // 3D cross with axisc: 0 on batched 2x3 arrays
+        // 3D cross with axisC: 0 on batched 2x3 arrays
         final batchA = NDArray.ones([2, 3], DType.float64);
         final batchB = NDArray.ones([2, 3], DType.float64);
-        expect(cross(batchA, batchB, axisc: 0).shape, equals([3, 2]));
+        expect(cross(batchA, batchB, axisC: 0).shape, equals([3, 2]));
 
         // 2D cross (len == 2) across all dtypes
         expect(
@@ -667,7 +670,7 @@ void main() {
     });
 
     test(
-      'lstsq, cond, svdvals, matrix_rank, tensorsolve, tensorinv branches',
+      'lstsq, cond, svdValues, matrixRank, tensorsolve, tensorinv branches',
       () {
         NDArray.scope(() {
           final a = NDArray.fromList(
@@ -752,27 +755,27 @@ void main() {
             throwsArgumentError,
           );
 
-          // svdvals 1D error, promoted int32, invalid out
-          expect(() => svdvals(b), throwsArgumentError);
+          // svdValues 1D error, promoted int32, invalid out
+          expect(() => svdValues(b), throwsArgumentError);
           final i32Mat = NDArray.fromList([3, 0, 0, 4], [2, 2], DType.int32);
-          expect(svdvals(i32Mat).toList(), equals([4.0, 3.0]));
+          expect(svdValues(i32Mat).toList(), equals([4.0, 3.0]));
           expect(
-            () => svdvals(eye2, out: NDArray.zeros([5], DType.float64)),
+            () => svdValues(eye2, out: NDArray.zeros([5], DType.float64)),
             throwsArgumentError,
           );
 
-          // matrix_rank disposed, invalid out, 1D complex128, non-square hermitian,
+          // matrixRank disposed, invalid out, 1D complex128, non-square hermitian,
           // empty [0, 0] with out, float32, and aliased out
-          expect(() => matrix_rank(disposed), throwsStateError);
+          expect(() => matrixRank(disposed), throwsStateError);
           expect(
-            () => matrix_rank(
+            () => matrixRank(
               eye2,
               out: NDArray.zeros([], DType.int64)..dispose(),
             ),
             throwsStateError,
           );
           expect(
-            () => matrix_rank(eye2, out: NDArray.zeros([5], DType.int64)),
+            () => matrixRank(eye2, out: NDArray.zeros([5], DType.int64)),
             throwsArgumentError,
           );
           final c128Vec = NDArray.fromList(
@@ -781,8 +784,8 @@ void main() {
             DType.complex128,
           );
           final rankOut = NDArray.zeros([], DType.int64);
-          expect(matrix_rank(c128Vec, out: rankOut).scalar, equals(1));
-          expect(() => matrix_rank(a, hermitian: true), throwsArgumentError);
+          expect(matrixRank(c128Vec, out: rankOut).scalar, equals(1));
+          expect(() => matrixRank(a, hermitian: true), throwsArgumentError);
 
           final empty00 = NDArray.zeros([2, 0, 0], DType.int64);
           final emptyRankOut = NDArray<Int64>.view(
@@ -792,12 +795,12 @@ void main() {
             offsetElements: 0,
           );
           expect(
-            matrix_rank(empty00, out: emptyRankOut).toList(),
+            matrixRank(empty00, out: emptyRankOut).toList(),
             equals([0, 0]),
           );
 
           final f32Eye = NDArray.eye(2, DType.float32);
-          expect(matrix_rank(f32Eye).scalar, equals(2));
+          expect(matrixRank(f32Eye).scalar, equals(2));
 
           final i64Eye = NDArray.fromList([1, 0, 0, 1], [2, 2], DType.int64);
           final aliasedI64Out = NDArray<Int64>.view(
@@ -806,7 +809,7 @@ void main() {
             strides: [],
             offsetElements: 0,
           );
-          expect(matrix_rank(i64Eye, out: aliasedI64Out).scalar, equals(2));
+          expect(matrixRank(i64Eye, out: aliasedI64Out).scalar, equals(2));
 
           // tensorsolve & tensorinv validation and promotion
           final tA = NDArray.eye(4, DType.float64).reshape([2, 2, 2, 2]);
@@ -891,7 +894,7 @@ void main() {
         );
         expect(det(eye2, out: detOut).scalar, closeTo(1.0, 1e-10));
 
-        // L2064..2072: slogdet with aliased outSign and outLogdet
+        // L2064..2072: slogdet with aliased outSign and outLogAbsDet
         final signView = NDArray<Float64>.view(
           eye2,
           shape: [],
@@ -904,7 +907,7 @@ void main() {
           strides: [],
           offsetElements: 1,
         );
-        slogdet(eye2, outSign: signView, outLogdet: logdetView);
+        slogdet(eye2, outSign: signView, outLogAbsDet: logdetView);
         expect(signView.scalar, closeTo(1.0, 1e-10));
         expect(logdetView.scalar, closeTo(0.0, 1e-10));
 
@@ -916,7 +919,7 @@ void main() {
           throwsArgumentError,
         );
 
-        // L2729 & L3064: eig and eigvals with non-contiguous out
+        // L2729 & L3064: eig and eigValues with non-contiguous out
         final wNonContig = NDArray.zeros([
           4,
         ], DType.complex128).slice([Slice(step: 2)]);
@@ -925,7 +928,7 @@ void main() {
           4,
         ], DType.complex128).slice([Slice.all(), Slice(step: 2)]);
         eig(eye2, out: (eigenvalues: wNonContig, eigenvectors: vrNonContig));
-        eigvals(eye2, out: wNonContig);
+        eigValues(eye2, out: wNonContig);
 
         // L3843: qr with aliased out.r
         final qBuf = NDArray.zeros([2, 2], DType.float64);
@@ -946,17 +949,17 @@ void main() {
         svd(a2x3, fullMatrices: false, out: (u: u2x2, s: s2, vh: vh2x3));
         expect(s2.getCell([0]), greaterThan(2.0));
 
-        // L4612: svdvals with m == 0 || n == 0 across real and complex dtypes
+        // L4612: svdValues with m == 0 || n == 0 across real and complex dtypes
         expect(
-          svdvals(NDArray.zeros([0, 2], DType.float64)).shape,
+          svdValues(NDArray.zeros([0, 2], DType.float64)).shape,
           equals([0]),
         );
         expect(
-          svdvals(NDArray.zeros([0, 2], DType.complex128)).shape,
+          svdValues(NDArray.zeros([0, 2], DType.complex128)).shape,
           equals([0]),
         );
         expect(
-          svdvals(NDArray.zeros([0, 2], DType.complex64)).shape,
+          svdValues(NDArray.zeros([0, 2], DType.complex64)).shape,
           equals([0]),
         );
 

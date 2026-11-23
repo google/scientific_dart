@@ -17,7 +17,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('Review Cycle 11 Regression Tests: pad, findIndex, argpartition', () {
-    group('1. pad with PaddingMode.constant on float16 and bfloat16', () {
+    group('1. pad with PadMode.constant on float16 and bfloat16', () {
       for (final dtype in [
         DType.float16 as DType<AnySpec>,
         DType.bfloat16 as DType<AnySpec>,
@@ -30,7 +30,7 @@ void main() {
             final paddedUniform = pad(
               a,
               PadWidth.all(2, 1),
-              mode: PaddingMode.constant,
+              mode: PadMode.constant,
               constantValues: PadValues.all(5.5),
             );
             expect(paddedUniform.dtype, dtype);
@@ -41,7 +41,7 @@ void main() {
             final paddedPerAxis = pad(
               a,
               PadWidth.axes([(1, 2)]),
-              mode: PaddingMode.constant,
+              mode: PadMode.constant,
               constantValues: PadValues.axes([(-2.5, 7.5)]),
             );
             expect(paddedPerAxis.dtype, dtype);
@@ -58,7 +58,7 @@ void main() {
             final paddedUniform = pad(
               a,
               PadWidth.all(1, 1),
-              mode: PaddingMode.constant,
+              mode: PadMode.constant,
               constantValues: PadValues.all(-3.5),
             );
             expect(paddedUniform.dtype, dtype);
@@ -86,7 +86,7 @@ void main() {
             final paddedPerAxis = pad(
               a,
               PadWidth.axes([(1, 1), (2, 1)]),
-              mode: PaddingMode.constant,
+              mode: PadMode.constant,
               constantValues: PadValues.axes([(10.0, 20.0), (-1.5, -2.5)]),
             );
             expect(paddedPerAxis.dtype, dtype);
@@ -124,7 +124,7 @@ void main() {
             final paddedUniform = pad(
               a,
               PadWidth.axes([(1, 0), (0, 1), (1, 1)]),
-              mode: PaddingMode.constant,
+              mode: PadMode.constant,
               constantValues: PadValues.all(4.5),
             );
             expect(paddedUniform.dtype, dtype);
@@ -152,7 +152,7 @@ void main() {
             final paddedPerAxis = pad(
               a,
               PadWidth.axes([(1, 1), (1, 0), (1, 1)]),
-              mode: PaddingMode.constant,
+              mode: PadMode.constant,
               constantValues: PadValues.axes([
                 (9.0, 8.0),
                 (7.0, 6.0),

@@ -780,7 +780,7 @@ void main() {
             DType.float64,
           );
           final col0 = mat.slice([Slice.all(), Index(0)]); // [0.0, 1.0, 2.0]
-          final yStrided = polyval(cInt.astype(DType.float64), col0);
+          final yStrided = polyval(cInt.asType(DType.float64), col0);
           expect(yStrided.getCell([0]), closeTo(3.0, 1e-10));
           expect(yStrided.getCell([1]), closeTo(6.0, 1e-10));
           expect(yStrided.getCell([2]), closeTo(11.0, 1e-10));
@@ -1412,28 +1412,28 @@ void main() {
     );
 
     test(
-      'Advanced Indexing: take_along_axis, put_along_axis, choose, select, where',
+      'Advanced Indexing: takeAlongAxis, putAlongAxis, choose, select, where',
       () {
         NDArray.scope(() {
-          // take_along_axis
+          // takeAlongAxis
           final a = NDArray.fromList(
             [10, 20, 30, 40, 50, 60],
             [2, 3],
             DType.int32,
           );
           final idx = NDArray.fromList([2, 0, 1, 2], [2, 2], DType.int32);
-          final taken = take_along_axis(a, idx, 1);
+          final taken = takeAlongAxis(a, idx, 1);
           expect(taken.shape, equals([2, 2]));
           expect(taken.toList(), equals([30, 10, 50, 60]));
 
-          // put_along_axis
+          // putAlongAxis
           final dest = NDArray.fromList(
             [10, 20, 30, 40, 50, 60],
             [2, 3],
             DType.int32,
           );
           final vals = NDArray.fromList([99, 88, 77, 66], [2, 2], DType.int32);
-          put_along_axis(dest, idx, vals, 1);
+          putAlongAxis(dest, idx, vals, 1);
           expect(dest.toList(), equals([88, 20, 99, 40, 77, 66]));
 
           // choose
@@ -1499,14 +1499,14 @@ void main() {
           final sq = exp.squeeze();
           expect(sq.shape, equals([3, 4]));
 
-          // swapaxes
-          final swapped = a.swapaxes(0, 1);
+          // swapAxes
+          final swapped = a.swapAxes(0, 1);
           expect(swapped.shape, equals([4, 3]));
           expect(swapped.getCell([0, 1]), equals(4.0));
 
-          // moveaxis
+          // moveAxis
           final tensor = NDArray.zeros([2, 3, 4], DType.float64);
-          final moved = tensor.moveaxis(0, 2);
+          final moved = tensor.moveAxis(0, 2);
           expect(moved.shape, equals([3, 4, 2]));
 
           // transpose

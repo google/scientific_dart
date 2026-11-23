@@ -70,15 +70,15 @@ void main() async {
           dtype: DType.int32,
         ).reshape([matrixDim, 1]);
 
-        c.bench('take_along_axis [500x500, axis=0]', () {
-          final res = take_along_axis(mat2d, indices, 0);
+        c.bench('takeAlongAxis [500x500, axis=0]', () {
+          final res = takeAlongAxis(mat2d, indices, 0);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(matrixDim));
 
         final putValues = NDArray<DTypeTag>.ones([matrixDim, 1], DType.float64);
-        c.bench('put_along_axis [500x500, axis=0]', () {
-          put_along_axis(mat2d, indices, putValues, 0);
+        c.bench('putAlongAxis [500x500, axis=0]', () {
+          putAlongAxis(mat2d, indices, putValues, 0);
           blackhole(mat2d);
         }, throughput: Throughput.elements(matrixDim));
 

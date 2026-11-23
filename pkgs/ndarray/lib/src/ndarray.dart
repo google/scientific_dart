@@ -88,7 +88,7 @@ abstract interface class ElementOf<E> implements DTypeTag {}
 /// [Float32] and [Complex64] project to [Float32]; every other tag — the half
 /// floats, the integers and [Boolean] included — projects to [Float64].
 /// Operations that produce a real floating-point result from any input, such
-/// as `imag`, `angle`, `rint`, `trunc`, `norm`, `eigvalsh` and the inverse
+/// as `imag`, `angle`, `rint`, `trunc`, `norm`, `eigValuesH` and the inverse
 /// real FFTs (`irfft`, `hfft`), return `NDArray<R>`.
 abstract interface class RealFloatOf<R extends DTypeTag> implements DTypeTag {}
 
@@ -96,7 +96,7 @@ abstract interface class RealFloatOf<R extends DTypeTag> implements DTypeTag {}
 ///
 /// [Float32] and [Complex64] project to [Complex64]; every other tag projects
 /// to [Complex128]. Operations that produce a complex result from any input,
-/// such as the complex FFTs (`fft`, `ifft`, `rfft`, `fftn`), `eig`, `eigvals`
+/// such as the complex FFTs (`fft`, `ifft`, `rfft`, `fftn`), `eig`, `eigValues`
 /// and the polynomial root finders (`roots`, `chebroots`), return
 /// `NDArray<R>`.
 abstract interface class ComplexOf<R extends DTypeTag> implements DTypeTag {}
@@ -2441,7 +2441,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/ndarray_example.dart lang=dart}
-  NDArray<R> astype<R extends DTypeTag>(
+  NDArray<R> asType<R extends DTypeTag>(
     DType<R> targetDType, {
     bool copy = true,
   }) {
@@ -4353,7 +4353,7 @@ sealed class NDArray<T extends DTypeTag>
   /// The result dtype of every operator is a function of the dtype of `this`
   /// alone, so an array operand of a different dtype or an
   /// out-of-range/incompatible scalar is rejected with [ArgumentError]: cast
-  /// operands explicitly with `.astype(...)` for mixed-dtype arithmetic or
+  /// operands explicitly with `.asType(...)` for mixed-dtype arithmetic or
   /// comparisons. A scalar [other] is wrapped as a 0-D broadcastable array of
   /// this array's dtype in the [ScratchArena] for the duration of [fn].
   R _withSameDTypeOperand<R>(
@@ -4367,7 +4367,7 @@ sealed class NDArray<T extends DTypeTag>
         'other',
         'Must have the same dtype as the receiver ($dtype) for operator '
             '$operator, but has dtype ${other.dtype}. Cast explicitly with '
-            '.astype(...) before combining arrays of different dtypes.',
+            '.asType(...) before combining arrays of different dtypes.',
       );
     }
     return _withWrappedScalar(other, (otherArr) {
@@ -4405,7 +4405,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise addition with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert dtypes.
+  /// must have the same dtype as this array; use `.asType(...)` to convert dtypes.
   NDArray<T> operator +(Object? other) => _withSameDTypeOperand(
     other,
     '+',
@@ -4415,7 +4415,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise subtraction with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes.
   NDArray<T> operator -(Object? other) => _withSameDTypeOperand(
     other,
@@ -4426,7 +4426,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise multiplication with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes.
   NDArray<T> operator *(Object? other) => _withSameDTypeOperand(
     other,
@@ -4471,7 +4471,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4512,7 +4512,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4552,7 +4552,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4592,7 +4592,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4637,7 +4637,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -5137,7 +5137,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/shape_examples.dart lang=dart}
-  NDArray<T> swapaxes(int axis1, int axis2) {
+  NDArray<T> swapAxes(int axis1, int axis2) {
     final rank = shape.length;
     if (axis1 < -rank || axis1 >= rank) {
       throw RangeError.range(axis1, -rank, rank - 1, 'axis1');
@@ -5179,7 +5179,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/shape_examples.dart lang=dart}
-  NDArray<T> moveaxis(Object source, Object destination) {
+  NDArray<T> moveAxis(Object source, Object destination) {
     final rank = shape.length;
 
     List<int> srcList;
@@ -5812,7 +5812,7 @@ extension NDArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
   /// Element-wise true division with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   ///
   /// Division by zero follows IEEE 754 rules (`±infinity` or `nan`); integer
@@ -5841,7 +5841,7 @@ extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   /// Element-wise bitwise AND with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   ///
   /// **Example:**
@@ -5943,7 +5943,7 @@ extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
   /// Element-wise left shift with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   ///
   /// **Example:**
@@ -6397,9 +6397,6 @@ sealed class Selector {
   const Selector();
 }
 
-/// Alias for [Selector] representing an indexing specification.
-typedef IndexSpec = Selector;
-
 /// Selects a single index along a dimension of an [NDArray], reducing the rank of the resulting array by 1.
 ///
 /// **Preconditions:**
@@ -6673,7 +6670,7 @@ extension NDArrayBaseDivide on NDArray<DTypeTag> {
   /// Element-wise true division with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   NDArray<DTypeTag> operator /(Object? other) => _withSameDTypeOperand(
     other,

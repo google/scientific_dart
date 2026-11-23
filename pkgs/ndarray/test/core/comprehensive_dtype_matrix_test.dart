@@ -316,7 +316,7 @@ void main() {
                   final resHeavi = heaviside(a, b);
                   expect(resHeavi.shape, [2, 3]);
 
-                  final resCopy = copysign(a, b);
+                  final resCopy = copySign(a, b);
                   expect(resCopy.shape, [2, 3]);
 
                   final resHypot = hypot(a, b);
@@ -404,7 +404,7 @@ void main() {
     });
 
     test(
-      'All 15 DTypes unary math and reductions (flat, axis 0, axis 1, keepdims)',
+      'All 15 DTypes unary math and reductions (flat, axis 0, axis 1, keepDims)',
       () {
         NDArray.scope(() {
           for (final dt in numericDTypes) {
@@ -452,7 +452,7 @@ void main() {
               final sumAxis0 = sum(a, axis: 0);
               expect(sumAxis0.shape, [4]);
 
-              final sumAxis1 = sum(a, axis: 1, keepdims: true);
+              final sumAxis1 = sum(a, axis: 1, keepDims: true);
               expect(sumAxis1.shape, [3, 1]);
 
               final prodFlat = prod(a);

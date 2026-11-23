@@ -386,7 +386,6 @@ void main() {
             if (name == null || name.startsWith('_')) continue;
             if (showNames != null && !showNames.contains(name)) continue;
             if (hideNames != null && hideNames.contains(name)) continue;
-            if (name.endsWith('_helper')) continue;
 
             final isInternalAnnotated = decl.metadata.any(
               (m) => m.name.name == 'internal',
@@ -1227,24 +1226,11 @@ void main() {
         );
         final contractsSrc = contractsFile.readAsStringSync();
         const opAliasMap = <String, String>{
-          'absolute': 'abs',
-          'fabs': 'abs',
-          'conjugate': 'conj',
-          'arcsin': 'asin',
-          'arccos': 'acos',
-          'arctanh': 'atanh',
-          'arctan2': 'atan2',
-          'degrees': 'rad2deg',
-          'radians': 'deg2rad',
-          'bitwiseNot': 'invert',
           'positive': 'add',
           'exp2': 'exp',
           'cbrt': 'sqrt',
           'signbit': 'sign',
           'spacing': 'abs',
-          'arctan': 'atan',
-          'arcsinh': 'asinh',
-          'arccosh': 'acosh',
         };
         for (final op in BinaryOp.values) {
           final fnName = opAliasMap[op.name] ?? op.name;
@@ -1558,7 +1544,7 @@ void main() {
                 verifiedProjectingFunctions.add(name);
               } else if (isAnySpecBound(tp)) {
                 // The result dtype is only known at run time (choose,
-                // multi_dot, lstsq, average, the generic ufunc entry points):
+                // multiDot, lstsq, average, the generic ufunc entry points):
                 // defaulting `R` to `AnySpec` keeps the result usable by every
                 // other operation while still inferring a concrete `R` from
                 // `out:`.
@@ -1625,7 +1611,6 @@ void main() {
           'divide',
           'floorDivide',
           'remainder',
-          'mod',
           'fmod',
           'divmod',
           'power',
@@ -1635,7 +1620,7 @@ void main() {
           'fmin',
           'fmax',
           'heaviside',
-          'copysign',
+          'copySign',
           'atan2',
           'hypot',
           'logaddexp',
@@ -1713,7 +1698,7 @@ void main() {
           'setdiff1d',
           'setxor1d',
           'union1d',
-          'isin',
+          'isIn',
           'where',
           'clipArray',
         };
@@ -1959,7 +1944,6 @@ void main() {
           'divideAs',
           'floorDivideAs',
           'remainderAs',
-          'modAs',
           'fmodAs',
           'divmodAs',
           'powerAs',
@@ -1969,7 +1953,7 @@ void main() {
           'fminAs',
           'fmaxAs',
           'heavisideAs',
-          'copysignAs',
+          'copySignAs',
           'atan2As',
           'hypotAs',
           'logaddexpAs',
@@ -2014,6 +1998,197 @@ void main() {
           }
         }
 
+        // 7. Idiomatic Dart camelCase public API naming invariant:
+        // zero `_` in exported top-level names, public members, constructors,
+        // parameters (other than private initializing formals), or record fields;
+        // zero uppercase parameters; zero removed legacy aliases; and zero
+        // `non_constant_identifier_names` file ignores outside FFI binding files.
+        const removedLegacyAliases = <String>{
+          'diag_indices',
+          'diag_indices_from',
+          'mask_indices',
+          'ravel_multi_index',
+          'sparse_indices',
+          'tril_indices',
+          'tril_indices_from',
+          'triu_indices',
+          'triu_indices_from',
+          'unravel_index',
+          'take_along_axis',
+          'put_along_axis',
+          'matrix_rank',
+          'matrix_power',
+          'multi_dot',
+          'expand_dims',
+          'nan_to_num',
+          'nelder_mead',
+          'root_scalar',
+          'count_nonzero',
+          'array_split',
+          'array_split_at',
+          'split_at',
+          'hsplit_at',
+          'vsplit_at',
+          'dsplit_at',
+          'var_',
+          'r_median_helper',
+          'svdvals',
+          'eigvals',
+          'eigvalsh',
+          'astype',
+          'swapaxes',
+          'moveaxis',
+          'isnan',
+          'isinf',
+          'isfinite',
+          'isin',
+          'copysign',
+          'copysignAs',
+          'reduceat',
+          'reduceatUfunc',
+          'interpolate',
+          'conjugate',
+          'fix',
+          'mod',
+          'modAs',
+          'reduce',
+          'accumulate',
+          'at',
+          'NdArrayException',
+          'LinAlgError',
+          'IndexSpec',
+          'PaddingMode',
+        };
+        void checkRecordFieldNaming(DartType type, String context) {
+          if (type is RecordType) {
+            for (final f in type.namedFields) {
+              if (f.name.contains('_')) {
+                violations.add(
+                  '$context — record field `${f.name}` uses snake_case.',
+                );
+              }
+              checkRecordFieldNaming(f.type, context);
+            }
+          } else if (type is InterfaceType) {
+            for (final arg in type.typeArguments) {
+              checkRecordFieldNaming(arg, context);
+            }
+          }
+        }
+
+        void checkParamsNaming(
+          List<FormalParameterElement> params,
+          String context,
+        ) {
+          for (final p in params) {
+            final pName = p.name ?? '';
+            if (pName.isEmpty) continue;
+            // Allow private initializing formals (`this._buffer`) on positional
+            // constructor parameters.
+            if (p is FieldFormalParameterElement && pName.startsWith('_')) {
+              continue;
+            }
+            if (pName.contains('_')) {
+              violations.add('$context — parameter `$pName` uses snake_case.');
+            } else if (RegExp(r'^[A-Z]').hasMatch(pName)) {
+              violations.add(
+                '$context — parameter `$pName` starts with uppercase.',
+              );
+            }
+          }
+        }
+
+        for (final entry in exportNames.entries) {
+          final rawName = entry.key;
+          final cleanName = rawName.endsWith('=')
+              ? rawName.substring(0, rawName.length - 1)
+              : rawName;
+          final el = entry.value;
+          if (cleanName.contains('_')) {
+            violations.add(
+              'Exported symbol `$cleanName` (${el.kind.displayName}) uses snake_case.',
+            );
+          }
+          if (removedLegacyAliases.contains(cleanName)) {
+            violations.add(
+              'Exported symbol `$cleanName` is a removed legacy alias.',
+            );
+          }
+          if (el is ExecutableElement) {
+            checkParamsNaming(el.formalParameters, 'Exported `$cleanName`');
+            checkRecordFieldNaming(el.returnType, 'Exported `$cleanName`');
+          } else if (el is InterfaceElement) {
+            for (final c in el.constructors) {
+              if (c.isPrivate) continue;
+              final cName = c.name ?? '';
+              if (cName.contains('_')) {
+                violations.add(
+                  'Constructor `$cleanName.$cName` uses snake_case.',
+                );
+              }
+              checkParamsNaming(
+                c.formalParameters,
+                'Constructor `$cleanName.$cName`',
+              );
+            }
+            for (final m in el.methods) {
+              if (m.isPrivate) continue;
+              final mName = m.name ?? '';
+              if (mName.contains('_')) {
+                violations.add('Method `$cleanName.$mName` uses snake_case.');
+              }
+              checkParamsNaming(
+                m.formalParameters,
+                'Method `$cleanName.$mName`',
+              );
+              checkRecordFieldNaming(
+                m.returnType,
+                'Method `$cleanName.$mName`',
+              );
+            }
+            for (final g in el.getters) {
+              if (g.isPrivate || g.firstFragment.nameOffset == null) continue;
+              if ((g.name ?? '').contains('_')) {
+                violations.add(
+                  'Getter `$cleanName.${g.name}` uses snake_case.',
+                );
+              }
+            }
+          } else if (el is ExtensionElement) {
+            for (final m in el.methods) {
+              if (m.isPrivate) continue;
+              final mName = m.name ?? '';
+              if (mName.contains('_')) {
+                violations.add(
+                  'Extension method `$cleanName.$mName` uses snake_case.',
+                );
+              }
+              checkParamsNaming(
+                m.formalParameters,
+                'Extension method `$cleanName.$mName`',
+              );
+            }
+          }
+        }
+        const allowedFfiIdentifierIgnoreFiles = <String>{
+          'ndarray_bindings.dart',
+          'ndarray_extensions_bindings.dart',
+          'custom_checks.dart',
+          'cpu_check.dart',
+        };
+        for (final file in libFiles) {
+          final baseName = file.uri.pathSegments.last;
+          if (allowedFfiIdentifierIgnoreFiles.contains(baseName)) continue;
+          final src = file.readAsStringSync();
+          if (RegExp(
+            r'ignore_for_file:[^\n]*non_constant_identifier_names',
+          ).hasMatch(src)) {
+            violations.add(
+              '${file.path} — must not suppress `non_constant_identifier_names` outside FFI binding files.',
+            );
+          }
+        }
+
         expect(
           violations,
           isEmpty,
@@ -2035,21 +2210,21 @@ void main() {
         );
         expect(
           dependentOutParameters,
-          greaterThanOrEqualTo(220),
+          greaterThanOrEqualTo(210),
           reason:
               'Expected rule 6c to find a dependent `Out extends T` parameter on every `out:`-bearing function whose result dtype follows an input or a projection.',
         );
         expect(
           verifiedProjectingFunctions.length,
-          equals(100),
+          equals(97),
           reason:
-              'Expected Rule 2 semantic check to verify all 100 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 106 total).',
+              'Expected Rule 2 semantic check to verify all 97 single-slot projecting functions in package:ndarray (plus 3 extensions and 3 two-projection ops = 103 total).',
         );
         expect(
           runtimeDTypedResultFunctions,
           equals({
             'choose',
-            'multi_dot',
+            'multiDot',
             'lstsq',
             'average',
             'binaryUfunc',
@@ -2556,7 +2731,7 @@ void main() {
         expect(sortingContent, matches(RegExp(r'NDArray<Int64>\s+argwhere\b')));
         expect(
           sortingContent,
-          matches(RegExp(r'NDArray<Int64>\s+count_nonzero\b')),
+          matches(RegExp(r'NDArray<Int64>\s+countNonzero\b')),
         );
         expect(
           sortingContent,
@@ -2573,25 +2748,25 @@ void main() {
         ).readAsStringSync();
         expect(
           indexingContent,
-          matches(RegExp(r'List<NDArray<Int64>>\s+unravel_index\b')),
+          matches(RegExp(r'List<NDArray<Int64>>\s+unravelIndex\b')),
         );
         expect(
           indexingContent,
-          matches(RegExp(r'NDArray<Int64>\s+ravel_multi_index\b')),
+          matches(RegExp(r'NDArray<Int64>\s+ravelMultiIndex\b')),
         );
         expect(
           indexingContent,
-          matches(RegExp(r'List<NDArray<Int64>>\s+diag_indices\b')),
+          matches(RegExp(r'List<NDArray<Int64>>\s+diagIndices\b')),
         );
         expect(
           indexingContent,
-          matches(RegExp(r'List<NDArray<Int64>>\s+diag_indices_from\b')),
+          matches(RegExp(r'List<NDArray<Int64>>\s+diagIndicesFrom\b')),
         );
         expect(
           indexingContent,
           matches(
             RegExp(
-              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+tril_indices\b',
+              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+trilIndices\b',
             ),
           ),
         );
@@ -2599,7 +2774,7 @@ void main() {
           indexingContent,
           matches(
             RegExp(
-              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+triu_indices\b',
+              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+triuIndices\b',
             ),
           ),
         );
@@ -2607,7 +2782,7 @@ void main() {
           indexingContent,
           matches(
             RegExp(
-              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+mask_indices\b',
+              r'\(\{NDArray<Int64>\s+row,\s*NDArray<Int64>\s+col\}\)\s+maskIndices\b',
             ),
           ),
         );
@@ -2776,7 +2951,7 @@ void main() {
     });
 
     test(
-      'Complex, IndexSpec, and Index value/spec types have const generative constructors',
+      'Complex, Selector, and Index value/spec types have const generative constructors',
       () {
         final targetClasses = {'Complex', 'Index', 'Selector'};
         final found = <String>{};
@@ -3367,7 +3542,7 @@ void main() {
               'Duplicate NoThrowBuffer definitions in hook/:\n${noThrowRedefViolations.join('\n')}',
         );
 
-        // Complete get_and_reset_division_error() enforcement across all integer div/mod/at/reduceat kernels
+        // Complete get_and_reset_division_error() enforcement across all integer div/mod/at/reduceAt kernels
         final divKernelRegex = RegExp(
           r'\b(?:[vs]_(?:floordiv|remainder|fmod)_int\w*|s_at_\w+|[vs]_reduceat_\w+)\s*\(',
         );
@@ -3381,7 +3556,7 @@ void main() {
           if (divKernelRegex.hasMatch(content) &&
               !content.contains('get_and_reset_division_error()')) {
             divViolations.add(
-              '${_posix(file.path)} invokes integer division/modulo/at/reduceat native kernels without checking `get_and_reset_division_error()`.',
+              '${_posix(file.path)} invokes integer division/modulo/at/reduceAt native kernels without checking `get_and_reset_division_error()`.',
             );
           }
         }

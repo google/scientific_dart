@@ -18,21 +18,21 @@ import 'package:test/test.dart';
 void main() {
   group('Exceptions Hierarchy Tests', () {
     test('Exception classes inheritance and toString', () {
-      const ndEx = NdArrayException('base message');
+      const ndEx = NDArrayException('base message');
       expect(ndEx, isA<Exception>());
-      expect(ndEx.toString(), 'NdArrayException: base message');
+      expect(ndEx.toString(), 'NDArrayException: base message');
 
       const linEx = LinAlgException('linalg error');
-      expect(linEx, isA<NdArrayException>());
+      expect(linEx, isA<NDArrayException>());
       expect(linEx.toString(), 'LinAlgException: linalg error');
 
       const singEx = SingularMatrixException('singular matrix');
       expect(singEx, isA<LinAlgException>());
-      expect(singEx, isA<NdArrayException>());
+      expect(singEx, isA<NDArrayException>());
       expect(singEx.toString(), 'SingularMatrixException: singular matrix');
 
       const noRealEx = NoRealSolutionException('no real solution');
-      expect(noRealEx, isA<NdArrayException>());
+      expect(noRealEx, isA<NDArrayException>());
       expect(noRealEx.toString(), 'NoRealSolutionException: no real solution');
 
       const iterEx = IterationsExceededException('max iterations');
@@ -821,16 +821,16 @@ void main() {
       () => NDArray.scope(() {
         final a = NDArray.fromList([1, 0, 3, 0, 0, 6], [2, 3], DType.int32);
 
-        expect(count_nonzero(a).scalar, 3);
-        expect(count_nonzero(a, axis: 0).toList(), [1, 0, 2]);
-        expect(count_nonzero(a, axis: 1).toList(), [2, 1]);
-        expect(count_nonzero(a, axis: -1).toList(), [2, 1]);
+        expect(countNonzero(a).scalar, 3);
+        expect(countNonzero(a, axis: 0).toList(), [1, 0, 2]);
+        expect(countNonzero(a, axis: 1).toList(), [2, 1]);
+        expect(countNonzero(a, axis: -1).toList(), [2, 1]);
 
         final out = NDArray.create([3], DType.int64);
-        count_nonzero(a, axis: 0, out: out);
+        countNonzero(a, axis: 0, out: out);
         expect(out.toList(), [1, 0, 2]);
 
-        expect(() => count_nonzero(a, axis: 5), throwsA(isA<RangeError>()));
+        expect(() => countNonzero(a, axis: 5), throwsA(isA<RangeError>()));
       }),
     );
   });
@@ -880,7 +880,7 @@ void main() {
     );
 
     test(
-      'Argmax and Argmin multi-axis, keepdims, and error cases',
+      'Argmax and Argmin multi-axis, keepDims, and error cases',
       () => NDArray.scope(() {
         final a2d = NDArray.fromList(
           [10.0, 50.0, 20.0, 40.0, 30.0, 60.0],
@@ -891,7 +891,7 @@ void main() {
         expect(argmax(a2d).scalar, 5);
         expect(argmin(a2d).scalar, 0);
 
-        final amKeepdims = argmax(a2d, keepdims: true);
+        final amKeepdims = argmax(a2d, keepDims: true);
         expect(amKeepdims.shape, [1, 1]);
         expect(amKeepdims.getCellFlat(0), 5);
 
@@ -901,7 +901,7 @@ void main() {
         final amAxis1 = argmax(a2d, axis: 1);
         expect(amAxis1.toList(), [1, 2]);
 
-        final amAxis1Keep = argmax(a2d, axis: 1, keepdims: true);
+        final amAxis1Keep = argmax(a2d, axis: 1, keepDims: true);
         expect(amAxis1Keep.shape, [2, 1]);
         expect(amAxis1Keep.toList(), [1, 2]);
 
@@ -976,7 +976,7 @@ void main() {
 
   group('Comprehensive Splitting Tests', () {
     test(
-      'array_split and split with integer section counts across axes',
+      'arraySplit and split with integer section counts across axes',
       () => NDArray.scope(() {
         final a1d = NDArray.fromList(
           [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
@@ -989,13 +989,13 @@ void main() {
         expect(s2[0].toList(), [1, 2, 3, 4, 5]);
         expect(s2[1].toList(), [6, 7, 8, 9, 10]);
 
-        final as3 = array_split(a1d, 3);
+        final as3 = arraySplit(a1d, 3);
         expect(as3.length, 3);
         expect(as3[0].toList(), [1, 2, 3, 4]);
         expect(as3[1].toList(), [5, 6, 7]);
         expect(as3[2].toList(), [8, 9, 10]);
 
-        final as12 = array_split(a1d, 12);
+        final as12 = arraySplit(a1d, 12);
         expect(as12.length, 12);
         expect(as12[0].toList(), [1]);
         expect(as12[9].toList(), [10]);
@@ -1008,7 +1008,7 @@ void main() {
           DType.int32,
         );
 
-        final splitAx0 = array_split(a2d, 2, axis: 0);
+        final splitAx0 = arraySplit(a2d, 2, axis: 0);
         expect(splitAx0.length, 2);
         expect(splitAx0[0].shape, [2, 4]);
         expect(splitAx0[1].shape, [1, 4]);
@@ -1031,7 +1031,7 @@ void main() {
     );
 
     test(
-      'array_split_at and split_at with coordinate indices',
+      'splitAt and splitAt with coordinate indices',
       () => NDArray.scope(() {
         final a = NDArray.fromList(
           [10, 20, 30, 40, 50, 60, 70],
@@ -1039,13 +1039,13 @@ void main() {
           DType.int32,
         );
 
-        final parts = split_at(a, [2, 5]);
+        final parts = splitAt(a, [2, 5]);
         expect(parts.length, 3);
         expect(parts[0].toList(), [10, 20]);
         expect(parts[1].toList(), [30, 40, 50]);
         expect(parts[2].toList(), [60, 70]);
 
-        final clamped = array_split_at(a, [-1, 3, 100]);
+        final clamped = splitAt(a, [-1, 3, 100]);
         expect(clamped.length, 4);
         expect(clamped[0].toList(), <int>[]);
         expect(clamped[1].toList(), [10, 20, 30]);
@@ -1087,9 +1087,9 @@ void main() {
         expect(ds3d.length, 2);
         expect(ds3d[0].shape, [2, 2, 2]);
 
-        expect(hsplit_at(a2d, [1, 3]).length, 3);
-        expect(vsplit_at(a2d, [1]).length, 2);
-        expect(dsplit_at(a3d, [2]).length, 2);
+        expect(hsplitAt(a2d, [1, 3]).length, 3);
+        expect(vsplitAt(a2d, [1]).length, 2);
+        expect(dsplitAt(a3d, [2]).length, 2);
 
         expect(() => vsplit(a1d, 2), throwsA(isA<ArgumentError>()));
         expect(() => dsplit(a2d, 2), throwsA(isA<ArgumentError>()));
@@ -1101,8 +1101,8 @@ void main() {
     test(
       'PadMode, PadWidth, PadValues, StatLength normalization and validation',
       () {
-        expect(PadMode.minimum, PadMode.min);
-        expect(PadMode.maximum, PadMode.max);
+        expect(PadMode.min, PadMode.min);
+        expect(PadMode.max, PadMode.max);
 
         final pwUniform = PadWidth.all(2, 3);
         expect(pwUniform.normalize(2), [(2, 3), (2, 3)]);

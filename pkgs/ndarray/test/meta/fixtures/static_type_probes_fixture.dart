@@ -270,7 +270,7 @@ final t_eigh_c64 = eigh(c64);
 // expect: ({NDArray<Float32> eigenvalues, NDArray<Float32> eigenvectors})
 final t_eigh_f32 = eigh(f32);
 
-// expect: ({NDArray<Float32> logabsdet, NDArray<Complex64> sign})
+// expect: ({NDArray<Float32> logAbsDet, NDArray<Complex64> sign})
 final t_slogdet_c64 = slogdet(c64);
 
 // expect: ({NDArray<Float32> s, NDArray<Float32> u, NDArray<Float32> vh})
@@ -285,7 +285,7 @@ final t_inv_i32 = inv(i32);
 // expect: NDArray<Float64>
 final t_det_i32 = det(i32);
 
-// expect: ({NDArray<Float64> logabsdet, NDArray<Float64> sign})
+// expect: ({NDArray<Float64> logAbsDet, NDArray<Float64> sign})
 final t_slogdet_i32 = slogdet(i32);
 
 // expect: NDArray<Float64>
@@ -301,19 +301,19 @@ final t_cholesky_i32 = cholesky(i32);
 final t_qr_i32 = qr(i32);
 
 // expect: NDArray<Float32>
-final t_svdvals_f32 = svdvals(f32);
+final t_svdvals_f32 = svdValues(f32);
 
 // expect: NDArray<Float32>
-final t_svdvals_c64 = svdvals(c64);
+final t_svdvals_c64 = svdValues(c64);
 
 // expect: NDArray<Float64>
-final t_svdvals_i32 = svdvals(i32);
+final t_svdvals_i32 = svdValues(i32);
 
 // expect: NDArray<Int64>
-final t_matrix_rank_f32 = matrix_rank(f32);
+final t_matrix_rank_f32 = matrixRank(f32);
 
 // expect: NDArray<Int64>
-final t_matrix_rank_c64 = matrix_rank(c64);
+final t_matrix_rank_c64 = matrixRank(c64);
 
 // expect: NDArray<Float32>
 final t_tensorsolve_f32 = tensorsolve(f32, f32);
@@ -477,16 +477,16 @@ final t_generic_add_selfof_anySpec = genericAddSelfOf(anySpec, anySpec);
 // therefore compose with every other operation:
 
 // expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
-final t_multi_dot = multi_dot([f64, f64]);
+final t_multi_dot = multiDot([f64, f64]);
 
 // expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
-final t_add_multi_dot = add(multi_dot([f64, f64]), f64);
+final t_add_multi_dot = add(multiDot([f64, f64]), f64);
 
 // expect: NDArray<DTypeTag>
-final t_sin_multi_dot = sin(multi_dot([f64, f64]));
+final t_sin_multi_dot = sin(multiDot([f64, f64]));
 
 // expect: NDArray<Float32>
-final t_multi_dot_out = multi_dot([f32, f32], out: f32);
+final t_multi_dot_out = multiDot([f32, f32], out: f32);
 
 // expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
 final t_lstsq_x = lstsq(f64, f64).x;

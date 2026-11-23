@@ -282,7 +282,7 @@ void main() {
           final a = NDArray.fromList([10, 20, 30], [3], DType.int64);
           final bZero = NDArray.fromList([2, 0, 5], [3], DType.int64);
           expect(() => floorDivide(a, bZero), throwsUnsupportedError);
-          expect(() => mod(a, bZero), throwsUnsupportedError);
+          expect(() => remainder(a, bZero), throwsUnsupportedError);
 
           // When masked out by where:, a zero divisor does not throw.
           final mask = NDArray.fromList(

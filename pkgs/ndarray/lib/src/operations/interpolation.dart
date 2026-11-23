@@ -407,24 +407,3 @@ NDArray<R> interp<R extends DTypeTag, Out extends R>(
     return (res as NDArray<R>).detachToParentScope();
   });
 }
-
-/// Computes one-dimensional interpolation.
-///
-/// Alias for [interp].
-NDArray<R> interpolate<R extends DTypeTag, Out extends R>(
-  NDArray<DTypeTag> x,
-  NDArray<DTypeTag> xp,
-  NDArray<DoublePrecisionOf<R>> fp, {
-  Object? left,
-  Object? right,
-  InterpolationMethod method = InterpolationMethod.linear,
-  NDArray<Out>? out,
-}) => interp<R, Out>(
-  x,
-  xp,
-  fp,
-  left: left,
-  right: right,
-  method: method,
-  out: out,
-);

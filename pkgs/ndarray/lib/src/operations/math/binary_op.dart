@@ -18,7 +18,7 @@ library;
 ///
 /// Universal binary operations take two array inputs (or an array and a scalar)
 /// element-wise and support generalized operations such as `reduce`, `accumulate`,
-/// `reduceat`, `outer`, and `at`.
+/// `reduceAt`, `outer`, and `at`.
 enum BinaryOp {
   /// Element-wise addition.
   add,
@@ -90,13 +90,13 @@ enum BinaryOp {
   floatPower,
 
   /// Element-wise arctangent of `x1 / x2` choosing quadrant correctly.
-  arctan2,
+  atan2,
 
   /// Element-wise hypotenuse `sqrt(x1^2 + x2^2)`.
   hypot,
 
   /// Element-wise copy sign from `x2` to `x1`.
-  copysign,
+  copySign,
 
   /// Bitwise left shift.
   leftShift,
@@ -154,9 +154,9 @@ enum BinaryOp {
       case BinaryOp.fmod:
       case BinaryOp.power:
       case BinaryOp.floatPower:
-      case BinaryOp.arctan2:
+      case BinaryOp.atan2:
       case BinaryOp.hypot:
-      case BinaryOp.copysign:
+      case BinaryOp.copySign:
       case BinaryOp.leftShift:
       case BinaryOp.rightShift:
       case BinaryOp.heaviside:
@@ -180,13 +180,7 @@ enum UnaryOp {
   positive,
 
   /// Element-wise absolute value (`|x|`).
-  absolute,
-
-  /// Alias for [absolute].
   abs,
-
-  /// Element-wise floating-point absolute value.
-  fabs,
 
   /// Element-wise round to nearest integer.
   rint,
@@ -196,9 +190,6 @@ enum UnaryOp {
 
   /// Element-wise complex conjugate.
   conj,
-
-  /// Alias for [conj].
-  conjugate,
 
   /// Element-wise exponential (`e^x`).
   exp,
@@ -243,13 +234,13 @@ enum UnaryOp {
   tan,
 
   /// Element-wise inverse sine.
-  arcsin,
+  asin,
 
   /// Element-wise inverse cosine.
-  arccos,
+  acos,
 
   /// Element-wise inverse tangent.
-  arctan,
+  atan,
 
   /// Element-wise hyperbolic sine.
   sinh,
@@ -261,43 +252,34 @@ enum UnaryOp {
   tanh,
 
   /// Element-wise inverse hyperbolic sine.
-  arcsinh,
+  asinh,
 
   /// Element-wise inverse hyperbolic cosine.
-  arccosh,
+  acosh,
 
   /// Element-wise inverse hyperbolic tangent.
-  arctanh,
-
-  /// Element-wise conversion from radians to degrees.
-  degrees,
+  atanh,
 
   /// Element-wise conversion from degrees to radians.
-  radians,
-
-  /// Alias for [radians].
   deg2rad,
 
-  /// Alias for [degrees].
+  /// Element-wise conversion from radians to degrees.
   rad2deg,
 
   /// Element-wise bitwise inversion (`~x`).
   invert,
 
-  /// Alias for [invert].
-  bitwiseNot,
-
   /// Element-wise logical NOT (`!x`).
   logicalNot,
 
   /// Element-wise NaN check.
-  isnan,
+  isNan,
 
   /// Element-wise infinity check.
-  isinf,
+  isInf,
 
   /// Element-wise finiteness check.
-  isfinite,
+  isFinite,
 
   /// Element-wise signbit check.
   signbit,

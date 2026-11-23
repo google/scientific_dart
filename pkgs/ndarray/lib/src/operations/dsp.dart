@@ -741,7 +741,7 @@ NDArray<T> correlate<T extends SelfOf<DTypeTag>>(
         final padded1 = pad<T, T>(
           in1,
           PadWidth.axes(padWidths),
-          mode: PaddingMode.constant,
+          mode: PadMode.constant,
         );
         final res = _correlateValid<T, T, T>(padded1, in2, out: out);
         if (out != null) return out;

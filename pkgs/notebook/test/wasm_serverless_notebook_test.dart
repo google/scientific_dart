@@ -544,7 +544,7 @@ p.x * 2''');
           // 6b. Add a 4th code cell that transfers `a` to WebGPU (`GpuArray`), runs GPU arithmetic, and reads back to `NDArray`.
           final cell4Id = await page.evaluate<String>('''() => {
             const id = window.addCell(
-              "final gpuA = a.astype(DType.float32).toGpu();\\nfinal gpuB = gpuA * 3.0 + 1.0;\\ngpuB.toNDArray()"
+              "final gpuA = a.asType(DType.float32).toGpu();\\nfinal gpuB = gpuA * 3.0 + 1.0;\\ngpuB.toNDArray()"
             );
             window.runCell(id);
             return id;

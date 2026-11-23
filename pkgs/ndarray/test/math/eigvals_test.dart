@@ -17,7 +17,7 @@ import 'package:test/test.dart';
 import 'package:ndarray/ndarray.dart';
 
 void main() {
-  group('Eigenvalues (eigvals) tests', () {
+  group('Eigenvalues (eigValues) tests', () {
     test(
       'Eigenvalues of Float64 2D square matrix',
       () => NDArray.scope(() {
@@ -26,7 +26,7 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final w = eigvals(a);
+        final w = eigValues(a);
         final (eigenvalues: expectedW, eigenvectors: _) = eig(a);
 
         expect(w.shape, [2]);
@@ -54,7 +54,7 @@ void main() {
           [2, 2],
           DType.float32,
         );
-        final w = eigvals(a);
+        final w = eigValues(a);
         final (eigenvalues: expectedW, eigenvectors: _) = eig(a);
 
         expect(w.dtype, DType.complex64);
@@ -85,7 +85,7 @@ void main() {
           DType.complex128,
         );
 
-        final w = eigvals(a);
+        final w = eigValues(a);
         final (eigenvalues: expectedW, eigenvectors: _) = eig(a);
 
         expect(w.dtype, DType.complex128);
@@ -116,7 +116,7 @@ void main() {
           DType.complex64,
         );
 
-        final w = eigvals(a);
+        final w = eigValues(a);
         final (eigenvalues: expectedW, eigenvectors: _) = eig(a);
 
         expect(w.dtype, DType.complex64);
@@ -143,7 +143,7 @@ void main() {
         );
         final outW = NDArray.zeros([2], DType.complex128);
 
-        final w = eigvals(a, out: outW);
+        final w = eigValues(a, out: outW);
 
         expect(identical(w, outW), true);
 
@@ -165,7 +165,7 @@ void main() {
           DType.float64,
         );
 
-        final w = eigvals(a);
+        final w = eigValues(a);
         expect(w.shape, [2, 2]);
         expect(w.dtype, DType.complex128);
 
@@ -192,7 +192,7 @@ void main() {
         ]);
         expect(view.isContiguous, false);
 
-        final w = eigvals(view);
+        final w = eigValues(view);
 
         final (eigenvalues: wEig, eigenvectors: _) = eig(view);
         expect(w.toList(), wEig.toList());
@@ -210,7 +210,7 @@ void main() {
         final view = parent.transpose(); // [[0, 1], [-2, -3]]
         expect(view.isContiguous, false);
 
-        final w = eigvals(view);
+        final w = eigValues(view);
         final (eigenvalues: expectedW, eigenvectors: _) = eig(view);
 
         expect(w.toList()[0].real, closeTo(expectedW.toList()[0].real, 1e-9));
@@ -219,21 +219,21 @@ void main() {
     );
 
     test(
-      'eigvals() throws ArgumentError on non-square matrix',
+      'eigValues() throws ArgumentError on non-square matrix',
       () => NDArray.scope(() {
         final a = NDArray.zeros([2, 3], DType.float64);
-        expect(() => eigvals(a), throwsArgumentError);
+        expect(() => eigValues(a), throwsArgumentError);
       }),
     );
 
     test(
-      'eigvals() auto-promotes integer matrix to float64',
+      'eigValues() auto-promotes integer matrix to float64',
       () => NDArray.scope(() {
         final a = NDArray.fromList(Int32List.fromList([1, 2, 3, 4]), [
           2,
           2,
         ], DType.int32);
-        final w = eigvals(a);
+        final w = eigValues(a);
         final (eigenvalues: expectedW, eigenvectors: _) = eig(a);
         expect(w.dtype, equals(expectedW.dtype));
         expect(w.shape, equals([2]));

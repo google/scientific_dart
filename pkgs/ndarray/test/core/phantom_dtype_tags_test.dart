@@ -104,7 +104,7 @@ void main() {
 
           final slog = slogdet(a);
           expect(slog.sign.dtype, DType.float64);
-          expect(slog.logabsdet.dtype, DType.float64);
+          expect(slog.logAbsDet.dtype, DType.float64);
 
           final x = solve(a, b);
           expect(x.dtype, DType.float64);

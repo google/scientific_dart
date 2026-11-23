@@ -16,7 +16,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/operations/io.dart' show parseNpyHeader;
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 
 void main() {
   group('Reductions, Stats, Linalg & IO NumPy Parity Regressions', () {
@@ -417,7 +417,7 @@ void main() {
       },
     );
 
-    test('S5: intersect1d and isin treat NaN != NaN per IEEE-754', () {
+    test('S5: intersect1d and isIn treat NaN != NaN per IEEE-754', () {
       NDArray.scope(() {
         final a = NDArray<Float64>.fromList(
           [double.nan, 2.0, 1.0],
@@ -432,7 +432,7 @@ void main() {
         final inter = intersect1d(a, b).toList().cast<double>();
         expect(inter, [2.0]);
 
-        final mask = isin(
+        final mask = isIn(
           a,
           NDArray<Float64>.fromList([double.nan, 2.0], [2], DType.float64),
         ).toList();

@@ -20,9 +20,9 @@ void main() {
   print('=== Root Finding and Optimization Example ===\n');
 
   NDArray.scope(() {
-    // 1. Finding roots of 1D scalar functions using root_scalar (Brentq method)
+    // 1. Finding roots of 1D scalar functions using rootScalar (Brentq method)
     print('1. Root Finding with Brentq (Interval bracketing):');
-    final brentResult = root_scalar(
+    final brentResult = rootScalar(
       (x) => x * x - 4.0,
       method: RootMethod.brentq,
       bracketA: 0.0,
@@ -35,11 +35,11 @@ void main() {
 
     // 2. Finding roots with Newton-Raphson (with analytical derivative)
     print('2. Root Finding with Newton-Raphson:');
-    final newtonResult = root_scalar(
+    final newtonResult = rootScalar(
       (x) => math.cos(x) - x,
       method: RootMethod.newton,
       x0: 0.5,
-      fprime: (x) => -math.sin(x) - 1.0,
+      fPrime: (x) => -math.sin(x) - 1.0,
     );
     print('   Root of cos(x) - x = 0: ${newtonResult.root}');
     print(

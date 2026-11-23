@@ -523,7 +523,7 @@ void main() {
             expect(l.shape, [2, 2]);
             expect(l.dtype, DType.complex128);
 
-            final lH = conjugate(l.transpose());
+            final lH = conj(l.transpose());
             final recon = matmul(l, lH);
             for (var i = 0; i < 4; i++) {
               expect(
@@ -596,8 +596,8 @@ void main() {
         );
       });
 
-      // 4. Eigensystems (eig, eigh, eigvals, eigvalsh)
-      group("4. Eigensystems (eig, eigh, eigvals, eigvalsh)", () {
+      // 4. Eigensystems (eig, eigh, eigValues, eigValuesH)
+      group("4. Eigensystems (eig, eigh, eigValues, eigValuesH)", () {
         test(
           "eig on non-symmetric matrix with complex eigenvalues",
           () => NDArray.scope(() {
@@ -619,14 +619,14 @@ void main() {
         );
 
         test(
-          "eigvals on Float64, Float32, Complex128, Complex64 across 2D & 3D",
+          "eigValues on Float64, Float32, Complex128, Complex64 across 2D & 3D",
           () => NDArray.scope(() {
             final a64 = NDArray.fromList(
               Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
               [2, 2],
               DType.float64,
             );
-            final v64 = eigvals(a64);
+            final v64 = eigValues(a64);
             expect(v64.shape, [2]);
             expect(v64.dtype, DType.complex128);
 
@@ -635,7 +635,7 @@ void main() {
               [2, 2],
               DType.float32,
             );
-            final v32 = eigvals(a32);
+            final v32 = eigValues(a32);
             expect(v32.shape, [2]);
             expect(v32.dtype, DType.complex64);
 
@@ -644,7 +644,7 @@ void main() {
               [2, 2],
               DType.complex128,
             );
-            final vc128 = eigvals(c128);
+            final vc128 = eigValues(c128);
             expect(vc128.shape, [2]);
             expect(vc128.dtype, DType.complex128);
 
@@ -653,13 +653,13 @@ void main() {
               [2, 2, 2],
               DType.float64,
             );
-            final bVals = eigvals(bMat);
+            final bVals = eigValues(bMat);
             expect(bVals.shape, [2, 2]);
           }),
         );
 
         test(
-          "eigh and eigvalsh for symmetric real and Hermitian complex matrices (lower/upper)",
+          "eigh and eigValuesH for symmetric real and Hermitian complex matrices (lower/upper)",
           () => NDArray.scope(() {
             final sym = NDArray.fromList(
               Float64List.fromList([2.0, 1.0, 1.0, 2.0]),
@@ -677,7 +677,7 @@ void main() {
             expect(resUpper.eigenvalues.toList()[1], closeTo(3.0, 1e-5));
             resUpper.dispose();
 
-            final vals = eigvalsh(sym);
+            final vals = eigValuesH(sym);
             expect(vals.toList()[0], closeTo(1.0, 1e-5));
             expect(vals.toList()[1], closeTo(3.0, 1e-5));
 
@@ -696,7 +696,7 @@ void main() {
             expect(resHerm.eigenvectors.dtype, DType.complex128);
             resHerm.dispose();
 
-            final hermVals = eigvalsh(herm);
+            final hermVals = eigValuesH(herm);
             expect(hermVals.dtype, DType.float64);
 
             final intMat = NDArray.fromList(Int32List.fromList([2, 1, 1, 2]), [
@@ -852,10 +852,10 @@ void main() {
         );
       });
 
-      // 7. Matrix Power (matrix_power)
-      group("7. Matrix Power (matrix_power)", () {
+      // 7. Matrix Power (matrixPower)
+      group("7. Matrix Power (matrixPower)", () {
         test(
-          "matrix_power for n = 0, n > 0, and n < 0",
+          "matrixPower for n = 0, n > 0, and n < 0",
           () => NDArray.scope(() {
             final a = NDArray.fromList(
               Float64List.fromList([2.0, 1.0, 0.0, 2.0]),
@@ -863,25 +863,25 @@ void main() {
               DType.float64,
             );
 
-            final p0 = matrix_power(a, 0);
+            final p0 = matrixPower(a, 0);
             expect(p0.toList(), [1.0, 0.0, 0.0, 1.0]);
 
-            final p1 = matrix_power(a, 1);
+            final p1 = matrixPower(a, 1);
             expect(p1.toList(), [2.0, 1.0, 0.0, 2.0]);
 
-            final p2 = matrix_power(a, 2);
+            final p2 = matrixPower(a, 2);
             expect(p2.toList(), [4.0, 4.0, 0.0, 4.0]);
 
-            final p3 = matrix_power(a, 3);
+            final p3 = matrixPower(a, 3);
             expect(p3.toList(), [8.0, 12.0, 0.0, 8.0]);
 
-            final pNeg1 = matrix_power(a, -1);
+            final pNeg1 = matrixPower(a, -1);
             final aInv = inv(a);
             for (var i = 0; i < 4; i++) {
               expect(pNeg1.toList()[i], closeTo(aInv.toList()[i], 1e-5));
             }
 
-            final pNeg2 = matrix_power(a, -2);
+            final pNeg2 = matrixPower(a, -2);
             final aInv2 = matmul(aInv, aInv);
             for (var i = 0; i < 4; i++) {
               expect(pNeg2.toList()[i], closeTo(aInv2.toList()[i], 1e-5));
@@ -892,7 +892,7 @@ void main() {
               [2, 3],
               DType.float64,
             );
-            expect(() => matrix_power(nonSq, 2), throwsArgumentError);
+            expect(() => matrixPower(nonSq, 2), throwsArgumentError);
           }),
         );
       });
@@ -1045,14 +1045,14 @@ void main() {
         );
 
         test(
-          "Matrix norm along custom batch axes with keepdims",
+          "Matrix norm along custom batch axes with keepDims",
           () => NDArray.scope(() {
             final bMat = NDArray.fromList(
               Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]),
               [2, 2, 2],
               DType.float64,
             );
-            final nMat = norm(bMat, ord: "fro", axis: [1, 2], keepdims: true);
+            final nMat = norm(bMat, ord: "fro", axis: [1, 2], keepDims: true);
             expect(nMat.shape, [2, 1, 1]);
             expect(nMat.getCell([0, 0, 0]), closeTo(math.sqrt(30.0), 1e-5));
             expect(nMat.getCell([1, 0, 0]), closeTo(math.sqrt(174.0), 1e-5));
@@ -1061,17 +1061,17 @@ void main() {
               bMat,
               ord: "fro",
               axis: [1, 2],
-              keepdims: false,
+              keepDims: false,
             );
             expect(nMatNoKeep.shape, [2]);
           }),
         );
       });
 
-      // 10. Matrix Chain Product (multi_dot)
-      group("10. Matrix Chain Product (multi_dot)", () {
+      // 10. Matrix Chain Product (multiDot)
+      group("10. Matrix Chain Product (multiDot)", () {
         test(
-          "multi_dot with 3, 4, 5 mismatched dimension matrix chains",
+          "multiDot with 3, 4, 5 mismatched dimension matrix chains",
           () => NDArray.scope(() {
             final m1 = NDArray.fromList(
               Float64List.fromList(
@@ -1095,7 +1095,7 @@ void main() {
               DType.float64,
             );
 
-            final res = multi_dot([m1, m2, m3]);
+            final res = multiDot([m1, m2, m3]);
             expect(res.shape, [10, 3]);
 
             final expected = matmul(matmul(m1, m2), m3);
@@ -1110,7 +1110,7 @@ void main() {
               [3, 4],
               DType.float64,
             );
-            final res4 = multi_dot([m1, m2, m3, m4]);
+            final res4 = multiDot([m1, m2, m3, m4]);
             expect(res4.shape, [10, 4]);
 
             final m5 = NDArray.fromList(
@@ -1118,13 +1118,13 @@ void main() {
               [4, 2],
               DType.float64,
             );
-            final res5 = multi_dot([m1, m2, m3, m4, m5]);
+            final res5 = multiDot([m1, m2, m3, m4, m5]);
             expect(res5.shape, [10, 2]);
           }),
         );
 
         test(
-          "multi_dot with 1D vector at start, end, and both ends",
+          "multiDot with 1D vector at start, end, and both ends",
           () => NDArray.scope(() {
             final vStart = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
               2,
@@ -1143,13 +1143,13 @@ void main() {
               2,
             ], DType.float64);
 
-            final rStart = multi_dot([vStart, m1, m2]);
+            final rStart = multiDot([vStart, m1, m2]);
             expect(rStart.shape, [2]);
 
-            final rEnd = multi_dot([m1, m2, vEnd]);
+            final rEnd = multiDot([m1, m2, vEnd]);
             expect(rEnd.shape, [2]);
 
-            final rBoth = multi_dot([vStart, m1, m2, vEnd]);
+            final rBoth = multiDot([vStart, m1, m2, vEnd]);
             expect(rBoth.shape, []);
           }),
         );
@@ -1170,7 +1170,7 @@ void main() {
 
             final s = slogdet(a);
             expect(s.sign.scalar, closeTo(-1.0, 1e-5));
-            expect(s.logabsdet.scalar, closeTo(math.log(2.0), 1e-5));
+            expect(s.logAbsDet.scalar, closeTo(math.log(2.0), 1e-5));
             s.dispose();
 
             final sing = NDArray.fromList(
@@ -1181,7 +1181,7 @@ void main() {
             expect(det(sing).scalar, closeTo(0.0, 1e-5));
             final sSing = slogdet(sing);
             expect(sSing.sign.scalar, 0.0);
-            expect(sSing.logabsdet.scalar, double.negativeInfinity);
+            expect(sSing.logAbsDet.scalar, double.negativeInfinity);
             sSing.dispose();
 
             final bMat = NDArray.fromList(
@@ -1387,19 +1387,19 @@ void main() {
         );
 
         test(
-          "expand_dims and squeeze",
+          "expandDims and squeeze",
           () => NDArray.scope(() {
             final a = NDArray.fromList(Float64List.fromList([1.0, 2.0, 3.0]), [
               3,
             ], DType.float64);
 
-            final exp0 = expand_dims(a, 0);
+            final exp0 = expandDims(a, 0);
             expect(exp0.shape, [1, 3]);
 
-            final exp1 = expand_dims(a, 1);
+            final exp1 = expandDims(a, 1);
             expect(exp1.shape, [3, 1]);
 
-            final expNeg1 = expand_dims(a, -1);
+            final expNeg1 = expandDims(a, -1);
             expect(expNeg1.shape, [3, 1]);
 
             final sqAll = squeeze(exp0);
@@ -1504,7 +1504,7 @@ void main() {
       // 14. Array Splitting (splitting.dart)
       group("14. Array Splitting (splitting.dart)", () {
         test(
-          "split, array_split, hsplit, vsplit, dsplit equal and unequal splits",
+          "split, arraySplit, hsplit, vsplit, dsplit equal and unequal splits",
           () => NDArray.scope(() {
             final arr = NDArray.fromList(
               Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
@@ -1519,14 +1519,14 @@ void main() {
 
             expect(() => split(arr, 4), throwsArgumentError);
 
-            final asp4 = array_split(arr, 4);
+            final asp4 = arraySplit(arr, 4);
             expect(asp4.length, 4);
             expect(asp4[0].toList(), [1.0, 2.0]);
             expect(asp4[1].toList(), [3.0, 4.0]);
             expect(asp4[2].toList(), [5.0]);
             expect(asp4[3].toList(), [6.0]);
 
-            final spAt = split_at(arr, [2, 4]);
+            final spAt = splitAt(arr, [2, 4]);
             expect(spAt.length, 3);
             expect(spAt[0].toList(), [1.0, 2.0]);
             expect(spAt[1].toList(), [3.0, 4.0]);
@@ -1594,7 +1594,7 @@ void main() {
             );
             final s32 = slogdet(a32);
             expect(s32.sign.scalar, 1.0);
-            expect(s32.logabsdet.scalar, closeTo(math.log(6.0), 1e-4));
+            expect(s32.logAbsDet.scalar, closeTo(math.log(6.0), 1e-4));
             s32.dispose();
 
             // Complex64 2D
@@ -1606,7 +1606,7 @@ void main() {
             final sc64 = slogdet(c64);
             expect(sc64.sign.scalar.real, closeTo(-1.0, 1e-4));
             expect(sc64.sign.scalar.imag, closeTo(0.0, 1e-4));
-            expect(sc64.logabsdet.scalar, closeTo(math.log(2.0), 1e-4));
+            expect(sc64.logAbsDet.scalar, closeTo(math.log(2.0), 1e-4));
             sc64.dispose();
 
             // Out buffer recycling
@@ -1617,11 +1617,11 @@ void main() {
             );
             final outSign = NDArray.zeros([], DType.float64);
             final outLog = NDArray.zeros([], DType.float64);
-            final sRec = slogdet(a64, outSign: outSign, outLogdet: outLog);
+            final sRec = slogdet(a64, outSign: outSign, outLogAbsDet: outLog);
             expect(identical(sRec.sign, outSign), true);
-            expect(identical(sRec.logabsdet, outLog), true);
+            expect(identical(sRec.logAbsDet, outLog), true);
             expect(sRec.sign.scalar, 1.0);
-            expect(sRec.logabsdet.scalar, closeTo(math.log(5.0), 1e-5));
+            expect(sRec.logAbsDet.scalar, closeTo(math.log(5.0), 1e-5));
           }),
         );
 
@@ -1715,7 +1715,7 @@ void main() {
         );
 
         test(
-          "eigh and eigvalsh on Float32, Complex64, and out buffer recycler",
+          "eigh and eigValuesH on Float32, Complex64, and out buffer recycler",
           () => NDArray.scope(() {
             final sym32 = NDArray.fromList(
               Float32List.fromList([3.0, 1.0, 1.0, 3.0]),
@@ -1736,7 +1736,7 @@ void main() {
             res.dispose();
 
             final outValsOnly = NDArray.zeros([2], DType.float32);
-            final vals = eigvalsh(sym32, out: outValsOnly);
+            final vals = eigValuesH(sym32, out: outValsOnly);
             expect(identical(vals, outValsOnly), true);
             expect(vals.toList()[0], closeTo(2.0, 1e-4));
             expect(vals.toList()[1], closeTo(4.0, 1e-4));
@@ -1789,17 +1789,17 @@ void main() {
         );
 
         test(
-          "matrix_power with n = 4, -3, -4 on Float32 and Complex128",
+          "matrixPower with n = 4, -3, -4 on Float32 and Complex128",
           () => NDArray.scope(() {
             final a = NDArray.fromList(
               Float32List.fromList([1.0, 1.0, 0.0, 1.0]),
               [2, 2],
               DType.float32,
             );
-            final p4 = matrix_power(a, 4);
+            final p4 = matrixPower(a, 4);
             expect(p4.toList(), [1.0, 4.0, 0.0, 1.0]);
 
-            final pNeg3 = matrix_power(a, -3);
+            final pNeg3 = matrixPower(a, -3);
             expect(pNeg3.toList()[0], closeTo(1.0, 1e-4));
             expect(pNeg3.toList()[1], closeTo(-3.0, 1e-4));
             expect(pNeg3.toList()[2], closeTo(0.0, 1e-4));
@@ -1928,7 +1928,7 @@ void main() {
         );
 
         test(
-          "split and array_split on 3D/4D arrays and out-of-bounds indices",
+          "split and arraySplit on 3D/4D arrays and out-of-bounds indices",
           () => NDArray.scope(() {
             final t = NDArray.fromList(
               Float64List.fromList(
@@ -1944,8 +1944,8 @@ void main() {
             expect(sp2[0].shape, [2, 3, 2]);
             expect(sp2[1].shape, [2, 3, 2]);
 
-            // array_split_at with out-of-bounds indices clamped properly
-            final asp = array_split_at(t, [-2, 2, 10], axis: 1);
+            // splitAt with out-of-bounds indices clamped properly
+            final asp = splitAt(t, [-2, 2, 10], axis: 1);
             expect(asp.length, 4);
             expect(asp[0].shape, [2, 0, 4]);
             expect(asp[1].shape, [2, 2, 4]);

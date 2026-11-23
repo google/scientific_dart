@@ -285,7 +285,7 @@ void _checkSameDTypeOperand(
       'other',
       'Must have the same dtype as the receiver ($receiverDType) for operator '
           '$operator, but has dtype $operandDType. Cast explicitly with '
-          '.astype(...) before combining arrays of different dtypes.',
+          '.asType(...) before combining arrays of different dtypes.',
     );
   }
 }

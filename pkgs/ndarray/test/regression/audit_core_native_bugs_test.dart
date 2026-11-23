@@ -19,7 +19,7 @@ import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:ffi/ffi.dart';
 import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 
 const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
 
@@ -245,7 +245,7 @@ void main() {
   );
 
   group(
-    'Bug 4: Strided casting (s_cast_generic) and astype for float16 and bfloat16',
+    'Bug 4: Strided casting (s_cast_generic) and asType for float16 and bfloat16',
     () {
       test(
         'contiguous and non-contiguous float16 and bfloat16 cast accurately to/from other DTypes',
@@ -259,8 +259,8 @@ void main() {
             final f64T = f64.transpose();
             expect(f64T.isContiguous, isFalse);
 
-            final f16 = f64T.astype<Float16>(DType.float16);
-            final bf16 = f64T.astype<BFloat16>(DType.bfloat16);
+            final f16 = f64T.asType<Float16>(DType.float16);
+            final bf16 = f64T.asType<BFloat16>(DType.bfloat16);
             try {
               expect(f16.toList(), equals([1.5, 4.0, -2.25, 8.5]));
               expect(bf16.toList(), equals([1.5, 4.0, -2.25, 8.5]));
@@ -270,9 +270,9 @@ void main() {
               expect(f16T.isContiguous, isFalse);
               expect(bf16T.isContiguous, isFalse);
 
-              final backFromF16 = f16T.astype<Float64>(DType.float64);
-              final backFromBf16 = bf16T.astype<Int32>(DType.int32);
-              final crossCast = f16T.astype<BFloat16>(DType.bfloat16);
+              final backFromF16 = f16T.asType<Float64>(DType.float64);
+              final backFromBf16 = bf16T.asType<Int32>(DType.int32);
+              final crossCast = f16T.asType<BFloat16>(DType.bfloat16);
               try {
                 expect(backFromF16.toList(), equals([1.5, -2.25, 4.0, 8.5]));
                 expect(backFromBf16.toList(), equals([1, -2, 4, 8]));
@@ -689,7 +689,7 @@ void main() {
       );
 
       test(
-        'intersect1d, union1d, setdiff1d, setxor1d, isin handle mixed DTypes, uint16/int8, and do not dispose equal inputs',
+        'intersect1d, union1d, setdiff1d, setxor1d, isIn handle mixed DTypes, uint16/int8, and do not dispose equal inputs',
         () {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int8);
           final b = NDArray.fromList([2, 3, 4], [3], DType.int16);
@@ -699,7 +699,7 @@ void main() {
             final uni = union1d(a.asAnySpec, b.asAnySpec);
             final diff = setdiff1d(a.asAnySpec, b.asAnySpec);
             final xor = setxor1d(a.asAnySpec, b.asAnySpec);
-            final inMask = isin<DTypeTag>(a, b);
+            final inMask = isIn<DTypeTag>(a, b);
             final sameInter = intersect1d(a, equalA);
             try {
               expect(inter.toList(), equals([2, 3]));

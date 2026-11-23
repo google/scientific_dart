@@ -1523,7 +1523,7 @@ NDArray<T> vdot<T extends SelfOf<DTypeTag>>(
   return NDArray.scope(() {
     final flatA = a.reshape([a.size]);
     final flatB = b.reshape([b.size]);
-    final NDArray<T> conjA = a.dtype.isComplex ? conjugate<T, T>(flatA) : flatA;
+    final NDArray<T> conjA = a.dtype.isComplex ? conj<T, T>(flatA) : flatA;
     final res = matmul<T>(conjA, flatB, out: out);
     return _returnFromScope<T>(res, [a, b], out: out);
   });

@@ -26,7 +26,7 @@
 /// because users writing mixed-dtype or runtime-typed (`NDArray<DTypeTag>`,
 /// `NDArray<IntegerDType>`, `NDArray<BitwiseDType>`, `DType<DTypeTag>`) calls
 /// in an IDE benefit from targeted diagnostics and `0.3.0` quick fixes
-/// (`.astype(...)`, `*As(..., DType.x)`, `.asAnySpec`, `.asBitwiseDType`,
+/// (`.asType(...)`, `*As(..., DType.x)`, `.asAnySpec`, `.asBitwiseDType`,
 /// `.asIntegerDType`), the helpers in this library recover concrete and marker
 /// dtypes, resolve `*Of<R>` projections, and group same-dtype / `Out`-bounded
 /// parameters from element signatures.
@@ -180,7 +180,6 @@ const Map<String, String> kFunctionToMixedAsFunction = {
   'trueDivide': 'trueDivideAs',
   'floorDivide': 'floorDivideAs',
   'remainder': 'remainderAs',
-  'mod': 'modAs',
   'fmod': 'fmodAs',
   'power': 'powerAs',
   'floatPower': 'floatPowerAs',
@@ -190,7 +189,7 @@ const Map<String, String> kFunctionToMixedAsFunction = {
   'fmax': 'fmaxAs',
   'atan2': 'atan2As',
   'hypot': 'hypotAs',
-  'copysign': 'copysignAs',
+  'copySign': 'copySignAs',
   'nextafter': 'nextafterAs',
   'logaddexp': 'logaddexpAs',
   'logaddexp2': 'logaddexp2As',
@@ -389,7 +388,7 @@ final class SameDTypeOperand {
   /// argument that is not a list literal).
   final Expression expression;
 
-  /// Whether the operand can be wrapped in `.astype(...)` to fix a dtype
+  /// Whether the operand can be wrapped in `.asType(...)` to fix a dtype
   /// mismatch: `false` for output buffers (`out:`-style named arguments) and
   /// for whole-list arguments.
   final bool isCastable;

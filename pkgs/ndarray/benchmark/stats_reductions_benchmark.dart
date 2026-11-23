@@ -56,8 +56,8 @@ void main() async {
           blackhole(res);
         }, throughput: Throughput.elements(size));
 
-        c.bench('var_() [1D flat 100k]', () {
-          final res = var_(vec1d);
+        c.bench('variance() [1D flat 100k]', () {
+          final res = variance(vec1d);
           blackhole(res);
         }, throughput: Throughput.elements(size));
 

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'package:pocketfft/pocketfft.dart';
 import '../ndarray.dart';
 import '../ndarray_bindings.dart';
@@ -239,8 +238,8 @@ void _storeKissOutputToResult<R extends DTypeTag>(
   }
 }
 
-kiss_fft_cfg _getKissFFTPlan(int nfft, int inverse_fft) {
-  return PocketFFTPlanCache.instance.getPlan(nfft, isInverse: inverse_fft != 0);
+kiss_fft_cfg _getKissFFTPlan(int nfft, int inverseFft) {
+  return PocketFFTPlanCache.instance.getPlan(nfft, isInverse: inverseFft != 0);
 }
 
 /// Computes the 1D discrete Fourier Transform (FFT) along the specified [axis].
@@ -978,18 +977,18 @@ NDArray<T> ifftshift<T extends DTypeTag, Out extends T>(
 }
 
 // Helper to retrieve a KissFFTR plan configuration from the cache.
-kiss_fftr_cfg _getKissFFTRPlan(int nfft, int inverse_fft) {
+kiss_fftr_cfg _getKissFFTRPlan(int nfft, int inverseFft) {
   return PocketFFTPlanCache.instance.getRealPlan(
     nfft,
-    isInverse: inverse_fft != 0,
+    isInverse: inverseFft != 0,
   );
 }
 
 // Helper to retrieve a KissFFTND plan configuration from the cache.
-kiss_fftnd_cfg _getKissFFTNDPlan(List<int> dims, int inverse_fft) {
+kiss_fftnd_cfg _getKissFFTNDPlan(List<int> dims, int inverseFft) {
   return PocketFFTPlanCache.instance.getNDPlan(
     dims,
-    isInverse: inverse_fft != 0,
+    isInverse: inverseFft != 0,
   );
 }
 

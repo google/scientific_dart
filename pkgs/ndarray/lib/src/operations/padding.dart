@@ -52,17 +52,8 @@ enum PadMode {
   min,
 
   /// Pads with the maximum value of all or part of the vector along each axis.
-  max;
-
-  /// Alias for [min].
-  static const PadMode minimum = PadMode.min;
-
-  /// Alias for [max].
-  static const PadMode maximum = PadMode.max;
+  max,
 }
-
-/// Backwards compatibility alias for [PadMode].
-typedef PaddingMode = PadMode;
 
 /// Represents padding widths before and after for each axis.
 final class PadWidth {

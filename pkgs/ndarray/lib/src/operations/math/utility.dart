@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:math' as math;
 import 'package:openblas/openblas.dart';
 import '../../ndarray.dart';
@@ -89,8 +88,8 @@ ndenumerate<T extends DTypeTag>(NDArray<T> a) sync* {
 /// Replace NaN with zero and infinity with large finite numbers.
 ///
 /// By default, maps NaN to [nan] (which defaults to 0.0), maps positive infinity
-/// to [posinf] (or the maximum finite float value if null), and maps negative infinity
-/// to [neginf] (or the minimum finite float value if null).
+/// to [posInf] (or the maximum finite float value if null), and maps negative infinity
+/// to [negInf] (or the minimum finite float value if null).
 ///
 /// **Preconditions:**
 /// - Input [a] must be a numeric array.
@@ -101,18 +100,18 @@ ndenumerate<T extends DTypeTag>(NDArray<T> a) sync* {
 /// {@example /example/nan_to_num_example.dart lang=dart}
 ///
 /// Reference: [Replace NaN and Infinities](https://numpy.org/doc/stable/reference/generated/numpy.nan_to_num.html)
-NDArray<T> nan_to_num<T extends DTypeTag, Out extends T>(
+NDArray<T> nanToNum<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   double nan = 0.0,
-  double? posinf,
-  double? neginf,
+  double? posInf,
+  double? negInf,
   NDArray<DTypeTag>? where,
   NDArray<Out>? out,
 }) {
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute nan_to_num() on a disposed array.');
+    throw StateError('Cannot execute nanToNum() on a disposed array.');
   }
   if (out != null) {
     validateOutBuffer(out);
@@ -120,7 +119,7 @@ NDArray<T> nan_to_num<T extends DTypeTag, Out extends T>(
       throw ArgumentError.value(
         out,
         'out',
-        'Must have compatible shape and dtype for nan_to_num',
+        'Must have compatible shape and dtype for nanToNum',
       );
     }
     if ((sharesMemory(a, out) &&
@@ -133,11 +132,11 @@ NDArray<T> nan_to_num<T extends DTypeTag, Out extends T>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(a.shape, a.dtype);
-        nan_to_num(
+        nanToNum(
           a,
           nan: nan,
-          posinf: posinf,
-          neginf: neginf,
+          posInf: posInf,
+          negInf: negInf,
           where: where,
           out: temp,
         );
@@ -155,8 +154,8 @@ NDArray<T> nan_to_num<T extends DTypeTag, Out extends T>(
   };
   final minLimit = -maxLimit;
 
-  final targetPosInf = posinf ?? maxLimit;
-  final targetNegInf = neginf ?? minLimit;
+  final targetPosInf = posInf ?? maxLimit;
+  final targetNegInf = negInf ?? minLimit;
 
   final maskHolder = prepareMask(where, a.shape);
   try {
