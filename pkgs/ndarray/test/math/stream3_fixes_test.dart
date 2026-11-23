@@ -42,10 +42,10 @@ void main() {
         expect(res.shape, equals([2, 2]));
         // [1*0.5 + 2*2.5, 1*1.5 + 2*3.5] = [5.5, 8.5]
         // [3*0.5 + 4*2.5, 3*1.5 + 4*3.5] = [11.5, 18.5]
-        expect(res[[0, 0]], closeTo(5.5, 1e-9));
-        expect(res[[0, 1]], closeTo(8.5, 1e-9));
-        expect(res[[1, 0]], closeTo(11.5, 1e-9));
-        expect(res[[1, 1]], closeTo(18.5, 1e-9));
+        expect(res[[0, 0]].scalar, closeTo(5.5, 1e-9));
+        expect(res[[0, 1]].scalar, closeTo(8.5, 1e-9));
+        expect(res[[1, 0]].scalar, closeTo(11.5, 1e-9));
+        expect(res[[1, 1]].scalar, closeTo(18.5, 1e-9));
 
         // User-supplied out buffer in einsum
         final outBuf = NDArray<Float64>.zeros([2, 2], DType.float64);
@@ -54,7 +54,7 @@ void main() {
           bFloat,
         ], out: outBuf);
         expect(identical(outRes, outBuf), isTrue);
-        expect(outRes[[0, 0]], closeTo(5.5, 1e-9));
+        expect(outRes[[0, 0]].scalar, closeTo(5.5, 1e-9));
       });
     });
 
@@ -161,7 +161,7 @@ void main() {
         expect(res.x.shape, equals([2]));
         expect(res.rank, equals(2));
         expect(res.s.shape, equals([2]));
-        expect(res.s[[0]], greaterThan(0.0));
+        expect(res.s[[0]].scalar, greaterThan(0.0));
       });
     });
 
@@ -196,7 +196,7 @@ void main() {
         final ({NDArray<Float64> t, NDArray<Float64> z}) res = schur(a);
         expect(res.t.shape, equals([2, 2]));
         expect(res.z.shape, equals([2, 2]));
-        expect(res.t[[1, 0]], closeTo(0.0, 1e-10));
+        expect(res.t[[1, 0]].scalar, closeTo(0.0, 1e-10));
       });
     });
 
@@ -253,7 +253,10 @@ void main() {
           final recon = matmul(qSlice, rSlice);
           for (var r = 0; r < 2; r++) {
             for (var c = 0; c < 2; c++) {
-              expect(recon[[r, c]], closeTo(aSlice[[r, c]], 1e-10));
+              expect(
+                recon[[r, c]].scalar,
+                closeTo(aSlice[[r, c]].scalar, 1e-10),
+              );
             }
           }
         }
@@ -285,10 +288,10 @@ void main() {
 
           final res = matmul(mat, vec, out: nonContigOut);
           expect(identical(res, nonContigOut), isTrue);
-          expect(res[[0]], closeTo(6.0, 1e-9));
-          expect(res[[1]], closeTo(15.0, 1e-9));
-          expect(largerBuf[[0]], closeTo(6.0, 1e-9));
-          expect(largerBuf[[2]], closeTo(15.0, 1e-9));
+          expect(res[[0]].scalar, closeTo(6.0, 1e-9));
+          expect(res[[1]].scalar, closeTo(15.0, 1e-9));
+          expect(largerBuf[[0]].scalar, closeTo(6.0, 1e-9));
+          expect(largerBuf[[2]].scalar, closeTo(15.0, 1e-9));
 
           // Vector dot product (1D * 1D -> 0D scalar) with 0D out buffer
           final out0D = NDArray<Float64>.zeros([], DType.float64);
@@ -315,7 +318,7 @@ void main() {
         final resIrfft = irfft(resRfft, n: 5, out: outIrfft);
         expect(identical(resIrfft, outIrfft), isTrue);
         expect(resIrfft.isDisposed, isFalse);
-        expect(resIrfft[[0]], closeTo(1.0, 1e-6));
+        expect(resIrfft[[0]].scalar, closeTo(1.0, 1e-6));
       });
     });
     test('Cycle 11 Task 1: eigh named record return and EighRecordDispose', () {
@@ -327,8 +330,8 @@ void main() {
       final res = eigh(a);
       expect(res.eigenvalues.shape, equals([2]));
       expect(res.eigenvectors.shape, equals([2, 2]));
-      expect(res.eigenvalues[[0]], closeTo(1.0, 1e-9));
-      expect(res.eigenvalues[[1]], closeTo(3.0, 1e-9));
+      expect(res.eigenvalues[[0]].scalar, closeTo(1.0, 1e-9));
+      expect(res.eigenvalues[[1]].scalar, closeTo(3.0, 1e-9));
       expect(res.eigenvalues.isDisposed, isFalse);
       expect(res.eigenvectors.isDisposed, isFalse);
       res.dispose();
@@ -425,8 +428,8 @@ void main() {
           expect(svd20.u.shape, equals([2, 2]));
           expect(svd20.s.shape, equals([0]));
           expect(svd20.vh.shape, equals([0, 0]));
-          expect(svd20.u[[0, 0]], equals(1.0));
-          expect(svd20.u[[0, 1]], equals(0.0));
+          expect(svd20.u[[0, 0]].scalar, equals(1.0));
+          expect(svd20.u[[0, 1]].scalar, equals(0.0));
 
           // qr
           final qr03 = qr(mat03);

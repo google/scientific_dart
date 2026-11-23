@@ -457,7 +457,7 @@ bool checkArrays(NDArray<Float64> a, NDArray<Float64> b, NDArray<Float64>? maybe
 import 'package:ndarray/ndarray.dart';
 
 bool checkUint64(NDArray<Uint64> u64, NDArray<Int64> i64) {
-  final badIndexCmp = (u64[[0]] as int) > 0; // VIOLATION 1
+  final badIndexCmp = u64[[0]].scalar > 0; // VIOLATION 1
   final elem = u64.scalar;
   final badScalarCmp = elem < 100; // VIOLATION 2
   final okUint64Compare = uint64Compare(u64.scalar, 0) > 0; // OK
@@ -503,7 +503,7 @@ double sumSlow(NDArray<Float64> m) {
   var total = 0.0;
   for (var i = 0; i < 3; i++) {
     for (var j = 0; j < 3; j++) {
-      total += m[[i, j]] as double; // VIOLATION: nested loop element read
+      total += m[[i, j]].scalar; // VIOLATION: nested loop element read
       m[[i, j]] = 0.0; // OK: writes are not flagged
     }
   }
@@ -528,13 +528,13 @@ import 'package:ndarray/ndarray.dart';
 
 double bad0d(NDArray<Float64> a) {
   final r = sum(a);
-  final x = r[[0]] as double; // VIOLATION: rank-0 array
-  final okEmpty = r[[]] as double; // OK
-  final okScalar = max(a).scalar as double; // OK: no longer flagged
+  final x = r[[0]].scalar; // VIOLATION: rank-0 array
+  final okEmpty = r[[]].scalar; // OK
+  final okScalar = max(a).scalar; // OK: no longer flagged
   final k = sum(a, keepdims: true);
-  final okKeepdims = k[[0]] as double; // OK: keepdims preserves rank
+  final okKeepdims = k[[0]].scalar; // OK: keepdims preserves rank
   final s = sum(a, axis: 0);
-  final okAxis = s[[0]] as double; // OK: axis given
+  final okAxis = s[[0]].scalar; // OK: axis given
   return x + okEmpty + okScalar + okKeepdims + okAxis;
 }
 ''',
@@ -769,11 +769,11 @@ bool checkUint64More(NDArray<Uint64> u64) {
 import 'package:ndarray/ndarray.dart';
 
 double checkZeroDimMore(NDArray<Float64> a) {
-  final q0 = quantile(a, 0.5)[[0]] as double; // VIOLATION 1
-  final idx0 = argmax(a)[[0]] as int; // VIOLATION 2
-  final cnt0 = count_nonzero(a)[[0]] as int; // VIOLATION 3
-  final sumNullAxis = sum(a, axis: null)[[0]] as double; // VIOLATION 4
-  final sumKeepFalse = sum(a, keepdims: false)[[0]] as double; // VIOLATION 5
+  final q0 = quantile(a, 0.5)[[0]].scalar; // VIOLATION 1
+  final idx0 = argmax(a)[[0]].scalar; // VIOLATION 2
+  final cnt0 = count_nonzero(a)[[0]].scalar; // VIOLATION 3
+  final sumNullAxis = sum(a, axis: null)[[0]].scalar; // VIOLATION 4
+  final sumKeepFalse = sum(a, keepdims: false)[[0]].scalar; // VIOLATION 5
   return q0 + idx0 + cnt0 + sumNullAxis + sumKeepFalse;
 }
 ''',

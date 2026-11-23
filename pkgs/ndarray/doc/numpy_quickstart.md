@@ -210,13 +210,13 @@ final intArr     = i32.asIntegerDType; // NDArray<AnyIntegerSpec>
 
 ### E. Indexing, Slicing & Masking
 
-| NumPy Syntax | Dart Polymorphic Syntax (`[]`) | Dart Explicit Statically-Typed Accessor |
+| NumPy Syntax | Dart Typed Indexing (`[]` returns `NDArray<T>`) | Dart Explicit Accessor |
 | :--- | :--- | :--- |
-| `val = arr[0, 1]` | `arr[[0, 1]]` | `arr.getCell([0, 1])` *(Recommended — returns `double`/`int`/`bool`/`Complex`)* |
-| `arr[1, 0] = 99` | `arr[[1, 0]] = 99` | `arr.setCell([1, 0], 99)` *(Recommended — accepts `double`/`int`/`bool`/`Complex`)* |
+| `val = arr[0, 1]` | `arr[[0, 1]].scalar` | `arr.getCell([0, 1])` *(Recommended in loops — zero-alloc `double`/`int`/`bool`/`Complex`)* |
+| `arr[1, 0] = 99` | `arr[[1, 0]] = 99` | `arr.setCell([1, 0], 99)` *(Recommended — statically checks element type)* |
 | `row = arr[1]` | `arr[1]` | `slice([Index(1)])` |
 | `sub = arr[1:3, :]` | `arr[[Slice(start: 1, stop: 3), Slice.all()]]` | `slice([Slice(start: 1, stop: 3), Slice.all()])` |
-| `fancy = arr[[0, 2]]` | `arr[[ [0, 2] ]]` (rows) | `take([0, 2])` |
+| `fancy = arr[[0, 2]]` | `arr[Indices([0, 2])]` | `take([0, 2])` |
 | `arr[arr < 0] = 0` | `arr[arr < 0] = 0` | `arr.setByMaskScalar(arr < 0, 0.0)` |
 | `filtered = arr[mask]` | `arr[mask]` | `applyMask(arr, mask)` |
 

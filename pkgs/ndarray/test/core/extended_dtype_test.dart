@@ -224,18 +224,18 @@ void main() {
           [5],
           DType.float16,
         );
-        expect(f16[[2]].isInfinite && f16[[2]] > 0, isTrue);
-        expect(f16[[3]].isInfinite && f16[[3]] < 0, isTrue);
-        expect(f16[[4]].isNaN, isTrue);
+        expect(f16[[2]].scalar.isInfinite && f16[[2]].scalar > 0, isTrue);
+        expect(f16[[3]].scalar.isInfinite && f16[[3]].scalar < 0, isTrue);
+        expect(f16[[4]].scalar.isNaN, isTrue);
 
         final bf16 = NDArray.fromList(
           [1.0, double.infinity, double.nan],
           [3],
           DType.bfloat16,
         );
-        expect(bf16[[0]], closeTo(1.0, 1e-2));
-        expect(bf16[[1]].isInfinite, isTrue);
-        expect(bf16[[2]].isNaN, isTrue);
+        expect(bf16[[0]].scalar, closeTo(1.0, 1e-2));
+        expect(bf16[[1]].scalar.isInfinite, isTrue);
+        expect(bf16[[2]].scalar.isNaN, isTrue);
       });
     });
   });

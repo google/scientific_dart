@@ -321,7 +321,10 @@ void main() {
           matmul(a2, b2, out: a2T);
           for (var i = 0; i < 2; i++) {
             for (var j = 0; j < 2; j++) {
-              expect(a2T[[i, j]], closeTo(expected2[[i, j]], 1e-12));
+              expect(
+                a2T[[i, j]].scalar,
+                closeTo(expected2[[i, j]].scalar, 1e-12),
+              );
             }
           }
         });
@@ -487,7 +490,7 @@ void main() {
               rev.copy(),
             ]);
             for (var i = 0; i < 3; i++) {
-              expect(sumRev[[i]], closeTo(sumContig[[i]], 1e-12));
+              expect(sumRev[[i]].scalar, closeTo(sumContig[[i]].scalar, 1e-12));
             }
           });
         },

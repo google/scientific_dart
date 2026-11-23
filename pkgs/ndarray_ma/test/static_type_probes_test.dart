@@ -91,6 +91,14 @@ void main() {
         staticTypeOf(() => sin(_m32, out: _m32)),
         equals(typeOf<MaskedArray<Float32>>()),
       );
+      expect(
+        staticTypeOf(() => _m32[0]),
+        equals(typeOf<MaskedArray<Float32>>()),
+      );
+      expect(
+        staticTypeOf(() => _m32[[0, 1]].scalar),
+        equals(typeOf<double?>()),
+      );
       expect(staticTypeOf(() => _m32.scalar), equals(typeOf<double?>()));
       expect(staticTypeOf(() => _m32.getCell([0])), equals(typeOf<double?>()));
       expect(

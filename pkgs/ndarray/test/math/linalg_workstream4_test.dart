@@ -167,20 +167,20 @@ void main() {
         // dot with B[1]: 1*0 + 2*1 + 3*0 = 2
         // dot with B[2]: 1*2 + 2*1 + 3*0 = 4
         // dot with B[3]: 1*1 + 2*1 + 3*1 = 6
-        expect(res[[0, 0]], closeTo(4.0, 1e-12));
-        expect(res[[0, 1]], closeTo(2.0, 1e-12));
-        expect(res[[0, 2]], closeTo(4.0, 1e-12));
-        expect(res[[0, 3]], closeTo(6.0, 1e-12));
+        expect(res[[0, 0]].scalar, closeTo(4.0, 1e-12));
+        expect(res[[0, 1]].scalar, closeTo(2.0, 1e-12));
+        expect(res[[0, 2]].scalar, closeTo(4.0, 1e-12));
+        expect(res[[0, 3]].scalar, closeTo(6.0, 1e-12));
 
         // Row 1 of A: [4, 5, 6]
         // dot with B[0]: 4*1 + 5*0 + 6*1 = 10
         // dot with B[1]: 4*0 + 5*1 + 6*0 = 5
         // dot with B[2]: 4*2 + 5*1 + 6*0 = 13
         // dot with B[3]: 4*1 + 5*1 + 6*1 = 15
-        expect(res[[1, 0]], closeTo(10.0, 1e-12));
-        expect(res[[1, 1]], closeTo(5.0, 1e-12));
-        expect(res[[1, 2]], closeTo(13.0, 1e-12));
-        expect(res[[1, 3]], closeTo(15.0, 1e-12));
+        expect(res[[1, 0]].scalar, closeTo(10.0, 1e-12));
+        expect(res[[1, 1]].scalar, closeTo(5.0, 1e-12));
+        expect(res[[1, 2]].scalar, closeTo(13.0, 1e-12));
+        expect(res[[1, 3]].scalar, closeTo(15.0, 1e-12));
       });
     });
 
@@ -332,10 +332,10 @@ void main() {
 
           final res = matmul(a, b, out: out);
           expect(identical(res, out), isTrue);
-          expect(out[[0, 0]], closeTo(4.0, 1e-12));
-          expect(out[[0, 1]], closeTo(4.0, 1e-12));
-          expect(out[[1, 0]], closeTo(10.0, 1e-12));
-          expect(out[[1, 1]], closeTo(8.0, 1e-12));
+          expect(out[[0, 0]].scalar, closeTo(4.0, 1e-12));
+          expect(out[[0, 1]].scalar, closeTo(4.0, 1e-12));
+          expect(out[[1, 0]].scalar, closeTo(10.0, 1e-12));
+          expect(out[[1, 1]].scalar, closeTo(8.0, 1e-12));
         });
       },
     );
@@ -357,13 +357,13 @@ void main() {
         // Reconstruct A = U[:, :2] * S * Vh
         final uTrunc = res.u.slice([Slice.all(), Slice(start: 0, stop: 2)]);
         final sDiag = NDArray<Float64>.zeros([2, 2], DType.float64);
-        sDiag[[0, 0]] = res.s[[0]];
-        sDiag[[1, 1]] = res.s[[1]];
+        sDiag[[0, 0]] = res.s[[0]].scalar;
+        sDiag[[1, 1]] = res.s[[1]].scalar;
         final recon = matmul(matmul(uTrunc, sDiag), res.vh);
 
         for (var r = 0; r < 3; r++) {
           for (var c = 0; c < 2; c++) {
-            expect(recon[[r, c]], closeTo(a[[r, c]], 1e-10));
+            expect(recon[[r, c]].scalar, closeTo(a[[r, c]].scalar, 1e-10));
           }
         }
       });
@@ -375,10 +375,10 @@ void main() {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
         final res = matrix_power(a, 0);
-        expect(res[[0, 0]], closeTo(1.0, 1e-12));
-        expect(res[[0, 1]], closeTo(0.0, 1e-12));
-        expect(res[[1, 0]], closeTo(0.0, 1e-12));
-        expect(res[[1, 1]], closeTo(1.0, 1e-12));
+        expect(res[[0, 0]].scalar, closeTo(1.0, 1e-12));
+        expect(res[[0, 1]].scalar, closeTo(0.0, 1e-12));
+        expect(res[[1, 0]].scalar, closeTo(0.0, 1e-12));
+        expect(res[[1, 1]].scalar, closeTo(1.0, 1e-12));
       });
     });
 
@@ -389,7 +389,10 @@ void main() {
         final expectedA2 = matmul(a, a);
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
-            expect(a2[[r, c]], closeTo(expectedA2[[r, c]], 1e-12));
+            expect(
+              a2[[r, c]].scalar,
+              closeTo(expectedA2[[r, c]].scalar, 1e-12),
+            );
           }
         }
 
@@ -397,7 +400,10 @@ void main() {
         final expectedA3 = matmul(expectedA2, a);
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
-            expect(a3[[r, c]], closeTo(expectedA3[[r, c]], 1e-12));
+            expect(
+              a3[[r, c]].scalar,
+              closeTo(expectedA3[[r, c]].scalar, 1e-12),
+            );
           }
         }
       });
@@ -408,10 +414,10 @@ void main() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
         final aInv = matrix_power(a, -1);
         final eye = matmul(a, aInv);
-        expect(eye[[0, 0]], closeTo(1.0, 1e-10));
-        expect(eye[[0, 1]], closeTo(0.0, 1e-10));
-        expect(eye[[1, 0]], closeTo(0.0, 1e-10));
-        expect(eye[[1, 1]], closeTo(1.0, 1e-10));
+        expect(eye[[0, 0]].scalar, closeTo(1.0, 1e-10));
+        expect(eye[[0, 1]].scalar, closeTo(0.0, 1e-10));
+        expect(eye[[1, 0]].scalar, closeTo(0.0, 1e-10));
+        expect(eye[[1, 1]].scalar, closeTo(1.0, 1e-10));
       });
     });
   });

@@ -23,6 +23,7 @@
 library;
 
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:analyzer/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/dart/analysis/results.dart';
@@ -385,6 +386,88 @@ void main() {
         expect(
           staticTypeOf(() => [fixture.f32, fixture.i32]),
           equals(typeOf<List<NDArray<DoublePrecisionOf<Float64>>>>()),
+        );
+
+        // Typed operator [] & TypedData interop
+        expect(
+          staticTypeOf(() => fixture.f64[0]),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64[[0, 1]]),
+          equals(typeOf<NDArray<Float64>>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64[[0, 1]].scalar),
+          equals(typeOf<double>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.i32[0]),
+          equals(typeOf<NDArray<Int32>>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.c64[0]),
+          equals(typeOf<NDArray<Complex64>>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.anySpec[0]),
+          equals(typeOf<NDArray<AnySpec>>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64.toTypedData()),
+          equals(typeOf<Float64List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64.asTypedDataView()),
+          equals(typeOf<Float64List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64.withTypedData((v) => v.length)),
+          equals(typeOf<int>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f32.toTypedData()),
+          equals(typeOf<Float32List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.i32.toTypedData()),
+          equals(typeOf<Int32List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.u8.toTypedData()),
+          equals(typeOf<Uint8List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f16.toTypedData()),
+          equals(typeOf<Uint16List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.bf16.toTypedData()),
+          equals(typeOf<Uint16List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.c64.toTypedData()),
+          equals(typeOf<Float32List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.c128.toTypedData()),
+          equals(typeOf<Float64List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.b.toTypedData()),
+          equals(typeOf<Uint8List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.anySpec.toTypedData()),
+          equals(typeOf<TypedData>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64.toBytes()),
+          equals(typeOf<Uint8List>()),
+        );
+        expect(
+          staticTypeOf(() => fixture.f64.asBytesView()),
+          equals(typeOf<Uint8List>()),
         );
       },
     );

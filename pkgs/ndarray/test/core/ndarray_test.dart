@@ -765,13 +765,13 @@ void main() {
           2,
           2,
         ], DType.float64);
-        expect(a[[0, 0]], 1.0);
-        expect(a[[0, 1]], 2.0);
-        expect(a[[1, 0]], 3.0);
-        expect(a[[1, 1]], 4.0);
+        expect(a[[0, 0]].scalar, 1.0);
+        expect(a[[0, 1]].scalar, 2.0);
+        expect(a[[1, 0]].scalar, 3.0);
+        expect(a[[1, 1]].scalar, 4.0);
 
         a[[0, 0]] = 10.0;
-        expect(a[[0, 0]], 10.0);
+        expect(a[[0, 0]].scalar, 10.0);
       }),
     );
 
@@ -876,7 +876,7 @@ void main() {
           4,
         ], DType.float64);
         final mask = a > 2.0;
-        final b = a.slice([Mask(BooleanMask(mask))]);
+        final b = a.slice([Mask(mask)]);
         expect(b.shape, [2]);
         expect(b.toList(), [3.0, 4.0]);
       }),
@@ -889,7 +889,7 @@ void main() {
           4,
         ], DType.float64);
         final mask = a > 2.0;
-        final b = a.slice([Mask(BooleanMask(mask))]);
+        final b = a.slice([Mask(mask)]);
         b.data[0] = 10.0;
         expect(a.data[2], 3.0); // Original should not change!
       }),
@@ -1259,7 +1259,8 @@ void main() {
         'operator [] fancy index parameter checks',
         () => NDArray.scope(() {
           final a = NDArray.zeros([2, 3], DType.float64);
-          expect(() => a[[0]], throwsArgumentError);
+          expect(a[[0]].shape, [3]);
+          expect(() => a[[0, 1, 2]], throwsArgumentError);
 
           final badMask = NDArray<Boolean>.zeros([2, 2], DType.boolean);
           expect(() => a[badMask], throwsArgumentError);

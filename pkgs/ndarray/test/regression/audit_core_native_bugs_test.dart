@@ -328,7 +328,7 @@ void main() {
               a[mask] = scaled;
               expect(a.toList(), equals([1.0, 2.0, 3.0, 40.0, 50.0, 60.0]));
             } finally {
-              if (scaled is NDArray) scaled.dispose();
+              scaled.dispose();
             }
           } finally {
             mask.dispose();
@@ -403,7 +403,7 @@ void main() {
           expect(a.toList(), equals([10, 20, 99]));
 
           b[[-1, -1]] = 42;
-          expect(b[[-1, -1]], equals(42));
+          expect(b[[-1, -1]].scalar, equals(42));
           expect(b.getCell([-1, -1]), equals(42));
           b.setCell([-2, -1], 17);
           expect(b.toList(), equals([0, 17, 0, 42]));

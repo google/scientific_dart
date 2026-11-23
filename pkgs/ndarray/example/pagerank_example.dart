@@ -126,7 +126,7 @@ void main() {
 
     print('\nFinal PageRank vector:');
     for (var i = 0; i < n; i++) {
-      print('Node $i: ${v[[i]].toStringAsFixed(6)}');
+      print('Node $i: ${v.getCell([i]).toStringAsFixed(6)}');
     }
 
     final finalSum = sum(v).scalar;
@@ -145,7 +145,7 @@ void _printMatrix(NDArray matrix) {
   for (var i = 0; i < rows; i++) {
     final rowList = <Object?>[];
     for (var j = 0; j < cols; j++) {
-      rowList.add(matrix[[i, j]]);
+      rowList.add(matrix.getCell([i, j]));
     }
     print(rowList);
   }

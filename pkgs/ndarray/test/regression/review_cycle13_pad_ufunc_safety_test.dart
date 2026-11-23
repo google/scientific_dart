@@ -86,7 +86,7 @@ void main() {
           );
           expect(res1D.shape, equals([5]));
           expect([
-            for (var i = 0; i < 5; i++) res1D[[i]].toDouble(),
+            for (var i = 0; i < 5; i++) res1D[[i]].scalar.toDouble(),
           ], equals([7.0, 7.0, 9.0, 9.0, 9.0]));
 
           // 2D [0, 2] padded with [(1, 1), (1, 1)] and constants [(10, 11), (20, 21)]:
@@ -101,10 +101,10 @@ void main() {
           );
           expect(res2D.shape, equals([2, 4]));
           expect([
-            for (var c = 0; c < 4; c++) res2D[[0, c]].toDouble(),
+            for (var c = 0; c < 4; c++) res2D[[0, c]].scalar.toDouble(),
           ], equals([20.0, 10.0, 10.0, 21.0]));
           expect([
-            for (var c = 0; c < 4; c++) res2D[[1, c]].toDouble(),
+            for (var c = 0; c < 4; c++) res2D[[1, c]].scalar.toDouble(),
           ], equals([20.0, 11.0, 11.0, 21.0]));
         });
       },
@@ -171,8 +171,8 @@ void main() {
             for (var j = 0; j < 3; j++) {
               for (var k = 0; k < 3; k++) {
                 expect(
-                  actual[[i, j, k]].toDouble(),
-                  equals(expected[[i, j, k]].toDouble()),
+                  actual[[i, j, k]].scalar,
+                  equals(expected[[i, j, k]].scalar.toDouble()),
                   reason: 'Mismatch at [$i, $j, $k]',
                 );
               }
@@ -222,8 +222,8 @@ void main() {
             for (var j = 0; j < actual.shape[1]; j++) {
               for (var k = 0; k < actual.shape[2]; k++) {
                 expect(
-                  actual[[i, j, k]].toDouble(),
-                  equals(expected[[i, j, k]].toDouble()),
+                  actual[[i, j, k]].scalar,
+                  equals(expected[[i, j, k]].scalar.toDouble()),
                   reason: 'Mismatch at [$i, $j, $k]',
                 );
               }
@@ -308,18 +308,18 @@ void main() {
 
           expect(
             [
-              resNeg[[0]].toDouble(),
-              resNeg[[1]].toDouble(),
+              resNeg[[0]].scalar,
+              resNeg[[1]].scalar,
             ],
             equals([
-              resPos[[0]].toDouble(),
-              resPos[[1]].toDouble(),
+              resPos[[0]].scalar,
+              resPos[[1]].scalar,
             ]),
           );
           // Ensure negIndices was not mutated in-place
           expect([
-            negIndices[[0]],
-            negIndices[[1]],
+            negIndices[[0]].scalar,
+            negIndices[[1]].scalar,
           ], equals([-4, -2]));
         });
       },
@@ -370,7 +370,7 @@ void main() {
 
         a.at(idx, bInt32, op: BinaryOp.add);
         expect([
-          for (var i = 0; i < 4; i++) a[[i]].toDouble(),
+          for (var i = 0; i < 4; i++) a[[i]].scalar,
         ], equals([1.0, 12.0, 3.0, 24.0]));
       });
     });
@@ -392,10 +392,10 @@ void main() {
         );
         a.at(idx, rowB, op: BinaryOp.add);
         expect([
-          for (var c = 0; c < 3; c++) a[[1, c]].toDouble(),
+          for (var c = 0; c < 3; c++) a[[1, c]].scalar,
         ], equals([1.0, 2.0, 3.0]));
         expect([
-          for (var c = 0; c < 3; c++) a[[3, c]].toDouble(),
+          for (var c = 0; c < 3; c++) a[[3, c]].scalar,
         ], equals([1.0, 2.0, 3.0]));
 
         // Broadcast [2, 1] across 3 columns
@@ -406,10 +406,10 @@ void main() {
         );
         a.at(idx, colB, op: BinaryOp.add);
         expect([
-          for (var c = 0; c < 3; c++) a[[1, c]].toDouble(),
+          for (var c = 0; c < 3; c++) a[[1, c]].scalar,
         ], equals([11.0, 12.0, 13.0]));
         expect([
-          for (var c = 0; c < 3; c++) a[[3, c]].toDouble(),
+          for (var c = 0; c < 3; c++) a[[3, c]].scalar,
         ], equals([21.0, 22.0, 23.0]));
       });
     });
@@ -430,7 +430,7 @@ void main() {
         final idx = NDArray.fromList([1, 2, 0], [3], DType.int64);
         a.at(idx, a, op: BinaryOp.add);
         expect([
-          for (var i = 0; i < 3; i++) a[[i]].toDouble(),
+          for (var i = 0; i < 3; i++) a[[i]].scalar,
         ], equals([4.0, 3.0, 5.0]));
       });
     });

@@ -990,10 +990,19 @@ void main() {
       );
 
       test(
-        'eig() throws UnimplementedError on boolean matrix',
+        'eig() promotes boolean matrix to float64 and returns complex128',
         () => NDArray.scope(() {
-          final a = NDArray.zeros([2, 2], DType.boolean);
-          expect(() => eig(a), throwsUnimplementedError);
+          final a = NDArray.fromList(
+            [true, false, true, true],
+            [2, 2],
+            DType.boolean,
+          );
+          final (:eigenvalues, :eigenvectors) = eig(a);
+          final expected = eig(a.astype(DType.float64));
+          expect(eigenvalues.dtype, equals(DType.complex128));
+          expect(eigenvectors.dtype, equals(DType.complex128));
+          expect(allClose(eigenvalues, expected.eigenvalues), isTrue);
+          expect(allClose(eigenvectors, expected.eigenvectors), isTrue);
         }),
       );
 

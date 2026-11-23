@@ -31,16 +31,16 @@ void main() {
         expect(w.dtype, equals(DType.float64));
         expect(v.dtype, equals(DType.float64));
 
-        expect(w[[0]], closeTo(1.0, 1e-10));
-        expect(w[[1]], closeTo(3.0, 1e-10));
+        expect(w[[0]].scalar, closeTo(1.0, 1e-10));
+        expect(w[[1]].scalar, closeTo(3.0, 1e-10));
 
         // Check eigenvectors: A * v = v * diag(w)
         final av0 = matmul(
           a,
           NDArray.fromList(
             [
-              v[[0, 0]],
-              v[[1, 0]],
+              v[[0, 0]].scalar,
+              v[[1, 0]].scalar,
             ],
             [2, 1],
             DType.float64,
@@ -49,23 +49,23 @@ void main() {
         final w0v0 =
             NDArray.fromList(
               [
-                v[[0, 0]],
-                v[[1, 0]],
+                v[[0, 0]].scalar,
+                v[[1, 0]].scalar,
               ],
               [2, 1],
               DType.float64,
             ) *
-            w[[0]];
+            w[[0]].scalar;
 
-        expect(av0[[0, 0]], closeTo(w0v0[[0, 0]], 1e-10));
-        expect(av0[[1, 0]], closeTo(w0v0[[1, 0]], 1e-10));
+        expect(av0[[0, 0]].scalar, closeTo(w0v0[[0, 0]].scalar, 1e-10));
+        expect(av0[[1, 0]].scalar, closeTo(w0v0[[1, 0]].scalar, 1e-10));
 
         final av1 = matmul(
           a,
           NDArray.fromList(
             [
-              v[[0, 1]],
-              v[[1, 1]],
+              v[[0, 1]].scalar,
+              v[[1, 1]].scalar,
             ],
             [2, 1],
             DType.float64,
@@ -74,16 +74,16 @@ void main() {
         final w1v1 =
             NDArray.fromList(
               [
-                v[[0, 1]],
-                v[[1, 1]],
+                v[[0, 1]].scalar,
+                v[[1, 1]].scalar,
               ],
               [2, 1],
               DType.float64,
             ) *
-            w[[1]];
+            w[[1]].scalar;
 
-        expect(av1[[0, 0]], closeTo(w1v1[[0, 0]], 1e-10));
-        expect(av1[[1, 0]], closeTo(w1v1[[1, 0]], 1e-10));
+        expect(av1[[0, 0]].scalar, closeTo(w1v1[[0, 0]].scalar, 1e-10));
+        expect(av1[[1, 0]].scalar, closeTo(w1v1[[1, 0]].scalar, 1e-10));
       });
     });
 
@@ -98,8 +98,8 @@ void main() {
         expect(w.dtype, equals(DType.float32));
         expect(v.dtype, equals(DType.float32));
 
-        expect(w[[0]], closeTo(1.0, 1e-5));
-        expect(w[[1]], closeTo(3.0, 1e-5));
+        expect(w[[0]].scalar, closeTo(1.0, 1e-5));
+        expect(w[[1]].scalar, closeTo(3.0, 1e-5));
       });
     });
 
@@ -126,29 +126,29 @@ void main() {
         expect(w.dtype, equals(DType.float64));
         expect(v.dtype, equals(DType.complex128));
 
-        expect(w[[0]], closeTo(0.0, 1e-9));
-        expect(w[[1]], closeTo(3.0, 1e-9));
+        expect(w[[0]].scalar, closeTo(0.0, 1e-9));
+        expect(w[[1]].scalar, closeTo(3.0, 1e-9));
 
         final v0 = NDArray.fromList(
           [
-            v[[0, 0]],
-            v[[1, 0]],
+            v[[0, 0]].scalar,
+            v[[1, 0]].scalar,
           ],
           [2, 1],
           DType.complex128,
         );
         final av0 = matmul(a, v0);
 
-        final ev0_0 = v[[0, 0]] as Complex;
-        final ev0_1 = v[[1, 0]] as Complex;
-        final scale = w[[0]] as double;
+        final ev0_0 = v[[0, 0]].scalar;
+        final ev0_1 = v[[1, 0]].scalar;
+        final scale = w[[0]].scalar;
         final expected_0 = ev0_0 * scale;
         final expected_1 = ev0_1 * scale;
 
-        expect(av0[[0, 0]].real, closeTo(expected_0.real, 1e-9));
-        expect(av0[[0, 0]].imag, closeTo(expected_0.imag, 1e-9));
-        expect(av0[[1, 0]].real, closeTo(expected_1.real, 1e-9));
-        expect(av0[[1, 0]].imag, closeTo(expected_1.imag, 1e-9));
+        expect(av0[[0, 0]].scalar.real, closeTo(expected_0.real, 1e-9));
+        expect(av0[[0, 0]].scalar.imag, closeTo(expected_0.imag, 1e-9));
+        expect(av0[[1, 0]].scalar.real, closeTo(expected_1.real, 1e-9));
+        expect(av0[[1, 0]].scalar.imag, closeTo(expected_1.imag, 1e-9));
       });
     });
 
@@ -159,7 +159,7 @@ void main() {
         final res = eigh(a);
         expect(res.eigenvalues.dtype, equals(DType.float64));
         expect(res.eigenvectors.dtype, equals(DType.float64));
-        expect(res.eigenvalues[[0]], closeTo(1.0, 1e-10));
+        expect(res.eigenvalues[[0]].scalar, closeTo(1.0, 1e-10));
       });
     });
 
@@ -178,11 +178,11 @@ void main() {
         expect(w.shape, equals([2, 2]));
         expect(v.shape, equals([2, 2, 2]));
 
-        expect(w[[0, 0]], closeTo(1.0, 1e-10));
-        expect(w[[0, 1]], closeTo(3.0, 1e-10));
+        expect(w[[0, 0]].scalar, closeTo(1.0, 1e-10));
+        expect(w[[0, 1]].scalar, closeTo(3.0, 1e-10));
 
-        expect(w[[1, 0]], closeTo(1.0, 1e-10));
-        expect(w[[1, 1]], closeTo(5.0, 1e-10));
+        expect(w[[1, 0]].scalar, closeTo(1.0, 1e-10));
+        expect(w[[1, 1]].scalar, closeTo(5.0, 1e-10));
       });
     });
 
@@ -193,8 +193,8 @@ void main() {
         final w = eigvalsh(a);
         expect(w.shape, equals([2]));
         expect(w.dtype, equals(DType.float64));
-        expect(w[[0]], closeTo(1.0, 1e-10));
-        expect(w[[1]], closeTo(3.0, 1e-10));
+        expect(w[[0]].scalar, closeTo(1.0, 1e-10));
+        expect(w[[1]].scalar, closeTo(3.0, 1e-10));
       });
     });
 
@@ -206,22 +206,22 @@ void main() {
 
         eigh(a, outEigenvalues: outW, outEigenvectors: outV);
 
-        expect(outW[[0]], closeTo(1.0, 1e-10));
-        expect(outW[[1]], closeTo(3.0, 1e-10));
+        expect(outW[[0]].scalar, closeTo(1.0, 1e-10));
+        expect(outW[[1]].scalar, closeTo(3.0, 1e-10));
 
         // Verify outV contains eigenvectors: A * outV_i = outW_i * outV_i
         final v0 = NDArray.fromList(
           [
-            outV[[0, 0]],
-            outV[[1, 0]],
+            outV[[0, 0]].scalar,
+            outV[[1, 0]].scalar,
           ],
           [2, 1],
           DType.float64,
         );
         final av0 = matmul(a, v0);
-        final w0v0 = v0 * outW[[0]];
-        expect(av0[[0, 0]], closeTo(w0v0[[0, 0]], 1e-10));
-        expect(av0[[1, 0]], closeTo(w0v0[[1, 0]], 1e-10));
+        final w0v0 = v0 * outW[[0]].scalar;
+        expect(av0[[0, 0]].scalar, closeTo(w0v0[[0, 0]].scalar, 1e-10));
+        expect(av0[[1, 0]].scalar, closeTo(w0v0[[1, 0]].scalar, 1e-10));
       });
     });
 
@@ -232,8 +232,8 @@ void main() {
 
         eigvalsh(a, out: outW);
 
-        expect(outW[[0]], closeTo(1.0, 1e-10));
-        expect(outW[[1]], closeTo(3.0, 1e-10));
+        expect(outW[[0]].scalar, closeTo(1.0, 1e-10));
+        expect(outW[[1]].scalar, closeTo(3.0, 1e-10));
       });
     });
 

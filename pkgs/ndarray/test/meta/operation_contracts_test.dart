@@ -641,7 +641,7 @@ void main() {
               ]);
               for (var i = 0; i < outSize; i++) {
                 expect(
-                  untouched[[i]],
+                  untouched[[i]].scalar,
                   equals(99.0),
                   reason:
                       '${op.name} corrupted interstitial elements of strided out',
@@ -671,7 +671,7 @@ void main() {
                 throwsArgumentError,
                 reason: '${op.name} must reject read-only broadcast out view',
               );
-              expect(bcastSource[[0]], equals(99.0));
+              expect(bcastSource[[0]].scalar, equals(99.0));
 
               // Read-only out buffer rejection (isWriteable = false)
               final roOut = NDArray.zeros(outShape, DType.float64)
@@ -761,7 +761,7 @@ void main() {
 
               for (var i = 0; i < 4; i++) {
                 expect(
-                  out[[i]],
+                  out[[i]].scalar,
                   equals(99.0),
                   reason:
                       '${op.name} mutated `out` before shape validation failed',
@@ -776,7 +776,7 @@ void main() {
                 throwsArgumentError,
                 reason: '${op.name} must reject read-only broadcast out view',
               );
-              expect(bcastSrc[[0]], equals(99.0));
+              expect(bcastSrc[[0]].scalar, equals(99.0));
 
               // Read-only out buffer rejection (isWriteable = false)
               final roOut = NDArray.zeros([4], DType.float64)
@@ -857,7 +857,7 @@ void main() {
               expect(ScratchArena.marker, equals(markerBefore));
               for (var i = 0; i < 3; i++) {
                 expect(
-                  out[[i]],
+                  out[[i]].scalar,
                   equals(99.0),
                   reason:
                       '${op.name} mutated `out` before axis validation failed',
@@ -871,7 +871,7 @@ void main() {
                 throwsArgumentError,
                 reason: '${op.name} must reject read-only broadcast out view',
               );
-              expect(bcastSrc[[0]], equals(99.0));
+              expect(bcastSrc[[0]].scalar, equals(99.0));
             });
           },
         );
@@ -1187,7 +1187,7 @@ void main() {
                   throwsA(anyOf(isA<StateError>(), isA<ArgumentError>())),
                   reason: '${op.name} must reject read-only broadcast out view',
                 );
-                expect(bcastSrc[[0]], equals(99.0));
+                expect(bcastSrc[[0]].scalar, equals(99.0));
               }
             });
           },
@@ -1439,7 +1439,7 @@ void main() {
             final gaps = carrier.slice([Slice(start: 1, stop: 16, step: 2)]);
             for (var i = 0; i < 8; i++) {
               expect(
-                gaps[[i]],
+                gaps[[i]].scalar,
                 equals(99.0),
                 reason: 'atUfunc($op) corrupted interstitial element $i',
               );
@@ -1547,7 +1547,7 @@ void main() {
             final gaps = outCarrier.slice([Slice(start: 1, stop: 6, step: 2)]);
             for (var i = 0; i < 3; i++) {
               expect(
-                gaps[[i]],
+                gaps[[i]].scalar,
                 equals(99.0),
                 reason: 'reduceatUfunc($op) corrupted interstitial element $i',
               );
@@ -1566,12 +1566,12 @@ void main() {
                 fold(op, row[2], row[3]),
               ];
               expect(
-                res2[[i, 0]],
+                res2[[i, 0]].scalar,
                 closeTo(expectedRow[0], 1e-12),
                 reason: 'reduceatUfunc($op, axis: 1) row $i segment 0',
               );
               expect(
-                res2[[i, 1]],
+                res2[[i, 1]].scalar,
                 closeTo(expectedRow[1], 1e-12),
                 reason: 'reduceatUfunc($op, axis: 1) row $i segment 1',
               );
@@ -1697,17 +1697,17 @@ void main() {
           final sorted = sort(withNan);
           final idx = argsort(withNan);
           final gathered = take_along_axis(withNan, idx, 0);
-          expect(sorted[[0]], equals(-1.0));
-          expect(sorted[[1]], equals(0.0));
-          expect(sorted[[2]], equals(2.0));
-          expect(sorted[[3]], equals(3.0));
-          expect(sorted[[4]].isNaN, isTrue);
-          expect(sorted[[5]].isNaN, isTrue);
+          expect(sorted[[0]].scalar, equals(-1.0));
+          expect(sorted[[1]].scalar, equals(0.0));
+          expect(sorted[[2]].scalar, equals(2.0));
+          expect(sorted[[3]].scalar, equals(3.0));
+          expect(sorted[[4]].scalar.isNaN, isTrue);
+          expect(sorted[[5]].scalar.isNaN, isTrue);
           for (var i = 0; i < 4; i++) {
-            expect(gathered[[i]], equals(sorted[[i]]));
+            expect(gathered[[i]].scalar, equals(sorted[[i]].scalar));
           }
-          expect(gathered[[4]].isNaN, isTrue);
-          expect(gathered[[5]].isNaN, isTrue);
+          expect(gathered[[4]].scalar.isNaN, isTrue);
+          expect(gathered[[5]].scalar.isNaN, isTrue);
 
           // 2. Strided even (n=8) and odd (n=9) fft/ifft and rfft/irfft round-trip
           for (final n in [8, 9]) {
@@ -1751,10 +1751,10 @@ void main() {
 
           // 1. out == null with where != null must zero-initialize unmasked positions
           final nanRes = nan_to_num(a, where: mask);
-          expect(nanRes[[0]], equals(0.0));
-          expect(nanRes[[1]], equals(0.0));
-          expect(nanRes[[2]], equals(4.0));
-          expect(nanRes[[3]], equals(9.0));
+          expect(nanRes[[0]].scalar, equals(0.0));
+          expect(nanRes[[1]].scalar, equals(0.0));
+          expect(nanRes[[2]].scalar, equals(4.0));
+          expect(nanRes[[3]].scalar, equals(9.0));
 
           // 2. out != null with where != null must preserve existing out values at where == false
           final outBuf = NDArray.full([4], 77.0, dtype: DType.float64);
@@ -1910,7 +1910,7 @@ void main() {
                 final cRes = op(aContig, bContig);
                 final sRes = op(aStrided, bStrided);
                 for (var i = 0; i < n; i++) {
-                  expect(sRes[[i]], equals(cRes[[i]]));
+                  expect(sRes[[i]].scalar, equals(cRes[[i]].scalar));
                 }
               }
             }
@@ -1924,7 +1924,7 @@ void main() {
               final cCmp = cmp(aContig, bContig);
               final sCmp = cmp(aStrided, bStrided);
               for (var i = 0; i < n; i++) {
-                expect(sCmp[[i]], equals(cCmp[[i]]));
+                expect(sCmp[[i]].scalar, equals(cCmp[[i]].scalar));
               }
             }
 
@@ -1941,7 +1941,7 @@ void main() {
                 final cCmp = cmp(aContig, bContig);
                 final sCmp = cmp(aStrided, bStrided);
                 for (var i = 0; i < n; i++) {
-                  expect(sCmp[[i]], equals(cCmp[[i]]));
+                  expect(sCmp[[i]].scalar, equals(cCmp[[i]].scalar));
                 }
               }
             }
@@ -1967,14 +1967,14 @@ void main() {
                 final cRes = intOp(aContig, bContig);
                 final sRes = intOp(aStrided, bStrided);
                 for (var i = 0; i < n; i++) {
-                  expect(sRes[[i]], equals(cRes[[i]]));
+                  expect(sRes[[i]].scalar, equals(cRes[[i]].scalar));
                 }
               }
 
               final cInv = invert(aContig.asBitwiseDType) as NDArray<T>;
               final sInv = invert(aStrided.asBitwiseDType) as NDArray<T>;
               for (var i = 0; i < n; i++) {
-                expect(sInv[[i]], equals(cInv[[i]]));
+                expect(sInv[[i]].scalar, equals(cInv[[i]].scalar));
               }
             }
 
@@ -2001,7 +2001,7 @@ void main() {
                 final cRes = fltOp(f64A, f64B);
                 final sRes = fltOp(f64AStrided, f64BStrided);
                 for (var i = 0; i < n; i++) {
-                  expect(sRes[[i]], closeTo(cRes[[i]], 1e-5));
+                  expect(sRes[[i]].scalar, closeTo(cRes[[i]].scalar, 1e-5));
                 }
               }
 
@@ -2015,7 +2015,7 @@ void main() {
                 final cRes = fltUnary(f64A);
                 final sRes = fltUnary(f64AStrided);
                 for (var i = 0; i < n; i++) {
-                  expect(sRes[[i]], closeTo(cRes[[i]], 1e-5));
+                  expect(sRes[[i]].scalar, closeTo(cRes[[i]].scalar, 1e-5));
                 }
               }
             }
@@ -2030,21 +2030,21 @@ void main() {
               final cAngle = angle(aContig);
               final sAngle = angle(aStrided);
               for (var i = 0; i < n; i++) {
-                final sc = sConj[[i]] as Complex;
-                final cc = cConj[[i]] as Complex;
+                final sc = sConj[[i]].scalar as Complex;
+                final cc = cConj[[i]].scalar as Complex;
                 expect(sc.real, closeTo(cc.real, 1e-5));
                 expect(sc.imag, closeTo(cc.imag, 1e-5));
                 expect(
-                  sReal[[i]] as double,
-                  closeTo(cReal[[i]] as double, 1e-5),
+                  sReal[[i]].scalar as double,
+                  closeTo(cReal[[i]].scalar as double, 1e-5),
                 );
                 expect(
-                  sImag[[i]] as double,
-                  closeTo(cImag[[i]] as double, 1e-5),
+                  sImag[[i]].scalar as double,
+                  closeTo(cImag[[i]].scalar as double, 1e-5),
                 );
                 expect(
-                  sAngle[[i]] as double,
-                  closeTo(cAngle[[i]] as double, 1e-5),
+                  sAngle[[i]].scalar as double,
+                  closeTo(cAngle[[i]].scalar as double, 1e-5),
                 );
               }
             }
@@ -2723,7 +2723,7 @@ void main() {
 
               // partition
               final part = partition(arr, 2);
-              expect(part[[2]], equals(2.0));
+              expect(part[[2]].scalar, equals(2.0));
 
               // argpartition with out:
               final outPartIdx = NDArray<Int64>.zeros([6], DType.int64);
@@ -2917,7 +2917,7 @@ void main() {
               DType.float64,
             );
             final interpVal = interp(xPoints, xp, fp);
-            expect(interpVal[[0]], equals(25.0));
+            expect(interpVal[[0]].scalar, equals(25.0));
 
             // pad
             final toPad = NDArray<Float64>.fromList(
@@ -3008,14 +3008,14 @@ void main() {
 
             final minRes = reduceatUfunc(src, indices, op: BinaryOp.fmin);
             expect(
-              minRes[[0]],
+              minRes[[0]].scalar,
               equals(1.5),
               reason: 'fmin must ignore leading NaN in slice > 16',
             );
 
             final maxRes = reduceatUfunc(src, indices, op: BinaryOp.fmax);
             expect(
-              maxRes[[0]],
+              maxRes[[0]].scalar,
               equals(25.0),
               reason: 'fmax must ignore leading NaN in slice > 16',
             );
@@ -3088,8 +3088,8 @@ void main() {
             // reduceat handles int64
             final indices = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
             final redAt = reduceatUfunc(arr64, indices, op: BinaryOp.maximum);
-            expect(redAt[[0]], equals(0));
-            expect(redAt[[1]], equals(maxInt64));
+            expect(redAt[[0]].scalar, equals(0));
+            expect(redAt[[1]].scalar, equals(maxInt64));
           });
         },
       );
@@ -3157,15 +3157,19 @@ void main() {
 
             // contiguous
             expect(
-              binaryUfunc(aContig, bContig, op: BinaryOp.fmin)[[0]],
+              binaryUfunc(aContig, bContig, op: BinaryOp.fmin)[[0]].scalar,
               equals(1.0),
             );
             expect(
-              binaryUfunc(aContig, bContig, op: BinaryOp.fmax)[[1]],
+              binaryUfunc(aContig, bContig, op: BinaryOp.fmax)[[1]].scalar,
               equals(2.0),
             );
             expect(
-              binaryUfunc(aContig, bContig, op: BinaryOp.fmin)[[3]].isNaN,
+              binaryUfunc(
+                aContig,
+                bContig,
+                op: BinaryOp.fmin,
+              )[[3]].scalar.isNaN,
               isTrue,
             );
 
@@ -3230,15 +3234,15 @@ void main() {
 
             // slice assign with broadcast: target [2, 2], val [2] broadcasts to [2, 2]
             a[[Slice(start: 0, stop: 2), Slice(start: 0, stop: 2)]] = val;
-            expect(a[[0, 0]], equals(10.0));
-            expect(a[[0, 1]], equals(20.0));
-            expect(a[[1, 0]], equals(10.0));
-            expect(a[[1, 1]], equals(20.0));
+            expect(a[[0, 0]].scalar, equals(10.0));
+            expect(a[[0, 1]].scalar, equals(20.0));
+            expect(a[[1, 0]].scalar, equals(10.0));
+            expect(a[[1, 1]].scalar, equals(20.0));
 
             // self-aliasing slice assignment
             a[[Slice(start: 2, stop: 4)]] = a[[Slice(start: 0, stop: 2)]];
-            expect(a[[2, 0]], equals(10.0));
-            expect(a[[2, 1]], equals(20.0));
+            expect(a[[2, 0]].scalar, equals(10.0));
+            expect(a[[2, 1]].scalar, equals(20.0));
           });
         },
       );
@@ -3504,9 +3508,9 @@ void main() {
             );
             final u64 = uniqueWithCounts(f64NaN);
             expect(u64.values.size, equals(3));
-            expect(u64.values[[0]], equals(1.0));
-            expect(u64.values[[1]], equals(2.0));
-            expect(u64.values[[2]].isNaN, isTrue);
+            expect(u64.values[[0]].scalar, equals(1.0));
+            expect(u64.values[[1]].scalar, equals(2.0));
+            expect(u64.values[[2]].scalar.isNaN, isTrue);
             expect(u64.counts.toList(), equals([1, 2, 2]));
           });
         },
@@ -3626,22 +3630,34 @@ void main() {
             expect(cCov.dtype, equals(DType.complex128));
             expect(cCov.shape, equals([2, 2]));
             // Diagonal of Hermitian covariance must be real and non-negative
-            expect(cCov[[0, 0]].imag, closeTo(0.0, 1e-12));
-            expect(cCov[[1, 1]].imag, closeTo(0.0, 1e-12));
-            expect(cCov[[0, 0]].real, greaterThanOrEqualTo(0.0));
-            expect(cCov[[1, 1]].real, greaterThanOrEqualTo(0.0));
+            expect(cCov[[0, 0]].scalar.imag, closeTo(0.0, 1e-12));
+            expect(cCov[[1, 1]].scalar.imag, closeTo(0.0, 1e-12));
+            expect(cCov[[0, 0]].scalar.real, greaterThanOrEqualTo(0.0));
+            expect(cCov[[1, 1]].scalar.real, greaterThanOrEqualTo(0.0));
             // Off-diagonals must be complex conjugates: C[0, 1] == conj(C[1, 0])
-            expect(cCov[[0, 1]].real, closeTo(cCov[[1, 0]].real, 1e-12));
-            expect(cCov[[0, 1]].imag, closeTo(-cCov[[1, 0]].imag, 1e-12));
+            expect(
+              cCov[[0, 1]].scalar.real,
+              closeTo(cCov[[1, 0]].scalar.real, 1e-12),
+            );
+            expect(
+              cCov[[0, 1]].scalar.imag,
+              closeTo(-cCov[[1, 0]].scalar.imag, 1e-12),
+            );
 
             final cCorr = corrcoef(cMat);
             expect(cCorr.dtype, equals(DType.complex128));
-            expect(cCorr[[0, 0]].real, closeTo(1.0, 1e-12));
-            expect(cCorr[[0, 0]].imag, closeTo(0.0, 1e-12));
-            expect(cCorr[[1, 1]].real, closeTo(1.0, 1e-12));
-            expect(cCorr[[1, 1]].imag, closeTo(0.0, 1e-12));
-            expect(cCorr[[0, 1]].real, closeTo(cCorr[[1, 0]].real, 1e-12));
-            expect(cCorr[[0, 1]].imag, closeTo(-cCorr[[1, 0]].imag, 1e-12));
+            expect(cCorr[[0, 0]].scalar.real, closeTo(1.0, 1e-12));
+            expect(cCorr[[0, 0]].scalar.imag, closeTo(0.0, 1e-12));
+            expect(cCorr[[1, 1]].scalar.real, closeTo(1.0, 1e-12));
+            expect(cCorr[[1, 1]].scalar.imag, closeTo(0.0, 1e-12));
+            expect(
+              cCorr[[0, 1]].scalar.real,
+              closeTo(cCorr[[1, 0]].scalar.real, 1e-12),
+            );
+            expect(
+              cCorr[[0, 1]].scalar.imag,
+              closeTo(-cCorr[[1, 0]].scalar.imag, 1e-12),
+            );
 
             // angle(NaN) preserves NaN on real inputs
             final nanReal = NDArray<Float64>.fromList(
@@ -3650,9 +3666,9 @@ void main() {
               DType.float64,
             );
             final ang = angle(nanReal);
-            expect(ang[[0]].isNaN, isTrue);
-            expect(ang[[1]], closeTo(3.141592653589793, 1e-12));
-            expect(ang[[2]], closeTo(0.0, 1e-12));
+            expect(ang[[0]].scalar.isNaN, isTrue);
+            expect(ang[[1]].scalar, closeTo(3.141592653589793, 1e-12));
+            expect(ang[[2]].scalar, closeTo(0.0, 1e-12));
 
             // NDIter.broadcast defensively copies input list
             final a = NDArray<Float64>.ones([2], DType.float64);
@@ -3839,8 +3855,8 @@ void main() {
             final (:h, :q) = hessenberg(m1x1);
             expect(h.shape, equals([1, 1]));
             expect(q.shape, equals([1, 1]));
-            expect(h[[0, 0]], closeTo(7.5, 1e-12));
-            expect(q[[0, 0]], closeTo(1.0, 1e-12));
+            expect(h[[0, 0]].scalar, closeTo(7.5, 1e-12));
+            expect(q[[0, 0]].scalar, closeTo(1.0, 1e-12));
           });
         },
       );
@@ -3875,10 +3891,9 @@ void main() {
             );
             final picked =
                 m[<Object>[
-                      <int>[0, 2],
-                      1,
-                    ]]
-                    as NDArray<Float64>;
+                  <int>[0, 2],
+                  1,
+                ]];
             expect(picked.shape, equals([2]));
             expect(picked.toList(), equals([11.0, 31.0]));
 
@@ -3890,8 +3905,8 @@ void main() {
               [2],
               DType.float64,
             );
-            expect(m[[0, 1]], equals(111.0));
-            expect(m[[2, 1]], equals(331.0));
+            expect(m[[0, 1]].scalar, equals(111.0));
+            expect(m[[2, 1]].scalar, equals(331.0));
           });
         },
       );
@@ -3973,8 +3988,8 @@ void main() {
               DType.complex128,
             );
             final cTan = tan(cLargeIm);
-            expect(cTan[[0]].real, closeTo(0.0, 1e-12));
-            expect(cTan[[0]].imag, closeTo(1.0, 1e-12));
+            expect(cTan[[0]].scalar.real, closeTo(0.0, 1e-12));
+            expect(cTan[[0]].scalar.imag, closeTo(1.0, 1e-12));
 
             final cBig = NDArray<Complex128>.fromList(
               [const Complex(3e200, 4e200)],
@@ -3982,7 +3997,7 @@ void main() {
               DType.complex128,
             );
             final absBig = abs(cBig);
-            expect(absBig[[0]], closeTo(5e200, 1e188));
+            expect(absBig[[0]].scalar, closeTo(5e200, 1e188));
 
             final rBig1 = NDArray<Float64>.fromList(
               [3e200],
@@ -3995,7 +4010,7 @@ void main() {
               DType.float64,
             );
             final hBig = hypot(rBig1, rBig2);
-            expect(hBig[[0]], closeTo(5e200, 1e188));
+            expect(hBig[[0]].scalar, closeTo(5e200, 1e188));
 
             // 3.5: norm NaN propagation for ord: inf, -inf, 1
             final nanVec = NDArray<Float64>.fromList(
@@ -4020,7 +4035,7 @@ void main() {
               ec,
             ]);
             expect(eRes.shape, equals([2, 2, 2, 2]));
-            expect(eRes[[0, 0, 0, 0]], closeTo(3.0, 1e-12));
+            expect(eRes[[0, 0, 0, 0]].scalar, closeTo(3.0, 1e-12));
             expect(
               () => einsum(EinsumSubscripts.parse('ij->ijk'), [ea]),
               throwsArgumentError,
@@ -4117,14 +4132,14 @@ void main() {
               DType.int64,
             );
             final g = gcd(aMin, bGcd);
-            expect(g[[0]], equals(int64Min));
-            expect(g[[1]], equals(4));
+            expect(g[[0]].scalar, equals(int64Min));
+            expect(g[[1]].scalar, equals(4));
 
             final l = lcm(
               NDArray<Int64>.fromList([int64Min], [1], DType.int64),
               NDArray<Int64>.fromList([-2], [1], DType.int64),
             );
-            expect(l[[0]], equals(int64Min));
+            expect(l[[0]].scalar, equals(int64Min));
 
             // cumprod int64 signed overflow wraps cleanly in two's complement
             final bigI64 = NDArray<Int64>.fromList(
@@ -4137,7 +4152,7 @@ void main() {
             // uint64 power exact beyond 2^53 (3^35 = 50031545098999707)
             final uBase = NDArray<Uint64>.fromList([3], [1], DType.uint64);
             final uExp = NDArray<Uint64>.fromList([35], [1], DType.uint64);
-            expect(power(uBase, uExp)[[0]], equals(50031545098999707));
+            expect(power(uBase, uExp)[[0]].scalar, equals(50031545098999707));
 
             // atUfunc shift >= 64 or < 0 returns 0 without C++ shift UB
             final shiftTarget = NDArray<Int64>.fromList(
@@ -4158,8 +4173,8 @@ void main() {
             final dmA = NDArray<Int64>.fromList([int64Min], [1], DType.int64);
             final dmB = NDArray<Int64>.fromList([-1], [1], DType.int64);
             final (:quotient, :remainder) = divmod(dmA, dmB);
-            expect(quotient[[0]], equals(int64Min));
-            expect(remainder[[0]], equals(0));
+            expect(quotient[[0]].scalar, equals(int64Min));
+            expect(remainder[[0]].scalar, equals(0));
 
             // searchsorted on uint64 with high-bit uint64 needle (>= 2^63) and float64 NaN needle
             final uSorted = NDArray<Uint64>.fromList(
@@ -4172,7 +4187,7 @@ void main() {
               [1],
               DType.uint64,
             );
-            expect(searchsorted(uSorted, highBitNeedle)[[0]], equals(3));
+            expect(searchsorted(uSorted, highBitNeedle)[[0]].scalar, equals(3));
             final fSorted = NDArray<Float64>.fromList(
               [10.0, 20.0, 30.0],
               [3],
@@ -4183,7 +4198,7 @@ void main() {
               [1],
               DType.float64,
             );
-            expect(searchsorted(fSorted, nanNeedle)[[0]], equals(3));
+            expect(searchsorted(fSorted, nanNeedle)[[0]].scalar, equals(3));
           });
         },
       );
@@ -4333,7 +4348,7 @@ void main() {
             );
             final spOut = unaryUfunc(spInput, op: UnaryOp.spacing);
             expect(spOut.isDisposed, isFalse);
-            expect(spOut[[0]], greaterThan(0.0));
+            expect(spOut[[0]].scalar, greaterThan(0.0));
 
             // uint64 >= 2^63 in isClose, allClose, arrayEqual, linspace, linspaceGrid
             final uHigh1 = NDArray<Uint64>.fromList([-2, 5], [2], DType.uint64);
@@ -4369,7 +4384,7 @@ void main() {
             );
             expect(mvn.shape, equals([4, 2]));
             for (var i = 0; i < 4; i++) {
-              expect(mvn[[i, 0]], closeTo(mvn[[i, 1]], 1e-6));
+              expect(mvn[[i, 0]].scalar, closeTo(mvn[[i, 1]].scalar, 1e-6));
             }
             final nonSymCov = NDArray<Float64>.fromList(
               [1.0, 2.0, 0.0, 1.0],
@@ -4508,8 +4523,8 @@ void main() {
             ]);
             std(a3d, axis: 2, out: stdOutView);
             expect(allClose(stdOutView, stdExpected), isTrue);
-            expect(stdCarrier[[1, 0]], equals(999.0));
-            expect(stdCarrier[[3, 2]], equals(999.0));
+            expect(stdCarrier[[1, 0]].scalar, equals(999.0));
+            expect(stdCarrier[[3, 2]].scalar, equals(999.0));
 
             // 1.3: count_nonzero on non-contiguous view with axis == null
             final nzBase = NDArray<Float64>.fromList(
@@ -4546,7 +4561,7 @@ void main() {
               out: padOutView,
             );
             expect(allClose(padOutView, padExpected3d), isTrue);
-            expect(padCarrier[[1, 0, 0]], equals(-77.0));
+            expect(padCarrier[[1, 0, 0]].scalar, equals(-77.0));
 
             // 1.5: atUfunc when b is broadcast with 0 < rankB < rankA - 1
             final atA = NDArray<Float64>.zeros([4, 3, 2], DType.float64);
@@ -4557,11 +4572,11 @@ void main() {
               DType.float64,
             );
             atUfunc(atA, atIdx, atB, op: BinaryOp.add);
-            expect(atA[[1, 0, 0]], equals(10.0));
-            expect(atA[[1, 2, 1]], equals(20.0));
-            expect(atA[[3, 1, 0]], equals(10.0));
-            expect(atA[[3, 2, 1]], equals(20.0));
-            expect(atA[[0, 0, 0]], equals(0.0));
+            expect(atA[[1, 0, 0]].scalar, equals(10.0));
+            expect(atA[[1, 2, 1]].scalar, equals(20.0));
+            expect(atA[[3, 1, 0]].scalar, equals(10.0));
+            expect(atA[[3, 2, 1]].scalar, equals(20.0));
+            expect(atA[[0, 0, 0]].scalar, equals(0.0));
 
             // 1.6: unaryUfunc & binaryUfunc across Complex128, Boolean, Float32 out:, cbrt(-8), signbit(-0.0), spacing(Float32)
             final cUfuncIn = NDArray<Complex128>.fromList(
@@ -4570,9 +4585,9 @@ void main() {
               DType.complex128,
             );
             final cNeg = unaryUfunc(cUfuncIn, op: UnaryOp.negative);
-            expect(cNeg[[0]], equals(const Complex(-3.0, -4.0)));
+            expect(cNeg[[0]].scalar, equals(const Complex(-3.0, -4.0)));
             final cConj = unaryUfunc(cUfuncIn, op: UnaryOp.conj);
-            expect(cConj[[0]], equals(const Complex(3.0, -4.0)));
+            expect(cConj[[0]].scalar, equals(const Complex(3.0, -4.0)));
             final bUfuncIn = NDArray<Boolean>.fromList(
               [true, false],
               [2],
@@ -4601,7 +4616,7 @@ void main() {
               DType.float64,
             );
             expect(
-              unaryUfunc(negEight, op: UnaryOp.cbrt)[[0]],
+              unaryUfunc(negEight, op: UnaryOp.cbrt)[[0]].scalar,
               closeTo(-2.0, 1e-12),
             );
             final negZero = NDArray<Float64>.fromList(
@@ -4717,7 +4732,7 @@ void main() {
               DType.float64,
             );
             expect(
-              pdist(cosVecs, metric: DistanceMetric.cosine)[[0]],
+              pdist(cosVecs, metric: DistanceMetric.cosine)[[0]].scalar,
               greaterThanOrEqualTo(0.0),
             );
 
@@ -4780,8 +4795,8 @@ void main() {
             final (:fractional, :integral) = modf(f16);
             expect(fractional.dtype, equals(DType.float64));
             expect(integral.dtype, equals(DType.float64));
-            expect(fractional[[0]], closeTo(0.5, 1e-3));
-            expect(integral[[0]], closeTo(1.0, 1e-3));
+            expect(fractional[[0]].scalar, closeTo(0.5, 1e-3));
+            expect(integral[[0]].scalar, closeTo(1.0, 1e-3));
 
             final (:mantissa, :exponent) = frexp(f16);
             expect(mantissa.dtype, equals(DType.float64));
@@ -4844,9 +4859,9 @@ void main() {
               DType.float64,
             );
             final spOut = unaryUfunc(spIn, op: UnaryOp.spacing);
-            expect(spOut[[0]], equals(double.minPositive));
-            expect(spOut[[1]].isNaN, isTrue);
-            expect(spOut[[2]].isNaN, isTrue);
+            expect(spOut[[0]].scalar, equals(double.minPositive));
+            expect(spOut[[1]].scalar.isNaN, isTrue);
+            expect(spOut[[2]].scalar.isNaN, isTrue);
             expect(
               unaryUfunc(b1, op: UnaryOp.signbit).toList(),
               equals([false, false]),
@@ -4885,18 +4900,18 @@ void main() {
               [3],
               DType.uint16,
             );
-            expect(square(i16)[[0]], equals(16));
-            expect(square(flip(i16))[[2]], equals(16));
-            expect(square(u16)[[0]], equals(16));
-            expect(square(flip(u16))[[2]], equals(16));
-            expect(multiply(i16, i16)[[0]], equals(16));
-            expect(multiply(u16, u16)[[0]], equals(16));
+            expect(square(i16)[[0]].scalar, equals(16));
+            expect(square(flip(i16))[[2]].scalar, equals(16));
+            expect(square(u16)[[0]].scalar, equals(16));
+            expect(square(flip(u16))[[2]].scalar, equals(16));
+            expect(multiply(i16, i16)[[0]].scalar, equals(16));
+            expect(multiply(u16, u16)[[0]].scalar, equals(16));
             expect(prod(i16).scalar, equals(2400));
             expect(prod(flip(i16)).scalar, equals(2400));
             expect(cumprod(i16).toList(), equals([-4, 1200, 2400]));
-            expect(kron(i16, i16)[[0]], equals(16));
-            expect(kron(flip(i16), flip(i16))[[8]], equals(16));
-            expect(outer(i16, i16)[[0, 0]], equals(16));
+            expect(kron(i16, i16)[[0]].scalar, equals(16));
+            expect(kron(flip(i16), flip(i16))[[8]].scalar, equals(16));
+            expect(outer(i16, i16)[[0, 0]].scalar, equals(16));
             expect(cross(i16, flip(i16)).shape, equals([3]));
             final exp16 = NDArray<Int16>.fromList([2, 2, 2], [3], DType.int16);
             final uexp16 = NDArray<Uint16>.fromList(
@@ -4904,14 +4919,14 @@ void main() {
               [3],
               DType.uint16,
             );
-            expect(power(i16, exp16)[[0]], equals(16));
-            expect(power(u16, uexp16)[[0]], equals(16));
+            expect(power(i16, exp16)[[0]].scalar, equals(16));
+            expect(power(u16, uexp16)[[0]].scalar, equals(16));
             expect(
               reduceatUfunc(
                 i16,
                 NDArray<Int64>.fromList([0], [1], DType.int64),
                 op: BinaryOp.multiply,
-              )[[0]],
+              )[[0]].scalar,
               equals(2400),
             );
           });

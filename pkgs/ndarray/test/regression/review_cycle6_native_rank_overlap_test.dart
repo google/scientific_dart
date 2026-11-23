@@ -161,8 +161,8 @@ void main() {
 
             // 1. add: a[1:5] = a[0:4] + a[1:5]
             final aAdd = NDArray<Float64>.fromList(orig, [5], DType.float64);
-            final aAdd04 = aAdd[Slice(start: 0, stop: 4)] as NDArray<Float64>;
-            final aAdd15 = aAdd[Slice(start: 1, stop: 5)] as NDArray<Float64>;
+            final aAdd04 = aAdd[Slice(start: 0, stop: 4)];
+            final aAdd15 = aAdd[Slice(start: 1, stop: 5)];
             final expectedAdd = add(aAdd04, aAdd15).toList();
             add(aAdd04, aAdd15, out: aAdd15);
             expect(aAdd15.toList(), equals(expectedAdd));
@@ -170,8 +170,8 @@ void main() {
 
             // 2. subtract: a[1:5] = a[0:4] - a[1:5]
             final aSub = NDArray<Float64>.fromList(orig, [5], DType.float64);
-            final aSub04 = aSub[Slice(start: 0, stop: 4)] as NDArray<Float64>;
-            final aSub15 = aSub[Slice(start: 1, stop: 5)] as NDArray<Float64>;
+            final aSub04 = aSub[Slice(start: 0, stop: 4)];
+            final aSub15 = aSub[Slice(start: 1, stop: 5)];
             final expectedSub = subtract(aSub04, aSub15).toList();
             subtract(aSub04, aSub15, out: aSub15);
             expect(aSub15.toList(), equals(expectedSub));
@@ -183,8 +183,8 @@ void main() {
               [5],
               DType.float64,
             );
-            final aMul04 = aMul[Slice(start: 0, stop: 4)] as NDArray<Float64>;
-            final aMul15 = aMul[Slice(start: 1, stop: 5)] as NDArray<Float64>;
+            final aMul04 = aMul[Slice(start: 0, stop: 4)];
+            final aMul15 = aMul[Slice(start: 1, stop: 5)];
             final expectedMul = multiply(aMul04, aMul15).toList();
             multiply(aMul04, aMul15, out: aMul15);
             expect(aMul15.toList(), equals(expectedMul));
@@ -196,8 +196,8 @@ void main() {
               [5],
               DType.float64,
             );
-            final aDiv04 = aDiv[Slice(start: 0, stop: 4)] as NDArray<Float64>;
-            final aDiv15 = aDiv[Slice(start: 1, stop: 5)] as NDArray<Float64>;
+            final aDiv04 = aDiv[Slice(start: 0, stop: 4)];
+            final aDiv15 = aDiv[Slice(start: 1, stop: 5)];
             final expectedDiv = divide(aDiv04, aDiv15).toList();
             divide(aDiv04, aDiv15, out: aDiv15);
             expect(aDiv15.toList(), equals(expectedDiv));
@@ -219,7 +219,7 @@ void main() {
 
             // Add into reversed view of a: a[::-1] = a + b
             final a = NDArray<Float64>.fromList(orig, [5], DType.float64);
-            final aRev = a[Slice(step: -1)] as NDArray<Float64>;
+            final aRev = a[Slice(step: -1)];
             final expected = add(a, b).toList();
             add(a, b, out: aRev);
             expect(aRev.toList(), equals(expected));
@@ -227,7 +227,7 @@ void main() {
 
             // Subtract reversed view of a from b into a: a = a[::-1] - b
             final a2 = NDArray<Float64>.fromList(orig, [5], DType.float64);
-            final a2Rev = a2[Slice(step: -1)] as NDArray<Float64>;
+            final a2Rev = a2[Slice(step: -1)];
             final expected2 = subtract(a2Rev, b).toList();
             subtract(a2Rev, b, out: a2);
             expect(a2.toList(), equals(expected2));

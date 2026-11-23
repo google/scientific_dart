@@ -121,10 +121,10 @@ void main() {
         expect(res.shape, [2, 2]);
         // [atan2(1,1), atan2(2,1)]
         // [atan2(1,2), atan2(2,2)]
-        expect(res[[0, 0]], closeTo(math.atan2(1, 1), 1e-10));
-        expect(res[[0, 1]], closeTo(math.atan2(2, 1), 1e-10));
-        expect(res[[1, 0]], closeTo(math.atan2(1, 2), 1e-10));
-        expect(res[[1, 1]], closeTo(math.atan2(2, 2), 1e-10));
+        expect(res[[0, 0]].scalar, closeTo(math.atan2(1, 1), 1e-10));
+        expect(res[[0, 1]].scalar, closeTo(math.atan2(2, 1), 1e-10));
+        expect(res[[1, 0]].scalar, closeTo(math.atan2(1, 2), 1e-10));
+        expect(res[[1, 1]].scalar, closeTo(math.atan2(2, 2), 1e-10));
       });
     });
 

@@ -647,3 +647,81 @@ final t_hanning_out = hanning(5, out: f64);
 
 // expect: NDArray<DTypeSpec<DTypeTag, dynamic, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag, DTypeTag>>
 final t_hanning_dyn_dtype = hanning(5, dtype: DType.float64.asAnySpec);
+
+// ---------------------------------------------------------------------------
+// Section E — Typed operator [] and TypedData interop
+// ---------------------------------------------------------------------------
+
+// expect: NDArray<Float64>
+final t_index_int_f64 = f64[0];
+
+// expect: NDArray<Float64>
+final t_index_mask_f64 = f64[b];
+
+// expect: NDArray<Float64>
+final t_index_coords_f64 = f64[[0, 1]];
+
+// expect: double
+final t_index_coords_scalar_f64 = f64[[0, 1]].scalar;
+
+// expect: NDArray<Float64>
+final t_index_sin_composed = sin(f64[b]);
+
+// expect: NDArray<Int32>
+final t_index_indices_i32 = i32[Indices([0, 1])];
+
+// expect: NDArray<DTypeTag>
+final t_index_dyn = dyn[0];
+
+// expect: Float64List
+final t_toTypedData_f64 = f64.toTypedData();
+
+// expect: Float32List
+final t_toTypedData_f32 = f32.toTypedData();
+
+// expect: Uint16List
+final t_toTypedData_f16 = f16.toTypedData();
+
+// expect: Int32List
+final t_toTypedData_i32 = i32.toTypedData();
+
+// expect: Uint8List
+final t_toTypedData_u8 = u8.toTypedData();
+
+// expect: Float64List
+final t_toTypedData_c128 = c128.toTypedData();
+
+// expect: Uint8List
+final t_toTypedData_b = b.toTypedData();
+
+// expect: TypedData
+final t_toTypedData_dyn = dyn.toTypedData();
+
+// expect: TypedData
+final t_toTypedData_anySpec = anySpec.toTypedData();
+
+// expect: Float64List
+final t_asTypedDataView_f64 = f64.asTypedDataView();
+
+// expect: Int64List
+final t_asTypedDataView_i64 = i64.asTypedDataView();
+
+// expect: TypedData
+final t_asTypedDataView_dyn = dyn.asTypedDataView();
+
+// expect: double
+final t_withTypedData_f64 = f64.withTypedData((data) => data[0]);
+
+// expect: Uint8List
+final t_toBytes_f64 = f64.toBytes();
+
+// expect: Uint8List
+final t_asBytesView_f64 = f64.asBytesView();
+
+// expect: NDArray<Float64>
+final t_fromTypedData_f64 = NDArray.fromTypedData(t_toTypedData_f64, [
+  2,
+], DType.float64);
+
+// expect: NDArray<Int32>
+final t_fromBytes_i32 = NDArray.fromBytes(t_toBytes_f64, [2], DType.int32);

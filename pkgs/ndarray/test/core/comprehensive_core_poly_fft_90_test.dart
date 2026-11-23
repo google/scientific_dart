@@ -306,8 +306,8 @@ void main() {
         final a = NDArray.fromList([1, 2, 3, 4, 5, 6], [2, 3], DType.int32);
 
         // Coordinate access via List<int>
-        expect(a[[0, 1]], equals(2));
-        expect(a[[1, 2]], equals(6));
+        expect(a[[0, 1]].scalar, equals(2));
+        expect(a[[1, 2]].scalar, equals(6));
 
         // Single integer row access
         final row0 = a[0] as NDArray<AnySpec>;
@@ -316,7 +316,7 @@ void main() {
 
         // Scalar mutation via operator []=
         a[[0, 1]] = 99;
-        expect(a[[0, 1]], equals(99));
+        expect(a[[0, 1]].scalar, equals(99));
 
         // Sliced mutation via operator []=
         a[1] = NDArray.fromList([77, 88, 99], [3], DType.int32);

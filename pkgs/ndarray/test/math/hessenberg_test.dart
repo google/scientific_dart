@@ -36,7 +36,7 @@ void main() {
         expect(q.dtype, equals(DType.float64));
 
         // Check H is Hessenberg (h[2,0] should be 0)
-        expect(h[[2, 0]], closeTo(0.0, 1e-10));
+        expect(h[[2, 0]].scalar, closeTo(0.0, 1e-10));
 
         // Check A = Q * H * Q^T
         final qT = q.transposed;
@@ -45,7 +45,7 @@ void main() {
 
         for (var r = 0; r < 3; r++) {
           for (var c = 0; c < 3; c++) {
-            expect(recon[[r, c]], closeTo(a[[r, c]], 1e-10));
+            expect(recon[[r, c]].scalar, closeTo(a[[r, c]].scalar, 1e-10));
           }
         }
       });
@@ -80,16 +80,22 @@ void main() {
         expect(q.dtype, equals(DType.complex128));
 
         // Check H is Hessenberg (h[2,0] should be 0)
-        expect(h[[2, 0]].real, closeTo(0.0, 1e-10));
-        expect(h[[2, 0]].imag, closeTo(0.0, 1e-10));
+        expect(h[[2, 0]].scalar.real, closeTo(0.0, 1e-10));
+        expect(h[[2, 0]].scalar.imag, closeTo(0.0, 1e-10));
 
         // Check A = Q * H * Q^H
         final recon = matmul(matmul(q, h), conj(q).transposed);
 
         for (var r = 0; r < 3; r++) {
           for (var c = 0; c < 3; c++) {
-            expect(recon[[r, c]].real, closeTo(a[[r, c]].real, 1e-10));
-            expect(recon[[r, c]].imag, closeTo(a[[r, c]].imag, 1e-10));
+            expect(
+              recon[[r, c]].scalar.real,
+              closeTo(a[[r, c]].scalar.real, 1e-10),
+            );
+            expect(
+              recon[[r, c]].scalar.imag,
+              closeTo(a[[r, c]].scalar.imag, 1e-10),
+            );
           }
         }
       });
@@ -107,12 +113,12 @@ void main() {
 
         hessenberg(a, outH: outH, outQ: outQ);
 
-        expect(outH[[2, 0]], closeTo(0.0, 1e-10));
+        expect(outH[[2, 0]].scalar, closeTo(0.0, 1e-10));
         // Verify reconstruction A = Q * H * Q^T
         final recon = matmul(matmul(outQ, outH), outQ.transposed);
         for (var r = 0; r < 3; r++) {
           for (var c = 0; c < 3; c++) {
-            expect(recon[[r, c]], closeTo(a[[r, c]], 1e-10));
+            expect(recon[[r, c]].scalar, closeTo(a[[r, c]].scalar, 1e-10));
           }
         }
       });
@@ -140,9 +146,9 @@ void main() {
         expect(res.q.shape, equals([2, 3, 3]));
 
         // Check H[0, 2, 0] == 0
-        expect(res.h[[0, 2, 0]], closeTo(0.0, 1e-10));
+        expect(res.h[[0, 2, 0]].scalar, closeTo(0.0, 1e-10));
         // Check H[1, 2, 0] == 0
-        expect(res.h[[1, 2, 0]], closeTo(0.0, 1e-10));
+        expect(res.h[[1, 2, 0]].scalar, closeTo(0.0, 1e-10));
       });
     });
   });

@@ -47,12 +47,12 @@ void main() {
 
             for (var i = 0; i < 64; i++) {
               if (i.isOdd) {
-                expect(resExp[[i]], equals(0.0));
-                expect(resLog[[i]], equals(0.0));
-                expect(resLog2[[i]], equals(0.0));
-                expect(resLog10[[i]], equals(0.0));
+                expect(resExp[[i]].scalar, equals(0.0));
+                expect(resLog[[i]].scalar, equals(0.0));
+                expect(resLog2[[i]].scalar, equals(0.0));
+                expect(resLog10[[i]].scalar, equals(0.0));
               } else {
-                expect(resLog2[[i]], closeTo(2.0, 1e-12));
+                expect(resLog2[[i]].scalar, closeTo(2.0, 1e-12));
               }
             }
           });
@@ -83,13 +83,13 @@ void main() {
 
             for (var i = 0; i < 64; i++) {
               if (i.isOdd) {
-                expect(resNot[[i]], isFalse);
-                expect(resOr[[i]], isFalse);
-                expect(resEq[[i]], isFalse);
+                expect(resNot[[i]].scalar, isFalse);
+                expect(resOr[[i]].scalar, isFalse);
+                expect(resEq[[i]].scalar, isFalse);
               } else {
-                expect(resNot[[i]], isTrue);
-                expect(resOr[[i]], isTrue);
-                expect(resEq[[i]], isTrue);
+                expect(resNot[[i]].scalar, isTrue);
+                expect(resOr[[i]].scalar, isTrue);
+                expect(resEq[[i]].scalar, isTrue);
               }
             }
           });
@@ -123,11 +123,11 @@ void main() {
 
             for (var i = 0; i < 64; i++) {
               if (i.isOdd) {
-                expect(resInv[[i]], equals(0));
-                expect(resOr[[i]], equals(0));
+                expect(resInv[[i]].scalar, equals(0));
+                expect(resOr[[i]].scalar, equals(0));
               } else {
-                expect(resInv[[i]], equals(-1));
-                expect(resOr[[i]], equals(7));
+                expect(resInv[[i]].scalar, equals(-1));
+                expect(resOr[[i]].scalar, equals(7));
               }
             }
           });

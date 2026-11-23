@@ -81,8 +81,8 @@ void main() {
             NDArray.scalar(totalVar, dtype: DType.float64),
           );
           final cumExplained = cumsum(explainedRatios);
-          expect(cumExplained[[1]], greaterThan(0.995));
-          expect(cumExplained[[3]], closeTo(1.0, 1e-12));
+          expect(cumExplained[[1]].scalar, greaterThan(0.995));
+          expect(cumExplained[[3]].scalar, closeTo(1.0, 1e-12));
 
           // 6. Project onto top-2 principal components and reconstruct
           final top2Components = eigVecsDesc.slice([
@@ -104,7 +104,8 @@ void main() {
             norm(residual, ord: NormKind.frobenius),
           ).scalar;
           final tailVarSum =
-              (nSamples - 1) * (eigValsDesc[[2]] + eigValsDesc[[3]]);
+              (nSamples - 1) *
+              (eigValsDesc[[2]].scalar + eigValsDesc[[3]].scalar);
           expect(frobErrSq, closeTo(tailVarSum, 1e-9));
         });
       },
@@ -150,8 +151,8 @@ void main() {
           final rawMag = abs(rfft(composite));
           // Peak at 8 Hz (bin 8) and 72 Hz (bin 72)
           expect(argmax(rawMag).scalar, equals(8));
-          expect(freqs[[8]], closeTo(8.0, 1e-12));
-          expect(rawMag[[72]], closeTo(1.5 * n / 2.0, 1e-9));
+          expect(freqs[[8]].scalar, closeTo(8.0, 1e-12));
+          expect(rawMag[[72]].scalar, closeTo(1.5 * n / 2.0, 1e-9));
 
           // 2. Design a 33-tap Hamming-windowed sinc low-pass FIR filter with cutoff fc = 24 Hz
           const taps = 33;
@@ -340,13 +341,14 @@ void main() {
             DType.float64,
           );
           final exactIntegral =
-              polyval(pIntCoeffs, NDArray.fromList([2.0], [1], DType.float64))[[
-                0,
-              ]] -
+              polyval(
+                pIntCoeffs,
+                NDArray.fromList([2.0], [1], DType.float64),
+              )[[0]].scalar -
               polyval(
                 pIntCoeffs,
                 NDArray.fromList([-2.0], [1], DType.float64),
-              )[[0]];
+              )[[0]].scalar;
           final numIntegral = trapz(
             y,
             spacing: const Spacing.step(4.0 / 40.0),
@@ -476,9 +478,9 @@ void main() {
 
           // 2. SVD rank-2 compression recovers a rank-2 separable sum to machine precision!
           final svdRes = svd(field);
-          expect(svdRes.s[[0]], greaterThan(1.0));
-          expect(svdRes.s[[1]], greaterThan(0.5));
-          expect(svdRes.s[[2]], lessThan(1e-12));
+          expect(svdRes.s[[0]].scalar, greaterThan(1.0));
+          expect(svdRes.s[[1]].scalar, greaterThan(0.5));
+          expect(svdRes.s[[2]].scalar, lessThan(1e-12));
 
           final u2 = svdRes.u.slice([
             const Slice.all(),

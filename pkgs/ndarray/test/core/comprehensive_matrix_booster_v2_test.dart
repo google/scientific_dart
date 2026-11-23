@@ -52,13 +52,13 @@ void main() {
         return val;
       });
 
-      final dtObj = dt;
+      final dtObj = dt.asAnySpec;
       if (strided) {
         final flatArr = NDArray.fromList(rawList, [size * 2], dtObj);
         final sliced = flatArr[Slice(step: 2)];
         return sliced.reshape(shape);
       } else {
-        return NDArray.fromList(rawList, shape, (dtObj as DType<AnySpec>));
+        return NDArray.fromList(rawList, shape, dtObj);
       }
     }
 

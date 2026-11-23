@@ -2749,9 +2749,6 @@ eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
     final jobvr = 'V'.codeUnitAt(0);
 
     final aDType = a.dtype as DType<DTypeTag>;
-    if (aDType == DType.boolean) {
-      throw UnimplementedError('eig not supported for dtype ${a.dtype}');
-    }
     final bool wasCast = _promotesToFloat64(aDType);
     final NDArray src = wasCast ? castNDArray(a, DType.float64) : a;
     try {
@@ -3005,7 +3002,8 @@ eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
 /// **Preconditions:**
 /// - It is an error if [a] or [out] is disposed.
 /// - It is an error if [a] is not square or rank < 2.
-/// - It is an error if [a] has integer dtype or an unsupported dtype.
+/// - Integer, boolean, `float16`, and `bfloat16` inputs are promoted to `float64`
+///   and return `complex128` eigenvalues.
 /// - It is an error if [out] is provided and has incompatible shape or dtype.
 ///
 /// **Throws:**
@@ -3081,9 +3079,6 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
     final jobvr = 'N'.codeUnitAt(0);
 
     final aDType = a.dtype as DType<DTypeTag>;
-    if (aDType == DType.boolean) {
-      throw UnimplementedError('eigvals not supported for dtype ${a.dtype}');
-    }
     final bool wasCast = _promotesToFloat64(aDType);
     final NDArray src = wasCast ? castNDArray(a, DType.float64) : a;
     try {

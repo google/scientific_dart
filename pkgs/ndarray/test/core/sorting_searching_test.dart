@@ -1787,11 +1787,11 @@ void main() {
           DType.float64,
         );
         final s = sort(withNan);
-        expect(s[[0]], equals(-2.0));
-        expect(s[[1]], equals(1.0));
-        expect(s[[2]], equals(3.0));
-        expect(s[[3]].isNaN, isTrue);
-        expect(s[[4]].isNaN, isTrue);
+        expect(s[[0]].scalar, equals(-2.0));
+        expect(s[[1]].scalar, equals(1.0));
+        expect(s[[2]].scalar, equals(3.0));
+        expect(s[[3]].scalar.isNaN, isTrue);
+        expect(s[[4]].scalar.isNaN, isTrue);
 
         // Stable argsort preserves original order of equal elements
         final ties = NDArray.fromList([5, 2, 5, 2, 5], [5], DType.int64);
