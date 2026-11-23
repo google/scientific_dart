@@ -345,6 +345,20 @@ void main() {
 
 ---
 
+## Benchmarks
+
+`package:ndarray` ships a curated, reproducible benchmark suite comparing **Dart AOT** (compiled via `dart build cli` with bundled native assets) against **PyPI NumPy** (OpenBLAS) and **SciPy** (`scipy.spatial.distance`) on identical deterministic pseudorandom inputs, using matching warmup and batch-calibrated median/IQR timing plus automatic numerical parity checks across every operation.
+
+Run it locally from `pkgs/ndarray` (using a Python environment with PyPI `numpy`, and optionally `scipy`):
+
+```bash
+dart run benchmark/run_readme_benchmark.dart --python /path/to/venv/bin/python
+```
+
+Add `--strict-blas` to fail fast if your system Python links reference Netlib BLAS instead of OpenBLAS/MKL, or `--quick` for a fast smoke check. The same suite can also be triggered on GitHub Actions via the manual [`Benchmarks (Dart AOT vs NumPy/SciPy)`](https://github.com/google/scientific_dart/actions/workflows/benchmark.yml) workflow on `ubuntu-latest` to generate verified reports.
+
+---
+
 ## Supported Data Types (`DType<T>`)
 
 `ndarray` provides strict compile-time and runtime type safety across **15 numerical and logical data types**:
