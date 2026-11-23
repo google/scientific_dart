@@ -79,7 +79,7 @@ void main() {
       if (strided) {
         final flatArr = NDArray.fromList(rawList, [size * 2], dt);
         final sliced = flatArr[Slice(step: 2)];
-        return sliced.reshape(shape) as NDArray<T>;
+        return sliced.reshape(shape);
       } else {
         return NDArray.fromList(rawList, shape, dt);
       }

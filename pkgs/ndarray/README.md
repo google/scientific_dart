@@ -34,14 +34,14 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
 - **Spectral Transforms & DSP**:
   - Mixed-radix 1D, 2D, and N-dimensional complex and real Fast Fourier Transforms (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `fftn`) powered by `package:pocketfft`.
   - Frequency bin generators (`fftfreq`, `rfftfreq`) and zero-frequency shifting (`fftshift`, `ifftshift`).
-  - 1D/2D convolution and cross-correlation (`convolve`, `correlate`).
-  - Spectral window functions (Hann, Hamming, Blackman, Bartlett, Kaiser).
+  - 1D/2D convolution and 1D cross-correlation (`convolve`, `convolve2d`, `correlate`).
+  - Spectral window functions (Hann `hanning` and Hamming `hamming`).
 - **Numerical Optimization & Root Finding**:
   - Multivariate nonlinear function minimization (`minimize`) supporting quasi-Newton **L-BFGS** (`MinimizeMethod.lbfgs`) and derivative-free **Nelder-Mead** simplex (`MinimizeMethod.nelderMead`).
   - 1D scalar root finding (`rootScalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
-- **Spatial Distance Metrics & Orthogonal Polynomials**:
-  - Pairwise distance matrix computations (`pdist`, `cdist`, `squareform`) across Euclidean, Manhattan, Cosine, Chebyshev, and Minkowski metrics.
-  - Classical orthogonal polynomial evaluation, fitting, differentiation, integration, and root/quadrature generation (Chebyshev, Legendre, Hermite, Laguerre).
+- **Spatial Distance Metrics & Polynomials**:
+  - Pairwise distance matrix computations (`pdist`, `cdist`) across Euclidean, Cosine, Hamming, and Chebyshev metrics.
+  - Standard polynomial fitting, evaluation, differentiation, integration, and root finding (`polyfit`, `polyval`, `polyder`, `polyint`, `roots`), plus classical orthogonal polynomial evaluation and root finding (Chebyshev, Legendre, Hermite, Laguerre).
 - **Zero-Copy NumPy `.npy` & `.npz` Streaming I/O**:
   - Native binary serialization and deserialization for single arrays (`save`, `load`).
   - Multi-array ZIP archives (`savez`, `loadz` with optional compression), enabling data exchange with Python, NumPy, SciPy, and PyTorch pipelines.

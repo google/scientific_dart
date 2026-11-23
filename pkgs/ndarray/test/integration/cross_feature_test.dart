@@ -250,7 +250,7 @@ void main() {
             return loaded['b']! as NDArray<Float64>;
           });
           expect(escaped.isDisposed, isFalse);
-          expect(escaped[[10]], closeTo(100.0, 1e-12));
+          expect(escaped[[10]].scalar, closeTo(100.0, 1e-12));
         });
       },
     );
@@ -276,9 +276,9 @@ void main() {
             ),
             NDArray.scalar(0.5, dtype: DType.float64),
           );
-          expect(cdf[[0]], closeTo(0.025, 1e-6));
-          expect(cdf[[1]], closeTo(0.500, 1e-6));
-          expect(cdf[[2]], closeTo(0.975, 1e-6));
+          expect(cdf[[0]].scalar, closeTo(0.025, 1e-6));
+          expect(cdf[[1]].scalar, closeTo(0.500, 1e-6));
+          expect(cdf[[2]].scalar, closeTo(0.975, 1e-6));
         });
       },
     );
@@ -310,9 +310,9 @@ void main() {
           out: out,
         );
         // Border elements where mask is false remain -1.0; interior [1,1] is 1 + 20 = 21.0
-        expect(out[[0, 0]], equals(-1.0));
-        expect(out[[1, 1]], equals(21.0));
-        expect(out[[2, 2]], equals(31.0));
+        expect(out[[0, 0]].scalar, equals(-1.0));
+        expect(out[[1, 1]].scalar, equals(21.0));
+        expect(out[[2, 2]].scalar, equals(31.0));
       });
     });
 
@@ -335,8 +335,8 @@ void main() {
           final magHann = abs(rfft(windowedSig));
 
           // Distant bin k = 30 side-lobe energy relative to peak is much lower with Hanning window
-          final rectRatio = magRect[[30]] / max(magRect).scalar;
-          final hannRatio = magHann[[30]] / max(magHann).scalar;
+          final rectRatio = magRect[[30]].scalar / max(magRect).scalar;
+          final hannRatio = magHann[[30]].scalar / max(magHann).scalar;
           expect(hannRatio, lessThan(rectRatio * 0.1));
         });
       },
@@ -371,7 +371,7 @@ void main() {
             spacing: const Spacing.step(dt),
           );
           // At midpoint t = 1.0 (index 100), dφ/dt == 3 + 4(1) = 7.0
-          expect(instFreq[[100]], closeTo(7.0, 1e-3));
+          expect(instFreq[[100]].scalar, closeTo(7.0, 1e-3));
 
           // Integrating instFreq over [0, 2] via trapz recovers φ(2) - φ(0) = 6 + 8 = 14.0
           expect(
@@ -647,7 +647,7 @@ void main() {
 
           // Interior finite-difference gradient also matches cos(x) to O(dx^2)
           final fdGrad = gradient(y, spacing: const Spacing.step(dx));
-          expect(fdGrad[[16]], closeTo(exactDeriv[[16]], 1e-2));
+          expect(fdGrad[[16]].scalar, closeTo(exactDeriv[[16]].scalar, 1e-2));
         });
       },
     );

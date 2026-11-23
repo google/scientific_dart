@@ -12,8 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'dart:typed_data';
 import 'dart:collection';
+import 'dart:typed_data';
+
+import 'package:meta/meta.dart';
 
 /// Bitwise conversion utilities and List wrappers for 16-bit floating point formats.
 final class Float16Utils {
@@ -190,6 +192,10 @@ final class Float16List with ListMixin<double> implements List<double> {
   /// Creates a [Float16List] view backed by [_buffer].
   Float16List(this._buffer);
 
+  /// The underlying raw 16-bit integer buffer.
+  @internal
+  List<int> get backingList => _buffer;
+
   @override
   int get length => _buffer.length;
 
@@ -212,6 +218,10 @@ final class BFloat16List with ListMixin<double> implements List<double> {
 
   /// Creates a [BFloat16List] view backed by [_buffer].
   BFloat16List(this._buffer);
+
+  /// The underlying raw 16-bit integer buffer.
+  @internal
+  List<int> get backingList => _buffer;
 
   @override
   int get length => _buffer.length;

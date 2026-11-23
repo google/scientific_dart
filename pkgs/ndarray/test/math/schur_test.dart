@@ -36,7 +36,7 @@ void main() {
         expect(z.dtype, equals(DType.float64));
 
         // Check T is quasi-upper triangular (t[1,0] should be 0 since eigenvalues are real: 3 and -2)
-        expect(t[[1, 0]], closeTo(0.0, 1e-10));
+        expect(t[[1, 0]].scalar, closeTo(0.0, 1e-10));
 
         // Check A = Z * T * Z^T
         final zT = z.transposed;
@@ -45,7 +45,7 @@ void main() {
 
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
-            expect(recon[[r, c]], closeTo(a[[r, c]], 1e-10));
+            expect(recon[[r, c]].scalar, closeTo(a[[r, c]].scalar, 1e-10));
           }
         }
       });
@@ -71,8 +71,8 @@ void main() {
         expect(z.dtype, equals(DType.complex128));
 
         // For complex Schur, T must be strictly upper triangular (t[1,0] == 0)
-        expect(t[[1, 0]].real, closeTo(0.0, 1e-10));
-        expect(t[[1, 0]].imag, closeTo(0.0, 1e-10));
+        expect(t[[1, 0]].scalar.real, closeTo(0.0, 1e-10));
+        expect(t[[1, 0]].scalar.imag, closeTo(0.0, 1e-10));
 
         // Check A = Z * T * Z^H
         final recon = matmul(matmul(z, t), conj(z).transposed);
@@ -80,8 +80,8 @@ void main() {
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
             // recon should be real since A was real
-            expect(recon[[r, c]].real, closeTo(a[[r, c]], 1e-10));
-            expect(recon[[r, c]].imag, closeTo(0.0, 1e-10));
+            expect(recon[[r, c]].scalar.real, closeTo(a[[r, c]].scalar, 1e-10));
+            expect(recon[[r, c]].scalar.imag, closeTo(0.0, 1e-10));
           }
         }
       });
@@ -108,16 +108,22 @@ void main() {
         expect(z.dtype, equals(DType.complex128));
 
         // T must be upper triangular
-        expect(t[[1, 0]].real, closeTo(0.0, 1e-10));
-        expect(t[[1, 0]].imag, closeTo(0.0, 1e-10));
+        expect(t[[1, 0]].scalar.real, closeTo(0.0, 1e-10));
+        expect(t[[1, 0]].scalar.imag, closeTo(0.0, 1e-10));
 
         // Check A = Z * T * Z^H
         final recon = matmul(matmul(z, t), conj(z).transposed);
 
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
-            expect(recon[[r, c]].real, closeTo(a[[r, c]].real, 1e-10));
-            expect(recon[[r, c]].imag, closeTo(a[[r, c]].imag, 1e-10));
+            expect(
+              recon[[r, c]].scalar.real,
+              closeTo(a[[r, c]].scalar.real, 1e-10),
+            );
+            expect(
+              recon[[r, c]].scalar.imag,
+              closeTo(a[[r, c]].scalar.imag, 1e-10),
+            );
           }
         }
       });
@@ -135,12 +141,12 @@ void main() {
 
         schur(a, outT: outT, outZ: outZ);
 
-        expect(outT[[1, 0]], closeTo(0.0, 1e-10));
+        expect(outT[[1, 0]].scalar, closeTo(0.0, 1e-10));
         // Verify reconstruction A = Z * T * Z^T
         final recon = matmul(matmul(outZ, outT), outZ.transposed);
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
-            expect(recon[[r, c]], closeTo(a[[r, c]], 1e-10));
+            expect(recon[[r, c]].scalar, closeTo(a[[r, c]].scalar, 1e-10));
           }
         }
       });
@@ -166,9 +172,9 @@ void main() {
         expect(res.z.shape, equals([2, 2, 2]));
 
         // Check first matrix in batch
-        expect(res.t[[0, 1, 0]], closeTo(0.0, 1e-10));
+        expect(res.t[[0, 1, 0]].scalar, closeTo(0.0, 1e-10));
         // Check second matrix in batch
-        expect(res.t[[1, 1, 0]], closeTo(0.0, 1e-10));
+        expect(res.t[[1, 1, 0]].scalar, closeTo(0.0, 1e-10));
       });
     });
 
@@ -218,19 +224,22 @@ void main() {
             DType.float64,
           );
           final real = schur(a);
-          expect(real.t[[1, 0]].abs(), greaterThan(1e-6));
+          expect(real.t[[1, 0]].scalar.abs(), greaterThan(1e-6));
 
           final res = complexSchur(a);
-          expect(res.t[[1, 0]].real, closeTo(0.0, 1e-10));
-          expect(res.t[[1, 0]].imag, closeTo(0.0, 1e-10));
-          expect(res.t[[0, 0]].real, closeTo(1.0, 1e-10));
-          expect(res.t[[0, 0]].imag.abs(), closeTo(2.0, 1e-10));
+          expect(res.t[[1, 0]].scalar.real, closeTo(0.0, 1e-10));
+          expect(res.t[[1, 0]].scalar.imag, closeTo(0.0, 1e-10));
+          expect(res.t[[0, 0]].scalar.real, closeTo(1.0, 1e-10));
+          expect(res.t[[0, 0]].scalar.imag.abs(), closeTo(2.0, 1e-10));
 
           final recon = matmul(matmul(res.z, res.t), conj(res.z).transposed);
           for (var r = 0; r < 2; r++) {
             for (var c = 0; c < 2; c++) {
-              expect(recon[[r, c]].real, closeTo(a[[r, c]], 1e-10));
-              expect(recon[[r, c]].imag, closeTo(0.0, 1e-10));
+              expect(
+                recon[[r, c]].scalar.real,
+                closeTo(a[[r, c]].scalar, 1e-10),
+              );
+              expect(recon[[r, c]].scalar.imag, closeTo(0.0, 1e-10));
             }
           }
 
@@ -239,7 +248,7 @@ void main() {
           final viaOut = complexSchur(a, outT: outT, outZ: outZ);
           expect(identical(viaOut.t, outT), isTrue);
           expect(identical(viaOut.z, outZ), isTrue);
-          expect(outT[[1, 0]].real, closeTo(0.0, 1e-10));
+          expect(outT[[1, 0]].scalar.real, closeTo(0.0, 1e-10));
         });
       },
     );

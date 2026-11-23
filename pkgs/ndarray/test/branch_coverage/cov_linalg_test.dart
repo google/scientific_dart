@@ -377,8 +377,11 @@ void main() {
         expect(() => eigValues(a, out: disposedC128), throwsStateError);
         expect(() => eigValues(a, out: badW), throwsArgumentError);
         final boolMat = NDArray.zeros([2, 2], DType.boolean);
-        expect(() => eig(boolMat), throwsUnimplementedError);
-        expect(() => eigValues(boolMat), throwsUnimplementedError);
+        final eigBool = eig(boolMat);
+        expect(eigBool.eigenvalues.dtype, DType.complex128);
+        expect(eigBool.eigenvectors.dtype, DType.complex128);
+        final eigvalsBool = eigValues(boolMat);
+        expect(eigvalsBool.dtype, DType.complex128);
       });
     });
 

@@ -206,7 +206,7 @@ void main() {
             final b = a.squeeze();
             expect(b.shape, isEmpty);
             expect(b.strides, isEmpty);
-            expect(b[[]], 5.5);
+            expect(b[[]].scalar, 5.5);
           }),
         );
       });
@@ -392,12 +392,12 @@ void main() {
             ).reshape([1, 2, 3]);
             final b = tile(a, [2, 2, 2]);
             expect(b.shape, [2, 4, 6]);
-            expect(b[[0, 0, 0]], 0);
-            expect(b[[0, 0, 3]], 0);
-            expect(b[[0, 2, 0]], 0);
-            expect(b[[1, 0, 0]], 0);
-            expect(b[[0, 1, 2]], 5);
-            expect(b[[1, 3, 5]], 5);
+            expect(b[[0, 0, 0]].scalar, 0);
+            expect(b[[0, 0, 3]].scalar, 0);
+            expect(b[[0, 2, 0]].scalar, 0);
+            expect(b[[1, 0, 0]].scalar, 0);
+            expect(b[[0, 1, 2]].scalar, 5);
+            expect(b[[1, 3, 5]].scalar, 5);
           }),
         );
 
@@ -416,7 +416,7 @@ void main() {
             expect(tiled.shape, [8, 9]);
             for (var r = 0; r < 8; r++) {
               for (var c = 0; c < 9; c++) {
-                expect(tiled[[r, c]], transposed[[r % 4, c % 3]]);
+                expect(tiled[[r, c]].scalar, transposed[[r % 4, c % 3]].scalar);
               }
             }
           }),
@@ -434,11 +434,11 @@ void main() {
             final result = tile(a, [2, 2], out: out);
             expect(identical(result, out), true);
             expect(out.shape, [4, 4]);
-            expect(out[[0, 0]], 1.0);
-            expect(out[[0, 2]], 1.0);
-            expect(out[[2, 0]], 1.0);
-            expect(out[[2, 2]], 1.0);
-            expect(out[[3, 3]], 4.0);
+            expect(out[[0, 0]].scalar, 1.0);
+            expect(out[[0, 2]].scalar, 1.0);
+            expect(out[[2, 0]].scalar, 1.0);
+            expect(out[[2, 2]].scalar, 1.0);
+            expect(out[[3, 3]].scalar, 4.0);
           }),
         );
 
@@ -473,10 +473,10 @@ void main() {
             );
             final tiledC128 = tile(c128, [2]);
             expect(tiledC128.shape, [4]);
-            expect(tiledC128[[0]], Complex(1.0, 2.0));
-            expect(tiledC128[[1]], Complex(3.0, 4.0));
-            expect(tiledC128[[2]], Complex(1.0, 2.0));
-            expect(tiledC128[[3]], Complex(3.0, 4.0));
+            expect(tiledC128[[0]].scalar, Complex(1.0, 2.0));
+            expect(tiledC128[[1]].scalar, Complex(3.0, 4.0));
+            expect(tiledC128[[2]].scalar, Complex(1.0, 2.0));
+            expect(tiledC128[[3]].scalar, Complex(3.0, 4.0));
 
             // Complex64
             final c64 = NDArray<Complex64>.fromList(
@@ -486,10 +486,10 @@ void main() {
             );
             final tiledC64 = tile(c64, [2]);
             expect(tiledC64.shape, [4]);
-            expect(tiledC64[[0]], Complex(1.0, 2.0));
-            expect(tiledC64[[1]], Complex(3.0, 4.0));
-            expect(tiledC64[[2]], Complex(1.0, 2.0));
-            expect(tiledC64[[3]], Complex(3.0, 4.0));
+            expect(tiledC64[[0]].scalar, Complex(1.0, 2.0));
+            expect(tiledC64[[1]].scalar, Complex(3.0, 4.0));
+            expect(tiledC64[[2]].scalar, Complex(1.0, 2.0));
+            expect(tiledC64[[3]].scalar, Complex(3.0, 4.0));
           }),
         );
 

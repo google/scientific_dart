@@ -36,8 +36,10 @@ void main() {
     print(marr.filled().toList()); // Prints array with masked elements filled
 
     // 2. Element Access
-    print('\nElement at [0, 0] (unmasked): ${marr[[0, 0]]}');
-    print('Element at [0, 1] (masked): ${marr[[0, 1]]}'); // Should be null
+    print('\nElement at [0, 0] (unmasked): ${marr[[0, 0]].scalar}');
+    print(
+      'Element at [0, 1] (masked): ${marr[[0, 1]].scalar}',
+    ); // Should be null
 
     // 3. Slicing
     final slice = marr[0]; // View of row 0

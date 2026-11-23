@@ -130,3 +130,13 @@ void checkInvalidMarkerSubtypes() {
 // Conflicting marker + DTypeSpec row witness (IntegerDType pins ElementOf<int>,
 // so a row declaring Element = double fails with conflicting_generic_interfaces):
 abstract final class _BadInt implements IntegerDType, DTypeSpec<_BadInt, double, Float64, Complex128, Float64, Int64, Float64, Float64> {} // error: conflicting_generic_interfaces
+
+// Typed operator [] and tightened mask/index setter negative probes:
+final t_neg_index_null = f64[null]; // error: argument_type_not_assignable
+void checkBadSetters() {
+  f64.setByMask(b, i32); // error: argument_type_not_assignable
+  f64.setByMaskScalar(b, 'bad'); // error: argument_type_not_assignable
+  f64.setIndices(f64, f64); // error: argument_type_not_assignable
+  f64.setIndicesScalar(f64, 1.0); // error: argument_type_not_assignable
+  i32.setIndicesScalar(i64, 1.5); // error: argument_type_not_assignable
+}

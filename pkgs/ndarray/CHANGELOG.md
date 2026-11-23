@@ -1,5 +1,17 @@
 ## 0.4.0-wip
 
+- **Breaking — Typed `NDArray<T> operator []`, Simplified `Mask`, & Tightened Setters**:
+  - Changed `NDArray.operator [](Object spec)` to always return `NDArray<T>` (instead of `dynamic`). Full-rank coordinate lookups (e.g. `a[[i, j]]`) return 0-D shared-memory views; extract Dart scalars via `.scalar` (e.g. `a[[i, j]].scalar`) or `getCell([i, j])`.
+  - Standardized `operator []` and `operator []=` to treat `List` specs uniformly as per-axis selectors (e.g. `a[[1]]` on a 2-D array selects row 1; use `Indices([i, j])`, an integer `NDArray`, or `take` for fancy selection along axis 0).
+  - Removed `BooleanMask` in favor of `const Mask(NDArray<Boolean> mask)` and unified full-shape and 1-D axis `Mask` handling across `operator []` and `operator []=`.
+  - Tightened `setByMask` (`NDArray<Boolean>`, `NDArray<T>`) and `setIndices` (`NDArray<IntegerDType>`, `NDArray<T>`), and added element-typed `setByMaskScalar` / `setIndicesScalar` extension methods on `NDArrayElements<T, E>` (with untyped fallbacks on `NDArrayBaseElements`).
+- **`TypedData` & Raw-Bytes Interop**:
+  - Added `NDArray.fromTypedData` and `NDArray.fromBytes` bulk-copy factories (respecting subview `offsetInBytes`/`lengthInBytes` and normalizing non-zero `Boolean` bytes to `1`).
+  - Added `toBytes()`, `asBytesView()`, and concrete per-dtype extensions (`NDArrayFloat64TypedData` … `NDArrayBooleanTypedData`, plus `NDArrayBaseTypedData`) exposing `toTypedData()`, `asTypedDataView()`, and `withTypedData(...)` with unmodifiable views when `isWriteable == false` and root owner GC retention.
+  - Fast-pathed `NDArray.fromList` (delegating to `fromTypedData` on matching typed lists) and `toList()`, and fixed `_attachDataOwner` GC retention for `Float16List` / `BFloat16List`.
+- **`eig` / `eigValues` Boolean Promotion & Documentation Fixes**:
+  - Removed leftover `UnimplementedError` guards in `eig` and `eigValues` so `DType.boolean` matrices promote via `float64` → `complex128` like integer inputs.
+  - Fixed `README.md` feature-list drift for DSP, window functions, distance metrics, and polynomials.
 - **Breaking — Idiomatic Dart `camelCase` Public API & Alias Deduplication**:
   - Standardized the entire public API of `package:ndarray` to idiomatic Dart `camelCase`, removed all `snake_case` functions/parameters/aliases, removed duplicate type/enum/function aliases, privatized the accidental `r_median_helper` export, removed `ignore_for_file: non_constant_identifier_names` from all non-FFI operation libraries, and enforced public naming invariants via AST tests.
   - Because `package:ndarray` is pre-1.0, legacy aliases were removed directly without deprecation shims.

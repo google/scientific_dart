@@ -78,17 +78,14 @@ void runPolymorphicNumpyParityExample() {
     print('Matrix A (3x4 arange):');
     print('[0, 1, 2, 3]\n[4, 5, 6, 7]\n[8, 9, 10, 11]');
 
-    // NumPy Parity A: arr[int] returns a direct sub-matrix row view!
+    // NumPy Parity A: arr[int] returns a statically typed NDArray<Int32> row view!
     final rowView = a[1]; // extracts row 1
     print('a[1] (Row 1 view) -> expected [4, 5, 6, 7]: ${rowView.toList()}');
 
-    // NumPy Parity B: arr[List<int>] triggers Fancy Indexing along the first axis!
-    final fancyRows =
-        a[[
-          [0, 2],
-        ]]; // extracts row 0 and row 2
+    // NumPy Parity B: arr[Indices([...])] triggers Fancy Indexing along axis 0!
+    final fancyRows = a[Indices([0, 2])]; // extracts row 0 and row 2
     print(
-      'a[[ [0, 2] ]] (Fancy row extraction) -> shape ${fancyRows.shape}, data: ${fancyRows.toList()}',
+      'a[Indices([0, 2])] (Fancy row extraction) -> shape ${fancyRows.shape}, data: ${fancyRows.toList()}',
     );
 
     // NumPy Parity C: Boolean Mask criteria filtering matches to 1D!
@@ -100,7 +97,7 @@ void runPolymorphicNumpyParityExample() {
     );
 
     // NumPy Parity D: Mutations via operator []= overloads!
-    final data = NDArray.fromList(
+    final data = NDArray.fromTypedData(
       Float64List.fromList([-2.0, 10.0, -5.0, 4.0]),
       [4],
       DType.float64,
@@ -112,13 +109,19 @@ void runPolymorphicNumpyParityExample() {
       'Mutation data[data < 0.0] = 0.0 -> expected [0, 10, 0, 4]: ${data.toList()}',
     );
 
-    // Fancy list assignment sets specific element indices in-place!
-    data[[
-          [1, 3],
-        ]] =
-        99.0;
+    // Fancy index assignment sets specific elements in-place!
+    data[Indices([1, 3])] = 99.0;
     print(
-      'Mutation data[[1, 3]] = 99.0 -> expected [0, 99, 0, 99]: ${data.toList()}',
+      'Mutation data[Indices([1, 3])] = 99.0 -> expected [0, 99, 0, 99]: ${data.toList()}',
+    );
+
+    // TypedData & raw bytes interop
+    final Float64List copied = data.toTypedData();
+    final sumViaView = data.withTypedData((v) => v[0] + v[1] + v[2] + v[3]);
+    final Uint8List rawBytes = data.toBytes();
+    final roundTrip = NDArray.fromBytes(rawBytes, data.shape, DType.float64);
+    print(
+      'TypedData/bytes round-trip -> copied: $copied, sum: $sumViaView, roundTrip: ${roundTrip.toList()}',
     );
   });
 }

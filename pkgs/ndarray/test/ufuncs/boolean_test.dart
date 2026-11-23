@@ -39,10 +39,10 @@ void main() {
         arr[[0]] = true;
         arr[[2]] = true;
 
-        expect(arr[[0]], true);
-        expect(arr[[1]], false);
-        expect(arr[[2]], true);
-        expect(arr[[3]], false);
+        expect(arr[[0]].scalar, true);
+        expect(arr[[1]].scalar, false);
+        expect(arr[[2]].scalar, true);
+        expect(arr[[3]].scalar, false);
 
         expect(arr.toList(), [true, false, true, false]);
       }),

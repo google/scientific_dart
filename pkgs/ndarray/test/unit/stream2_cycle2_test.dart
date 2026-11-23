@@ -52,8 +52,11 @@ void main() {
         DType.float64,
       );
       final aSlice =
-          a[const Slice(start: 1, stop: 6, step: 2)]
-              as NDArray<Float64>; // [10, 20, 30], offset = 1
+          a[const Slice(
+            start: 1,
+            stop: 6,
+            step: 2,
+          )]; // [10, 20, 30], offset = 1
 
       final minArr = NDArray<Float64>.fromList(
         [0.0, 15.0, 0.0, 15.0, 0.0, 15.0],
@@ -61,8 +64,7 @@ void main() {
         DType.float64,
       );
       final minSlice =
-          minArr[const Slice(start: 1, stop: 6, step: 2)]
-              as NDArray<Float64>; // [15, 15, 15]
+          minArr[const Slice(start: 1, stop: 6, step: 2)]; // [15, 15, 15]
 
       final maxArr = NDArray<Float64>.fromList(
         [0.0, 25.0, 0.0, 25.0, 0.0, 25.0],
@@ -70,8 +72,7 @@ void main() {
         DType.float64,
       );
       final maxSlice =
-          maxArr[const Slice(start: 1, stop: 6, step: 2)]
-              as NDArray<Float64>; // [25, 25, 25]
+          maxArr[const Slice(start: 1, stop: 6, step: 2)]; // [25, 25, 25]
 
       final result = clipArray(aSlice, min: minSlice, max: maxSlice);
       expect(result.toList(), equals([15.0, 20.0, 25.0]));
@@ -187,8 +188,7 @@ void main() {
           DType.complex128,
         );
         final cSlice =
-            cArr[const Slice(start: 0, stop: 4, step: 2)]
-                as NDArray<AnySpec>; // [1+2i, 3-4i]
+            cArr[const Slice(start: 0, stop: 4, step: 2)]; // [1+2i, 3-4i]
         final cConj = conj(cSlice);
         expect(cConj.toList(), equals([Complex(1.0, -2.0), Complex(3.0, 4.0)]));
       },
@@ -203,8 +203,7 @@ void main() {
           DType.float64,
         );
         final aSlice =
-            a[const Slice(start: 0, stop: 6, step: 2)]
-                as NDArray<Float64>; // [nan, inf, -inf]
+            a[const Slice(start: 0, stop: 6, step: 2)]; // [nan, inf, -inf]
         final out = NDArray<Float64>.zeros([3], DType.float64);
         final cleaned = nanToNum(
           aSlice,

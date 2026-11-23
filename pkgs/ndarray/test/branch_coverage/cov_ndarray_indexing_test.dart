@@ -235,21 +235,27 @@ void main() {
           bArr2.setByMaskScalar(bArr2, false);
           expect(bArr2.toList(), [false, false]);
 
-          a.setByMaskScalar(m2, NDArray.scalar(3.0, dtype: DType.float64));
+          (a as NDArray<DTypeTag>).setByMaskScalar(
+            m2,
+            NDArray.scalar(3.0, dtype: DType.float64),
+          );
           expect(a.toList(), [3.0, 0.0, 0.0, 3.0]);
-          expect(() => a.setByMaskScalar(m2, v), throwsArgumentError);
+          expect(
+            () => (a as NDArray<DTypeTag>).setByMaskScalar(m2, v),
+            throwsArgumentError,
+          );
 
           final iArr = NDArray.fromList([1, 0], [2], DType.int64);
           iArr.setIndicesScalar(iArr, 5);
           expect(iArr.toList(), [5, 5]);
 
-          iArr.setIndicesScalar(
+          (iArr as NDArray<DTypeTag>).setIndicesScalar(
             NDArray.fromList([0], [1], DType.int64),
             NDArray.scalar(9, dtype: DType.int64),
           );
           expect(iArr.toList(), [9, 5]);
           expect(
-            () => iArr.setIndicesScalar(
+            () => (iArr as NDArray<DTypeTag>).setIndicesScalar(
               NDArray.fromList([0], [1], DType.int64),
               NDArray.fromList([1, 2], [2], DType.int64),
             ),
@@ -314,15 +320,14 @@ void main() {
           [3],
           DType.int64,
         ).slice([const Slice(step: 2)]);
-        expect((a[stridedIdx] as NDArray).shape, [2, 3]);
+        expect(a[stridedIdx].shape, [2, 3]);
 
-        expect((a[[<int>[], const Slice.all()]] as NDArray).shape, [0, 3]);
+        expect(a[[<int>[], const Slice.all()]].shape, [0, 3]);
         expect(
-          (a[[
-                    [true, false],
-                    const Slice.all(),
-                  ]]
-                  as NDArray)
+          a[[
+                [true, false],
+                const Slice.all(),
+              ]]
               .shape,
           [1, 3],
         );
@@ -334,13 +339,12 @@ void main() {
         expect(a.getCell([0, 0]), 99.0);
 
         final m1d = NDArray.fromList([false, true], [2], DType.boolean);
-        expect((a[[m1d, const Slice.all()]] as NDArray).shape, [1, 3]);
+        expect(a[[m1d, const Slice.all()]].shape, [1, 3]);
         expect(
-          (a[[
-                    NDArray.fromList([0], [1], DType.int32),
-                    const Slice.all(),
-                  ]]
-                  as NDArray)
+          a[[
+                NDArray.fromList([0], [1], DType.int32),
+                const Slice.all(),
+              ]]
               .shape,
           [1, 3],
         );
@@ -351,8 +355,8 @@ void main() {
               ]],
           throwsArgumentError,
         );
-        expect((a[BooleanMask(m1d)] as NDArray).shape, [1, 3]);
-        a[BooleanMask(m1d)] = 42.0;
+        expect(a[Mask(m1d)].shape, [1, 3]);
+        a[Mask(m1d)] = 42.0;
         expect(a.getCell([1, 0]), 42.0);
 
         final m1dWrong = NDArray.fromList(
@@ -360,11 +364,8 @@ void main() {
           [3],
           DType.boolean,
         );
-        expect(() => a[BooleanMask(m1dWrong)] = 1.0, throwsArgumentError);
-        expect(
-          () => a.slice([Mask(BooleanMask(m1dWrong))]),
-          throwsArgumentError,
-        );
+        expect(() => a[Mask(m1dWrong)] = 1.0, throwsArgumentError);
+        expect(() => a.slice([Mask(m1dWrong)]), throwsArgumentError);
         expect(
           () => a.slice([const Index(0), const Index(0), const Index(0)]),
           throwsArgumentError,
@@ -401,7 +402,7 @@ void main() {
             10.0;
         expect(a.getCell([0, 0]), 10.0);
 
-        expect((a[m1d] as NDArray).shape, [1, 3]);
+        expect(a[m1d].shape, [1, 3]);
         expect(a.applyMask(m1d).shape, [1, 3]);
         expect(() => a.applyMask(m1dWrong), throwsArgumentError);
         expect(
@@ -415,15 +416,23 @@ void main() {
         expect(a.getCell([1, 0]), 77.0);
         expect(() => a[m1dWrong] = 1.0, throwsArgumentError);
 
-        a[0] = NDArray.fromList([1.0, 2.0, 3.0], [1, 3], DType.float64);
+        a[Indices([0])] = NDArray.fromList(
+          [1.0, 2.0, 3.0],
+          [1, 3],
+          DType.float64,
+        );
         expect(a.getCell([0, 1]), 2.0);
+        expect(
+          () => a[0] = NDArray.fromList([1.0, 2.0, 3.0], [1, 3], DType.float64),
+          throwsArgumentError,
+        );
         a[0] = NDArray.fromList([4.0, 5.0, 6.0], [3], DType.float64);
         expect(a.getCell([0, 1]), 5.0);
 
         final v1d = NDArray.zeros([4], DType.float64);
-        v1d[[0, 2]] = NDArray.fromList([8.0, 9.0], [2], DType.float64);
+        v1d[Indices([0, 2])] = NDArray.fromList([8.0, 9.0], [2], DType.float64);
         expect(v1d.toList(), [8.0, 0.0, 9.0, 0.0]);
-        v1d[[1, 3]] = NDArray.fromList([3.0], [1], DType.float64);
+        v1d[Indices([1, 3])] = NDArray.fromList([3.0], [1], DType.float64);
         expect(v1d.toList(), [8.0, 3.0, 9.0, 3.0]);
 
         final fullMask = NDArray.fromList(
@@ -1319,9 +1328,15 @@ void main() {
           bMask,
           selfArr.slice([const Slice(start: 0, stop: 1)]),
         );
-        expect(() => roBase.setByMaskScalar(bMask, disp), throwsStateError);
+        expect(
+          () => (roBase as NDArray<DTypeTag>).setByMaskScalar(bMask, disp),
+          throwsStateError,
+        );
         expect(() => roBase.setByMaskScalar(bMask, 1.0), throwsStateError);
-        expect(() => roBase.setIndicesScalar(iIdx, disp), throwsStateError);
+        expect(
+          () => (roBase as NDArray<DTypeTag>).setIndicesScalar(iIdx, disp),
+          throwsStateError,
+        );
         expect(() => roBase.setIndicesScalar(iIdx, 1.0), throwsStateError);
         expect(() => disp.setIndices(iIdx, v1), throwsStateError);
         expect(() => roBase.setIndices(iIdx, v1), throwsStateError);
@@ -1367,7 +1382,7 @@ void main() {
         );
 
         final dispInt = NDArray.zeros([1], DType.int64)..dispose();
-        expect(selfArr[[0, 1]].toList(), isNotEmpty);
+        expect(selfArr[Indices([0, 1])].toList(), isNotEmpty);
         expect(() => selfArr[dispBool], throwsStateError);
         expect(() => selfArr[dispInt], throwsStateError);
         expect(a[NDArray.fromList([0, 1], [1, 2], DType.int64)].shape, [

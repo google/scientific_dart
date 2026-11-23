@@ -236,7 +236,7 @@ void main() {
         expect(s.shape, isEmpty);
         expect(s.size, equals(1));
         expect(s.scalar, equals(42.5));
-        expect(s[const []], equals(42.5));
+        expect(s[const []].scalar, equals(42.5));
 
         s[const []] = -10.25;
         expect(s.scalar, equals(-10.25));

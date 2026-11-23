@@ -93,11 +93,8 @@ void runModule2IndexingAndSlicing() {
     print('Slice mat[0:2, 1:3]:\n$subMatrix');
 
     // 4. Fancy Indexing & Boolean Masking
-    final fancyRows =
-        mat[[
-          [0, 2],
-        ]]; // Extract rows 0 and 2
-    print('Fancy row selection mat[[ [0, 2] ]]:\n$fancyRows');
+    final fancyRows = mat[Indices([0, 2])]; // Extract rows 0 and 2
+    print('Fancy row selection mat[Indices([0, 2])]:\n$fancyRows');
 
     // Masking: clip all values > 10 to 10.0
     final mask = mat > 10.0;
