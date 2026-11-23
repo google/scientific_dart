@@ -31,6 +31,7 @@ The repository is organized as a Dart workspace configured under [`pubspec.yaml`
 - **[`pkgs/notebook`](pkgs/notebook)** *(experimental)*: Interactive notebook and REPL interface for Dart, `ndarray`, `gpuarray`, and `symbolic_dart` ([live WebAssembly preview](https://google.github.io/scientific_dart/)).
 - **[`pkgs/code_editor`](pkgs/code_editor)** *(experimental)*: Multi-backend code editor component supporting syntax highlighting and interactive evaluation for the notebook environment.
 - **[`pkgs/guitar_tuner`](pkgs/guitar_tuner)** *(experimental)*: Real-time CLI guitar tuner demonstrating live audio capture (ALSA) and spectral pitch detection using `ndarray`.
+- **[`pkgs/ndarray_transformer`](pkgs/ndarray_transformer)** *(experimental)*: Pure-Dart BERT / `all-MiniLM-L6-v2` transformer embedding and semantic search showcase loading Hugging Face `.safetensors` weights directly into `NDArray<Float32>`.
 
 ---
 

@@ -4518,10 +4518,12 @@ sealed class NDArray<T extends DTypeTag>
       return fn(other);
     }
     final marker = ScratchArena.marker;
+    NDArray? otherArr;
     try {
-      final otherArr = _wrapScalarArena(other, shape, dtype);
+      otherArr = _wrapScalarArena(other, shape, dtype);
       return fn(otherArr);
     } finally {
+      otherArr?.dispose();
       ScratchArena.reset(marker);
     }
   }
