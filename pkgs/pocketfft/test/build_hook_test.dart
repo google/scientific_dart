@@ -156,7 +156,54 @@ void main() {
         pocketfftArtifactName(OS.windows, Architecture.x64),
         equals('pocketfft-windows-x64.dll'),
       );
-      expect(fileHashes.containsKey((OS.linux, Architecture.x64)), isTrue);
+      expect(
+        pocketfftArtifactName(OS.android, Architecture.arm64),
+        equals('pocketfft-android-arm64.so'),
+      );
+      expect(
+        pocketfftArtifactName(OS.android, Architecture.x64),
+        equals('pocketfft-android-x64.so'),
+      );
+      expect(
+        pocketfftArtifactName(
+          OS.iOS,
+          Architecture.arm64,
+          iosSdk: IOSSdk.iPhoneOS,
+        ),
+        equals('pocketfft-ios-iphoneos-arm64.dylib'),
+      );
+      expect(
+        pocketfftArtifactName(
+          OS.iOS,
+          Architecture.arm64,
+          iosSdk: IOSSdk.iPhoneSimulator,
+        ),
+        equals('pocketfft-ios-iphonesimulator-arm64.dylib'),
+      );
+      expect(
+        pocketfftArtifactName(
+          OS.iOS,
+          Architecture.x64,
+          iosSdk: IOSSdk.iPhoneSimulator,
+        ),
+        equals('pocketfft-ios-iphonesimulator-x64.dylib'),
+      );
+      expect(
+        () => pocketfftArtifactName(OS.iOS, Architecture.arm64),
+        throwsArgumentError,
+      );
+      expect(
+        () => pocketfftArtifactName(
+          OS.android,
+          Architecture.arm64,
+          iosSdk: IOSSdk.iPhoneOS,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        fileHashes.containsKey((OS.linux, Architecture.x64, null)),
+        isTrue,
+      );
       expect(sha256.convert(const [1, 2, 3]).toString().length, equals(64));
 
       final currentHash = computeNativeSourceHash(Directory.current.uri);

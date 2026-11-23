@@ -27,6 +27,7 @@ on:
       - 'pkgs/ndarray/hook/**'
       - 'pkgs/ndarray/lib/src/hook_helpers/**'
       - 'tool/build_artifacts.dart'
+      - 'tool/check_native_symbols.dart'
       - 'tool/regenerate_hashes.dart'
       - '.github/workflows/artifacts.yml'
   workflow_dispatch:
@@ -41,7 +42,7 @@ permissions:
 
 jobs:
   build-native-artifacts:
-    name: Build (${{ matrix.target_os }}-${{ matrix.target_arch }})
+    name: Build (${{ matrix.target_label }})
     runs-on: ${{ matrix.runner }}
     strategy:
       fail-fast: false
@@ -50,18 +51,53 @@ jobs:
           - runner: ubuntu-latest
             target_os: linux
             target_arch: x64
+            ios_sdk: ''
+            target_label: linux-x64
           - runner: ubuntu-24.04-arm
             target_os: linux
             target_arch: arm64
+            ios_sdk: ''
+            target_label: linux-arm64
           - runner: macos-latest
             target_os: macos
             target_arch: arm64
+            ios_sdk: ''
+            target_label: macos-arm64
           - runner: macos-latest
             target_os: macos
             target_arch: x64
+            ios_sdk: ''
+            target_label: macos-x64
           - runner: windows-latest
             target_os: windows
             target_arch: x64
+            ios_sdk: ''
+            target_label: windows-x64
+          - runner: ubuntu-latest
+            target_os: android
+            target_arch: arm64
+            ios_sdk: ''
+            target_label: android-arm64
+          - runner: ubuntu-latest
+            target_os: android
+            target_arch: x64
+            ios_sdk: ''
+            target_label: android-x64
+          - runner: macos-latest
+            target_os: ios
+            target_arch: arm64
+            ios_sdk: iphoneos
+            target_label: ios-iphoneos-arm64
+          - runner: macos-latest
+            target_os: ios
+            target_arch: arm64
+            ios_sdk: iphonesimulator
+            target_label: ios-iphonesimulator-arm64
+          - runner: macos-latest
+            target_os: ios
+            target_arch: x64
+            ios_sdk: iphonesimulator
+            target_label: ios-iphonesimulator-x64
 
     steps:
       - name: Checkout Repository
@@ -80,6 +116,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y gfortran build-essential cmake
 
+      - name: Verify Android NDK & Build Dependencies
+        if: matrix.target_os == 'android'
+        run: |
+          echo "ANDROID_NDK_LATEST_HOME=${ANDROID_NDK_LATEST_HOME:-}"
+          echo "ANDROID_NDK_ROOT=${ANDROID_NDK_ROOT:-}"
+          echo "ANDROID_HOME=${ANDROID_HOME:-}"
+          cmake --version
+          readelf --version
+
       - name: Set up MSVC Developer Command Prompt
         if: matrix.target_os == 'windows'
         uses: ilammy/msvc-dev-cmd@v1
@@ -91,20 +136,32 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .dart_tool/artifact_builder/
-          key: artifact-builder-${{ matrix.target_os }}-${{ matrix.target_arch }}-${{ hashFiles('pkgs/*/hook/**') }}
+          key: artifact-builder-${{ matrix.target_label }}-${{ hashFiles('pkgs/*/hook/**') }}
           restore-keys: |
-            artifact-builder-${{ matrix.target_os }}-${{ matrix.target_arch }}-
+            artifact-builder-${{ matrix.target_label }}-
 
       - name: Build Native Artifacts
-        run: dart tool/build_artifacts.dart --os ${{ matrix.target_os }} --architecture ${{ matrix.target_arch }} --output-dir dist
+        shell: bash
+        run: |
+          ARGS=(--os "${{ matrix.target_os }}" --architecture "${{ matrix.target_arch }}" --output-dir dist)
+          if [ -n "${{ matrix.ios_sdk }}" ]; then
+            ARGS+=(--ios-sdk "${{ matrix.ios_sdk }}")
+          fi
+          dart tool/build_artifacts.dart "${ARGS[@]}"
 
-      - name: Verify Exported Native Symbols & Embedded Source Hash
-        run: dart tool/check_native_symbols.dart --os ${{ matrix.target_os }} --architecture ${{ matrix.target_arch }} --artifact-dir dist
+      - name: Verify Exported Native Symbols, Binary Hygiene, & Embedded Source Hash
+        shell: bash
+        run: |
+          ARGS=(--os "${{ matrix.target_os }}" --architecture "${{ matrix.target_arch }}" --artifact-dir dist)
+          if [ -n "${{ matrix.ios_sdk }}" ]; then
+            ARGS+=(--ios-sdk "${{ matrix.ios_sdk }}")
+          fi
+          dart tool/check_native_symbols.dart "${ARGS[@]}"
 
       - name: Upload Platform Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: native-libs-${{ matrix.target_os }}-${{ matrix.target_arch }}
+          name: native-libs-${{ matrix.target_label }}
           path: dist/*
           if-no-files-found: error
 

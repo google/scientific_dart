@@ -138,26 +138,43 @@ String computeNativeSourceHash(Uri packageRoot) {
   return sha256.convert(utf8.encode(buffer.toString())).toString();
 }
 
-/// Canonical release artifact filename for `(os, arch)`.
-String ndarrayArtifactName(OS os, Architecture arch) {
+/// Canonical release artifact filename for `(os, arch)` (and [iosSdk] on iOS).
+String ndarrayArtifactName(OS os, Architecture arch, {IOSSdk? iosSdk}) {
+  if (os == OS.iOS) {
+    if (iosSdk == null) {
+      throw ArgumentError.value(
+        iosSdk,
+        'iosSdk',
+        'Must be specified when os is OS.iOS.',
+      );
+    }
+    return 'ndarray-${os.name}-${iosSdk.type}-${arch.name}.dylib';
+  }
+  if (iosSdk != null) {
+    throw ArgumentError.value(
+      iosSdk,
+      'iosSdk',
+      'Must be null when os is not OS.iOS.',
+    );
+  }
   final ext = switch (os) {
     OS.windows => 'dll',
-    OS.macOS || OS.iOS => 'dylib',
+    OS.macOS => 'dylib',
     _ => 'so',
   };
   return 'ndarray-${os.name}-${arch.name}.$ext';
 }
 
-/// SHA-256 digests for prebuilt `ndarray` binaries indexed by `(OS, Architecture)`.
-final fileHashes = <(OS, Architecture), String>{
-  (OS.linux, Architecture.x64):
+/// SHA-256 digests for prebuilt `ndarray` binaries indexed by `(OS, Architecture, IOSSdk?)`.
+final fileHashes = <(OS, Architecture, IOSSdk?), String>{
+  (OS.linux, Architecture.x64, null):
       'bf013c7556ae44d0dc02954deae3855b14302f041728ab67387ca58fa991e4c5',
-  (OS.linux, Architecture.arm64):
+  (OS.linux, Architecture.arm64, null):
       '4715277420ea3747e15c866dc617bde0ccc2d336c8d233e22be492f06c9d382b',
-  (OS.macOS, Architecture.arm64):
+  (OS.macOS, Architecture.arm64, null):
       '0b8e817719b166e81ca927fb3d1d6f096965ddf6724eff3e6fbd70478361f98a',
-  (OS.macOS, Architecture.x64):
+  (OS.macOS, Architecture.x64, null):
       'ac50a6f2337d98f2c2965f34cfa4f54e4c51ef83ae9024d05f05eabb39373de5',
-  (OS.windows, Architecture.x64):
+  (OS.windows, Architecture.x64, null):
       '7f8907170394155e06597457ce52bcc07b1e3fab9b476fa0e9a91ed7b562d8c7',
 };

@@ -25,12 +25,17 @@ import 'package:args/args.dart';
 import 'package:code_assets/code_assets.dart';
 import 'package:crypto/crypto.dart';
 
-const _supportedTargets = <(OS, Architecture)>[
-  (OS.linux, Architecture.x64),
-  (OS.linux, Architecture.arm64),
-  (OS.macOS, Architecture.arm64),
-  (OS.macOS, Architecture.x64),
-  (OS.windows, Architecture.x64),
+const _supportedTargets = <(OS, Architecture, IOSSdk?)>[
+  (OS.linux, Architecture.x64, null),
+  (OS.linux, Architecture.arm64, null),
+  (OS.macOS, Architecture.arm64, null),
+  (OS.macOS, Architecture.x64, null),
+  (OS.windows, Architecture.x64, null),
+  (OS.android, Architecture.arm64, null),
+  (OS.android, Architecture.x64, null),
+  (OS.iOS, Architecture.arm64, IOSSdk.iPhoneOS),
+  (OS.iOS, Architecture.arm64, IOSSdk.iPhoneSimulator),
+  (OS.iOS, Architecture.x64, IOSSdk.iPhoneSimulator),
 ];
 
 Future<void> main(List<String> args) async {
@@ -140,11 +145,10 @@ Future<void> _regenerateSingleAssetHashes({
   required bool skipProvenance,
 }) async {
   stdout.writeln('=== Updating hashes for package:$packageName ($version) ===');
-  final hashes = <(OS, Architecture), String>{};
+  final hashes = <(OS, Architecture, IOSSdk?), String>{};
 
-  for (final (os, arch) in _supportedTargets) {
-    final ext = _extForOS(os);
-    final artifactName = '$assetStem-${os.name}-${arch.name}.$ext';
+  for (final (os, arch, iosSdk) in _supportedTargets) {
+    final artifactName = _artifactName(assetStem, os, arch, iosSdk);
     final file = await _obtainArtifact(
       artifactName: artifactName,
       version: version,
@@ -155,7 +159,7 @@ Future<void> _regenerateSingleAssetHashes({
 
     if (file == null) {
       stdout.writeln('  [skip] $artifactName not found');
-      hashes[(os, arch)] = '0' * 64;
+      hashes[(os, arch, iosSdk)] = '0' * 64;
       continue;
     }
 
@@ -164,7 +168,7 @@ Future<void> _regenerateSingleAssetHashes({
     }
 
     final digest = sha256.convert(await file.readAsBytes()).toString();
-    hashes[(os, arch)] = digest;
+    hashes[(os, arch, iosSdk)] = digest;
     stdout.writeln('  [ok]   $artifactName -> $digest');
   }
 
@@ -176,9 +180,8 @@ Future<void> _regenerateSingleAssetHashes({
 
   final markerPrefix = '${packageName.toUpperCase()}_SOURCE_HASH=';
 
-  for (final (os, arch) in _supportedTargets) {
-    final ext = _extForOS(os);
-    final artifactName = '$assetStem-${os.name}-${arch.name}.$ext';
+  for (final (os, arch, iosSdk) in _supportedTargets) {
+    final artifactName = _artifactName(assetStem, os, arch, iosSdk);
     final file = await _obtainArtifact(
       artifactName: artifactName,
       version: version,
@@ -200,7 +203,7 @@ Future<void> _regenerateSingleAssetHashes({
   final entriesCode = hashes.entries
       .map(
         (e) =>
-            '  (${_osConstName(e.key.$1)}, Architecture.${e.key.$2.name}):\n'
+            '  (${_osConstName(e.key.$1)}, Architecture.${e.key.$2.name}, ${_iosSdkConstName(e.key.$3)}):\n'
             "      '${e.value}',",
       )
       .join('\n');
@@ -346,18 +349,35 @@ String computeNativeSourceHash(Uri packageRoot) {
   return sha256.convert(utf8.encode(buffer.toString())).toString();
 }
 
-/// Canonical release artifact filename for `(os, arch)`.
-String $helperFuncName(OS os, Architecture arch) {
+/// Canonical release artifact filename for `(os, arch)` (and [iosSdk] on iOS).
+String $helperFuncName(OS os, Architecture arch, {IOSSdk? iosSdk}) {
+  if (os == OS.iOS) {
+    if (iosSdk == null) {
+      throw ArgumentError.value(
+        iosSdk,
+        'iosSdk',
+        'Must be specified when os is OS.iOS.',
+      );
+    }
+    return '$assetStem-\${os.name}-\${iosSdk.type}-\${arch.name}.dylib';
+  }
+  if (iosSdk != null) {
+    throw ArgumentError.value(
+      iosSdk,
+      'iosSdk',
+      'Must be null when os is not OS.iOS.',
+    );
+  }
   final ext = switch (os) {
     OS.windows => 'dll',
-    OS.macOS || OS.iOS => 'dylib',
+    OS.macOS => 'dylib',
     _ => 'so',
   };
   return '$assetStem-\${os.name}-\${arch.name}.\$ext';
 }
 
-/// SHA-256 digests for prebuilt `$packageName` binaries indexed by `(OS, Architecture)`.
-final fileHashes = <(OS, Architecture), String>{
+/// SHA-256 digests for prebuilt `$packageName` binaries indexed by `(OS, Architecture, IOSSdk?)`.
+final fileHashes = <(OS, Architecture, IOSSdk?), String>{
 $entriesCode
 };
 ''');
@@ -375,12 +395,11 @@ Future<void> _regenerateMultiAssetHashes({
   required bool skipProvenance,
 }) async {
   stdout.writeln('=== Updating hashes for package:$packageName ($version) ===');
-  final hashes = <(OS, Architecture, String), String>{};
+  final hashes = <(OS, Architecture, IOSSdk?, String), String>{};
 
-  for (final (os, arch) in _supportedTargets) {
-    final ext = _extForOS(os);
+  for (final (os, arch, iosSdk) in _supportedTargets) {
     for (final stem in assetStems) {
-      final artifactName = '$stem-${os.name}-${arch.name}.$ext';
+      final artifactName = _artifactName(stem, os, arch, iosSdk);
       final file = await _obtainArtifact(
         artifactName: artifactName,
         version: version,
@@ -391,7 +410,7 @@ Future<void> _regenerateMultiAssetHashes({
 
       if (file == null) {
         stdout.writeln('  [skip] $artifactName not found');
-        hashes[(os, arch, stem)] = '0' * 64;
+        hashes[(os, arch, iosSdk, stem)] = '0' * 64;
         continue;
       }
 
@@ -400,7 +419,7 @@ Future<void> _regenerateMultiAssetHashes({
       }
 
       final digest = sha256.convert(await file.readAsBytes()).toString();
-      hashes[(os, arch, stem)] = digest;
+      hashes[(os, arch, iosSdk, stem)] = digest;
       stdout.writeln('  [ok]   $artifactName -> $digest');
     }
   }
@@ -413,10 +432,9 @@ Future<void> _regenerateMultiAssetHashes({
 
   final markerPrefix = '${packageName.toUpperCase()}_SOURCE_HASH=';
 
-  for (final (os, arch) in _supportedTargets) {
-    final ext = _extForOS(os);
+  for (final (os, arch, iosSdk) in _supportedTargets) {
     for (final stem in assetStems) {
-      final artifactName = '$stem-${os.name}-${arch.name}.$ext';
+      final artifactName = _artifactName(stem, os, arch, iosSdk);
       final file = await _obtainArtifact(
         artifactName: artifactName,
         version: version,
@@ -439,7 +457,7 @@ Future<void> _regenerateMultiAssetHashes({
   final entriesCode = hashes.entries
       .map(
         (e) =>
-            "  (${_osConstName(e.key.$1)}, Architecture.${e.key.$2.name}, '${e.key.$3}'):\n"
+            "  (${_osConstName(e.key.$1)}, Architecture.${e.key.$2.name}, ${_iosSdkConstName(e.key.$3)}, '${e.key.$4}'):\n"
             "      '${e.value}',",
       )
       .join('\n');
@@ -586,20 +604,42 @@ String computeNativeSourceHash(Uri packageRoot) {
   return sha256.convert(utf8.encode(buffer.toString())).toString();
 }
 
-/// Canonical release artifact filename for `(os, arch, libraryKind)`.
+/// Canonical release artifact filename for `(os, arch, libraryKind)` (and [iosSdk] on iOS).
 ///
 /// [libraryKind] is either `'openblas'` or `'openblas_extensions'`.
-String $helperFuncName(OS os, Architecture arch, String libraryKind) {
+String $helperFuncName(
+  OS os,
+  Architecture arch,
+  String libraryKind, {
+  IOSSdk? iosSdk,
+}) {
+  if (os == OS.iOS) {
+    if (iosSdk == null) {
+      throw ArgumentError.value(
+        iosSdk,
+        'iosSdk',
+        'Must be specified when os is OS.iOS.',
+      );
+    }
+    return '\$libraryKind-\${os.name}-\${iosSdk.type}-\${arch.name}.dylib';
+  }
+  if (iosSdk != null) {
+    throw ArgumentError.value(
+      iosSdk,
+      'iosSdk',
+      'Must be null when os is not OS.iOS.',
+    );
+  }
   final ext = switch (os) {
     OS.windows => 'dll',
-    OS.macOS || OS.iOS => 'dylib',
+    OS.macOS => 'dylib',
     _ => 'so',
   };
   return '\$libraryKind-\${os.name}-\${arch.name}.\$ext';
 }
 
-/// SHA-256 digests for prebuilt `$packageName` binaries indexed by `(OS, Architecture, libraryKind)`.
-final fileHashes = <(OS, Architecture, String), String>{
+/// SHA-256 digests for prebuilt `$packageName` binaries indexed by `(OS, Architecture, IOSSdk?, libraryKind)`.
+final fileHashes = <(OS, Architecture, IOSSdk?, String), String>{
 $entriesCode
 };
 ''');
@@ -708,6 +748,28 @@ String _osConstName(OS os) => switch (os) {
   OS.iOS => 'OS.iOS',
   _ => 'OS.${os.name}',
 };
+
+String _iosSdkConstName(IOSSdk? iosSdk) => switch (iosSdk) {
+  null => 'null',
+  IOSSdk.iPhoneOS => 'IOSSdk.iPhoneOS',
+  IOSSdk.iPhoneSimulator => 'IOSSdk.iPhoneSimulator',
+  _ => throw ArgumentError.value(iosSdk, 'iosSdk', 'Unsupported IOSSdk'),
+};
+
+String _artifactName(String stem, OS os, Architecture arch, IOSSdk? iosSdk) {
+  if (os == OS.iOS) {
+    if (iosSdk == null) {
+      throw ArgumentError.value(
+        iosSdk,
+        'iosSdk',
+        'Must be specified when os is OS.iOS.',
+      );
+    }
+    return '$stem-${os.name}-${iosSdk.type}-${arch.name}.dylib';
+  }
+  final ext = _extForOS(os);
+  return '$stem-${os.name}-${arch.name}.$ext';
+}
 
 String _extForOS(OS os) => switch (os) {
   OS.windows => 'dll',

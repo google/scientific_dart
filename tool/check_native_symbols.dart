@@ -14,8 +14,10 @@
 
 // Verifies that every `@Native` / `@ffi.Native` symbol declared in each
 // package's FFI bindings file is exported by the corresponding compiled native
-// shared library, and that the embedded `<PKG>_SOURCE_HASH=<sha256>` marker
-// matches `computeNativeSourceHash`.
+// shared library, that the embedded `<PKG>_SOURCE_HASH=<sha256>` marker
+// matches `computeNativeSourceHash`, and that Android/iOS binaries satisfy
+// platform ABI hygiene invariants (16 KB ELF alignment, static C++ runtime,
+// Mach-O LC_BUILD_VERSION platform, @rpath install_name).
 
 import 'dart:io';
 import 'dart:typed_data';
@@ -43,6 +45,12 @@ Future<void> main(List<String> args) async {
       allowed: Architecture.values.map((a) => a.name),
       defaultsTo: Architecture.current.name,
       help: 'Target CPU architecture of the built artifacts.',
+    )
+    ..addOption(
+      'ios-sdk',
+      allowed: IOSSdk.values.map((s) => s.type),
+      help:
+          'Target iOS SDK (`iphoneos` or `iphonesimulator`, required for `--os ios`).',
     )
     ..addMultiOption(
       'package',
@@ -87,6 +95,25 @@ Future<void> main(List<String> args) async {
 
   final targetOS = OS.fromString(parsed.option('os')!);
   final targetArch = Architecture.fromString(parsed.option('architecture')!);
+  final rawIosSdk = parsed.option('ios-sdk');
+  final IOSSdk? targetIosSdk;
+  if (targetOS == OS.iOS) {
+    if (rawIosSdk == null) {
+      stderr.writeln('Error: `--ios-sdk` is required when `--os ios` is set.');
+      exitCode = 2;
+      return;
+    }
+    targetIosSdk = IOSSdk.fromString(rawIosSdk);
+  } else {
+    if (rawIosSdk != null) {
+      stderr.writeln(
+        'Error: `--ios-sdk` is only valid when `--os ios` is set.',
+      );
+      exitCode = 2;
+      return;
+    }
+    targetIosSdk = null;
+  }
   final packages = parsed.multiOption('package');
   final artifactDir = Directory(parsed.option('artifact-dir')!);
   final verifySourceHash = parsed.flag('verify-source-hash');
@@ -99,6 +126,7 @@ Future<void> main(List<String> args) async {
         packageName: pkg,
         targetOS: targetOS,
         targetArch: targetArch,
+        targetIosSdk: targetIosSdk,
         artifactDir: artifactDir,
         workspaceRoot: Directory.current.uri,
         verifySourceHash: verifySourceHash,
@@ -115,11 +143,13 @@ Future<void> main(List<String> args) async {
 }
 
 /// Verifies all `@Native` / `@ffi.Native` symbols (and optional embedded
-/// source hash markers) for [packageName]'s built artifacts in [artifactDir].
+/// source hash markers and mobile binary hygiene invariants) for
+/// [packageName]'s built artifacts in [artifactDir].
 Future<void> verifyPackageArtifacts({
   required String packageName,
   required OS targetOS,
   required Architecture targetArch,
+  IOSSdk? targetIosSdk,
   required Directory artifactDir,
   required Uri workspaceRoot,
   bool verifySourceHash = true,
@@ -131,6 +161,7 @@ Future<void> verifyPackageArtifacts({
       final artifactName = ndarray_hashes.ndarrayArtifactName(
         targetOS,
         targetArch,
+        iosSdk: targetIosSdk,
       );
       final libFile = _resolveLibraryFile(
         artifactDir: artifactDir,
@@ -151,6 +182,12 @@ Future<void> verifyPackageArtifacts({
         libraryFile: libFile,
         targetOS: targetOS,
         expectedSymbols: expectedSymbols,
+      );
+      await verifyPlatformBinaryHygiene(
+        libraryFile: libFile,
+        targetOS: targetOS,
+        targetArch: targetArch,
+        targetIosSdk: targetIosSdk,
       );
       if (verifySourceHash) {
         final expectedHash = ndarray_hashes.computeNativeSourceHash(pkgRoot);
@@ -174,6 +211,7 @@ Future<void> verifyPackageArtifacts({
       final artifactName = pocketfft_hashes.pocketfftArtifactName(
         targetOS,
         targetArch,
+        iosSdk: targetIosSdk,
       );
       final libFile = _resolveLibraryFile(
         artifactDir: artifactDir,
@@ -190,6 +228,12 @@ Future<void> verifyPackageArtifacts({
         libraryFile: libFile,
         targetOS: targetOS,
         expectedSymbols: expectedSymbols,
+      );
+      await verifyPlatformBinaryHygiene(
+        libraryFile: libFile,
+        targetOS: targetOS,
+        targetArch: targetArch,
+        targetIosSdk: targetIosSdk,
       );
       if (verifySourceHash) {
         final expectedHash = pocketfft_hashes.computeNativeSourceHash(pkgRoot);
@@ -214,6 +258,7 @@ Future<void> verifyPackageArtifacts({
         targetOS,
         targetArch,
         'openblas_extensions',
+        iosSdk: targetIosSdk,
       );
       final extFile = _resolveLibraryFile(
         artifactDir: artifactDir,
@@ -229,6 +274,13 @@ Future<void> verifyPackageArtifacts({
         libraryFile: extFile,
         targetOS: targetOS,
         expectedSymbols: expectedExtSymbols,
+      );
+      await verifyPlatformBinaryHygiene(
+        libraryFile: extFile,
+        targetOS: targetOS,
+        targetArch: targetArch,
+        targetIosSdk: targetIosSdk,
+        expectedAndroidNeeded: targetOS == OS.android ? 'libopenblas.so' : null,
       );
       if (verifySourceHash) {
         final expectedHash = openblas_hashes.computeNativeSourceHash(pkgRoot);
@@ -247,30 +299,32 @@ Future<void> verifyPackageArtifacts({
         targetOS,
         targetArch,
         'openblas',
+        iosSdk: targetIosSdk,
       );
       final openblasFile = _resolveLibraryFile(
         artifactDir: artifactDir,
         artifactName: openblasArtifact,
         canonicalName: _canonicalName('libopenblas', targetOS),
       );
-      final allOpenblasBindings = extractDeclaredNativeSymbols(
-        File.fromUri(pkgRoot.resolve('lib/src/openblas_bindings.dart')),
-      );
-      // On macOS, libopenblas.dylib re-exports the system Accelerate framework
-      // for cblas_*/LAPACKE_* symbols and defines the openblas_* thread/config
-      // symbols directly in the stub library.
-      final expectedOpenblasSymbols =
-          (targetOS == OS.macOS || targetOS == OS.iOS)
-          ? <String>{
-              'openblas_get_num_threads',
-              'openblas_set_num_threads',
-              'openblas_get_config',
-            }
-          : allOpenblasBindings;
+      final expectedOpenblasSymbols = <String>{
+        ...extractDeclaredNativeSymbols(
+          File.fromUri(pkgRoot.resolve('lib/src/openblas_bindings.dart')),
+        ),
+        ...extractDeclaredNativeSymbols(
+          File.fromUri(pkgRoot.resolve('lib/src/openblas_extensions.dart')),
+        ),
+      };
       await verifyLibraryExportsAllSymbols(
         libraryFile: openblasFile,
         targetOS: targetOS,
         expectedSymbols: expectedOpenblasSymbols,
+      );
+      await verifyPlatformBinaryHygiene(
+        libraryFile: openblasFile,
+        targetOS: targetOS,
+        targetArch: targetArch,
+        targetIosSdk: targetIosSdk,
+        expectedAndroidSoname: targetOS == OS.android ? 'libopenblas.so' : null,
       );
       stdout.writeln(
         '[OK]   package:openblas (${openblasFile.uri.pathSegments.last} + '
@@ -287,6 +341,283 @@ Future<void> verifyPackageArtifacts({
         'Must be one of $_defaultPackages.',
       );
   }
+}
+
+/// Verifies platform-specific binary hygiene invariants for Android and iOS
+/// artifacts (16 KB ELF alignment, runtime link dependencies, Mach-O platform
+/// & install_name).
+Future<void> verifyPlatformBinaryHygiene({
+  required File libraryFile,
+  required OS targetOS,
+  required Architecture targetArch,
+  IOSSdk? targetIosSdk,
+  String? expectedAndroidSoname,
+  String? expectedAndroidNeeded,
+}) async {
+  if (targetOS == OS.android) {
+    await _verifyAndroidElfHygiene(
+      libraryFile: libraryFile,
+      targetArch: targetArch,
+      expectedSoname: expectedAndroidSoname,
+      expectedNeeded: expectedAndroidNeeded,
+    );
+  } else if (targetOS == OS.iOS) {
+    await _verifyIosMachOHygiene(
+      libraryFile: libraryFile,
+      targetArch: targetArch,
+      targetIosSdk: targetIosSdk!,
+    );
+  }
+}
+
+Future<void> _verifyAndroidElfHygiene({
+  required File libraryFile,
+  required Architecture targetArch,
+  String? expectedSoname,
+  String? expectedNeeded,
+}) async {
+  final readelfExe = await _findFirstTool(['readelf', 'llvm-readelf']);
+  if (readelfExe == null) {
+    throw StateError(
+      'Neither `readelf` nor `llvm-readelf` found to verify Android ELF '
+      'binary ${libraryFile.path}.',
+    );
+  }
+
+  // 1. Verify ELF machine type.
+  final headerRes = await Process.run(readelfExe, ['-h', libraryFile.path]);
+  if (headerRes.exitCode != 0) {
+    throw StateError(
+      '$readelfExe -h failed on ${libraryFile.path}: ${headerRes.stderr}',
+    );
+  }
+  final headerOut = headerRes.stdout as String;
+  final expectedMachine = switch (targetArch) {
+    Architecture.arm64 => 'AArch64',
+    Architecture.x64 => 'X86-64',
+    Architecture.arm => 'ARM',
+    Architecture.riscv64 => 'RISC-V',
+    _ => null,
+  };
+  if (expectedMachine != null &&
+      !headerOut.toLowerCase().contains(expectedMachine.toLowerCase())) {
+    throw StateError(
+      '${libraryFile.path}: expected ELF machine $expectedMachine, got:\n'
+      '$headerOut',
+    );
+  }
+
+  // 2. Verify all PT_LOAD segments have >= 16 KB (0x4000) alignment.
+  final phRes = await Process.run(readelfExe, ['-lW', libraryFile.path]);
+  if (phRes.exitCode != 0) {
+    throw StateError(
+      '$readelfExe -lW failed on ${libraryFile.path}: ${phRes.stderr}',
+    );
+  }
+  final phOut = phRes.stdout as String;
+  final alignments = parseAndroidLoadAlignments(phOut);
+  if (alignments.isEmpty) {
+    throw StateError(
+      '${libraryFile.path}: no PT_LOAD segments found in readelf -lW output.',
+    );
+  }
+  for (final align in alignments) {
+    if (align < 0x4000) {
+      throw StateError(
+        '${libraryFile.path}: PT_LOAD segment alignment 0x${align.toRadixString(16)} '
+        'is below the required 16 KB (0x4000) Android page-size alignment.',
+      );
+    }
+  }
+
+  // 3. Verify DT_NEEDED / DT_SONAME hygiene.
+  final dynRes = await Process.run(readelfExe, ['-d', libraryFile.path]);
+  if (dynRes.exitCode != 0) {
+    throw StateError(
+      '$readelfExe -d failed on ${libraryFile.path}: ${dynRes.stderr}',
+    );
+  }
+  final dynOut = dynRes.stdout as String;
+  final (:needed, :soname) = parseElfDynamicEntries(dynOut);
+  const forbiddenNeeded = ['libc++_shared.so', 'libgfortran', 'libpthread.so'];
+  for (final dep in needed) {
+    for (final forbidden in forbiddenNeeded) {
+      if (dep.contains(forbidden)) {
+        throw StateError(
+          '${libraryFile.path}: forbidden Android DT_NEEDED dependency "$dep" '
+          '(all needed: $needed).',
+        );
+      }
+    }
+  }
+  if (expectedSoname != null && soname != expectedSoname) {
+    throw StateError(
+      '${libraryFile.path}: expected DT_SONAME "$expectedSoname", got "$soname".',
+    );
+  }
+  if (expectedNeeded != null && !needed.contains(expectedNeeded)) {
+    throw StateError(
+      '${libraryFile.path}: expected DT_NEEDED "$expectedNeeded", got $needed.',
+    );
+  }
+}
+
+/// Parses `PT_LOAD` alignment values from `readelf -lW` output.
+List<int> parseAndroidLoadAlignments(String readelfProgramHeaders) {
+  final alignments = <int>[];
+  for (final rawLine in readelfProgramHeaders.split('\n')) {
+    final line = rawLine.trim();
+    if (!line.startsWith('LOAD')) continue;
+    final tokens = line.split(RegExp(r'\s+'));
+    if (tokens.length < 7) continue;
+    final alignToken = tokens.last;
+    final parsed = alignToken.startsWith('0x')
+        ? int.tryParse(alignToken.substring(2), radix: 16)
+        : int.tryParse(alignToken);
+    if (parsed != null) {
+      alignments.add(parsed);
+    }
+  }
+  return alignments;
+}
+
+/// Parses `NEEDED` and `SONAME` entries from `readelf -d` output.
+({List<String> needed, String? soname}) parseElfDynamicEntries(
+  String readelfDynamicOutput,
+) {
+  final needed = <String>[];
+  String? soname;
+  final neededRe = RegExp(r'\(NEEDED\)\s+Shared library:\s+\[([^\]]+)\]');
+  final sonameRe = RegExp(r'\(SONAME\)\s+Library soname:\s+\[([^\]]+)\]');
+  for (final line in readelfDynamicOutput.split('\n')) {
+    final nMatch = neededRe.firstMatch(line);
+    if (nMatch != null) {
+      needed.add(nMatch.group(1)!);
+    }
+    final sMatch = sonameRe.firstMatch(line);
+    if (sMatch != null) {
+      soname = sMatch.group(1)!;
+    }
+  }
+  return (needed: needed, soname: soname);
+}
+
+Future<void> _verifyIosMachOHygiene({
+  required File libraryFile,
+  required Architecture targetArch,
+  required IOSSdk targetIosSdk,
+}) async {
+  // 1. Verify slice architecture via `lipo -archs`.
+  final lipoRes = await Process.run('lipo', ['-archs', libraryFile.path]);
+  if (lipoRes.exitCode != 0) {
+    throw StateError(
+      'lipo -archs failed on ${libraryFile.path}: ${lipoRes.stderr}',
+    );
+  }
+  final expectedArch = targetArch == Architecture.arm64 ? 'arm64' : 'x86_64';
+  final archs = (lipoRes.stdout as String).trim().split(RegExp(r'\s+'));
+  if (!archs.contains(expectedArch)) {
+    throw StateError(
+      '${libraryFile.path}: expected Mach-O arch "$expectedArch", got $archs.',
+    );
+  }
+
+  // 2. Verify LC_BUILD_VERSION platform, LC_ID_DYLIB, and absence of LC_REEXPORT_DYLIB.
+  final otoolLoadRes = await Process.run('otool', ['-l', libraryFile.path]);
+  if (otoolLoadRes.exitCode != 0) {
+    throw StateError(
+      'otool -l failed on ${libraryFile.path}: ${otoolLoadRes.stderr}',
+    );
+  }
+  final loadOut = otoolLoadRes.stdout as String;
+  verifyIosMachOLoadCommands(
+    loadCommandsOutput: loadOut,
+    libraryPath: libraryFile.path,
+    targetIosSdk: targetIosSdk,
+  );
+
+  // 3. Verify `otool -L` has no host Homebrew/usr-local paths.
+  final otoolDepsRes = await Process.run('otool', ['-L', libraryFile.path]);
+  if (otoolDepsRes.exitCode != 0) {
+    throw StateError(
+      'otool -L failed on ${libraryFile.path}: ${otoolDepsRes.stderr}',
+    );
+  }
+  final depsOut = otoolDepsRes.stdout as String;
+  for (final rawLine in depsOut.split('\n').skip(1)) {
+    final line = rawLine.trim();
+    if (line.isEmpty) continue;
+    if (line.startsWith('/opt/homebrew/') ||
+        line.startsWith('/usr/local/') ||
+        line.contains('.dart_tool/')) {
+      throw StateError(
+        '${libraryFile.path}: unexpected host library reference in otool -L: $line',
+      );
+    }
+  }
+}
+
+/// Validates `otool -l` output for an iOS dynamic library.
+void verifyIosMachOLoadCommands({
+  required String loadCommandsOutput,
+  required String libraryPath,
+  required IOSSdk targetIosSdk,
+}) {
+  final expectedPlatform = targetIosSdk == IOSSdk.iPhoneOS
+      ? 'IOS'
+      : 'IOSSIMULATOR';
+  final expectedPlatformId = targetIosSdk == IOSSdk.iPhoneOS ? '2' : '7';
+
+  final buildVersionBlock = RegExp(
+    r'cmd LC_BUILD_VERSION[\s\S]*?(?=\nLoad command|$)',
+  ).firstMatch(loadCommandsOutput);
+  if (buildVersionBlock == null) {
+    throw StateError(
+      '$libraryPath: missing LC_BUILD_VERSION load command in otool -l output.',
+    );
+  }
+  final platformMatch = RegExp(
+    r'platform\s+(\S+)',
+  ).firstMatch(buildVersionBlock.group(0)!);
+  final platform = platformMatch?.group(1)?.toUpperCase();
+  if (platform != expectedPlatform && platform != expectedPlatformId) {
+    throw StateError(
+      '$libraryPath: expected LC_BUILD_VERSION platform $expectedPlatform '
+      '(or $expectedPlatformId) for $targetIosSdk, got "$platform".',
+    );
+  }
+
+  final idBlock = RegExp(
+    r'cmd LC_ID_DYLIB[\s\S]*?(?=\nLoad command|$)',
+  ).firstMatch(loadCommandsOutput);
+  final idName = idBlock == null
+      ? null
+      : RegExp(r'name\s+(\S+)').firstMatch(idBlock.group(0)!)?.group(1);
+  if (idName == null || !idName.startsWith('@rpath/')) {
+    throw StateError(
+      '$libraryPath: expected @rpath/ LC_ID_DYLIB install_name, got "$idName".',
+    );
+  }
+
+  if (loadCommandsOutput.contains('LC_REEXPORT_DYLIB') &&
+      loadCommandsOutput.contains('Accelerate.framework')) {
+    throw StateError(
+      '$libraryPath: unexpected LC_REEXPORT_DYLIB of Accelerate.framework; '
+      'link -framework Accelerate directly instead.',
+    );
+  }
+}
+
+Future<String?> _findFirstTool(List<String> candidates) async {
+  for (final tool in candidates) {
+    try {
+      final res = await Process.run(tool, ['--version']);
+      if (res.exitCode == 0) return tool;
+    } on ProcessException {
+      continue;
+    }
+  }
+  return null;
 }
 
 File _resolveLibraryFile({
@@ -390,9 +721,9 @@ Future<Set<String>> extractExportedLibrarySymbols({
       ),
       ('objdump', ['-p', libraryFile.path]),
     ] else ...[
-      ('nm', ['-D', '--defined-only', libraryFile.path]),
-      ('llvm-nm', ['-D', '--defined-only', libraryFile.path]),
       ('readelf', ['-Ws', '--dyn-syms', libraryFile.path]),
+      ('llvm-nm', ['-D', '--defined-only', libraryFile.path]),
+      ('nm', ['-D', '--defined-only', libraryFile.path]),
     ],
   ];
 
@@ -437,7 +768,7 @@ Set<String> _parseSymbolToolOutput(String output, {required OS targetOS}) {
     }
     // `readelf -Ws` format: `Num: Value Size Type Bind Vis Ndx Name`
     final readelfMatch = RegExp(
-      r'^\d+:\s+[0-9a-fA-F]+\s+\d+\s+\S+\s+(?:GLOBAL|WEAK)\s+\S+\s+(?!UND)\S+\s+(\S+)$',
+      r'^\d+:\s+[0-9a-fA-F]+\s+(?:0x[0-9a-fA-F]+|\d+)\s+\S+\s+(?:GLOBAL|WEAK)\s+\S+\s+(?!UND)\S+\s+(\S+)(?:\s+\(\d+\))?$',
     ).firstMatch(line);
     if (readelfMatch != null) {
       var name = readelfMatch.group(1)!;

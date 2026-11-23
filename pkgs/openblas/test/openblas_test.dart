@@ -305,5 +305,186 @@ void main() {
         calloc.free(c);
       }
     });
+
+    test(
+      'Remaining single-precision and complex CBLAS bindings (copy, scal, nrm2, sgemm, sgemv, cgemm, cgemv, zgemv)',
+      () {
+        final sx = calloc<ffi.Float>(3);
+        final sy = calloc<ffi.Float>(3);
+        final dx = calloc<ffi.Double>(3);
+        final dy = calloc<ffi.Double>(3);
+        final sa = calloc<ffi.Float>(4);
+        final sb = calloc<ffi.Float>(4);
+        final sc = calloc<ffi.Float>(4);
+        final svx = calloc<ffi.Float>(2);
+        final svy = calloc<ffi.Float>(2);
+        final ca = calloc<ffi.Float>(2);
+        final cb = calloc<ffi.Float>(2);
+        final cc = calloc<ffi.Float>(2);
+        final calpha = calloc<ffi.Float>(2);
+        final cbeta = calloc<ffi.Float>(2);
+        final za = calloc<ffi.Double>(2);
+        final zx = calloc<ffi.Double>(2);
+        final zy = calloc<ffi.Double>(2);
+        final zalpha = calloc<ffi.Double>(2);
+        final zbeta = calloc<ffi.Double>(2);
+        try {
+          sx[0] = 3.0;
+          sx[1] = 4.0;
+          sx[2] = 0.0;
+          expect(cblas_snrm2(3, sx, 1), closeTo(5.0, 1e-5));
+          cblas_scopy(3, sx, 1, sy, 1);
+          expect(sy[0], closeTo(3.0, 1e-5));
+          expect(sy[1], closeTo(4.0, 1e-5));
+          cblas_sscal(3, 2.0, sy, 1);
+          expect(sy[0], closeTo(6.0, 1e-5));
+          expect(sy[1], closeTo(8.0, 1e-5));
+
+          dx[0] = 1.5;
+          dx[1] = -2.5;
+          dx[2] = 3.5;
+          cblas_dcopy(3, dx, 1, dy, 1);
+          expect(dy[0], closeTo(1.5, 1e-12));
+          expect(dy[1], closeTo(-2.5, 1e-12));
+          expect(dy[2], closeTo(3.5, 1e-12));
+
+          sa[0] = 1.0;
+          sa[1] = 2.0;
+          sa[2] = 3.0;
+          sa[3] = 4.0;
+          sb[0] = 5.0;
+          sb[1] = 6.0;
+          sb[2] = 7.0;
+          sb[3] = 8.0;
+          cblas_sgemm(
+            cblasRowMajor,
+            cblasNoTrans,
+            cblasNoTrans,
+            2,
+            2,
+            2,
+            1.0,
+            sa,
+            2,
+            sb,
+            2,
+            0.0,
+            sc,
+            2,
+          );
+          expect(sc[0], closeTo(19.0, 1e-5));
+          expect(sc[3], closeTo(50.0, 1e-5));
+
+          svx[0] = 2.0;
+          svx[1] = 3.0;
+          cblas_sgemv(
+            cblasRowMajor,
+            cblasNoTrans,
+            2,
+            2,
+            1.0,
+            sa,
+            2,
+            svx,
+            1,
+            0.0,
+            svy,
+            1,
+          );
+          expect(svy[0], closeTo(8.0, 1e-5));
+          expect(svy[1], closeTo(18.0, 1e-5));
+
+          // (2 + 3i) * (4 - i) = 11 + 10i
+          ca[0] = 2.0;
+          ca[1] = 3.0;
+          cb[0] = 4.0;
+          cb[1] = -1.0;
+          calpha[0] = 1.0;
+          calpha[1] = 0.0;
+          cbeta[0] = 0.0;
+          cbeta[1] = 0.0;
+          cblas_cgemm(
+            cblasRowMajor,
+            cblasNoTrans,
+            cblasNoTrans,
+            1,
+            1,
+            1,
+            calpha,
+            ca,
+            1,
+            cb,
+            1,
+            cbeta,
+            cc,
+            1,
+          );
+          expect(cc[0], closeTo(11.0, 1e-5));
+          expect(cc[1], closeTo(10.0, 1e-5));
+
+          cblas_cgemv(
+            cblasRowMajor,
+            cblasNoTrans,
+            1,
+            1,
+            calpha,
+            ca,
+            1,
+            cb,
+            1,
+            cbeta,
+            cc,
+            1,
+          );
+          expect(cc[0], closeTo(11.0, 1e-5));
+          expect(cc[1], closeTo(10.0, 1e-5));
+
+          za[0] = 2.0;
+          za[1] = 3.0;
+          zx[0] = 4.0;
+          zx[1] = -1.0;
+          zalpha[0] = 1.0;
+          zalpha[1] = 0.0;
+          zbeta[0] = 0.0;
+          zbeta[1] = 0.0;
+          cblas_zgemv(
+            cblasRowMajor,
+            cblasNoTrans,
+            1,
+            1,
+            zalpha,
+            za,
+            1,
+            zx,
+            1,
+            zbeta,
+            zy,
+            1,
+          );
+          expect(zy[0], closeTo(11.0, 1e-12));
+          expect(zy[1], closeTo(10.0, 1e-12));
+        } finally {
+          calloc.free(sx);
+          calloc.free(sy);
+          calloc.free(dx);
+          calloc.free(dy);
+          calloc.free(sa);
+          calloc.free(sb);
+          calloc.free(sc);
+          calloc.free(svx);
+          calloc.free(svy);
+          calloc.free(ca);
+          calloc.free(cb);
+          calloc.free(cc);
+          calloc.free(calpha);
+          calloc.free(cbeta);
+          calloc.free(za);
+          calloc.free(zx);
+          calloc.free(zy);
+          calloc.free(zalpha);
+          calloc.free(zbeta);
+        }
+      },
+    );
   });
 }
