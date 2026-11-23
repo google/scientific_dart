@@ -40,11 +40,11 @@ void main() {
     test('Minlength parameter', () {
       NDArray.scope(() {
         final x = NDArray.fromList([0, 1, 1, 2], [4], DType.int64);
-        final counts = bincount(x, minlength: 5);
+        final counts = bincount(x, minLength: 5);
         expect(counts.shape, [5]);
         expect(counts.toList(), [1, 2, 1, 0, 0]);
 
-        final counts2 = bincount(x, minlength: 2);
+        final counts2 = bincount(x, minLength: 2);
         expect(counts2.shape, [3]);
         expect(counts2.toList(), [1, 2, 1]);
       });
@@ -123,7 +123,7 @@ void main() {
         expect(counts.shape, [0]);
         expect(counts.toList(), <int>[]);
 
-        final counts2 = bincount(x, minlength: 3);
+        final counts2 = bincount(x, minLength: 3);
         expect(counts2.shape, [3]);
         expect(counts2.toList(), [0, 0, 0]);
       });
@@ -277,7 +277,7 @@ void main() {
     test('Validation errors extra', () {
       NDArray.scope(() {
         final x = NDArray.fromList([1, 2], [2], DType.int64);
-        expect(() => bincount(x, minlength: -1), throwsArgumentError);
+        expect(() => bincount(x, minLength: -1), throwsArgumentError);
 
         final outBadShape = NDArray.zeros([3, 1], DType.int64);
         expect(() => bincount(x, out: outBadShape), throwsArgumentError);

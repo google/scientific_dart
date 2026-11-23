@@ -42,9 +42,9 @@ void main() {
       expect(BinaryOp.fmod.isReducible, isFalse);
       expect(BinaryOp.power.isReducible, isFalse);
       expect(BinaryOp.floatPower.isReducible, isFalse);
-      expect(BinaryOp.arctan2.isReducible, isFalse);
+      expect(BinaryOp.atan2.isReducible, isFalse);
       expect(BinaryOp.hypot.isReducible, isFalse);
-      expect(BinaryOp.copysign.isReducible, isFalse);
+      expect(BinaryOp.copySign.isReducible, isFalse);
       expect(BinaryOp.leftShift.isReducible, isFalse);
       expect(BinaryOp.rightShift.isReducible, isFalse);
       expect(BinaryOp.heaviside.isReducible, isFalse);
@@ -80,14 +80,14 @@ void main() {
       });
     });
 
-    test('Global reduction with keepdims and initial', () {
+    test('Global reduction with keepDims and initial', () {
       NDArray.scope(() {
         final a = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0],
           [2, 2],
           DType.float64,
         );
-        final res = a.reduce(op: BinaryOp.add, keepdims: true, initial: 10.0);
+        final res = a.reduce(op: BinaryOp.add, keepDims: true, initial: 10.0);
         expect(res.shape, equals([1, 1]));
         expect(res.getCell([0, 0]), equals(20.0));
       });
@@ -196,8 +196,8 @@ void main() {
     });
   });
 
-  group('Ufunc reduceat Tests', () {
-    test('reduceat 1D array interval slices', () {
+  group('Ufunc reduceAt Tests', () {
+    test('reduceAt 1D array interval slices', () {
       NDArray.scope(() {
         final a = NDArray<Float64>.fromList(
           [0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0],
@@ -209,7 +209,7 @@ void main() {
         // Step 1: slice [4:1] (start >= end) -> element a[4] = 4.0
         // Step 2: slice [1:5] -> sum(1..4) = 10.0
         // Step 3: slice [5:8] (final) -> sum(5..7) = 18.0
-        final res = a.reduceat(indices, op: BinaryOp.add);
+        final res = a.reduceAt(indices, op: BinaryOp.add);
         expect(res.toList(), equals([6.0, 4.0, 10.0, 18.0]));
       });
     });
@@ -288,7 +288,7 @@ void main() {
 
       expect(() => a.reduce(op: BinaryOp.add), throwsStateError);
       expect(() => a.accumulate(op: BinaryOp.add), throwsStateError);
-      expect(() => a.reduceat(indices, op: BinaryOp.add), throwsStateError);
+      expect(() => a.reduceAt(indices, op: BinaryOp.add), throwsStateError);
       expect(() => a.outer(b), throwsStateError);
       expect(() => a.at(indices, b, op: BinaryOp.add), throwsStateError);
 
@@ -305,7 +305,7 @@ void main() {
           throwsRangeError,
         );
         expect(
-          () => a.reduceat(
+          () => a.reduceAt(
             NDArray.fromList([0], [1], DType.int64),
             op: BinaryOp.add,
             axis: 2,
@@ -343,7 +343,7 @@ void main() {
     });
 
     test(
-      'outer operations with non-reducible ops (subtract, divide, copysign)',
+      'outer operations with non-reducible ops (subtract, divide, copySign)',
       () {
         NDArray.scope(() {
           final a = NDArray<Float64>.fromList([10.0, 20.0], [2], DType.float64);
@@ -359,21 +359,21 @@ void main() {
     );
   });
   group('Top-Level Ufunc Function Tests', () {
-    test('top-level reduce, accumulate, reduceat, outer, at functions', () {
+    test('top-level reduce, accumulate, reduceAt, outer, at functions', () {
       NDArray.scope(() {
         final a = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0],
           [4],
           DType.float64,
         );
-        final sumRes = reduce(a, op: BinaryOp.add);
+        final sumRes = reduceUfunc(a, op: BinaryOp.add);
         expect(sumRes.scalar, equals(10.0));
 
-        final cumsum = accumulate(a, op: BinaryOp.add);
+        final cumsum = accumulateUfunc(a, op: BinaryOp.add);
         expect(cumsum.toList(), equals([1.0, 3.0, 6.0, 10.0]));
 
         final indices = NDArray.fromList([0, 2], [2], DType.int64);
-        final redAt = reduceat(a, indices, op: BinaryOp.add);
+        final redAt = reduceAtUfunc(a, indices, op: BinaryOp.add);
         expect(redAt.toList(), equals([3.0, 7.0]));
 
         final b = NDArray<Float64>.fromList([5.0, 6.0], [2], DType.float64);
@@ -387,7 +387,7 @@ void main() {
           [3],
           DType.float64,
         );
-        at(target, atIndices, valBuffer, op: BinaryOp.add);
+        atUfunc(target, atIndices, valBuffer, op: BinaryOp.add);
         expect(target.toList(), equals([5.0, 5.0, 0.0]));
       });
     });

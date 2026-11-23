@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import '../ndarray.dart';
 import 'dart:ffi' as ffi;
 import '../ndarray_bindings.dart';
@@ -113,9 +112,9 @@ NDArray<T> sort<T extends DTypeTag, Out extends T>(
 
   if (targetAxis != rank - 1) {
     return NDArray.scope(() {
-      final swappedView = a.swapaxes(targetAxis, rank - 1);
+      final swappedView = a.swapAxes(targetAxis, rank - 1);
       final sortedView = sort(swappedView, axis: rank - 1, kind: kind);
-      final resultSwapped = sortedView.swapaxes(targetAxis, rank - 1);
+      final resultSwapped = sortedView.swapAxes(targetAxis, rank - 1);
       if (out != null) {
         resultSwapped.copy(out: out);
         return out;
@@ -298,14 +297,14 @@ NDArray<R> argsortAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
 
   if (targetAxis != rank - 1) {
     return NDArray.scope(() {
-      final swappedView = a.swapaxes(targetAxis, rank - 1);
+      final swappedView = a.swapAxes(targetAxis, rank - 1);
       final sortedIndicesView = argsortAs(
         swappedView,
         dtype,
         axis: rank - 1,
         kind: kind,
       );
-      final resultSwapped = sortedIndicesView.swapaxes(targetAxis, rank - 1);
+      final resultSwapped = sortedIndicesView.swapAxes(targetAxis, rank - 1);
       if (out != null) {
         resultSwapped.copy(out: out);
         return out;
@@ -628,9 +627,9 @@ NDArray<T> partition<T extends DTypeTag, Out extends T>(
 
   if (targetAxis != rank - 1) {
     return NDArray.scope(() {
-      final swappedView = a.swapaxes(targetAxis, rank - 1);
+      final swappedView = a.swapAxes(targetAxis, rank - 1);
       final partitionedView = partition(swappedView, uniqueK, axis: rank - 1);
-      final resultSwapped = partitionedView.swapaxes(targetAxis, rank - 1);
+      final resultSwapped = partitionedView.swapAxes(targetAxis, rank - 1);
       if (out != null) {
         resultSwapped.copy(out: out);
         return out;
@@ -906,14 +905,14 @@ argpartitionAs<T extends DTypeTag, R extends DTypeTag, Out extends R>(
 
   if (targetAxis != rank - 1) {
     return NDArray.scope(() {
-      final swappedView = a.swapaxes(targetAxis, rank - 1);
+      final swappedView = a.swapAxes(targetAxis, rank - 1);
       final partitionedIndicesView = argpartitionAs(
         swappedView,
         uniqueK,
         dtype,
         axis: rank - 1,
       );
-      final resultSwapped = partitionedIndicesView.swapaxes(
+      final resultSwapped = partitionedIndicesView.swapAxes(
         targetAxis,
         rank - 1,
       );
@@ -2041,7 +2040,7 @@ NDArray<Int64> argwhere<T extends DTypeTag>(NDArray<T> a) {
 
   return NDArray.scope(() {
     if (rank == 0) {
-      final count = count_nonzero<T>(a).scalar;
+      final count = countNonzero<T>(a).scalar;
       if (count > 0) {
         return NDArray<Int64>.create([1, 0], DType.int64).detachToParentScope();
       } else {
@@ -2224,7 +2223,7 @@ void _dispatchCountNonzeroFFI(
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
-NDArray<Int64> count_nonzero<T extends DTypeTag>(
+NDArray<Int64> countNonzero<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
   NDArray<Int64>? out,
@@ -2234,7 +2233,7 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
   }
   if (out != null && out.isDisposed) {
     throw StateError(
-      'Cannot write count_nonzero result to a disposed output array.',
+      'Cannot write countNonzero result to a disposed output array.',
     );
   }
 
@@ -2274,7 +2273,7 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Int64>.create(out.shape, DType.int64);
-        count_nonzero<T>(a, axis: axis, out: temp);
+        countNonzero<T>(a, axis: axis, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -2283,7 +2282,7 @@ NDArray<Int64> count_nonzero<T extends DTypeTag>(
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     final doubleA = castNDArray(a, DType.float64);
     try {
-      return count_nonzero(doubleA, axis: axis, out: out);
+      return countNonzero(doubleA, axis: axis, out: out);
     } finally {
       doubleA.dispose();
     }
@@ -2485,7 +2484,7 @@ NDArray<Int64> _uint64ArgMinMax(
   NDArray<DTypeTag> a,
   int? normAxis,
   bool isMax, {
-  bool keepdims = false,
+  bool keepDims = false,
   NDArray<Int64>? out,
   required List<int> targetShape,
 }) {
@@ -2523,7 +2522,7 @@ NDArray<Int64> _uint64ArgMinMax(
     );
   }
 
-  final squeezedDestStrides = keepdims
+  final squeezedDestStrides = keepDims
       ? (List<int>.from(result.strides)..removeAt(normAxis))
       : result.strides;
   final outShape = List<int>.from(a.shape)..removeAt(normAxis);
@@ -2588,7 +2587,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   NDArray<T> a,
   int? axis,
   bool isMax, {
-  bool keepdims = false,
+  bool keepDims = false,
   NDArray<Int64>? out,
 }) {
   if (a.isDisposed) {
@@ -2620,8 +2619,8 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
   }
 
   final targetShape = normAxis == null
-      ? (keepdims ? List<int>.filled(rank, 1) : <int>[])
-      : (keepdims
+      ? (keepDims ? List<int>.filled(rank, 1) : <int>[])
+      : (keepDims
             ? (List<int>.from(a.shape)..[normAxis] = 1)
             : (List<int>.from(a.shape)..removeAt(normAxis)));
 
@@ -2630,7 +2629,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
     if (sharesMemory(a, out)) {
       return NDArray.scope(() {
         final temp = NDArray<Int64>.create(out.shape, DType.int64);
-        _argminmaxFFI<T>(a, axis, isMax, keepdims: keepdims, out: temp);
+        _argminmaxFFI<T>(a, axis, isMax, keepDims: keepDims, out: temp);
         return temp.copy(out: out);
       });
     }
@@ -2648,7 +2647,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
       a.dtype == DType.uint16) {
     final doubleA = castNDArray(a, DType.float64);
     try {
-      return _argminmaxFFI(doubleA, axis, isMax, keepdims: keepdims, out: out);
+      return _argminmaxFFI(doubleA, axis, isMax, keepDims: keepDims, out: out);
     } finally {
       doubleA.dispose();
     }
@@ -2659,7 +2658,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
       a,
       normAxis,
       isMax,
-      keepdims: keepdims,
+      keepDims: keepDims,
       out: out,
       targetShape: targetShape,
     );
@@ -2723,7 +2722,7 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
       cStridesSrc[i] = a.strides[i];
     }
 
-    final squeezedDestStrides = keepdims
+    final squeezedDestStrides = keepDims
         ? (List<int>.from(result.strides)..removeAt(targetAxis))
         : result.strides;
     final rankDest = squeezedDestStrides.length;
@@ -2756,33 +2755,33 @@ NDArray<Int64> _argminmaxFFI<T extends DTypeTag>(
 /// Returns the indices of the maximum values along an [axis].
 ///
 /// If [axis] is null, flattens the array and returns a flat 0-dimensional [NDArray]
-/// (or shape with 1s if [keepdims] is true) whose value can be accessed via [scalar].
+/// (or shape with 1s if [keepDims] is true) whose value can be accessed via [scalar].
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
 NDArray<Int64> argmax<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
-  bool keepdims = false,
+  bool keepDims = false,
   NDArray<Int64>? out,
 }) {
-  return _argminmaxFFI<T>(a, axis, true, keepdims: keepdims, out: out);
+  return _argminmaxFFI<T>(a, axis, true, keepDims: keepDims, out: out);
 }
 
 /// Returns the indices of the minimum values along an [axis].
 ///
 /// If [axis] is null, flattens the array and returns a flat 0-dimensional [NDArray]
-/// (or shape with 1s if [keepdims] is true) whose value can be accessed via [scalar].
+/// (or shape with 1s if [keepDims] is true) whose value can be accessed via [scalar].
 ///
 /// **Example:**
 /// {@example /example/sorting_searching_example.dart lang=dart}
 NDArray<Int64> argmin<T extends DTypeTag>(
   NDArray<T> a, {
   int? axis,
-  bool keepdims = false,
+  bool keepDims = false,
   NDArray<Int64>? out,
 }) {
-  return _argminmaxFFI<T>(a, axis, false, keepdims: keepdims, out: out);
+  return _argminmaxFFI<T>(a, axis, false, keepDims: keepDims, out: out);
 }
 
 /// Comparison operators for search operations.

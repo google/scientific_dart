@@ -311,7 +311,7 @@ void main() {
     );
 
     test(
-      'binaryUfunc, unaryUfunc, reduceUfunc, accumulateUfunc, reduceatUfunc, atUfunc support all 8 integer DTypes for bitwise ops',
+      'binaryUfunc, unaryUfunc, reduceUfunc, accumulateUfunc, reduceAtUfunc, atUfunc support all 8 integer DTypes for bitwise ops',
       () {
         for (final dt in intDTypes) {
           NDArray.scope(() {
@@ -344,7 +344,7 @@ void main() {
             );
 
             final idx = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
-            final redAt = reduceatUfunc(a, idx, op: BinaryOp.bitwiseOr);
+            final redAt = reduceAtUfunc(a, idx, op: BinaryOp.bitwiseOr);
             expect(redAt.toList(), equals([7 | 3, 5 | 1]));
 
             final target = a.copy();

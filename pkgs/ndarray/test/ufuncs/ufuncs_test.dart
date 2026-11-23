@@ -111,7 +111,7 @@ void main() {
       });
     });
 
-    test('mixed integer type rejection and explicit astype', () {
+    test('mixed integer type rejection and explicit asType', () {
       NDArray.scope(() {
         final a32 = NDArray.fromList([5, 12], [2], DType.int32);
         final b64 = NDArray.fromList([3, 4], [2], DType.int64);
@@ -120,7 +120,7 @@ void main() {
           () => bitwiseAnd(a32.asBitwiseDType, b64.asBitwiseDType),
           throwsArgumentError,
         );
-        final res = bitwiseAnd(a32.astype(DType.int64), b64);
+        final res = bitwiseAnd(a32.asType(DType.int64), b64);
         expect(res.dtype, DType.int64);
         expect(res.toList(), [1, 4]);
       });
@@ -377,7 +377,7 @@ void main() {
         );
 
         final r = remainder(x, y);
-        final m = mod(x, y);
+        final m = remainder(x, y);
         // 5 % 2 = 1
         // -5 % 2 = 1 (since -5 = 2 * -3 + 1)
         // -5 % -2 = -1 (since -5 = -2 * 2 - 1)
@@ -412,7 +412,7 @@ void main() {
       });
     });
 
-    group('floating-point classifications (isnan, isinf, isfinite)', () {
+    group('floating-point classifications (isNan, isInf, isFinite)', () {
       test('real types', () {
         final a = NDArray.fromList(
           Float64List.fromList([
@@ -425,13 +425,13 @@ void main() {
           DType.float64,
         );
 
-        final nanMask = isnan(a);
+        final nanMask = isNan(a);
         expect(nanMask.toList(), [false, true, false, false]);
 
-        final infMask = isinf(a);
+        final infMask = isInf(a);
         expect(infMask.toList(), [false, false, true, true]);
 
-        final finMask = isfinite(a);
+        final finMask = isFinite(a);
         expect(finMask.toList(), [true, false, false, false]);
       });
 
@@ -441,13 +441,13 @@ void main() {
         a[[1]] = Complex(1.0, double.infinity);
         a[[2]] = Complex(1.0, 2.0);
 
-        final nanMask = isnan(a);
+        final nanMask = isNan(a);
         expect(nanMask.toList(), [true, false, false]);
 
-        final infMask = isinf(a);
+        final infMask = isInf(a);
         expect(infMask.toList(), [false, true, false]);
 
-        final finMask = isfinite(a);
+        final finMask = isFinite(a);
         expect(finMask.toList(), [false, false, true]);
       });
 
@@ -455,14 +455,14 @@ void main() {
         final a = NDArray.fromList(Int32List.fromList([1, 2]), [
           2,
         ], DType.int32);
-        expect(isnan(a).toList().every((x) => !x), true);
-        expect(isinf(a).toList().every((x) => !x), true);
-        expect(isfinite(a).toList().every((x) => x), true);
+        expect(isNan(a).toList().every((x) => !x), true);
+        expect(isInf(a).toList().every((x) => !x), true);
+        expect(isFinite(a).toList().every((x) => x), true);
       });
     });
 
-    group('copysign ufunc', () {
-      test('basic copysign', () {
+    group('copySign ufunc', () {
+      test('basic copySign', () {
         final x1 = NDArray.fromList(Float64List.fromList([1.0, -1.0, 2.0]), [
           3,
         ], DType.float64);
@@ -470,7 +470,7 @@ void main() {
           3,
         ], DType.float64);
 
-        final res = copysign(x1, x2);
+        final res = copySign(x1, x2);
         final resList = res.toList();
         expect(resList[0], -1.0);
         expect(resList[1], 1.0);
@@ -479,7 +479,7 @@ void main() {
         expect(resList[2].abs(), 2.0);
       });
 
-      test('broadcasting copysign', () {
+      test('broadcasting copySign', () {
         final x1 = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
           2,
         ], DType.float64);
@@ -487,7 +487,7 @@ void main() {
           1,
         ], DType.float64);
 
-        final res = copysign(x1, x2);
+        final res = copySign(x1, x2);
         expect(res.toList(), [-1.0, -2.0]);
       });
     });
@@ -507,7 +507,7 @@ void main() {
           ], DType.float64);
 
           expect(() => add(a.asAnySpec, b.asAnySpec), throwsArgumentError);
-          final c = add(a, b.astype(DType.complex128));
+          final c = add(a, b.asType(DType.complex128));
           expect(c.dtype, DType.complex128);
           expect(c.shape, [2]);
           expect(c.toList(), [Complex(11.0, 2.0), Complex(23.0, 4.0)]);
@@ -526,7 +526,7 @@ void main() {
           b[[1]] = Complex(3.0, 4.0);
 
           expect(() => subtract(a.asAnySpec, b.asAnySpec), throwsArgumentError);
-          final c = subtract(a.astype(DType.complex128), b);
+          final c = subtract(a.asType(DType.complex128), b);
           expect(c.dtype, DType.complex128);
           expect(c.toList(), [Complex(9.0, -2.0), Complex(17.0, -4.0)]);
         }),
@@ -544,7 +544,7 @@ void main() {
           b[[1]] = Complex(1.0, -2.0);
 
           expect(() => multiply(a.asAnySpec, b.asAnySpec), throwsArgumentError);
-          final c = multiply(a.astype(DType.complex128), b);
+          final c = multiply(a.asType(DType.complex128), b);
           expect(c.dtype, DType.complex128);
           expect(c.toList(), [Complex(8.0, 10.0), Complex(3.0, -6.0)]);
         }),
@@ -1051,7 +1051,7 @@ void main() {
     );
 
     test(
-      'logicalAnd cross-type rejection and explicit astype on float/boolean, complex/boolean, and int/boolean',
+      'logicalAnd cross-type rejection and explicit asType on float/boolean, complex/boolean, and int/boolean',
       () => NDArray.scope(() {
         final mask = NDArray.fromList([true, true, false], [3], DType.boolean);
 
@@ -1065,10 +1065,10 @@ void main() {
           () => logicalAnd(mask.asAnySpec, f64.asAnySpec),
           throwsArgumentError,
         );
-        final resF1 = logicalAnd(f64.astype(DType.boolean), mask);
+        final resF1 = logicalAnd(f64.asType(DType.boolean), mask);
         expect(resF1.dtype, DType.boolean);
         expect(resF1.toList(), [false, true, false]);
-        final resF2 = logicalAnd(mask, f64.astype(DType.boolean));
+        final resF2 = logicalAnd(mask, f64.asType(DType.boolean));
         expect(resF2.dtype, DType.boolean);
         expect(resF2.toList(), [false, true, false]);
 
@@ -1085,10 +1085,10 @@ void main() {
           () => logicalAnd(mask.asAnySpec, c128.asAnySpec),
           throwsArgumentError,
         );
-        final resC1 = logicalAnd(c128.astype(DType.boolean), mask);
+        final resC1 = logicalAnd(c128.asType(DType.boolean), mask);
         expect(resC1.dtype, DType.boolean);
         expect(resC1.toList(), [false, true, false]);
-        final resC2 = logicalAnd(mask, c128.astype(DType.boolean));
+        final resC2 = logicalAnd(mask, c128.asType(DType.boolean));
         expect(resC2.dtype, DType.boolean);
         expect(resC2.toList(), [false, true, false]);
 
@@ -1102,10 +1102,10 @@ void main() {
           () => logicalAnd(mask.asAnySpec, i32.asAnySpec),
           throwsArgumentError,
         );
-        final resI1 = logicalAnd(i32.astype(DType.boolean), mask);
+        final resI1 = logicalAnd(i32.asType(DType.boolean), mask);
         expect(resI1.dtype, DType.boolean);
         expect(resI1.toList(), [false, true, false]);
-        final resI2 = logicalAnd(mask, i32.astype(DType.boolean));
+        final resI2 = logicalAnd(mask, i32.asType(DType.boolean));
         expect(resI2.dtype, DType.boolean);
         expect(resI2.toList(), [false, true, false]);
       }),
@@ -1186,7 +1186,7 @@ void main() {
         final i64 = NDArray.fromList([3], [1], DType.int64);
         final i32 = NDArray.fromList([4], [1], DType.int32);
 
-        // Mixed dtypes are rejected on add(); addAs() and explicit astype work
+        // Mixed dtypes are rejected on add(); addAs() and explicit asType work
         expect(() => add(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
         final r1 = addAs(f64, f32, DType.float64);
         expect(r1.dtype, DType.float64);
@@ -1419,7 +1419,7 @@ void main() {
     );
 
     test(
-      'nan_to_num() dataset cleaning ufunc correctness',
+      'nanToNum() dataset cleaning ufunc correctness',
       () => NDArray.scope(() {
         // 1. Default Float64 cleaning
         final a = NDArray.fromList(
@@ -1428,7 +1428,7 @@ void main() {
           DType.float64,
         );
 
-        final cleanDefault = nan_to_num(a);
+        final cleanDefault = nanToNum(a);
 
         expect(cleanDefault.toList()[0], 1.0);
         expect(cleanDefault.toList()[1], 0.0);
@@ -1436,11 +1436,11 @@ void main() {
         expect(cleanDefault.toList()[3], -double.maxFinite);
 
         // 2. Custom parameters cleaning
-        final cleanCustom = nan_to_num(
+        final cleanCustom = nanToNum(
           a,
           nan: 99.0,
-          posinf: 500.0,
-          neginf: -500.0,
+          posInf: 500.0,
+          negInf: -500.0,
         );
 
         expect(cleanCustom.toList(), [1.0, 99.0, 500.0, -500.0]);
@@ -1456,7 +1456,7 @@ void main() {
         ]); // indices: 0, 2
 
         expect(view.isContiguous, false);
-        nan_to_num(view, nan: 100.0, out: view);
+        nanToNum(view, nan: 100.0, out: view);
 
         expect(parent.toList(), [100.0, 2.0, 100.0, 4.0]);
 
@@ -1466,7 +1466,7 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final res2d = nan_to_num(a2d, nan: 10.0, posinf: 20.0);
+        final res2d = nanToNum(a2d, nan: 10.0, posInf: 20.0);
         expect(res2d.shape, [2, 2]);
         expect(res2d.data, [10.0, 2.0, 3.0, 20.0]);
 
@@ -1475,7 +1475,7 @@ void main() {
           [2, 2, 2],
           DType.float64,
         );
-        final res3d = nan_to_num(a3d, nan: -1.0, neginf: -99.0);
+        final res3d = nanToNum(a3d, nan: -1.0, negInf: -99.0);
         expect(res3d.shape, [2, 2, 2]);
         expect(res3d.data[0], -1.0);
         expect(res3d.data[3], -99.0);
@@ -1676,29 +1676,29 @@ void main() {
         final dbl = NDArray.fromList([2.0, 2.0], [2], DType.float64);
         final integer = NDArray.fromList([2, 2], [2], DType.int32);
 
-        // Mixed-dtype array comparisons throw ArgumentError; explicit astype works
+        // Mixed-dtype array comparisons throw ArgumentError; explicit asType works
         expect(() => comp.eq(dbl), throwsArgumentError);
-        final cDbl = comp.eq(dbl.astype(DType.complex128));
+        final cDbl = comp.eq(dbl.asType(DType.complex128));
         expect(cDbl.toList(), [false, false]); // 1 != 2, 3 != 2
 
         expect(() => comp.eq(integer), throwsArgumentError);
-        final cInt = comp.eq(integer.astype(DType.complex128));
+        final cInt = comp.eq(integer.asType(DType.complex128));
         expect(cInt.toList(), [false, false]);
 
         expect(() => dbl.eq(comp), throwsArgumentError);
-        final dblC = dbl.astype(DType.complex128).eq(comp);
+        final dblC = dbl.asType(DType.complex128).eq(comp);
         expect(dblC.toList(), [false, false]);
 
         expect(() => dbl.eq(integer), throwsArgumentError);
-        final dblInt = dbl.eq(integer.astype(DType.float64));
+        final dblInt = dbl.eq(integer.asType(DType.float64));
         expect(dblInt.toList(), [true, true]);
 
         expect(() => integer.eq(comp), throwsArgumentError);
-        final intC = integer.astype(DType.complex128).eq(comp);
+        final intC = integer.asType(DType.complex128).eq(comp);
         expect(intC.toList(), [false, false]);
 
         expect(() => integer.eq(dbl), throwsArgumentError);
-        final intDbl = integer.astype(DType.float64).eq(dbl);
+        final intDbl = integer.asType(DType.float64).eq(dbl);
         expect(intDbl.toList(), [true, true]);
       }),
     );
@@ -1989,7 +1989,7 @@ void main() {
         );
 
         final outMod = NDArray.fromList([-1, -1, -1, -1], [4], DType.int32);
-        mod(a, b, where: mask, out: outMod);
+        remainder(a, b, where: mask, out: outMod);
         expect(outMod.toList(), [2, -1, 1, -1]);
 
         final outClip = NDArray.fromList([99, 99, 99, 99], [4], DType.int32);

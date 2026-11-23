@@ -17,9 +17,7 @@ import 'dart:typed_data';
 import 'package:ndarray/ndarray.dart';
 
 void main() {
-  print(
-    '=== NDArray expand_dims() and squeeze() Shape View Manipulation ===\n',
-  );
+  print('=== NDArray expandDims() and squeeze() Shape View Manipulation ===\n');
 
   NDArray.scope(() {
     // 1. Create a 1D vector of shape [3]
@@ -29,16 +27,16 @@ void main() {
     print('a: shape ${a.shape}, strides ${a.strides}, data ${a.toList()}');
 
     // 2. Expand dimensions at axis 0 -> shape [1, 3]
-    final aExpand0 = expand_dims(a, 0);
+    final aExpand0 = expandDims(a, 0);
     print(
-      '\nexpand_dims(a, 0): shape ${aExpand0.shape}, strides ${aExpand0.strides}',
+      '\nexpandDims(a, 0): shape ${aExpand0.shape}, strides ${aExpand0.strides}',
     );
     print('Is aExpand0 a zero-copy view? ${aExpand0.isView}'); // true
 
     // 3. Expand dimensions at axis 1 -> shape [3, 1]
-    final aExpand1 = expand_dims(a, 1);
+    final aExpand1 = expandDims(a, 1);
     print(
-      'expand_dims(a, 1): shape ${aExpand1.shape}, strides ${aExpand1.strides}',
+      'expandDims(a, 1): shape ${aExpand1.shape}, strides ${aExpand1.strides}',
     );
 
     // 4. Squeeze dimensions

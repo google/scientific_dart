@@ -472,10 +472,3 @@ NDArray<T> conj<T extends DTypeTag, Out extends T>(
     maskHolder.dispose();
   }
 }
-
-/// Alias for [conj].
-NDArray<T> conjugate<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
-  NDArray<DTypeTag>? where,
-  NDArray<Out>? out,
-}) => conj(a, where: where, out: out);

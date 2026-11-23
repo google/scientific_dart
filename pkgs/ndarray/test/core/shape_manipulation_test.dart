@@ -211,9 +211,9 @@ void main() {
         );
       });
 
-      group('swapaxes Tests', () {
+      group('swapAxes Tests', () {
         test(
-          'Basic swapaxes in 2D',
+          'Basic swapAxes in 2D',
           () => NDArray.scope(() {
             final a = NDArray.fromList(
               Float64List.fromList([1.0, 2.0, 3.0, 4.0, 5.0, 6.0]),
@@ -221,7 +221,7 @@ void main() {
               DType.float64,
             );
             // shape: [2, 3], strides: [3, 1]
-            final b = a.swapaxes(0, 1);
+            final b = a.swapAxes(0, 1);
             expect(b.shape, [3, 2]);
             expect(b.strides, [1, 3]);
             // Original elements:
@@ -240,42 +240,42 @@ void main() {
         );
 
         test(
-          'swapaxes negative index',
+          'swapAxes negative index',
           () => NDArray.scope(() {
             final a = NDArray.create([2, 3, 4], DType.float64);
-            final b = a.swapaxes(-3, -1); // swaps 0 and 2
+            final b = a.swapAxes(-3, -1); // swaps 0 and 2
             expect(b.shape, [4, 3, 2]);
           }),
         );
 
         test(
-          'swapaxes same axis is no-op view',
+          'swapAxes same axis is no-op view',
           () => NDArray.scope(() {
             final a = NDArray.fromList(Float64List.fromList([1.0, 2.0]), [
               2,
             ], DType.float64);
-            final b = a.swapaxes(0, 0);
+            final b = a.swapAxes(0, 0);
             expect(b.shape, [2]);
             expect(b.toList(), [1.0, 2.0]);
           }),
         );
 
         test(
-          'swapaxes out of bounds throws',
+          'swapAxes out of bounds throws',
           () => NDArray.scope(() {
             final a = NDArray.create([2, 2], DType.float64);
-            expect(() => a.swapaxes(0, 2), throwsRangeError);
-            expect(() => a.swapaxes(-3, 1), throwsRangeError);
+            expect(() => a.swapAxes(0, 2), throwsRangeError);
+            expect(() => a.swapAxes(-3, 1), throwsRangeError);
           }),
         );
       });
 
-      group('moveaxis Tests', () {
+      group('moveAxis Tests', () {
         test(
           'Move single axis 0 to 2 in 3D',
           () => NDArray.scope(() {
             final a = NDArray.create([2, 3, 4], DType.float64);
-            final b = a.moveaxis(0, 2);
+            final b = a.moveAxis(0, 2);
             expect(b.shape, [3, 4, 2]);
             // original strides were [12, 4, 1]
             // order becomes [1, 2, 0], so strides should be [4, 1, 12]
@@ -287,7 +287,7 @@ void main() {
           'Move single axis negative indexes (-1 to 0)',
           () => NDArray.scope(() {
             final a = NDArray.create([2, 3, 4], DType.float64);
-            final b = a.moveaxis(-1, 0); // moves axis 2 to 0
+            final b = a.moveAxis(-1, 0); // moves axis 2 to 0
             expect(b.shape, [4, 2, 3]);
             expect(b.strides, [1, 12, 4]);
           }),
@@ -298,7 +298,7 @@ void main() {
           () => NDArray.scope(() {
             final a = NDArray.create([2, 3, 4], DType.float64);
             // Move axis 0 -> 1 and axis 1 -> 2
-            final b = a.moveaxis([0, 1], [1, 2]);
+            final b = a.moveAxis([0, 1], [1, 2]);
             expect(b.shape, [
               4,
               2,
@@ -308,12 +308,12 @@ void main() {
         );
 
         test(
-          'moveaxis invalid lengths or duplicates throw',
+          'moveAxis invalid lengths or duplicates throw',
           () => NDArray.scope(() {
             final a = NDArray.create([2, 3, 4], DType.float64);
-            expect(() => a.moveaxis([0, 1], [2]), throwsArgumentError);
-            expect(() => a.moveaxis([0, 0], [1, 2]), throwsArgumentError);
-            expect(() => a.moveaxis([0, 1], [2, 2]), throwsArgumentError);
+            expect(() => a.moveAxis([0, 1], [2]), throwsArgumentError);
+            expect(() => a.moveAxis([0, 0], [1, 2]), throwsArgumentError);
+            expect(() => a.moveAxis([0, 1], [2, 2]), throwsArgumentError);
           }),
         );
       });
@@ -1084,7 +1084,7 @@ void main() {
     });
 
     group('Splitting Tests', () {
-      group('split & array_split Tests', () {
+      group('split & arraySplit Tests', () {
         test('basic 1D equal split', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList([1, 2, 3, 4], [4], DType.int32);
@@ -1109,10 +1109,10 @@ void main() {
           });
         });
 
-        test('array_split unequal division splits as equal as possible', () {
+        test('arraySplit unequal division splits as equal as possible', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-            final splits = array_split(a, 2);
+            final splits = arraySplit(a, 2);
 
             expect(splits.length, 2);
             expect(splits[0].shape, [2]);
@@ -1122,14 +1122,14 @@ void main() {
           });
         });
 
-        test('split_at with list of indices', () {
+        test('splitAt with list of indices', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
               [10, 20, 30, 40, 50],
               [5],
               DType.int32,
             );
-            final splits = split_at(a, [1, 3]);
+            final splits = splitAt(a, [1, 3]);
 
             expect(splits.length, 3);
             expect(splits[0].toList(), [10]);
@@ -1155,7 +1155,7 @@ void main() {
         });
       });
 
-      group('hsplit & hsplit_at Tests', () {
+      group('hsplit & hsplitAt Tests', () {
         test('hsplit 2D array', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
@@ -1167,10 +1167,10 @@ void main() {
           });
         });
 
-        test('hsplit_at 2D array', () {
+        test('hsplitAt 2D array', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-            final splits = hsplit_at(a, [1]);
+            final splits = hsplitAt(a, [1]);
 
             expect(splits.length, 2);
             expect(splits[0].toList(), [1, 3]);
@@ -1190,7 +1190,7 @@ void main() {
         });
       });
 
-      group('vsplit & vsplit_at Tests', () {
+      group('vsplit & vsplitAt Tests', () {
         test('vsplit 2D array', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
@@ -1202,10 +1202,10 @@ void main() {
           });
         });
 
-        test('vsplit_at 2D array', () {
+        test('vsplitAt 2D array', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-            final splits = vsplit_at(a, [1]);
+            final splits = vsplitAt(a, [1]);
 
             expect(splits.length, 2);
             expect(splits[0].toList(), [1, 2]);
@@ -1221,7 +1221,7 @@ void main() {
         });
       });
 
-      group('dsplit & dsplit_at Tests', () {
+      group('dsplit & dsplitAt Tests', () {
         test('dsplit 3D array equal split', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
@@ -1243,14 +1243,14 @@ void main() {
           });
         });
 
-        test('dsplit_at 3D array at indices', () {
+        test('dsplitAt 3D array at indices', () {
           NDArray.scope(() {
             final a = NDArray<Int32>.fromList(
               List<int>.generate(16, (i) => i + 1),
               [2, 2, 4],
               DType.int32,
             );
-            final splits = dsplit_at(a, [1, 3]);
+            final splits = dsplitAt(a, [1, 3]);
 
             expect(splits.length, 3);
             expect(splits[0].shape, [2, 2, 1]);
@@ -1269,10 +1269,10 @@ void main() {
           });
         });
 
-        test('dsplit_at rank < 3 throws', () {
+        test('dsplitAt rank < 3 throws', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-            expect(() => dsplit_at(a, [1]), throwsArgumentError);
+            expect(() => dsplitAt(a, [1]), throwsArgumentError);
           });
         });
 
@@ -1296,7 +1296,7 @@ void main() {
             );
             a.dispose();
             expect(() => dsplit(a, 2), throwsStateError);
-            expect(() => dsplit_at(a, [1]), throwsStateError);
+            expect(() => dsplitAt(a, [1]), throwsStateError);
           });
         });
       });
@@ -1742,7 +1742,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(2),
-            mode: PaddingMode.constant,
+            mode: PadMode.constant,
             constantValues: PadValues.all(9),
           );
           expect(r.shape, [7]);
@@ -1757,7 +1757,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.axes([(1, 1), (2, 2)]),
-            mode: PaddingMode.constant,
+            mode: PadMode.constant,
             constantValues: PadValues.axes([(8, 8), (9, 9)]),
           );
           expect(r.shape, [4, 6]);
@@ -1797,7 +1797,7 @@ void main() {
           final padded = pad(
             arr,
             PadWidth.axes([(1, 2), (2, 1)]),
-            mode: PaddingMode.constant,
+            mode: PadMode.constant,
             constantValues: PadValues.axes([(10, 20), (30, 40)]),
           );
           expect(padded.shape, [5, 5]);
@@ -1835,7 +1835,7 @@ void main() {
         'Edge Padding - 1D',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final r = pad(a, PadWidth.axes([(2, 3)]), mode: PaddingMode.edge);
+          final r = pad(a, PadWidth.axes([(2, 3)]), mode: PadMode.edge);
           expect(r.shape, [8]);
           expect(r.toList(), [1, 1, 1, 2, 3, 3, 3, 3]);
         }),
@@ -1845,7 +1845,7 @@ void main() {
         'Edge Padding - 2D',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
-          final r = pad(a, PadWidth.all(1), mode: PaddingMode.edge);
+          final r = pad(a, PadWidth.all(1), mode: PadMode.edge);
           expect(r.shape, [4, 4]);
           expect(r.toList(), [1, 1, 2, 2, 1, 1, 2, 2, 3, 3, 4, 4, 3, 3, 4, 4]);
         }),
@@ -1855,7 +1855,7 @@ void main() {
         'Wrap Padding',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final r = pad(a, PadWidth.axes([(2, 2)]), mode: PaddingMode.wrap);
+          final r = pad(a, PadWidth.axes([(2, 2)]), mode: PadMode.wrap);
           expect(r.shape, [7]);
           expect(r.toList(), [2, 3, 1, 2, 3, 1, 2]);
         }),
@@ -1865,7 +1865,7 @@ void main() {
         'Reflect Padding - 1D',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final r = pad(a, PadWidth.all(2), mode: PaddingMode.reflect);
+          final r = pad(a, PadWidth.all(2), mode: PadMode.reflect);
           expect(r.shape, [7]);
           expect(r.toList(), [3, 2, 1, 2, 3, 2, 1]);
         }),
@@ -1875,7 +1875,7 @@ void main() {
         'Reflect Padding - Large padding',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final r = pad(a, PadWidth.all(5), mode: PaddingMode.reflect);
+          final r = pad(a, PadWidth.all(5), mode: PadMode.reflect);
           expect(r.shape, [13]);
           expect(r.toList(), [2, 1, 2, 3, 2, 1, 2, 3, 2, 1, 2, 3, 2]);
         }),
@@ -1885,7 +1885,7 @@ void main() {
         'Symmetric Padding',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
-          final r = pad(a, PadWidth.all(2), mode: PaddingMode.symmetric);
+          final r = pad(a, PadWidth.all(2), mode: PadMode.symmetric);
           expect(r.shape, [7]);
           expect(r.toList(), [2, 1, 1, 2, 3, 3, 2]);
         }),
@@ -1895,7 +1895,7 @@ void main() {
         'Symmetric Mode - 1D Large Pad',
         () => NDArray.scope(() {
           final arr = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-          final padded = pad(arr, PadWidth.all(5), mode: PaddingMode.symmetric);
+          final padded = pad(arr, PadWidth.all(5), mode: PadMode.symmetric);
           expect(padded.toList(), [
             2.0,
             3.0,
@@ -1921,7 +1921,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(2),
-            mode: PaddingMode.linearRamp,
+            mode: PadMode.linearRamp,
             endValues: PadValues.all(5.0, 7.0),
           );
           expect(r.shape, [7]);
@@ -1936,7 +1936,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(2),
-            mode: PaddingMode.linearRamp,
+            mode: PadMode.linearRamp,
             endValues: PadValues.all(5, 7),
           );
           expect(r.shape, [7]);
@@ -1948,7 +1948,7 @@ void main() {
         'Stats Padding - Maximum',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 5, 3, 9, 2], [5], DType.int32);
-          final r = pad(a, PadWidth.all(2), mode: PaddingMode.maximum);
+          final r = pad(a, PadWidth.all(2), mode: PadMode.max);
           expect(r.shape, [9]);
           expect(r.toList(), [9, 9, 1, 5, 3, 9, 2, 9, 9]);
         }),
@@ -1961,7 +1961,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(2),
-            mode: PaddingMode.maximum,
+            mode: PadMode.max,
             statLength: StatLength.all(3),
           );
           expect(r.shape, [9]);
@@ -1973,7 +1973,7 @@ void main() {
         'Stats Padding - Mean',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [4], DType.float64);
-          final r = pad(a, PadWidth.all(1), mode: PaddingMode.mean);
+          final r = pad(a, PadWidth.all(1), mode: PadMode.mean);
           expect(r.shape, [6]);
           expect(r.toList(), [2.5, 1.0, 2.0, 3.0, 4.0, 2.5]);
         }),
@@ -1983,7 +1983,7 @@ void main() {
         'Stats Padding - Median - Odd',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1, 5, 3], [3], DType.int32);
-          final r = pad(a, PadWidth.all(1), mode: PaddingMode.median);
+          final r = pad(a, PadWidth.all(1), mode: PadMode.median);
           expect(r.shape, [5]);
           expect(r.toList(), [3, 1, 5, 3, 3]);
         }),
@@ -1993,7 +1993,7 @@ void main() {
         'Stats Padding - Median - Even',
         () => NDArray.scope(() {
           final a = NDArray.fromList([1.0, 5.0, 3.0, 9.0], [4], DType.float64);
-          final r = pad(a, PadWidth.all(1), mode: PaddingMode.median);
+          final r = pad(a, PadWidth.all(1), mode: PadMode.median);
           expect(r.shape, [6]);
           expect(r.toList(), [4.0, 1.0, 5.0, 3.0, 9.0, 4.0]);
         }),
@@ -2010,7 +2010,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(1),
-            mode: PaddingMode.constant,
+            mode: PadMode.constant,
             constantValues: PadValues.all(Complex(9, 9)),
           );
           expect(r.shape, [4]);
@@ -2031,7 +2031,7 @@ void main() {
             [3],
             DType.complex128,
           );
-          final r = pad(a, PadWidth.all(1), mode: PaddingMode.median);
+          final r = pad(a, PadWidth.all(1), mode: PadMode.median);
           expect(r.shape, [5]);
           expect(r.toList(), [
             Complex(3, 4),
@@ -2051,8 +2051,8 @@ void main() {
             [3],
             DType.complex128,
           );
-          final rMin = pad(a, PadWidth.all(1), mode: PaddingMode.minimum);
-          final rMax = pad(a, PadWidth.all(1), mode: PaddingMode.maximum);
+          final rMin = pad(a, PadWidth.all(1), mode: PadMode.min);
+          final rMax = pad(a, PadWidth.all(1), mode: PadMode.max);
 
           expect(rMin.toList(), [
             Complex(1, 10),
@@ -2078,7 +2078,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(1),
-            mode: PaddingMode.constant,
+            mode: PadMode.constant,
             constantValues: PadValues.all(true),
           );
           expect(r.shape, [5]);
@@ -2105,7 +2105,7 @@ void main() {
           final r = pad(
             a,
             PadWidth.all(1),
-            mode: PaddingMode.constant,
+            mode: PadMode.constant,
             constantValues: PadValues.all(9),
             out: out,
           );
@@ -2427,14 +2427,14 @@ void main() {
     );
 
     test(
-      'expand_dims() and squeeze() shape view manipulations ufunc correctness',
+      'expandDims() and squeeze() shape view manipulations ufunc correctness',
       () {
-        // 1. expand_dims() verification
+        // 1. expandDims() verification
         final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
 
-        final aExp0 = expand_dims(a, 0);
-        final aExp1 = expand_dims(a, 1);
-        final aExpNeg = expand_dims(a, -1); // normalized to axis 1
+        final aExp0 = expandDims(a, 0);
+        final aExp1 = expandDims(a, 1);
+        final aExpNeg = expandDims(a, -1); // normalized to axis 1
 
         expect(aExp0.shape, [1, 3]);
         expect(aExp0.strides, [1, 1]);
@@ -2444,8 +2444,8 @@ void main() {
 
         expect(aExpNeg.shape, [3, 1]);
 
-        // expand_dims out of bounds exception
-        expect(() => expand_dims(a, 3), throwsRangeError);
+        // expandDims out of bounds exception
+        expect(() => expandDims(a, 3), throwsRangeError);
 
         // 2. squeeze() verification
         final b = NDArray.zeros([1, 3, 1], DType.float64);

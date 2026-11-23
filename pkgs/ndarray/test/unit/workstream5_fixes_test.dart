@@ -18,7 +18,7 @@ import 'package:test/test.dart';
 
 void main() {
   group('Workstream 5 Fixes', () {
-    test('1. count_nonzero negative axis support and bounds validation', () {
+    test('1. countNonzero negative axis support and bounds validation', () {
       final a = NDArray.fromList(
         [0, 1, 0, 2, 3, 0, 4, 0, 5],
         [3, 3],
@@ -26,18 +26,18 @@ void main() {
       );
 
       // axis = -1 (columns)
-      final cnzNeg1 = count_nonzero(a, axis: -1);
+      final cnzNeg1 = countNonzero(a, axis: -1);
       expect(cnzNeg1.shape, equals([3]));
       expect(cnzNeg1.toList(), equals([1, 2, 2]));
 
       // axis = -2 (rows)
-      final cnzNeg2 = count_nonzero(a, axis: -2);
+      final cnzNeg2 = countNonzero(a, axis: -2);
       expect(cnzNeg2.shape, equals([3]));
       expect(cnzNeg2.toList(), equals([2, 2, 1]));
 
       // out-of-bounds negative axis
-      expect(() => count_nonzero(a, axis: -3), throwsRangeError);
-      expect(() => count_nonzero(a, axis: 3), throwsRangeError);
+      expect(() => countNonzero(a, axis: -3), throwsRangeError);
+      expect(() => countNonzero(a, axis: 3), throwsRangeError);
     });
 
     test('2. argmin / argmax bounds validation and negative axis', () {
@@ -146,7 +146,7 @@ void main() {
       final padded = pad(
         emptyArr,
         PadWidth.all(1),
-        mode: PaddingMode.constant,
+        mode: PadMode.constant,
         constantValues: PadValues.all(0.0),
       );
       expect(padded.shape, equals([2, 7]));
@@ -203,10 +203,10 @@ void main() {
       expect(nv.toList(), equals([4.0, 4.0]));
     });
 
-    test('9. nelder_mead and lbfgs optimization memory stability in scope', () {
+    test('9. nelderMead and lbfgs optimization memory stability in scope', () {
       NDArray.scope(() {
         final x0 = NDArray<Float64>.fromList([0.0, 0.0], [2], DType.float64);
-        final resNM = nelder_mead((x) {
+        final resNM = nelderMead((x) {
           final px = x.getCell([0]);
           final py = x.getCell([1]);
           return (px - 3.0) * (px - 3.0) + (py + 2.0) * (py + 2.0);
@@ -276,7 +276,7 @@ void main() {
     });
 
     test(
-      '12. out parameter support on stack, roll, split, array_split, interp',
+      '12. out parameter support on stack, roll, split, arraySplit, interp',
       () {
         // stack
         final a1 = NDArray.fromList([1, 2], [2], DType.int32);
@@ -293,7 +293,7 @@ void main() {
         expect(identical(resRoll, outRoll), isTrue);
         expect(outRoll.toList(), equals([4, 5, 1, 2, 3]));
 
-        // split & array_split
+        // split & arraySplit
         final sArr = NDArray.fromList([1, 2, 3, 4, 5, 6], [6], DType.int32);
         final outSplit = [
           NDArray.zeros([3], DType.int32),
@@ -310,7 +310,7 @@ void main() {
           NDArray.zeros([2], DType.int32),
           NDArray.zeros([2], DType.int32),
         ];
-        final resArraySplit = array_split(sArr, 3, out: outArraySplit);
+        final resArraySplit = arraySplit(sArr, 3, out: outArraySplit);
         expect(identical(resArraySplit[0], outArraySplit[0]), isTrue);
         expect(outArraySplit[0].toList(), equals([1, 2]));
         expect(outArraySplit[1].toList(), equals([3, 4]));
@@ -325,7 +325,7 @@ void main() {
         expect(identical(resInterp, outInterp), isTrue);
         expect(outInterp.getCell([0]), equals(25.0));
 
-        final resInterpolate = interpolate(x, xp, fp, out: outInterp);
+        final resInterpolate = interp(x, xp, fp, out: outInterp);
         expect(identical(resInterpolate, outInterp), isTrue);
         expect(outInterp.getCell([0]), equals(25.0));
       },

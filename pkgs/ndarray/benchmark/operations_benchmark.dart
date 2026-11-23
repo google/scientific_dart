@@ -134,7 +134,7 @@ void main() async {
         });
 
         c.bench('newton root scalar [x^2 - 2]', () {
-          final r = newton((x) => x * x - 2.0, 1.0, fprime: (x) => 2.0 * x);
+          final r = newton((x) => x * x - 2.0, 1.0, fPrime: (x) => 2.0 * x);
           blackhole(r);
         });
 
@@ -143,8 +143,8 @@ void main() async {
           [2],
           DType.float64,
         );
-        c.bench('nelder_mead minimization [Rosenbrock 2D]', () {
-          final r = nelder_mead(
+        c.bench('nelderMead minimization [Rosenbrock 2D]', () {
+          final r = nelderMead(
             (x) {
               final px = x.getCell([0]);
               final py = x.getCell([1]);
@@ -152,7 +152,7 @@ void main() async {
                   math.pow(1.0 - px, 2).toDouble();
             },
             x0Rosen,
-            maxiter: 1000,
+            maxIter: 1000,
           );
           blackhole(r);
           r.x.dispose();

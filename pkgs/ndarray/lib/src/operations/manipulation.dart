@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:ffi' as ffi;
 import 'dart:math' as math;
 import '../ndarray.dart';
@@ -379,9 +378,9 @@ NDArray<T> stack<T extends SelfOf<DTypeTag>>(
 /// **Memory Ownership & Lifetime View Warning:**
 /// > [!WARNING]
 /// > This operation returns a **zero-copy metadata view** sharing the underlying unmanaged C heap memory page with the input array. Mutating elements inside the returned view will **silently mutate the original array**. Disposing of the parent array [a] will invalidate the returned view. Calling [dispose] on the returned view does nothing.
-NDArray<T> expand_dims<T extends DTypeTag>(NDArray<T> a, int axis) {
+NDArray<T> expandDims<T extends DTypeTag>(NDArray<T> a, int axis) {
   if (a.isDisposed) {
-    throw StateError('Cannot execute expand_dims() on a disposed array.');
+    throw StateError('Cannot execute expandDims() on a disposed array.');
   }
   final rank = a.shape.length;
   final targetAxis = axis < 0 ? rank + 1 + axis : axis;
@@ -1870,10 +1869,10 @@ NDArray<T> _rollSingleND<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/rearranging_example.dart lang=dart}
-NDArray<R> astype<R extends DTypeTag>(
+NDArray<R> asType<R extends DTypeTag>(
   NDArray<DTypeTag> a,
   DType<R> targetDType, {
   bool copy = true,
 }) {
-  return a.astype<R>(targetDType, copy: copy);
+  return a.asType<R>(targetDType, copy: copy);
 }

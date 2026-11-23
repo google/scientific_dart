@@ -637,14 +637,14 @@ final class _LoopDisposeChecker extends RecursiveAstVisitor<void> {
 // =============================================================================
 
 /// Flags calling `.dispose()`, `.detachToParentScope()`, or `.detachFromScope()`
-/// on a variable initialized from an identity-returning cast (`astype(copy: false)`,
+/// on a variable initialized from an identity-returning cast (`asType(copy: false)`,
 /// `castNDArray`, `promoteToDouble`, `promoteToComplex`, `toNDArray`) without
 /// guarding `if (!identical(v, src))`.
 final class IdentityCastDisposeRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'ndarray_identity_cast_dispose',
     'Disposing or detaching the result of an identity-returning conversion '
-        '(such as astype(..., copy: false) or castNDArray) without checking '
+        '(such as asType(..., copy: false) or castNDArray) without checking '
         '!identical(result, source) will dispose the original input array '
         'when no conversion was needed.',
     correctionMessage:
@@ -656,7 +656,7 @@ final class IdentityCastDisposeRule extends AnalysisRule {
     : super(
         name: code.lowerCaseName,
         description:
-            'Guard .dispose() on identity-returning casts (astype(copy: false), '
+            'Guard .dispose() on identity-returning casts (asType(copy: false), '
             'castNDArray, promoteToDouble) with !identical(result, source).',
       );
 
@@ -695,7 +695,7 @@ final class _IdentityCastDisposeVisitor extends SimpleAstVisitor<void> {
         : node.realTarget;
     if (target == null) return;
 
-    // Direct invocation `a.astype(dt, copy: false).dispose()`
+    // Direct invocation `a.asType(dt, copy: false).dispose()`
     if (identityCastSourceExpression(target) != null) {
       rule.reportAtNode(node);
       return;

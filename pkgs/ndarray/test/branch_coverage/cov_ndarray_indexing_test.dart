@@ -443,7 +443,7 @@ void main() {
     });
 
     test(
-      'scalar wrapping, comparisons, bitwise/shift specs, squeeze, moveaxis',
+      'scalar wrapping, comparisons, bitwise/shift specs, squeeze, moveAxis',
       () {
         NDArray.scope(() {
           final u16 = NDArray.fromList([1, 2], [2], DType.uint16);
@@ -510,9 +510,9 @@ void main() {
           expect(() => m.squeeze(axis: [99]), throwsRangeError);
           expect(() => m.squeeze(axis: [0]), throwsArgumentError);
           expect(() => m.squeeze(axis: 'bad'), throwsArgumentError);
-          expect(() => m.moveaxis(0, [0]), throwsArgumentError);
-          expect(() => m.moveaxis(99, 0), throwsRangeError);
-          expect(() => m.moveaxis(0, 99), throwsRangeError);
+          expect(() => m.moveAxis(0, [0]), throwsArgumentError);
+          expect(() => m.moveAxis(99, 0), throwsRangeError);
+          expect(() => m.moveAxis(0, 99), throwsRangeError);
         });
       },
     );
@@ -622,7 +622,7 @@ void main() {
   });
 
   group('Indexing Operations Branch Coverage', () {
-    test('take_along_axis & put_along_axis validation and edge cases', () {
+    test('takeAlongAxis & putAlongAxis validation and edge cases', () {
       NDArray.scope(() {
         final a = NDArray.fromList([10.0, 20.0, 30.0], [3], DType.float64);
         final idx = NDArray.fromList([0, 2], [2], DType.int64);
@@ -630,12 +630,12 @@ void main() {
         final s0 = NDArray.scalar(1.0, dtype: DType.float64);
         final s0Idx = NDArray.scalar(0, dtype: DType.int64);
 
-        expect(() => take_along_axis(disp, idx, 0), throwsStateError);
-        expect(() => take_along_axis(a, disp, 0), throwsStateError);
-        expect(() => take_along_axis(a, idx, 0, out: disp), throwsStateError);
-        expect(() => take_along_axis(s0, s0Idx, 0), throwsArgumentError);
+        expect(() => takeAlongAxis(disp, idx, 0), throwsStateError);
+        expect(() => takeAlongAxis(a, disp, 0), throwsStateError);
+        expect(() => takeAlongAxis(a, idx, 0, out: disp), throwsStateError);
+        expect(() => takeAlongAxis(s0, s0Idx, 0), throwsArgumentError);
         expect(
-          () => take_along_axis(
+          () => takeAlongAxis(
             NDArray.zeros([2, 3], DType.float64),
             NDArray.zeros([2, 2], DType.int64),
             0,
@@ -644,39 +644,31 @@ void main() {
         );
         final badDTypeOut = NDArray.zeros([2], DType.int64);
         expect(
-          () =>
-              take_along_axis<DTypeTag, DTypeTag>(a, idx, 0, out: badDTypeOut),
+          () => takeAlongAxis<DTypeTag, DTypeTag>(a, idx, 0, out: badDTypeOut),
           throwsArgumentError,
         );
         expect(
-          () => take_along_axis(
-            a,
-            idx,
-            0,
-            out: NDArray.zeros([3], DType.float64),
-          ),
+          () =>
+              takeAlongAxis(a, idx, 0, out: NDArray.zeros([3], DType.float64)),
           throwsArgumentError,
         );
 
-        expect(() => put_along_axis(disp, idx, 1.0, 0), throwsStateError);
-        expect(() => put_along_axis(a, disp, 1.0, 0), throwsStateError);
-        expect(() => put_along_axis(a, idx, disp, 0), throwsStateError);
+        expect(() => putAlongAxis(disp, idx, 1.0, 0), throwsStateError);
+        expect(() => putAlongAxis(a, disp, 1.0, 0), throwsStateError);
+        expect(() => putAlongAxis(a, idx, disp, 0), throwsStateError);
+        expect(() => putAlongAxis(a, idx, 1.0, 0, out: disp), throwsStateError);
+        expect(() => putAlongAxis(s0, s0Idx, 1.0, 0), throwsArgumentError);
         expect(
-          () => put_along_axis(a, idx, 1.0, 0, out: disp),
-          throwsStateError,
-        );
-        expect(() => put_along_axis(s0, s0Idx, 1.0, 0), throwsArgumentError);
-        expect(
-          () => put_along_axis(a, NDArray.zeros([1, 1], DType.int64), 1.0, 0),
+          () => putAlongAxis(a, NDArray.zeros([1, 1], DType.int64), 1.0, 0),
           throwsArgumentError,
         );
-        expect(() => put_along_axis(a, idx, 1.0, 5), throwsRangeError);
+        expect(() => putAlongAxis(a, idx, 1.0, 5), throwsRangeError);
         expect(
-          () => put_along_axis(a, idx, NDArray.zeros([1, 2], DType.float64), 0),
+          () => putAlongAxis(a, idx, NDArray.zeros([1, 2], DType.float64), 0),
           throwsArgumentError,
         );
         expect(
-          () => put_along_axis<DTypeTag, DTypeTag>(
+          () => putAlongAxis<DTypeTag, DTypeTag>(
             a,
             idx,
             1.0,
@@ -686,7 +678,7 @@ void main() {
           throwsArgumentError,
         );
         expect(
-          () => put_along_axis(
+          () => putAlongAxis(
             a,
             idx,
             1.0,
@@ -696,12 +688,12 @@ void main() {
           throwsArgumentError,
         );
         final ro = a.copy()..isWriteable = false;
-        expect(() => put_along_axis(ro, idx, 1.0, 0), throwsStateError);
-        expect(() => put_along_axis(a, idx, 1.0, 0, out: ro), throwsStateError);
+        expect(() => putAlongAxis(ro, idx, 1.0, 0), throwsStateError);
+        expect(() => putAlongAxis(a, idx, 1.0, 0, out: ro), throwsStateError);
 
-        // Aliasing in put_along_axis
+        // Aliasing in putAlongAxis
         final iArr = NDArray.fromList([1, 0, 2], [3], DType.int64);
-        put_along_axis(iArr, iArr, 99, 0);
+        putAlongAxis(iArr, iArr, 99, 0);
         expect(iArr.toList(), [99, 99, 99]);
       });
     });
@@ -852,7 +844,7 @@ void main() {
     });
 
     test(
-      'unravel_index, ravel_multi_index, indices, sparse/diag/tril/triu/maskIndices',
+      'unravelIndex, ravelMultiIndex, indices, sparse/diag/tril/triu/maskIndices',
       () {
         NDArray.scope(() {
           final idx = NDArray.fromList([1, 3], [2], DType.int64);
@@ -888,7 +880,7 @@ void main() {
           final uRes = unravelIndex(idx, [2, 2], out: [sharedOut, sharedOut]);
           expect(uRes.length, 2);
 
-          // ravel_multi_index validation & edge cases
+          // ravelMultiIndex validation & edge cases
           expect(() => ravelMultiIndex([], [2]), throwsArgumentError);
           expect(() => ravelMultiIndex([idx], [2, 2]), throwsArgumentError);
           expect(() => ravelMultiIndex([disp], [2]), throwsStateError);
@@ -1004,7 +996,7 @@ void main() {
           );
           expect(maskIndices(2, triu).row.size, 3);
 
-          // Additional indexing branches (uint64 ravel_multi_index, aliasing, broadcast errors)
+          // Additional indexing branches (uint64 ravelMultiIndex, aliasing, broadcast errors)
           final u64Neg = NDArray.fromList([-1, 0], [2], DType.uint64);
           expect(
             () => ravelMultiIndex([u64Neg], [3], mode: ChooseMode.raise),
@@ -1040,15 +1032,11 @@ void main() {
 
           final tArr = NDArray.fromList([10.0, 20.0], [2], DType.float64);
           final tIdx = NDArray.fromList([1, 0], [2], DType.int64);
-          expect(take_along_axis(tArr, tIdx, 0, out: tArr), same(tArr));
-          expect(take_along_axis(tIdx, tIdx, 0, out: tIdx), same(tIdx));
+          expect(takeAlongAxis(tArr, tIdx, 0, out: tArr), same(tArr));
+          expect(takeAlongAxis(tIdx, tIdx, 0, out: tIdx), same(tIdx));
           expect(
-            () => put_along_axis(
-              tArr,
-              tIdx,
-              NDArray.zeros([3], DType.float64),
-              0,
-            ),
+            () =>
+                putAlongAxis(tArr, tIdx, NDArray.zeros([3], DType.float64), 0),
             throwsArgumentError,
           );
         });
@@ -1175,15 +1163,15 @@ void main() {
         expect(() => sq.squeeze(axis: 5), throwsRangeError);
         expect(() => sq.squeeze(axis: 1), throwsArgumentError);
 
-        expect(a.swapaxes(0, 0), same(a));
-        expect(a.swapaxes(0, 1).shape, [2, 2]);
-        expect(() => a.swapaxes(5, 0), throwsRangeError);
-        expect(() => a.swapaxes(0, 5), throwsRangeError);
+        expect(a.swapAxes(0, 0), same(a));
+        expect(a.swapAxes(0, 1).shape, [2, 2]);
+        expect(() => a.swapAxes(5, 0), throwsRangeError);
+        expect(() => a.swapAxes(0, 5), throwsRangeError);
 
-        expect(a.moveaxis(0, 1).shape, [2, 2]);
-        expect(() => a.moveaxis([0], [0, 1]), throwsArgumentError);
-        expect(() => a.moveaxis([0, 0], [0, 1]), throwsArgumentError);
-        expect(() => a.moveaxis([0, 1], [0, 0]), throwsArgumentError);
+        expect(a.moveAxis(0, 1).shape, [2, 2]);
+        expect(() => a.moveAxis([0], [0, 1]), throwsArgumentError);
+        expect(() => a.moveAxis([0, 0], [0, 1]), throwsArgumentError);
+        expect(() => a.moveAxis([0, 1], [0, 0]), throwsArgumentError);
 
         // Slicing with negative step
         final s1d = NDArray.fromList([1, 2, 3, 4], [4], DType.int64);
@@ -1296,8 +1284,8 @@ void main() {
           throwsArgumentError,
         );
         expect(a.transposed.copy(out: a), same(a));
-        expect(() => disp.astype(DType.int64), throwsStateError);
-        expect(a.astype(DType.float64, copy: false), same(a));
+        expect(() => disp.asType(DType.int64), throwsStateError);
+        expect(a.asType(DType.float64, copy: false), same(a));
         NDArray.scalar(
           1.0,
           dtype: DType.float64,

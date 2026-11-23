@@ -89,31 +89,31 @@ NDArray<DTypeTag> _makeSample(DType<DTypeTag> dt, {bool strided = false}) {
 
 void main() {
   group('floating_point.dart branch coverage', () {
-    test('isnan, isinf, isfinite error, out aliasing, and dtype paths', () {
+    test('isNan, isInf, isFinite error, out aliasing, and dtype paths', () {
       NDArray.scope(() {
         final a = _arr([1.0, double.nan, double.infinity], DType.float64);
         final outBadShape = NDArray.zeros([2], DType.boolean);
         final mask = _arr([true, false, true], DType.boolean);
 
-        expect(() => isnan(a, out: outBadShape), throwsArgumentError);
-        expect(() => isinf(a, out: outBadShape), throwsArgumentError);
-        expect(() => isfinite(a, out: outBadShape), throwsArgumentError);
+        expect(() => isNan(a, out: outBadShape), throwsArgumentError);
+        expect(() => isInf(a, out: outBadShape), throwsArgumentError);
+        expect(() => isFinite(a, out: outBadShape), throwsArgumentError);
 
         // sharesMemory(where, out) with where != null
         final maskAlias1 = _arr([true, false, true], DType.boolean);
-        isnan(a, where: maskAlias1, out: maskAlias1);
+        isNan(a, where: maskAlias1, out: maskAlias1);
         final maskAlias2 = _arr([true, false, true], DType.boolean);
-        isinf(a, where: maskAlias2, out: maskAlias2);
+        isInf(a, where: maskAlias2, out: maskAlias2);
         final maskAlias3 = _arr([true, false, true], DType.boolean);
-        isfinite(a, where: maskAlias3, out: maskAlias3);
+        isFinite(a, where: maskAlias3, out: maskAlias3);
 
         // sharesMemory(a, out) with where == null (boolean input)
         final boolAlias1 = _arr([true, false, true], DType.boolean);
-        isnan(boolAlias1, out: boolAlias1);
+        isNan(boolAlias1, out: boolAlias1);
         final boolAlias2 = _arr([true, false, true], DType.boolean);
-        isinf(boolAlias2, out: boolAlias2);
+        isInf(boolAlias2, out: boolAlias2);
         final boolAlias3 = _arr([true, false, true], DType.boolean);
-        isfinite(boolAlias3, out: boolAlias3);
+        isFinite(boolAlias3, out: boolAlias3);
 
         // Strided and fallback dtypes (float16, bfloat16, complex, int)
         for (final dt in [
@@ -128,17 +128,17 @@ void main() {
               : _arr([0.0, 1.0, double.nan, double.infinity], dt);
           final strided = arr.slice([const Slice(start: 0, stop: 4, step: 2)]);
           expect(
-            isnan(
+            isNan(
               arr,
               where: _arr([true, true, true, false], DType.boolean),
             ).shape,
             [4],
           );
-          expect(isnan(strided).shape, [2]);
-          expect(isinf(arr).shape, [4]);
-          expect(isinf(strided).shape, [2]);
-          expect(isfinite(arr).shape, [4]);
-          expect(isfinite(strided).shape, [2]);
+          expect(isNan(strided).shape, [2]);
+          expect(isInf(arr).shape, [4]);
+          expect(isInf(strided).shape, [2]);
+          expect(isFinite(arr).shape, [4]);
+          expect(isFinite(strided).shape, [2]);
         }
 
         final c128 = _arr([
@@ -152,80 +152,80 @@ void main() {
           Complex(1.0, 2.0),
         ], DType.complex64);
         expect(
-          isnan(c128.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
+          isNan(c128.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
           [2],
         );
         expect(
-          isnan(c64.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
+          isNan(c64.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
           [2],
         );
         expect(
-          isinf(c64.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
+          isInf(c64.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
           [2],
         );
         expect(
-          isfinite(c128.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
+          isFinite(c128.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
           [2],
         );
         expect(
-          isfinite(c64.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
+          isFinite(c64.slice([const Slice(start: 0, stop: 3, step: 2)])).shape,
           [2],
         );
         expect(mask.isDisposed, isFalse);
       });
     });
 
-    test('copysign and copysignAs branches', () {
+    test('copySign and copySignAs branches', () {
       NDArray.scope(() {
         final f64 = _arr([1.0, -2.0], DType.float64);
         final badOut = NDArray.zeros([3], DType.float64);
-        expect(() => copysign(f64, f64, out: badOut), throwsArgumentError);
+        expect(() => copySign(f64, f64, out: badOut), throwsArgumentError);
 
         final csAlias = _arr([1.0, -2.0], DType.float64);
         final csMask = _arr([true, false], DType.boolean);
-        copysign(csAlias, f64, where: csMask, out: csAlias);
-        copysign(csAlias, f64, out: csAlias);
+        copySign(csAlias, f64, where: csMask, out: csAlias);
+        copySign(csAlias, f64, out: csAlias);
 
         // Fallback dtype (float16) with +0.0 and -0.0 in x2
         final f16a = _arr([1.0, -2.0, 3.0, -4.0], DType.float16);
         final f16b = _arr([0.0, -0.0, -1.0, 1.0], DType.float16);
-        final res16 = copysign(f16a, f16b);
+        final res16 = copySign(f16a, f16b);
         expect(_flat(res16), [1.0, -2.0, -3.0, 4.0]);
 
-        // uint64 and boolean in copysign
+        // uint64 and boolean in copySign
         final u64 = _arr([1, 2], DType.uint64);
-        expect(_flat(copysign(u64, u64)), [1, 2]);
+        expect(_flat(copySign(u64, u64)), [1, 2]);
         final bArr = _arr([true, false], DType.boolean);
-        expect(_flat(copysign(bArr, bArr)), [true, false]);
+        expect(_flat(copySign(bArr, bArr)), [true, false]);
 
-        // copysignAs errors and paths
+        // copySignAs errors and paths
         final cpx = _arr([Complex(1, 2)], DType.complex128);
         expect(
-          () => copysignAs(cpx, f64, DType.float64),
+          () => copySignAs(cpx, f64, DType.float64),
           throwsUnsupportedError,
         );
         expect(
-          () => copysignAs(f64, cpx, DType.float64),
+          () => copySignAs(f64, cpx, DType.float64),
           throwsUnsupportedError,
         );
         expect(
-          () => copysignAs(f64, f64, DType.complex128),
+          () => copySignAs(f64, f64, DType.complex128),
           throwsUnsupportedError,
         );
         final disposed = _arr([1.0], DType.float64)..dispose();
         expect(
-          () => copysignAs(disposed, f64, DType.float64),
+          () => copySignAs(disposed, f64, DType.float64),
           throwsStateError,
         );
         expect(
-          () => copysignAs(f64, f64, DType.float64, out: badOut),
+          () => copySignAs(f64, f64, DType.float64, out: badOut),
           throwsArgumentError,
         );
         final out64 = NDArray.zeros([2], DType.float64);
         final f32 = _arr([-1.0, 2.0], DType.float32);
-        copysignAs(f64, f32, DType.float64, out: out64);
+        copySignAs(f64, f32, DType.float64, out: out64);
         expect(_flat(out64), [-1.0, 2.0]);
-        expect(_flat(copysignAs(f64, f64, DType.float64)), [1.0, -2.0]);
+        expect(_flat(copySignAs(f64, f64, DType.float64)), [1.0, -2.0]);
       });
     });
 
@@ -1134,7 +1134,7 @@ void main() {
           expect(logaddexpAs(f64, f64, DType.float16).dtype, DType.float16);
           expect(logaddexp2As(f64, f64, DType.float16).dtype, DType.float16);
 
-          // floorDivideAs, remainderAs, modAs, fmodAs, floatPower, floatPowerAs, heavisideAs
+          // floorDivideAs, remainderAs, remainderAs, fmodAs, floatPower, floatPowerAs, heavisideAs
           final i32 = _arr([7, 8], DType.int32);
           final i16 = _arr([3, 3], DType.int16);
           final i32b = _arr([3, 3], DType.int32);
@@ -1147,7 +1147,7 @@ void main() {
           expect(() => remainderAs(disp, i32, DType.int32), throwsStateError);
           expect(_flat(remainderAs(i32, i32b, DType.int32)), [1, 2]);
           expect(_flat(remainderAs(i32, i16, DType.int32)), [1, 2]);
-          expect(_flat(modAs(i32, i16, DType.int32)), [1, 2]);
+          expect(_flat(remainderAs(i32, i16, DType.int32)), [1, 2]);
 
           expect(() => fmodAs(disp, i32, DType.int32), throwsStateError);
           expect(_flat(fmodAs(i32, i32b, DType.int32)), [1, 2]);

@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:ffi' as ffi;
 
 import '../ndarray.dart';
@@ -24,7 +23,7 @@ import 'helpers.dart';
 import 'sorting.dart';
 
 /// Modes for handling out-of-bounds choice indices in [choose] and
-/// [ravel_multi_index].
+/// [ravelMultiIndex].
 enum ChooseMode {
   /// It is an error if an index is out of bounds (default).
   raise,
@@ -37,7 +36,7 @@ enum ChooseMode {
 }
 
 /// Memory layout order for multi-dimensional index conversion in
-/// [unravel_index] and [ravel_multi_index].
+/// [unravelIndex] and [ravelMultiIndex].
 enum IndexOrder {
   /// Row-major (C-style) order, where the last axis index varies fastest.
   c,
@@ -135,21 +134,21 @@ void _mapCoordInPlace(
 ///
 /// **Example:**
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> take_along_axis<T extends DTypeTag, Out extends T>(
+NDArray<T> takeAlongAxis<T extends DTypeTag, Out extends T>(
   NDArray<T> arr,
   NDArray<DTypeTag> indices,
   int axis, {
   NDArray<Out>? out,
 }) {
   if (arr.isDisposed || indices.isDisposed || (out != null && out.isDisposed)) {
-    throw StateError('Cannot execute take_along_axis on a disposed array.');
+    throw StateError('Cannot execute takeAlongAxis on a disposed array.');
   }
   final rank = arr.shape.length;
   if (rank == 0) {
     throw ArgumentError.value(
       arr,
       'arr',
-      'Must have at least 1 dimension for take_along_axis',
+      'Must have at least 1 dimension for takeAlongAxis',
     );
   }
   if (indices.shape.length != rank) {
@@ -200,7 +199,7 @@ NDArray<T> take_along_axis<T extends DTypeTag, Out extends T>(
     }
     if (sharesMemory(arr, out) || sharesMemory(indices, out)) {
       return NDArray.scope(() {
-        final temp = take_along_axis(arr, indices, axis);
+        final temp = takeAlongAxis(arr, indices, axis);
         temp.copy(out: out);
         return out;
       });
@@ -292,7 +291,7 @@ NDArray<T> take_along_axis<T extends DTypeTag, Out extends T>(
       throw ArgumentError.value(
         status,
         'status',
-        'take_along_axis failed with status $status',
+        'takeAlongAxis failed with status $status',
       );
     }
 
@@ -321,7 +320,7 @@ NDArray<T> take_along_axis<T extends DTypeTag, Out extends T>(
 ///
 /// **Example:**
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
+NDArray<T> putAlongAxis<T extends DTypeTag, Out extends T>(
   NDArray<T> arr,
   NDArray<DTypeTag> indices,
   Object values,
@@ -332,14 +331,14 @@ NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
       indices.isDisposed ||
       (values is NDArray && values.isDisposed) ||
       (out != null && out.isDisposed)) {
-    throw StateError('Cannot execute put_along_axis on a disposed array.');
+    throw StateError('Cannot execute putAlongAxis on a disposed array.');
   }
   final rank = arr.shape.length;
   if (rank == 0) {
     throw ArgumentError.value(
       arr,
       'arr',
-      'Must have at least 1 dimension for put_along_axis',
+      'Must have at least 1 dimension for putAlongAxis',
     );
   }
   if (indices.shape.length != rank) {
@@ -378,7 +377,7 @@ NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
           sharesMemory(indices, out) ||
           sharesMemory(valuesArr, out)) {
         final temp = NDArray<T>.create(arr.shape, arr.dtype);
-        put_along_axis(arr, indices, valuesArr, axis, out: temp);
+        putAlongAxis(arr, indices, valuesArr, axis, out: temp);
         temp.copy(out: out);
         return out;
       }
@@ -386,7 +385,7 @@ NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
     } else {
       validateOutBuffer(arr, 'arr');
       if (sharesMemory(arr, indices) || sharesMemory(arr, valuesArr)) {
-        return put_along_axis(arr, indices, valuesArr, axis, out: arr);
+        return putAlongAxis(arr, indices, valuesArr, axis, out: arr);
       }
       target = arr;
     }
@@ -432,7 +431,7 @@ NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
             throw ArgumentError.value(
               values,
               'values',
-              'Incompatible shapes for put_along_axis: indices shape ${indices.shape} and values shape ${valuesArr.shape}',
+              'Incompatible shapes for putAlongAxis: indices shape ${indices.shape} and values shape ${valuesArr.shape}',
             );
           }
           cValShape[i] = valDim;
@@ -496,7 +495,7 @@ NDArray<T> put_along_axis<T extends DTypeTag, Out extends T>(
         throw ArgumentError.value(
           status,
           'status',
-          'put_along_axis failed with status $status',
+          'putAlongAxis failed with status $status',
         );
       }
 
@@ -970,14 +969,14 @@ NDArray<T> select<T extends AnySpec>(
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
+List<NDArray<Int64>> unravelIndex<T extends DTypeTag>(
   NDArray<T> indices,
   List<int> shape, {
   IndexOrder order = IndexOrder.c,
   List<NDArray<Int64>>? out,
 }) {
   if (indices.isDisposed) {
-    throw StateError('Cannot execute unravel_index on a disposed array.');
+    throw StateError('Cannot execute unravelIndex on a disposed array.');
   }
   if (!indices.dtype.isInteger) {
     throw ArgumentError.value(
@@ -1012,7 +1011,7 @@ List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
       final o = out[i];
       if (o.isDisposed) {
         throw StateError(
-          'Cannot write unravel_index result to a disposed out array at index $i.',
+          'Cannot write unravelIndex result to a disposed out array at index $i.',
         );
       }
       validateOutBuffer(o, 'out[$i]');
@@ -1130,25 +1129,17 @@ List<NDArray<Int64>> unravel_index<T extends DTypeTag>(
   });
 }
 
-/// Alias for [unravel_index].
-List<NDArray<Int64>> unravelIndex<T extends DTypeTag>(
-  NDArray<T> indices,
-  List<int> shape, {
-  IndexOrder order = IndexOrder.c,
-  List<NDArray<Int64>>? out,
-}) => unravel_index(indices, shape, order: order, out: out);
-
 /// Converts a list of coordinate arrays into an array of flat indices.
 ///
-/// The coordinate arrays in [multi_index] are broadcast to a common shape,
+/// The coordinate arrays in [multiIndex] are broadcast to a common shape,
 /// and each tuple of coordinates is mapped to a 64-bit flat index into an
 /// array of dimensions [dims].
 ///
 /// Parameters:
-/// - `multi_index`: A non-empty list of integer [NDArray]s, one for each
+/// - `multiIndex`: A non-empty list of integer [NDArray]s, one for each
 ///   dimension in [dims].
 /// - `dims`: The dimensions of the array into which the indices from
-///   [multi_index] apply. Every dimension must be positive, and their product
+///   [multiIndex] apply. Every dimension must be positive, and their product
 ///   must fit in a 64-bit signed integer.
 /// - `mode`: Specifies how out-of-bounds indices are handled. May be either a
 ///   single [ChooseMode] applied to all dimensions or a `List<ChooseMode>` of
@@ -1158,40 +1149,40 @@ List<NDArray<Int64>> unravelIndex<T extends DTypeTag>(
 ///   indexing in row-major ([IndexOrder.c], default) or column-major
 ///   ([IndexOrder.f]) order.
 /// - `out`: Optional pre-allocated [NDArray] of dtype [DType.int64] with shape
-///   matching the broadcast shape of [multi_index].
+///   matching the broadcast shape of [multiIndex].
 ///
 /// Returns an [NDArray] of dtype [DType.int64] containing the flat indices.
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-NDArray<Int64> ravel_multi_index(
-  List<NDArray<DTypeTag>> multi_index,
+NDArray<Int64> ravelMultiIndex(
+  List<NDArray<DTypeTag>> multiIndex,
   List<int> dims, {
   Object mode = ChooseMode.raise,
   IndexOrder order = IndexOrder.c,
   NDArray<Int64>? out,
 }) {
-  if (multi_index.isEmpty) {
-    throw ArgumentError.value(multi_index, 'multi_index', 'Must not be empty');
+  if (multiIndex.isEmpty) {
+    throw ArgumentError.value(multiIndex, 'multiIndex', 'Must not be empty');
   }
-  if (multi_index.length != dims.length) {
+  if (multiIndex.length != dims.length) {
     throw ArgumentError.value(
-      multi_index.length,
-      'multi_index',
+      multiIndex.length,
+      'multiIndex',
       'Must have length equal to dims.length (${dims.length})',
     );
   }
-  for (var i = 0; i < multi_index.length; i++) {
-    final c = multi_index[i];
+  for (var i = 0; i < multiIndex.length; i++) {
+    final c = multiIndex[i];
     if (c.isDisposed) {
       throw StateError(
-        'Cannot execute ravel_multi_index with a disposed coordinate array at index $i.',
+        'Cannot execute ravelMultiIndex with a disposed coordinate array at index $i.',
       );
     }
     if (!c.dtype.isInteger) {
       throw ArgumentError.value(
         c.dtype,
-        'multi_index[$i]',
+        'multiIndex[$i]',
         'Must have an integer dtype',
       );
     }
@@ -1241,9 +1232,9 @@ NDArray<Int64> ravel_multi_index(
     final ndims = dims.length;
     final coordArrays = <NDArray<Int64>>[];
     for (var d = 0; d < ndims; d++) {
-      final c = multi_index[d];
+      final c = multiIndex[d];
       if (identical(c.dtype, DType.uint64)) {
-        final copy = c.astype(DType.int64);
+        final copy = c.asType(DType.int64);
         final dimSize = dims[d];
         final dimMode = modesList[d];
         for (var i = 0; i < copy.size; i++) {
@@ -1268,7 +1259,7 @@ NDArray<Int64> ravel_multi_index(
       } else if (identical(c.dtype, DType.int64)) {
         coordArrays.add(c as NDArray<Int64>);
       } else {
-        coordArrays.add(c.astype(DType.int64));
+        coordArrays.add(c.asType(DType.int64));
       }
     }
 
@@ -1279,7 +1270,7 @@ NDArray<Int64> ravel_multi_index(
     if (out != null) {
       if (out.isDisposed) {
         throw StateError(
-          'Cannot write ravel_multi_index result to a disposed out array.',
+          'Cannot write ravelMultiIndex result to a disposed out array.',
         );
       }
       validateOutBuffer(out);
@@ -1392,15 +1383,6 @@ NDArray<Int64> ravel_multi_index(
   });
 }
 
-/// Alias for [ravel_multi_index].
-NDArray<Int64> ravelMultiIndex(
-  List<NDArray<DTypeTag>> multiIndex,
-  List<int> dims, {
-  Object mode = ChooseMode.raise,
-  IndexOrder order = IndexOrder.c,
-  NDArray<Int64>? out,
-}) => ravel_multi_index(multiIndex, dims, mode: mode, order: order, out: out);
-
 /// Returns an array representing the indices of a grid.
 ///
 /// Computes an array where the subarrays contain index values `0, 1, ...`
@@ -1409,7 +1391,7 @@ NDArray<Int64> ravelMultiIndex(
 /// `[N, d_0, ..., d_{N-1}]`.
 ///
 /// For the sparse open-grid representation (equivalent to `sparse=True` in
-/// NumPy), use [sparse_indices].
+/// NumPy), use [sparseIndices].
 ///
 /// Parameters:
 /// - `dimensions`: The shape of the grid. Every dimension must be
@@ -1500,7 +1482,7 @@ NDArray<T> indices<T extends AnySpec>(
       return (int64Grid as NDArray<T>).detachToParentScope();
     }
 
-    final casted = int64Grid.astype(resolvedDType);
+    final casted = int64Grid.asType(resolvedDType);
     if (out != null) {
       casted.copy(out: out);
       return out;
@@ -1526,7 +1508,7 @@ NDArray<T> indices<T extends AnySpec>(
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-List<NDArray<T>> sparse_indices<T extends DTypeTag>(
+List<NDArray<T>> sparseIndices<T extends DTypeTag>(
   List<int> dimensions, {
   DType<T>? dtype,
 }) {
@@ -1557,12 +1539,6 @@ List<NDArray<T>> sparse_indices<T extends DTypeTag>(
   });
 }
 
-/// Alias for [sparse_indices].
-List<NDArray<T>> sparseIndices<T extends DTypeTag>(
-  List<int> dimensions, {
-  DType<T>? dtype,
-}) => sparse_indices(dimensions, dtype: dtype);
-
 /// Returns the indices to access the main diagonal of an array.
 ///
 /// Returns a list of [ndim] 1-D coordinate arrays of dtype [DType.int64],
@@ -1580,7 +1556,7 @@ List<NDArray<T>> sparseIndices<T extends DTypeTag>(
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-List<NDArray<Int64>> diag_indices(int n, {int ndim = 2}) {
+List<NDArray<Int64>> diagIndices(int n, {int ndim = 2}) {
   if (n < 0) {
     throw ArgumentError.value(n, 'n', 'Must be non-negative');
   }
@@ -1592,10 +1568,6 @@ List<NDArray<Int64>> diag_indices(int n, {int ndim = 2}) {
     (_) => NDArray<Int64>.arange(0, n.toDouble(), dtype: DType.int64),
   );
 }
-
-/// Alias for [diag_indices].
-List<NDArray<Int64>> diagIndices(int n, {int ndim = 2}) =>
-    diag_indices(n, ndim: ndim);
 
 /// Returns the indices to access the main diagonal of [arr].
 ///
@@ -1610,9 +1582,9 @@ List<NDArray<Int64>> diagIndices(int n, {int ndim = 2}) =>
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-List<NDArray<Int64>> diag_indices_from<T extends DTypeTag>(NDArray<T> arr) {
+List<NDArray<Int64>> diagIndicesFrom<T extends DTypeTag>(NDArray<T> arr) {
   if (arr.isDisposed) {
-    throw StateError('Cannot execute diag_indices_from on a disposed array.');
+    throw StateError('Cannot execute diagIndicesFrom on a disposed array.');
   }
   if (arr.shape.length < 2) {
     throw ArgumentError.value(
@@ -1631,12 +1603,8 @@ List<NDArray<Int64>> diag_indices_from<T extends DTypeTag>(NDArray<T> arr) {
       );
     }
   }
-  return diag_indices(n, ndim: arr.shape.length);
+  return diagIndices(n, ndim: arr.shape.length);
 }
-
-/// Alias for [diag_indices_from].
-List<NDArray<Int64>> diagIndicesFrom<T extends DTypeTag>(NDArray<T> arr) =>
-    diag_indices_from(arr);
 
 int _trilCount(int n, int m, int k) {
   if (n <= 0 || m <= 0) return 0;
@@ -1669,7 +1637,7 @@ int _trilCount(int n, int m, int k) {
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-({NDArray<Int64> row, NDArray<Int64> col}) tril_indices(
+({NDArray<Int64> row, NDArray<Int64> col}) trilIndices(
   int n, {
   int k = 0,
   int? m,
@@ -1697,13 +1665,6 @@ int _trilCount(int n, int m, int k) {
   });
 }
 
-/// Alias for [tril_indices].
-({NDArray<Int64> row, NDArray<Int64> col}) trilIndices(
-  int n, {
-  int k = 0,
-  int? m,
-}) => tril_indices(n, k: k, m: m);
-
 /// Returns the indices for the lower-triangle of [arr].
 ///
 /// The [arr] must be a 2-dimensional array.
@@ -1713,22 +1674,18 @@ int _trilCount(int n, int m, int k) {
 /// - `k`: Diagonal offset (defaults to `0`).
 ///
 /// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`.
-({NDArray<Int64> row, NDArray<Int64> col})
-tril_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
+({NDArray<Int64> row, NDArray<Int64> col}) trilIndicesFrom<T extends DTypeTag>(
+  NDArray<T> arr, {
+  int k = 0,
+}) {
   if (arr.isDisposed) {
-    throw StateError('Cannot execute tril_indices_from on a disposed array.');
+    throw StateError('Cannot execute trilIndicesFrom on a disposed array.');
   }
   if (arr.shape.length != 2) {
     throw ArgumentError.value(arr.shape, 'arr', 'Must be 2-dimensional');
   }
-  return tril_indices(arr.shape[0], k: k, m: arr.shape[1]);
+  return trilIndices(arr.shape[0], k: k, m: arr.shape[1]);
 }
-
-/// Alias for [tril_indices_from].
-({NDArray<Int64> row, NDArray<Int64> col}) trilIndicesFrom<T extends DTypeTag>(
-  NDArray<T> arr, {
-  int k = 0,
-}) => tril_indices_from(arr, k: k);
 
 /// Returns the indices for the upper-triangle of an `(n, m)` array.
 ///
@@ -1747,7 +1704,7 @@ tril_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-({NDArray<Int64> row, NDArray<Int64> col}) triu_indices(
+({NDArray<Int64> row, NDArray<Int64> col}) triuIndices(
   int n, {
   int k = 0,
   int? m,
@@ -1775,13 +1732,6 @@ tril_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
   });
 }
 
-/// Alias for [triu_indices].
-({NDArray<Int64> row, NDArray<Int64> col}) triuIndices(
-  int n, {
-  int k = 0,
-  int? m,
-}) => triu_indices(n, k: k, m: m);
-
 /// Returns the indices for the upper-triangle of [arr].
 ///
 /// The [arr] must be a 2-dimensional array.
@@ -1791,28 +1741,24 @@ tril_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
 /// - `k`: Diagonal offset (defaults to `0`).
 ///
 /// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`.
-({NDArray<Int64> row, NDArray<Int64> col})
-triu_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
+({NDArray<Int64> row, NDArray<Int64> col}) triuIndicesFrom<T extends DTypeTag>(
+  NDArray<T> arr, {
+  int k = 0,
+}) {
   if (arr.isDisposed) {
-    throw StateError('Cannot execute triu_indices_from on a disposed array.');
+    throw StateError('Cannot execute triuIndicesFrom on a disposed array.');
   }
   if (arr.shape.length != 2) {
     throw ArgumentError.value(arr.shape, 'arr', 'Must be 2-dimensional');
   }
-  return triu_indices(arr.shape[0], k: k, m: arr.shape[1]);
+  return triuIndices(arr.shape[0], k: k, m: arr.shape[1]);
 }
-
-/// Alias for [triu_indices_from].
-({NDArray<Int64> row, NDArray<Int64> col}) triuIndicesFrom<T extends DTypeTag>(
-  NDArray<T> arr, {
-  int k = 0,
-}) => triu_indices_from(arr, k: k);
 
 /// Returns the indices to access `(n, n)` arrays, given a masking function.
 ///
-/// Assume [mask_func] is a function that, for a square array `m` of size
+/// Assume [maskFunc] is a function that, for a square array `m` of size
 /// `(n, n)` with a possible offset argument `k`, when called as
-/// `mask_func(m, k: k)` returns a new 2-D array with zeros in certain
+/// `maskFunc(m, k: k)` returns a new 2-D array with zeros in certain
 /// locations (functions like `triu` or `tril` match this signature). This
 /// function returns the indices where the non-zero values would be located.
 ///
@@ -1820,18 +1766,18 @@ triu_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
 ///
 /// Parameters:
 /// - `n`: The square matrix dimension `(n, n)`.
-/// - `mask_func`: A function whose call signature matches `(m, {int k})`
+/// - `maskFunc`: A function whose call signature matches `(m, {int k})`
 ///   (such as `triu` or `tril`) and returns a 2-dimensional mask [NDArray].
-/// - `k`: An optional diagonal offset argument passed through to [mask_func].
+/// - `k`: An optional diagonal offset argument passed through to [maskFunc].
 ///
 /// Returns a record `({NDArray<Int64> row, NDArray<Int64> col})` of `(rowIndices, colIndices)`
-/// corresponding to the non-zero positions of `mask_func(ones([n, n]), k: k)`.
+/// corresponding to the non-zero positions of `maskFunc(ones([n, n]), k: k)`.
 ///
 /// Example:
 /// {@example /example/indexing_example.dart lang=dart}
-({NDArray<Int64> row, NDArray<Int64> col}) mask_indices<T extends DTypeTag>(
+({NDArray<Int64> row, NDArray<Int64> col}) maskIndices<T extends DTypeTag>(
   int n,
-  NDArray<T> Function(NDArray<Int64> m, {int k}) mask_func, {
+  NDArray<T> Function(NDArray<Int64> m, {int k}) maskFunc, {
   int k = 0,
 }) {
   if (n < 0) {
@@ -1839,14 +1785,14 @@ triu_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
   }
   return NDArray.scope(() {
     final m = NDArray<Int64>.ones([n, n], DType.int64);
-    final mask = mask_func(m, k: k);
+    final mask = maskFunc(m, k: k);
     if (mask.isDisposed) {
-      throw StateError('mask_func returned a disposed array.');
+      throw StateError('maskFunc returned a disposed array.');
     }
     if (mask.shape.length != 2) {
       throw ArgumentError.value(
         mask.shape,
-        'mask_func',
+        'maskFunc',
         'Must return a 2-dimensional mask array',
       );
     }
@@ -1857,10 +1803,3 @@ triu_indices_from<T extends DTypeTag>(NDArray<T> arr, {int k = 0}) {
     );
   });
 }
-
-/// Alias for [mask_indices].
-({NDArray<Int64> row, NDArray<Int64> col}) maskIndices<T extends DTypeTag>(
-  int n,
-  NDArray<T> Function(NDArray<Int64> m, {int k}) maskFunc, {
-  int k = 0,
-}) => mask_indices(n, maskFunc, k: k);

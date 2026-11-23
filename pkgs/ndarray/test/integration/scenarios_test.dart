@@ -52,7 +52,7 @@ void main() {
           final NDArray<Float64> featureMeans = mean(
             rawData,
             axis: 0,
-            keepdims: true,
+            keepDims: true,
           );
           final centered = subtract<Float64>(rawData, featureMeans);
           expect(max(abs(mean(centered, axis: 0))).scalar, lessThan(1e-12));
@@ -279,7 +279,7 @@ void main() {
           ),
         );
         final uFinal = real(
-          ifft(multiply<Complex128>(fft(u0), decay.astype(DType.complex128))),
+          ifft(multiply<Complex128>(fft(u0), decay.asType(DType.complex128))),
         );
         final uFinalExact = add<Float64>(
           NDArray.scalar(1.0, dtype: DType.float64),
@@ -536,7 +536,7 @@ void main() {
             ifft2(multiply<Complex128>(fShift, conj(fRef))),
           );
           final peakFlatIdx = argmax(crossCorr);
-          final peakCoords = unravel_index(peakFlatIdx, [rows, cols]);
+          final peakCoords = unravelIndex(peakFlatIdx, [rows, cols]);
           expect(peakCoords[0].scalar, equals(shiftRow));
           expect(peakCoords[1].scalar, equals(shiftCol));
         });

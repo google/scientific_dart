@@ -215,7 +215,7 @@ void main() {
           final outView = outBacking.slice([Index(1), Slice.all()]);
           expect(outView.shape, equals([1]));
 
-          nanstd(a, keepdims: true, out: outView);
+          nanstd(a, keepDims: true, out: outView);
           // Variance of [1.0, 3.0] is 1.0, std is 1.0.
           // First row must remain untouched (999.0), second row must be 1.0.
           expect(outBacking.getCell([0, 0]), equals(999.0));

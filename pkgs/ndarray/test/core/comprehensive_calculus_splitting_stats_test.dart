@@ -18,7 +18,7 @@ import 'package:ndarray/ndarray.dart';
 void main() {
   group('Comprehensive Calculus, Splitting & Stats Suite', () {
     test(
-      'Multi-dimensional splitting (split, array_split, hsplit, vsplit, dsplit)',
+      'Multi-dimensional splitting (split, arraySplit, hsplit, vsplit, dsplit)',
       () {
         NDArray.scope(() {
           final a2d = NDArray.fromList(List.generate(24, (i) => i.toDouble()), [
@@ -37,7 +37,7 @@ void main() {
           final splitSections = split(a2d, 2, axis: 0);
           expect(splitSections.length, 2);
 
-          final arrSplits = array_split(a2d, 5, axis: 1);
+          final arrSplits = arraySplit(a2d, 5, axis: 1);
           expect(arrSplits.length, 5);
 
           // 3D dsplit

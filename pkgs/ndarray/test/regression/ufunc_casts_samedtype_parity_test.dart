@@ -45,7 +45,10 @@ void main() {
           () => remainder(f64.asAnySpec, f32.asAnySpec),
           throwsArgumentError,
         );
-        expect(() => mod(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
+        expect(
+          () => remainder(f64.asAnySpec, f32.asAnySpec),
+          throwsArgumentError,
+        );
         expect(() => fmod(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
         expect(() => divmod(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
         expect(() => power(f64.asAnySpec, f32.asAnySpec), throwsArgumentError);
@@ -84,7 +87,7 @@ void main() {
           throwsArgumentError,
         );
         expect(
-          () => copysign(f64.asAnySpec, f32.asAnySpec),
+          () => copySign(f64.asAnySpec, f32.asAnySpec),
           throwsArgumentError,
         );
         expect(
@@ -177,7 +180,7 @@ void main() {
         expect(divideAs(f64, f32, DType.float64).toList(), [1.0, 1.0]);
         expect(floorDivideAs(f64, i32, DType.float64).toList(), [1.0, 1.0]);
         expect(remainderAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
-        expect(modAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
+        expect(remainderAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
         expect(fmodAs(f64, i32, DType.float64).toList(), [0.0, 0.0]);
         final dm = divmodAs(f64, i32, DType.float64);
         expect(dm.quotient.toList(), [1.0, 1.0]);
@@ -189,7 +192,7 @@ void main() {
         expect(fminAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
         expect(fmaxAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
         expect(heavisideAs(f64, i32, DType.float64).toList(), [1.0, 1.0]);
-        expect(copysignAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
+        expect(copySignAs(f64, i32, DType.float64).toList(), [1.0, 2.0]);
         expect(atan2As(f64, f32, DType.float64).dtype, DType.float64);
         expect(hypotAs(f64, f32, DType.float64).dtype, DType.float64);
         expect(logaddexpAs(f64, f32, DType.float64).dtype, DType.float64);
@@ -286,31 +289,31 @@ void main() {
             DType.float64,
           );
 
-          expect(src.astype(DType.int8).toList(), [0, 127, -128, 127, -128]);
-          expect(src.astype(DType.uint8).toList(), [0, 255, 0, 255, 0]);
-          expect(src.astype(DType.int16).toList(), [
+          expect(src.asType(DType.int8).toList(), [0, 127, -128, 127, -128]);
+          expect(src.asType(DType.uint8).toList(), [0, 255, 0, 255, 0]);
+          expect(src.asType(DType.int16).toList(), [
             0,
             32767,
             -32768,
             32767,
             -32768,
           ]);
-          expect(src.astype(DType.uint16).toList(), [0, 65535, 0, 65535, 0]);
-          expect(src.astype(DType.int32).toList(), [
+          expect(src.asType(DType.uint16).toList(), [0, 65535, 0, 65535, 0]);
+          expect(src.asType(DType.int32).toList(), [
             0,
             2147483647,
             -2147483648,
             2147483647,
             -2147483648,
           ]);
-          expect(src.astype(DType.uint32).toList(), [
+          expect(src.asType(DType.uint32).toList(), [
             0,
             4294967295,
             0,
             4294967295,
             0,
           ]);
-          expect(src.astype(DType.int64).toList(), [
+          expect(src.asType(DType.int64).toList(), [
             0,
             9223372036854775807,
             -9223372036854775808,
@@ -318,12 +321,12 @@ void main() {
             -9223372036854775808,
           ]);
           // uint64 max is 0xFFFFFFFFFFFFFFFF (-1 in signed 64-bit representation)
-          expect(src.astype(DType.uint64).toList(), [0, -1, 0, -1, 0]);
+          expect(src.asType(DType.uint64).toList(), [0, -1, 0, -1, 0]);
 
           // Also test strided view
           final strided = src.slice([Slice(start: 0, stop: 5, step: 2)]);
-          expect(strided.astype(DType.int8).toList(), [0, -128, -128]);
-          expect(strided.astype(DType.uint8).toList(), [0, 0, 0]);
+          expect(strided.asType(DType.int8).toList(), [0, -128, -128]);
+          expect(strided.asType(DType.uint8).toList(), [0, 0, 0]);
         });
       },
     );

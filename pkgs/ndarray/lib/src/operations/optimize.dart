@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:ffi' as ffi;
 
 import 'package:openblas/openblas.dart';
@@ -21,12 +20,12 @@ import '../ndarray.dart';
 import '../scratch_arena.dart';
 import 'helpers.dart';
 
-/// Method selection for 1D scalar root finding ([root_scalar]).
+/// Method selection for 1D scalar root finding ([rootScalar]).
 enum RootMethod {
   /// Brent's algorithm combining bisection, secant, and inverse quadratic interpolation.
   brentq,
 
-  /// Newton-Raphson method (requires derivative [fprime]).
+  /// Newton-Raphson method (requires derivative [fPrime]).
   newton,
 
   /// Secant method (derivative-free secant iteration).
@@ -168,7 +167,7 @@ typedef OptimizeResult = ({
 /// and bisection to achieve superlinear convergence while guaranteeing linear convergence in worst cases.
 ///
 /// It is an error if $f(a)$ and $f(b)$ have the same sign ($f(a) \cdot f(b) > 0$).
-/// It is an error if [maxiter] is less than or equal to zero.
+/// It is an error if [maxIter] is less than or equal to zero.
 /// It is an error if [xtol] or [rtol] is negative.
 ///
 /// ### References & Further Reading
@@ -182,13 +181,13 @@ RootScalarResult brentq(
   double b, {
   double xtol = 2e-12,
   double rtol = 8.881784197001252e-16,
-  int maxiter = 100,
+  int maxIter = 100,
 }) {
-  if (maxiter <= 0) {
+  if (maxIter <= 0) {
     throw ArgumentError.value(
-      maxiter,
-      'maxiter',
-      'Must be positive (got $maxiter)',
+      maxIter,
+      'maxIter',
+      'Must be positive (got $maxIter)',
     );
   }
   if (xtol < 0 || rtol < 0) {
@@ -235,7 +234,7 @@ RootScalarResult brentq(
   var d = b - a;
   var e = d;
 
-  for (var iter = 1; iter <= maxiter; iter++) {
+  for (var iter = 1; iter <= maxIter; iter++) {
     if (fb == 0.0) {
       return (
         root: b,
@@ -326,19 +325,19 @@ RootScalarResult brentq(
   return (
     root: b,
     converged: false,
-    iterations: maxiter,
+    iterations: maxIter,
     functionCalls: nfev,
-    message: 'Failed to converge within maximum iterations ($maxiter).',
+    message: 'Failed to converge within maximum iterations ($maxIter).',
   );
 }
 
 /// Finds a root of a scalar function using Newton-Raphson or Secant iteration.
 ///
-/// If derivative function [fprime] is provided, Newton-Raphson iteration is performed:
+/// If derivative function [fPrime] is provided, Newton-Raphson iteration is performed:
 /// $$x_{k+1} = x_k - \frac{f(x_k)}{f'(x_k)}$$
-/// If [fprime] is `null`, secant iteration is used starting from initial guess [x0].
+/// If [fPrime] is `null`, secant iteration is used starting from initial guess [x0].
 ///
-/// It is an error if [maxiter] is less than or equal to zero.
+/// It is an error if [maxIter] is less than or equal to zero.
 /// It is an error if [tol] is less than or equal to zero.
 ///
 /// ### References & Further Reading
@@ -349,15 +348,15 @@ RootScalarResult brentq(
 RootScalarResult newton(
   double Function(double) f,
   double x0, {
-  double Function(double)? fprime,
+  double Function(double)? fPrime,
   double tol = 1.48e-8,
-  int maxiter = 50,
+  int maxIter = 50,
 }) {
-  if (maxiter <= 0) {
+  if (maxIter <= 0) {
     throw ArgumentError.value(
-      maxiter,
-      'maxiter',
-      'Must be positive (got $maxiter)',
+      maxIter,
+      'maxIter',
+      'Must be positive (got $maxIter)',
     );
   }
   if (tol <= 0) {
@@ -367,8 +366,8 @@ RootScalarResult newton(
   var p0 = x0;
   var nfev = 0;
 
-  if (fprime != null) {
-    for (var iter = 1; iter <= maxiter; iter++) {
+  if (fPrime != null) {
+    for (var iter = 1; iter <= maxIter; iter++) {
       final y = f(p0);
       nfev++;
       if (y == 0.0) {
@@ -380,7 +379,7 @@ RootScalarResult newton(
           message: 'Exact root found.',
         );
       }
-      final yprime = fprime(p0);
+      final yprime = fPrime(p0);
       if (yprime == 0.0) {
         return (
           root: p0,
@@ -405,9 +404,9 @@ RootScalarResult newton(
     return (
       root: p0,
       converged: false,
-      iterations: maxiter,
+      iterations: maxIter,
       functionCalls: nfev,
-      message: 'Failed to converge within maximum iterations ($maxiter).',
+      message: 'Failed to converge within maximum iterations ($maxIter).',
     );
   } else {
     var p1 = x0 != 0.0 ? x0 * 1.0001 : 1e-4;
@@ -415,7 +414,7 @@ RootScalarResult newton(
     var q1 = f(p1);
     nfev += 2;
 
-    for (var iter = 1; iter <= maxiter; iter++) {
+    for (var iter = 1; iter <= maxIter; iter++) {
       if (q1 == q0) {
         return (
           root: p1,
@@ -444,9 +443,9 @@ RootScalarResult newton(
     return (
       root: p1,
       converged: false,
-      iterations: maxiter,
+      iterations: maxIter,
       functionCalls: nfev,
-      message: 'Failed to converge within maximum iterations ($maxiter).',
+      message: 'Failed to converge within maximum iterations ($maxIter).',
     );
   }
 }
@@ -455,27 +454,27 @@ RootScalarResult newton(
 ///
 /// Dispatches to supported root-finding methods defined in [RootMethod]:
 /// - [RootMethod.brentq]: Requires bracket endpoints [bracketA] and [bracketB].
-/// - [RootMethod.newton]: Requires initial guess [x0] and optional derivative [fprime].
+/// - [RootMethod.newton]: Requires initial guess [x0] and optional derivative [fPrime].
 /// - [RootMethod.secant]: Requires initial guess [x0].
 ///
 /// It is an error if [method] is [RootMethod.brentq] and [bracketA] or [bracketB] is omitted.
 /// It is an error if [method] is [RootMethod.newton] or [RootMethod.secant] and [x0] is omitted.
 ///
 /// ### References & Further Reading
-/// - [SciPy root_scalar Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.root_scalar.html)
+/// - [SciPy rootScalar Documentation](https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.root_scalar.html)
 ///
 /// {@example /example/optimize_example.dart lang=dart}
-RootScalarResult root_scalar(
+RootScalarResult rootScalar(
   double Function(double) f, {
   RootMethod method = RootMethod.brentq,
   double? bracketA,
   double? bracketB,
   double? x0,
-  double Function(double)? fprime,
+  double Function(double)? fPrime,
   double xtol = 2e-12,
   double rtol = 8.881784197001252e-16,
   double tol = 1.48e-8,
-  int maxiter = 100,
+  int maxIter = 100,
 }) {
   switch (method) {
     case RootMethod.brentq:
@@ -492,7 +491,7 @@ RootScalarResult root_scalar(
         bracketB,
         xtol: xtol,
         rtol: rtol,
-        maxiter: maxiter,
+        maxIter: maxIter,
       );
     case RootMethod.newton:
     case RootMethod.secant:
@@ -506,9 +505,9 @@ RootScalarResult root_scalar(
       return newton(
         f,
         x0,
-        fprime: method == RootMethod.newton ? fprime : null,
+        fPrime: method == RootMethod.newton ? fPrime : null,
         tol: tol,
-        maxiter: maxiter,
+        maxIter: maxIter,
       );
   }
 }
@@ -530,29 +529,27 @@ RootScalarResult root_scalar(
 /// - [Wikipedia: Nelder-Mead method](https://en.wikipedia.org/wiki/Nelder%E2%80%93Mead_method)
 ///
 /// {@example /example/optimize_example.dart lang=dart}
-OptimizeResult nelder_mead(
+OptimizeResult nelderMead(
   double Function(NDArray<Float64>) fun,
   NDArray<Float64> x0, {
   double xatol = 1e-4,
   double fatol = 1e-4,
-  int? maxiter,
-  int? maxfev,
+  int? maxIter,
+  int? maxFev,
   bool adaptive = false,
   NDArray<Float64>? out,
 }) {
   if (x0.isDisposed) {
-    throw StateError('Cannot execute nelder_mead on disposed x0 array.');
+    throw StateError('Cannot execute nelderMead on disposed x0 array.');
   }
   if (out != null && out.isDisposed) {
-    throw StateError(
-      'Cannot write nelder_mead result to a disposed out array.',
-    );
+    throw StateError('Cannot write nelderMead result to a disposed out array.');
   }
   if (x0.shape.length != 1) {
     throw ArgumentError.value(
       x0.shape,
       'x0',
-      'Must be a 1D vector for nelder_mead (got shape ${x0.shape})',
+      'Must be a 1D vector for nelderMead (got shape ${x0.shape})',
     );
   }
   if (x0.size == 0) {
@@ -581,16 +578,16 @@ OptimizeResult nelder_mead(
       'Must be non-negative (tolerances xatol and fatol must be non-negative)',
     );
   }
-  checkBlasIntDim(x0.shape[0], 'n', 'nelder_mead');
-  checkBlasIntStride(x0.strides[0], 'incx', 'nelder_mead');
+  checkBlasIntDim(x0.shape[0], 'n', 'nelderMead');
+  checkBlasIntStride(x0.strides[0], 'incx', 'nelderMead');
   if (out != null) {
-    checkBlasIntStride(out.strides[0], 'incout', 'nelder_mead');
+    checkBlasIntStride(out.strides[0], 'incout', 'nelderMead');
   }
 
   return NDArray.scope(() {
     final n = x0.shape[0];
-    final limitIter = maxiter ?? n * 200;
-    final limitFev = maxfev ?? n * 200;
+    final limitIter = maxIter ?? n * 200;
+    final limitFev = maxFev ?? n * 200;
 
     final alpha = 1.0;
     final gamma = adaptive ? 1.0 + 2.0 / n : 2.0;
@@ -764,27 +761,6 @@ OptimizeResult nelder_mead(
   });
 }
 
-/// CamelCase alias for [nelder_mead].
-OptimizeResult nelderMead(
-  double Function(NDArray<Float64>) fun,
-  NDArray<Float64> x0, {
-  double xatol = 1e-4,
-  double fatol = 1e-4,
-  int? maxiter,
-  int? maxfev,
-  bool adaptive = false,
-  NDArray<Float64>? out,
-}) => nelder_mead(
-  fun,
-  x0,
-  xatol: xatol,
-  fatol: fatol,
-  maxiter: maxiter,
-  maxfev: maxfev,
-  adaptive: adaptive,
-  out: out,
-);
-
 /// Minimizes a multivariate scalar objective function using the L-BFGS quasi-Newton algorithm.
 ///
 /// All heavy matrix-free two-loop recursion step calculations and vector updates are offloaded
@@ -797,7 +773,7 @@ OptimizeResult nelderMead(
 /// It is an error if [x0], [out], or [outJac] is disposed.
 /// It is an error if [x0] is not a 1-dimensional array.
 /// It is an error if [m] is less than or equal to zero.
-/// It is an error if [gtol] is less than or equal to zero or [maxiter] is less than or equal to zero.
+/// It is an error if [gtol] is less than or equal to zero or [maxIter] is less than or equal to zero.
 ///
 /// ### References & Further Reading
 /// - [SciPy minimize(method='L-BFGS-B') Documentation](https://docs.scipy.org/doc/scipy/reference/optimize.minimize-lbfgsb.html)
@@ -812,7 +788,7 @@ OptimizeResult lbfgs(
   (double, NDArray<Float64>) Function(NDArray<Float64>)? funAndGrad,
   int m = 10,
   double gtol = 1e-5,
-  int maxiter = 15000,
+  int maxIter = 15000,
   NDArray<Float64>? out,
   NDArray<Float64>? outJac,
 }) {
@@ -873,11 +849,11 @@ OptimizeResult lbfgs(
   if (m <= 0) {
     throw ArgumentError.value(m, 'm', 'Must be strictly positive (got $m)');
   }
-  if (gtol <= 0 || maxiter <= 0) {
+  if (gtol <= 0 || maxIter <= 0) {
     throw ArgumentError.value(
-      [gtol, maxiter],
-      'gtol, maxiter',
-      'Must be positive (gtol and maxiter must be positive, got gtol=$gtol, maxiter=$maxiter)',
+      [gtol, maxIter],
+      'gtol, maxIter',
+      'Must be positive (gtol and maxIter must be positive, got gtol=$gtol, maxIter=$maxIter)',
     );
   }
   checkBlasIntDim(x0.shape[0], 'n', 'lbfgs');
@@ -986,7 +962,7 @@ OptimizeResult lbfgs(
       bool success = false;
       String msg = 'Maximum iterations reached';
 
-      for (int iter = 0; iter < maxiter; iter++) {
+      for (int iter = 0; iter < maxIter; iter++) {
         nit++;
 
         double gNorm = 0.0;
@@ -1124,7 +1100,7 @@ OptimizeResult lbfgs(
 /// Unified entry point for multivariate scalar function minimization.
 ///
 /// Dispatches to optimization algorithms defined in [MinimizeMethod]:
-/// - [MinimizeMethod.nelderMead]: Derivative-free simplex method via [nelder_mead].
+/// - [MinimizeMethod.nelderMead]: Derivative-free simplex method via [nelderMead].
 /// - [MinimizeMethod.lbfgs]: Quasi-Newton gradient method via [lbfgs].
 ///
 /// It is an error if [x0], [out], or [outJac] is disposed or if [x0] is not a 1-dimensional vector.
@@ -1141,18 +1117,18 @@ OptimizeResult minimize(
   void Function(NDArray<Float64> x, NDArray<Float64> out)? jacInto,
   (double, NDArray<Float64>) Function(NDArray<Float64>)? funAndGrad,
   double? tol,
-  int? maxiter,
+  int? maxIter,
   NDArray<Float64>? out,
   NDArray<Float64>? outJac,
 }) {
   switch (method) {
     case MinimizeMethod.nelderMead:
-      return nelder_mead(
+      return nelderMead(
         fun,
         x0,
         fatol: tol ?? 1e-4,
         xatol: tol ?? 1e-4,
-        maxiter: maxiter,
+        maxIter: maxIter,
         out: out,
       );
     case MinimizeMethod.lbfgs:
@@ -1163,7 +1139,7 @@ OptimizeResult minimize(
         jacInto: jacInto,
         funAndGrad: funAndGrad,
         gtol: tol ?? 1e-5,
-        maxiter: maxiter ?? 15000,
+        maxIter: maxIter ?? 15000,
         out: out,
         outJac: outJac,
       );

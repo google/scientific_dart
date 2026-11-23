@@ -1,3 +1,53 @@
+## 0.4.0-wip
+
+- **Breaking — Idiomatic Dart `camelCase` Public API & Alias Deduplication**:
+  - Standardized the entire public API of `package:ndarray` to idiomatic Dart `camelCase`, removed all `snake_case` functions/parameters/aliases, removed duplicate type/enum/function aliases, privatized the accidental `r_median_helper` export, removed `ignore_for_file: non_constant_identifier_names` from all non-FFI operation libraries, and enforced public naming invariants via AST tests.
+  - Because `package:ndarray` is pre-1.0, legacy aliases were removed directly without deprecation shims.
+
+  **Rename & Removal Table (Old → New)**
+
+  | Category | Old | New |
+  | --- | --- | --- |
+  | **Removed `snake_case` aliases & leaks** | `diag_indices`, `diag_indices_from` | `diagIndices`, `diagIndicesFrom` |
+  | | `mask_indices` (`mask_func:`) | `maskIndices` (`maskFunc:`) |
+  | | `ravel_multi_index` (`multi_index:`) | `ravelMultiIndex` (`multiIndex:`) |
+  | | `sparse_indices`, `unravel_index` | `sparseIndices`, `unravelIndex` |
+  | | `tril_indices`, `tril_indices_from` | `trilIndices`, `trilIndicesFrom` |
+  | | `triu_indices`, `triu_indices_from` | `triuIndices`, `triuIndicesFrom` |
+  | | `matrix_rank`, `nelder_mead`, `var_` | `matrixRank`, `nelderMead`, `variance` |
+  | | `r_median_helper` | *(removed; internal helper)* |
+  | **Renamed `snake_case` functions** | `take_along_axis`, `put_along_axis` | `takeAlongAxis`, `putAlongAxis` |
+  | | `matrix_power`, `multi_dot`, `expand_dims` | `matrixPower`, `multiDot`, `expandDims` |
+  | | `nan_to_num` (`posinf:`, `neginf:`) | `nanToNum` (`posInf:`, `negInf:`) |
+  | | `root_scalar`, `count_nonzero` | `rootScalar`, `countNonzero` |
+  | | `array_split`, `split_at`, `array_split_at` | `arraySplit`, `splitAt` |
+  | | `hsplit_at`, `vsplit_at`, `dsplit_at` | `hsplitAt`, `vsplitAt`, `dsplitAt` |
+  | **Types, enums & duplicate aliases** | `NdArrayException`, `LinAlgError`, `IndexSpec` | `NDArrayException`, `LinAlgException`, `Selector` |
+  | | `PaddingMode`, `PadMode.minimum` / `PadMode.maximum` | `PadMode`, `PadMode.min` / `PadMode.max` |
+  | | `svdvals`, `interpolate`, `conjugate`, `fix` | `svdValues`, `interp`, `conj`, `trunc` |
+  | | `mod`, `modAs` | `remainder`, `remainderAs` |
+  | | Top-level `reduce`, `accumulate`, `reduceat`, `at` | `reduceUfunc`, `accumulateUfunc`, `reduceAtUfunc`, `atUfunc` *(short methods remain on `UfuncNDArrayExtension`)* |
+  | | `UnaryOp.{absolute,fabs}`, `UnaryOp.conjugate` | `UnaryOp.abs`, `UnaryOp.conj` |
+  | | `UnaryOp.{degrees,radians}`, `UnaryOp.bitwiseNot` | `UnaryOp.{rad2deg,deg2rad}`, `UnaryOp.invert` |
+  | | `UnaryOp.{arcsin,arccos,arctan,arcsinh,arccosh,arctanh}` | `UnaryOp.{asin,acos,atan,asinh,acosh,atanh}` |
+  | | `UnaryOp.{isnan,isinf,isfinite}` | `UnaryOp.{isNan,isInf,isFinite}` |
+  | | `BinaryOp.{arctan2,copysign}` | `BinaryOp.{atan2,copySign}` |
+  | **Predicates, methods & functions** | `isnan`, `isinf`, `isfinite`, `isin` | `isNan`, `isInf`, `isFinite`, `isIn` |
+  | | `astype`, `NDArray.astype` | `asType`, `NDArray.asType` |
+  | | `NDArray.swapaxes`, `NDArray.moveaxis` | `NDArray.swapAxes`, `NDArray.moveAxis` |
+  | | `UfuncNDArrayExtension.reduceat`, `reduceatUfunc` | `UfuncNDArrayExtension.reduceAt`, `reduceAtUfunc` |
+  | | `eigvals`, `eigvalsh` | `eigValues`, `eigValuesH` |
+  | | `copysign`, `copysignAs` | `copySign`, `copySignAs` |
+  | **Parameters & record fields** | `keepdims`, `minlength`, `rowvar` | `keepDims`, `minLength`, `rowVar` |
+  | | `fweights`, `aweights` | `fWeights`, `aWeights` |
+  | | `axisa`, `axisb`, `axisc` | `axisA`, `axisB`, `axisC` |
+  | | `maxiter`, `maxfev`, `fprime` | `maxIter`, `maxFev`, `fPrime` |
+  | | `posinf`, `neginf`, `mask_func`, `multi_index` | `posInf`, `negInf`, `maskFunc`, `multiIndex` |
+  | | `slogdet`: `.logabsdet`, `outLogdet:`, `OutLogdet` | `.logAbsDet`, `outLogAbsDet:`, `OutLogAbsDet` |
+  | | `hanning(M)` / `hamming(M)` | `hanning(m)` / `hamming(m)` |
+
+  - **Note for tests using `package:test`**: `isIn` shares a name with `package:matcher`'s `isIn` (re-exported by `package:test/test.dart`). In test files that call `isIn`, disambiguate with an import prefix (`import 'package:ndarray/ndarray.dart' as nd;`) or `hide isIn`.
+
 ## 0.3.1
 
 - **Scoped Resource Management (`NDArray.using` & `ResourceScope`)**:

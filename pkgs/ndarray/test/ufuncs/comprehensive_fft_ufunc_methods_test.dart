@@ -341,7 +341,7 @@ void main() {
           // rfft rejects Complex64 and Complex128 on both even and odd n
           expect(() => rfft(overlong as dynamic, n: 4), throwsArgumentError);
           expect(() => rfft(overlong as dynamic, n: 5), throwsArgumentError);
-          final overlong64 = overlong.astype(DType.complex64);
+          final overlong64 = overlong.asType(DType.complex64);
           expect(() => rfft(overlong64 as dynamic, n: 4), throwsArgumentError);
           expect(() => rfft(overlong64 as dynamic, n: 5), throwsArgumentError);
 
@@ -811,13 +811,13 @@ void main() {
 
           final y = NDArray.fromList([1.0, 0.0], [2], DType.float64);
           final x = NDArray.fromList([1.0, 1.0], [2], DType.float64);
-          final at2 = binaryUfunc(y, x, op: BinaryOp.arctan2).toList();
+          final at2 = binaryUfunc(y, x, op: BinaryOp.atan2).toList();
           expect(at2[0], closeTo(math.pi / 4, 1e-9));
           expect(at2[1], closeTo(0.0, 1e-9));
 
           final cs1 = NDArray.fromList([1.0, -2.0], [2], DType.float64);
           final cs2 = NDArray.fromList([-3.0, 4.0], [2], DType.float64);
-          expect(binaryUfunc(cs1, cs2, op: BinaryOp.copysign).toList(), [
+          expect(binaryUfunc(cs1, cs2, op: BinaryOp.copySign).toList(), [
             -1.0,
             2.0,
           ]);
@@ -1029,20 +1029,20 @@ void main() {
     );
 
     test(
-      'reduce with initial value and keepdims and top-level reduce function',
+      'reduce with initial value and keepDims and top-level reduce function',
       () {
         NDArray.scope(() {
           final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
           final res = a.reduce(
             op: BinaryOp.add,
             initial: 100.0,
-            keepdims: true,
+            keepDims: true,
           );
           expect(res.shape, [1]);
           expect(res.getCell([0]), 106.0);
 
           // Top-level reduce
-          final topRes = reduce(a, op: BinaryOp.add, initial: 50.0);
+          final topRes = reduceUfunc(a, op: BinaryOp.add, initial: 50.0);
           expect(topRes.scalar, 56.0);
 
           // Axis reduction with initial
@@ -1091,7 +1091,7 @@ void main() {
           expect(cs1.toList(), [1.0, 3.0, 6.0, 4.0, 9.0, 15.0]);
 
           // Top-level accumulate
-          final topAcc = accumulate(a, op: BinaryOp.add, axis: 1);
+          final topAcc = accumulateUfunc(a, op: BinaryOp.add, axis: 1);
           expect(topAcc.toList(), equals(cs1.toList()));
 
           // multiply cumprod
@@ -1184,9 +1184,9 @@ void main() {
     );
   });
 
-  group('Comprehensive Ufunc Methods - reduceat & reduceatUfunc', () {
+  group('Comprehensive Ufunc Methods - reduceAt & reduceAtUfunc', () {
     test(
-      'reduceat with multiple slice intervals, start >= end, and dtypes',
+      'reduceAt with multiple slice intervals, start >= end, and dtypes',
       () {
         NDArray.scope(() {
           // 1D Float64
@@ -1196,12 +1196,12 @@ void main() {
             DType.float64,
           );
           final indices = NDArray.fromList([0, 3, 1, 4], [4], DType.int64);
-          final res = a.reduceat(indices, op: BinaryOp.add);
+          final res = a.reduceAt(indices, op: BinaryOp.add);
           expect(res.shape, [4]);
           expect(res.toList(), [30.0, 30.0, 60.0, 90.0]);
 
-          // Top level reduceat
-          final topRedAt = reduceat(a, indices, op: BinaryOp.add);
+          // Top level reduceAt
+          final topRedAt = reduceAtUfunc(a, indices, op: BinaryOp.add);
           expect(topRedAt.toList(), equals(res.toList()));
 
           // 1D Float32, Int32, Int16, Uint8, Complex128
@@ -1211,16 +1211,16 @@ void main() {
             DType.float32,
           );
           final idx2 = NDArray.fromList([0, 2], [2], DType.int64);
-          expect(aF32.reduceat(idx2, op: BinaryOp.add).toList(), [3.0, 7.0]);
+          expect(aF32.reduceAt(idx2, op: BinaryOp.add).toList(), [3.0, 7.0]);
 
           final aI32 = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
-          expect(aI32.reduceat(idx2, op: BinaryOp.multiply).toList(), [2, 12]);
+          expect(aI32.reduceAt(idx2, op: BinaryOp.multiply).toList(), [2, 12]);
 
           final aI16 = NDArray.fromList([1, 2, 3, 4], [4], DType.int16);
-          expect(aI16.reduceat(idx2, op: BinaryOp.add).toList(), [3, 7]);
+          expect(aI16.reduceAt(idx2, op: BinaryOp.add).toList(), [3, 7]);
 
           final aU8 = NDArray.fromList([1, 2, 3, 4], [4], DType.uint8);
-          expect(aU8.reduceat(idx2, op: BinaryOp.add).toList(), [3, 7]);
+          expect(aU8.reduceAt(idx2, op: BinaryOp.add).toList(), [3, 7]);
 
           final aC128 = NDArray.fromList(
             [
@@ -1232,11 +1232,11 @@ void main() {
             [4],
             DType.complex128,
           );
-          final cRedAt = aC128.reduceat(idx2, op: BinaryOp.add);
+          final cRedAt = aC128.reduceAt(idx2, op: BinaryOp.add);
           expect(cRedAt.getCell([0]), Complex(3.0, 3.0));
           expect(cRedAt.getCell([1]), Complex(7.0, 7.0));
 
-          // 2D Matrix reduceat along axis 0 and axis 1
+          // 2D Matrix reduceAt along axis 0 and axis 1
           final mat = NDArray.fromList(
             [
               1.0,
@@ -1260,7 +1260,7 @@ void main() {
             DType.float64,
           );
 
-          final matRedAt0 = mat.reduceat(idx2, op: BinaryOp.add, axis: 0);
+          final matRedAt0 = mat.reduceAt(idx2, op: BinaryOp.add, axis: 0);
           expect(matRedAt0.shape, [2, 4]);
           expect(matRedAt0.toList(), [
             6.0,
@@ -1395,7 +1395,7 @@ void main() {
             [3],
             DType.float64,
           );
-          at(targetTop, idx, valsF64, op: BinaryOp.add);
+          atUfunc(targetTop, idx, valsF64, op: BinaryOp.add);
           expect(targetTop.toList(), [6.0, 10.0, 100.0]);
 
           // Float32 multiply
@@ -1569,7 +1569,7 @@ void main() {
             () => logicalAnd(numA.asAnySpec, numBInt.asAnySpec),
             throwsArgumentError,
           );
-          final numB = numBInt.astype(DType.float64);
+          final numB = numBInt.asType(DType.float64);
 
           final lAnd = logicalAnd(numA, numB);
           expect(lAnd.shape, [2, 2]);

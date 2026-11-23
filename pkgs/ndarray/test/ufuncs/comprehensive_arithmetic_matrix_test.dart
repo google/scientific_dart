@@ -413,11 +413,11 @@ void main() {
       expect(() => sqrt(a), throwsStateError);
       expect(() => expm1(a), throwsStateError);
       expect(() => log1p(a), throwsStateError);
-      expect(() => isnan(a), throwsStateError);
-      expect(() => isinf(a), throwsStateError);
-      expect(() => isfinite(a), throwsStateError);
-      expect(() => copysign(a, b), throwsStateError);
-      expect(() => copysign(b, a), throwsStateError);
+      expect(() => isNan(a), throwsStateError);
+      expect(() => isInf(a), throwsStateError);
+      expect(() => isFinite(a), throwsStateError);
+      expect(() => copySign(a, b), throwsStateError);
+      expect(() => copySign(b, a), throwsStateError);
 
       b.dispose();
       c.dispose();
@@ -500,7 +500,7 @@ void main() {
         final remRes = remainder(x1, x2);
         expect(remRes.toList(), [1.0, 2.0, -2.0, -1.0]);
 
-        final modRes = mod(x1, x2);
+        final modRes = remainder(x1, x2);
         expect(modRes.toList(), [1.0, 2.0, -2.0, -1.0]);
 
         // fmod: C style fmod (sign of dividend)
@@ -625,25 +625,25 @@ void main() {
       });
     });
 
-    test("copysign across floating, integer, and strided arrays", () {
+    test("copySign across floating, integer, and strided arrays", () {
       NDArray.scope(() {
         final x1 = NDArray.fromList([1.0, -2.0, 3.0, -4.0], [4], DType.float64);
         final x2 = NDArray.fromList([-1.0, 1.0, 0.0, -0.0], [4], DType.float64);
 
-        final res = copysign(x1, x2);
+        final res = copySign(x1, x2);
         expect(res.toList(), [-1.0, 2.0, 3.0, -4.0]);
 
-        // Float32 copysign
+        // Float32 copySign
         final x1f = NDArray.fromList([5.0, -5.0], [2], DType.float32);
         final x2f = NDArray.fromList([-1.0, 1.0], [2], DType.float32);
-        expect(copysign(x1f, x2f).toList(), [-5.0, 5.0]);
+        expect(copySign(x1f, x2f).toList(), [-5.0, 5.0]);
 
-        // Integer copysign
+        // Integer copySign
         final x1i = NDArray.fromList([10, -20], [2], DType.int32);
         final x2i = NDArray.fromList([-1, 1], [2], DType.int32);
-        expect(copysign(x1i, x2i).toList(), [-10, 20]);
+        expect(copySign(x1i, x2i).toList(), [-10, 20]);
 
-        // Strided copysign
+        // Strided copySign
         final x1s = NDArray.fromList(
           [1.0, 2.0, 3.0, 4.0],
           [2, 2],
@@ -654,12 +654,12 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        final resStrided = copysign(x1s, x2s);
+        final resStrided = copySign(x1s, x2s);
         expect(resStrided.shape, [2, 2]);
 
         // Complex throws UnsupportedError
         final cpx = NDArray.fromList([Complex(1, 2)], [1], DType.complex128);
-        expect(() => copysign(cpx, cpx), throwsUnsupportedError);
+        expect(() => copySign(cpx, cpx), throwsUnsupportedError);
       });
     });
 
@@ -860,7 +860,7 @@ void main() {
         expect(trunc(nums).toList(), [-2.0, -2.0, -2.0, 2.0, 2.0, 2.0]);
 
         // fix: round towards zero (same as trunc)
-        expect(fix(nums).toList(), [-2.0, -2.0, -2.0, 2.0, 2.0, 2.0]);
+        expect(trunc(nums).toList(), [-2.0, -2.0, -2.0, 2.0, 2.0, 2.0]);
 
         // square
         final sqArr = NDArray.fromList([2.0, 3.0, -4.0], [3], DType.float64);
@@ -909,7 +909,7 @@ void main() {
 
   group("Workstream 1: Floating Point Classification and Comparisons", () {
     test(
-      "isnan, isinf, isfinite across float64, float32, float16, complex, and int dtypes",
+      "isNan, isInf, isFinite across float64, float32, float16, complex, and int dtypes",
       () {
         NDArray.scope(() {
           final floatVals = [
@@ -923,7 +923,7 @@ void main() {
 
           // Float64
           final f64 = NDArray.fromList(floatVals, [6], DType.float64);
-          expect(isnan(f64).toList(), [
+          expect(isNan(f64).toList(), [
             false,
             true,
             false,
@@ -931,8 +931,8 @@ void main() {
             false,
             false,
           ]);
-          expect(isinf(f64).toList(), [false, false, true, true, false, false]);
-          expect(isfinite(f64).toList(), [
+          expect(isInf(f64).toList(), [false, false, true, true, false, false]);
+          expect(isFinite(f64).toList(), [
             true,
             false,
             false,
@@ -943,7 +943,7 @@ void main() {
 
           // Float32
           final f32 = NDArray.fromList(floatVals, [6], DType.float32);
-          expect(isnan(f32).toList(), [
+          expect(isNan(f32).toList(), [
             false,
             true,
             false,
@@ -951,8 +951,8 @@ void main() {
             false,
             false,
           ]);
-          expect(isinf(f32).toList(), [false, false, true, true, false, false]);
-          expect(isfinite(f32).toList(), [
+          expect(isInf(f32).toList(), [false, false, true, true, false, false]);
+          expect(isFinite(f32).toList(), [
             true,
             false,
             false,
@@ -963,10 +963,10 @@ void main() {
 
           // Float16 & BFloat16
           final f16 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float16);
-          expect(isfinite(f16).toList(), [true, true, true]);
+          expect(isFinite(f16).toList(), [true, true, true]);
 
           final bf16 = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.bfloat16);
-          expect(isfinite(bf16).toList(), [true, true, true]);
+          expect(isFinite(bf16).toList(), [true, true, true]);
 
           // Complex128 & Complex64
           final cVals = [
@@ -976,25 +976,25 @@ void main() {
             Complex(double.negativeInfinity, double.nan),
           ];
           final c128 = NDArray.fromList(cVals, [4], DType.complex128);
-          expect(isnan(c128).toList(), [false, true, false, true]);
-          expect(isinf(c128).toList(), [false, false, true, true]);
-          expect(isfinite(c128).toList(), [true, false, false, false]);
+          expect(isNan(c128).toList(), [false, true, false, true]);
+          expect(isInf(c128).toList(), [false, false, true, true]);
+          expect(isFinite(c128).toList(), [true, false, false, false]);
 
           final c64 = NDArray.fromList(cVals, [4], DType.complex64);
-          expect(isnan(c64).toList(), [false, true, false, true]);
-          expect(isinf(c64).toList(), [false, false, true, true]);
-          expect(isfinite(c64).toList(), [true, false, false, false]);
+          expect(isNan(c64).toList(), [false, true, false, true]);
+          expect(isInf(c64).toList(), [false, false, true, true]);
+          expect(isFinite(c64).toList(), [true, false, false, false]);
 
           // Integer arrays are always not nan, not inf, and finite
           final i32 = NDArray.fromList([10, 20, -30], [3], DType.int32);
-          expect(isnan(i32).toList(), [false, false, false]);
-          expect(isinf(i32).toList(), [false, false, false]);
-          expect(isfinite(i32).toList(), [true, true, true]);
+          expect(isNan(i32).toList(), [false, false, false]);
+          expect(isInf(i32).toList(), [false, false, false]);
+          expect(isFinite(i32).toList(), [true, true, true]);
 
           final u8 = NDArray.fromList([0, 100, 255], [3], DType.uint8);
-          expect(isnan(u8).toList(), [false, false, false]);
-          expect(isinf(u8).toList(), [false, false, false]);
-          expect(isfinite(u8).toList(), [true, true, true]);
+          expect(isNan(u8).toList(), [false, false, false]);
+          expect(isInf(u8).toList(), [false, false, false]);
+          expect(isFinite(u8).toList(), [true, true, true]);
 
           // Strided views
           final f64_2d = NDArray.fromList(floatVals, [
@@ -1002,9 +1002,9 @@ void main() {
             3,
           ], DType.float64).transpose([1, 0]);
           expect(f64_2d.isContiguous, false);
-          expect(isnan(f64_2d).shape, [3, 2]);
-          expect(isinf(f64_2d).shape, [3, 2]);
-          expect(isfinite(f64_2d).shape, [3, 2]);
+          expect(isNan(f64_2d).shape, [3, 2]);
+          expect(isInf(f64_2d).shape, [3, 2]);
+          expect(isFinite(f64_2d).shape, [3, 2]);
 
           // out parameter & where mask
           final outBool = NDArray.zeros([6], DType.boolean);
@@ -1013,7 +1013,7 @@ void main() {
             [6],
             DType.boolean,
           );
-          isnan(f64, where: mask, out: outBool);
+          isNan(f64, where: mask, out: outBool);
           expect(outBool.toList(), [false, true, false, false, false, false]);
         });
       },

@@ -324,20 +324,16 @@ void main() {
           final a = NDArray.fromList(Int16List.fromList([10, 20, 30]), [
             3,
           ], DType.int16);
-          final edge = pad(a, PadWidth.all(1), mode: PaddingMode.edge);
+          final edge = pad(a, PadWidth.all(1), mode: PadMode.edge);
           expect(edge.toList(), [10, 10, 20, 30, 30]);
 
-          final reflect = pad(a, PadWidth.all(1), mode: PaddingMode.reflect);
+          final reflect = pad(a, PadWidth.all(1), mode: PadMode.reflect);
           expect(reflect.toList(), [20, 10, 20, 30, 20]);
 
-          final symmetric = pad(
-            a,
-            PadWidth.all(1),
-            mode: PaddingMode.symmetric,
-          );
+          final symmetric = pad(a, PadWidth.all(1), mode: PadMode.symmetric);
           expect(symmetric.toList(), [10, 10, 20, 30, 30]);
 
-          final wrap = pad(a, PadWidth.all(1), mode: PaddingMode.wrap);
+          final wrap = pad(a, PadWidth.all(1), mode: PadMode.wrap);
           expect(wrap.toList(), [30, 10, 20, 30, 10]);
         }),
       );
@@ -348,16 +344,16 @@ void main() {
           final a = NDArray.fromList(Int16List.fromList([10, 20, 30]), [
             3,
           ], DType.int16);
-          final minPad = pad(a, PadWidth.all(1), mode: PaddingMode.minimum);
+          final minPad = pad(a, PadWidth.all(1), mode: PadMode.min);
           expect(minPad.toList(), [10, 10, 20, 30, 10]);
 
-          final maxPad = pad(a, PadWidth.all(1), mode: PaddingMode.maximum);
+          final maxPad = pad(a, PadWidth.all(1), mode: PadMode.max);
           expect(maxPad.toList(), [30, 10, 20, 30, 30]);
 
-          final meanPad = pad(a, PadWidth.all(1), mode: PaddingMode.mean);
+          final meanPad = pad(a, PadWidth.all(1), mode: PadMode.mean);
           expect(meanPad.toList(), [20, 10, 20, 30, 20]);
 
-          final medianPad = pad(a, PadWidth.all(1), mode: PaddingMode.median);
+          final medianPad = pad(a, PadWidth.all(1), mode: PadMode.median);
           expect(medianPad.toList(), [20, 10, 20, 30, 20]);
         }),
       );
@@ -378,7 +374,7 @@ void main() {
           );
 
           expect(a.rank, 34);
-          expect(count_nonzero(a).scalar, 2);
+          expect(countNonzero(a).scalar, 2);
 
           final nonzeroCoords = nonzero(a);
           expect(nonzeroCoords.length, 34);

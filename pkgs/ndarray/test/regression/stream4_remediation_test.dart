@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-import 'package:ndarray/ndarray.dart';
+import 'package:ndarray/ndarray.dart' hide isIn;
 import 'package:test/test.dart';
 
 void main() {

@@ -202,8 +202,8 @@ void runModule6ReductionsAndLinAlg() {
     final colSums = sum(mat, axis: 0);
     print('np.sum(mat, axis=0): ${colSums.toList()}');
 
-    // Mean along rows preserving rank (axis 1, keepdims: true) -> shape [2, 1]
-    final rowMeans = mean(mat, axis: 1, keepdims: true);
+    // Mean along rows preserving rank (axis 1, keepDims: true) -> shape [2, 1]
+    final rowMeans = mean(mat, axis: 1, keepDims: true);
     print(
       'np.mean(mat, axis=1, keepdims=True) shape ${rowMeans.shape}:\n$rowMeans',
     );

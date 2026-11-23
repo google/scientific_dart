@@ -239,9 +239,9 @@ void main() {
           ]);
           final fullLog = NDArray.zeros([4], DType.float64);
           final stridedLog = fullLog.slice([Slice(start: 0, stop: 4, step: 2)]);
-          slogdet(aBatch, outSign: stridedSign, outLogdet: stridedLog);
+          slogdet(aBatch, outSign: stridedSign, outLogAbsDet: stridedLog);
           expectArrayClose(stridedSign, expSlogdet.sign);
-          expectArrayClose(stridedLog, expSlogdet.logabsdet);
+          expectArrayClose(stridedLog, expSlogdet.logAbsDet);
 
           // solve
           final expSolve = solve(a, b);
@@ -258,63 +258,66 @@ void main() {
         });
       });
 
-      test('eig, eigvals, eigh, eigvalsh support strided and aliased out', () {
-        NDArray.scope(() {
-          final a = NDArray.fromList(
-            [2.0, 1.0, 1.0, 2.0],
-            [2, 2],
-            DType.float64,
-          );
+      test(
+        'eig, eigValues, eigh, eigValuesH support strided and aliased out',
+        () {
+          NDArray.scope(() {
+            final a = NDArray.fromList(
+              [2.0, 1.0, 1.0, 2.0],
+              [2, 2],
+              DType.float64,
+            );
 
-          // eig
-          final expEig = eig(a);
-          final fullValC = NDArray.zeros([4], DType.complex128);
-          final stridedValC = fullValC.slice([
-            Slice(start: 0, stop: 4, step: 2),
-          ]);
-          final fullVecC = NDArray.zeros([2, 4], DType.complex128);
-          final stridedVecC = fullVecC.slice([
-            Slice.all(),
-            Slice(start: 0, stop: 4, step: 2),
-          ]);
-          eig(a, out: (eigenvalues: stridedValC, eigenvectors: stridedVecC));
-          expectArrayClose(stridedValC, expEig.eigenvalues);
-          expectArrayClose(stridedVecC, expEig.eigenvectors);
+            // eig
+            final expEig = eig(a);
+            final fullValC = NDArray.zeros([4], DType.complex128);
+            final stridedValC = fullValC.slice([
+              Slice(start: 0, stop: 4, step: 2),
+            ]);
+            final fullVecC = NDArray.zeros([2, 4], DType.complex128);
+            final stridedVecC = fullVecC.slice([
+              Slice.all(),
+              Slice(start: 0, stop: 4, step: 2),
+            ]);
+            eig(a, out: (eigenvalues: stridedValC, eigenvectors: stridedVecC));
+            expectArrayClose(stridedValC, expEig.eigenvalues);
+            expectArrayClose(stridedVecC, expEig.eigenvectors);
 
-          // eigvals
-          final expEigvals = eigvals(a);
-          final fullEigvalsC = NDArray.zeros([4], DType.complex128);
-          final stridedEigvalsC = fullEigvalsC.slice([
-            Slice(start: 0, stop: 4, step: 2),
-          ]);
-          eigvals(a, out: stridedEigvalsC);
-          expectArrayClose(stridedEigvalsC, expEigvals);
+            // eigValues
+            final expEigvals = eigValues(a);
+            final fullEigvalsC = NDArray.zeros([4], DType.complex128);
+            final stridedEigvalsC = fullEigvalsC.slice([
+              Slice(start: 0, stop: 4, step: 2),
+            ]);
+            eigValues(a, out: stridedEigvalsC);
+            expectArrayClose(stridedEigvalsC, expEigvals);
 
-          // eigh
-          final expEigh = eigh(a);
-          final fullValR = NDArray.zeros([4], DType.float64);
-          final stridedValR = fullValR.slice([
-            Slice(start: 0, stop: 4, step: 2),
-          ]);
-          final fullVecR = NDArray.zeros([2, 4], DType.float64);
-          final stridedVecR = fullVecR.slice([
-            Slice.all(),
-            Slice(start: 0, stop: 4, step: 2),
-          ]);
-          eigh(a, outEigenvalues: stridedValR, outEigenvectors: stridedVecR);
-          expectArrayClose(stridedValR, expEigh.eigenvalues);
-          expectArrayClose(stridedVecR, expEigh.eigenvectors);
+            // eigh
+            final expEigh = eigh(a);
+            final fullValR = NDArray.zeros([4], DType.float64);
+            final stridedValR = fullValR.slice([
+              Slice(start: 0, stop: 4, step: 2),
+            ]);
+            final fullVecR = NDArray.zeros([2, 4], DType.float64);
+            final stridedVecR = fullVecR.slice([
+              Slice.all(),
+              Slice(start: 0, stop: 4, step: 2),
+            ]);
+            eigh(a, outEigenvalues: stridedValR, outEigenvectors: stridedVecR);
+            expectArrayClose(stridedValR, expEigh.eigenvalues);
+            expectArrayClose(stridedVecR, expEigh.eigenvectors);
 
-          // eigvalsh
-          final expEigvalsh = eigvalsh(a);
-          final fullEigvalshR = NDArray.zeros([4], DType.float64);
-          final stridedEigvalshR = fullEigvalshR.slice([
-            Slice(start: 0, stop: 4, step: 2),
-          ]);
-          eigvalsh(a, out: stridedEigvalshR);
-          expectArrayClose(stridedEigvalshR, expEigvalsh);
-        });
-      });
+            // eigValuesH
+            final expEigvalsh = eigValuesH(a);
+            final fullEigvalshR = NDArray.zeros([4], DType.float64);
+            final stridedEigvalshR = fullEigvalshR.slice([
+              Slice(start: 0, stop: 4, step: 2),
+            ]);
+            eigValuesH(a, out: stridedEigvalshR);
+            expectArrayClose(stridedEigvalshR, expEigvalsh);
+          });
+        },
+      );
 
       test(
         'cholesky, qr, svd, pinv, schur, hessenberg support strided and aliased out',

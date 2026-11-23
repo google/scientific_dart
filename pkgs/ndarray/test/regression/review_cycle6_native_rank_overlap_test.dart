@@ -65,7 +65,7 @@ void main() {
             expect(diffArr.flatten().toList(), equals([2.0, 2.0, 2.0, 2.0]));
 
             // Cast strided op
-            final casted = a34.astype<Int32>(DType.int32);
+            final casted = a34.asType<Int32>(DType.int32);
             expect(casted.shape.length, equals(34));
             expect(casted.flatten().toList(), equals([1, 2, 5, 6]));
 
@@ -131,7 +131,7 @@ void main() {
             expect(diffArr.flatten().toList(), equals([1.0, 1.0]));
 
             // Cast strided op
-            final casted = a32.astype<Int32>(DType.int32);
+            final casted = a32.asType<Int32>(DType.int32);
             expect(casted.shape.length, equals(32));
             expect(casted.flatten().toList(), equals([1, 3]));
 

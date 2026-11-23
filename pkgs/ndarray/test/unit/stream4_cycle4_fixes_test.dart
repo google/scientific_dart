@@ -206,7 +206,7 @@ void main() {
     });
 
     group('indexing ScratchArena try/finally', () {
-      test('take_along_axis and put_along_axis', () {
+      test('takeAlongAxis and putAlongAxis', () {
         final a = NDArray<Float64>.fromList(
           [10.0, 20.0, 30.0, 40.0, 50.0, 60.0].map((e) => e).toList(),
           [2, 3],
@@ -218,7 +218,7 @@ void main() {
           DType.int32,
         );
 
-        final taken = take_along_axis(a, idx, 1);
+        final taken = takeAlongAxis(a, idx, 1);
         expect(taken.shape, [2, 2]);
         expect(taken.getCell([0, 0]), 30.0);
         expect(taken.getCell([0, 1]), 10.0);
@@ -229,7 +229,7 @@ void main() {
           [2, 2],
           DType.float64,
         );
-        put_along_axis(out, idx, vals, 1);
+        putAlongAxis(out, idx, vals, 1);
         expect(out.getCell([0, 2]), 99.0);
         expect(out.getCell([0, 0]), 88.0);
       });

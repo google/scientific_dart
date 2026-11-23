@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 
 void main() {
   group('set_operations branch coverage', () {
@@ -266,25 +266,25 @@ void main() {
       });
     });
 
-    test('isin across all dtypes, table paths, fallbacks, and out aliasing', () {
+    test('isIn across all dtypes, table paths, fallbacks, and out aliasing', () {
       NDArray.scope(() {
         final disposed = NDArray.fromList([1, 2], [2], DType.int32)..dispose();
         final valid = NDArray.fromList([1, 2], [2], DType.int32);
         final outDisposed = NDArray.zeros([2], DType.boolean)..dispose();
 
-        expect(() => isin(disposed, valid), throwsStateError);
-        expect(() => isin(valid, disposed), throwsStateError);
-        expect(() => isin(valid, valid, out: outDisposed), throwsStateError);
+        expect(() => isIn(disposed, valid), throwsStateError);
+        expect(() => isIn(valid, disposed), throwsStateError);
+        expect(() => isIn(valid, valid, out: outDisposed), throwsStateError);
         expect(
-          () => isin(valid, valid, out: NDArray.zeros([3], DType.boolean)),
+          () => isIn(valid, valid, out: NDArray.zeros([3], DType.boolean)),
           throwsArgumentError,
         );
 
         // Empty element and empty testElements
         final empty = NDArray.create([0], DType.int32);
-        expect(isin(empty, valid).size, 0);
-        expect(isin(valid, empty, invert: false).toList(), [false, false]);
-        expect(isin(valid, empty, invert: true).toList(), [true, true]);
+        expect(isIn(empty, valid).size, 0);
+        expect(isIn(valid, empty, invert: false).toList(), [false, false]);
+        expect(isIn(valid, empty, invert: true).toList(), [true, true]);
 
         // Mixed dtypes & non-contiguous element/testElements/out
         final elemMat = NDArray.fromList(
@@ -295,22 +295,22 @@ void main() {
         final testMat = NDArray.fromList([2.0, 4.0], [1, 2], DType.float64);
         final outBase = NDArray.zeros([2, 4], DType.boolean);
         final outStrided = outBase.slice([Slice.all(), Slice(step: 2)]);
-        isin<DTypeTag>(elemMat, testMat, out: outStrided);
+        isIn<DTypeTag>(elemMat, testMat, out: outStrided);
         expect(outStrided.toList(), [false, false, true, true]);
 
         // Table path across all 7 integer dtypes (invert: false and invert: true)
-        void checkIntIsin<T extends DTypeTag>(DType<T> dtype) {
+        void checkIntIsIn<T extends DTypeTag>(DType<T> dtype) {
           // Elements cover: < minVal (1), in-range present (10), in-range absent (15), > maxVal (30)
           final elem = NDArray<T>.fromList([1, 10, 15, 30], [4], dtype);
           // Test elements have decreasing and increasing order to cover v < minVal and v > maxVal
           final testArr = NDArray<T>.fromList([10, 5, 20], [3], dtype);
-          expect(isin(elem, testArr, invert: false).toList(), [
+          expect(isIn(elem, testArr, invert: false).toList(), [
             false,
             true,
             false,
             false,
           ]);
-          expect(isin(elem, testArr, invert: true).toList(), [
+          expect(isIn(elem, testArr, invert: true).toList(), [
             true,
             false,
             true,
@@ -318,13 +318,13 @@ void main() {
           ]);
         }
 
-        checkIntIsin(DType.int32);
-        checkIntIsin(DType.int64);
-        checkIntIsin(DType.int16);
-        checkIntIsin(DType.int8);
-        checkIntIsin(DType.uint8);
-        checkIntIsin(DType.uint16);
-        checkIntIsin(DType.uint32);
+        checkIntIsIn(DType.int32);
+        checkIntIsIn(DType.int64);
+        checkIntIsIn(DType.int16);
+        checkIntIsIn(DType.int8);
+        checkIntIsIn(DType.uint8);
+        checkIntIsIn(DType.uint16);
+        checkIntIsIn(DType.uint32);
 
         // Boolean table path: both true & false, only true, only false, and aliasing out
         final bElem = NDArray.fromList([true, false], [2], DType.boolean);
@@ -332,31 +332,31 @@ void main() {
         final bOnlyTrue = NDArray.fromList([true, true], [2], DType.boolean);
         final bOnlyFalse = NDArray.fromList([false, false], [2], DType.boolean);
 
-        expect(isin(bElem, bBoth, invert: false).toList(), [true, true]);
-        expect(isin(bElem, bBoth, invert: true).toList(), [false, false]);
-        expect(isin(bElem, bOnlyTrue, invert: false).toList(), [true, false]);
-        expect(isin(bElem, bOnlyTrue, invert: true).toList(), [false, true]);
-        expect(isin(bElem, bOnlyFalse, invert: false).toList(), [false, true]);
-        expect(isin(bElem, bOnlyFalse, invert: true).toList(), [true, false]);
+        expect(isIn(bElem, bBoth, invert: false).toList(), [true, true]);
+        expect(isIn(bElem, bBoth, invert: true).toList(), [false, false]);
+        expect(isIn(bElem, bOnlyTrue, invert: false).toList(), [true, false]);
+        expect(isIn(bElem, bOnlyTrue, invert: true).toList(), [false, true]);
+        expect(isIn(bElem, bOnlyFalse, invert: false).toList(), [false, true]);
+        expect(isIn(bElem, bOnlyFalse, invert: true).toList(), [true, false]);
 
         // Out aliasing element and testElements
         final bAlias1 = NDArray.fromList([true, false], [2], DType.boolean);
-        isin(bAlias1, bOnlyTrue, out: bAlias1);
+        isIn(bAlias1, bOnlyTrue, out: bAlias1);
         expect(bAlias1.toList(), [true, false]);
 
         final bAlias2 = NDArray.fromList([true, false], [2], DType.boolean);
-        isin(bElem, bAlias2, out: bAlias2);
+        isIn(bElem, bAlias2, out: bAlias2);
         expect(bAlias2.toList(), [true, true]);
 
         // Table fallback to ndarray_isin (range > maxTableRange and float64)
         final bigInt32 = NDArray.fromList([0, 20000000], [2], DType.int32);
         expect(
-          isin(bigInt32, bigInt32, assumeUnique: true, invert: false).toList(),
+          isIn(bigInt32, bigInt32, assumeUnique: true, invert: false).toList(),
           [true, true],
         );
         final bigUint32 = NDArray.fromList([0, 20000000], [2], DType.uint32);
         expect(
-          isin(
+          isIn(
             bigUint32,
             bigUint32,
             assumeUnique: false,
@@ -365,13 +365,13 @@ void main() {
           [false, false],
         );
         final bigInt64 = NDArray.fromList([0, 20000000], [2], DType.int64);
-        expect(isin(bigInt64, bigInt64).toList(), [true, true]);
+        expect(isIn(bigInt64, bigInt64).toList(), [true, true]);
         final overflowInt64 = NDArray.fromList(
           [-10, 0x7fffffffffffffff],
           [2],
           DType.int64,
         );
-        expect(isin(overflowInt64, overflowInt64).toList(), [true, true]);
+        expect(isIn(overflowInt64, overflowInt64).toList(), [true, true]);
       });
     });
   });

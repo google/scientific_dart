@@ -51,7 +51,7 @@ void main() {
     );
 
     test(
-      '2a. reduceatUfunc handles non-contiguous strided int64 and int32 indices',
+      '2a. reduceAtUfunc handles non-contiguous strided int64 and int32 indices',
       () {
         final a = NDArray.fromList(
           [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -66,7 +66,7 @@ void main() {
         ]);
         expect(stridedIdx64.isContiguous, isFalse);
 
-        final res64 = reduceatUfunc(a, stridedIdx64, op: BinaryOp.add);
+        final res64 = reduceAtUfunc(a, stridedIdx64, op: BinaryOp.add);
         // [0..2): 1+2=3, [2..4): 3+4=7, [4..end): 5+6=11
         expect(res64.toList(), equals([3.0, 7.0, 11.0]));
 
@@ -77,7 +77,7 @@ void main() {
         ]);
         expect(stridedIdx32.isContiguous, isFalse);
 
-        final res32 = reduceatUfunc(a, stridedIdx32, op: BinaryOp.add);
+        final res32 = reduceAtUfunc(a, stridedIdx32, op: BinaryOp.add);
         // [1..3): 2+3=5, [3..end): 4+5+6=15
         expect(res32.toList(), equals([5.0, 15.0]));
 

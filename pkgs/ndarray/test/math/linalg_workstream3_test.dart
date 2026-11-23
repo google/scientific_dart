@@ -582,7 +582,7 @@ void main() {
           });
 
           test(
-            'eig, eigvals, eigvalsh, eigh on n == 0 matrix return empty arrays',
+            'eig, eigValues, eigValuesH, eigh on n == 0 matrix return empty arrays',
             () {
               final a = NDArray.zeros([0, 0], DType.float64);
 
@@ -593,12 +593,12 @@ void main() {
               expect(resEig.eigenvectors.isDisposed, false);
               resEig.dispose();
 
-              final resEigvals = eigvals(a);
+              final resEigvals = eigValues(a);
               expect(resEigvals.shape, [0]);
               expect(resEigvals.isDisposed, false);
               resEigvals.dispose();
 
-              final resEigvalsh = eigvalsh(a);
+              final resEigvalsh = eigValuesH(a);
               expect(resEigvalsh.shape, [0]);
               expect(resEigvalsh.isDisposed, false);
               resEigvalsh.dispose();

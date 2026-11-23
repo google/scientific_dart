@@ -349,7 +349,7 @@ void main() {
   );
 
   group(
-    'Bug 5: stats.min/max on bool/complex, stats.sum Modulo 256 Overflow, & keepdims',
+    'Bug 5: stats.min/max on bool/complex, stats.sum Modulo 256 Overflow, & keepDims',
     () {
       test('stats.min and stats.max work on boolean and complex arrays', () {
         final b = NDArray<Boolean>.fromList(
@@ -434,13 +434,13 @@ void main() {
         },
       );
 
-      test('reduceUfunc with initial != null and keepdims: true succeeds', () {
+      test('reduceUfunc with initial != null and keepDims: true succeeds', () {
         final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
         final res = reduceUfunc(
           a,
           op: BinaryOp.add,
           axis: 1,
-          keepdims: true,
+          keepDims: true,
           initial: 10,
         );
         expect(res.shape, equals([2, 1]));
@@ -450,13 +450,13 @@ void main() {
         res.dispose();
       });
 
-      test('quantile and median respect keepdims: true when axis == null', () {
+      test('quantile and median respect keepDims: true when axis == null', () {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-        final q = quantile(a, 0.5, keepdims: true);
+        final q = quantile(a, 0.5, keepDims: true);
         expect(q.shape, equals([1, 1]));
         expect(q.getCell([0, 0]), equals(2.5));
 
-        final m = median(a, keepdims: true);
+        final m = median(a, keepDims: true);
         expect(m.shape, equals([1, 1]));
         expect(m.getCell([0, 0]), equals(2.5));
 
@@ -527,7 +527,7 @@ void main() {
   });
 
   group(
-    'Bug 7: put_along_axis, choose, & toNDArray Extension Type Erasure Bugs',
+    'Bug 7: putAlongAxis, choose, & toNDArray Extension Type Erasure Bugs',
     () {
       test(
         'toNDArray returns zero-copy view when runtime generic type differs',
@@ -544,7 +544,7 @@ void main() {
       );
 
       test(
-        'put_along_axis casts values when runtime extension types erase to double',
+        'putAlongAxis casts values when runtime extension types erase to double',
         () {
           final arr = NDArray<Float16>.fromList([0.0, 0.0], [2], DType.float16);
           final indices = NDArray.fromList([0, 1], [2], DType.int64);
@@ -554,7 +554,7 @@ void main() {
             DType.float64,
           );
 
-          put_along_axis(arr, indices, values, 0);
+          putAlongAxis(arr, indices, values, 0);
           expect(arr.getCell([0]), closeTo(3.5, 1e-2));
           expect(arr.getCell([1]), closeTo(7.25, 1e-2));
 
@@ -715,7 +715,7 @@ void main() {
       );
 
       test(
-        'nan_to_num with where mask zero-initializes unmasked elements when out == null',
+        'nanToNum with where mask zero-initializes unmasked elements when out == null',
         () {
           final a = NDArray.fromList(
             [double.nan, double.nan, double.infinity],
@@ -727,7 +727,7 @@ void main() {
             [3],
             DType.boolean,
           );
-          final res = nan_to_num(a, where: mask, nan: 0.0, posinf: 999.0);
+          final res = nanToNum(a, where: mask, nan: 0.0, posInf: 999.0);
           expect(res.getCell([0]), equals(0.0));
           // Unmasked elements follow the where: contract in
           // test/meta/operation_contracts_test.dart: zero when out == null.
@@ -989,11 +989,11 @@ void main() {
     });
 
     test(
-      'isnan and isinf handle uint64, int8, and float16 arrays without uninitialized memory',
+      'isNan and isInf handle uint64, int8, and float16 arrays without uninitialized memory',
       () {
         final u = NDArray.fromList([0, -1, 42], [3], DType.uint64);
-        final nanU = isnan(u);
-        final infU = isinf(u);
+        final nanU = isNan(u);
+        final infU = isInf(u);
         expect(nanU.toList(), equals([false, false, false]));
         expect(infU.toList(), equals([false, false, false]));
 
@@ -1002,8 +1002,8 @@ void main() {
           [3],
           DType.float16,
         );
-        final nanF16 = isnan(f16);
-        final infF16 = isinf(f16);
+        final nanF16 = isNan(f16);
+        final infF16 = isInf(f16);
         expect(nanF16.toList(), equals([false, true, false]));
         expect(infF16.toList(), equals([false, false, true]));
 

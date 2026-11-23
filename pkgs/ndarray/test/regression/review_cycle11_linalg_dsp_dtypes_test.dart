@@ -19,7 +19,7 @@ void main() {
   group('Review Cycle 11 Finding #4: Linalg Float16 & BFloat16 Promotion', () {
     for (final dtype in <DType<AnySpec>>[DType.float16, DType.bfloat16]) {
       group('dtype=${dtype.name}', () {
-        test('eig and eigvals promote to float64 / complex128', () {
+        test('eig and eigValues promote to float64 / complex128', () {
           NDArray.scope(() {
             final a = NDArray.fromList([2.0, 0.0, 0.0, 3.0], [2, 2], dtype);
             final res = eig(a);
@@ -31,7 +31,7 @@ void main() {
             expect(sortedEvs[0], closeTo(2.0, 1e-2));
             expect(sortedEvs[1], closeTo(3.0, 1e-2));
 
-            final vals = eigvals(a);
+            final vals = eigValues(a);
             expect(vals.dtype, equals(DType.complex128));
             final v0 = vals.getCell([0]).real;
             final v1 = vals.getCell([1]).real;
@@ -79,7 +79,7 @@ void main() {
           });
         });
 
-        test('eigh and eigvalsh promote to float64 on symmetric matrix', () {
+        test('eigh and eigValuesH promote to float64 on symmetric matrix', () {
           NDArray.scope(() {
             final a = NDArray.fromList([2.0, 1.0, 1.0, 2.0], [2, 2], dtype);
             final res = eigh(a);
@@ -88,7 +88,7 @@ void main() {
             expect(res.eigenvalues.getCell([0]), closeTo(1.0, 1e-2));
             expect(res.eigenvalues.getCell([1]), closeTo(3.0, 1e-2));
 
-            final vals = eigvalsh(a);
+            final vals = eigValuesH(a);
             expect(vals.dtype, equals(DType.float64));
             expect(vals.getCell([0]), closeTo(1.0, 1e-2));
             expect(vals.getCell([1]), closeTo(3.0, 1e-2));
@@ -135,7 +135,7 @@ void main() {
 
             final sd = slogdet(a);
             expect(sd.sign.scalar, closeTo(1.0, 1e-2));
-            expect(sd.logabsdet.scalar, closeTo(2.302585, 1e-2));
+            expect(sd.logAbsDet.scalar, closeTo(2.302585, 1e-2));
 
             final aInv = inv(a);
             expect(aInv.dtype, equals(DType.float64));

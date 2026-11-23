@@ -20,7 +20,7 @@ import 'helpers.dart';
 import 'stats.dart'; // For min, max, sum
 import 'math.dart'; // For diff, multiply, divide, equal
 import 'manipulation.dart'; // For flip, ravel, where
-import 'sorting.dart'; // For searchsorted, count_nonzero
+import 'sorting.dart'; // For searchsorted, countNonzero
 import 'spacers.dart'; // For linspace
 
 // Helper to check list equality
@@ -54,13 +54,13 @@ void _fastCopyAndCast(NDArray<DTypeTag> src, NDArray<DTypeTag> dest) {
 /// - [x] must not be disposed.
 /// - [x] must be a 1-D array containing non-negative integers.
 /// - If [weights] is provided, it must not be disposed and must have the same shape as [x].
-/// - [minlength] must be non-negative ($\ge 0$).
+/// - [minLength] must be non-negative ($\ge 0$).
 ///
 /// **Throws:**
 /// - It is an error if [x] or [weights] is disposed.
 /// - It is an error if [x] is not 1-D or contains negative values.
 /// - It is an error if [weights] shape does not match [x] shape.
-/// - It is an error if [minlength] is negative.
+/// - It is an error if [minLength] is negative.
 /// - It is an error if [out] has incompatible shape or dtype.
 ///
 /// **Example:**
@@ -71,7 +71,7 @@ void _fastCopyAndCast(NDArray<DTypeTag> src, NDArray<DTypeTag> dest) {
 NDArray<T> bincount<T extends DTypeTag, Out extends T>(
   NDArray<DTypeTag> x, {
   NDArray<T>? weights,
-  int? minlength,
+  int? minLength,
   NDArray<Out>? out,
 }) {
   if (x.isDisposed) {
@@ -89,8 +89,8 @@ NDArray<T> bincount<T extends DTypeTag, Out extends T>(
   if (x.shape.length != 1) {
     throw ArgumentError.value(x, 'x', 'Input array x must be 1D');
   }
-  if (minlength != null && minlength < 0) {
-    throw ArgumentError.value(minlength, 'minlength', 'Must be non-negative');
+  if (minLength != null && minLength < 0) {
+    throw ArgumentError.value(minLength, 'minLength', 'Must be non-negative');
   }
   if (weights != null && !_listEquals(weights.shape, x.shape)) {
     throw ArgumentError.value(
@@ -108,7 +108,7 @@ NDArray<T> bincount<T extends DTypeTag, Out extends T>(
 
   return NDArray.scope(() {
     if (x.size == 0) {
-      final outSize = minlength ?? 0;
+      final outSize = minLength ?? 0;
       if (out != null) {
         if (out.shape[0] < outSize) {
           throw ArgumentError.value(
@@ -137,7 +137,7 @@ NDArray<T> bincount<T extends DTypeTag, Out extends T>(
       throw ArgumentError.value(x, 'x', 'Input array x must be non-negative');
     }
 
-    final minRequiredSize = math.max(maxVal + 1, minlength ?? 0);
+    final minRequiredSize = math.max(maxVal + 1, minLength ?? 0);
 
     // Determine target DType for the result
     final DType<T> targetDType =
@@ -162,7 +162,7 @@ NDArray<T> bincount<T extends DTypeTag, Out extends T>(
       final temp = bincount<DTypeTag, DTypeTag>(
         x,
         weights: weights,
-        minlength: out.shape[0],
+        minLength: out.shape[0],
       );
       _fastCopyAndCast(temp, out);
       return out;

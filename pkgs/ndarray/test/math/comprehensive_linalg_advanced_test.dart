@@ -400,15 +400,15 @@ void main() {
       // Group 2: Matrix Powers & Advanced Solvers (linalg.dart)
       // ------------------------------------------------------------------------
       group('2. Matrix Powers, Decompositions & Solvers', () {
-        group('matrix_power', () {
-          test('matrix_power n = 0 returns identity matrix', () {
+        group('matrixPower', () {
+          test('matrixPower n = 0 returns identity matrix', () {
             NDArray.scope(() {
               final a = NDArray.fromList(
                 [2.0, 3.0, 4.0, 5.0],
                 [2, 2],
                 DType.float64,
               );
-              final res = matrix_power(a, 0);
+              final res = matrixPower(a, 0);
               expect(res.shape, [2, 2]);
               expect(res.getCell([0, 0]), 1.0);
               expect(res.getCell([0, 1]), 0.0);
@@ -416,30 +416,30 @@ void main() {
               expect(res.getCell([1, 1]), 1.0);
 
               final out = NDArray<Float64>.zeros([2, 2], DType.float64);
-              final resOut = matrix_power(a, 0, out: out);
+              final resOut = matrixPower(a, 0, out: out);
               expect(identical(resOut, out), isTrue);
               expect(out.getCell([0, 0]), 1.0);
             });
           });
 
-          test('matrix_power n = 1 returns copy of matrix', () {
+          test('matrixPower n = 1 returns copy of matrix', () {
             NDArray.scope(() {
               final a = NDArray.fromList(
                 [2.0, 3.0, 4.0, 5.0],
                 [2, 2],
                 DType.float64,
               );
-              final res = matrix_power(a, 1);
+              final res = matrixPower(a, 1);
               expect(res.toList(), [2.0, 3.0, 4.0, 5.0]);
 
               final out = NDArray<Float64>.zeros([2, 2], DType.float64);
-              matrix_power(a, 1, out: out);
+              matrixPower(a, 1, out: out);
               expect(out.toList(), [2.0, 3.0, 4.0, 5.0]);
             });
           });
 
           test(
-            'matrix_power n > 1 computes powers via binary exponentiation',
+            'matrixPower n > 1 computes powers via binary exponentiation',
             () {
               NDArray.scope(() {
                 final a = NDArray.fromList(
@@ -448,15 +448,15 @@ void main() {
                   DType.float64,
                 );
                 // A^2 = [[7, 10], [15, 22]]
-                final a2 = matrix_power(a, 2);
+                final a2 = matrixPower(a, 2);
                 expect(a2.toList(), [7.0, 10.0, 15.0, 22.0]);
 
                 // A^3 = A^2 * A = [[37, 54], [81, 118]]
-                final a3 = matrix_power(a, 3);
+                final a3 = matrixPower(a, 3);
                 expect(a3.toList(), [37.0, 54.0, 81.0, 118.0]);
 
                 // A^5
-                final a5 = matrix_power(a, 5);
+                final a5 = matrixPower(a, 5);
                 expect(a5.shape, [2, 2]);
                 expect(a5.getCell([0, 0]), 1069.0);
               });
@@ -464,7 +464,7 @@ void main() {
           );
 
           test(
-            'matrix_power n < 0 computes negative power via matrix inversion',
+            'matrixPower n < 0 computes negative power via matrix inversion',
             () {
               NDArray.scope(() {
                 final a = NDArray.fromList(
@@ -473,14 +473,14 @@ void main() {
                   DType.float64,
                 );
                 // A^-1 = [[0.6, -0.7], [-0.2, 0.4]]
-                final aInv = matrix_power(a, -1);
+                final aInv = matrixPower(a, -1);
                 expect(aInv.getCell([0, 0]), closeTo(0.6, 1e-9));
                 expect(aInv.getCell([0, 1]), closeTo(-0.7, 1e-9));
                 expect(aInv.getCell([1, 0]), closeTo(-0.2, 1e-9));
                 expect(aInv.getCell([1, 1]), closeTo(0.4, 1e-9));
 
                 // A^-2 = (A^-1)^2
-                final aInv2 = matrix_power(a, -2);
+                final aInv2 = matrixPower(a, -2);
                 final directInv2 = matmul(aInv, aInv);
                 for (var i = 0; i < 2; i++) {
                   for (var j = 0; j < 2; j++) {
@@ -494,7 +494,7 @@ void main() {
             },
           );
 
-          test('matrix_power complex matrices and error checks', () {
+          test('matrixPower complex matrices and error checks', () {
             NDArray.scope(() {
               final ac = NDArray.fromList(
                 [
@@ -506,7 +506,7 @@ void main() {
                 [2, 2],
                 DType.complex128,
               );
-              final ac2 = matrix_power(ac, 2);
+              final ac2 = matrixPower(ac, 2);
               expect(ac2.dtype, DType.complex128);
 
               final intMat = NDArray.fromList(
@@ -514,19 +514,19 @@ void main() {
                 [2, 2],
                 DType.int32,
               );
-              final intPow2 = matrix_power(intMat, 2);
+              final intPow2 = matrixPower(intMat, 2);
               expect(intPow2.toList(), [7, 10, 15, 22]);
 
               // Negative power on integer matrix throws ArgumentError
-              expect(() => matrix_power(intMat, -1), throwsArgumentError);
+              expect(() => matrixPower(intMat, -1), throwsArgumentError);
 
               // Non-square matrix throws ArgumentError
               final nonSquare = NDArray.zeros([2, 3], DType.float64);
-              expect(() => matrix_power(nonSquare, 2), throwsArgumentError);
+              expect(() => matrixPower(nonSquare, 2), throwsArgumentError);
 
               // 1D array throws ArgumentError
               final vec1D = NDArray.zeros([4], DType.float64);
-              expect(() => matrix_power(vec1D, 2), throwsArgumentError);
+              expect(() => matrixPower(vec1D, 2), throwsArgumentError);
             });
           });
         });
@@ -900,8 +900,8 @@ void main() {
           });
         });
 
-        group('eig, eigvals, eigh, eigvalsh, schur, and hessenberg', () {
-          test('eig and eigvals for real 2D matrix', () {
+        group('eig, eigValues, eigh, eigValuesH, schur, and hessenberg', () {
+          test('eig and eigValues for real 2D matrix', () {
             NDArray.scope(() {
               final a = NDArray.fromList(
                 [1.0, 2.0, 2.0, 1.0],
@@ -912,12 +912,12 @@ void main() {
               expect(res.eigenvalues.shape, [2]);
               expect(res.eigenvectors.shape, [2, 2]);
 
-              final valsOnly = eigvals(a);
+              final valsOnly = eigValues(a);
               expect(valsOnly.shape, [2]);
             });
           });
 
-          test('eigh and eigvalsh for symmetric matrix', () {
+          test('eigh and eigValuesH for symmetric matrix', () {
             NDArray.scope(() {
               final a = NDArray.fromList(
                 [2.0, -1.0, -1.0, 2.0],
@@ -928,7 +928,7 @@ void main() {
               expect(res.eigenvalues.shape, [2]);
               expect(res.eigenvectors.shape, [2, 2]);
 
-              final vals = eigvalsh(a, uplo: MatrixTriangle.upper);
+              final vals = eigValuesH(a, uplo: MatrixTriangle.upper);
               expect(vals.shape, [2]);
               expect(vals.getCell([0]), closeTo(1.0, 1e-9));
               expect(vals.getCell([1]), closeTo(3.0, 1e-9));
@@ -1018,9 +1018,9 @@ void main() {
 
               final sld = slogdet(a);
               expect(sld.sign.shape, <int>[]);
-              expect(sld.logabsdet.shape, <int>[]);
+              expect(sld.logAbsDet.shape, <int>[]);
               expect(sld.sign.scalar, closeTo(-1.0, 1e-9));
-              expect(sld.logabsdet.scalar, closeTo(math.log(2.0), 1e-9));
+              expect(sld.logAbsDet.scalar, closeTo(math.log(2.0), 1e-9));
 
               // 3D batch det
               final a3D = NDArray<Float64>.zeros([2, 2, 2], DType.float64);
@@ -1172,7 +1172,7 @@ void main() {
             });
           });
 
-          test('norm along specific axes and keepdims', () {
+          test('norm along specific axes and keepDims', () {
             NDArray.scope(() {
               final a3D = NDArray<Float64>.zeros([2, 3, 4], DType.float64);
               a3D.fill(1.0);
@@ -1183,7 +1183,7 @@ void main() {
               expect(normAx1.getCell([0, 0]), closeTo(math.sqrt(3.0), 1e-9));
 
               // Keepdims
-              final normKeep = norm(a3D, axis: 1, keepdims: true);
+              final normKeep = norm(a3D, axis: 1, keepDims: true);
               expect(normKeep.shape, [2, 1, 4]);
 
               // Matrix norm along axes [1, 2]
@@ -1194,9 +1194,9 @@ void main() {
           });
         });
 
-        group('multi_dot and chain parenthesization', () {
+        group('multiDot and chain parenthesization', () {
           test(
-            'multi_dot computes optimal chain product of 3, 4, and 5 matrices',
+            'multiDot computes optimal chain product of 3, 4, and 5 matrices',
             () {
               NDArray.scope(() {
                 final a = NDArray.fromList(
@@ -1215,7 +1215,7 @@ void main() {
                   DType.float64,
                 );
 
-                final res3 = multi_dot([a, b, c]);
+                final res3 = multiDot([a, b, c]);
                 expect(res3.shape, [2, 2]);
                 final expected3 = matmul(matmul(a, b), c);
                 expect(res3.toList(), expected3.toList());
@@ -1226,7 +1226,7 @@ void main() {
                   [2, 2],
                   DType.float64,
                 );
-                final res4 = multi_dot([a, b, c, d]);
+                final res4 = multiDot([a, b, c, d]);
                 expect(res4.shape, [2, 2]);
                 final expected4 = matmul(expected3, d);
                 expect(res4.toList(), expected4.toList());
@@ -1234,7 +1234,7 @@ void main() {
             },
           );
 
-          test('multi_dot with 1D vector edge projections', () {
+          test('multiDot with 1D vector edge projections', () {
             NDArray.scope(() {
               final v1 = NDArray.fromList([1.0, 2.0], [2], DType.float64);
               final m1 = NDArray.fromList(
@@ -1250,15 +1250,15 @@ void main() {
               final v2 = NDArray.fromList([3.0, 1.0], [2], DType.float64);
 
               // 1D at start: (1D x 2D x 2D -> 1D)
-              final resStart = multi_dot([v1, m1, m2]);
+              final resStart = multiDot([v1, m1, m2]);
               expect(resStart.shape, [2]);
 
               // 1D at end: (2D x 2D x 1D -> 1D)
-              final resEnd = multi_dot([m1, m2, v2]);
+              final resEnd = multiDot([m1, m2, v2]);
               expect(resEnd.shape, [2]);
 
               // 1D at both ends: (1D x 2D x 2D x 1D -> scalar 0D)
-              final resBoth = multi_dot([v1, m1, m2, v2]);
+              final resBoth = multiDot([v1, m1, m2, v2]);
               expect(resBoth.shape, <int>[]);
             });
           });

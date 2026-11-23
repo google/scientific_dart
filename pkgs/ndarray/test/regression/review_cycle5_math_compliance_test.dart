@@ -148,16 +148,16 @@ void main() {
       },
     );
 
-    test('nan_to_num handles in-place strided aliasing (out: flip(a))', () {
+    test('nanToNum handles in-place strided aliasing (out: flip(a))', () {
       NDArray.scope(() {
         final a = NDArray.fromList(
           [double.nan, 1.0, double.infinity, 2.0],
           [4],
           DType.float64,
         );
-        nan_to_num(a, nan: 0.0, posinf: 999.0, out: flip(a));
+        nanToNum(a, nan: 0.0, posInf: 999.0, out: flip(a));
 
-        // Expected nan_to_num(a): [0.0, 1.0, 999.0, 2.0]
+        // Expected nanToNum(a): [0.0, 1.0, 999.0, 2.0]
         // Written into flip(a) -> a becomes [2.0, 999.0, 1.0, 0.0]
         expect(a.toList(), equals([2.0, 999.0, 1.0, 0.0]));
       });

@@ -31,7 +31,7 @@ import '../../nditer.dart';
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<Boolean> isnan<T extends DTypeTag>(
+NDArray<Boolean> isNan<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
@@ -39,7 +39,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute isnan() on a disposed array.');
+    throw StateError('Cannot execute isNan() on a disposed array.');
   }
   if (out != null) {
     validateOutBuffer(out);
@@ -47,7 +47,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
       throw ArgumentError.value(
         out,
         'out',
-        'Must have compatible shape and dtype for isnan',
+        'Must have compatible shape and dtype for isNan',
       );
     }
     if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
@@ -55,7 +55,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<Boolean>.create(a.shape, DType.boolean);
-        isnan<T>(a, where: where, out: temp);
+        isNan<T>(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -125,7 +125,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
         case DType.bfloat16:
           final doubleA = castNDArray(a, DType.float64);
           try {
-            return isnan(doubleA, where: where, out: result);
+            return isNan(doubleA, where: where, out: result);
           } finally {
             doubleA.dispose();
           }
@@ -208,7 +208,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
           case DType.bfloat16:
             final doubleA = castNDArray(a, DType.float64);
             try {
-              return isnan(doubleA, where: where, out: result);
+              return isNan(doubleA, where: where, out: result);
             } finally {
               doubleA.dispose();
             }
@@ -231,7 +231,7 @@ NDArray<Boolean> isnan<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<Boolean> isinf<T extends DTypeTag>(
+NDArray<Boolean> isInf<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
@@ -239,7 +239,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute isinf() on a disposed array.');
+    throw StateError('Cannot execute isInf() on a disposed array.');
   }
   if (out != null) {
     validateOutBuffer(out);
@@ -247,7 +247,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
       throw ArgumentError.value(
         out,
         'out',
-        'Must have compatible shape and dtype for isinf',
+        'Must have compatible shape and dtype for isInf',
       );
     }
     if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
@@ -255,7 +255,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<Boolean>.create(a.shape, DType.boolean);
-        isinf<T>(a, where: where, out: temp);
+        isInf<T>(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -325,7 +325,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
         case DType.bfloat16:
           final doubleA = castNDArray(a, DType.float64);
           try {
-            return isinf(doubleA, where: where, out: result);
+            return isInf(doubleA, where: where, out: result);
           } finally {
             doubleA.dispose();
           }
@@ -408,7 +408,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
           case DType.bfloat16:
             final doubleA = castNDArray(a, DType.float64);
             try {
-              return isinf(doubleA, where: where, out: result);
+              return isInf(doubleA, where: where, out: result);
             } finally {
               doubleA.dispose();
             }
@@ -431,7 +431,7 @@ NDArray<Boolean> isinf<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<Boolean> isfinite<T extends DTypeTag>(
+NDArray<Boolean> isFinite<T extends DTypeTag>(
   NDArray<T> a, {
   NDArray<DTypeTag>? where,
   NDArray<Boolean>? out,
@@ -439,7 +439,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
   if (a.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute isfinite() on a disposed array.');
+    throw StateError('Cannot execute isFinite() on a disposed array.');
   }
   if (out != null) {
     validateOutBuffer(out);
@@ -447,7 +447,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
       throw ArgumentError.value(
         out,
         'out',
-        'Must have compatible shape and dtype for isfinite',
+        'Must have compatible shape and dtype for isFinite',
       );
     }
     if (sharesMemory(a, out) || (where != null && sharesMemory(where, out))) {
@@ -455,7 +455,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
         final temp = where != null
             ? out.copy()
             : NDArray<Boolean>.create(a.shape, DType.boolean);
-        isfinite<T>(a, where: where, out: temp);
+        isFinite<T>(a, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -525,7 +525,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
         case DType.bfloat16:
           final doubleA = castNDArray(a, DType.float64);
           try {
-            return isfinite(doubleA, where: where, out: result);
+            return isFinite(doubleA, where: where, out: result);
           } finally {
             doubleA.dispose();
           }
@@ -608,7 +608,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
           case DType.bfloat16:
             final doubleA = castNDArray(a, DType.float64);
             try {
-              return isfinite(doubleA, where: where, out: result);
+              return isFinite(doubleA, where: where, out: result);
             } finally {
               doubleA.dispose();
             }
@@ -628,7 +628,7 @@ NDArray<Boolean> isfinite<T extends DTypeTag>(
 ///
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
-NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
+NDArray<T> copySign<T extends SelfOf<DTypeTag>>(
   NDArray<T> x1,
   NDArray<T> x2, {
   NDArray<DTypeTag>? where,
@@ -638,10 +638,10 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute copysign() on a disposed array.');
+    throw StateError('Cannot execute copySign() on a disposed array.');
   }
   if (x1.dtype.isComplex || x2.dtype.isComplex) {
-    throw UnsupportedError('Complex numbers are not supported for copysign');
+    throw UnsupportedError('Complex numbers are not supported for copySign');
   }
   if (x1.dtype != x2.dtype) {
     throw ArgumentError.value(
@@ -664,7 +664,7 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
       throw ArgumentError.value(
         out,
         'out',
-        'Must have compatible shape and dtype for copysign',
+        'Must have compatible shape and dtype for copySign',
       );
     }
     if (sharesMemory(x1, out) ||
@@ -674,7 +674,7 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
         final temp = where != null
             ? out.copy()
             : NDArray<T>.create(shape, targetDType);
-        copysign<T>(x1, x2, where: where, out: temp);
+        copySign<T>(x1, x2, where: where, out: temp);
         temp.copy(out: out);
         return out;
       });
@@ -825,7 +825,7 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
 
 /// Changes the sign of [x1] to that of [x2] element-wise, computed into the specified target [dtype].
 ///
-/// Casts [x1] and [x2] to [dtype] and computes [copysign], returning an
+/// Casts [x1] and [x2] to [dtype] and computes [copySign], returning an
 /// [NDArray<R>] whose static type [R] is inferred from [dtype].
 ///
 /// **Preconditions:**
@@ -840,7 +840,7 @@ NDArray<T> copysign<T extends SelfOf<DTypeTag>>(
 /// {@example /example/ufuncs_example.dart lang=dart}
 ///
 /// Reference: [NumPy copysign](https://numpy.org/doc/stable/reference/generated/numpy.copysign.html)
-NDArray<R> copysignAs<
+NDArray<R> copySignAs<
   Ta extends DTypeTag,
   Tb extends DTypeTag,
   R extends DTypeTag,
@@ -856,14 +856,14 @@ NDArray<R> copysignAs<
       x2.isDisposed ||
       (out != null && out.isDisposed) ||
       (where != null && where.isDisposed)) {
-    throw StateError('Cannot execute copysignAs() on a disposed array.');
+    throw StateError('Cannot execute copySignAs() on a disposed array.');
   }
   if (x1.dtype.isComplex || x2.dtype.isComplex || dtype.isComplex) {
-    throw UnsupportedError('Complex numbers are not supported for copysign');
+    throw UnsupportedError('Complex numbers are not supported for copySign');
   }
   if ((x1.dtype as DType<DTypeTag>) == dtype &&
       (x2.dtype as DType<DTypeTag>) == dtype) {
-    return copysign<AnySpec>(
+    return copySign<AnySpec>(
           x1.asAnySpec,
           x2.asAnySpec,
           where: where,
@@ -874,7 +874,7 @@ NDArray<R> copysignAs<
   return NDArray.scope(() {
     final x1Cast = castNDArray<R>(x1, dtype);
     final x2Cast = castNDArray<R>(x2, dtype);
-    final res = copysign<AnySpec>(
+    final res = copySign<AnySpec>(
       x1Cast.asAnySpec,
       x2Cast.asAnySpec,
       where: where,

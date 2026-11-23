@@ -76,7 +76,7 @@ void runSqueezeExample() {
 
 void runSwapaxesExample() {
   NDArray.scope(() {
-    print('\n--- swapaxes Example ---');
+    print('\n--- swapAxes Example ---');
     final a = NDArray.fromList(Float64List.fromList([1, 2, 3, 4, 5, 6]), [
       2,
       3,
@@ -84,19 +84,19 @@ void runSwapaxesExample() {
     print('Original shape: ${a.shape}'); // [2, 3]
 
     // Swap axis 0 and axis 1
-    final b = a.swapaxes(0, 1);
+    final b = a.swapAxes(0, 1);
     print('Swapped (0, 1) shape: ${b.shape}'); // [3, 2]
   });
 }
 
 void runMoveaxisExample() {
   NDArray.scope(() {
-    print('\n--- moveaxis Example ---');
+    print('\n--- moveAxis Example ---');
     final a = NDArray.create([2, 3, 4], DType.float64);
     print('Original shape: ${a.shape}'); // [2, 3, 4]
 
     // Move axis 0 to the end (axis 2)
-    final b = a.moveaxis(0, 2);
+    final b = a.moveAxis(0, 2);
     print('Moved axis 0 to 2 shape: ${b.shape}'); // [3, 4, 2]
   });
 }

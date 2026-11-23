@@ -19,13 +19,13 @@ void main() {
   group('Workstream 4 - Exceptions Hierarchy', () {
     test('LinAlgException subclasses hierarchy', () {
       expect(const SingularMatrixException('test'), isA<LinAlgException>());
-      expect(const SingularMatrixException('test'), isA<NdArrayException>());
+      expect(const SingularMatrixException('test'), isA<NDArrayException>());
       expect(const SingularMatrixException('test'), isA<Exception>());
 
       expect(const IterationsExceededException('test'), isA<LinAlgException>());
       expect(
         const IterationsExceededException('test'),
-        isA<NdArrayException>(),
+        isA<NDArrayException>(),
       );
 
       expect(
@@ -34,7 +34,7 @@ void main() {
       );
       expect(
         const NonPositiveDefiniteException('test'),
-        isA<NdArrayException>(),
+        isA<NDArrayException>(),
       );
     });
 
@@ -273,12 +273,12 @@ void main() {
       });
     });
 
-    test('eigvalsh with MatrixTriangle', () {
+    test('eigValuesH with MatrixTriangle', () {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 2.0, 3.0], [2, 2], DType.float64);
 
-        final wLower = eigvalsh(a, uplo: MatrixTriangle.lower);
-        final wUpper = eigvalsh(a, uplo: MatrixTriangle.upper);
+        final wLower = eigValuesH(a, uplo: MatrixTriangle.lower);
+        final wUpper = eigValuesH(a, uplo: MatrixTriangle.upper);
         expect(wLower.shape, equals([2]));
         expect(wUpper.shape, equals([2]));
       });
@@ -301,11 +301,11 @@ void main() {
     });
   });
 
-  group('Workstream 4 - eigvals Integer Promotion', () {
-    test('eigvals auto-promotes int64 and uint8', () {
+  group('Workstream 4 - eigValues Integer Promotion', () {
+    test('eigValues auto-promotes int64 and uint8', () {
       NDArray.scope(() {
         final aInt = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int64);
-        final w = eigvals(aInt);
+        final w = eigValues(aInt);
         final reals = w.toList().map((c) => c.real).toList()..sort();
         expect(reals[0], closeTo(-0.3722813232690143, 1e-6));
         expect(reals[1], closeTo(5.372281323269014, 1e-6));
@@ -370,11 +370,11 @@ void main() {
     });
   });
 
-  group('Workstream 4 - matrix_power', () {
-    test('matrix_power n = 0 is identity', () {
+  group('Workstream 4 - matrixPower', () {
+    test('matrixPower n = 0 is identity', () {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-        final res = matrix_power(a, 0);
+        final res = matrixPower(a, 0);
         expect(res[[0, 0]], closeTo(1.0, 1e-12));
         expect(res[[0, 1]], closeTo(0.0, 1e-12));
         expect(res[[1, 0]], closeTo(0.0, 1e-12));
@@ -382,10 +382,10 @@ void main() {
       });
     });
 
-    test('matrix_power positive powers', () {
+    test('matrixPower positive powers', () {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-        final a2 = matrix_power(a, 2);
+        final a2 = matrixPower(a, 2);
         final expectedA2 = matmul(a, a);
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
@@ -393,7 +393,7 @@ void main() {
           }
         }
 
-        final a3 = matrix_power(a, 3);
+        final a3 = matrixPower(a, 3);
         final expectedA3 = matmul(expectedA2, a);
         for (var r = 0; r < 2; r++) {
           for (var c = 0; c < 2; c++) {
@@ -403,10 +403,10 @@ void main() {
       });
     });
 
-    test('matrix_power negative power is inverse power', () {
+    test('matrixPower negative power is inverse power', () {
       NDArray.scope(() {
         final a = NDArray.fromList([1.0, 2.0, 3.0, 4.0], [2, 2], DType.float64);
-        final aInv = matrix_power(a, -1);
+        final aInv = matrixPower(a, -1);
         final eye = matmul(a, aInv);
         expect(eye[[0, 0]], closeTo(1.0, 1e-10));
         expect(eye[[0, 1]], closeTo(0.0, 1e-10));

@@ -127,14 +127,14 @@ void runWhereTernaryExample() {
 
 void runNonzeroAndCountingExample() {
   NDArray.scope(() {
-    print('\n--- Non-zero Discovery (nonzero) & count_nonzero ---');
+    print('\n--- Non-zero Discovery (nonzero) & countNonzero ---');
     final mat = NDArray.fromList(Int32List.fromList([0, 7, 0, 3, 0, 5]), [
       2,
       3,
     ], DType.int32);
     print('Matrix:\n[[0, 7, 0],\n [3, 0, 5]]');
 
-    final nzCount = count_nonzero(mat).scalar;
+    final nzCount = countNonzero(mat).scalar;
     print('Total non-zero count: $nzCount'); // 3
 
     // nonzero returns coordinate arrays for each axis

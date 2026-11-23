@@ -112,14 +112,14 @@ void main() async {
       });
 
       c.group('3. Floating-Point Inspection, Tolerances & Mesh Grids', () {
-        c.bench('isnan(arr) [100k Float64]', () {
-          final res = isnan<Float64>(nanVec);
+        c.bench('isNan(arr) [100k Float64]', () {
+          final res = isNan<Float64>(nanVec);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
 
-        c.bench('isfinite(arr) [100k Float64]', () {
-          final res = isfinite<Float64>(nanVec);
+        c.bench('isFinite(arr) [100k Float64]', () {
+          final res = isFinite<Float64>(nanVec);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));
@@ -135,8 +135,8 @@ void main() async {
           blackhole(res);
         }, throughput: Throughput.elements(size));
 
-        c.bench('copysign(a, b) [100k Float64]', () {
-          final res = copysign<Float64>(cleanVec, nanVec);
+        c.bench('copySign(a, b) [100k Float64]', () {
+          final res = copySign<Float64>(cleanVec, nanVec);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));

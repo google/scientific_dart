@@ -228,7 +228,7 @@ void main() {
 
   group('Linear Algebra - Matrix Power', () {
     test(
-      'matrix_power for n = 0, n > 0, and n < 0',
+      'matrixPower for n = 0, n > 0, and n < 0',
       () => NDArray.scope(() {
         final a = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0],
@@ -236,22 +236,22 @@ void main() {
           DType.float64,
         );
 
-        final a0 = matrix_power(a, 0);
+        final a0 = matrixPower(a, 0);
         expect(a0.toList(), [1.0, 0.0, 0.0, 1.0]);
 
-        final a1 = matrix_power(a, 1);
+        final a1 = matrixPower(a, 1);
         expect(a1.toList(), [1.0, 2.0, 3.0, 4.0]);
 
-        final a2 = matrix_power(a, 2);
+        final a2 = matrixPower(a, 2);
         expect(a2.toList(), [7.0, 10.0, 15.0, 22.0]);
 
-        final a3 = matrix_power(a, 3);
+        final a3 = matrixPower(a, 3);
         final directA3 = matmul(matmul(a, a), a);
         for (var i = 0; i < a3.size; i++) {
           expect(a3.getCellFlat(i), closeTo(directA3.getCellFlat(i), 1e-10));
         }
 
-        final aNeg1 = matrix_power(a, -1);
+        final aNeg1 = matrixPower(a, -1);
         final invA = inv(a);
         for (var i = 0; i < aNeg1.size; i++) {
           expect(aNeg1.getCellFlat(i), closeTo(invA.getCellFlat(i), 1e-10));
@@ -260,7 +260,7 @@ void main() {
     );
 
     test(
-      'matrix_power non-square error validation',
+      'matrixPower non-square error validation',
       () => NDArray.scope(() {
         final nonSquare = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -268,7 +268,7 @@ void main() {
           DType.float64,
         );
         expect(
-          () => matrix_power(nonSquare, 2),
+          () => matrixPower(nonSquare, 2),
           throwsA(anyOf(isA<ArgumentError>(), isA<LinAlgException>())),
         );
 
@@ -278,7 +278,7 @@ void main() {
           DType.float64,
         );
         expect(
-          () => matrix_power(non2D, 2),
+          () => matrixPower(non2D, 2),
           throwsA(anyOf(isA<ArgumentError>(), isA<LinAlgException>())),
         );
       }),
@@ -301,7 +301,7 @@ void main() {
     );
 
     test(
-      'Matrix norms with NormKind and axis/keepdims',
+      'Matrix norms with NormKind and axis/keepDims',
       () => NDArray.scope(() {
         final m = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0],
@@ -322,7 +322,7 @@ void main() {
         expect(norm(m, ord: 1).scalar, 6.0);
         expect(norm(m, ord: -1).scalar, 4.0);
 
-        final normKeep = norm(m, ord: NormKind.frobenius, keepdims: true);
+        final normKeep = norm(m, ord: NormKind.frobenius, keepDims: true);
         expect(normKeep.shape, [1, 1]);
         expect(normKeep.getCell([0, 0]), closeTo(math.sqrt(30), 1e-10));
 
@@ -349,7 +349,7 @@ void main() {
 
         final sld = slogdet(a);
         expect(sld.sign.scalar, -1.0);
-        expect(sld.logabsdet.scalar, closeTo(math.log(2.0), 1e-10));
+        expect(sld.logAbsDet.scalar, closeTo(math.log(2.0), 1e-10));
 
         final a3d = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0, 2.0, 0.0, 0.0, 2.0],
@@ -374,7 +374,7 @@ void main() {
 
   group('Linear Algebra - Eigenvalues and Eigenvectors', () {
     test(
-      'eig and eigvals on real matrices',
+      'eig and eigValues on real matrices',
       () => NDArray.scope(() {
         final diagMat = NDArray<Float64>.fromList(
           [2.0, 0.0, 0.0, 5.0],
@@ -382,7 +382,7 @@ void main() {
           DType.float64,
         );
 
-        final vals = eigvals(diagMat);
+        final vals = eigValues(diagMat);
         expect(vals.shape, [2]);
 
         final resEig = eig(diagMat);
@@ -392,7 +392,7 @@ void main() {
     );
 
     test(
-      'eigh and eigvalsh on symmetric matrices',
+      'eigh and eigValuesH on symmetric matrices',
       () => NDArray.scope(() {
         final symm = NDArray<Float64>.fromList(
           [2.0, 1.0, 1.0, 2.0],
@@ -400,7 +400,7 @@ void main() {
           DType.float64,
         );
 
-        final valsH = eigvalsh(symm);
+        final valsH = eigValuesH(symm);
         expect(valsH.shape, [2]);
         expect(valsH.getCellFlat(0), closeTo(1.0, 1e-10));
         expect(valsH.getCellFlat(1), closeTo(3.0, 1e-10));
@@ -531,7 +531,7 @@ void main() {
     );
 
     test(
-      'multi_dot chain multiplication',
+      'multiDot chain multiplication',
       () => NDArray.scope(() {
         final a = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0],
@@ -549,10 +549,10 @@ void main() {
           DType.float64,
         );
 
-        final res = multi_dot([a, b, c]);
+        final res = multiDot([a, b, c]);
         expect(res.toList(), [2.0, 4.0, 6.0, 8.0]);
 
-        expect(() => multi_dot([a]), throwsA(isA<ArgumentError>()));
+        expect(() => multiDot([a]), throwsA(isA<ArgumentError>()));
       }),
     );
 

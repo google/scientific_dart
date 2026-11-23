@@ -38,7 +38,7 @@ import '../dtype_utils.dart';
 ///   `ArgumentError` at runtime when dtypes differ.
 /// - Same-dtype multi-array functions (`add`, `matmul`, `atan2`, `where`,
 ///   `concatenate`, ...) and `Out extends T`-bounded `out:` buffers also
-///   participate so the IDE surfaces `0.3.0` quick fixes (`.astype(DType.x)`
+///   participate so the IDE surfaces `0.3.0` quick fixes (`.asType(DType.x)`
 ///   and the mixed-dtype `*As` functions such as `addAs(a, b, DType.x)`).
 ///
 /// Operands whose dtype is not statically concrete (`NDArray<DTypeTag>`,
@@ -51,7 +51,7 @@ final class MismatchedDTypeOperandsRule extends AnalysisRule {
         "operand is '{3}<{0}>'; mixed dtypes throw an ArgumentError at "
         'runtime (or fail SelfOf / Out inference).',
     correctionMessage:
-        "Cast explicitly with '.astype(DType.{2})' (or cast the other "
+        "Cast explicitly with '.asType(DType.{2})' (or cast the other "
         "operand), or use the mixed-dtype '*As' variant (addAs, multiplyAs, "
         'matmulAs, ...) with an explicit result DType.',
     severity: DiagnosticSeverity.WARNING,
@@ -62,7 +62,7 @@ final class MismatchedDTypeOperandsRule extends AnalysisRule {
         name: code.lowerCaseName,
         description:
             'Do not combine NDArrays or MaskedArrays of different concrete '
-            'dtypes in same-dtype operations; cast with .astype() or use the '
+            'dtypes in same-dtype operations; cast with .asType() or use the '
             '*As variants.',
       );
 
@@ -147,7 +147,7 @@ final class UnsupportedDTypeOperationRule extends AnalysisRule {
     'ndarray_unsupported_dtype_operation',
     "'{0}' does not support {3}<{1}> operands ({2}) and throws at runtime.",
     correctionMessage:
-        "Cast to a supported dtype with '.astype(...)' first; for ordering "
+        "Cast to a supported dtype with '.asType(...)' first; for ordering "
         'complex arrays compare real()/imag() parts or abs() magnitudes '
         'instead.',
     severity: DiagnosticSeverity.WARNING,
@@ -214,8 +214,8 @@ enum _UnsupportedDTypeFamily {
     'ordering comparisons are undefined for complex dtypes',
   ),
   realOnly(
-    {'remainder', 'mod', 'floorDivide', 'divmod', 'atan2', 'hypot', 'fmod'},
-    {'remainderAs', 'modAs', 'floorDivideAs', 'fmodAs', 'atan2As', 'hypotAs'},
+    {'remainder', 'floorDivide', 'divmod', 'atan2', 'hypot', 'fmod'},
+    {'remainderAs', 'floorDivideAs', 'fmodAs', 'atan2As', 'hypotAs'},
     kComplexDTypeTags,
     'operation is undefined for complex dtypes',
   );

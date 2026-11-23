@@ -287,7 +287,7 @@ void main() {
         expect(
           staticTypeOf(() => slogdet(fixture.c64)),
           equals(
-            typeOf<({NDArray<Float32> logabsdet, NDArray<Complex64> sign})>(),
+            typeOf<({NDArray<Float32> logAbsDet, NDArray<Complex64> sign})>(),
           ),
         );
         expect(
@@ -307,11 +307,11 @@ void main() {
           equals(typeOf<NDArray<Float64>>()),
         );
         expect(
-          staticTypeOf(() => svdvals(fixture.c64)),
+          staticTypeOf(() => svdValues(fixture.c64)),
           equals(typeOf<NDArray<Float32>>()),
         );
         expect(
-          staticTypeOf(() => matrix_rank(fixture.f32)),
+          staticTypeOf(() => matrixRank(fixture.f32)),
           equals(typeOf<NDArray<Int64>>()),
         );
         expect(

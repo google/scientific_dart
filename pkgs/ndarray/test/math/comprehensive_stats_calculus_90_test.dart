@@ -14,7 +14,7 @@
 
 import 'dart:math' as math;
 import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 
 void main() {
   group(
@@ -224,7 +224,7 @@ void main() {
             });
           });
 
-          test('2D cov with rowvar: true vs false', () {
+          test('2D cov with rowVar: true vs false', () {
             NDArray.scope(() {
               // 2 variables, 3 observations each
               // X = [[0, 1, 2],
@@ -234,7 +234,7 @@ void main() {
                 [2, 3],
                 DType.float64,
               );
-              final cRow = cov(m, rowvar: true);
+              final cRow = cov(m, rowVar: true);
               expect(cRow.shape, [2, 2]);
               expect(
                 (cRow.getCell([0, 0]) as num).toDouble(),
@@ -253,8 +253,8 @@ void main() {
                 closeTo(1.0, 1e-9),
               );
 
-              // rowvar: false -> 3 variables, 2 observations each
-              final cCol = cov(m, rowvar: false);
+              // rowVar: false -> 3 variables, 2 observations each
+              final cCol = cov(m, rowVar: false);
               expect(cCol.shape, [3, 3]);
             });
           });
@@ -272,20 +272,20 @@ void main() {
             });
           });
 
-          test('cov with fweights and aweights', () {
+          test('cov with fWeights and aWeights', () {
             NDArray.scope(() {
               final x = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
               final fw = NDArray.fromList([2, 1, 1], [3], DType.int64);
-              final cFw = cov(x, fweights: fw);
+              final cFw = cov(x, fWeights: fw);
               expect(cFw.shape, <int>[]);
               expect((cFw.scalar as num).isNaN, isFalse);
 
               final aw = NDArray.fromList([0.5, 1.0, 1.5], [3], DType.float64);
-              final cAw = cov(x, aweights: aw);
+              final cAw = cov(x, aWeights: aw);
               expect(cAw.shape, <int>[]);
               expect((cAw.scalar as num).isNaN, isFalse);
 
-              final cBoth = cov(x, fweights: fw, aweights: aw);
+              final cBoth = cov(x, fWeights: fw, aWeights: aw);
               expect(cBoth.shape, <int>[]);
               expect((cBoth.scalar as num).isNaN, isFalse);
             });
@@ -305,14 +305,14 @@ void main() {
               expect(
                 () => cov(
                   x,
-                  fweights: NDArray.fromList([1], [1], DType.int64)..dispose(),
+                  fWeights: NDArray.fromList([1], [1], DType.int64)..dispose(),
                 ),
                 throwsStateError,
               );
               expect(
                 () => cov(
                   x,
-                  aweights: NDArray.fromList([1.0], [1], DType.float64)
+                  aWeights: NDArray.fromList([1.0], [1], DType.float64)
                     ..dispose(),
                 ),
                 throwsStateError,
@@ -327,15 +327,15 @@ void main() {
 
               // Mismatched / negative weights
               final badFw = NDArray.fromList([-1, 1, 1], [3], DType.int64);
-              expect(() => cov(x, fweights: badFw), throwsArgumentError);
+              expect(() => cov(x, fWeights: badFw), throwsArgumentError);
               final badAw = NDArray.fromList(
                 [-0.5, 1.0, 1.0],
                 [3],
                 DType.float64,
               );
-              expect(() => cov(x, aweights: badAw), throwsArgumentError);
+              expect(() => cov(x, aWeights: badAw), throwsArgumentError);
               final wrongLenFw = NDArray.fromList([1, 1], [2], DType.int64);
-              expect(() => cov(x, fweights: wrongLenFw), throwsArgumentError);
+              expect(() => cov(x, fWeights: wrongLenFw), throwsArgumentError);
             });
           });
 
@@ -499,7 +499,7 @@ void main() {
               });
             });
 
-            test('2D and 3D quantile along axes with keepdims', () {
+            test('2D and 3D quantile along axes with keepDims', () {
               NDArray.scope(() {
                 final a2d = NDArray.fromList(
                   [1.0, 5.0, 9.0, 2.0, 6.0, 10.0],
@@ -511,8 +511,8 @@ void main() {
                 expect(q0.shape, [3]);
                 expect(q0.toList(), equals([1.5, 5.5, 9.5]));
 
-                // axis 0 with keepdims
-                final q0Keep = quantile(a2d, 0.5, axis: 0, keepdims: true);
+                // axis 0 with keepDims
+                final q0Keep = quantile(a2d, 0.5, axis: 0, keepDims: true);
                 expect(q0Keep.shape, [1, 3]);
                 expect(q0Keep.toList(), equals([1.5, 5.5, 9.5]));
 
@@ -521,8 +521,8 @@ void main() {
                 expect(q1.shape, [2]);
                 expect(q1.toList(), equals([5.0, 6.0]));
 
-                // axis -1 with keepdims
-                final qNegKeep = quantile(a2d, 0.5, axis: -1, keepdims: true);
+                // axis -1 with keepDims
+                final qNegKeep = quantile(a2d, 0.5, axis: -1, keepDims: true);
                 expect(qNegKeep.shape, [2, 1]);
                 expect(qNegKeep.toList(), equals([5.0, 6.0]));
               });
@@ -646,7 +646,7 @@ void main() {
             });
           });
 
-          test('2D and 3D median across axes with keepdims', () {
+          test('2D and 3D median across axes with keepDims', () {
             NDArray.scope(() {
               final a2d = NDArray.fromList(
                 [1.0, 6.0, 2.0, 8.0, 3.0, 7.0],
@@ -657,7 +657,7 @@ void main() {
               expect(med0.shape, [3]);
               expect(med0.toList(), equals([4.5, 4.5, 4.5]));
 
-              final med1Keep = median(a2d, axis: 1, keepdims: true);
+              final med1Keep = median(a2d, axis: 1, keepDims: true);
               expect(med1Keep.shape, [2, 1]);
               expect(med1Keep.toList(), equals([2.0, 7.0]));
             });
@@ -776,7 +776,7 @@ void main() {
               });
             });
 
-            test('2D NaN reductions along axis 0 and 1 with keepdims', () {
+            test('2D NaN reductions along axis 0 and 1 with keepDims', () {
               NDArray.scope(() {
                 // [[nan, 2.0, 4.0],
                 //  [1.0, nan, 5.0]]
@@ -790,7 +790,7 @@ void main() {
                 expect(m0.shape, [3]);
                 expect(m0.toList(), equals([1.0, 2.0, 4.5]));
 
-                final m1Keep = nanmean(a2d, axis: 1, keepdims: true);
+                final m1Keep = nanmean(a2d, axis: 1, keepDims: true);
                 expect(m1Keep.shape, [2, 1]);
                 expect(
                   (m1Keep.getCell([0, 0]) as num).toDouble(),
@@ -936,7 +936,7 @@ void main() {
               });
             });
 
-            test('ptp, variance/var_, std with axis and ddof', () {
+            test('ptp, variance/variance, std with axis and ddof', () {
               NDArray.scope(() {
                 final a = NDArray.fromList(
                   [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0],
@@ -949,7 +949,7 @@ void main() {
                   closeTo(4.0, 1e-9),
                 );
                 expect(
-                  (var_(a, ddof: 0).scalar as num).toDouble(),
+                  (variance(a, ddof: 0).scalar as num).toDouble(),
                   closeTo(4.0, 1e-9),
                 );
                 expect(
@@ -1986,7 +1986,7 @@ void main() {
           });
         });
 
-        group('intersect1d, union1d, setdiff1d, setxor1d & isin', () {
+        group('intersect1d, union1d, setdiff1d, setxor1d & isIn', () {
           test('intersect1d with assumeUnique: false vs true', () {
             NDArray.scope(() {
               final a = NDArray.fromList([1, 2, 2, 3, 4], [5], DType.int32);
@@ -2050,7 +2050,7 @@ void main() {
             });
           });
 
-          test('isin with invert: false and true across 1D and 2D arrays', () {
+          test('isIn with invert: false and true across 1D and 2D arrays', () {
             NDArray.scope(() {
               // 2D element array
               final elem = NDArray.fromList(
@@ -2060,7 +2060,7 @@ void main() {
               );
               final testSet = NDArray.fromList([2, 4, 6, 8], [4], DType.int32);
 
-              final res = isin(elem, testSet);
+              final res = isIn(elem, testSet);
               expect(res.shape, [2, 3]);
               expect(
                 res.toList(),
@@ -2068,7 +2068,7 @@ void main() {
               );
 
               // invert: true
-              final resInv = isin(elem, testSet, invert: true);
+              final resInv = isIn(elem, testSet, invert: true);
               expect(resInv.shape, [2, 3]);
               expect(
                 resInv.toList(),
@@ -2076,7 +2076,7 @@ void main() {
               );
 
               // assumeUnique: true
-              final resUnique = isin(elem, testSet, assumeUnique: true);
+              final resUnique = isIn(elem, testSet, assumeUnique: true);
               expect(
                 resUnique.toList(),
                 equals([false, true, false, true, false, true]),
@@ -2108,9 +2108,9 @@ void main() {
               expect(identical(union1d(a, b, out: outUnion), outUnion), isTrue);
               expect(outUnion.toList(), equals([1, 2, 3, 4]));
 
-              final outIsin = NDArray<Boolean>.create([3], DType.boolean);
-              expect(identical(isin(a, b, out: outIsin), outIsin), isTrue);
-              expect(outIsin.toList(), equals([false, true, true]));
+              final outIsIn = NDArray<Boolean>.create([3], DType.boolean);
+              expect(identical(isIn(a, b, out: outIsIn), outIsIn), isTrue);
+              expect(outIsIn.toList(), equals([false, true, true]));
 
               // Disposed error
               final disp = NDArray.fromList([1], [1], DType.int32)..dispose();
@@ -2118,7 +2118,7 @@ void main() {
               expect(() => setdiff1d(disp, a), throwsStateError);
               expect(() => setxor1d(disp, a), throwsStateError);
               expect(() => union1d(disp, a), throwsStateError);
-              expect(() => isin(disp, a), throwsStateError);
+              expect(() => isIn(disp, a), throwsStateError);
             });
           });
         });

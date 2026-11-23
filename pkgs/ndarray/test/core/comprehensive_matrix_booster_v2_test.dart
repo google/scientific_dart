@@ -104,7 +104,7 @@ void main() {
               final rHeavi = heaviside(a, b, where: mask);
               expect(rHeavi.shape, [2, 3, 2]);
 
-              final rCopySign = copysign(a, b, where: mask);
+              final rCopySign = copySign(a, b, where: mask);
               expect(rCopySign.shape, [2, 3, 2]);
 
               final rHypot = hypot(a, b, where: mask);
@@ -241,7 +241,7 @@ void main() {
           final nm0 = nanmean(floatArr, axis: 0);
           expect(nm0.shape, [4]);
 
-          final nm1 = nanmean(floatArr, axis: 1, keepdims: true);
+          final nm1 = nanmean(floatArr, axis: 1, keepDims: true);
           expect(nm1.shape, [3, 1]);
 
           final nstd0 = nanstd(floatArr, axis: 0);
@@ -329,7 +329,7 @@ void main() {
         final cPinv = pinv(cMat);
         expect(cPinv.shape, [2, 2]);
 
-        final cPow = matrix_power(cMat, 2);
+        final cPow = matrixPower(cMat, 2);
         expect(cPow.shape, [2, 2]);
 
         final cNorm = norm(cMat);
@@ -347,7 +347,7 @@ void main() {
     });
 
     test(
-      'BinaryOp Universal Function Methods on 2D Arrays (.reduce, .accumulate, .reduceat, .outer, .at)',
+      'BinaryOp Universal Function Methods on 2D Arrays (.reduce, .accumulate, .reduceAt, .outer, .at)',
       () {
         NDArray.scope(() {
           final a = NDArray.fromList(
@@ -368,7 +368,7 @@ void main() {
             final red0 = a.reduce(op: op, axis: 0);
             expect(red0.shape, [3]);
 
-            final red1 = a.reduce(op: op, axis: 1, keepdims: true);
+            final red1 = a.reduce(op: op, axis: 1, keepDims: true);
             expect(red1.shape, [2, 1]);
 
             final acc0 = a.accumulate(op: op, axis: 0);
@@ -378,7 +378,7 @@ void main() {
             expect(acc1.shape, [2, 3]);
 
             final indices = NDArray.fromList([0, 2], [2], DType.int64);
-            final redAt = reduceatUfunc(a, indices, op: op, axis: 1);
+            final redAt = reduceAtUfunc(a, indices, op: op, axis: 1);
             expect(redAt.shape, [2, 2]);
           }
 

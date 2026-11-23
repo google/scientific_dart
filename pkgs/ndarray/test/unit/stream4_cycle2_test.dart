@@ -179,12 +179,12 @@ void main() {
           expect(variance(a).scalar, equals(1.25));
           expect(std(a).scalar, closeTo(math.sqrt(1.25), 1e-6));
 
-          // keepdims: true scalar reduction
-          final sKeep = sum(a, keepdims: true);
+          // keepDims: true scalar reduction
+          final sKeep = sum(a, keepDims: true);
           expect(sKeep.shape, equals([1, 1]));
           expect(sKeep.getCell([0, 0]), equals(10.0));
 
-          final mKeep = mean(a, keepdims: true);
+          final mKeep = mean(a, keepDims: true);
           expect(mKeep.shape, equals([1, 1]));
           expect(mKeep.getCell([0, 0]), equals(2.5));
         });
