@@ -13,28 +13,25 @@
 // limitations under the License.
 
 /// Base exception class for all ndarray-related errors.
-final class NdArrayException implements Exception {
+final class NDArrayException implements Exception {
   /// The error message.
   final String message;
 
-  /// Creates a new [NdArrayException] with the given [message].
-  const NdArrayException(this.message);
+  /// Creates a new [NDArrayException] with the given [message].
+  const NDArrayException(this.message);
 
   @override
-  String toString() => 'NdArrayException: $message';
+  String toString() => 'NDArrayException: $message';
 }
 
 /// Exception thrown when a linear algebra operation fails.
-final class LinAlgException extends NdArrayException {
+final class LinAlgException extends NDArrayException {
   /// Creates a new [LinAlgException] with the given [message].
   const LinAlgException(super.message);
 
   @override
   String toString() => 'LinAlgException: $message';
 }
-
-/// Alias for [LinAlgException] matching the NumPy `numpy.linalg.LinAlgError` name.
-typedef LinAlgError = LinAlgException;
 
 /// Exception thrown when a matrix is singular and cannot be inverted or solved.
 final class SingularMatrixException extends LinAlgException {
@@ -46,7 +43,7 @@ final class SingularMatrixException extends LinAlgException {
 }
 
 /// Exception thrown when a numerical method cannot find a real solution.
-final class NoRealSolutionException extends NdArrayException {
+final class NoRealSolutionException extends NDArrayException {
   /// Creates a new [NoRealSolutionException] with the given [message].
   const NoRealSolutionException(super.message);
 

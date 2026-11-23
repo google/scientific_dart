@@ -45,13 +45,13 @@ final class BinaryOpSpec {
   const BinaryOpSpec(this.name, this.call);
 }
 
-/// Descriptor for an axis reduction `f(a, {axis, keepdims, out})` on `NDArray<Float64>`.
+/// Descriptor for an axis reduction `f(a, {axis, keepDims, out})` on `NDArray<Float64>`.
 final class ReductionOpSpec {
   final String name;
   final NDArray<Float64> Function(
     NDArray<Float64> a, {
     int? axis,
-    bool keepdims,
+    bool keepDims,
     NDArray<Float64>? out,
   })
   call;
@@ -175,7 +175,7 @@ void main() {
     UnaryOpSpec('gamma', (a, {out}) => gamma(a, out: out)),
     UnaryOpSpec('erf', (a, {out}) => erf(a, out: out)),
     UnaryOpSpec('clip', (a, {out}) => clip(a, min: 0.8, max: 2.5, out: out)),
-    UnaryOpSpec('nan_to_num', (a, {out}) => nan_to_num(a, out: out)),
+    UnaryOpSpec('nanToNum', (a, {out}) => nanToNum(a, out: out)),
     UnaryOpSpec(
       'cumsum',
       (a, {out}) => cumsum(a, axis: -1, out: out),
@@ -281,10 +281,10 @@ void main() {
       'hypotAs',
       (a, b, {out}) => hypotAs(a, b, DType.float64, out: out),
     ),
-    BinaryOpSpec('copysign', (a, b, {out}) => copysign(a, b, out: out)),
+    BinaryOpSpec('copySign', (a, b, {out}) => copySign(a, b, out: out)),
     BinaryOpSpec(
-      'copysignAs',
-      (a, b, {out}) => copysignAs(a, b, DType.float64, out: out),
+      'copySignAs',
+      (a, b, {out}) => copySignAs(a, b, DType.float64, out: out),
     ),
     BinaryOpSpec('heaviside', (a, b, {out}) => heaviside(a, b, out: out)),
     BinaryOpSpec(
@@ -339,80 +339,80 @@ void main() {
   final reductionOps = <ReductionOpSpec>[
     ReductionOpSpec(
       'sum',
-      (a, {axis, keepdims = false, out}) =>
-          sum(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          sum(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'prod',
-      (a, {axis, keepdims = false, out}) =>
-          prod(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          prod(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'mean',
-      (a, {axis, keepdims = false, out}) =>
-          mean(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          mean(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'min',
-      (a, {axis, keepdims = false, out}) =>
-          min(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          min(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'max',
-      (a, {axis, keepdims = false, out}) =>
-          max(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          max(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'ptp',
-      (a, {axis, keepdims = false, out}) =>
-          ptp(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          ptp(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'std',
-      (a, {axis, keepdims = false, out}) =>
-          std(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          std(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
-      'var_',
-      (a, {axis, keepdims = false, out}) =>
-          var_(a, axis: axis, keepdims: keepdims, out: out),
+      'variance',
+      (a, {axis, keepDims = false, out}) =>
+          variance(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'nansum',
-      (a, {axis, keepdims = false, out}) =>
-          nansum(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          nansum(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'nanmean',
-      (a, {axis, keepdims = false, out}) =>
-          nanmean(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          nanmean(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'nanmin',
-      (a, {axis, keepdims = false, out}) =>
-          nanmin(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          nanmin(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'nanmax',
-      (a, {axis, keepdims = false, out}) =>
-          nanmax(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          nanmax(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'nanstd',
-      (a, {axis, keepdims = false, out}) =>
-          nanstd(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          nanstd(a, axis: axis, keepDims: keepDims, out: out),
     ),
     ReductionOpSpec(
       'nanvar',
-      (a, {axis, keepdims = false, out}) =>
-          nanvar(a, axis: axis, keepdims: keepdims, out: out),
+      (a, {axis, keepDims = false, out}) =>
+          nanvar(a, axis: axis, keepDims: keepDims, out: out),
     ),
   ];
 
   final booleanResultOps = <BooleanResultOpSpec>[
-    BooleanResultOpSpec('isnan', (a, {out}) => isnan(a, out: out)),
-    BooleanResultOpSpec('isinf', (a, {out}) => isinf(a, out: out)),
-    BooleanResultOpSpec('isfinite', (a, {out}) => isfinite(a, out: out)),
+    BooleanResultOpSpec('isNan', (a, {out}) => isNan(a, out: out)),
+    BooleanResultOpSpec('isInf', (a, {out}) => isInf(a, out: out)),
+    BooleanResultOpSpec('isFinite', (a, {out}) => isFinite(a, out: out)),
     BooleanResultOpSpec('logicalNot', (a, {out}) => logicalNot(a, out: out)),
     BooleanResultOpSpec('logicalAnd', (a, {out}) => logicalAnd(a, a, out: out)),
     BooleanResultOpSpec('logicalOr', (a, {out}) => logicalOr(a, a, out: out)),
@@ -432,8 +432,8 @@ void main() {
       (a, {axis, out}) => argmin(a, axis: axis, out: out),
     ),
     IndexReductionOpSpec(
-      'count_nonzero',
-      (a, {axis, out}) => count_nonzero(a, axis: axis, out: out),
+      'countNonzero',
+      (a, {axis, out}) => countNonzero(a, axis: axis, out: out),
     ),
   ];
 
@@ -450,13 +450,13 @@ void main() {
     ),
     ShapeViewOrCopyOpSpec('fliplr', (a) => fliplr(a), expectedIsView: true),
     ShapeViewOrCopyOpSpec(
-      'expand_dims',
-      (a) => expand_dims(a, 0),
+      'expandDims',
+      (a) => expandDims(a, 0),
       expectedIsView: true,
     ),
     ShapeViewOrCopyOpSpec(
       'squeeze',
-      (a) => squeeze(expand_dims(a, 0), axis: [0]),
+      (a) => squeeze(expandDims(a, 0), axis: [0]),
       expectedIsView: true,
     ),
     ShapeViewOrCopyOpSpec(
@@ -488,7 +488,7 @@ void main() {
     MatrixOpSpec('cholesky', (a, {out}) => cholesky(a, out: out)),
     MatrixOpSpec('det', (a, {out}) => det(a, out: out)),
     MatrixOpSpec('pinv', (a, {out}) => pinv(a, out: out)),
-    MatrixOpSpec('svdvals', (a, {out}) => svdvals(a, out: out)),
+    MatrixOpSpec('svdValues', (a, {out}) => svdValues(a, out: out)),
     MatrixOpSpec(
       'tensorinv(a, ind: 1)',
       (a, {out}) => tensorinv(a, ind: 1, out: out),
@@ -501,7 +501,7 @@ void main() {
         b.dispose();
       }
     }),
-    MatrixOpSpec('eigvalsh', (a, {out}) => eigvalsh(a, out: out)),
+    MatrixOpSpec('eigValuesH', (a, {out}) => eigValuesH(a, out: out)),
     MatrixOpSpec(
       'eigh (eigenvalues)',
       (a, {out}) => eigh(a, outEigenvalues: out).eigenvalues,
@@ -910,7 +910,7 @@ void main() {
           });
         });
 
-        test('keepdims: true with and without out: buffer', () {
+        test('keepDims: true with and without out: buffer', () {
           NDArray.scope(() {
             final a = NDArray.arange(
               1.0,
@@ -918,21 +918,21 @@ void main() {
               dtype: DType.float64,
             ).reshape([3, 4]);
 
-            // axis 1 reduction with keepdims: true -> shape [3, 1]
-            final res1 = op.call(a, axis: 1, keepdims: true);
+            // axis 1 reduction with keepDims: true -> shape [3, 1]
+            final res1 = op.call(a, axis: 1, keepDims: true);
             expect(res1.shape, equals([3, 1]));
 
             final out1 = NDArray.zeros([3, 1], DType.float64);
-            final ret1 = op.call(a, axis: 1, keepdims: true, out: out1);
+            final ret1 = op.call(a, axis: 1, keepDims: true, out: out1);
             expect(sameId(ret1, out1), isTrue);
             expect(allClose(out1, res1), isTrue);
 
-            // axis 0 reduction with keepdims: true -> shape [1, 4]
-            final res0 = op.call(a, axis: 0, keepdims: true);
+            // axis 0 reduction with keepDims: true -> shape [1, 4]
+            final res0 = op.call(a, axis: 0, keepDims: true);
             expect(res0.shape, equals([1, 4]));
 
             final out0 = NDArray.zeros([1, 4], DType.float64);
-            final ret0 = op.call(a, axis: 0, keepdims: true, out: out0);
+            final ret0 = op.call(a, axis: 0, keepDims: true, out: out0);
             expect(sameId(ret0, out0), isTrue);
             expect(allClose(out0, res0), isTrue);
           });
@@ -941,10 +941,10 @@ void main() {
         test('2D empty [0, 3] axis reduction along non-empty axis 1', () {
           NDArray.scope(() {
             final empty2d = NDArray.zeros([0, 3], DType.float64);
-            final res = op.call(empty2d, axis: 1, keepdims: false);
+            final res = op.call(empty2d, axis: 1, keepDims: false);
             expect(res.shape, equals([0]));
 
-            final resKeep = op.call(empty2d, axis: 1, keepdims: true);
+            final resKeep = op.call(empty2d, axis: 1, keepDims: true);
             expect(resKeep.shape, equals([0, 1]));
           });
         });
@@ -1373,7 +1373,7 @@ void main() {
     }
   });
 
-  group('Indexed Ufunc Contracts (atUfunc / reduceatUfunc) with a Dart oracle', () {
+  group('Indexed Ufunc Contracts (atUfunc / reduceAtUfunc) with a Dart oracle', () {
     // Expected values are folded in pure Dart so the oracle shares no code
     // with the native binary kernels.
     double fold(BinaryOp op, double x, double y) => switch (op) {
@@ -1480,11 +1480,11 @@ void main() {
         },
       );
 
-      // reduceatUfunc only accepts associative (reducible) operations.
+      // reduceAtUfunc only accepts associative (reducible) operations.
       if (op == BinaryOp.subtract) continue;
 
       test(
-        'reduceatUfunc($op): contiguous, step-2, reversed input; strided out; axis 1 on a transposed view',
+        'reduceAtUfunc($op): contiguous, step-2, reversed input; strided out; axis 1 on a transposed view',
         () {
           NDArray.scope(() {
             const idx = <int>[0, 3, 6];
@@ -1507,32 +1507,32 @@ void main() {
             final expected = arr(oracle(base));
             final contig = arr(base);
             expect(
-              allClose(reduceatUfunc(contig, indices, op: op), expected),
+              allClose(reduceAtUfunc(contig, indices, op: op), expected),
               isTrue,
-              reason: 'reduceatUfunc($op) contiguous input',
+              reason: 'reduceAtUfunc($op) contiguous input',
             );
 
             final carrier = NDArray.zeros([16], DType.float64);
             final strided = carrier.slice([Slice(start: 0, stop: 16, step: 2)]);
             contig.copy(out: strided);
             expect(
-              allClose(reduceatUfunc(strided, indices, op: op), expected),
+              allClose(reduceAtUfunc(strided, indices, op: op), expected),
               isTrue,
-              reason: 'reduceatUfunc($op) step-2 input',
+              reason: 'reduceAtUfunc($op) step-2 input',
             );
 
             final rev = arr(base.reversed.toList()).slice([Slice(step: -1)]);
             expect(
-              allClose(reduceatUfunc(rev, indices, op: op), expected),
+              allClose(reduceAtUfunc(rev, indices, op: op), expected),
               isTrue,
-              reason: 'reduceatUfunc($op) negative-stride input',
+              reason: 'reduceAtUfunc($op) negative-stride input',
             );
 
             final outCarrier = NDArray.full([6], 99.0, dtype: DType.float64);
             final outView = outCarrier.slice([
               Slice(start: 0, stop: 6, step: 2),
             ]);
-            final returned = reduceatUfunc(
+            final returned = reduceAtUfunc(
               contig,
               indices,
               op: op,
@@ -1542,14 +1542,14 @@ void main() {
             expect(
               allClose(outView, expected),
               isTrue,
-              reason: 'reduceatUfunc($op) step-2 out view',
+              reason: 'reduceAtUfunc($op) step-2 out view',
             );
             final gaps = outCarrier.slice([Slice(start: 1, stop: 6, step: 2)]);
             for (var i = 0; i < 3; i++) {
               expect(
                 gaps[[i]].scalar,
                 equals(99.0),
-                reason: 'reduceatUfunc($op) corrupted interstitial element $i',
+                reason: 'reduceAtUfunc($op) corrupted interstitial element $i',
               );
             }
 
@@ -1557,7 +1557,7 @@ void main() {
             // grid = base as [4, 2]; tView[i][j] = base[2 * j + i].
             final tView = arr(base).reshape([4, 2]).transpose();
             final idx2 = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
-            final res2 = reduceatUfunc(tView, idx2, op: op, axis: 1);
+            final res2 = reduceAtUfunc(tView, idx2, op: op, axis: 1);
             expect(res2.shape, equals([2, 2]));
             for (var i = 0; i < 2; i++) {
               final row = [for (var j = 0; j < 4; j++) base[2 * j + i]];
@@ -1568,12 +1568,12 @@ void main() {
               expect(
                 res2[[i, 0]].scalar,
                 closeTo(expectedRow[0], 1e-12),
-                reason: 'reduceatUfunc($op, axis: 1) row $i segment 0',
+                reason: 'reduceAtUfunc($op, axis: 1) row $i segment 0',
               );
               expect(
                 res2[[i, 1]].scalar,
                 closeTo(expectedRow[1], 1e-12),
-                reason: 'reduceatUfunc($op, axis: 1) row $i segment 1',
+                reason: 'reduceAtUfunc($op, axis: 1) row $i segment 1',
               );
             }
           });
@@ -1685,7 +1685,7 @@ void main() {
     );
 
     test(
-      'R8: NaN sort ordering, argsort + take_along_axis consistency, and strided even/odd FFT round-trips',
+      'R8: NaN sort ordering, argsort + takeAlongAxis consistency, and strided even/odd FFT round-trips',
       () {
         NDArray.scope(() {
           // 1. NaNs sort to the end and argsort indices reconstruct sort(a)
@@ -1696,7 +1696,7 @@ void main() {
           );
           final sorted = sort(withNan);
           final idx = argsort(withNan);
-          final gathered = take_along_axis(withNan, idx, 0);
+          final gathered = takeAlongAxis(withNan, idx, 0);
           expect(sorted[[0]].scalar, equals(-1.0));
           expect(sorted[[1]].scalar, equals(0.0));
           expect(sorted[[2]].scalar, equals(2.0));
@@ -1715,7 +1715,7 @@ void main() {
             final stridedSignal = full.slice([
               Slice(start: 0, stop: 2 * n, step: 2),
             ]);
-            final cSignal = astype(stridedSignal, DType.complex128);
+            final cSignal = asType(stridedSignal, DType.complex128);
             final reconstructed = ifft(fft(cSignal));
             expect(
               allClose(real(reconstructed), stridedSignal),
@@ -1750,7 +1750,7 @@ void main() {
           );
 
           // 1. out == null with where != null must zero-initialize unmasked positions
-          final nanRes = nan_to_num(a, where: mask);
+          final nanRes = nanToNum(a, where: mask);
           expect(nanRes[[0]].scalar, equals(0.0));
           expect(nanRes[[1]].scalar, equals(0.0));
           expect(nanRes[[2]].scalar, equals(4.0));
@@ -1765,7 +1765,7 @@ void main() {
           );
           expect(outBuf.toList(), equals([77.0, 77.0, 2.0, 3.0]));
 
-          // 3. Float16 / BFloat16 isnan / isinf / isfinite with where != null and out != null
+          // 3. Float16 / BFloat16 isNan / isInf / isFinite with where != null and out != null
           final f16 = NDArray.fromList(
             [double.nan, 1.0, double.infinity, 2.0],
             [4],
@@ -1776,7 +1776,7 @@ void main() {
             [4],
             DType.boolean,
           );
-          isnan(f16, where: mask, out: boolOut);
+          isNan(f16, where: mask, out: boolOut);
           // Indices 0 and 1 have mask == false so boolOut[0..1] must stay true!
           expect(boolOut.toList(), equals([true, true, false, false]));
         });
@@ -1836,7 +1836,7 @@ void main() {
           );
           expect(any(c128).scalar, isTrue);
           expect(all(c128).scalar, isFalse);
-          expect(count_nonzero(c128).scalar, equals(1));
+          expect(countNonzero(c128).scalar, equals(1));
         });
       },
     );
@@ -1992,11 +1992,11 @@ void main() {
                     )
                   >[
                     (x, y) => divide(x, y),
-                    (x, y) => mod(x, y),
+                    (x, y) => remainder(x, y),
                     (x, y) => heaviside(x, y),
                     (x, y) => hypot(x, y),
                     (x, y) => atan2(x, y),
-                    (x, y) => copysign(x, y),
+                    (x, y) => copySign(x, y),
                   ]) {
                 final cRes = fltOp(f64A, f64B);
                 final sRes = fltOp(f64AStrided, f64BStrided);
@@ -2327,7 +2327,7 @@ void main() {
             expect(() => view[0] = sampleScalar, throwsStateError);
             expect(() => view[mask] = sampleScalar, throwsStateError);
             expect(
-              () => put_along_axis(view, indices2D, replacementRow, 1),
+              () => putAlongAxis(view, indices2D, replacementRow, 1),
               throwsArgumentError,
             );
             expect(
@@ -2525,12 +2525,12 @@ void main() {
           expect(() => tensordot(tall, wide, axes: 1), throwsUnsupportedError);
           expect(() => inner(vecBig, vecBig), throwsUnsupportedError);
           expect(() => vdot(vecBig, vecBig), throwsUnsupportedError);
-          expect(() => multi_dot([tall, wide]), throwsUnsupportedError);
+          expect(() => multiDot([tall, wide]), throwsUnsupportedError);
           expect(() => cholesky(squareBig), throwsUnsupportedError);
           expect(() => qr(tall), throwsUnsupportedError);
           expect(() => svd(tall), throwsUnsupportedError);
-          expect(() => svdvals(tall), throwsUnsupportedError);
-          expect(() => matrix_rank(tall), throwsUnsupportedError);
+          expect(() => svdValues(tall), throwsUnsupportedError);
+          expect(() => matrixRank(tall), throwsUnsupportedError);
           expect(() => det(squareBig), throwsUnsupportedError);
           expect(() => slogdet(squareBig), throwsUnsupportedError);
           expect(() => inv(squareBig), throwsUnsupportedError);
@@ -2539,18 +2539,18 @@ void main() {
           expect(() => tensorinv(squareBig, ind: 1), throwsUnsupportedError);
           expect(() => lstsq(tall, vecBig), throwsUnsupportedError);
           expect(() => pinv(tall), throwsUnsupportedError);
-          expect(() => matrix_power(squareBig, 2), throwsUnsupportedError);
+          expect(() => matrixPower(squareBig, 2), throwsUnsupportedError);
           expect(() => eigh(squareBig), throwsUnsupportedError);
-          expect(() => eigvalsh(squareBig), throwsUnsupportedError);
+          expect(() => eigValuesH(squareBig), throwsUnsupportedError);
           expect(() => eig(squareBig), throwsUnsupportedError);
-          expect(() => eigvals(squareBig), throwsUnsupportedError);
+          expect(() => eigValues(squareBig), throwsUnsupportedError);
           expect(() => schur(squareBig), throwsUnsupportedError);
           expect(() => hessenberg(squareBig), throwsUnsupportedError);
           expect(() => norm(tall, ord: 2), throwsUnsupportedError);
           expect(() => cond(tall), throwsUnsupportedError);
           expect(() => polyfit(vecBig, vecBig, 1), throwsUnsupportedError);
           expect(() => roots(vecBig), throwsUnsupportedError);
-          expect(() => nelder_mead((x) => 0.0, vecBig), throwsUnsupportedError);
+          expect(() => nelderMead((x) => 0.0, vecBig), throwsUnsupportedError);
           expect(() => lbfgs((x) => 0.0, vecBig), throwsUnsupportedError);
         });
       },
@@ -2583,27 +2583,27 @@ void main() {
     );
 
     test(
-      '64-bit index utilities (unravel_index, ravel_multi_index, indices, sparse_indices, diag_indices, tril/triu_indices, mask_indices) satisfy algebraic identities',
+      '64-bit index utilities (unravelIndex, ravelMultiIndex, indices, sparseIndices, diagIndices, tril/triuIndices, maskIndices) satisfy algebraic identities',
       () {
         NDArray.scope(() {
-          // 1. unravel_index <-> ravel_multi_index round-trip in C and F orders
+          // 1. unravelIndex <-> ravelMultiIndex round-trip in C and F orders
           final dims = [4, 5, 3];
           final flat = NDArray<Int64>.arange(0, 60, dtype: DType.int64);
           for (final order in IndexOrder.values) {
-            final coords = unravel_index(flat, dims, order: order);
+            final coords = unravelIndex(flat, dims, order: order);
             for (final c in coords) {
               expect(c.dtype, equals(DType.int64));
               expect(c.shape, equals([60]));
             }
-            final reconstructed = ravel_multi_index(coords, dims, order: order);
+            final reconstructed = ravelMultiIndex(coords, dims, order: order);
             expect(reconstructed.dtype, equals(DType.int64));
             expect(reconstructed.toList(), equals(flat.toList()));
           }
 
-          // 2. tril_indices(n, m: m, k: k - 1) and triu_indices(n, m: m, k: k) partition all n * m cells
+          // 2. trilIndices(n, m: m, k: k - 1) and triuIndices(n, m: m, k: k) partition all n * m cells
           for (final (n, m, k) in [(4, 4, 0), (3, 5, 1), (5, 3, -1)]) {
-            final (row: lRow, col: lCol) = tril_indices(n, m: m, k: k - 1);
-            final (row: uRow, col: uCol) = triu_indices(n, m: m, k: k);
+            final (row: lRow, col: lCol) = trilIndices(n, m: m, k: k - 1);
+            final (row: uRow, col: uCol) = triuIndices(n, m: m, k: k);
             expect(lRow.dtype, equals(DType.int64));
             expect(uRow.dtype, equals(DType.int64));
             expect(lRow.size + uRow.size, equals(n * m));
@@ -2624,9 +2624,9 @@ void main() {
             );
           }
 
-          // 3. mask_indices(n, triu, k: k) == triu_indices(n, k: k)
-          final (row: mRow, col: mCol) = mask_indices(4, triu, k: -1);
-          final (row: tRow, col: tCol) = triu_indices(4, k: -1);
+          // 3. maskIndices(n, triu, k: k) == triuIndices(n, k: k)
+          final (row: mRow, col: mCol) = maskIndices(4, triu, k: -1);
+          final (row: tRow, col: tCol) = triuIndices(4, k: -1);
           expect(mRow.toList(), equals(tRow.toList()));
           expect(mCol.toList(), equals(tCol.toList()));
 
@@ -2791,7 +2791,7 @@ void main() {
             expect(nanquantile(dataWithNan, 0.5).scalar, equals(3.0));
             expect(nanpercentile(dataWithNan, 50.0).scalar, equals(3.0));
 
-            // 2D nanmedian / nanquantile / nanpercentile with axis, keepdims, out
+            // 2D nanmedian / nanquantile / nanpercentile with axis, keepDims, out
             final mat2dNan = NDArray<Float64>.fromList(
               [1.0, double.nan, 3.0, 4.0, 5.0, double.nan],
               [2, 3],
@@ -2801,7 +2801,7 @@ void main() {
             final resNanMed = nanmedian(
               mat2dNan,
               axis: 1,
-              keepdims: true,
+              keepDims: true,
               out: outNanMed,
             );
             expect(sameId(resNanMed, outNanMed), isTrue);
@@ -2812,7 +2812,7 @@ void main() {
               mat2dNan,
               0.5,
               axis: 1,
-              keepdims: true,
+              keepDims: true,
               out: outNanQuant,
             );
             expect(sameId(resNanQuant, outNanQuant), isTrue);
@@ -2823,20 +2823,20 @@ void main() {
               mat2dNan,
               50.0,
               axis: 1,
-              keepdims: true,
+              keepDims: true,
               out: outNanPct,
             );
             expect(sameId(resNanPct, outNanPct), isTrue);
             expect(outNanPct.toList(), equals([2.0, 4.5]));
 
-            // ptp (peak to peak) with keepdims and out:
+            // ptp (peak to peak) with keepDims and out:
             final ptp2d = NDArray<Float64>.arange(
               1.0,
               7.0,
               dtype: DType.float64,
             ).reshape([2, 3]);
             final ptpOut = NDArray<Float64>.zeros([1, 3], DType.float64);
-            final ptpRes = ptp(ptp2d, axis: 0, keepdims: true, out: ptpOut);
+            final ptpRes = ptp(ptp2d, axis: 0, keepDims: true, out: ptpOut);
             expect(sameId(ptpRes, ptpOut), isTrue);
             expect(ptpOut.shape, equals([1, 3]));
             expect(ptpOut.toList(), equals([3.0, 3.0, 3.0]));
@@ -2976,7 +2976,7 @@ void main() {
 
     group('Targeted Point Regressions (F1-F12, D1-1..D1-11, D3-1..D3-7, D5-1)', () {
       test(
-        'F2: reduceat on fmin/fmax with slice length > 16 starting with NaN ignores leading NaN',
+        'F2: reduceAt on fmin/fmax with slice length > 16 starting with NaN ignores leading NaN',
         () {
           NDArray.scope(() {
             final elements = <double>[
@@ -3006,14 +3006,14 @@ void main() {
             ], DType.float64);
             final indices = NDArray<Int64>.fromList([0], [1], DType.int64);
 
-            final minRes = reduceatUfunc(src, indices, op: BinaryOp.fmin);
+            final minRes = reduceAtUfunc(src, indices, op: BinaryOp.fmin);
             expect(
               minRes[[0]].scalar,
               equals(1.5),
               reason: 'fmin must ignore leading NaN in slice > 16',
             );
 
-            final maxRes = reduceatUfunc(src, indices, op: BinaryOp.fmax);
+            final maxRes = reduceAtUfunc(src, indices, op: BinaryOp.fmax);
             expect(
               maxRes[[0]].scalar,
               equals(25.0),
@@ -3024,7 +3024,7 @@ void main() {
       );
 
       test(
-        'F3: at and reduceat integer division/remainder by zero throws UnsupportedError',
+        'F3: at and reduceAt integer division/remainder by zero throws UnsupportedError',
         () {
           NDArray.scope(() {
             final intArr = NDArray<Int64>.fromList(
@@ -3054,17 +3054,17 @@ void main() {
             );
             final reduceIdx = NDArray<Int64>.fromList([0], [1], DType.int64);
             expect(
-              () => reduceatUfunc(divArr, reduceIdx, op: BinaryOp.divide),
+              () => reduceAtUfunc(divArr, reduceIdx, op: BinaryOp.divide),
               throwsArgumentError,
               reason:
-                  'reduceat with non-reducible op divide must throw ArgumentError',
+                  'reduceAt with non-reducible op divide must throw ArgumentError',
             );
           });
         },
       );
 
       test(
-        'F1: extreme signed int64/int32 values in diff, correlate, and reduceat',
+        'F1: extreme signed int64/int32 values in diff, correlate, and reduceAt',
         () {
           NDArray.scope(() {
             const maxInt64 = 9223372036854775807;
@@ -3085,9 +3085,9 @@ void main() {
             final corr = correlate(arr64, kernel);
             expect(corr.dtype, equals(DType.int64));
 
-            // reduceat handles int64
+            // reduceAt handles int64
             final indices = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
-            final redAt = reduceatUfunc(arr64, indices, op: BinaryOp.maximum);
+            final redAt = reduceAtUfunc(arr64, indices, op: BinaryOp.maximum);
             expect(redAt[[0]].scalar, equals(0));
             expect(redAt[[1]].scalar, equals(maxInt64));
           });
@@ -3248,7 +3248,7 @@ void main() {
       );
 
       test(
-        'D1-3: inv() on singular matrices throws LinAlgError across real and complex',
+        'D1-3: inv() on singular matrices throws LinAlgException across real and complex',
         () {
           NDArray.scope(() {
             final singularReal = NDArray<Float64>.fromList(
@@ -3256,7 +3256,7 @@ void main() {
               [2, 2],
               DType.float64,
             );
-            expect(() => inv(singularReal), throwsA(isA<LinAlgError>()));
+            expect(() => inv(singularReal), throwsA(isA<LinAlgException>()));
 
             final singularComplex = NDArray<Complex128>.fromList(
               [
@@ -3268,7 +3268,7 @@ void main() {
               [2, 2],
               DType.complex128,
             );
-            expect(() => inv(singularComplex), throwsA(isA<LinAlgError>()));
+            expect(() => inv(singularComplex), throwsA(isA<LinAlgException>()));
           });
         },
       );
@@ -3344,14 +3344,14 @@ void main() {
         },
       );
 
-      test('D3-4: ptp with keepdims: true and axis: 0', () {
+      test('D3-4: ptp with keepDims: true and axis: 0', () {
         NDArray.scope(() {
           final a = NDArray<Float64>.fromList(
             [1.0, 5.0, 10.0, 2.0, 8.0, 3.0],
             [2, 3],
             DType.float64,
           );
-          final p = ptp(a, axis: 0, keepdims: true);
+          final p = ptp(a, axis: 0, keepDims: true);
           expect(p.shape, equals([1, 3]));
           expect(p.toList(), equals([1.0, 3.0, 7.0]));
         });
@@ -3390,7 +3390,7 @@ void main() {
               'prod': (ax) => prod(a2d, axis: ax),
               'mean': (ax) => mean(a2d, axis: ax),
               'std': (ax) => std(a2d, axis: ax),
-              'var_': (ax) => var_(a2d, axis: ax),
+              'variance': (ax) => variance(a2d, axis: ax),
               'min': (ax) => min(a2d, axis: ax),
               'max': (ax) => max(a2d, axis: ax),
               'ptp': (ax) => ptp(a2d, axis: ax),
@@ -3412,7 +3412,7 @@ void main() {
               'cumprod': (ax) => cumprod(a2d, axis: ax),
               'argmax': (ax) => argmax(a2d, axis: ax),
               'argmin': (ax) => argmin(a2d, axis: ax),
-              'count_nonzero': (ax) => count_nonzero(a2d, axis: ax),
+              'countNonzero': (ax) => countNonzero(a2d, axis: ax),
               'sort': (ax) => sort(a2d, axis: ax),
               'argsort': (ax) => argsort(a2d, axis: ax),
               'partition': (ax) => partition(a2d, 0, axis: ax),
@@ -3421,13 +3421,13 @@ void main() {
               'roll': (ax) => roll(a2d, 1, axis: ax),
               'rot90': (ax) => rot90(a2d, 1, [ax, 1]),
               'NDArray.take': (ax) => a2d.take([0, 1], axis: ax),
-              'take_along_axis': (ax) => take_along_axis(a2d, idx2d, ax),
+              'takeAlongAxis': (ax) => takeAlongAxis(a2d, idx2d, ax),
               'repeat': (ax) => repeat(a2d, 2, axis: ax),
               'concatenate': (ax) => concatenate([a2d, a2d], axis: ax),
               'stack': (ax) => stack([a2d, a2d], axis: ax),
               'split': (ax) => split(a2d, 1, axis: ax),
-              'array_split': (ax) => array_split(a2d, 2, axis: ax),
-              'array_split_at': (ax) => array_split_at(a2d, [1], axis: ax),
+              'arraySplit': (ax) => arraySplit(a2d, 2, axis: ax),
+              'splitAt': (ax) => splitAt(a2d, [1], axis: ax),
               'diff': (ax) => diff(a2d, axis: ax),
               'trapz': (ax) => trapz(a2d, axis: ax),
               'gradient': (ax) => gradient(a2d, axis: ax),
@@ -3684,7 +3684,7 @@ void main() {
 
     group('Round 2 Production-Readiness Contracts & Regressions', () {
       test(
-        '1.1 & 1.8: Native strided out: aliasing safety (diff, var_, gradient, reduceat, copyto, binaryUfunc, sin, exp)',
+        '1.1 & 1.8: Native strided out: aliasing safety (diff, variance, gradient, reduceAt, copyto, binaryUfunc, sin, exp)',
         () {
           NDArray.scope(() {
             // diff with overlapping out slice
@@ -3697,15 +3697,15 @@ void main() {
             diff(dSrc, out: dOut);
             expect(dOut.toList(), equals([3.0, 5.0, 7.0, 9.0]));
 
-            // var_ with overlapping out slice
+            // variance with overlapping out slice
             final vSrc = NDArray<Float64>.fromList(
               [1.0, 2.0, 3.0, 5.0],
               [2, 2],
               DType.float64,
             );
-            final vExpected = var_(vSrc, axis: 0);
+            final vExpected = variance(vSrc, axis: 0);
             final vOut = vSrc.slice([const Index(0), Slice.all()]);
-            var_(vSrc, axis: 0, out: vOut);
+            variance(vSrc, axis: 0, out: vOut);
             expect(vOut.toList(), equals(vExpected.toList()));
 
             // gradient with reversed out view
@@ -3719,16 +3719,16 @@ void main() {
             gradient(gSrc, out: gRev);
             expect(gRev.toList(), equals(gExpected.toList()));
 
-            // reduceatUfunc with overlapping out slice
+            // reduceAtUfunc with overlapping out slice
             final rSrc = NDArray<Float64>.fromList(
               [1.0, 2.0, 3.0, 4.0],
               [4],
               DType.float64,
             );
             final rIdx = NDArray<Int64>.fromList([0, 2], [2], DType.int64);
-            final rExpected = reduceatUfunc(rSrc, rIdx, op: BinaryOp.add);
+            final rExpected = reduceAtUfunc(rSrc, rIdx, op: BinaryOp.add);
             final rOut = rSrc.slice([Slice(start: 1, stop: 3)]);
-            reduceatUfunc(rSrc, rIdx, op: BinaryOp.add, out: rOut);
+            reduceAtUfunc(rSrc, rIdx, op: BinaryOp.add, out: rOut);
             expect(rOut.toList(), equals(rExpected.toList()));
 
             // copy with transposed self-view
@@ -3923,16 +3923,16 @@ void main() {
             final u64High = NDArray<Uint64>.fromList([-1], [1], DType.uint64);
             expect(() => arr[u64High], throwsRangeError);
             expect(
-              () => ravel_multi_index([u64High], [5], mode: ChooseMode.raise),
+              () => ravelMultiIndex([u64High], [5], mode: ChooseMode.raise),
               throwsRangeError,
             );
             expect(
-              ravel_multi_index([u64High], [5], mode: ChooseMode.clip).toList(),
+              ravelMultiIndex([u64High], [5], mode: ChooseMode.clip).toList(),
               equals([4]),
             );
             // 2^64 - 1 = 18446744073709551615, which is divisible by 5 (rem 0)
             expect(
-              ravel_multi_index([u64High], [5], mode: ChooseMode.wrap).toList(),
+              ravelMultiIndex([u64High], [5], mode: ChooseMode.wrap).toList(),
               equals([0]),
             );
 
@@ -3963,7 +3963,7 @@ void main() {
             );
             expect(corrcoef(nan1d).scalar.isNaN, isTrue);
 
-            // 3.2: cov rowvar: false with 2-D shape (1, k)
+            // 3.2: cov rowVar: false with 2-D shape (1, k)
             final x2x1 = NDArray<Float64>.fromList(
               [1.0, 2.0, 3.0],
               [3, 1],
@@ -3974,7 +3974,7 @@ void main() {
               [3, 1],
               DType.float64,
             );
-            final covRes = cov(x2x1, y: y3x1, rowvar: false);
+            final covRes = cov(x2x1, y: y3x1, rowVar: false);
             expect(covRes.shape, equals([2, 2]));
 
             // 3.3: ptp modular wrap-around for int8 when axis == null vs axis == 0
@@ -4045,13 +4045,13 @@ void main() {
               throwsArgumentError,
             );
 
-            // 3.7: multi_dot dtype preservation and batched solve with 1-D RHS
+            // 3.7: multiDot dtype preservation and batched solve with 1-D RHS
             final mi = NDArray<Int32>.fromList(
               [1, 2, 3, 4],
               [2, 2],
               DType.int32,
             );
-            final md = multi_dot([mi, mi]);
+            final md = multiDot([mi, mi]);
             expect(md.dtype, equals(DType.int32));
             expect(md.toList(), equals([7, 10, 15, 22]));
 
@@ -4204,7 +4204,7 @@ void main() {
       );
 
       test(
-        '2.1–2.4 & 3.3: Native & Dart out: aliasing and overlap safety (gradient, trapz, diff, bincount, angle, nan_to_num, trace, setByMask, setIndices)',
+        '2.1–2.4 & 3.3: Native & Dart out: aliasing and overlap safety (gradient, trapz, diff, bincount, angle, nanToNum, trace, setByMask, setIndices)',
         () {
           NDArray.scope(() {
             // 1. In-place gradient(a, out: a)
@@ -4266,14 +4266,14 @@ void main() {
             angle(z, out: zRealView);
             expect(allClose(zRealView, angExpected), isTrue);
 
-            // 6. nan_to_num with transposed overlapping out view
+            // 6. nanToNum with transposed overlapping out view
             final nMat = NDArray<Float64>.fromList(
               [double.nan, 2.0, 3.0, double.infinity],
               [2, 2],
               DType.float64,
             );
-            final nExpected = nan_to_num(nMat);
-            nan_to_num(nMat, out: nMat.transpose());
+            final nExpected = nanToNum(nMat);
+            nanToNum(nMat, out: nMat.transpose());
             expect(allClose(nMat.transpose(), nExpected), isTrue);
 
             // 7. trace with out aliasing a[0, 0]
@@ -4467,7 +4467,7 @@ void main() {
       );
 
       test(
-        '1.1–1.6, 2.1–2.4 & 3.3–3.7: Full Round 3 audit verification (randint full-width, std 3D strided out, count_nonzero strided, pad_nd strided out, atUfunc broadcast, unaryUfunc/binaryUfunc all-DType, masked overlap, linalg output pair aliasing, indexing & scientific edge cases)',
+        '1.1–1.6, 2.1–2.4 & 3.3–3.7: Full Round 3 audit verification (randint full-width, std 3D strided out, countNonzero strided, pad_nd strided out, atUfunc broadcast, unaryUfunc/binaryUfunc all-DType, masked overlap, linalg output pair aliasing, indexing & scientific edge cases)',
         () {
           NDArray.scope(() {
             // 1.1: Full-width uint8 [0, 256), int16 [-32768, 32768), and wide int64 randint (normal & secure)
@@ -4526,14 +4526,14 @@ void main() {
             expect(stdCarrier[[1, 0]].scalar, equals(999.0));
             expect(stdCarrier[[3, 2]].scalar, equals(999.0));
 
-            // 1.3: count_nonzero on non-contiguous view with axis == null
+            // 1.3: countNonzero on non-contiguous view with axis == null
             final nzBase = NDArray<Float64>.fromList(
               [0.0, 1.0, 2.0, 0.0, 3.0, 4.0],
               [2, 3],
               DType.float64,
             );
             final nzTrans = nzBase.transpose();
-            expect(count_nonzero(nzTrans).scalar, equals(4));
+            expect(countNonzero(nzTrans).scalar, equals(4));
 
             // 1.4: pad 3-D with PadMode.constant and non-contiguous out view
             final padSrc3d = NDArray<Float64>.ones([2, 2, 2], DType.float64);
@@ -4670,7 +4670,7 @@ void main() {
             );
             final outSc = NDArray<Float64>.zeros([], DType.float64);
             expect(
-              () => slogdet(mat2x2, outSign: outSc, outLogdet: outSc),
+              () => slogdet(mat2x2, outSign: outSc, outLogAbsDet: outSc),
               throwsArgumentError,
             );
             final out2x2 = NDArray<Float64>.zeros([2, 2], DType.float64);
@@ -4749,9 +4749,9 @@ void main() {
 
             final empty0x0 = NDArray<Float64>.zeros([0, 0], DType.float64);
             expect(det(empty0x0).scalar, equals(1.0));
-            final (:sign, :logabsdet) = slogdet(empty0x0);
+            final (:sign, :logAbsDet) = slogdet(empty0x0);
             expect(sign.scalar, equals(1.0));
-            expect(logabsdet.scalar, equals(0.0));
+            expect(logAbsDet.scalar, equals(0.0));
           });
         },
       );
@@ -4922,7 +4922,7 @@ void main() {
             expect(power(i16, exp16)[[0]].scalar, equals(16));
             expect(power(u16, uexp16)[[0]].scalar, equals(16));
             expect(
-              reduceatUfunc(
+              reduceAtUfunc(
                 i16,
                 NDArray<Int64>.fromList([0], [1], DType.int64),
                 op: BinaryOp.multiply,

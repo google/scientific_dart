@@ -33,7 +33,7 @@ void main() {
           ]),
           throwsArgumentError,
         );
-        final aFloat = aInt.astype(DType.float64);
+        final aFloat = aInt.asType(DType.float64);
         final res = einsum(EinsumSubscripts.parse('ij,jk->ik'), [
           aFloat,
           bFloat,
@@ -81,9 +81,9 @@ void main() {
     });
 
     test(
-      'Task 3: User-supplied out buffer detachment in multi_dot and convolve and correlate',
+      'Task 3: User-supplied out buffer detachment in multiDot and convolve and correlate',
       () {
-        // multi_dot with out in nested scope
+        // multiDot with out in nested scope
         final m1 = NDArray<Float64>.fromList(
           [1.0, 2.0, 3.0, 4.0],
           [2, 2],
@@ -102,7 +102,7 @@ void main() {
 
         final outDot = NDArray<Float64>.zeros([2, 2], DType.float64);
         NDArray.scope(() {
-          multi_dot<Float64>([m1, m2, m3], out: outDot);
+          multiDot<Float64>([m1, m2, m3], out: outDot);
         });
         // outDot should still be valid (not disposed by inner scope)
         expect(outDot.isDisposed, isFalse);
@@ -408,7 +408,7 @@ void main() {
           // slogdet
           final slog00 = slogdet(mat00);
           expect(slog00.sign.scalar, equals(1.0));
-          expect(slog00.logabsdet.scalar, equals(0.0));
+          expect(slog00.logAbsDet.scalar, equals(0.0));
 
           // cholesky
           final chol00 = cholesky(mat00);

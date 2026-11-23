@@ -358,7 +358,7 @@ void main() {
                     ),
                   );
                   expect(
-                    () => copysign(a, b, where: where),
+                    () => copySign(a, b, where: where),
                     throwsA(
                       anyOf(isA<ArgumentError>(), isA<UnsupportedError>()),
                     ),
@@ -554,10 +554,10 @@ void main() {
                   );
                 }
 
-                // 5. copysign and atan2 (disallow complex)
+                // 5. copySign and atan2 (disallow complex)
                 if (dtA.isComplex || dtB.isComplex) {
                   expect(
-                    () => copysign(a, b, where: where),
+                    () => copySign(a, b, where: where),
                     throwsUnsupportedError,
                   );
                   expect(
@@ -566,12 +566,12 @@ void main() {
                   );
                 } else {
                   verifyGrid(
-                    copysign(a, b, where: where),
+                    copySign(a, b, where: where),
                     dtA,
                     (va, vb) => _toDouble(vb) < 0
                         ? -_toDouble(va).abs()
                         : _toDouble(va).abs(),
-                    'copysign',
+                    'copySign',
                   );
                   final atan2DType =
                       (dtA == DType.float32 && dtB == DType.float32)

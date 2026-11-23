@@ -125,7 +125,7 @@ void main() {
       final rTrunc = trunc(a, where: mask);
       expect(rTrunc.toList()[0], equals(1.0));
 
-      final rFix = fix(a, where: mask);
+      final rFix = trunc(a, where: mask);
       expect(rFix.toList()[0], equals(1.0));
     });
 
@@ -195,7 +195,7 @@ void main() {
     );
 
     test(
-      '9. nan_to_num generic typing, non-contiguous views, and complex handling',
+      '9. nanToNum generic typing, non-contiguous views, and complex handling',
       () {
         final a = NDArray<Float64>.fromList(
           [double.nan, 0.0, double.infinity, 0.0, double.negativeInfinity, 0.0],
@@ -205,11 +205,11 @@ void main() {
         final aSlice =
             a[const Slice(start: 0, stop: 6, step: 2)]; // [nan, inf, -inf]
         final out = NDArray<Float64>.zeros([3], DType.float64);
-        final cleaned = nan_to_num(
+        final cleaned = nanToNum(
           aSlice,
           nan: 99.0,
-          posinf: 100.0,
-          neginf: -100.0,
+          posInf: 100.0,
+          negInf: -100.0,
           out: out,
         );
         expect(cleaned.toList(), equals([99.0, 100.0, -100.0]));
@@ -219,7 +219,7 @@ void main() {
           [1],
           DType.complex128,
         );
-        final cCleaned = nan_to_num(c, nan: 0.0, posinf: 50.0);
+        final cCleaned = nanToNum(c, nan: 0.0, posInf: 50.0);
         expect(cCleaned.toList(), equals([Complex(0.0, 50.0)]));
       },
     );

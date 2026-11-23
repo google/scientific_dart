@@ -998,7 +998,7 @@ void main() {
             DType.boolean,
           );
           final (:eigenvalues, :eigenvectors) = eig(a);
-          final expected = eig(a.astype(DType.float64));
+          final expected = eig(a.asType(DType.float64));
           expect(eigenvalues.dtype, equals(DType.complex128));
           expect(eigenvectors.dtype, equals(DType.complex128));
           expect(allClose(eigenvalues, expected.eigenvalues), isTrue);
@@ -1184,7 +1184,7 @@ void main() {
       );
     });
 
-    group('Optimal Matrix Chain Product (multi_dot) tests', () {
+    group('Optimal Matrix Chain Product (multiDot) tests', () {
       test(
         'Multiply 3 matrices with optimal parenthesization',
         () => NDArray.scope(() {
@@ -1193,7 +1193,7 @@ void main() {
           final b = NDArray.ones([10, 5], DType.float64);
           final c = NDArray.ones([5, 3], DType.float64);
 
-          final res = multi_dot([a, b, c]);
+          final res = multiDot([a, b, c]);
 
           expect(res.shape, [2, 3]);
           // Each cell = sum_{k} (1 * sum_{m} (1 * 1)) = 10 * 5 = 50
@@ -1204,14 +1204,14 @@ void main() {
       );
 
       test(
-        'multi_dot with 1D squeezing at first array',
+        'multiDot with 1D squeezing at first array',
         () => NDArray.scope(() {
           // A[10] * B[10, 5] * C[5, 3] -> result [3]
           final a = NDArray.ones([10], DType.float64);
           final b = NDArray.ones([10, 5], DType.float64);
           final c = NDArray.ones([5, 3], DType.float64);
 
-          final res = multi_dot([a, b, c]);
+          final res = multiDot([a, b, c]);
 
           expect(res.shape, [3]);
           for (var i = 0; i < 3; i++) {
@@ -1221,14 +1221,14 @@ void main() {
       );
 
       test(
-        'multi_dot with 1D squeezing at last array',
+        'multiDot with 1D squeezing at last array',
         () => NDArray.scope(() {
           // A[2, 10] * B[10, 5] * C[5] -> result [2]
           final a = NDArray.ones([2, 10], DType.float64);
           final b = NDArray.ones([10, 5], DType.float64);
           final c = NDArray.ones([5], DType.float64);
 
-          final res = multi_dot([a, b, c]);
+          final res = multiDot([a, b, c]);
 
           expect(res.shape, [2]);
           for (var i = 0; i < 2; i++) {
@@ -1238,14 +1238,14 @@ void main() {
       );
 
       test(
-        'multi_dot with squeezing at both first and last arrays',
+        'multiDot with squeezing at both first and last arrays',
         () => NDArray.scope(() {
           // A[10] * B[10, 5] * C[5] -> result [] (scalar)
           final a = NDArray.ones([10], DType.float64);
           final b = NDArray.ones([10, 5], DType.float64);
           final c = NDArray.ones([5], DType.float64);
 
-          final res = multi_dot([a, b, c]);
+          final res = multiDot([a, b, c]);
 
           expect(res.shape, []);
           expect(res.scalar, 50.0);
@@ -1253,14 +1253,14 @@ void main() {
       );
 
       test(
-        'multi_dot using out recycler buffer',
+        'multiDot using out recycler buffer',
         () => NDArray.scope(() {
           final a = NDArray.ones([2, 10], DType.float64);
           final b = NDArray.ones([10, 5], DType.float64);
           final c = NDArray.ones([5, 3], DType.float64);
 
           final out = NDArray.zeros([2, 3], DType.float64);
-          final res = multi_dot([a, b, c], out: out);
+          final res = multiDot([a, b, c], out: out);
 
           expect(res == out, true);
           expect(out.shape, [2, 3]);
@@ -1277,7 +1277,7 @@ void main() {
           final b = NDArray.ones([9, 5], DType.float64); // 9 != 10
           final c = NDArray.ones([5, 3], DType.float64);
 
-          expect(() => multi_dot([a, b, c]), throwsArgumentError);
+          expect(() => multiDot([a, b, c]), throwsArgumentError);
         }),
       );
     });
@@ -1645,8 +1645,8 @@ void main() {
           final sNorm = norm(m, ord: 2);
           expect(sNorm.toList()[0], greaterThan(0.0));
 
-          // keepdims support
-          final kd = norm(x, ord: 1, keepdims: true);
+          // keepDims support
+          final kd = norm(x, ord: 1, keepDims: true);
           expect(kd.shape, [1]);
           expect(kd.toList()[0], 10.0);
 
@@ -2631,7 +2631,7 @@ void main() {
     );
 
     test(
-      'linalg.pinv() and linalg.matrix_power() correctness',
+      'linalg.pinv() and linalg.matrixPower() correctness',
       () => NDArray.scope(() {
         // 1. pinv
         final a = NDArray.fromList(
@@ -2651,17 +2651,17 @@ void main() {
         rec.dispose();
         aPlus.dispose();
 
-        // 2. matrix_power
+        // 2. matrixPower
         final t = NDArray.fromList([0.8, 0.2, 0.1, 0.9], [2, 2], DType.float64);
 
-        final t2 = matrix_power(t, 2);
+        final t2 = matrixPower(t, 2);
         final tTimesT = matmul(t, t);
         expect(allClose(t2, tTimesT, atol: 1e-9), true);
 
-        final t0 = matrix_power(t, 0);
+        final t0 = matrixPower(t, 0);
         expect(t0.toList(), [1.0, 0.0, 0.0, 1.0]);
 
-        final tInv = matrix_power(t, -1);
+        final tInv = matrixPower(t, -1);
         final check = matmul(t, tInv);
         expect(allClose(check, t0, atol: 1e-9), true);
 
@@ -2697,7 +2697,7 @@ void main() {
   });
 
   group(
-    'Economy SVD, svdvals, matrix_rank, tensorsolve, tensorinv & integer promotion',
+    'Economy SVD, svdValues, matrixRank, tensorsolve, tensorinv & integer promotion',
     () {
       test(
         'Integer promotion across inv, det, slogdet, solve, pinv, cholesky, qr, svd',
@@ -2718,9 +2718,9 @@ void main() {
 
           final sd = slogdet(aInt);
           expect(sd.sign.dtype, DType.float64);
-          expect(sd.logabsdet.dtype, DType.float64);
+          expect(sd.logAbsDet.dtype, DType.float64);
           expect(sd.sign.scalar, closeTo(1.0, 1e-12));
-          expect(sd.logabsdet.scalar, closeTo(math.log(4.0), 1e-12));
+          expect(sd.logAbsDet.scalar, closeTo(math.log(4.0), 1e-12));
 
           final x = solve(aInt, bInt);
           expect(x.dtype, DType.float64);
@@ -2740,7 +2740,7 @@ void main() {
           final qrRes = qr(aInt);
           expect(qrRes.q.dtype, DType.float64);
           expect(qrRes.r.dtype, DType.float64);
-          final aFloat = aInt.astype(DType.float64);
+          final aFloat = aInt.asType(DType.float64);
           expect(
             allClose(matmul(qrRes.q, qrRes.r), aFloat, atol: 1e-11),
             isTrue,
@@ -2805,7 +2805,7 @@ void main() {
           expect(resTallC.u.shape, [3, 2]);
           expect(resTallC.s.shape, [2]);
           expect(resTallC.vh.shape, [2, 2]);
-          final sDiagC = diag(resTallC.s.astype(DType.complex128));
+          final sDiagC = diag(resTallC.s.asType(DType.complex128));
           final reconTallC = matmul(matmul(resTallC.u, sDiagC), resTallC.vh);
           expect(allClose(reconTallC, tallC, atol: 1e-11), isTrue);
 
@@ -2816,7 +2816,7 @@ void main() {
           expect(resWideC.s.shape, [2]);
           expect(resWideC.vh.shape, [2, 3]);
           final reconWideC = matmul(
-            matmul(resWideC.u, diag(resWideC.s.astype(DType.complex128))),
+            matmul(resWideC.u, diag(resWideC.s.asType(DType.complex128))),
             resWideC.vh,
           );
           expect(allClose(reconWideC, wideC, atol: 1e-11), isTrue);
@@ -2885,7 +2885,7 @@ void main() {
       );
 
       test(
-        'svdvals and svdValues compute singular values matching svd().s',
+        'svdValues and svdValues compute singular values matching svd().s',
         () => NDArray.scope(() {
           final a = NDArray.fromList(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -2893,7 +2893,7 @@ void main() {
             DType.float64,
           );
           final sExpected = svd(a, fullMatrices: false).s;
-          final sActual = svdvals(a);
+          final sActual = svdValues(a);
           expect(sActual.dtype, DType.float64);
           expect(sActual.shape, [2]);
           expect(allClose(sActual, sExpected, atol: 1e-12), isTrue);
@@ -2904,12 +2904,12 @@ void main() {
           expect(allClose(sAlias, sExpected, atol: 1e-12), isTrue);
 
           // Complex64 input returns Float32 singular values
-          final c64 = a.astype(DType.complex64);
-          final sC64 = svdvals(c64);
+          final c64 = a.asType(DType.complex64);
+          final sC64 = svdValues(c64);
           expect(sC64.dtype, DType.float32);
           expect(sC64.shape, [2]);
           expect(
-            allClose(sC64.astype(DType.float64), sExpected, atol: 1e-5),
+            allClose(sC64.asType(DType.float64), sExpected, atol: 1e-5),
             isTrue,
           );
 
@@ -2925,22 +2925,22 @@ void main() {
             DType.float64,
           );
           expect(
-            () => svdvals(nanMat),
+            () => svdValues(nanMat),
             throwsA(isA<IterationsExceededException>()),
           );
           expect(
-            () => svdvals(infMat),
+            () => svdValues(infMat),
             throwsA(isA<IterationsExceededException>()),
           );
         }),
       );
 
       test(
-        'matrix_rank and matrixRank handle full-rank, rank-deficient, hermitian, 1D/0D, and batched inputs',
+        'matrixRank and matrixRank handle full-rank, rank-deficient, hermitian, 1D/0D, and batched inputs',
         () => NDArray.scope(() {
           // Full-rank 3x3
           final eye3 = NDArray.eye(3, DType.float64);
-          expect(matrix_rank(eye3).scalar, equals(3));
+          expect(matrixRank(eye3).scalar, equals(3));
 
           // Rank-1 3x2 matrix
           final rank1 = NDArray.fromList(
@@ -2948,12 +2948,12 @@ void main() {
             [3, 2],
             DType.float64,
           );
-          expect(matrix_rank(rank1).scalar, equals(1));
+          expect(matrixRank(rank1).scalar, equals(1));
           expect(matrixRank(rank1).scalar, equals(1));
 
           // Zero matrix has rank 0
           final zeros = NDArray.zeros([3, 3], DType.float64);
-          expect(matrix_rank(zeros).scalar, equals(0));
+          expect(matrixRank(zeros).scalar, equals(0));
 
           // Hermitian matrix with negative eigenvalues
           final herm = NDArray.fromList(
@@ -2961,7 +2961,7 @@ void main() {
             [3, 3],
             DType.float64,
           );
-          expect(matrix_rank(herm, hermitian: true).scalar, equals(2));
+          expect(matrixRank(herm, hermitian: true).scalar, equals(2));
 
           // Custom tolerance and rtol filter small singular value
           final nearSingular = NDArray.fromList(
@@ -2969,11 +2969,11 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          expect(matrix_rank(nearSingular).scalar, equals(2));
-          expect(matrix_rank(nearSingular, tol: 1e-1).scalar, equals(1));
-          expect(matrix_rank(nearSingular, rtol: 1e-2).scalar, equals(1));
+          expect(matrixRank(nearSingular).scalar, equals(2));
+          expect(matrixRank(nearSingular, tol: 1e-1).scalar, equals(1));
+          expect(matrixRank(nearSingular, rtol: 1e-2).scalar, equals(1));
           expect(
-            () => matrix_rank(nearSingular, tol: 1e-2, rtol: 1e-2),
+            () => matrixRank(nearSingular, tol: 1e-2, rtol: 1e-2),
             throwsArgumentError,
           );
 
@@ -2985,22 +2985,22 @@ void main() {
           );
           final vecZero = NDArray.zeros([3], DType.float64);
           final vecBool = NDArray.fromList([false, true], [2], DType.boolean);
-          expect(matrix_rank(vecNonZero).scalar, equals(1));
-          expect(matrix_rank(vecZero).scalar, equals(0));
-          expect(matrix_rank(vecBool).scalar, equals(1));
+          expect(matrixRank(vecNonZero).scalar, equals(1));
+          expect(matrixRank(vecZero).scalar, equals(0));
+          expect(matrixRank(vecBool).scalar, equals(1));
           expect(
-            matrix_rank(NDArray.scalar(5.0, dtype: DType.float64)).scalar,
+            matrixRank(NDArray.scalar(5.0, dtype: DType.float64)).scalar,
             equals(1),
           );
           expect(
-            matrix_rank(NDArray.scalar(0.0, dtype: DType.float64)).scalar,
+            matrixRank(NDArray.scalar(0.0, dtype: DType.float64)).scalar,
             equals(0),
           );
 
           // Batched 2x3x3 with out buffer
           final batch = stack([eye3, herm]);
           final outRanks = NDArray.zeros([2], DType.int64);
-          final batchRanks = matrix_rank(batch, out: outRanks);
+          final batchRanks = matrixRank(batch, out: outRanks);
           expect(identical(batchRanks, outRanks), isTrue);
           expect(batchRanks.toList(), equals([3, 2]));
         }),

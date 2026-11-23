@@ -578,7 +578,7 @@ NDArray<Float64> renderMaskedDrumGallery(
   NDArray<Boolean> mask,
 ) {
   return NDArray.scope(() {
-    final maskF = mask.astype(DType.float64);
+    final maskF = mask.asType(DType.float64);
     final outsideF = (maskF * -1.0) + 1.0;
     final rows = <NDArray<Float64>>[];
     for (var r = 0; r < 2; r++) {

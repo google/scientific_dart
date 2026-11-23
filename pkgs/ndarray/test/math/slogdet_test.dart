@@ -27,7 +27,7 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.shape, <int>[]);
           expect(logdet.shape, <int>[]);
@@ -43,7 +43,7 @@ void main() {
             [2, 2],
             DType.float32,
           );
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.shape, <int>[]);
           expect(logdet.shape, <int>[]);
@@ -59,7 +59,7 @@ void main() {
             [2, 2],
             DType.float64,
           );
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.scalar, 0.0);
           expect(logdet.scalar, double.negativeInfinity);
@@ -80,7 +80,7 @@ void main() {
             [2, 2],
             DType.complex128,
           );
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.shape, <int>[]);
           expect(logdet.shape, <int>[]);
@@ -111,7 +111,7 @@ void main() {
             [2, 2],
             DType.complex64,
           );
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.shape, <int>[]);
           expect(logdet.shape, <int>[]);
@@ -141,7 +141,7 @@ void main() {
             [2, 2],
             DType.complex128,
           );
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.scalar.real, 0.0);
           expect(sign.scalar.imag, 0.0);
@@ -169,7 +169,7 @@ void main() {
             DType.float64,
           );
 
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.shape, [3]);
           expect(logdet.shape, [3]);
@@ -203,7 +203,7 @@ void main() {
             DType.complex128,
           );
 
-          final (:sign, logabsdet: logdet) = slogdet(a);
+          final (:sign, logAbsDet: logdet) = slogdet(a);
 
           expect(sign.shape, [2]);
           expect(logdet.shape, [2]);
@@ -229,7 +229,7 @@ void main() {
       });
     });
 
-    group('Recycler buffers (outSign, outLogdet)', () {
+    group('Recycler buffers (outSign, outLogAbsDet)', () {
       test('Float64 stack with out parameters', () {
         NDArray.scope(() {
           final a = NDArray.fromList(
@@ -242,23 +242,23 @@ void main() {
           );
 
           final outSign = NDArray.zeros([2], DType.float64);
-          final outLogdet = NDArray.zeros([2], DType.float64);
+          final outLogAbsDet = NDArray.zeros([2], DType.float64);
 
-          final (:sign, logabsdet: logdet) = slogdet(
+          final (:sign, logAbsDet: logdet) = slogdet(
             a,
             outSign: outSign,
-            outLogdet: outLogdet,
+            outLogAbsDet: outLogAbsDet,
           );
 
           // Verify they are identical instances (mutated in place)
           expect(identical(sign, outSign), true);
-          expect(identical(logdet, outLogdet), true);
+          expect(identical(logdet, outLogAbsDet), true);
 
           expect(outSign.toList()[0], -1.0);
-          expect(outLogdet.toList()[0], closeTo(math.log(2.0), 1e-9));
+          expect(outLogAbsDet.toList()[0], closeTo(math.log(2.0), 1e-9));
 
           expect(outSign.toList()[1], 1.0);
-          expect(outLogdet.toList()[1], closeTo(math.log(3.0), 1e-9));
+          expect(outLogAbsDet.toList()[1], closeTo(math.log(3.0), 1e-9));
         });
       });
 
@@ -280,7 +280,7 @@ void main() {
 
           expect(() => slogdet(a, outSign: badSign), throwsArgumentError);
           expect(
-            () => slogdet(a.asAnySpec, outLogdet: badLogdet.asAnySpec),
+            () => slogdet(a.asAnySpec, outLogAbsDet: badLogdet.asAnySpec),
             throwsArgumentError,
           );
         });

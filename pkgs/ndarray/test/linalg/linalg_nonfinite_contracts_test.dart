@@ -173,7 +173,7 @@ NDArray<AnySpec> _buildMatrix(
   }
 
   // Place the non-finite entry at (1, 0) (lower triangle) when rows > 1 so
-  // lower-triangular routines (cholesky, eigh, eigvalsh) also inspect it.
+  // lower-triangular routines (cholesky, eigh, eigValuesH) also inspect it.
   final targetIndex = rows > 1 ? cols : 0;
   switch (kind) {
     case _NonFiniteKind.singleNaN:
@@ -554,16 +554,16 @@ void main() {
                 final res = slogdet(
                   a,
                   outSign: canarySign.view,
-                  outLogdet: canaryLogdet.view,
+                  outLogAbsDet: canaryLogdet.view,
                 );
                 canarySign.verifySentinelsIntact('slogdet sign ($label)');
                 canaryLogdet.verifySentinelsIntact('slogdet logdet ($label)');
                 if (kind == _NonFiniteKind.singleNaN ||
                     kind == _NonFiniteKind.allNaN) {
                   expect(_anyElementIsNaN(res.sign), isTrue);
-                  expect(_anyElementIsNaN(res.logabsdet), isTrue);
+                  expect(_anyElementIsNaN(res.logAbsDet), isTrue);
                 } else if (kind == _NonFiniteKind.singular) {
-                  expect(res.logabsdet.scalar, equals(double.negativeInfinity));
+                  expect(res.logAbsDet.scalar, equals(double.negativeInfinity));
                 }
               } finally {
                 a.dispose();
@@ -612,22 +612,22 @@ void main() {
             });
           });
 
-          test('eigvals ($label)', () {
+          test('eigValues ($label)', () {
             _withNoLeaks(() {
               final a = _buildMatrix(n, n, dtype, kind);
               final compDType = _complexDTypeFor(dtype);
               final canaryW = _CanaryBuffer.create([n], compDType);
               try {
                 if (kind == _NonFiniteKind.singular) {
-                  final res = eigvals(a, out: canaryW.view);
+                  final res = eigValues(a, out: canaryW.view);
                   expect(res.shape, equals([n]));
                 } else {
                   expect(
-                    () => eigvals(a, out: canaryW.view),
+                    () => eigValues(a, out: canaryW.view),
                     throwsA(isA<LinAlgException>()),
                   );
                 }
-                canaryW.verifySentinelsIntact('eigvals ($label)');
+                canaryW.verifySentinelsIntact('eigValues ($label)');
               } finally {
                 a.dispose();
                 canaryW.dispose();
@@ -670,22 +670,22 @@ void main() {
             });
           });
 
-          test('eigvalsh ($label)', () {
+          test('eigValuesH ($label)', () {
             _withNoLeaks(() {
               final a = _buildMatrix(n, n, dtype, kind);
               final realDType = _realDTypeFor(dtype);
               final canaryW = _CanaryBuffer.create([n], realDType);
               try {
                 if (kind == _NonFiniteKind.singular) {
-                  final res = eigvalsh(a, out: canaryW.view);
+                  final res = eigValuesH(a, out: canaryW.view);
                   expect(res.shape, equals([n]));
                 } else {
                   expect(
-                    () => eigvalsh(a, out: canaryW.view),
+                    () => eigValuesH(a, out: canaryW.view),
                     throwsA(isA<LinAlgException>()),
                   );
                 }
-                canaryW.verifySentinelsIntact('eigvalsh ($label)');
+                canaryW.verifySentinelsIntact('eigValuesH ($label)');
               } finally {
                 a.dispose();
                 canaryW.dispose();
@@ -832,29 +832,29 @@ void main() {
             });
           });
 
-          test('matrix_power n=-1 ($label)', () {
+          test('matrixPower n=-1 ($label)', () {
             _withNoLeaks(() {
               final a = _buildMatrix(n, n, dtype, kind);
               final canaryOut = _CanaryBuffer.create([n, n], dtype);
               try {
                 if (kind == _NonFiniteKind.singleNaN ||
                     kind == _NonFiniteKind.allNaN) {
-                  final res = matrix_power(a, -1, out: canaryOut.view);
+                  final res = matrixPower(a, -1, out: canaryOut.view);
                   expect(_allElementsAreNaN(res), isTrue);
                 } else if (kind == _NonFiniteKind.singular) {
                   expect(
-                    () => matrix_power(a, -1, out: canaryOut.view),
+                    () => matrixPower(a, -1, out: canaryOut.view),
                     throwsA(isA<SingularMatrixException>()),
                   );
                 } else {
                   try {
-                    final res = matrix_power(a, -1, out: canaryOut.view);
+                    final res = matrixPower(a, -1, out: canaryOut.view);
                     expect(res.shape, equals([n, n]));
                   } on LinAlgException {
                     // Allowed.
                   }
                 }
-                canaryOut.verifySentinelsIntact('matrix_power ($label)');
+                canaryOut.verifySentinelsIntact('matrixPower ($label)');
               } finally {
                 a.dispose();
                 canaryOut.dispose();

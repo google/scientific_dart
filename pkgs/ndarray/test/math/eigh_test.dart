@@ -186,11 +186,11 @@ void main() {
       });
     });
 
-    test('eigvalsh only eigenvalues', () {
+    test('eigValuesH only eigenvalues', () {
       NDArray.scope(() {
         final a = NDArray.fromList([2.0, 1.0, 1.0, 2.0], [2, 2], DType.float64);
 
-        final w = eigvalsh(a);
+        final w = eigValuesH(a);
         expect(w.shape, equals([2]));
         expect(w.dtype, equals(DType.float64));
         expect(w[[0]].scalar, closeTo(1.0, 1e-10));
@@ -225,12 +225,12 @@ void main() {
       });
     });
 
-    test('eigvalsh with out parameter', () {
+    test('eigValuesH with out parameter', () {
       NDArray.scope(() {
         final a = NDArray.fromList([2.0, 1.0, 1.0, 2.0], [2, 2], DType.float64);
         final outW = NDArray.zeros([2], DType.float64);
 
-        eigvalsh(a, out: outW);
+        eigValuesH(a, out: outW);
 
         expect(outW[[0]].scalar, closeTo(1.0, 1e-10));
         expect(outW[[1]].scalar, closeTo(3.0, 1e-10));
@@ -241,11 +241,11 @@ void main() {
       NDArray.scope(() {
         final a = NDArray.zeros([2, 3], DType.float64);
         expect(() => eigh(a), throwsArgumentError);
-        expect(() => eigvalsh(a), throwsArgumentError);
+        expect(() => eigValuesH(a), throwsArgumentError);
 
         final b = NDArray.zeros([2], DType.float64);
         expect(() => eigh(b), throwsArgumentError);
-        expect(() => eigvalsh(b), throwsArgumentError);
+        expect(() => eigValuesH(b), throwsArgumentError);
       });
     });
 

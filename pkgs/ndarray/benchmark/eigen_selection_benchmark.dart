@@ -25,7 +25,7 @@ void main() async {
     (c) {
       final rand = math.Random(42);
 
-      // Build a 100x100 symmetric positive-definite matrix for eigh / eigvalsh / cond
+      // Build a 100x100 symmetric positive-definite matrix for eigh / eigValuesH / cond
       const symDim = 100;
       final symData = List<double>.filled(symDim * symDim, 0.0);
       for (var i = 0; i < symDim; i++) {
@@ -40,7 +40,7 @@ void main() async {
         symDim,
       ], DType.float64);
 
-      // Build a 60x60 general square matrix for eig / eigvals
+      // Build a 60x60 general square matrix for eig / eigValues
       const genDim = 60;
       final genMat = NDArray<Float64>.fromList(
         List.generate(genDim * genDim, (_) => rand.nextDouble() - 0.5),
@@ -48,7 +48,7 @@ void main() async {
         DType.float64,
       );
 
-      // Matrix chain for multi_dot: [100x10] * [10x500] * [500x20] * [20x100]
+      // Matrix chain for multiDot: [100x10] * [10x500] * [500x20] * [20x100]
       final chainA = NDArray<Float64>.ones([100, 10], DType.float64);
       final chainB = NDArray<Float64>.ones([10, 500], DType.float64);
       final chainC = NDArray<Float64>.ones([500, 20], DType.float64);
@@ -67,8 +67,8 @@ void main() async {
           res.eigenvectors.dispose();
         });
 
-        c.bench('eigvalsh(A) [100x100 symmetric]', () {
-          final res = eigvalsh(symMat);
+        c.bench('eigValuesH(A) [100x100 symmetric]', () {
+          final res = eigValuesH(symMat);
           blackhole(res);
           res.dispose();
         });
@@ -80,8 +80,8 @@ void main() async {
           res.eigenvectors.dispose();
         });
 
-        c.bench('eigvals(A) [60x60 general]', () {
-          final res = eigvals(genMat);
+        c.bench('eigValues(A) [60x60 general]', () {
+          final res = eigValues(genMat);
           blackhole(res);
           res.dispose();
         });
@@ -92,8 +92,8 @@ void main() async {
           res.dispose();
         });
 
-        c.bench('multi_dot([100x10, 10x500, 500x20, 20x100])', () {
-          final res = multi_dot<Float64>([chainA, chainB, chainC, chainD]);
+        c.bench('multiDot([100x10, 10x500, 500x20, 20x100])', () {
+          final res = multiDot<Float64>([chainA, chainB, chainC, chainD]);
           blackhole(res);
           res.dispose();
         });
@@ -157,8 +157,8 @@ void main() async {
           res.dispose();
         }, throughput: Throughput.elements(size));
 
-        c.bench('count_nonzero(sparse) [100k Float64]', () {
-          final res = count_nonzero<Float64>(sparseArr);
+        c.bench('countNonzero(sparse) [100k Float64]', () {
+          final res = countNonzero<Float64>(sparseArr);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size));

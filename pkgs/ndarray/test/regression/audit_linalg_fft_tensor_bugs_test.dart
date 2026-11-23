@@ -61,7 +61,7 @@ void main() {
       });
     });
 
-    test('_matrixNorm on 3D batched strided tensor with axis and keepdims', () {
+    test('_matrixNorm on 3D batched strided tensor with axis and keepDims', () {
       NDArray.scope(() {
         final data = Float64List.fromList(
           List<double>.generate(24, (i) => (i.isEven ? 1.0 : -1.0) * (i + 1)),
@@ -76,12 +76,12 @@ void main() {
         final contig = view.copy();
 
         for (final ord in [1, -1, double.infinity, double.negativeInfinity]) {
-          final resView = norm(view, ord: ord, axis: [1, 2], keepdims: true);
+          final resView = norm(view, ord: ord, axis: [1, 2], keepDims: true);
           final resContig = norm(
             contig,
             ord: ord,
             axis: [1, 2],
-            keepdims: true,
+            keepDims: true,
           );
           expect(resView.shape, resContig.shape);
           expect(
@@ -201,7 +201,7 @@ void main() {
           final res = matmul(bcast, vec);
           expect(res.getCell([]), closeTo(30.0, 1e-12));
 
-          // Mixed dtype (int32 + float64) throws ArgumentError; explicit astype works
+          // Mixed dtype (int32 + float64) throws ArgumentError; explicit asType works
           final scalarInt = NDArray.fromList(Int32List.fromList([3]), [
             1,
           ], DType.int32);
@@ -211,7 +211,7 @@ void main() {
             () => matmul(bcastInt.asAnySpec, vec.asAnySpec),
             throwsArgumentError,
           );
-          final resMixed = matmul(bcastInt.astype(DType.float64), vec);
+          final resMixed = matmul(bcastInt.asType(DType.float64), vec);
           expect(resMixed.getCell([]), closeTo(30.0, 1e-12));
           expect(scalarInt.getCell([0]), 3);
         });
@@ -347,7 +347,7 @@ void main() {
           () => matmul(aInt.asAnySpec, bFloat.asAnySpec),
           throwsArgumentError,
         );
-        final res = matmul(aInt.astype(DType.float64), bFloat);
+        final res = matmul(aInt.asType(DType.float64), bFloat);
         expect(res.getCell([0, 0]), closeTo(1.0, 1e-12));
         expect(aInt.getCell([1, 1]), 4);
       });
@@ -527,7 +527,7 @@ void main() {
             () => kron(aRev.asAnySpec, bRev.asAnySpec),
             throwsArgumentError,
           );
-          final aRevFloat = aInt.astype(DType.float64).slice([
+          final aRevFloat = aInt.asType(DType.float64).slice([
             const Slice(step: -1),
             const Slice(step: -1),
           ]);
@@ -682,7 +682,7 @@ void main() {
           ];
 
           for (final dt in dtypesToTest) {
-            final arr = refFloat.astype(dt);
+            final arr = refFloat.asType(dt);
             final res = fft2(arr);
             expect(res.shape, [2, 2], reason: 'fft2 shape failed for $dt');
             expect(
@@ -719,10 +719,10 @@ void main() {
   });
 
   group(
-    'Bug 7: optimize (nelder_mead, lbfgs) with non-contiguous inputs and gradients',
+    'Bug 7: optimize (nelderMead, lbfgs) with non-contiguous inputs and gradients',
     () {
       test(
-        'nelder_mead with non-contiguous strided x0 converges to true minimum',
+        'nelderMead with non-contiguous strided x0 converges to true minimum',
         () {
           NDArray.scope(() {
             final buf = NDArray.fromList(

@@ -28,7 +28,7 @@ import '../helpers.dart';
 /// spectral analysis where suppression of distant side lobes is critical.
 ///
 /// **Preconditions:**
-/// - If [out] is provided, it must not be disposed and must have shape `[M]` (or `[0]` if `M < 1`)
+/// - If [out] is provided, it must not be disposed and must have shape `[m]` (or `[0]` if `m < 1`)
 ///   and matching [DType].
 ///
 /// - It is an error if [out] is disposed (throws [StateError]).
@@ -37,7 +37,7 @@ import '../helpers.dart';
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> hanning<T extends AnySpec>(
-  int M, {
+  int m, {
   DType<T>? dtype,
   NDArray<T>? out,
 }) {
@@ -45,7 +45,7 @@ NDArray<T> hanning<T extends AnySpec>(
     throw StateError('Cannot execute hanning() on a disposed out buffer.');
   }
   final resolvedDType = dtype ?? (out?.dtype ?? (DType.float64 as DType<T>));
-  final targetShape = [M < 1 ? 0 : M];
+  final targetShape = [m < 1 ? 0 : m];
   final NDArray<T> result;
   if (out != null) {
     validateOutBuffer(out);
@@ -61,8 +61,8 @@ NDArray<T> hanning<T extends AnySpec>(
     result = NDArray<T>.create(targetShape, resolvedDType);
   }
 
-  if (M < 1) return result;
-  if (M == 1) {
+  if (m < 1) return result;
+  if (m == 1) {
     result.fill(castValue(1.0, resolvedDType));
     return result;
   }
@@ -70,11 +70,11 @@ NDArray<T> hanning<T extends AnySpec>(
   switch (resolvedDType) {
     case DType.float32:
       if (result.isContiguous) {
-        v_hanning_float(result.pointer.cast(), M);
+        v_hanning_float(result.pointer.cast(), m);
       } else {
-        final temp = NDArray<Float32>.create([M], DType.float32);
+        final temp = NDArray<Float32>.create([m], DType.float32);
         try {
-          v_hanning_float(temp.pointer.cast(), M);
+          v_hanning_float(temp.pointer.cast(), m);
           temp.copy(out: result as NDArray<Float32>);
         } finally {
           temp.dispose();
@@ -83,11 +83,11 @@ NDArray<T> hanning<T extends AnySpec>(
       return result;
     case DType.float64:
       if (result.isContiguous) {
-        v_hanning_double(result.pointer.cast(), M);
+        v_hanning_double(result.pointer.cast(), m);
       } else {
-        final temp = NDArray<Float64>.create([M], DType.float64);
+        final temp = NDArray<Float64>.create([m], DType.float64);
         try {
-          v_hanning_double(temp.pointer.cast(), M);
+          v_hanning_double(temp.pointer.cast(), m);
           temp.copy(out: result as NDArray<Float64>);
         } finally {
           temp.dispose();
@@ -107,9 +107,9 @@ NDArray<T> hanning<T extends AnySpec>(
     case DType.boolean:
     case DType.complex128:
     case DType.complex64:
-      final temp = NDArray<Float64>.create([M], DType.float64);
+      final temp = NDArray<Float64>.create([m], DType.float64);
       try {
-        v_hanning_double(temp.pointer.cast(), M);
+        v_hanning_double(temp.pointer.cast(), m);
         final casted = castNDArray(temp, resolvedDType);
         try {
           casted.copy(out: result);
@@ -136,7 +136,7 @@ NDArray<T> hanning<T extends AnySpec>(
 /// rate of $6 \text{ dB/octave}$.
 ///
 /// **Preconditions:**
-/// - If [out] is provided, it must not be disposed and must have shape `[M]` (or `[0]` if `M < 1`)
+/// - If [out] is provided, it must not be disposed and must have shape `[m]` (or `[0]` if `m < 1`)
 ///   and matching [DType].
 ///
 /// - It is an error if [out] is disposed (throws [StateError]).
@@ -145,7 +145,7 @@ NDArray<T> hanning<T extends AnySpec>(
 /// **Example:**
 /// {@example /example/ufuncs_example.dart lang=dart}
 NDArray<T> hamming<T extends AnySpec>(
-  int M, {
+  int m, {
   DType<T>? dtype,
   NDArray<T>? out,
 }) {
@@ -153,7 +153,7 @@ NDArray<T> hamming<T extends AnySpec>(
     throw StateError('Cannot execute hamming() on a disposed out buffer.');
   }
   final resolvedDType = dtype ?? (out?.dtype ?? (DType.float64 as DType<T>));
-  final targetShape = [M < 1 ? 0 : M];
+  final targetShape = [m < 1 ? 0 : m];
   final NDArray<T> result;
   if (out != null) {
     validateOutBuffer(out);
@@ -169,8 +169,8 @@ NDArray<T> hamming<T extends AnySpec>(
     result = NDArray<T>.create(targetShape, resolvedDType);
   }
 
-  if (M < 1) return result;
-  if (M == 1) {
+  if (m < 1) return result;
+  if (m == 1) {
     result.fill(castValue(1.0, resolvedDType));
     return result;
   }
@@ -178,11 +178,11 @@ NDArray<T> hamming<T extends AnySpec>(
   switch (resolvedDType) {
     case DType.float32:
       if (result.isContiguous) {
-        v_hamming_float(result.pointer.cast(), M);
+        v_hamming_float(result.pointer.cast(), m);
       } else {
-        final temp = NDArray<Float32>.create([M], DType.float32);
+        final temp = NDArray<Float32>.create([m], DType.float32);
         try {
-          v_hamming_float(temp.pointer.cast(), M);
+          v_hamming_float(temp.pointer.cast(), m);
           temp.copy(out: result as NDArray<Float32>);
         } finally {
           temp.dispose();
@@ -191,11 +191,11 @@ NDArray<T> hamming<T extends AnySpec>(
       return result;
     case DType.float64:
       if (result.isContiguous) {
-        v_hamming_double(result.pointer.cast(), M);
+        v_hamming_double(result.pointer.cast(), m);
       } else {
-        final temp = NDArray<Float64>.create([M], DType.float64);
+        final temp = NDArray<Float64>.create([m], DType.float64);
         try {
-          v_hamming_double(temp.pointer.cast(), M);
+          v_hamming_double(temp.pointer.cast(), m);
           temp.copy(out: result as NDArray<Float64>);
         } finally {
           temp.dispose();
@@ -215,9 +215,9 @@ NDArray<T> hamming<T extends AnySpec>(
     case DType.boolean:
     case DType.complex128:
     case DType.complex64:
-      final temp = NDArray<Float64>.create([M], DType.float64);
+      final temp = NDArray<Float64>.create([m], DType.float64);
       try {
-        v_hamming_double(temp.pointer.cast(), M);
+        v_hamming_double(temp.pointer.cast(), m);
         final casted = castNDArray(temp, resolvedDType);
         try {
           casted.copy(out: result);

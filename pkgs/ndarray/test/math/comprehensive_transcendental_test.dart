@@ -895,9 +895,9 @@ void main() {
   });
 
   group(
-    '7. Floating Point Classification & Properties (isnan, isinf, isfinite, copysign, isClose, allClose)',
+    '7. Floating Point Classification & Properties (isNan, isInf, isFinite, copySign, isClose, allClose)',
     () {
-      test('isnan on real, complex, integer, boolean', () {
+      test('isNan on real, complex, integer, boolean', () {
         NDArray.scope(() {
           final a64 = NDArray.fromList(
             [1.0, double.nan, 3.0, double.infinity],
@@ -920,21 +920,21 @@ void main() {
           );
           final i32 = NDArray.fromList([1, 2, 3], [3], DType.int32);
 
-          final res64 = isnan(a64);
+          final res64 = isNan(a64);
           expect(res64.dtype, DType.boolean);
           expect(res64.toList(), [false, true, false, false]);
 
-          expect(isnan(a32).toList(), [false, true, false]);
-          expect(isnan(c128).toList(), [false, true, true]);
-          expect(isnan(i32).toList(), [false, false, false]);
+          expect(isNan(a32).toList(), [false, true, false]);
+          expect(isNan(c128).toList(), [false, true, true]);
+          expect(isNan(i32).toList(), [false, false, false]);
 
-          // Strided isnan
+          // Strided isNan
           final strided = a64.slice([const Slice(start: 0, stop: 4, step: 2)]);
-          expect(isnan(strided).toList(), [false, false]);
+          expect(isNan(strided).toList(), [false, false]);
         });
       });
 
-      test('isinf on real, complex, integer', () {
+      test('isInf on real, complex, integer', () {
         NDArray.scope(() {
           final a64 = NDArray.fromList(
             [1.0, double.infinity, double.negativeInfinity, double.nan],
@@ -953,18 +953,18 @@ void main() {
           );
           final i32 = NDArray.fromList([1, 2], [2], DType.int32);
 
-          expect(isinf(a64).toList(), [false, true, true, false]);
-          expect(isinf(c128).toList(), [false, true, true, false]);
-          expect(isinf(i32).toList(), [false, false]);
+          expect(isInf(a64).toList(), [false, true, true, false]);
+          expect(isInf(c128).toList(), [false, true, true, false]);
+          expect(isInf(i32).toList(), [false, false]);
 
-          // Strided isinf
+          // Strided isInf
           final strided = a64.slice([const Slice(start: 0, stop: 4, step: 2)]);
-          expect(isinf(strided).toList(), [false, true]);
+          expect(isInf(strided).toList(), [false, true]);
         });
       });
 
       test(
-        'isfinite on real, complex, integer, boolean, float16, bfloat16',
+        'isFinite on real, complex, integer, boolean, float16, bfloat16',
         () {
           NDArray.scope(() {
             final a64 = NDArray.fromList(
@@ -986,23 +986,23 @@ void main() {
             final f16 = NDArray.fromList([1.0, 2.0], [2], DType.float16);
             final bf16 = NDArray.fromList([1.0, 2.0], [2], DType.bfloat16);
 
-            expect(isfinite(a64).toList(), [true, false, false, false, true]);
-            expect(isfinite(c128).toList(), [true, false, false]);
-            expect(isfinite(i32).toList(), [true, true]);
-            expect(isfinite(b).toList(), [true, true]);
-            expect(isfinite(f16).toList(), [true, true]);
-            expect(isfinite(bf16).toList(), [true, true]);
+            expect(isFinite(a64).toList(), [true, false, false, false, true]);
+            expect(isFinite(c128).toList(), [true, false, false]);
+            expect(isFinite(i32).toList(), [true, true]);
+            expect(isFinite(b).toList(), [true, true]);
+            expect(isFinite(f16).toList(), [true, true]);
+            expect(isFinite(bf16).toList(), [true, true]);
 
             // Strided
             final strided = a64.slice([
               const Slice(start: 0, stop: 5, step: 2),
             ]);
-            expect(isfinite(strided).toList(), [true, false, true]);
+            expect(isFinite(strided).toList(), [true, false, true]);
           });
         },
       );
 
-      test('copysign values, broadcasting, strided, error handling', () {
+      test('copySign values, broadcasting, strided, error handling', () {
         NDArray.scope(() {
           final x1 = NDArray.fromList(
             [1.0, -2.0, 3.0, -4.0],
@@ -1014,23 +1014,23 @@ void main() {
             [4],
             DType.float64,
           );
-          final res = copysign(x1, x2);
+          final res = copySign(x1, x2);
           expect(res.toList(), [-1.0, 2.0, -3.0, 4.0]);
 
           // Float32
           final x1F32 = NDArray.fromList([1.0, -2.0], [2], DType.float32);
           final x2F32 = NDArray.fromList([-1.0, 1.0], [2], DType.float32);
-          expect(copysign(x1F32, x2F32).toList(), [-1.0, 2.0]);
+          expect(copySign(x1F32, x2F32).toList(), [-1.0, 2.0]);
 
           // Int32
           final x1Int = NDArray.fromList([5, -10], [2], DType.int32);
           final x2Int = NDArray.fromList([-1, 1], [2], DType.int32);
-          expect(copysign(x1Int, x2Int).toList(), [-5, 10]);
+          expect(copySign(x1Int, x2Int).toList(), [-5, 10]);
 
           // Broadcasting: [2, 1] and [1, 2] -> [2, 2]
           final m1 = NDArray.fromList([5.0, -5.0], [2, 1], DType.float64);
           final m2 = NDArray.fromList([-1.0, 1.0], [1, 2], DType.float64);
-          final resBcast = copysign(m1, m2);
+          final resBcast = copySign(m1, m2);
           expect(resBcast.shape, [2, 2]);
           expect(resBcast.getCell([0, 0]), -5.0);
           expect(resBcast.getCell([0, 1]), 5.0);
@@ -1041,11 +1041,11 @@ void main() {
           final cArr = NDArray.fromList([Complex(1, 0)], [1], DType.complex128);
           final rArr = NDArray.fromList([1.0], [1], DType.float64);
           expect(
-            () => copysign(cArr.asAnySpec, rArr.asAnySpec),
+            () => copySign(cArr.asAnySpec, rArr.asAnySpec),
             throwsUnsupportedError,
           );
           expect(
-            () => copysign(rArr.asAnySpec, cArr.asAnySpec),
+            () => copySign(rArr.asAnySpec, cArr.asAnySpec),
             throwsUnsupportedError,
           );
         });
@@ -1153,7 +1153,7 @@ void main() {
         final i03D = i0(slice3D);
         expect(i03D.shape, [2, 2, 2]);
 
-        final isfinite3D = isfinite(slice3D);
+        final isfinite3D = isFinite(slice3D);
         expect(isfinite3D.shape, [2, 2, 2]);
         expect(isfinite3D.getCell([0, 0, 0]), isTrue);
       });
@@ -1201,7 +1201,7 @@ void main() {
           expect(() => hypot(a, b), throwsArgumentError);
           expect(() => logaddexp(a, b), throwsArgumentError);
           expect(() => logaddexp2(a, b), throwsArgumentError);
-          expect(() => copysign(a, b), throwsArgumentError);
+          expect(() => copySign(a, b), throwsArgumentError);
           expect(() => isClose(a, b), throwsArgumentError);
         });
       });

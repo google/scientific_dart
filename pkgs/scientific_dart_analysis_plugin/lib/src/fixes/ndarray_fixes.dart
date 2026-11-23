@@ -386,7 +386,7 @@ final class ReplaceWithUint64CompareFix extends ResolvedCorrectionProducer {
 
 /// Quick fix that casts the mismatched operand of a same-dtype operation to
 /// the dtype of the operation's reference operand, e.g. rewriting
-/// `add(f64, i32)` to `add(f64, i32.astype(DType.float64))`.
+/// `add(f64, i32)` to `add(f64, i32.asType(DType.float64))`.
 ///
 /// Output buffers (`out:` arguments) and whole-list arguments are not cast;
 /// the fix is only offered for operands that can meaningfully be converted.
@@ -394,7 +394,7 @@ final class CastOperandWithAstypeFix extends ResolvedCorrectionProducer {
   static const FixKind _castOperandKind = FixKind(
     'scientific_dart_analysis_plugin.fix.castOperandWithAstype',
     50,
-    'Cast operand with .astype(DType.{0})',
+    'Cast operand with .asType(DType.{0})',
   );
 
   List<String>? _fixArguments;
@@ -422,7 +422,7 @@ final class CastOperandWithAstypeFix extends ResolvedCorrectionProducer {
     if (enumName == null) return;
     _fixArguments = [enumName];
     final operand = mismatch.operand.expression;
-    final cast = '.astype(DType.$enumName)';
+    final cast = '.asType(DType.$enumName)';
 
     await builder.addDartFileEdit(file, (builder) {
       if (_needsReceiverParentheses(operand)) {

@@ -233,7 +233,7 @@ void main() {
       },
     );
 
-    test('H7: put_along_axis does not adopt caller array into local scope', () {
+    test('H7: putAlongAxis does not adopt caller array into local scope', () {
       late NDArray<Float64> callerArr;
 
       NDArray.scope(() {
@@ -243,7 +243,7 @@ void main() {
           DType.float64,
         );
 
-        // Execute put_along_axis inside an inner scope
+        // Execute putAlongAxis inside an inner scope
         NDArray.scope(() {
           final indices = NDArray.fromList([1, 0], [2, 1], DType.int32);
           final values = NDArray<Float64>.fromList(
@@ -251,7 +251,7 @@ void main() {
             [2, 1],
             DType.float64,
           );
-          put_along_axis(callerArr, indices, values, 1);
+          putAlongAxis(callerArr, indices, values, 1);
         });
 
         // After inner scope exits, callerArr must NOT be disposed!
@@ -265,7 +265,7 @@ void main() {
     });
 
     test(
-      'H7: take_along_axis does not dispose caller out array across scopes',
+      'H7: takeAlongAxis does not dispose caller out array across scopes',
       () {
         late NDArray<Float64> callerOut;
 
@@ -279,7 +279,7 @@ void main() {
 
           NDArray.scope(() {
             final indices = NDArray.fromList([1, 0], [2, 1], DType.int32);
-            take_along_axis(a, indices, 1, out: callerOut);
+            takeAlongAxis(a, indices, 1, out: callerOut);
           });
 
           expect(callerOut.isDisposed, isFalse);
@@ -348,50 +348,50 @@ void main() {
   });
 
   group('Workstream 4 - DX & Core APIs (M2)', () {
-    test('M2: astype() converts dtypes and respects copy parameter', () {
+    test('M2: asType() converts dtypes and respects copy parameter', () {
       final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
 
       // copy: false with matching dtype returns the identical instance
-      final same = a.astype(DType.int32, copy: false);
+      final same = a.asType(DType.int32, copy: false);
       expect(identical(same, a), isTrue);
 
       // copy: true with matching dtype returns a new copy
-      final copied = a.astype(DType.int32, copy: true);
+      final copied = a.asType(DType.int32, copy: true);
       expect(identical(copied, a), isFalse);
       expect(copied.dtype, DType.int32);
       expect(copied.toList(), [1, 2, 3]);
 
       // Convert Int32 -> Float64
-      final asFloat = a.astype(DType.float64);
+      final asFloat = a.asType(DType.float64);
       expect(asFloat.dtype, DType.float64);
       expect(asFloat.toList(), [1.0, 2.0, 3.0]);
 
       // Convert Float64 -> Int32 (truncation)
       final f = NDArray.fromList([1.7, 2.4, -3.9], [3], DType.float64);
-      final truncated = f.astype(DType.int32);
+      final truncated = f.asType(DType.int32);
       expect(truncated.dtype, DType.int32);
       expect(truncated.toList(), [1, 2, -3]);
 
       // Convert Int64 -> Boolean (non-zero -> true)
       final ints = NDArray.fromList([0, 5, -1, 0], [4], DType.int64);
-      final bools = ints.astype(DType.boolean);
+      final bools = ints.asType(DType.boolean);
       expect(bools.dtype, DType.boolean);
       expect(bools.toList(), [false, true, true, false]);
 
       // Convert Boolean -> Int32 (true -> 1, false -> 0)
-      final boolInts = bools.astype(DType.int32);
+      final boolInts = bools.asType(DType.int32);
       expect(boolInts.dtype, DType.int32);
       expect(boolInts.toList(), [0, 1, 1, 0]);
 
-      // Top-level astype function
-      final topLevel = astype(a, DType.float32);
+      // Top-level asType function
+      final topLevel = asType(a, DType.float32);
       expect(topLevel.dtype, DType.float32);
       expect(topLevel.toList(), [1.0, 2.0, 3.0]);
 
       // Disposed array throws StateError
       copied.dispose();
-      expect(() => copied.astype(DType.float64), throwsStateError);
-      expect(() => astype(copied, DType.float64), throwsStateError);
+      expect(() => copied.asType(DType.float64), throwsStateError);
+      expect(() => asType(copied, DType.float64), throwsStateError);
     });
 
     test('M2: toString() formats 0D, 1D, 2D, and large truncated arrays', () {
@@ -606,14 +606,14 @@ void main() {
       );
 
       test(
-        'nanstd with axis: null and keepdims: true returns 1D/scalar array',
+        'nanstd with axis: null and keepDims: true returns 1D/scalar array',
         () {
           final a = NDArray.fromList(
             [1.0, 2.0, double.nan, 3.0],
             [4],
             DType.float64,
           );
-          final s = nanstd(a, keepdims: true);
+          final s = nanstd(a, keepDims: true);
           expect(s.shape, [1]);
           expect(s.getCellFlat(0), closeTo(0.816496, 1e-4));
           a.dispose();

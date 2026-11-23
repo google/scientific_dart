@@ -245,7 +245,7 @@ void main() {
       expect(r.data[4], -0.0);
       expect(r.data[5], -1.0);
 
-      final f = fix(a);
+      final f = trunc(a);
       expect(f.data, r.data);
     });
 

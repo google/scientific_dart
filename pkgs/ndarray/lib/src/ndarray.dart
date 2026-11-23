@@ -88,7 +88,7 @@ abstract interface class ElementOf<E> implements DTypeTag {}
 /// [Float32] and [Complex64] project to [Float32]; every other tag — the half
 /// floats, the integers and [Boolean] included — projects to [Float64].
 /// Operations that produce a real floating-point result from any input, such
-/// as `imag`, `angle`, `rint`, `trunc`, `norm`, `eigvalsh` and the inverse
+/// as `imag`, `angle`, `rint`, `trunc`, `norm`, `eigValuesH` and the inverse
 /// real FFTs (`irfft`, `hfft`), return `NDArray<R>`.
 abstract interface class RealFloatOf<R extends DTypeTag> implements DTypeTag {}
 
@@ -96,7 +96,7 @@ abstract interface class RealFloatOf<R extends DTypeTag> implements DTypeTag {}
 ///
 /// [Float32] and [Complex64] project to [Complex64]; every other tag projects
 /// to [Complex128]. Operations that produce a complex result from any input,
-/// such as the complex FFTs (`fft`, `ifft`, `rfft`, `fftn`), `eig`, `eigvals`
+/// such as the complex FFTs (`fft`, `ifft`, `rfft`, `fftn`), `eig`, `eigValues`
 /// and the polynomial root finders (`roots`, `chebroots`), return
 /// `NDArray<R>`.
 abstract interface class ComplexOf<R extends DTypeTag> implements DTypeTag {}
@@ -1902,42 +1902,18 @@ sealed class NDArray<T extends DTypeTag>
         'Must be a TypedData matching $dtype for shape $shape ($totalSize elements)',
       );
     }
+    final byteCount = totalSize * dtype.byteWidth;
+    final Uint8List? srcBytes = totalSize > 0 && dtype != DType.boolean
+        ? data.buffer.asUint8List(data.offsetInBytes, byteCount)
+        : null;
     final arr = NDArray<T>.create(shape, dtype);
     if (totalSize == 0) return arr;
-    try {
-      if (dtype == DType.boolean) {
-        final src = data as Uint8List;
-        if (isWasmRuntime) {
-          final dst = arr._pointer.cast<ffi.Uint8>();
-          for (var i = 0; i < totalSize; i++) {
-            dst[i] = src[i] != 0 ? 1 : 0;
-          }
-        } else {
-          final dst = arr._pointer.cast<ffi.Uint8>().asTypedList(totalSize);
-          for (var i = 0; i < totalSize; i++) {
-            dst[i] = src[i] != 0 ? 1 : 0;
-          }
-        }
-      } else {
-        final byteCount = totalSize * dtype.byteWidth;
-        final srcBytes = data.buffer.asUint8List(data.offsetInBytes, byteCount);
-        if (isWasmRuntime) {
-          final dst = arr._pointer.cast<ffi.Uint8>();
-          for (var i = 0; i < byteCount; i++) {
-            dst[i] = srcBytes[i];
-          }
-        } else {
-          arr._pointer
-              .cast<ffi.Uint8>()
-              .asTypedList(byteCount)
-              .setAll(0, srcBytes);
-        }
-      }
-      return arr;
-    } catch (_) {
-      arr.dispose();
-      rethrow;
+    if (dtype == DType.boolean) {
+      _copyBoolBytesToNative(arr._pointer, data as Uint8List, totalSize);
+    } else {
+      _copyBytesToNative(arr._pointer, srcBytes!, byteCount);
     }
+    return arr;
   }
 
   /// Factory to create a C-contiguous array by bulk-copying raw host-endian
@@ -1974,36 +1950,105 @@ sealed class NDArray<T extends DTypeTag>
     }
     final arr = NDArray<T>.create(shape, dtype);
     if (expectedBytes == 0) return arr;
-    try {
-      if (dtype == DType.boolean) {
-        if (isWasmRuntime) {
-          final dst = arr._pointer.cast<ffi.Uint8>();
-          for (var i = 0; i < totalSize; i++) {
-            dst[i] = bytes[i] != 0 ? 1 : 0;
-          }
-        } else {
-          final dst = arr._pointer.cast<ffi.Uint8>().asTypedList(totalSize);
-          for (var i = 0; i < totalSize; i++) {
-            dst[i] = bytes[i] != 0 ? 1 : 0;
-          }
-        }
-      } else if (isWasmRuntime) {
-        final dst = arr._pointer.cast<ffi.Uint8>();
-        for (var i = 0; i < expectedBytes; i++) {
-          dst[i] = bytes[i];
-        }
-      } else {
-        arr._pointer
-            .cast<ffi.Uint8>()
-            .asTypedList(expectedBytes)
-            .setAll(0, bytes);
+    if (dtype == DType.boolean) {
+      _copyBoolBytesToNative(arr._pointer, bytes, totalSize);
+    } else {
+      _copyBytesToNative(arr._pointer, bytes, expectedBytes);
+    }
+    return arr;
+  }
+
+  static void _copyBytesToNative(
+    ffi.Pointer<ffi.Void> dst,
+    Uint8List src,
+    int byteCount,
+  ) {
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      final out = dst.cast<ffi.Uint8>();
+      for (var i = 0; i < byteCount; i++) {
+        out[i] = src[i];
       }
-      return arr;
-    } catch (_) {
-      arr.dispose();
-      rethrow;
+      return;
+    }
+    // coverage:ignore-end
+    dst.cast<ffi.Uint8>().asTypedList(byteCount).setAll(0, src);
+  }
+
+  static void _copyBoolBytesToNative(
+    ffi.Pointer<ffi.Void> dst,
+    Uint8List src,
+    int count,
+  ) {
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      final out = dst.cast<ffi.Uint8>();
+      for (var i = 0; i < count; i++) {
+        out[i] = src[i] != 0 ? 1 : 0;
+      }
+      return;
+    }
+    // coverage:ignore-end
+    final out = dst.cast<ffi.Uint8>().asTypedList(count);
+    for (var i = 0; i < count; i++) {
+      out[i] = src[i] != 0 ? 1 : 0;
     }
   }
+
+  static void _copyNativeToBytes(
+    Uint8List dst,
+    ffi.Pointer<ffi.Void> src,
+    int byteCount,
+  ) {
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      final inp = src.cast<ffi.Uint8>();
+      for (var i = 0; i < byteCount; i++) {
+        dst[i] = inp[i];
+      }
+      return;
+    }
+    // coverage:ignore-end
+    dst.setAll(0, src.cast<ffi.Uint8>().asTypedList(byteCount));
+  }
+
+  static TypedData _allocateTypedData(DType<DTypeTag> dtype, int count) =>
+      switch (dtype) {
+        DType.float64 => Float64List(count),
+        DType.float32 => Float32List(count),
+        DType.float16 || DType.bfloat16 => Uint16List(count),
+        DType.int64 => Int64List(count),
+        DType.int32 => Int32List(count),
+        DType.int16 => Int16List(count),
+        DType.int8 => Int8List(count),
+        DType.uint64 => Uint64List(count),
+        DType.uint32 => Uint32List(count),
+        DType.uint16 => Uint16List(count),
+        DType.uint8 => Uint8List(count),
+        DType.complex128 => Float64List(count * 2),
+        DType.complex64 => Float32List(count * 2),
+        DType.boolean => Uint8List(count),
+      };
+
+  static TypedData _asUnmodifiableTypedData(
+    DType<DTypeTag> dtype,
+    TypedData view,
+  ) => switch (dtype) {
+    DType.float64 ||
+    DType.complex128 => (view as Float64List).asUnmodifiableView(),
+    DType.float32 ||
+    DType.complex64 => (view as Float32List).asUnmodifiableView(),
+    DType.float16 ||
+    DType.bfloat16 ||
+    DType.uint16 => (view as Uint16List).asUnmodifiableView(),
+    DType.int64 => (view as Int64List).asUnmodifiableView(),
+    DType.int32 => (view as Int32List).asUnmodifiableView(),
+    DType.int16 => (view as Int16List).asUnmodifiableView(),
+    DType.int8 => (view as Int8List).asUnmodifiableView(),
+    DType.uint64 => (view as Uint64List).asUnmodifiableView(),
+    DType.uint32 => (view as Uint32List).asUnmodifiableView(),
+    DType.uint8 || DType.boolean => (view as Uint8List).asUnmodifiableView(),
+  };
 
   /// Factory to create a 0-dimensional scalar array containing a single [value].
   ///
@@ -2638,7 +2683,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/ndarray_example.dart lang=dart}
-  NDArray<R> astype<R extends DTypeTag>(
+  NDArray<R> asType<R extends DTypeTag>(
     DType<R> targetDType, {
     bool copy = true,
   }) {
@@ -4043,7 +4088,6 @@ sealed class NDArray<T extends DTypeTag>
       }
 
       NDArray? broadcastedVal;
-      NDArray? tempCopy;
       try {
         NDArray? valArr;
         if (value is NDArray) {
@@ -4052,10 +4096,6 @@ sealed class NDArray<T extends DTypeTag>
           } else {
             broadcastedVal = ops.broadcastTo(value, targetShape);
             valArr = broadcastedVal;
-          }
-          if (helpers.sharesMemory(this, valArr)) {
-            tempCopy = valArr.copy();
-            valArr = tempCopy;
           }
         } else {
           valArr = null;
@@ -4115,7 +4155,6 @@ sealed class NDArray<T extends DTypeTag>
         walk(0, 0);
       } finally {
         broadcastedVal?.dispose();
-        tempCopy?.dispose();
       }
     }
   }
@@ -4492,7 +4531,7 @@ sealed class NDArray<T extends DTypeTag>
   /// The result dtype of every operator is a function of the dtype of `this`
   /// alone, so an array operand of a different dtype or an
   /// out-of-range/incompatible scalar is rejected with [ArgumentError]: cast
-  /// operands explicitly with `.astype(...)` for mixed-dtype arithmetic or
+  /// operands explicitly with `.asType(...)` for mixed-dtype arithmetic or
   /// comparisons. A scalar [other] is wrapped as a 0-D broadcastable array of
   /// this array's dtype in the [ScratchArena] for the duration of [fn].
   R _withSameDTypeOperand<R>(
@@ -4506,7 +4545,7 @@ sealed class NDArray<T extends DTypeTag>
         'other',
         'Must have the same dtype as the receiver ($dtype) for operator '
             '$operator, but has dtype ${other.dtype}. Cast explicitly with '
-            '.astype(...) before combining arrays of different dtypes.',
+            '.asType(...) before combining arrays of different dtypes.',
       );
     }
     return _withWrappedScalar(other, (otherArr) {
@@ -4544,7 +4583,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise addition with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert dtypes.
+  /// must have the same dtype as this array; use `.asType(...)` to convert dtypes.
   NDArray<T> operator +(Object? other) => _withSameDTypeOperand(
     other,
     '+',
@@ -4554,7 +4593,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise subtraction with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes.
   NDArray<T> operator -(Object? other) => _withSameDTypeOperand(
     other,
@@ -4565,7 +4604,7 @@ sealed class NDArray<T extends DTypeTag>
   /// Element-wise multiplication with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes.
   NDArray<T> operator *(Object? other) => _withSameDTypeOperand(
     other,
@@ -4610,7 +4649,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4651,7 +4690,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4691,7 +4730,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4731,7 +4770,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -4776,7 +4815,7 @@ sealed class NDArray<T extends DTypeTag>
   /// **Preconditions:**
   /// - The shape of [other] (or this array) must be broadcast-compatible with the other.
   /// - An array [other] must have the same dtype as this array (cast with
-  ///   `.astype(...)` to compare across dtypes); a scalar [other] must be
+  ///   `.asType(...)` to compare across dtypes); a scalar [other] must be
   ///   representable in this array's dtype, except that an integer scalar
   ///   outside the range of an integer dtype compares by value. Violations
   ///   throw an [ArgumentError], exactly as for `+`.
@@ -5143,14 +5182,7 @@ sealed class NDArray<T extends DTypeTag>
     }
     final byteCount = n * dtype.byteWidth;
     final out = Uint8List(byteCount);
-    if (isWasmRuntime) {
-      final src = _pointer.cast<ffi.Uint8>();
-      for (var i = 0; i < byteCount; i++) {
-        out[i] = src[i];
-      }
-    } else {
-      out.setAll(0, _pointer.cast<ffi.Uint8>().asTypedList(byteCount));
-    }
+    _copyNativeToBytes(out, _pointer, byteCount);
     return out;
   }
 
@@ -5181,12 +5213,14 @@ sealed class NDArray<T extends DTypeTag>
         'Call copy() first or use toBytes().',
       );
     }
+    // coverage:ignore-start
     if (isWasmRuntime) {
       throw UnsupportedError(
         'asBytesView() is not supported when compiled to WebAssembly; '
         'use toBytes() instead.',
       );
     }
+    // coverage:ignore-end
     final n = size;
     if (n == 0) {
       final empty = Uint8List(0);
@@ -5217,33 +5251,10 @@ sealed class NDArray<T extends DTypeTag>
       }
     }
     final n = size;
-    final TypedData result = switch (dtype) {
-      DType.float64 => Float64List(n),
-      DType.float32 => Float32List(n),
-      DType.float16 || DType.bfloat16 => Uint16List(n),
-      DType.int64 => Int64List(n),
-      DType.int32 => Int32List(n),
-      DType.int16 => Int16List(n),
-      DType.int8 => Int8List(n),
-      DType.uint64 => Uint64List(n),
-      DType.uint32 => Uint32List(n),
-      DType.uint16 => Uint16List(n),
-      DType.uint8 => Uint8List(n),
-      DType.complex128 => Float64List(n * 2),
-      DType.complex64 => Float32List(n * 2),
-      DType.boolean => Uint8List(n),
-    };
+    final result = _allocateTypedData(dtype, n);
     if (n == 0) return result;
     final byteCount = n * dtype.byteWidth;
-    final dstBytes = result.buffer.asUint8List();
-    if (isWasmRuntime) {
-      final src = _pointer.cast<ffi.Uint8>();
-      for (var i = 0; i < byteCount; i++) {
-        dstBytes[i] = src[i];
-      }
-    } else {
-      dstBytes.setAll(0, _pointer.cast<ffi.Uint8>().asTypedList(byteCount));
-    }
+    _copyNativeToBytes(result.buffer.asUint8List(), _pointer, byteCount);
     return result;
   }
 
@@ -5259,37 +5270,19 @@ sealed class NDArray<T extends DTypeTag>
         'Call copy() first or use toTypedData().',
       );
     }
+    // coverage:ignore-start
     if (isWasmRuntime) {
       throw UnsupportedError(
         'asTypedDataView() is not supported when compiled to WebAssembly; '
         'use toTypedData() instead.',
       );
     }
+    // coverage:ignore-end
     final n = size;
     final writeable = isWriteable;
     if (n == 0) {
-      return switch (dtype) {
-        DType.float64 || DType.complex128 =>
-          writeable ? Float64List(0) : Float64List(0).asUnmodifiableView(),
-        DType.float32 || DType.complex64 =>
-          writeable ? Float32List(0) : Float32List(0).asUnmodifiableView(),
-        DType.float16 || DType.bfloat16 || DType.uint16 =>
-          writeable ? Uint16List(0) : Uint16List(0).asUnmodifiableView(),
-        DType.int64 =>
-          writeable ? Int64List(0) : Int64List(0).asUnmodifiableView(),
-        DType.int32 =>
-          writeable ? Int32List(0) : Int32List(0).asUnmodifiableView(),
-        DType.int16 =>
-          writeable ? Int16List(0) : Int16List(0).asUnmodifiableView(),
-        DType.int8 =>
-          writeable ? Int8List(0) : Int8List(0).asUnmodifiableView(),
-        DType.uint64 =>
-          writeable ? Uint64List(0) : Uint64List(0).asUnmodifiableView(),
-        DType.uint32 =>
-          writeable ? Uint32List(0) : Uint32List(0).asUnmodifiableView(),
-        DType.uint8 || DType.boolean =>
-          writeable ? Uint8List(0) : Uint8List(0).asUnmodifiableView(),
-      };
+      final empty = _allocateTypedData(dtype, 0);
+      return writeable ? empty : _asUnmodifiableTypedData(dtype, empty);
     }
     final TypedData view = switch (dtype) {
       DType.float64 => _pointer.cast<ffi.Double>().asTypedList(n),
@@ -5309,23 +5302,7 @@ sealed class NDArray<T extends DTypeTag>
     };
     _dataOwnerExpando[view] = _rootParent;
     if (!writeable) {
-      final TypedData readOnly = switch (dtype) {
-        DType.float64 ||
-        DType.complex128 => (view as Float64List).asUnmodifiableView(),
-        DType.float32 ||
-        DType.complex64 => (view as Float32List).asUnmodifiableView(),
-        DType.float16 ||
-        DType.bfloat16 ||
-        DType.uint16 => (view as Uint16List).asUnmodifiableView(),
-        DType.int64 => (view as Int64List).asUnmodifiableView(),
-        DType.int32 => (view as Int32List).asUnmodifiableView(),
-        DType.int16 => (view as Int16List).asUnmodifiableView(),
-        DType.int8 => (view as Int8List).asUnmodifiableView(),
-        DType.uint64 => (view as Uint64List).asUnmodifiableView(),
-        DType.uint32 => (view as Uint32List).asUnmodifiableView(),
-        DType.uint8 ||
-        DType.boolean => (view as Uint8List).asUnmodifiableView(),
-      };
+      final readOnly = _asUnmodifiableTypedData(dtype, view);
       _dataOwnerExpando[readOnly] = _rootParent;
       return readOnly;
     }
@@ -5347,7 +5324,7 @@ sealed class NDArray<T extends DTypeTag>
     final n = size;
     if (n == 0) return <Object?>[];
     if (isContiguous) {
-      return List<Object?>.generate(n, (i) => _data[offsetElements + i]);
+      return List<Object?>.of(_data);
     }
     final result = <Object?>[];
     _fillListRecursive(this, List<int>.filled(shape.length, 0), 0, result);
@@ -5500,7 +5477,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/shape_examples.dart lang=dart}
-  NDArray<T> swapaxes(int axis1, int axis2) {
+  NDArray<T> swapAxes(int axis1, int axis2) {
     final rank = shape.length;
     if (axis1 < -rank || axis1 >= rank) {
       throw RangeError.range(axis1, -rank, rank - 1, 'axis1');
@@ -5542,7 +5519,7 @@ sealed class NDArray<T extends DTypeTag>
   ///
   /// **Example:**
   /// {@example /example/shape_examples.dart lang=dart}
-  NDArray<T> moveaxis(Object source, Object destination) {
+  NDArray<T> moveAxis(Object source, Object destination) {
     final rank = shape.length;
 
     List<int> srcList;
@@ -6201,7 +6178,7 @@ extension NDArrayDivide<T extends DivideOf<M>, M extends DTypeTag>
   /// Element-wise true division with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   ///
   /// Division by zero follows IEEE 754 rules (`±infinity` or `nan`); integer
@@ -6230,7 +6207,7 @@ extension NDArrayBitwise<T extends BitwiseDType> on NDArray<T> {
   /// Element-wise bitwise AND with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   ///
   /// **Example:**
@@ -6332,7 +6309,7 @@ extension NDArrayShift<T extends IntegerDType> on NDArray<T> {
   /// Element-wise left shift with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   ///
   /// **Example:**
@@ -6777,9 +6754,6 @@ sealed class Selector {
   const Selector();
 }
 
-/// Alias for [Selector] representing an indexing specification.
-typedef IndexSpec = Selector;
-
 /// Selects a single index along a dimension of an [NDArray], reducing the rank of the resulting array by 1.
 ///
 /// **Preconditions:**
@@ -6967,11 +6941,7 @@ extension NDArrayElements<T extends ElementOf<E>, E> on NDArray<T> {
     final n = size;
     if (n == 0) return <E>[];
     if (isContiguous) {
-      final raw = _data;
-      if (offsetElements == 0 && raw.length == n && raw is List<E>) {
-        return List<E>.of(raw);
-      }
-      return List<E>.generate(n, (i) => raw[offsetElements + i] as E);
+      return List<E>.of(_data as List<E>);
     }
     return List<E>.from(toListRaw());
   }
@@ -7370,7 +7340,7 @@ extension NDArrayBaseDivide on NDArray<DTypeTag> {
   /// Element-wise true division with full broadcasting support.
   ///
   /// A scalar [other] is converted to this array's dtype. An array [other]
-  /// must have the same dtype as this array; use `.astype(...)` to convert
+  /// must have the same dtype as this array; use `.asType(...)` to convert
   /// dtypes. Violations throw an [ArgumentError], exactly as for `+`.
   NDArray<DTypeTag> operator /(Object? other) => _withSameDTypeOperand(
     other,

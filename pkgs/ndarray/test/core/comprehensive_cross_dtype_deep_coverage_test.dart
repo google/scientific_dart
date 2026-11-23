@@ -106,7 +106,7 @@ void main() {
     }
 
     test(
-      'Deep Linear Algebra - solve, lstsq, eig, eigh, eigvals, eigvalsh, qr, svd, cholesky',
+      'Deep Linear Algebra - solve, lstsq, eig, eigh, eigValues, eigValuesH, qr, svd, cholesky',
       () {
         NDArray.scope(() {
           for (final dt in floatAndComplexDTypes) {
@@ -142,11 +142,11 @@ void main() {
             expect(lst.x.shape, [2]);
             lst.dispose();
 
-            // eigvals & eigvalsh
-            final ev = eigvals(a2d);
+            // eigValues & eigValuesH
+            final ev = eigValues(a2d);
             expect(ev.shape, [2]);
 
-            final evh = eigvalsh(a2d);
+            final evh = eigValuesH(a2d);
             expect(evh.shape, [2]);
 
             // qr
@@ -169,7 +169,7 @@ void main() {
     );
 
     test(
-      'Deep Statistics Reductions across all 15 DTypes with axis variations, keepdims, ddof, and out buffers',
+      'Deep Statistics Reductions across all 15 DTypes with axis variations, keepDims, ddof, and out buffers',
       () {
         NDArray.scope(() {
           for (final dt in numericDTypes) {
@@ -183,17 +183,17 @@ void main() {
               final m0 = mean(a2d, axis: 0);
               expect(m0.shape, [4]);
 
-              final m1 = mean(a2d, axis: 1, keepdims: true);
+              final m1 = mean(a2d, axis: 1, keepDims: true);
               expect(m1.shape, [3, 1]);
 
-              // std & var_
+              // std & variance
               final sAll = std(a2d);
               expect(sAll.shape, <int>[]);
 
               final s0 = std(a2d, axis: 0, ddof: 1);
               expect(s0.shape, [4]);
 
-              final v1 = var_(a2d, axis: 1, keepdims: true);
+              final v1 = variance(a2d, axis: 1, keepDims: true);
               expect(v1.shape, [3, 1]);
 
               // ptp
@@ -214,7 +214,7 @@ void main() {
               final p50 = percentile(a2d, 50.0);
               expect(p50.shape, <int>[]);
 
-              final p25 = percentile(a2d, 25.0, axis: 0, keepdims: true);
+              final p25 = percentile(a2d, 25.0, axis: 0, keepDims: true);
               expect(p25.shape, [1, 4]);
 
               final q50 = quantile(a2d, 0.5);
@@ -263,7 +263,7 @@ void main() {
             final nm0 = nanmean(arr, axis: 0);
             expect(nm0.shape, [4]);
 
-            final nm1 = nanmean(arr, axis: 1, keepdims: true);
+            final nm1 = nanmean(arr, axis: 1, keepDims: true);
             expect(nm1.shape, [3, 1]);
 
             // nanstd & nanvar
@@ -273,7 +273,7 @@ void main() {
             final nstd0 = nanstd(arr, axis: 0);
             expect(nstd0.shape, [4]);
 
-            final nvar1 = nanvar(arr, axis: 1, keepdims: true);
+            final nvar1 = nanvar(arr, axis: 1, keepDims: true);
             expect(nvar1.shape, [3, 1]);
 
             // nanmin & nanmax
@@ -283,7 +283,7 @@ void main() {
             final nmin0 = nanmin(arr, axis: 0);
             expect(nmin0.shape, [4]);
 
-            final nmax1 = nanmax(arr, axis: 1, keepdims: true);
+            final nmax1 = nanmax(arr, axis: 1, keepDims: true);
             expect(nmax1.shape, [3, 1]);
 
             // nansum
@@ -293,7 +293,7 @@ void main() {
             final nsum0 = nansum(arr, axis: 0);
             expect(nsum0.shape, [4]);
 
-            final nsum1 = nansum(arr, axis: 1, keepdims: true);
+            final nsum1 = nansum(arr, axis: 1, keepDims: true);
             expect(nsum1.shape, [3, 1]);
           }
         });
@@ -370,7 +370,7 @@ void main() {
             final red0 = floatArr.reduce(op: op, axis: 0);
             expect(red0.shape, [3]);
 
-            final red1 = floatArr.reduce(op: op, axis: 1, keepdims: true);
+            final red1 = floatArr.reduce(op: op, axis: 1, keepDims: true);
             expect(red1.shape, [2, 1]);
 
             // accumulate
@@ -380,9 +380,9 @@ void main() {
             final acc1 = floatArr.accumulate(op: op, axis: 1);
             expect(acc1.shape, [2, 3]);
 
-            // reduceat
+            // reduceAt
             final indices = NDArray.fromList([0, 2], [2], DType.int64);
-            final redAt = reduceatUfunc(floatArr, indices, op: op, axis: 1);
+            final redAt = reduceAtUfunc(floatArr, indices, op: op, axis: 1);
             expect(redAt.shape, [2, 2]);
           }
 

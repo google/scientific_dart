@@ -234,21 +234,21 @@ void main() {
     );
   });
 
-  group('Issue #2: reduceatUfunc Index Bounds Validation & Normalization', () {
+  group('Issue #2: reduceAtUfunc Index Bounds Validation & Normalization', () {
     test(
-      'reduceat throws RangeError when indices is non-empty on an empty axis',
+      'reduceAt throws RangeError when indices is non-empty on an empty axis',
       () {
         NDArray.scope(() {
           final empty1D = NDArray<Float64>.zeros([0], DType.float64);
           final indices = NDArray.fromList([0], [1], DType.int64);
           expect(
-            () => empty1D.reduceat(indices, op: BinaryOp.add),
+            () => empty1D.reduceAt(indices, op: BinaryOp.add),
             throwsRangeError,
           );
 
           final emptyAxis1 = NDArray<Float64>.zeros([2, 0], DType.float64);
           expect(
-            () => emptyAxis1.reduceat(indices, op: BinaryOp.add, axis: 1),
+            () => emptyAxis1.reduceAt(indices, op: BinaryOp.add, axis: 1),
             throwsRangeError,
           );
         });
@@ -256,7 +256,7 @@ void main() {
     );
 
     test(
-      'reduceat throws RangeError on out-of-bounds positive or negative indices',
+      'reduceAt throws RangeError on out-of-bounds positive or negative indices',
       () {
         NDArray.scope(() {
           final a1D = NDArray<Float64>.fromList(
@@ -268,11 +268,11 @@ void main() {
           final oobNeg = NDArray.fromList([-5, 1], [2], DType.int64);
 
           expect(
-            () => a1D.reduceat(oobPos, op: BinaryOp.add),
+            () => a1D.reduceAt(oobPos, op: BinaryOp.add),
             throwsRangeError,
           );
           expect(
-            () => a1D.reduceat(oobNeg, op: BinaryOp.add),
+            () => a1D.reduceAt(oobNeg, op: BinaryOp.add),
             throwsRangeError,
           );
 
@@ -280,11 +280,11 @@ void main() {
           final oob2DPos = NDArray.fromList([0, 2], [2], DType.int64);
           final oob2DNeg = NDArray.fromList([-3, 0], [2], DType.int64);
           expect(
-            () => a2D.reduceat(oob2DPos, op: BinaryOp.add, axis: 1),
+            () => a2D.reduceAt(oob2DPos, op: BinaryOp.add, axis: 1),
             throwsRangeError,
           );
           expect(
-            () => a2D.reduceat(oob2DNeg, op: BinaryOp.add, axis: 0),
+            () => a2D.reduceAt(oob2DNeg, op: BinaryOp.add, axis: 0),
             throwsRangeError,
           );
         });
@@ -292,7 +292,7 @@ void main() {
     );
 
     test(
-      'reduceat normalizes valid negative indices without mutating indices',
+      'reduceAt normalizes valid negative indices without mutating indices',
       () {
         NDArray.scope(() {
           final a1D = NDArray<Float64>.fromList(
@@ -303,8 +303,8 @@ void main() {
           final negIndices = NDArray.fromList([-4, -2], [2], DType.int64);
           final posIndices = NDArray.fromList([1, 3], [2], DType.int64);
 
-          final resNeg = a1D.reduceat(negIndices, op: BinaryOp.add);
-          final resPos = a1D.reduceat(posIndices, op: BinaryOp.add);
+          final resNeg = a1D.reduceAt(negIndices, op: BinaryOp.add);
+          final resPos = a1D.reduceAt(posIndices, op: BinaryOp.add);
 
           expect(
             [

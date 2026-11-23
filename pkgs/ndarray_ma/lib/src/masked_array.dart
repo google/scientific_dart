@@ -191,8 +191,8 @@ final class MaskedArray<T extends DTypeTag> {
   /// set to `true`).
   factory MaskedArray.maskedInvalid(NDArray<T> data, {Object? fillValue}) {
     return NDArray.scope(() {
-      final nanMask = ndops.isnan(data);
-      final infMask = ndops.isinf(data);
+      final nanMask = ndops.isNan(data);
+      final infMask = ndops.isInf(data);
       final mask = ndops.logicalOr(nanMask, infMask);
       return MaskedArray(
         data,
@@ -514,12 +514,12 @@ final class MaskedArray<T extends DTypeTag> {
   ///
   /// The mask is copied, and [fillValue] is coerced to the new dtype (falling
   /// back to the default fill value of [dtype] when it cannot be represented).
-  MaskedArray<R> astype<R extends DTypeTag, Out extends R>(
+  MaskedArray<R> asType<R extends DTypeTag, Out extends R>(
     DType<R> dtype, {
     MaskedArray<Out>? out,
   }) {
     return NDArray.scope(() {
-      final converted = data.astype(dtype);
+      final converted = data.asType(dtype);
       final maskCopy = mask.copy();
       return _writeOrCreateMaskedArray<R>(
         converted,
@@ -541,7 +541,7 @@ final class MaskedArray<T extends DTypeTag> {
   ///
   /// A scalar [other] is converted to this array's dtype. A [MaskedArray] or
   /// [NDArray] operand must have the same dtype as this array; cast explicitly
-  /// with [astype] before combining arrays of different dtypes. The result
+  /// with [asType] before combining arrays of different dtypes. The result
   /// mask is the logical OR of both operand masks.
   MaskedArray<T> add(Object? other, {MaskedArray<T>? out}) =>
       _maAdd<T>(this, other, out: out);

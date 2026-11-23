@@ -779,7 +779,7 @@ void nanReduceRecursive<T extends DTypeTag>(
   List<int> coordRes,
   int axis,
   int dim, {
-  bool keepdims = false,
+  bool keepDims = false,
 }) {
   if (dim == a.shape.length) {
     final val = a.getCell(coordA);
@@ -791,7 +791,7 @@ void nanReduceRecursive<T extends DTypeTag>(
     return;
   }
   if (dim == axis) {
-    if (keepdims) coordRes[axis] = 0;
+    if (keepDims) coordRes[axis] = 0;
     for (var i = 0; i < a.shape[axis]; i++) {
       coordA[dim] = i;
       nanReduceRecursive<T>(
@@ -802,11 +802,11 @@ void nanReduceRecursive<T extends DTypeTag>(
         coordRes,
         axis,
         dim + 1,
-        keepdims: keepdims,
+        keepDims: keepDims,
       );
     }
   } else {
-    final resDim = keepdims ? dim : (dim < axis ? dim : dim - 1);
+    final resDim = keepDims ? dim : (dim < axis ? dim : dim - 1);
     for (var i = 0; i < a.shape[dim]; i++) {
       coordA[dim] = i;
       coordRes[resDim] = i;
@@ -818,7 +818,7 @@ void nanReduceRecursive<T extends DTypeTag>(
         coordRes,
         axis,
         dim + 1,
-        keepdims: keepdims,
+        keepDims: keepDims,
       );
     }
   }

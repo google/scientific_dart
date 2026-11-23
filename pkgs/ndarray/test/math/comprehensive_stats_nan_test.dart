@@ -163,8 +163,8 @@ void main() {
         });
       });
 
-      group('std and var_ / variance', () {
-        test('std and var_ 1D, 2D, 3D ddof=0 and ddof=1', () {
+      group('std and variance / variance', () {
+        test('std and variance 1D, 2D, 3D ddof=0 and ddof=1', () {
           NDArray.scope(() {
             // [1, 2, 3, 4] -> mean = 2.5
             // population var (ddof=0): ((1-2.5)^2 + (2-2.5)^2 + (3-2.5)^2 + (4-2.5)^2) / 4 = (2.25 + 0.25 + 0.25 + 2.25) / 4 = 1.25
@@ -175,12 +175,12 @@ void main() {
               DType.float64,
             );
 
-            final v0 = var_(a, ddof: 0);
+            final v0 = variance(a, ddof: 0);
             expect(v0.scalar, closeTo(1.25, 1e-9));
             final s0 = std(a, ddof: 0);
             expect(s0.scalar, closeTo(math.sqrt(1.25), 1e-9));
 
-            final v1 = var_(a, ddof: 1);
+            final v1 = variance(a, ddof: 1);
             expect(v1.scalar, closeTo(5.0 / 3.0, 1e-9));
             final s1 = std(a, ddof: 1);
             expect(s1.scalar, closeTo(math.sqrt(5.0 / 3.0), 1e-9));
@@ -189,24 +189,24 @@ void main() {
             final vAlias = variance(a, ddof: 1);
             expect(vAlias.scalar, closeTo(5.0 / 3.0, 1e-9));
 
-            // 2D keepdims
+            // 2D keepDims
             final a2 = NDArray.fromList(
               [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
               [2, 3],
               DType.float64,
             );
-            final v2D = var_(a2, axis: 1, keepdims: true);
+            final v2D = variance(a2, axis: 1, keepDims: true);
             expect(v2D.shape, [2, 1]);
             expect(v2D.toList()[0], closeTo(2.0 / 3.0, 1e-9));
             expect(v2D.toList()[1], closeTo(2.0 / 3.0, 1e-9));
 
-            final s2D = std(a2, axis: 1, keepdims: false);
+            final s2D = std(a2, axis: 1, keepDims: false);
             expect(s2D.shape, [2]);
             expect(s2D.toList()[0], closeTo(math.sqrt(2.0 / 3.0), 1e-9));
           });
         });
 
-        test('std and var_ out buffer reuse', () {
+        test('std and variance out buffer reuse', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, 2.0, 3.0, 4.0],
@@ -214,7 +214,7 @@ void main() {
               DType.float64,
             );
             final outVar = NDArray<Float64>.zeros([2], DType.float64);
-            final resVar = var_(a, axis: 0, out: outVar);
+            final resVar = variance(a, axis: 0, out: outVar);
             expect(identical(resVar, outVar), true);
 
             final outStd = NDArray<Float64>.zeros([2], DType.float64);
@@ -223,16 +223,16 @@ void main() {
           });
         });
 
-        test('std and var_ with ddof >= N resulting in Inf or NaN', () {
+        test('std and variance with ddof >= N resulting in Inf or NaN', () {
           NDArray.scope(() {
             final a = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-            final v = var_(a, ddof: 3);
+            final v = variance(a, ddof: 3);
             expect(v.scalar, double.infinity);
             final s = std(a, ddof: 4);
             expect(s.scalar, double.infinity);
 
             final constArr = NDArray.fromList([5.0, 5.0], [2], DType.float64);
-            expect(var_(constArr, ddof: 2).scalar, isNaN);
+            expect(variance(constArr, ddof: 2).scalar, isNaN);
             expect(std(constArr, ddof: 2).scalar, isNaN);
           });
         });
@@ -265,7 +265,7 @@ void main() {
       });
 
       group('mean', () {
-        test('mean 1D, 2D, 3D across axes, keepdims, and strided arrays', () {
+        test('mean 1D, 2D, 3D across axes, keepDims, and strided arrays', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -280,7 +280,7 @@ void main() {
             expect(m0.shape, [3]);
             expect(m0.toList(), [2.5, 3.5, 4.5]);
 
-            final m1Keep = mean(a, axis: 1, keepdims: true);
+            final m1Keep = mean(a, axis: 1, keepDims: true);
             expect(m1Keep.shape, [2, 1]);
             expect(m1Keep.toList(), [2.0, 5.0]);
 
@@ -347,7 +347,7 @@ void main() {
           });
         });
 
-        test('median 2D and 3D across axes with keepdims', () {
+        test('median 2D and 3D across axes with keepDims', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, 5.0, 3.0, 4.0, 2.0, 6.0],
@@ -358,7 +358,7 @@ void main() {
             expect(m0.shape, [3]);
             expect(m0.toList(), [2.5, 3.5, 4.5]);
 
-            final m1Keep = median(a, axis: 1, keepdims: true);
+            final m1Keep = median(a, axis: 1, keepDims: true);
             expect(m1Keep.shape, [2, 1]);
             expect(m1Keep.toList(), [3.0, 4.0]);
           });
@@ -479,7 +479,7 @@ void main() {
           });
         });
 
-        test('percentile 2D across axes with keepdims and out buffer', () {
+        test('percentile 2D across axes with keepDims and out buffer', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, 5.0, 3.0, 4.0, 2.0, 6.0],
@@ -490,7 +490,7 @@ void main() {
             expect(p0.shape, [3]);
             expect(p0.toList(), [2.5, 3.5, 4.5]);
 
-            final p1Keep = percentile(a, 50.0, axis: 1, keepdims: true);
+            final p1Keep = percentile(a, 50.0, axis: 1, keepDims: true);
             expect(p1Keep.shape, [2, 1]);
             expect(p1Keep.toList(), [3.0, 4.0]);
 
@@ -588,7 +588,7 @@ void main() {
       });
 
       group('sum and prod across all 15 DTypes', () {
-        test('sum and prod 1D, 2D, 3D, keepdims, and empty arrays', () {
+        test('sum and prod 1D, 2D, 3D, keepDims, and empty arrays', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -601,11 +601,11 @@ void main() {
             final pAll = prod(a);
             expect(pAll.scalar, 720.0);
 
-            final s0Keep = sum(a, axis: 0, keepdims: true);
+            final s0Keep = sum(a, axis: 0, keepDims: true);
             expect(s0Keep.shape, [1, 3]);
             expect(s0Keep.toList(), [5.0, 7.0, 9.0]);
 
-            final p1Keep = prod(a, axis: 1, keepdims: true);
+            final p1Keep = prod(a, axis: 1, keepDims: true);
             expect(p1Keep.shape, [2, 1]);
             expect(p1Keep.toList(), [6.0, 120.0]);
 
@@ -711,7 +711,7 @@ void main() {
       });
 
       group('all and any', () {
-        test('all and any 1D, 2D, axis=null, and keepdims', () {
+        test('all and any 1D, 2D, axis=null, and keepDims', () {
           NDArray.scope(() {
             final a = NDArray.fromList([true, true, false], [3], DType.boolean);
             expect(all(a).scalar, false);
@@ -735,7 +735,7 @@ void main() {
             final all0 = all(a2, axis: 0);
             expect(all0.toList(), [true, false]);
 
-            final any1Keep = any(a2, axis: 1, keepdims: true);
+            final any1Keep = any(a2, axis: 1, keepDims: true);
             expect(any1Keep.shape, [2, 1]);
             expect(any1Keep.toList(), [true, true]);
 
@@ -776,7 +776,7 @@ void main() {
             expect(m1.shape, [2]);
             expect(m1.toList(), [2.0, 5.0]);
 
-            final mKeep = nanmean(a2, axis: 1, keepdims: true);
+            final mKeep = nanmean(a2, axis: 1, keepDims: true);
             expect(mKeep.shape, [2, 1]);
             expect(mKeep.toList(), [2.0, 5.0]);
           });
@@ -893,7 +893,7 @@ void main() {
       });
 
       group('nanmin and nanmax', () {
-        test('nanmin and nanmax 1D, 2D, 3D, and keepdims', () {
+        test('nanmin and nanmax 1D, 2D, 3D, and keepDims', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [double.nan, 5.0, 2.0, double.nan, 8.0],
@@ -916,11 +916,11 @@ void main() {
             expect(max0.shape, [3]);
             expect(max0.toList(), [4.0, 10.0, 7.0]);
 
-            final min1Keep = nanmin(a2, axis: 1, keepdims: true);
+            final min1Keep = nanmin(a2, axis: 1, keepDims: true);
             expect(min1Keep.shape, [2, 1]);
             expect(min1Keep.toList(), [3.0, 4.0]);
 
-            final max1Keep = nanmax(a2, axis: 1, keepdims: true);
+            final max1Keep = nanmax(a2, axis: 1, keepDims: true);
             expect(max1Keep.shape, [2, 1]);
             expect(max1Keep.toList(), [10.0, 7.0]);
           });
@@ -995,7 +995,7 @@ void main() {
       });
 
       group('nansum', () {
-        test('nansum 1D, 2D, 3D across axes, keepdims, and all-NaN slices', () {
+        test('nansum 1D, 2D, 3D across axes, keepDims, and all-NaN slices', () {
           NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, double.nan, 3.0, double.nan],
@@ -1019,7 +1019,7 @@ void main() {
             final s0 = nansum(a2, axis: 0);
             expect(s0.toList(), [4.0, 4.0]);
 
-            final s1Keep = nansum(a2, axis: 1, keepdims: true);
+            final s1Keep = nansum(a2, axis: 1, keepDims: true);
             expect(s1Keep.shape, [2, 1]);
             expect(s1Keep.toList(), [1.0, 7.0]);
           });
@@ -1062,7 +1062,7 @@ void main() {
     // =========================================================================
     group('3. Correlation & Signal Convolution / DSP', () {
       group('cov and corrcoef', () {
-        test('cov 1D array and 2D matrix (rowvar: true vs false)', () {
+        test('cov 1D array and 2D matrix (rowVar: true vs false)', () {
           NDArray.scope(() {
             final x = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
             final c1D = cov(x);
@@ -1074,19 +1074,19 @@ void main() {
               [2, 3],
               DType.float64,
             );
-            final cRow = cov(m, rowvar: true);
+            final cRow = cov(m, rowVar: true);
             expect(cRow.shape, [2, 2]);
             expect(cRow.getCell([0, 0]), closeTo(1.0, 1e-9));
             expect(cRow.getCell([0, 1]), closeTo(2.0, 1e-9));
             expect(cRow.getCell([1, 0]), closeTo(2.0, 1e-9));
             expect(cRow.getCell([1, 1]), closeTo(4.0, 1e-9));
 
-            final cCol = cov(m, rowvar: false);
+            final cCol = cov(m, rowVar: false);
             expect(cCol.shape, [3, 3]);
           });
         });
 
-        test('cov with second array y, bias, ddof, fweights, and aweights', () {
+        test('cov with second array y, bias, ddof, fWeights, and aWeights', () {
           NDArray.scope(() {
             final x = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
             final y = NDArray.fromList([2.0, 4.0, 6.0], [3], DType.float64);
@@ -1102,14 +1102,14 @@ void main() {
             expect(cDdof.scalar, closeTo(2.0 / 3.0, 1e-9));
 
             final fw = NDArray.fromList([1, 2, 1], [3], DType.int64);
-            final cFW = cov(x, fweights: fw);
+            final cFW = cov(x, fWeights: fw);
             expect(cFW.scalar, greaterThan(0.0));
 
             final aw = NDArray.fromList([0.2, 0.5, 0.3], [3], DType.float64);
-            final cAW = cov(x, aweights: aw);
+            final cAW = cov(x, aWeights: aw);
             expect(cAW.scalar, greaterThan(0.0));
 
-            final cBoth = cov(x, fweights: fw, aweights: aw);
+            final cBoth = cov(x, fWeights: fw, aWeights: aw);
             expect(cBoth.scalar, greaterThan(0.0));
           });
         });
@@ -1134,7 +1134,7 @@ void main() {
 
             final negW = NDArray.fromList([-1, 1, 1], [3], DType.int64);
             final x1D = NDArray.fromList([1.0, 2.0, 3.0], [3], DType.float64);
-            expect(() => cov(x1D, fweights: negW), throwsArgumentError);
+            expect(() => cov(x1D, fWeights: negW), throwsArgumentError);
           });
         });
 
@@ -1384,14 +1384,14 @@ void main() {
           });
         });
 
-        test('bincount with minlength (smaller and larger than max value)', () {
+        test('bincount with minLength (smaller and larger than max value)', () {
           NDArray.scope(() {
             final x = NDArray.fromList([0, 1, 2], [3], DType.int64);
-            final cLarge = bincount(x, minlength: 6);
+            final cLarge = bincount(x, minLength: 6);
             expect(cLarge.shape, [6]);
             expect(cLarge.toList(), [1, 1, 1, 0, 0, 0]);
 
-            final cSmall = bincount(x, minlength: 1);
+            final cSmall = bincount(x, minLength: 1);
             expect(cSmall.shape, [3]);
             expect(cSmall.toList(), [1, 1, 1]);
           });
@@ -1443,7 +1443,7 @@ void main() {
             final cEmpty = bincount(empty);
             expect(cEmpty.shape, [0]);
 
-            final cEmptyMin = bincount(empty, minlength: 4);
+            final cEmptyMin = bincount(empty, minLength: 4);
             expect(cEmptyMin.shape, [4]);
             expect(cEmptyMin.toList(), [0, 0, 0, 0]);
 
@@ -1464,7 +1464,7 @@ void main() {
             expect(() => bincount(x2D), throwsArgumentError);
 
             final x = NDArray.fromList([0, 1], [2], DType.int64);
-            expect(() => bincount(x, minlength: -1), throwsArgumentError);
+            expect(() => bincount(x, minLength: -1), throwsArgumentError);
           });
         });
       });

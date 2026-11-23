@@ -27,7 +27,7 @@ void main() {
 
 // #region split
 void runSplitExamples() {
-  print('--- 1. Equal Splitting (split / split_at) ---');
+  print('--- 1. Equal Splitting (split / splitAt) ---');
   NDArray.scope(() {
     final a = NDArray.fromList([1, 2, 3, 4], [4], DType.int32);
     print('Original array: ${a.toList()}');
@@ -39,7 +39,7 @@ void runSplitExamples() {
     print('Sub-array 1: ${splits[1].toList()}');
 
     // Split at custom index 2
-    final splitsAt = split_at(a, [2]);
+    final splitsAt = splitAt(a, [2]);
     print('Split at index [2]:');
     print('Sub-array 0: ${splitsAt[0].toList()}');
     print('Sub-array 1: ${splitsAt[1].toList()}\n');
@@ -48,21 +48,21 @@ void runSplitExamples() {
 
 // #endregion
 
-// #region array_split
+// #region arraySplit
 void runArraySplitExamples() {
-  print('--- 2. Unequal Splitting (array_split / array_split_at) ---');
+  print('--- 2. Unequal Splitting (arraySplit / splitAt) ---');
   NDArray.scope(() {
     final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
     print('Original array: ${a.toList()}');
 
     // Split 3 elements into 2 sections (unequal)
-    final splits = array_split(a, 2);
+    final splits = arraySplit(a, 2);
     print('Split into 2 sections (as equal as possible):');
     print('Sub-array 0: ${splits[0].toList()}');
     print('Sub-array 1: ${splits[1].toList()}');
 
     // Split at custom indices [1, 2]
-    final splitsAt = array_split_at(a, [1, 2]);
+    final splitsAt = splitAt(a, [1, 2]);
     print('Split at indices [1, 2]:');
     for (var i = 0; i < splitsAt.length; i++) {
       print('Sub-array $i: ${splitsAt[i].toList()}');
@@ -75,7 +75,7 @@ void runArraySplitExamples() {
 
 // #region hsplit
 void runHSplitExamples() {
-  print('--- 3. Horizontal Splitting (hsplit / hsplit_at) ---');
+  print('--- 3. Horizontal Splitting (hsplit / hsplitAt) ---');
   NDArray.scope(() {
     final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
     print('Original 2D matrix:\n$a');
@@ -85,8 +85,8 @@ void runHSplitExamples() {
     print('Sub-array 0:\n${splits[0]}');
     print('Sub-array 1:\n${splits[1]}');
 
-    final splitsAt = hsplit_at(a, [1]);
-    print('hsplit_at column index [1]:');
+    final splitsAt = hsplitAt(a, [1]);
+    print('hsplitAt column index [1]:');
     print('Sub-array 0:\n${splitsAt[0]}');
     print('Sub-array 1:\n${splitsAt[1]}\n');
   });
@@ -96,7 +96,7 @@ void runHSplitExamples() {
 
 // #region vsplit
 void runVSplitExamples() {
-  print('--- 4. Vertical Splitting (vsplit / vsplit_at) ---');
+  print('--- 4. Vertical Splitting (vsplit / vsplitAt) ---');
   NDArray.scope(() {
     final a = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
     print('Original 2D matrix:\n$a');
@@ -106,8 +106,8 @@ void runVSplitExamples() {
     print('Sub-array 0:\n${splits[0]}');
     print('Sub-array 1:\n${splits[1]}');
 
-    final splitsAt = vsplit_at(a, [1]);
-    print('vsplit_at row index [1]:');
+    final splitsAt = vsplitAt(a, [1]);
+    print('vsplitAt row index [1]:');
     print('Sub-array 0:\n${splitsAt[0]}');
     print('Sub-array 1:\n${splitsAt[1]}\n');
   });
@@ -117,7 +117,7 @@ void runVSplitExamples() {
 
 // #region dsplit
 void runDSplitExamples() {
-  print('--- 5. Depth-wise Splitting (dsplit / dsplit_at) ---');
+  print('--- 5. Depth-wise Splitting (dsplit / dsplitAt) ---');
   NDArray.scope(() {
     final a = NDArray.fromList(List.generate(16, (i) => i + 1), [
       2,
@@ -134,8 +134,8 @@ void runDSplitExamples() {
     print('Sub-array 1 shape: ${splits[1].shape}');
     print('Sub-array 1:\n${splits[1]}');
 
-    final splitsAt = dsplit_at(a, [1, 3]);
-    print('dsplit_at axis 2 at indices [1, 3]:');
+    final splitsAt = dsplitAt(a, [1, 3]);
+    print('dsplitAt axis 2 at indices [1, 3]:');
     for (var i = 0; i < splitsAt.length; i++) {
       print('Sub-array $i shape: ${splitsAt[i].shape}');
       print('Sub-array $i:\n${splitsAt[i]}');

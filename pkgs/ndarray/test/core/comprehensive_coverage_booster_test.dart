@@ -203,7 +203,7 @@ void main() {
                 final tr = trunc(a);
                 expect(tr.shape, [2, 3]);
 
-                final fx = fix(a);
+                final fx = trunc(a);
                 expect(fx.shape, [2, 3]);
 
                 final ab = abs(a);
@@ -463,61 +463,58 @@ void main() {
       });
     });
 
-    test(
-      'Linalg advanced operators (norm, matrix_power, solve, multi_dot)',
-      () {
-        NDArray.scope(() {
-          final mat2d = NDArray.fromList(
-            [4.0, 2.0, 1.0, 3.0],
-            [2, 2],
-            DType.float64,
-          );
+    test('Linalg advanced operators (norm, matrixPower, solve, multiDot)', () {
+      NDArray.scope(() {
+        final mat2d = NDArray.fromList(
+          [4.0, 2.0, 1.0, 3.0],
+          [2, 2],
+          DType.float64,
+        );
 
-          final mp2 = matrix_power(mat2d, 2);
-          expect(mp2.shape, [2, 2]);
+        final mp2 = matrixPower(mat2d, 2);
+        expect(mp2.shape, [2, 2]);
 
-          final mp0 = matrix_power(mat2d, 0);
-          expect(mp0.shape, [2, 2]);
+        final mp0 = matrixPower(mat2d, 0);
+        expect(mp0.shape, [2, 2]);
 
-          final mpNeg = matrix_power(mat2d, -1);
-          expect(mpNeg.shape, [2, 2]);
+        final mpNeg = matrixPower(mat2d, -1);
+        expect(mpNeg.shape, [2, 2]);
 
-          final nf = norm(mat2d, ord: 'fro');
-          expect(nf.shape, <int>[]);
+        final nf = norm(mat2d, ord: 'fro');
+        expect(nf.shape, <int>[]);
 
-          final n1 = norm(mat2d, ord: 1);
-          expect(n1.shape, <int>[]);
+        final n1 = norm(mat2d, ord: 1);
+        expect(n1.shape, <int>[]);
 
-          final n2 = norm(mat2d, ord: 2);
-          expect(n2.shape, <int>[]);
+        final n2 = norm(mat2d, ord: 2);
+        expect(n2.shape, <int>[]);
 
-          final nInf = norm(mat2d, ord: double.infinity);
-          expect(nInf.shape, <int>[]);
+        final nInf = norm(mat2d, ord: double.infinity);
+        expect(nInf.shape, <int>[]);
 
-          final m1 = NDArray.fromList(
-            [1.0, 2.0, 3.0, 4.0],
-            [2, 2],
-            DType.float64,
-          );
-          final m2 = NDArray.fromList(
-            [2.0, 0.0, 1.0, 2.0],
-            [2, 2],
-            DType.float64,
-          );
-          final m3 = NDArray.fromList(
-            [1.0, 1.0, 0.0, 1.0],
-            [2, 2],
-            DType.float64,
-          );
+        final m1 = NDArray.fromList(
+          [1.0, 2.0, 3.0, 4.0],
+          [2, 2],
+          DType.float64,
+        );
+        final m2 = NDArray.fromList(
+          [2.0, 0.0, 1.0, 2.0],
+          [2, 2],
+          DType.float64,
+        );
+        final m3 = NDArray.fromList(
+          [1.0, 1.0, 0.0, 1.0],
+          [2, 2],
+          DType.float64,
+        );
 
-          final mdot = multi_dot([m1, m2, m3]);
-          expect(mdot.shape, [2, 2]);
+        final mdot = multiDot([m1, m2, m3]);
+        expect(mdot.shape, [2, 2]);
 
-          final b = NDArray.fromList([1.0, 2.0], [2], DType.float64);
-          final slv = solve(mat2d, b);
-          expect(slv.shape, [2]);
-        });
-      },
-    );
+        final b = NDArray.fromList([1.0, 2.0], [2], DType.float64);
+        final slv = solve(mat2d, b);
+        expect(slv.shape, [2]);
+      });
+    });
   });
 }

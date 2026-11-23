@@ -198,12 +198,12 @@ final class _NDIterCoordsVisitor extends SimpleAstVisitor<void> {
 // =============================================================================
 
 /// Flags mutating an inline copy-producing method (`a.flatten().fill(0)`,
-/// `a.copy()[0] = 1`, `a.astype(dt).setSlice(...)`) in an expression statement
+/// `a.copy()[0] = 1`, `a.asType(dt).setSlice(...)`) in an expression statement
 /// where the copy is immediately discarded.
 final class LostMutationOnCopyRule extends AnalysisRule {
   static const LintCode code = LintCode(
     'ndarray_lost_mutation_on_copy',
-    'Mutating the result of .flatten(), .copy(), or .astype() in a statement '
+    'Mutating the result of .flatten(), .copy(), or .asType() in a statement '
         'modifies and leaks a temporary copy while leaving the original '
         'NDArray unchanged.',
     correctionMessage:
@@ -217,7 +217,7 @@ final class LostMutationOnCopyRule extends AnalysisRule {
         name: code.lowerCaseName,
         description:
             'Do not call in-place mutating operations (.fill, .setSlice, []=) '
-            'on discarded copies (.flatten(), .copy(), .astype()).',
+            'on discarded copies (.flatten(), .copy(), .asType()).',
       );
 
   @override
@@ -306,7 +306,7 @@ final class _LostMutationOnCopyVisitor extends SimpleAstVisitor<void> {
     if (name == 'flatten' || name == 'copy') {
       return isNDArrayType(unwrapped.staticType);
     }
-    if (name == 'astype' && isNDArrayType(unwrapped.staticType)) {
+    if (name == 'asType' && isNDArrayType(unwrapped.staticType)) {
       return identityCastSourceExpression(unwrapped) == null;
     }
     return false;

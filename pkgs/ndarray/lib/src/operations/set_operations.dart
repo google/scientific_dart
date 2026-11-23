@@ -676,7 +676,7 @@ NDArray<T> union1d<T extends DTypeTag, Out extends T>(
 /// It is an error if [element] or [testElements] is disposed.
 ///
 /// {@example /example/set_operations_example.dart lang=dart}
-NDArray<Boolean> isin<T extends DTypeTag>(
+NDArray<Boolean> isIn<T extends DTypeTag>(
   NDArray<T> element,
   NDArray<T> testElements, {
   bool assumeUnique = false,
@@ -684,10 +684,10 @@ NDArray<Boolean> isin<T extends DTypeTag>(
   NDArray<Boolean>? out,
 }) {
   if (element.isDisposed || testElements.isDisposed) {
-    throw StateError('Cannot execute isin on disposed array(s).');
+    throw StateError('Cannot execute isIn on disposed array(s).');
   }
   if (out != null && out.isDisposed) {
-    throw StateError('Cannot write isin result to a disposed output array.');
+    throw StateError('Cannot write isIn result to a disposed output array.');
   }
   if (out != null) {
     validateOutBuffer(out);

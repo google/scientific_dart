@@ -427,7 +427,7 @@ void main() {
         );
 
         test(
-          'prod, mean, std, variance, min, max, ptp multi-axis and keepdims',
+          'prod, mean, std, variance, min, max, ptp multi-axis and keepDims',
           () {
             NDArray.scope(() {
               final m = NDArray.fromList(
@@ -443,7 +443,7 @@ void main() {
 
               // mean
               expect(mean(m).scalar, closeTo(3.5, 1e-9));
-              expect(mean(m, axis: 0, keepdims: true).shape, equals([1, 3]));
+              expect(mean(m, axis: 0, keepDims: true).shape, equals([1, 3]));
               expect(mean(m, axis: 0).toList(), equals([2.5, 3.5, 4.5]));
               expect(mean(m, axis: 1).toList(), equals([2.0, 5.0]));
 
@@ -510,7 +510,7 @@ void main() {
 
     group('cov and corrcoef', () {
       test(
-        '1D and 2D covariance matrix computation with rowvar, bias, and ddof',
+        '1D and 2D covariance matrix computation with rowVar, bias, and ddof',
         () {
           NDArray.scope(() {
             final x = NDArray.fromList(
@@ -522,7 +522,7 @@ void main() {
             expect(c1d.shape, equals([]));
             expect(c1d.scalar, closeTo(5.0 / 3.0, 1e-5));
 
-            // 2D: rowvar = true
+            // 2D: rowVar = true
             final m2d = NDArray.fromList(
               [1.0, 2.0, 3.0, 1.0, 2.0, 4.0],
               [2, 3],
@@ -534,8 +534,8 @@ void main() {
             expect(c2d.getCell([1, 1]), closeTo(7.0 / 3.0, 1e-5));
             expect(c2d.getCell([0, 1]), closeTo(1.5, 1e-5));
 
-            // rowvar = false (columns are variables: shape [3, 3])
-            final c2dCol = cov(m2d, rowvar: false);
+            // rowVar = false (columns are variables: shape [3, 3])
+            final c2dCol = cov(m2d, rowVar: false);
             expect(c2dCol.shape, equals([3, 3]));
 
             // bias = true (normalize by N instead of N-1)
@@ -766,7 +766,7 @@ void main() {
           final counts = bincount(x);
           expect(counts.toList(), equals([1, 3, 1, 1, 0, 0, 0, 1]));
 
-          final counts10 = bincount(x, minlength: 10);
+          final counts10 = bincount(x, minLength: 10);
           expect(counts10.shape, equals([10]));
           expect(counts10.toList(), equals([1, 3, 1, 1, 0, 0, 0, 1, 0, 0]));
 

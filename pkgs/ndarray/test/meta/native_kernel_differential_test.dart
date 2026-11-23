@@ -411,9 +411,9 @@ void main() {
           );
           verifyUnaryVariants('sin', dtype, (x) => sin(x));
           verifyUnaryVariants('cos', dtype, (x) => cos(x));
-          verifyUnaryVariants('isnan', dtype, (x) => isnan(x));
-          verifyUnaryVariants('isinf', dtype, (x) => isinf(x));
-          verifyUnaryVariants('isfinite', dtype, (x) => isfinite(x));
+          verifyUnaryVariants('isNan', dtype, (x) => isNan(x));
+          verifyUnaryVariants('isInf', dtype, (x) => isInf(x));
+          verifyUnaryVariants('isFinite', dtype, (x) => isFinite(x));
         }
 
         // bitwise_not (invert) across integer + boolean dtypes
@@ -611,7 +611,11 @@ void main() {
             dtype,
             (x, {axis}) => nanmean(x, axis: axis),
           );
-          verifyReduction('var_', dtype, (x, {axis}) => var_(x, axis: axis));
+          verifyReduction(
+            'variance',
+            dtype,
+            (x, {axis}) => variance(x, axis: axis),
+          );
           verifyReduction(
             'nanvar',
             dtype,
@@ -650,7 +654,7 @@ void main() {
             final aStep2 = makeStep2View(aContig);
             final aNeg = makeNegativeStrideView(aContig);
 
-            // take_along_axis
+            // takeAlongAxis
             final indices = NDArray<Int64>.fromList(
               [0, 5, 17, 3, 12, 8],
               [6],
@@ -658,26 +662,26 @@ void main() {
             );
             final idxStep2 = makeStep2View(indices);
             expectArraysEquivalent(
-              take_along_axis(aStep2, idxStep2, 0),
-              take_along_axis(aContig, indices, 0),
-              reason: 'take_along_axis($dtype) strided vs contiguous',
+              takeAlongAxis(aStep2, idxStep2, 0),
+              takeAlongAxis(aContig, indices, 0),
+              reason: 'takeAlongAxis($dtype) strided vs contiguous',
             );
             expectArraysEquivalent(
-              take_along_axis(aNeg, indices, 0),
-              take_along_axis(aContig, indices, 0),
-              reason: 'take_along_axis($dtype) neg stride vs contiguous',
+              takeAlongAxis(aNeg, indices, 0),
+              takeAlongAxis(aContig, indices, 0),
+              reason: 'takeAlongAxis($dtype) neg stride vs contiguous',
             );
 
-            // put_along_axis
+            // putAlongAxis
             final vals = makeSample1D(dtype, length: 6, seedOffset: 2);
             final dstContig = aContig.copy();
             final dstStep2 = makeStep2View(aContig);
-            put_along_axis(dstContig, indices, vals, 0);
-            put_along_axis(dstStep2, idxStep2, makeStep2View(vals), 0);
+            putAlongAxis(dstContig, indices, vals, 0);
+            putAlongAxis(dstStep2, idxStep2, makeStep2View(vals), 0);
             expectArraysEquivalent(
               dstStep2,
               dstContig,
-              reason: 'put_along_axis($dtype) strided vs contiguous',
+              reason: 'putAlongAxis($dtype) strided vs contiguous',
             );
 
             // pad modes: constant, edge, reflect, symmetric, wrap
@@ -712,7 +716,7 @@ void main() {
               reason: 'roll($dtype) step:-1 vs contiguous',
             );
 
-            // nonzero and count_nonzero
+            // nonzero and countNonzero
             final nzContig = nonzero(aContig);
             final nzStep2 = nonzero(aStep2);
             final nzNeg = nonzero(aNeg);
@@ -727,14 +731,14 @@ void main() {
               reason: 'nonzero($dtype) step:-1 vs contiguous',
             );
             expectArraysEquivalent(
-              count_nonzero(aStep2),
-              count_nonzero(aContig),
-              reason: 'count_nonzero($dtype) step:2 vs contiguous',
+              countNonzero(aStep2),
+              countNonzero(aContig),
+              reason: 'countNonzero($dtype) step:2 vs contiguous',
             );
             expectArraysEquivalent(
-              count_nonzero(aNeg),
-              count_nonzero(aContig),
-              reason: 'count_nonzero($dtype) step:-1 vs contiguous',
+              countNonzero(aNeg),
+              countNonzero(aContig),
+              reason: 'countNonzero($dtype) step:-1 vs contiguous',
             );
           });
         }
@@ -784,7 +788,7 @@ void main() {
                 reason: 'partition($dtype) kth value',
               );
               final argpart = argpartition(variant, kth);
-              final gathered = take_along_axis(variant, argpart, 0);
+              final gathered = takeAlongAxis(variant, argpart, 0);
               expect(
                 gathered[[kth]].scalar,
                 equals(kthVal),
@@ -1122,14 +1126,14 @@ void main() {
               );
             }
             expect(
-              () => reduceatUfunc(
+              () => reduceAtUfunc(
                 NDArray.fromList([10, 0, 5].cast<dynamic>(), [3], dtype),
                 NDArray<Int64>.fromList([0], [1], DType.int64),
                 op: BinaryOp.floorDivide,
               ),
               throwsArgumentError,
               reason:
-                  'reduceatUfunc($dtype, floorDivide) must reject non-reducible op',
+                  'reduceAtUfunc($dtype, floorDivide) must reject non-reducible op',
             );
           });
         }
@@ -1137,7 +1141,7 @@ void main() {
     );
 
     test(
-      'atUfunc and reduceatUfunc across all 8 integer dtypes and all integer BinaryOps',
+      'atUfunc and reduceAtUfunc across all 8 integer dtypes and all integer BinaryOps',
       () {
         const integerOps = <BinaryOp>[
           BinaryOp.add,
@@ -1206,19 +1210,19 @@ void main() {
                 reason: 'atUfunc($dtype, $op) strided vs sequential',
               );
 
-              // reduceatUfunc reference vs actual (for reducible ops)
+              // reduceAtUfunc reference vs actual (for reducible ops)
               if (op.isReducible) {
                 final reduceSplits = NDArray<Int64>.fromList(
                   [0, 3, 2, 5, 7],
                   [5],
                   DType.int64,
                 );
-                final actualReduceat = reduceatUfunc(
+                final actualReduceat = reduceAtUfunc(
                   base,
                   reduceSplits,
                   op: op,
                 );
-                final stridedReduceat = reduceatUfunc(
+                final stridedReduceat = reduceAtUfunc(
                   makeStep2View(base),
                   reduceSplits,
                   op: op,
@@ -1226,7 +1230,7 @@ void main() {
                 expectArraysEquivalent(
                   stridedReduceat,
                   actualReduceat,
-                  reason: 'reduceatUfunc($dtype, $op) strided vs contiguous',
+                  reason: 'reduceAtUfunc($dtype, $op) strided vs contiguous',
                 );
 
                 // Verify segment [0..3) matches manual left-fold of binaryUfunc
@@ -1242,7 +1246,7 @@ void main() {
                   actualReduceat[[0]].scalar,
                   equals(acc[[0]].scalar),
                   reason:
-                      'reduceatUfunc($dtype, $op) segment [0..3) vs manual fold',
+                      'reduceAtUfunc($dtype, $op) segment [0..3) vs manual fold',
                 );
               }
 
@@ -1428,7 +1432,7 @@ void main() {
               reason: 'argmin($dtype) leading NaN step:2 vs contiguous',
             );
 
-            // reduceat with leading NaN at index 0 across length-25 array
+            // reduceAt with leading NaN at index 0 across length-25 array
             final reduceIdx = NDArray<Int64>.fromList(
               [0, 5, 15],
               [3],
@@ -1441,26 +1445,26 @@ void main() {
               BinaryOp.fmax,
               BinaryOp.add,
             ]) {
-              final rContig = reduceatUfunc(leadingNan, reduceIdx, op: op);
-              final rStep2 = reduceatUfunc(leadingNanStep2, reduceIdx, op: op);
+              final rContig = reduceAtUfunc(leadingNan, reduceIdx, op: op);
+              final rStep2 = reduceAtUfunc(leadingNanStep2, reduceIdx, op: op);
               expectArraysEquivalent(
                 rStep2,
                 rContig,
                 reason:
-                    'reduceatUfunc($dtype, $op) leading NaN step:2 vs contig',
+                    'reduceAtUfunc($dtype, $op) leading NaN step:2 vs contig',
               );
               if (op == BinaryOp.fmin) {
                 expect(
                   (rContig[[0]].scalar as double).isNaN,
                   isFalse,
-                  reason: 'reduceatUfunc($dtype, fmin) must ignore leading NaN',
+                  reason: 'reduceAtUfunc($dtype, fmin) must ignore leading NaN',
                 );
               }
               if (op == BinaryOp.fmax) {
                 expect(
                   (rContig[[0]].scalar as double).isNaN,
                   isFalse,
-                  reason: 'reduceatUfunc($dtype, fmax) must ignore leading NaN',
+                  reason: 'reduceAtUfunc($dtype, fmax) must ignore leading NaN',
                 );
               }
             }

@@ -936,7 +936,7 @@ void main() {
           final a = NDArray.fromList([1, 2], [2], DType.int32);
           final b = NDArray.fromList([0.5, 1.5], [2], DType.float64);
           expect(() => kron(a.asAnySpec, b.asAnySpec), throwsArgumentError);
-          result = kron(a.astype(DType.float64), b);
+          result = kron(a.asType(DType.float64), b);
           expect(result.isDisposed, isFalse);
           expect(result.dtype, DType.float64);
           expect(result.toList(), [0.5, 1.5, 1.0, 3.0]);

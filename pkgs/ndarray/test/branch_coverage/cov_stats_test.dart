@@ -1135,7 +1135,7 @@ void main() {
             ).asAnySpec;
             expect((corrcoef(m1Const).scalar as Complex).real.isNaN, isTrue);
 
-            // 2D with rowvar: false, fweights, aweights, out
+            // 2D with rowVar: false, fWeights, aWeights, out
             final m2 = NDArray.fromList(
               [
                 Complex(1.0, 0.0),
@@ -1170,15 +1170,15 @@ void main() {
             cov(
               m2,
               y: y2,
-              rowvar: false,
-              fweights: fw,
-              aweights: aw,
+              rowVar: false,
+              fWeights: fw,
+              aWeights: aw,
               out: outCov.asAnySpec,
             );
             expect(outCov.shape, equals([4, 4]));
 
             final outCc = NDArray<Complex128>.zeros([4, 4], DType.complex128);
-            corrcoef(m2, y: y2, rowvar: false, out: outCc.asAnySpec);
+            corrcoef(m2, y: y2, rowVar: false, out: outCc.asAnySpec);
             expect(outCc.shape, equals([4, 4]));
 
             // High ddof where denominator <= 0 on complex cov
@@ -1201,7 +1201,7 @@ void main() {
             final ccConst = corrcoef(mConst);
             expect((ccConst.getCell([0, 0]) as Complex).real.isNaN, isTrue);
 
-            // Complex cov fweights/aweights errors
+            // Complex cov fWeights/aWeights errors
             final fwNeg = NDArray<Int64>.fromList([1, -1, 1], [3], DType.int64);
             final fwShort = NDArray<Int64>.fromList([1, 1], [2], DType.int64);
             final awNeg = NDArray<Float64>.fromList(
@@ -1214,12 +1214,12 @@ void main() {
               [2],
               DType.float64,
             );
-            expect(() => cov(m1, fweights: m1), throwsArgumentError);
-            expect(() => cov(m1, fweights: fwShort), throwsArgumentError);
-            expect(() => cov(m1, fweights: fwNeg), throwsArgumentError);
-            expect(() => cov(m1, aweights: m1), throwsArgumentError);
-            expect(() => cov(m1, aweights: awShort), throwsArgumentError);
-            expect(() => cov(m1, aweights: awNeg), throwsArgumentError);
+            expect(() => cov(m1, fWeights: m1), throwsArgumentError);
+            expect(() => cov(m1, fWeights: fwShort), throwsArgumentError);
+            expect(() => cov(m1, fWeights: fwNeg), throwsArgumentError);
+            expect(() => cov(m1, aWeights: m1), throwsArgumentError);
+            expect(() => cov(m1, aWeights: awShort), throwsArgumentError);
+            expect(() => cov(m1, aWeights: awNeg), throwsArgumentError);
 
             // Complex cov/corrcoef bad out dtype/shape
             final badOutF = NDArray<Float64>.zeros([], DType.float64);
@@ -1248,7 +1248,7 @@ void main() {
           );
           expect(corrcoef(mConst1D).scalar.isNaN, isTrue);
 
-          // Real 2D with y 2D and rowvar: false
+          // Real 2D with y 2D and rowVar: false
           final m2R = NDArray<Float64>.fromList(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
             [3, 2],
@@ -1259,7 +1259,7 @@ void main() {
             [3, 2],
             DType.float64,
           );
-          expect(cov(m2R, y: y2R, rowvar: false).shape, equals([4, 4]));
+          expect(cov(m2R, y: y2R, rowVar: false).shape, equals([4, 4]));
 
           final cY = NDArray<Complex128>.fromList(
             [Complex(1, 0), Complex(2, 0), Complex(3, 0)],
@@ -1286,10 +1286,10 @@ void main() {
           final fw2D = NDArray<Int64>.fromList([1, 2, 3], [1, 3], DType.int64);
           final fwShort = NDArray<Int64>.fromList([1, 2], [2], DType.int64);
           final fwNeg = NDArray<Int64>.fromList([1, -1, 2], [3], DType.int64);
-          expect(() => cov(m, fweights: fw2D), throwsArgumentError);
-          expect(() => cov(m, fweights: fwShort), throwsArgumentError);
-          expect(() => cov(m, fweights: cY), throwsArgumentError);
-          expect(() => cov(m, fweights: fwNeg), throwsArgumentError);
+          expect(() => cov(m, fWeights: fw2D), throwsArgumentError);
+          expect(() => cov(m, fWeights: fwShort), throwsArgumentError);
+          expect(() => cov(m, fWeights: cY), throwsArgumentError);
+          expect(() => cov(m, fWeights: fwNeg), throwsArgumentError);
 
           final aw2D = NDArray<Float64>.fromList(
             [1.0, 2.0, 3.0],
@@ -1307,10 +1307,10 @@ void main() {
             [3],
             DType.float64,
           );
-          expect(() => cov(m, aweights: aw2D), throwsArgumentError);
-          expect(() => cov(m, aweights: awShort), throwsArgumentError);
-          expect(() => cov(m, aweights: awComplex), throwsArgumentError);
-          expect(() => cov(m, aweights: awNeg), throwsArgumentError);
+          expect(() => cov(m, aWeights: aw2D), throwsArgumentError);
+          expect(() => cov(m, aWeights: awShort), throwsArgumentError);
+          expect(() => cov(m, aWeights: awComplex), throwsArgumentError);
+          expect(() => cov(m, aWeights: awNeg), throwsArgumentError);
         });
       },
     );

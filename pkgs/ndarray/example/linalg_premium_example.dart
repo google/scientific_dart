@@ -15,7 +15,7 @@
 import 'package:ndarray/ndarray.dart';
 
 void main() {
-  print('=== NDArray linalg.pinv() and linalg.matrix_power() Examples ===\n');
+  print('=== NDArray linalg.pinv() and linalg.matrixPower() Examples ===\n');
 
   NDArray.scope(() {
     // 1. Compute Moore-Penrose pseudo-inverse of a singular rectangular 2x3 matrix
@@ -44,12 +44,12 @@ void main() {
     print('\nTransition Matrix (T):');
     _printMatrix(t);
 
-    final t10 = matrix_power(t, 10);
+    final t10 = matrixPower(t, 10);
     print('\nTransition Matrix raised to 10th power (T^10):');
     _printMatrix(t10);
 
     // Raise to negative power (T^-1)
-    final tInv = matrix_power(t, -1);
+    final tInv = matrixPower(t, -1);
     print('\nTransition Matrix Inverse (T^-1):');
     _printMatrix(tInv);
   });

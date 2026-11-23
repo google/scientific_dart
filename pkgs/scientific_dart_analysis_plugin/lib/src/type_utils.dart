@@ -26,11 +26,9 @@ const Set<String> kAlwaysViewNames = {
   'transposed',
   'squeeze',
   'expandDims',
-  'expand_dims',
-  'swapaxes',
-  'moveaxis',
+  'swapAxes',
+  'moveAxis',
   'broadcastTo',
-  'broadcast_to',
   'flip',
   'fliplr',
   'flipud',
@@ -51,7 +49,7 @@ const Set<String> kMaybeViewNames = {
 
 /// Subset of [kAlwaysViewNames] that produce read-only broadcast views
 /// (`stride == 0` along broadcasted axes).
-const Set<String> kBroadcastViewNames = {'broadcastTo', 'broadcast_to'};
+const Set<String> kBroadcastViewNames = {'broadcastTo'};
 
 /// Reduction functions in `package:ndarray` that return a 0-dimensional
 /// (`shape: []`, `rank: 0`) `NDArray` when called without an `axis:` argument.
@@ -62,7 +60,6 @@ const Set<String> kReductionNames = {
   'max',
   'prod',
   'std',
-  'var_',
   'variance',
   'nansum',
   'nanmean',
@@ -83,7 +80,6 @@ const Set<String> kReductionNames = {
   'argmin',
   'nanargmax',
   'nanargmin',
-  'count_nonzero',
   'countNonzero',
 };
 
@@ -444,7 +440,7 @@ bool isViewProducingExpression(
 }
 
 /// Returns whether [expr] (or its local variable initializer in [decls]) is a
-/// `broadcastTo` / `broadcast_to` call.
+/// `broadcastTo` call.
 bool isBroadcastViewExpression(
   Expression expr,
   SubtreeDeclarations decls, {
@@ -471,7 +467,7 @@ bool isBroadcastViewExpression(
 
 /// Returns whether [expr] (or its local variable initializer in [decls]) is a
 /// reduction call (`sum`, `mean`, `min`, `max`, `prod`, etc.) with no `axis:`
-/// argument (or `axis: null`) and no `keepdims: true`, producing a
+/// argument (or `axis: null`) and no `keepDims: true`, producing a
 /// 0-dimensional scalar `NDArray`.
 bool isAxislessReductionExpression(
   Expression expr,
@@ -510,7 +506,7 @@ bool isAxislessReductionExpression(
             if (argVal is! NullLiteral) {
               hasAxisOrKeepdims = true;
             }
-          } else if (argName == 'keepdims') {
+          } else if (argName == 'keepDims') {
             if (argVal is! BooleanLiteral || argVal.value) {
               hasAxisOrKeepdims = true;
             }
@@ -627,14 +623,14 @@ bool isFreshScopedResourceAllocation(Expression expr) {
 }
 
 /// If [expr] is an operation that may return its source `NDArray` unchanged
-/// (`a.astype(..., copy: false)`, `castNDArray(a, ...)`, `promoteToDouble(a)`,
+/// (`a.asType(..., copy: false)`, `castNDArray(a, ...)`, `promoteToDouble(a)`,
 /// `promoteToComplex(a)`, `toNDArray(a)`), returns the source `Expression`.
 Expression? identityCastSourceExpression(Expression expr) {
   final unwrapped = unwrapParenthesized(expr);
   if (unwrapped is! MethodInvocation) return null;
   final name = unwrapped.methodName.name;
 
-  if (name == 'astype') {
+  if (name == 'asType') {
     final target = unwrapped.realTarget;
     if (target == null || !isNDArrayType(target.staticType)) return null;
     for (final arg in unwrapped.argumentList.arguments) {

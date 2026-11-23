@@ -586,7 +586,7 @@ void main() {
 
   group('manipulation branch coverage', () {
     test(
-      'concatenate, stack, expand_dims, squeeze, flip, rot90, vstack, hstack',
+      'concatenate, stack, expandDims, squeeze, flip, rot90, vstack, hstack',
       () {
         NDArray.scope(() {
           final a2d = NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int32);
@@ -636,9 +636,9 @@ void main() {
             throwsArgumentError,
           );
 
-          // copy, expand_dims, squeeze, slidingWindowView
+          // copy, expandDims, squeeze, slidingWindowView
           expect(() => copy(disp), throwsStateError);
-          expect(() => expand_dims(disp, 0), throwsStateError);
+          expect(() => expandDims(disp, 0), throwsStateError);
           expect(() => squeeze(disp), throwsStateError);
           expect(
             () => squeeze(a2d.reshape([1, 2, 2]), axis: [5]),
@@ -686,7 +686,7 @@ void main() {
       },
     );
 
-    test('diag, tril, triu, diff, roll, astype', () {
+    test('diag, tril, triu, diff, roll, asType', () {
       NDArray.scope(() {
         final disp = NDArray.zeros([2, 2], DType.int32)..dispose();
         final v1d = NDArray.fromList([1, 2, 3], [3], DType.int32);
@@ -790,7 +790,7 @@ void main() {
           expect(diff(arr.asAnySpec).shape, [2]);
         }
 
-        // roll & astype
+        // roll & asType
         expect(() => roll(disp, 1), throwsStateError);
         expect(() => roll(m2d, [1, 2]), throwsArgumentError);
         expect(() => roll(m2d, [1, 2], axis: 0), throwsArgumentError);
@@ -810,8 +810,8 @@ void main() {
         roll(v1d, 1, axis: 0);
         roll(m2dStrided, 1, axis: 0);
 
-        expect(identical(astype(v1d, DType.int32, copy: false), v1d), isTrue);
-        expect(astype(v1d, DType.float64).dtype, DType.float64);
+        expect(identical(asType(v1d, DType.int32, copy: false), v1d), isTrue);
+        expect(asType(v1d, DType.float64).dtype, DType.float64);
       });
     });
   });
@@ -1242,7 +1242,7 @@ void main() {
       },
     );
 
-    test('reduceUfunc, accumulateUfunc, reduceatUfunc, outerUfunc, atUfunc', () {
+    test('reduceUfunc, accumulateUfunc, reduceAtUfunc, outerUfunc, atUfunc', () {
       NDArray.scope(() {
         final dtypes = <DType<DTypeTag>>[
           DType.float64,
@@ -1357,11 +1357,11 @@ void main() {
           0,
         ]);
 
-        // reduceatUfunc across 1D and 2D for all native dtypes + negative indices + errors
+        // reduceAtUfunc across 1D and 2D for all native dtypes + negative indices + errors
         final idx1d = NDArray.fromList([0, -1], [2], DType.int64);
         final idx1dI32 = NDArray.fromList([0, -1], [2], DType.int32);
-        reduceatUfunc(f64Arr, idx1d, op: BinaryOp.add);
-        reduceatUfunc(f64Arr, idx1dI32, op: BinaryOp.add);
+        reduceAtUfunc(f64Arr, idx1d, op: BinaryOp.add);
+        reduceAtUfunc(f64Arr, idx1dI32, op: BinaryOp.add);
         for (final dt in [
           DType.float64,
           DType.float32,
@@ -1388,8 +1388,8 @@ void main() {
           final a1 = NDArray.fromList(list, [4], dt).asAnySpec;
           final a2 = a1.reshape([2, 2]);
           final op = dt == DType.boolean ? BinaryOp.bitwiseXor : BinaryOp.add;
-          reduceatUfunc(a1, NDArray.fromList([0, 2], [2], DType.int64), op: op);
-          reduceatUfunc(
+          reduceAtUfunc(a1, NDArray.fromList([0, 2], [2], DType.int64), op: op);
+          reduceAtUfunc(
             a2,
             NDArray.fromList([0, 1], [2], DType.int64),
             op: op,
@@ -1398,19 +1398,19 @@ void main() {
         }
         // int8 fallback with start < end (j = start + 1; j < end)
         final aI8_4 = NDArray.fromList([1, 2, 3, 4], [4], DType.int8);
-        reduceatUfunc(
+        reduceAtUfunc(
           aI8_4,
           NDArray.fromList([0, 3], [2], DType.int64),
           op: BinaryOp.minimum,
         );
         final ratAlias = f64Arr.slice([Slice(start: 0, stop: 2)]);
-        reduceatUfunc(f64Arr, idx1d, op: BinaryOp.add, out: ratAlias);
+        reduceAtUfunc(f64Arr, idx1d, op: BinaryOp.add, out: ratAlias);
         expect(
-          () => reduceatUfunc(bArr, idx1d, op: BinaryOp.subtract),
+          () => reduceAtUfunc(bArr, idx1d, op: BinaryOp.subtract),
           throwsUnsupportedError,
         );
         expect(
-          () => reduceatUfunc(
+          () => reduceAtUfunc(
             f64Arr,
             idx1d,
             op: BinaryOp.add,
@@ -1419,7 +1419,7 @@ void main() {
           throwsArgumentError,
         );
         expect(
-          () => reduceatUfunc(
+          () => reduceAtUfunc(
             NDArray.zeros([0], DType.float64),
             idx1d,
             op: BinaryOp.add,
@@ -1427,7 +1427,7 @@ void main() {
           throwsRangeError,
         );
         expect(
-          () => reduceatUfunc(
+          () => reduceAtUfunc(
             f64Arr,
             NDArray.fromList([10], [1], DType.int64),
             op: BinaryOp.add,
@@ -1435,7 +1435,7 @@ void main() {
           throwsRangeError,
         );
         expect(
-          () => reduceatUfunc(
+          () => reduceAtUfunc(
             f64Arr,
             NDArray.fromList([10], [1], DType.int32),
             op: BinaryOp.add,
@@ -1568,7 +1568,7 @@ void main() {
           ..dispose();
 
         for (final op in UnaryOp.values) {
-          if (op == UnaryOp.invert || op == UnaryOp.bitwiseNot) {
+          if (op == UnaryOp.invert || op == UnaryOp.invert) {
             unaryUfunc(i32, op: op);
           } else {
             unaryUfunc(f64, op: op);
@@ -1655,7 +1655,7 @@ void main() {
           NDArray.fromList([1, 2, 3, 4], [2, 2], DType.int8),
           op: BinaryOp.add,
           axis: 0,
-          keepdims: true,
+          keepDims: true,
           initial: 5,
         );
         reduceUfunc(
@@ -1681,9 +1681,9 @@ void main() {
           BinaryOp.heaviside,
           BinaryOp.power,
           BinaryOp.floatPower,
-          BinaryOp.arctan2,
+          BinaryOp.atan2,
           BinaryOp.hypot,
-          BinaryOp.copysign,
+          BinaryOp.copySign,
         ]) {
           binaryUfunc(f64, f64, op: op);
         }
@@ -1699,7 +1699,7 @@ void main() {
         // Extension methods and outerUfunc + atUfunc int8 divide/minimum
         f64.reduce(op: BinaryOp.add);
         f64.accumulate(op: BinaryOp.add);
-        f64.reduceat(
+        f64.reduceAt(
           NDArray.fromList([0, 1], [2], DType.int64),
           op: BinaryOp.add,
         );
@@ -1870,7 +1870,7 @@ void main() {
         stack([a4FStrided, a4FStrided], axis: 0);
         stack([a4FStrided, a4FStrided], axis: 1);
 
-        expect(() => expand_dims(a4F, 5), throwsRangeError);
+        expect(() => expandDims(a4F, 5), throwsRangeError);
         expect(() => fliplr(a4F), throwsArgumentError);
         expect(() => flipud(scalarF), throwsArgumentError);
         expect(() => rot90(a4F), throwsArgumentError);

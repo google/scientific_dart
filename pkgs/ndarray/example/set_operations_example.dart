@@ -63,14 +63,14 @@ void main() {
     print('Array 2: ${un2.toList()}');
     print('Union: ${union.toList()}'); // [1, 2, 3, 4, 5]
 
-    print('\n=== isin ===');
+    print('\n=== isIn ===');
     final element = NDArray<Int32>.fromList(
       [1, 2, 3, 4, 2, 1],
       [6],
       DType.int32,
     );
     final testElements = NDArray<Int32>.fromList([2, 4], [2], DType.int32);
-    final mask = isin(element, testElements);
+    final mask = isIn(element, testElements);
     print('Element: ${element.toList()}');
     print('Test Elements: ${testElements.toList()}');
     print('Is In: ${mask.toList()}'); // [false, true, false, true, true, false]

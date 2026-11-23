@@ -44,14 +44,14 @@ extension UfuncNDArrayExtension<T extends DTypeTag> on NDArray<T> {
   NDArray<T> reduce({
     required BinaryOp op,
     int? axis,
-    bool keepdims = false,
+    bool keepDims = false,
     NDArray<T>? out,
     Object? initial,
   }) => reduceUfunc(
     this,
     op: op,
     axis: axis,
-    keepdims: keepdims,
+    keepDims: keepDims,
     out: out,
     initial: initial,
   );
@@ -76,12 +76,12 @@ extension UfuncNDArrayExtension<T extends DTypeTag> on NDArray<T> {
   /// - It is an error if this array, [indices], or [out] is disposed.
   /// - It is an error if [axis] is not within `[-rank, rank - 1]`.
   /// - It is an error if [out] (if provided) has incompatible shape or dtype.
-  NDArray<T> reduceat(
+  NDArray<T> reduceAt(
     NDArray<DTypeTag> indices, {
     required BinaryOp op,
     int axis = 0,
     NDArray<T>? out,
-  }) => reduceatUfunc(this, indices, op: op, axis: axis, out: out);
+  }) => reduceAtUfunc(this, indices, op: op, axis: axis, out: out);
 
   /// Performs an outer binary operation between this array and [b] using [op].
   ///
@@ -370,7 +370,7 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         ),
       );
       return out ?? _coerceOwned<R>(res);
-    case BinaryOp.arctan2:
+    case BinaryOp.atan2:
       final res = _withView<AnySpec, NDArray<DTypeTag>>(
         a,
         (aSpec) => _withView<AnySpec, NDArray<DTypeTag>>(
@@ -388,10 +388,10 @@ NDArray<R> binaryUfunc<T extends SelfOf<DTypeTag>, R extends AnySpec>(
         ),
       );
       return out ?? _coerceOwned<R>(res);
-    case BinaryOp.copysign:
+    case BinaryOp.copySign:
       final res = _withViewNullable<AnySpec, NDArray<AnySpec>>(
         out,
-        (outView) => copysign<AnySpec>(
+        (outView) => copySign<AnySpec>(
           a.asAnySpec,
           b.asAnySpec,
           where: where,
@@ -1241,76 +1241,12 @@ NDArray<R> _elementwiseMinMax<T extends DTypeTag, R extends DTypeTag>(
   }
 }
 
-/// Reduces [a] along [axis] using [op].
-///
-/// **Preconditions:**
-/// - It is an error if [op] is not reducible ([op.isReducible] is false).
-/// - It is an error if [a] or [out] (if provided) is disposed.
-/// - It is an error if [axis] is not within `[-rank, rank - 1]`.
-/// - It is an error if [a] is empty without [initial].
-/// - It is an error if [out] (if provided) has incompatible shape or dtype.
-NDArray<T> reduce<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
-  required BinaryOp op,
-  int? axis,
-  bool keepdims = false,
-  NDArray<Out>? out,
-  Object? initial,
-}) => reduceUfunc(
-  a,
-  op: op,
-  axis: axis,
-  keepdims: keepdims,
-  out: out,
-  initial: initial,
-);
-
-/// Performs a cumulative operation on [a] along [axis] using [op].
-///
-/// **Preconditions:**
-/// - It is an error if [op] is not reducible ([op.isReducible] is false).
-/// - It is an error if [a] or [out] (if provided) is disposed.
-/// - It is an error if [axis] is not within `[-rank, rank - 1]`.
-/// - It is an error if [out] (if provided) has incompatible shape or dtype.
-NDArray<T> accumulate<T extends DTypeTag, Out extends T>(
-  NDArray<T> a, {
-  required BinaryOp op,
-  int axis = 0,
-  NDArray<Out>? out,
-}) => accumulateUfunc(a, op: op, axis: axis, out: out);
-
-/// Performs slice reductions on [a] along [axis] for intervals defined by [indices] using [op].
-///
-/// **Preconditions:**
-/// - It is an error if [op] is not reducible ([op.isReducible] is false).
-/// - It is an error if [a], [indices], or [out] is disposed.
-/// - It is an error if [axis] is not within `[-rank, rank - 1]`.
-/// - It is an error if [out] (if provided) has incompatible shape or dtype.
-NDArray<T> reduceat<T extends DTypeTag, Out extends T>(
-  NDArray<T> a,
-  NDArray<DTypeTag> indices, {
-  required BinaryOp op,
-  int axis = 0,
-  NDArray<Out>? out,
-}) => reduceatUfunc(a, indices, op: op, axis: axis, out: out);
-
-/// Performs unbuffered in-place scatter updates on [a] at [indices] using [b] and [op].
-///
-/// **Preconditions:**
-/// - It is an error if [a], [indices], or [b] is disposed.
-void at<T extends DTypeTag>(
-  NDArray<T> a,
-  NDArray<DTypeTag> indices,
-  NDArray<DTypeTag> b, {
-  required BinaryOp op,
-}) => atUfunc(a, indices, b, op: op);
-
 /// Generalized ufunc reduction function.
 NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
   NDArray<T> a, {
   required BinaryOp op,
   int? axis,
-  bool keepdims = false,
+  bool keepDims = false,
   NDArray<Out>? out,
   Object? initial,
 }) {
@@ -1339,7 +1275,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
         'Cannot reduce an empty array without an initial value',
       );
     }
-    final targetShape = keepdims ? List.filled(a.rank, 1) : <int>[];
+    final targetShape = keepDims ? List.filled(a.rank, 1) : <int>[];
     final NDArray<T> result;
     if (out != null) {
       validateOutBuffer(out);
@@ -1356,7 +1292,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
             a,
             op: op,
             axis: axis,
-            keepdims: keepdims,
+            keepDims: keepDims,
             initial: initial,
           );
           temp.copy(out: out);
@@ -1618,7 +1554,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
   }
 
   final resShape = List<int>.from(a.shape);
-  if (keepdims) {
+  if (keepDims) {
     resShape[normAxis] = 1;
   } else {
     resShape.removeAt(normAxis);
@@ -1640,7 +1576,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
           a,
           op: op,
           axis: axis,
-          keepdims: keepdims,
+          keepDims: keepDims,
           initial: initial,
         );
         temp.copy(out: out);
@@ -1679,7 +1615,7 @@ NDArray<T> reduceUfunc<T extends DTypeTag, Out extends T>(
         cStridesA[i] = a.strides[i];
       }
       if (rank > 1) {
-        if (keepdims) {
+        if (keepDims) {
           var resIdx = 0;
           for (var i = 0; i < rank; i++) {
             if (i != normAxis) {
@@ -2976,8 +2912,8 @@ NDArray<T> accumulateUfunc<T extends DTypeTag, Out extends T>(
   return result;
 }
 
-/// Generalized ufunc reduceat function.
-NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
+/// Generalized ufunc reduceAt function.
+NDArray<T> reduceAtUfunc<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   NDArray<DTypeTag> indices, {
   required BinaryOp op,
@@ -2985,7 +2921,7 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
   NDArray<Out>? out,
 }) {
   if (a.isDisposed || indices.isDisposed || (out != null && out.isDisposed)) {
-    throw StateError('Cannot execute reduceat on a disposed array.');
+    throw StateError('Cannot execute reduceAt on a disposed array.');
   }
   if (op == BinaryOp.subtract && a.dtype == DType.boolean) {
     throw UnsupportedError(
@@ -3016,14 +2952,14 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
       throw ArgumentError.value(
         out,
         'out',
-        'Must have compatible shape and dtype for reduceat',
+        'Must have compatible shape and dtype for reduceAt',
       );
     }
   }
 
   if (numIndices > 0 && axisLen == 0) {
     throw RangeError(
-      'Cannot execute reduceat with non-empty indices on an empty axis of length 0.',
+      'Cannot execute reduceAt with non-empty indices on an empty axis of length 0.',
     );
   }
 
@@ -3069,7 +3005,7 @@ NDArray<T> reduceatUfunc<T extends DTypeTag, Out extends T>(
             sharesMemory(indices, out) ||
             !out.isContiguous)) {
       return NDArray.scope(() {
-        final temp = reduceatUfunc(a, indices, op: op, axis: axis);
+        final temp = reduceAtUfunc(a, indices, op: op, axis: axis);
         temp.copy(out: out);
         return out;
       });
@@ -3867,7 +3803,6 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
   return _withView<AnySpec, NDArray<R>>(x, (xSpec) {
     switch (op) {
       case UnaryOp.invert:
-      case UnaryOp.bitwiseNot:
         final res = _withViewNullable<T, NDArray<T>>(
           out,
           (outView) =>
@@ -3891,9 +3826,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
           (outView) => positive(x, where: where, out: outView),
         );
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.absolute:
       case UnaryOp.abs:
-      case UnaryOp.fabs:
         final res = abs(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.rint:
@@ -3906,7 +3839,6 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
         );
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.conj:
-      case UnaryOp.conjugate:
         final res = _withViewNullable<T, NDArray<T>>(
           out,
           (outView) => conj(x, where: where, out: outView),
@@ -3979,7 +3911,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
           );
           final expScalar = NDArray.scalar(1.0 / 3.0, dtype: targetDType);
           final mag = power<AnySpec>(absX.asAnySpec, expScalar.asAnySpec);
-          final res = copysign<AnySpec>(
+          final res = copySign<AnySpec>(
             mag,
             xCast.asAnySpec,
             where: where,
@@ -3999,13 +3931,13 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
       case UnaryOp.tan:
         final res = tan(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.arcsin:
+      case UnaryOp.asin:
         final res = asin(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.arccos:
+      case UnaryOp.acos:
         final res = acos(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.arctan:
+      case UnaryOp.atan:
         final res = atan(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.sinh:
@@ -4017,20 +3949,18 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
       case UnaryOp.tanh:
         final res = tanh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.arcsinh:
+      case UnaryOp.asinh:
         final res = asinh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.arccosh:
+      case UnaryOp.acosh:
         final res = acosh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.arctanh:
+      case UnaryOp.atanh:
         final res = atanh(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.degrees:
       case UnaryOp.rad2deg:
         final res = rad2deg(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.radians:
       case UnaryOp.deg2rad:
         final res = deg2rad(xSpec, where: where, out: out);
         return out ?? _coerceOwned<R>(res);
@@ -4040,22 +3970,22 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
           (outView) => logicalNot(x, where: where, out: outView),
         );
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.isnan:
+      case UnaryOp.isNan:
         final res = _withViewNullable<Boolean, NDArray<Boolean>>(
           out,
-          (outView) => isnan(x, where: where, out: outView),
+          (outView) => isNan(x, where: where, out: outView),
         );
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.isinf:
+      case UnaryOp.isInf:
         final res = _withViewNullable<Boolean, NDArray<Boolean>>(
           out,
-          (outView) => isinf(x, where: where, out: outView),
+          (outView) => isInf(x, where: where, out: outView),
         );
         return out ?? _coerceOwned<R>(res);
-      case UnaryOp.isfinite:
+      case UnaryOp.isFinite:
         final res = _withViewNullable<Boolean, NDArray<Boolean>>(
           out,
-          (outView) => isfinite(x, where: where, out: outView),
+          (outView) => isFinite(x, where: where, out: outView),
         );
         return out ?? _coerceOwned<R>(res);
       case UnaryOp.signbit:
@@ -4080,7 +4010,7 @@ NDArray<R> unaryUfunc<T extends DTypeTag, R extends AnySpec>(
           }
           final zero = NDArray.scalar(0, dtype: x.dtype);
           final src = x.dtype.isFloating
-              ? copysign<AnySpec>(
+              ? copySign<AnySpec>(
                   NDArray.scalar(1, dtype: x.dtype).asAnySpec,
                   xSpec,
                 )

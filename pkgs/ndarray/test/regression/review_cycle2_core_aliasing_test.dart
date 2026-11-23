@@ -295,7 +295,7 @@ void main() {
     );
 
     test(
-      'take_along_axis protects against aliasing when out shares memory with arr',
+      'takeAlongAxis protects against aliasing when out shares memory with arr',
       () {
         NDArray.scope(() {
           final a = NDArray<Float64>.fromList(
@@ -304,10 +304,10 @@ void main() {
             DType.float64,
           );
           final indices = NDArray.fromList([1, 0, 1, 0], [2, 2], DType.int32);
-          final expected = take_along_axis(a, indices, 1);
+          final expected = takeAlongAxis(a, indices, 1);
 
           final aCopy = a.copy();
-          take_along_axis(aCopy, indices, 1, out: aCopy);
+          takeAlongAxis(aCopy, indices, 1, out: aCopy);
           for (var r = 0; r < 2; r++) {
             for (var c = 0; c < 2; c++) {
               expect(aCopy.getCell([r, c]), equals(expected.getCell([r, c])));
@@ -318,7 +318,7 @@ void main() {
     );
 
     test(
-      'put_along_axis protects against aliasing when out shares memory with values',
+      'putAlongAxis protects against aliasing when out shares memory with values',
       () {
         NDArray.scope(() {
           final a = NDArray<Float64>.fromList(
@@ -331,7 +331,7 @@ void main() {
           // Values is a view of out buffer
           final out = a.copy();
           final valuesView = out.slice([Slice.all(), Slice.all()]);
-          put_along_axis(a, indices, valuesView, 1, out: out);
+          putAlongAxis(a, indices, valuesView, 1, out: out);
 
           // row 0: idx 1 gets values[0,0]=1.0, idx 0 gets values[0,1]=2.0 => [2.0, 1.0]
           // row 1: idx 1 gets values[1,0]=3.0, idx 0 gets values[1,1]=4.0 => [4.0, 3.0]

@@ -21,7 +21,7 @@ void main() {
     // =========================================================================
     // 1. Universal Function Methods: BinaryOp Universal Methods
     // =========================================================================
-    group('BinaryOp Universal Methods (reduce, accumulate, reduceat, outer, at)', () {
+    group('BinaryOp Universal Methods (reduce, accumulate, reduceAt, outer, at)', () {
       test(
         'BinaryOp.reduce on all reducible operations across multiple DTypes',
         () {
@@ -145,11 +145,11 @@ void main() {
               closeTo(math.log(1.0 + 2.0) / math.ln2, 1e-6),
             );
 
-            // Reduce with initial value and keepdims
+            // Reduce with initial value and keepDims
             final redInit = f64.reduce(
               op: BinaryOp.minimum,
               initial: 0.5,
-              keepdims: true,
+              keepDims: true,
             );
             expect(redInit.shape, equals([1]));
             expect(redInit.getCell([0]), equals(0.5));
@@ -656,12 +656,9 @@ void main() {
               equals([10.0, 10.0, 20.0, 20.0]),
             );
             expect(vecA.outer(vecB, op: BinaryOp.hypot).shape, equals([2, 2]));
+            expect(vecA.outer(vecB, op: BinaryOp.atan2).shape, equals([2, 2]));
             expect(
-              vecA.outer(vecB, op: BinaryOp.arctan2).shape,
-              equals([2, 2]),
-            );
-            expect(
-              vecA.outer(vecB, op: BinaryOp.copysign).toList(),
+              vecA.outer(vecB, op: BinaryOp.copySign).toList(),
               equals([10.0, 10.0, 20.0, 20.0]),
             );
 
@@ -684,7 +681,7 @@ void main() {
       );
 
       test(
-        'BinaryOp.reduceat with out-of-order indices, step indices, and multi-dimensional slices',
+        'BinaryOp.reduceAt with out-of-order indices, step indices, and multi-dimensional slices',
         () {
           NDArray.scope(() {
             // Out of order and step indices on 1D
@@ -698,7 +695,7 @@ void main() {
               [5],
               DType.int64,
             );
-            final res1D = a1D.reduceat(indices1D, op: BinaryOp.add);
+            final res1D = a1D.reduceAt(indices1D, op: BinaryOp.add);
             expect(res1D.shape, equals([5]));
             expect(res1D.toList(), equals([6.0, 4.0, 10.0, 5.0, 27.0]));
 
@@ -710,7 +707,7 @@ void main() {
             );
             final idx = NDArray.fromList([0, 2], [2], DType.int64);
             expect(
-              aF32.reduceat(idx, op: BinaryOp.add).toList(),
+              aF32.reduceAt(idx, op: BinaryOp.add).toList(),
               equals([3.0, 7.0]),
             );
 
@@ -720,7 +717,7 @@ void main() {
               DType.int64,
             );
             expect(
-              aI64.reduceat(idx, op: BinaryOp.add).toList(),
+              aI64.reduceAt(idx, op: BinaryOp.add).toList(),
               equals([3, 7]),
             );
 
@@ -730,7 +727,7 @@ void main() {
               DType.int32,
             );
             expect(
-              aI32.reduceat(idx, op: BinaryOp.add).toList(),
+              aI32.reduceAt(idx, op: BinaryOp.add).toList(),
               equals([3, 7]),
             );
 
@@ -740,13 +737,13 @@ void main() {
               DType.int16,
             );
             expect(
-              aI16.reduceat(idx, op: BinaryOp.add).toList(),
+              aI16.reduceAt(idx, op: BinaryOp.add).toList(),
               equals([3, 7]),
             );
 
             final aU8 = NDArray<Uint8>.fromList([1, 2, 3, 4], [4], DType.uint8);
             expect(
-              aU8.reduceat(idx, op: BinaryOp.add).toList(),
+              aU8.reduceAt(idx, op: BinaryOp.add).toList(),
               equals([3, 7]),
             );
 
@@ -756,7 +753,7 @@ void main() {
               DType.boolean,
             );
             expect(
-              aBool.reduceat(idx, op: BinaryOp.logicalAnd).toList(),
+              aBool.reduceAt(idx, op: BinaryOp.logicalAnd).toList(),
               equals([true, false]),
             );
 
@@ -770,7 +767,7 @@ void main() {
               [4],
               DType.complex128,
             );
-            final cRedAt = aC128.reduceat(idx, op: BinaryOp.add);
+            final cRedAt = aC128.reduceAt(idx, op: BinaryOp.add);
             expect(cRedAt.getCell([0]), equals(Complex(3.0, 0.0)));
             expect(cRedAt.getCell([1]), equals(Complex(7.0, 0.0)));
 
@@ -784,7 +781,7 @@ void main() {
               [4],
               DType.complex64,
             );
-            final c64RedAt = aC64.reduceat(idx, op: BinaryOp.add);
+            final c64RedAt = aC64.reduceAt(idx, op: BinaryOp.add);
             expect(c64RedAt.getCell([0]), equals(Complex(3.0, 0.0)));
             expect(c64RedAt.getCell([1]), equals(Complex(7.0, 0.0)));
 
@@ -794,28 +791,28 @@ void main() {
               [4],
               DType.float16,
             );
-            expect(aF16.reduceat(idx, op: BinaryOp.add).shape, equals([2]));
+            expect(aF16.reduceAt(idx, op: BinaryOp.add).shape, equals([2]));
 
             final aBf16 = NDArray.fromList(
               [1.0, 2.0, 3.0, 4.0],
               [4],
               DType.bfloat16,
             );
-            expect(aBf16.reduceat(idx, op: BinaryOp.add).shape, equals([2]));
+            expect(aBf16.reduceAt(idx, op: BinaryOp.add).shape, equals([2]));
 
             final aI8 = NDArray.fromList([1, 2, 3, 4], [4], DType.int8);
-            expect(aI8.reduceat(idx, op: BinaryOp.add).shape, equals([2]));
+            expect(aI8.reduceAt(idx, op: BinaryOp.add).shape, equals([2]));
 
             final aU64 = NDArray.fromList([1, 2, 3, 4], [4], DType.uint64);
-            expect(aU64.reduceat(idx, op: BinaryOp.add).shape, equals([2]));
+            expect(aU64.reduceAt(idx, op: BinaryOp.add).shape, equals([2]));
 
             final aU32 = NDArray.fromList([1, 2, 3, 4], [4], DType.uint32);
-            expect(aU32.reduceat(idx, op: BinaryOp.add).shape, equals([2]));
+            expect(aU32.reduceAt(idx, op: BinaryOp.add).shape, equals([2]));
 
             final aU16 = NDArray.fromList([1, 2, 3, 4], [4], DType.uint16);
-            expect(aU16.reduceat(idx, op: BinaryOp.add).shape, equals([2]));
+            expect(aU16.reduceAt(idx, op: BinaryOp.add).shape, equals([2]));
 
-            // 2D Matrix reduceat along axis 0 and axis 1
+            // 2D Matrix reduceAt along axis 0 and axis 1
             final mat2D = NDArray<Float64>.fromList(
               [
                 1.0,
@@ -839,14 +836,14 @@ void main() {
               DType.float64,
             );
 
-            final resAx0 = mat2D.reduceat(idx, op: BinaryOp.add, axis: 0);
+            final resAx0 = mat2D.reduceAt(idx, op: BinaryOp.add, axis: 0);
             expect(resAx0.shape, equals([2, 4]));
             expect(
               resAx0.toList(),
               equals([6.0, 8.0, 10.0, 12.0, 22.0, 24.0, 26.0, 28.0]),
             );
 
-            final resAx1 = mat2D.reduceat(idx, op: BinaryOp.add, axis: 1);
+            final resAx1 = mat2D.reduceAt(idx, op: BinaryOp.add, axis: 1);
             expect(resAx1.shape, equals([4, 2]));
           });
         },
@@ -994,7 +991,7 @@ void main() {
       );
 
       test(
-        'Direct top-level universal function methods: binaryUfunc, reduce, accumulate, reduceat, at',
+        'Direct top-level universal function methods: binaryUfunc, reduce, accumulate, reduceAt, at',
         () {
           NDArray.scope(() {
             final a = NDArray<Float64>.fromList(
@@ -1011,18 +1008,18 @@ void main() {
             final added = binaryUfunc(a, b, op: BinaryOp.add);
             expect(added.toList(), equals([11.0, 22.0, 33.0]));
 
-            final reduced = reduce(a, op: BinaryOp.add);
+            final reduced = reduceUfunc(a, op: BinaryOp.add);
             expect(reduced.scalar, equals(60.0));
 
-            final accumulated = accumulate(a, op: BinaryOp.add);
+            final accumulated = accumulateUfunc(a, op: BinaryOp.add);
             expect(accumulated.toList(), equals([10.0, 30.0, 60.0]));
 
             final idx = NDArray.fromList([0, 1], [2], DType.int64);
-            final redAt = reduceat(a, idx, op: BinaryOp.add);
+            final redAt = reduceAtUfunc(a, idx, op: BinaryOp.add);
             expect(redAt.toList(), equals([10.0, 50.0]));
 
             final target = NDArray<Float64>.zeros([3], DType.float64);
-            at(
+            atUfunc(
               target,
               idx,
               b.slice([Slice(start: 0, stop: 2)]),
@@ -1273,7 +1270,7 @@ void main() {
     // =========================================================================
     group('Floating Point & Special Functions Coverage', () {
       test(
-        'isnan, isinf, isfinite on subnormals, infinities, NaNs, zeros across all floating and complex DTypes',
+        'isNan, isInf, isFinite on subnormals, infinities, NaNs, zeros across all floating and complex DTypes',
         () {
           NDArray.scope(() {
             final f64Vals = [
@@ -1289,15 +1286,15 @@ void main() {
             final aF64 = NDArray<Float64>.fromList(f64Vals, [8], DType.float64);
 
             expect(
-              isnan(aF64).toList(),
+              isNan(aF64).toList(),
               equals([false, false, false, false, false, true, false, false]),
             );
             expect(
-              isinf(aF64).toList(),
+              isInf(aF64).toList(),
               equals([false, false, false, false, false, false, true, true]),
             );
             expect(
-              isfinite(aF64).toList(),
+              isFinite(aF64).toList(),
               equals([true, true, true, true, true, false, false, false]),
             );
 
@@ -1308,15 +1305,15 @@ void main() {
               DType.float32,
             );
             expect(
-              isnan(aF32).toList(),
+              isNan(aF32).toList(),
               equals([false, false, false, true, false]),
             );
             expect(
-              isinf(aF32).toList(),
+              isInf(aF32).toList(),
               equals([false, false, false, false, true]),
             );
             expect(
-              isfinite(aF32).toList(),
+              isFinite(aF32).toList(),
               equals([true, true, true, false, false]),
             );
 
@@ -1331,10 +1328,10 @@ void main() {
               [4],
               DType.complex128,
             );
-            expect(isnan(aC128).toList(), equals([false, true, false, false]));
-            expect(isinf(aC128).toList(), equals([false, false, true, false]));
+            expect(isNan(aC128).toList(), equals([false, true, false, false]));
+            expect(isInf(aC128).toList(), equals([false, false, true, false]));
             expect(
-              isfinite(aC128).toList(),
+              isFinite(aC128).toList(),
               equals([true, false, false, true]),
             );
 
@@ -1348,9 +1345,9 @@ void main() {
               [4],
               DType.complex64,
             );
-            expect(isnan(aC64).toList(), equals([false, true, false, false]));
-            expect(isinf(aC64).toList(), equals([false, false, true, false]));
-            expect(isfinite(aC64).toList(), equals([true, false, false, true]));
+            expect(isNan(aC64).toList(), equals([false, true, false, false]));
+            expect(isInf(aC64).toList(), equals([false, false, true, false]));
+            expect(isFinite(aC64).toList(), equals([true, false, false, true]));
 
             // Non-contiguous strided views and where masks
             final matF64 = NDArray<Float64>.fromList(
@@ -1363,13 +1360,13 @@ void main() {
               Index(0),
             ]); // [0.0, infinity]
             expect(viewF64.isContiguous, isFalse);
-            expect(isinf(viewF64).toList(), equals([false, true]));
+            expect(isInf(viewF64).toList(), equals([false, true]));
           });
         },
       );
 
       test(
-        'copysign on subnormals, infinities, NaNs, and zeros with sign preservation',
+        'copySign on subnormals, infinities, NaNs, and zeros with sign preservation',
         () {
           NDArray.scope(() {
             final x1 = NDArray<Float64>.fromList(
@@ -1383,7 +1380,7 @@ void main() {
               DType.float64,
             );
 
-            final res = copysign(x1, x2);
+            final res = copySign(x1, x2);
             expect(res.toList()[0], equals(-1.0));
             expect(res.toList()[1], equals(1.0));
             expect(res.toList()[2], equals(-5.0));
@@ -1397,7 +1394,7 @@ void main() {
               DType.float64,
             );
             final b1D = NDArray<Float64>.fromList([-1.0], [1], DType.float64);
-            final resBroadcast = copysign(a2D, b1D);
+            final resBroadcast = copySign(a2D, b1D);
             expect(resBroadcast.shape, equals([2, 2]));
             expect(resBroadcast.toList(), equals([-1.0, -2.0, -3.0, -4.0]));
           });
@@ -1579,7 +1576,7 @@ void main() {
             expect(cj.getCell([1]), equals(Complex(-5.0, -12.0)));
             expect(cj.getCell([2]), equals(Complex(0.0, 1.0)));
 
-            final cjAlias = conjugate(cArr);
+            final cjAlias = conj(cArr);
             expect(cjAlias.getCell([0]), equals(Complex(3.0, -4.0)));
 
             // Real arrays (zero-copy view and zero imag)

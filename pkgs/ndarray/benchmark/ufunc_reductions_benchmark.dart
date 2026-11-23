@@ -124,9 +124,9 @@ void main() async {
         }, throughput: Throughput.elements(1000 * 1000));
       });
 
-      c.group('4. Segment Reduction & Scatter (reduceat & at)', () {
-        c.bench('reduceat(add) [1M array, 1000 segments]', () {
-          final res = a1d.reduceat(indicesReduceat, op: BinaryOp.add);
+      c.group('4. Segment Reduction & Scatter (reduceAt & at)', () {
+        c.bench('reduceAt(add) [1M array, 1000 segments]', () {
+          final res = a1d.reduceAt(indicesReduceat, op: BinaryOp.add);
           blackhole(res);
           res.dispose();
         }, throughput: Throughput.elements(size1d));

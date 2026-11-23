@@ -17,9 +17,9 @@ import 'package:test/test.dart';
 import 'dart:typed_data';
 
 void main() {
-  group('NDArray Status Checkers (isnan, isinf, isfinite) Tests', () {
+  group('NDArray Status Checkers (isNan, isInf, isFinite) Tests', () {
     test(
-      'isnan, isinf, isfinite basic double (Float64)',
+      'isNan, isInf, isFinite basic double (Float64)',
       () => NDArray.scope(() {
         final a = NDArray.fromList(
           Float64List.fromList([
@@ -33,22 +33,22 @@ void main() {
           DType.float64,
         );
 
-        final nanMask = isnan(a);
+        final nanMask = isNan(a);
         expect(nanMask.dtype, DType.boolean);
         expect(nanMask.toList(), [false, true, false, false, false]);
 
-        final infMask = isinf(a);
+        final infMask = isInf(a);
         expect(infMask.dtype, DType.boolean);
         expect(infMask.toList(), [false, false, true, true, false]);
 
-        final finiteMask = isfinite(a);
+        final finiteMask = isFinite(a);
         expect(finiteMask.dtype, DType.boolean);
         expect(finiteMask.toList(), [true, false, false, false, true]);
       }),
     );
 
     test(
-      'isnan, isinf, isfinite float32',
+      'isNan, isInf, isFinite float32',
       () => NDArray.scope(() {
         final a = NDArray.fromList(
           Float32List.fromList([1.0, double.nan, double.infinity, 5.0]),
@@ -56,46 +56,46 @@ void main() {
           DType.float32,
         );
 
-        final resNan = isnan(a);
+        final resNan = isNan(a);
         expect(resNan.toList(), [false, true, false, false]);
 
-        final resInf = isinf(a);
+        final resInf = isInf(a);
         expect(resInf.toList(), [false, false, true, false]);
 
-        final resFinite = isfinite(a);
+        final resFinite = isFinite(a);
         expect(resFinite.toList(), [true, false, false, true]);
       }),
     );
 
     test(
-      'isnan, isinf, isfinite integer arrays (Int32 and Int64)',
+      'isNan, isInf, isFinite integer arrays (Int32 and Int64)',
       () => NDArray.scope(() {
         final a = NDArray.fromList([1, 2, 3], [3], DType.int32);
         final b = NDArray.fromList([10, 20, 30], [3], DType.int64);
 
         // Integers are never NaN or Infinite, and always finite
-        final nanA = isnan(a);
+        final nanA = isNan(a);
         expect(nanA.toList(), [false, false, false]);
 
-        final infA = isinf(a);
+        final infA = isInf(a);
         expect(infA.toList(), [false, false, false]);
 
-        final finiteA = isfinite(a);
+        final finiteA = isFinite(a);
         expect(finiteA.toList(), [true, true, true]);
 
-        final nanB = isnan(b);
+        final nanB = isNan(b);
         expect(nanB.toList(), [false, false, false]);
 
-        final infB = isinf(b);
+        final infB = isInf(b);
         expect(infB.toList(), [false, false, false]);
 
-        final finiteB = isfinite(b);
+        final finiteB = isFinite(b);
         expect(finiteB.toList(), [true, true, true]);
       }),
     );
 
     test(
-      'isnan, isinf, isfinite complex arrays (Complex128 and Complex64)',
+      'isNan, isInf, isFinite complex arrays (Complex128 and Complex64)',
       () => NDArray.scope(() {
         final a = NDArray.fromList(
           [
@@ -107,13 +107,13 @@ void main() {
           DType.complex128,
         );
 
-        final nanA = isnan(a);
+        final nanA = isNan(a);
         expect(nanA.toList(), [false, true, false]);
 
-        final infA = isinf(a);
+        final infA = isInf(a);
         expect(infA.toList(), [false, false, true]);
 
-        final finiteA = isfinite(a);
+        final finiteA = isFinite(a);
         expect(finiteA.toList(), [true, false, false]);
 
         final b = NDArray.fromList(
@@ -126,19 +126,19 @@ void main() {
           DType.complex64,
         );
 
-        final nanB = isnan(b);
+        final nanB = isNan(b);
         expect(nanB.toList(), [false, true, false]);
 
-        final infB = isinf(b);
+        final infB = isInf(b);
         expect(infB.toList(), [false, false, true]);
 
-        final finiteB = isfinite(b);
+        final finiteB = isFinite(b);
         expect(finiteB.toList(), [true, false, false]);
       }),
     );
 
     test(
-      'isnan, isinf, isfinite on transposed/sliced views',
+      'isNan, isInf, isFinite on transposed/sliced views',
       () => NDArray.scope(() {
         final parent = NDArray.fromList(
           Float64List.fromList([1.0, double.nan, double.infinity, 4.0]),
@@ -148,7 +148,7 @@ void main() {
 
         final view = parent.transposed;
 
-        final resNan = isnan(view);
+        final resNan = isNan(view);
         expect(resNan.toList(), [
           false,
           false,
@@ -156,10 +156,10 @@ void main() {
           false,
         ]); // transposed order: [1.0, inf, nan, 4.0]
 
-        final resInf = isinf(view);
+        final resInf = isInf(view);
         expect(resInf.toList(), [false, true, false, false]);
 
-        final resFinite = isfinite(view);
+        final resFinite = isFinite(view);
         expect(resFinite.toList(), [true, false, false, true]);
       }),
     );
@@ -170,9 +170,9 @@ void main() {
         final a = NDArray.fromList([1.0, 2.0], [2], DType.float64);
         a.dispose();
 
-        expect(() => isnan(a), throwsStateError);
-        expect(() => isinf(a), throwsStateError);
-        expect(() => isfinite(a), throwsStateError);
+        expect(() => isNan(a), throwsStateError);
+        expect(() => isInf(a), throwsStateError);
+        expect(() => isFinite(a), throwsStateError);
       }),
     );
 
@@ -244,12 +244,12 @@ void main() {
               (i) => (off + i) % 8 == 4 || (off + i) % 8 == 5,
             );
             final expFin = List<bool>.generate(n, (i) => (off + i) % 8 < 4);
-            expect(isnan(v64).toList(), expNan);
-            expect(isinf(v64).toList(), expInf);
-            expect(isfinite(v64).toList(), expFin);
-            expect(isnan(v32).toList(), expNan);
-            expect(isinf(v32).toList(), expInf);
-            expect(isfinite(v32).toList(), expFin);
+            expect(isNan(v64).toList(), expNan);
+            expect(isInf(v64).toList(), expInf);
+            expect(isFinite(v64).toList(), expFin);
+            expect(isNan(v32).toList(), expNan);
+            expect(isInf(v32).toList(), expInf);
+            expect(isFinite(v32).toList(), expFin);
           }
         }
       }),
@@ -280,9 +280,9 @@ void main() {
         expect(sin(bcast).toList(), sin(materialized).toList());
         expect(cos(bcast).toList(), cos(materialized).toList());
         expect(tan(bcast).toList(), tan(materialized).toList());
-        expect(isnan(bcast).toList(), isnan(materialized).toList());
-        expect(isinf(bcast).toList(), isinf(materialized).toList());
-        expect(isfinite(bcast).toList(), isfinite(materialized).toList());
+        expect(isNan(bcast).toList(), isNan(materialized).toList());
+        expect(isInf(bcast).toList(), isInf(materialized).toList());
+        expect(isFinite(bcast).toList(), isFinite(materialized).toList());
       }),
     );
   });

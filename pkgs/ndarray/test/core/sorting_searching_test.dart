@@ -13,7 +13,7 @@
 // limitations under the License.
 
 import 'package:ndarray/ndarray.dart';
-import 'package:test/test.dart';
+import 'package:test/test.dart' hide isIn;
 import 'dart:typed_data';
 
 void main() {
@@ -238,18 +238,18 @@ void main() {
       );
     });
 
-    group('count_nonzero & nonzero tests', () {
+    group('countNonzero & nonzero tests', () {
       test(
-        'count_nonzero flat and axis reduced',
+        'countNonzero flat and axis reduced',
         () => NDArray.scope(() {
           final mat = NDArray.fromList(Int32List.fromList([0, 5, 0, 2, 0, 3]), [
             2,
             3,
           ], DType.int32);
 
-          expect(count_nonzero(mat).scalar, 3);
+          expect(countNonzero(mat).scalar, 3);
 
-          final c0 = count_nonzero(mat, axis: 0); // count along columns
+          final c0 = countNonzero(mat, axis: 0); // count along columns
           expect(c0.shape, [3]);
           expect(c0.toList(), [1, 1, 1]); // col0 has 2, col1 has 5, col2 has 3
         }),
@@ -924,7 +924,7 @@ void main() {
       );
     });
     test(
-      'count_nonzero() fallback path on non-contiguous views',
+      'countNonzero() fallback path on non-contiguous views',
       () => NDArray.scope(() {
         final a = NDArray.fromList(
           Float64List.fromList([1.0, 0.0, 3.0, 0.0, 5.0, 6.0]),
@@ -938,8 +938,8 @@ void main() {
         expect(view.isContiguous, false);
         expect(view.toList(), [3.0, 6.0]);
 
-        // In the old code, count_nonzero(view) would incorrectly return 0 due to discarded recursion yields!
-        expect(count_nonzero(view).scalar, 2);
+        // In the old code, countNonzero(view) would incorrectly return 0 due to discarded recursion yields!
+        expect(countNonzero(view).scalar, 2);
       }),
     );
 
@@ -1146,7 +1146,7 @@ void main() {
                   expectedIdx.add(i);
                 }
               }
-              expect(count_nonzero(view64).scalar, expectedIdx.length);
+              expect(countNonzero(view64).scalar, expectedIdx.length);
               final nz64 = nonzero(view64);
               expect(nz64[0].toList(), expectedIdx);
               final aw64 = argwhere(view64);
@@ -1157,7 +1157,7 @@ void main() {
               final view32 = base32.slice([Slice(start: off, stop: off + n)]);
               final nz32 = nonzero(view32);
               final aw32 = argwhere(view32);
-              expect(nz32[0].size, count_nonzero(view32).scalar);
+              expect(nz32[0].size, countNonzero(view32).scalar);
               expect(aw32.toList(), nz32[0].toList());
             }
           }
@@ -1212,12 +1212,12 @@ void main() {
             [4],
             DType.uint64,
           );
-          expect(count_nonzero(u64).scalar, 2);
+          expect(countNonzero(u64).scalar, 2);
           expect(nonzero(u64)[0].toList(), [1, 3]);
           expect(argwhere(u64).toList(), [1, 3]);
 
           final i8 = NDArray.fromList([0, -1, 0, 127], [4], DType.int8);
-          expect(count_nonzero(i8).scalar, 2);
+          expect(countNonzero(i8).scalar, 2);
           expect(nonzero(i8)[0].toList(), [1, 3]);
           expect(argwhere(i8).toList(), [1, 3]);
         }),
@@ -1462,22 +1462,22 @@ void main() {
       );
 
       test(
-        'argmax and argmin with keepdims: true',
+        'argmax and argmin with keepDims: true',
         () => NDArray.scope(() {
           final mat = NDArray.fromList(
             [1.0, 5.0, 2.0, 4.0, 0.0, 3.0],
             [2, 3],
             DType.float64,
           );
-          final max0 = argmax(mat, axis: 0, keepdims: true);
+          final max0 = argmax(mat, axis: 0, keepDims: true);
           expect(max0.shape, [1, 3]);
           expect(max0.toList(), [1, 0, 1]);
 
-          final min1 = argmin(mat, axis: 1, keepdims: true);
+          final min1 = argmin(mat, axis: 1, keepDims: true);
           expect(min1.shape, [2, 1]);
           expect(min1.toList(), [0, 1]);
 
-          final maxFlat = argmax(mat, keepdims: true);
+          final maxFlat = argmax(mat, keepDims: true);
           expect(maxFlat.shape, [1, 1]);
           expect(maxFlat.toList(), [1]);
         }),
@@ -1519,11 +1519,11 @@ void main() {
           expect(identical(resUnion, outUnion), isTrue);
           expect(outUnion.toList(), [1, 2, 3, 4, 6]);
 
-          // isin
-          final outIsin = NDArray<Boolean>.zeros([5], DType.boolean);
-          final resIsin = isin(a, b, out: outIsin);
-          expect(identical(resIsin, outIsin), isTrue);
-          expect(outIsin.toList(), [false, true, true, false, true]);
+          // isIn
+          final outIsIn = NDArray<Boolean>.zeros([5], DType.boolean);
+          final resIsIn = isIn(a, b, out: outIsIn);
+          expect(identical(resIsIn, outIsIn), isTrue);
+          expect(outIsIn.toList(), [false, true, true, false, true]);
         }),
       );
 

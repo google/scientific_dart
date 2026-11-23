@@ -264,15 +264,15 @@ void main() {
             throwsArgumentError,
           );
           expect(
-            logicalAnd(f32, i64.astype(DType.float32)).toList(),
+            logicalAnd(f32, i64.asType(DType.float32)).toList(),
             equals([false, false]),
           );
           expect(
-            logicalOr(f32, i64.astype(DType.float32)).toList(),
+            logicalOr(f32, i64.asType(DType.float32)).toList(),
             equals([true, true]),
           );
           expect(
-            logicalXor(f32, i64.astype(DType.float32)).toList(),
+            logicalXor(f32, i64.asType(DType.float32)).toList(),
             equals([true, true]),
           );
         });

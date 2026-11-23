@@ -19,13 +19,13 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
   - matrix multiplication (`matmul`),
   - Cholesky factorization (`cholesky`),
   - QR decomposition (`qr`),
-  - Singular Value Decomposition (`svd`, `svdvals`),
+  - Singular Value Decomposition (`svd`, `svdValues`),
   - symmetric/Hermitian and general eigenvalue problems (`eigh`, `eig`),
   - least-squares solvers (`lstsq`),
   - Moore-Penrose pseudo-inverse (`pinv`),
   - linear and tensor system solvers (`solve`, `tensorsolve`, `tensorinv`),
-  - matrix norms, matrix rank (`matrix_rank`), condition numbers (`cond`), and
-  - multi-matrix chain multiplication (`multi_dot`).
+  - matrix norms, matrix rank (`matrixRank`), condition numbers (`cond`), and
+  - multi-matrix chain multiplication (`multiDot`).
 - **Einstein Summation (`einsum`) & Tensor Contractions**: Express arbitrary multi-dimensional tensor contractions, trace reductions, and batch matrix multiplications concisely using `einsum` (supporting explicit indices and batch ellipsis `...` notation via `EinsumSubscripts.parse('bhid,bhjd->bhij')` or `'...id,...jd->...ij'`) and generalized tensor dot products (`tensordot`), automatically dispatching to optimized BLAS GEMM paths when possible.
 - **Google Highway SIMD Sorting**: Vectorized sorting and order-statistics routines (`vqsort`) leveraging Google Highway with dynamic multi-target runtime SIMD dispatch (SSE4, AVX2, AVX-512, NEON, SVE) for:
   - in-place and out-of-place `sort`,
@@ -38,7 +38,7 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
   - Spectral window functions (Hann `hanning` and Hamming `hamming`).
 - **Numerical Optimization & Root Finding**:
   - Multivariate nonlinear function minimization (`minimize`) supporting quasi-Newton **L-BFGS** (`MinimizeMethod.lbfgs`) and derivative-free **Nelder-Mead** simplex (`MinimizeMethod.nelderMead`).
-  - 1D scalar root finding (`root_scalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
+  - 1D scalar root finding (`rootScalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
 - **Spatial Distance Metrics & Polynomials**:
   - Pairwise distance matrix computations (`pdist`, `cdist`) across Euclidean, Cosine, Hamming, and Chebyshev metrics.
   - Standard polynomial fitting, evaluation, differentiation, integration, and root finding (`polyfit`, `polyval`, `polyder`, `polyint`, `roots`), plus classical orthogonal polynomial evaluation and root finding (Chebyshev, Legendre, Hermite, Laguerre).
@@ -47,8 +47,8 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
   - Multi-array ZIP archives (`savez`, `loadz` with optional compression), enabling data exchange with Python, NumPy, SciPy, and PyTorch pipelines.
 - **Zero-Copy Strided Views & 64-Bit Indexing**:
   - `NDArray<T>` is backed by an off-heap C buffer with 64-bit N-dimensional `shape` and element `strides` (`int64_t`), supporting large tensors and virtual broadcasted views beyond $2^{31} - 1$ elements.
-  - Provides `NDArray<Int64>` index, coordinate, and count operations (`argsort`, `argpartition`, `searchsorted`, `argmax`, `argmin`, `nonzero`, `argwhere`, `count_nonzero`, `digitize`, `unravel_index`, `ravel_multi_index`, `indices`, `diag_indices`, `tril_indices`, `triu_indices`, `mask_indices`).
-  - Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapaxes`, `moveaxis`), reshaping (`reshape`), dimension expansion (`expand_dims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
+  - Provides `NDArray<Int64>` index, coordinate, and count operations (`argsort`, `argpartition`, `searchsorted`, `argmax`, `argmin`, `nonzero`, `argwhere`, `countNonzero`, `digitize`, `unravelIndex`, `ravelMultiIndex`, `indices`, `diagIndices`, `trilIndices`, `triuIndices`, `maskIndices`).
+  - Operations such as multi-axis slicing (`Slice`), transposing (`.transposed`, `swapAxes`, `moveAxis`), reshaping (`reshape`), dimension expansion (`expandDims`), and squeezing (`squeeze`) return **zero-copy views** over shared C memory in $O(1)$ time.
 - **Deterministic Scoped Memory Management**: Zone-based lexical resource arenas (`NDArray.scope`, `NDArray.using`) and explicit escape/cleanup helpers (`scope.escape`, `scope.defer`, `detachToParentScope`) that track and free `NDArray` allocations deterministically when a computation block completes.
 
 ---
@@ -258,8 +258,8 @@ void main() {
     // Generate synthetic dataset X of shape [50 samples, 6 features]
     final x = normal([50, 6], dtype: DType.float64, seed: 42);
 
-    // Center features by subtracting column-wise mean (keepdims: true -> [1, 6])
-    final colMean = mean(x, axis: 0, keepdims: true);
+    // Center features by subtracting column-wise mean (keepDims: true -> [1, 6])
+    final colMean = mean(x, axis: 0, keepDims: true);
     final xCentered = subtract(x, colMean);
 
     // Factorize X_centered = U * S * V^T using LAPACK SVD

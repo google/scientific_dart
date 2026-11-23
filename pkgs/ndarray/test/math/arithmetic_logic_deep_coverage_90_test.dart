@@ -166,7 +166,7 @@ void main() {
     // conj & conjugate
     final conj1 = conj(a);
     expect(conj1.shape, a.shape);
-    final conj2 = conjugate(aTrans, where: mask);
+    final conj2 = conj(aTrans, where: mask);
     expect(conj2.shape, a.shape);
     final outConj = NDArray<T>.create(a.shape, a.dtype);
     final conj3 = conj(a, out: outConj);
@@ -183,9 +183,9 @@ void main() {
       final t2 = trunc(aTrans, where: mask);
       expect(t2.shape, a.shape);
 
-      final f1 = fix(a);
+      final f1 = trunc(a);
       expect(f1.shape, a.shape);
-      final f2 = fix(aTrans, where: mask);
+      final f2 = trunc(aTrans, where: mask);
       expect(f2.shape, a.shape);
 
       final c1 = ceil(a);
@@ -245,7 +245,7 @@ void main() {
             expect(() => negative(aContig), throwsUnsupportedError);
             final conj1 = conj(aContig as NDArray<Boolean>);
             expect(conj1.shape, [2, 3]);
-            final conj2 = conjugate(aTrans as NDArray<Boolean>, where: mask);
+            final conj2 = conj(aTrans as NDArray<Boolean>, where: mask);
             expect(conj2.shape, [2, 3]);
           } else if (dt.isComplex) {
             testUnaryHelper<AnySpec>(
@@ -259,7 +259,7 @@ void main() {
             );
             expect(() => rint(aContig), throwsUnsupportedError);
             expect(() => trunc(aContig), throwsUnsupportedError);
-            expect(() => fix(aContig), throwsUnsupportedError);
+            expect(() => trunc(aContig), throwsUnsupportedError);
           } else if (floatDTypes.contains(dt)) {
             testUnaryHelper<AnySpec>(
               aContig,
@@ -332,7 +332,7 @@ void main() {
         expect(() => log1p(dispArr), throwsStateError);
         expect(() => rint(dispArr), throwsStateError);
         expect(() => trunc(dispArr), throwsStateError);
-        expect(() => fix(dispArr), throwsStateError);
+        expect(() => trunc(dispArr), throwsStateError);
         expect(() => square(dispArr), throwsStateError);
         expect(() => reciprocal(dispArr), throwsStateError);
         expect(() => positive(dispArr), throwsStateError);
@@ -391,7 +391,7 @@ void main() {
                   () => remainder(aContig, bContig, where: mask),
                   throwsArgumentError,
                 );
-                expect(() => mod(aContig, bContig), throwsArgumentError);
+                expect(() => remainder(aContig, bContig), throwsArgumentError);
                 expect(
                   () => fmod(aContig, bContig, where: mask),
                   throwsArgumentError,
@@ -438,7 +438,7 @@ void main() {
               expect(rem1.shape, [2, 3]);
               final rem2 = remainder(aTrans, bTrans);
               expect(rem2.shape, [2, 3]);
-              final mod1 = mod(aContig, bContig);
+              final mod1 = remainder(aContig, bContig);
               expect(mod1.shape, [2, 3]);
 
               // fmod
@@ -616,7 +616,7 @@ void main() {
     });
 
     test(
-      'logaddexp, logaddexp2, copysign with Broadcasting & Strided Views',
+      'logaddexp, logaddexp2, copySign with Broadcasting & Strided Views',
       () {
         NDArray.scope(() {
           final mask = NDArray<Boolean>.fromList(
@@ -639,7 +639,7 @@ void main() {
                   throwsArgumentError,
                 );
                 expect(
-                  () => copysign(aContig, bContig, where: mask),
+                  () => copySign(aContig, bContig, where: mask),
                   throwsArgumentError,
                 );
                 continue;
@@ -664,12 +664,12 @@ void main() {
               final lae2_3 = logaddexp2(aContig, bBcast);
               expect(lae2_3.shape, [2, 3]);
 
-              // copysign
-              final cs1 = copysign(aContig, bContig, where: mask);
+              // copySign
+              final cs1 = copySign(aContig, bContig, where: mask);
               expect(cs1.shape, [2, 3]);
-              final cs2 = copysign(aTrans, bTrans);
+              final cs2 = copySign(aTrans, bTrans);
               expect(cs2.shape, [2, 3]);
-              final cs3 = copysign(aContig, bBcast);
+              final cs3 = copySign(aContig, bBcast);
               expect(cs3.shape, [2, 3]);
             }
           }
@@ -689,11 +689,11 @@ void main() {
         final bZeroInt = NDArray.fromList([0, 2], [2], DType.int32);
         final aInt = NDArray.fromList([4, 6], [2], DType.int32);
 
-        // Complex unsupported for logaddexp, logaddexp2, heaviside, copysign, fmod
+        // Complex unsupported for logaddexp, logaddexp2, heaviside, copySign, fmod
         expect(() => logaddexp(cCplx, cCplx), throwsUnsupportedError);
         expect(() => logaddexp2(cCplx, cCplx), throwsUnsupportedError);
         expect(() => heaviside(cCplx, cCplx), throwsUnsupportedError);
-        expect(() => copysign(cCplx, cCplx), throwsUnsupportedError);
+        expect(() => copySign(cCplx, cCplx), throwsUnsupportedError);
         expect(() => fmod(cCplx, cCplx), throwsUnsupportedError);
 
         // Integer division by zero
@@ -720,7 +720,7 @@ void main() {
         expect(() => remainder(disp, disp), throwsStateError);
         expect(() => fmod(disp, disp), throwsStateError);
         expect(() => heaviside(disp, disp), throwsStateError);
-        expect(() => copysign(disp, disp), throwsStateError);
+        expect(() => copySign(disp, disp), throwsStateError);
         expect(() => logaddexp(disp, disp), throwsStateError);
         expect(() => logaddexp2(disp, disp), throwsStateError);
       });
@@ -1092,7 +1092,7 @@ void main() {
 
   group('Floating Point Classification & Tolerance Suite', () {
     test(
-      'isnan, isinf, isfinite across Float, Complex, Int, and Bool types',
+      'isNan, isInf, isFinite across Float, Complex, Int, and Bool types',
       () {
         NDArray.scope(() {
           final mask = NDArray<Boolean>.fromList(
@@ -1109,19 +1109,19 @@ void main() {
           );
           final f64Trans = f64Arr.transpose();
 
-          final nanRes1 = isnan(f64Arr);
+          final nanRes1 = isNan(f64Arr);
           expect(nanRes1.data, [false, true, false, false]);
-          final nanRes2 = isnan(f64Trans, where: mask);
+          final nanRes2 = isNan(f64Trans, where: mask);
           expect(nanRes2.shape, [2, 2]);
 
-          final infRes1 = isinf(f64Arr);
+          final infRes1 = isInf(f64Arr);
           expect(infRes1.data, [false, false, true, true]);
-          final infRes2 = isinf(f64Trans, where: mask);
+          final infRes2 = isInf(f64Trans, where: mask);
           expect(infRes2.shape, [2, 2]);
 
-          final finRes1 = isfinite(f64Arr);
+          final finRes1 = isFinite(f64Arr);
           expect(finRes1.data, [true, false, false, false]);
-          final finRes2 = isfinite(f64Trans, where: mask);
+          final finRes2 = isFinite(f64Trans, where: mask);
           expect(finRes2.shape, [2, 2]);
 
           // Float32 special values
@@ -1130,9 +1130,9 @@ void main() {
             [2, 2],
             DType.float32,
           );
-          expect(isnan(f32Arr).data, [false, true, false, false]);
-          expect(isinf(f32Arr).data, [false, false, true, false]);
-          expect(isfinite(f32Arr).data, [true, false, false, true]);
+          expect(isNan(f32Arr).data, [false, true, false, false]);
+          expect(isInf(f32Arr).data, [false, false, true, false]);
+          expect(isFinite(f32Arr).data, [true, false, false, true]);
 
           // Complex128 special values
           final c128Arr = NDArray.fromList(
@@ -1146,12 +1146,12 @@ void main() {
             DType.complex128,
           );
           final c128Trans = c128Arr.transpose();
-          expect(isnan(c128Arr).data, [false, true, false, true]);
-          expect(isnan(c128Trans, where: mask).shape, [2, 2]);
-          expect(isinf(c128Arr).data, [false, false, true, true]);
-          expect(isinf(c128Trans, where: mask).shape, [2, 2]);
-          expect(isfinite(c128Arr).data, [true, false, false, false]);
-          expect(isfinite(c128Trans, where: mask).shape, [2, 2]);
+          expect(isNan(c128Arr).data, [false, true, false, true]);
+          expect(isNan(c128Trans, where: mask).shape, [2, 2]);
+          expect(isInf(c128Arr).data, [false, false, true, true]);
+          expect(isInf(c128Trans, where: mask).shape, [2, 2]);
+          expect(isFinite(c128Arr).data, [true, false, false, false]);
+          expect(isFinite(c128Trans, where: mask).shape, [2, 2]);
 
           // Complex64 special values
           final c64Arr = NDArray.fromList(
@@ -1164,21 +1164,21 @@ void main() {
             [2, 2],
             DType.complex64,
           );
-          expect(isnan(c64Arr).data, [false, true, false, false]);
-          expect(isinf(c64Arr).data, [false, false, true, false]);
-          expect(isfinite(c64Arr).data, [true, false, false, true]);
+          expect(isNan(c64Arr).data, [false, true, false, false]);
+          expect(isInf(c64Arr).data, [false, false, true, false]);
+          expect(isFinite(c64Arr).data, [true, false, false, true]);
 
           // Handled Integer types in floating_point.dart
           for (final dt in implementedBitwiseIntegerDTypes) {
             final intContig = makeSampleArray(dt, [2, 2]);
             final intTrans = intContig.transpose();
 
-            expect(isnan(intContig).data, [false, false, false, false]);
-            expect(isnan(intTrans, where: mask).shape, [2, 2]);
-            expect(isinf(intContig).data, [false, false, false, false]);
-            expect(isinf(intTrans, where: mask).shape, [2, 2]);
-            expect(isfinite(intContig).data, [true, true, true, true]);
-            expect(isfinite(intTrans, where: mask).shape, [2, 2]);
+            expect(isNan(intContig).data, [false, false, false, false]);
+            expect(isNan(intTrans, where: mask).shape, [2, 2]);
+            expect(isInf(intContig).data, [false, false, false, false]);
+            expect(isInf(intTrans, where: mask).shape, [2, 2]);
+            expect(isFinite(intContig).data, [true, true, true, true]);
+            expect(isFinite(intTrans, where: mask).shape, [2, 2]);
           }
 
           // Float16 / BFloat16 / other integers / boolean: check shape validity
@@ -1189,17 +1189,17 @@ void main() {
             DType.boolean,
           ]) {
             final hArr = makeSampleArray(dt, [2, 2]);
-            expect(isnan(hArr).shape, [2, 2]);
-            expect(isinf(hArr).shape, [2, 2]);
-            expect(isfinite(hArr).shape, [2, 2]);
-            expect(isfinite(hArr.transpose(), where: mask).shape, [2, 2]);
+            expect(isNan(hArr).shape, [2, 2]);
+            expect(isInf(hArr).shape, [2, 2]);
+            expect(isFinite(hArr).shape, [2, 2]);
+            expect(isFinite(hArr.transpose(), where: mask).shape, [2, 2]);
           }
         });
       },
     );
 
     test(
-      'copysign with Subnormals, Signed Zeros, Infinities, and Out Buffers',
+      'copySign with Subnormals, Signed Zeros, Infinities, and Out Buffers',
       () {
         NDArray.scope(() {
           final mask = NDArray<Boolean>.fromList(
@@ -1219,26 +1219,26 @@ void main() {
             DType.float64,
           );
 
-          final res1 = copysign(x1, x2);
+          final res1 = copySign(x1, x2);
           expect(res1.data, [-1.0, 2.0, -3.0, 4.0]);
 
-          final res2 = copysign(x1.transpose(), x2.transpose(), where: mask);
+          final res2 = copySign(x1.transpose(), x2.transpose(), where: mask);
           expect(res2.shape, [2, 2]);
 
           final outBuf = NDArray.zeros([2, 2], DType.float64);
-          final res3 = copysign(x1, x2, out: outBuf);
+          final res3 = copySign(x1, x2, out: outBuf);
           expect(identical(res3, outBuf), isTrue);
 
-          // Float32 copysign
+          // Float32 copySign
           final f32_1 = NDArray.fromList([5.0, -6.0], [2], DType.float32);
           final f32_2 = NDArray.fromList([-1.0, 1.0], [2], DType.float32);
-          final f32Res = copysign(f32_1, f32_2);
+          final f32Res = copySign(f32_1, f32_2);
           expect(f32Res.data, [-5.0, 6.0]);
 
-          // Integer copysign
+          // Integer copySign
           final int1 = NDArray.fromList([10, -20], [2], DType.int32);
           final int2 = NDArray.fromList([-1, 1], [2], DType.int32);
-          final intRes = copysign(int1, int2);
+          final intRes = copySign(int1, int2);
           expect(intRes.data, [-10, 20]);
         });
       },

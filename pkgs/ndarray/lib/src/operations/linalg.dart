@@ -12,7 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// ignore_for_file: non_constant_identifier_names
 import 'dart:math' as math;
 import '../ndarray.dart';
 import 'package:openblas/openblas.dart';
@@ -1158,21 +1157,21 @@ NDArray<T> matmul<T extends SelfOf<DTypeTag>>(
 /// {@example /example/linalg_multi_dot_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.multi_dot](https://numpy.org/doc/stable/reference/generated/numpy.linalg.multi_dot.html)
-NDArray<T> multi_dot<T extends AnySpec>(
+NDArray<T> multiDot<T extends AnySpec>(
   List<NDArray<DTypeTag>> arrays, {
   NDArray<T>? out,
 }) {
   for (final a in arrays) {
     if (a.isDisposed) {
       throw StateError(
-        'Cannot execute multi_dot() with a disposed array in the list.',
+        'Cannot execute multiDot() with a disposed array in the list.',
       );
     }
   }
   if (out != null) {
     if (out.isDisposed) {
       throw StateError(
-        'Cannot write multi_dot result to a disposed output array.',
+        'Cannot write multiDot result to a disposed output array.',
       );
     }
     validateOutBuffer(out);
@@ -1181,7 +1180,7 @@ NDArray<T> multi_dot<T extends AnySpec>(
     throw ArgumentError.value(
       arrays.length,
       'arrays',
-      'Must contain at least 2 arrays (multi_dot requires at least 2 arrays, got ${arrays.length}).',
+      'Must contain at least 2 arrays (multiDot requires at least 2 arrays, got ${arrays.length}).',
     );
   }
 
@@ -1195,7 +1194,7 @@ NDArray<T> multi_dot<T extends AnySpec>(
         throw ArgumentError.value(
           arrays[i].shape,
           'arrays[$i]',
-          'Must be 1D or 2D (first and last arrays in multi_dot must be 1D or 2D, array $i was shape ${arrays[i].shape}).',
+          'Must be 1D or 2D (first and last arrays in multiDot must be 1D or 2D, array $i was shape ${arrays[i].shape}).',
         );
       }
     } else {
@@ -1203,7 +1202,7 @@ NDArray<T> multi_dot<T extends AnySpec>(
         throw ArgumentError.value(
           arrays[i].shape,
           'arrays[$i]',
-          'Must be 2D (all intermediate arrays in multi_dot must be 2D, array $i was shape ${arrays[i].shape}).',
+          'Must be 2D (all intermediate arrays in multiDot must be 2D, array $i was shape ${arrays[i].shape}).',
         );
       }
     }
@@ -1225,7 +1224,7 @@ NDArray<T> multi_dot<T extends AnySpec>(
       throw ArgumentError.value(
         shape[0],
         'arrays[$i].shape[0]',
-        'Must match previous dimension (${p[i]}) (incompatible matrix dimensions in multi_dot: array $i first dimension (${shape[0]}) must match previous dimension (${p[i]})).',
+        'Must match previous dimension (${p[i]}) (incompatible matrix dimensions in multiDot: array $i first dimension (${shape[0]}) must match previous dimension (${p[i]})).',
       );
     }
     p[i + 1] = shape[1];
@@ -1238,7 +1237,7 @@ NDArray<T> multi_dot<T extends AnySpec>(
     throw ArgumentError.value(
       lastShape[0],
       'arrays[lastIdx].shape[0]',
-      'Must match previous dimension (${p[lastIdx]}) (incompatible matrix dimensions in multi_dot: last array first dimension (${lastShape[0]}) must match previous dimension (${p[lastIdx]})).',
+      'Must match previous dimension (${p[lastIdx]}) (incompatible matrix dimensions in multiDot: last array first dimension (${lastShape[0]}) must match previous dimension (${p[lastIdx]})).',
     );
   }
   if (lastShape.length == 1) {
@@ -1248,11 +1247,11 @@ NDArray<T> multi_dot<T extends AnySpec>(
   }
 
   for (var i = 0; i <= n; i++) {
-    checkBlasIntDim(p[i], 'dim', 'multi_dot');
+    checkBlasIntDim(p[i], 'dim', 'multiDot');
   }
   for (var i = 0; i < n; i++) {
     for (final s in arrays[i].strides) {
-      checkBlasIntStride(s, 'lda', 'multi_dot');
+      checkBlasIntStride(s, 'lda', 'multiDot');
     }
   }
 
@@ -1949,26 +1948,26 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
 /// Integer, boolean, `float16`, and `bfloat16` inputs are promoted to `float64`.
 ///
 /// **Preconditions:**
-/// - It is an error if [a], [outSign], or [outLogdet] is disposed.
+/// - It is an error if [a], [outSign], or [outLogAbsDet] is disposed.
 /// - It is an error if [a] rank < 2, or the last two dimensions are not square.
-/// - It is an error if [outSign] or [outLogdet] is provided and has incompatible shape or dtype.
+/// - It is an error if [outSign] or [outLogAbsDet] is provided and has incompatible shape or dtype.
 ///
 /// **Returns:**
-/// - A record `(sign, logabsdet)` of two NDArrays, representing the sign (or phase) and log of the absolute determinant.
+/// - A record `(sign, logAbsDet)` of two NDArrays, representing the sign (or phase) and log of the absolute determinant.
 ///
 /// Reference: [NumPy linalg.slogdet](https://numpy.org/doc/stable/reference/generated/numpy.linalg.slogdet.html)
-({NDArray<T> sign, NDArray<R> logabsdet}) slogdet<
+({NDArray<T> sign, NDArray<R> logAbsDet}) slogdet<
   T extends DTypeTag,
   R extends DTypeTag,
   OutSign extends T,
-  OutLogdet extends R
+  OutLogAbsDet extends R
 >(
   NDArray<
     DTypeSpec<DTypeTag, Object?, R, DTypeTag, T, DTypeTag, DTypeTag, DTypeTag>
   >
   a, {
   NDArray<OutSign>? outSign,
-  NDArray<OutLogdet>? outLogdet,
+  NDArray<OutLogAbsDet>? outLogAbsDet,
 }) {
   if (a.isDisposed) {
     throw StateError('Cannot compute slogdet of a disposed array.');
@@ -1976,7 +1975,7 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
   if (outSign != null && outSign.isDisposed) {
     throw StateError('Cannot write slogdet sign to a disposed output array.');
   }
-  if (outLogdet != null && outLogdet.isDisposed) {
+  if (outLogAbsDet != null && outLogAbsDet.isDisposed) {
     throw StateError('Cannot write slogdet logdet to a disposed output array.');
   }
   final aDType = a.dtype as DType<DTypeTag>;
@@ -1994,11 +1993,11 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
   final stackShape = a.shape.sublist(0, rank - 2);
 
   if (outSign != null &&
-      outLogdet != null &&
-      sharesMemory(outSign, outLogdet)) {
+      outLogAbsDet != null &&
+      sharesMemory(outSign, outLogAbsDet)) {
     throw ArgumentError.value(
-      outLogdet,
-      'outLogdet',
+      outLogAbsDet,
+      'outLogAbsDet',
       'Must not share memory with outSign.',
     );
   }
@@ -2007,8 +2006,8 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
     if (outSign != null) {
       _validatePromotedOut(outSign, stackShape, aDType, 'outSign');
     }
-    if (outLogdet != null) {
-      _validatePromotedOut(outLogdet, stackShape, aDType, 'outLogdet');
+    if (outLogAbsDet != null) {
+      _validatePromotedOut(outLogAbsDet, stackShape, aDType, 'outLogAbsDet');
     }
     return NDArray.scope(() {
       final aF64 = castNDArray<Float64>(a, DType.float64);
@@ -2016,14 +2015,15 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
       if (outSign != null) {
         _copyPromotedResult(resF64.sign, outSign);
       }
-      if (outLogdet != null) {
-        _copyPromotedResult(resF64.logabsdet, outLogdet);
+      if (outLogAbsDet != null) {
+        _copyPromotedResult(resF64.logAbsDet, outLogAbsDet);
       }
       final NDArray<T> finalSign =
           outSign ?? (resF64.sign.detachToParentScope() as NDArray<T>);
       final NDArray<R> finalLogdet =
-          outLogdet ?? (resF64.logabsdet.detachToParentScope() as NDArray<R>);
-      return (sign: finalSign, logabsdet: finalLogdet);
+          outLogAbsDet ??
+          (resF64.logAbsDet.detachToParentScope() as NDArray<R>);
+      return (sign: finalSign, logAbsDet: finalLogdet);
     });
   }
 
@@ -2044,14 +2044,14 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
     }
   }
 
-  if (outLogdet != null) {
-    validateOutBuffer(outLogdet, 'outLogdet');
-    if (!listEquals(outLogdet.shape, stackShape) ||
-        outLogdet.dtype != logdetDType) {
+  if (outLogAbsDet != null) {
+    validateOutBuffer(outLogAbsDet, 'outLogAbsDet');
+    if (!listEquals(outLogAbsDet.shape, stackShape) ||
+        outLogAbsDet.dtype != logdetDType) {
       throw ArgumentError.value(
-        outLogdet,
-        'outLogdet',
-        'Must have compatible shape $stackShape and dtype $logdetDType (provided outLogdet buffer has incompatible shape or dtype).',
+        outLogAbsDet,
+        'outLogAbsDet',
+        'Must have compatible shape $stackShape and dtype $logdetDType (provided outLogAbsDet buffer has incompatible shape or dtype).',
       );
     }
   }
@@ -2059,27 +2059,28 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
   final bool needTempSign =
       outSign != null && (!outSign.isContiguous || sharesMemory(a, outSign));
   final bool needTempLogdet =
-      outLogdet != null &&
-      (!outLogdet.isContiguous || sharesMemory(a, outLogdet));
+      outLogAbsDet != null &&
+      (!outLogAbsDet.isContiguous || sharesMemory(a, outLogAbsDet));
   if (needTempSign || needTempLogdet) {
     return NDArray.scope(() {
-      final res = slogdet<T, R, OutSign, OutLogdet>(
+      final res = slogdet<T, R, OutSign, OutLogAbsDet>(
         a,
         outSign: needTempSign ? null : outSign,
-        outLogdet: needTempLogdet ? null : outLogdet,
+        outLogAbsDet: needTempLogdet ? null : outLogAbsDet,
       );
       if (needTempSign) res.sign.copy(out: outSign);
-      if (needTempLogdet) res.logabsdet.copy(out: outLogdet);
+      if (needTempLogdet) res.logAbsDet.copy(out: outLogAbsDet);
       final finalSign = outSign ?? res.sign.detachToParentScope();
-      final finalLogdet = outLogdet ?? res.logabsdet.detachToParentScope();
-      return (sign: finalSign, logabsdet: finalLogdet);
+      final finalLogdet = outLogAbsDet ?? res.logAbsDet.detachToParentScope();
+      return (sign: finalSign, logAbsDet: finalLogdet);
     });
   }
 
   return NDArray.scope(() {
     final signResult =
         outSign ?? NDArray<T>.zeros(stackShape, a.dtype as DType<T>);
-    final logdetResult = outLogdet ?? NDArray<R>.zeros(stackShape, logdetDType);
+    final logdetResult =
+        outLogAbsDet ?? NDArray<R>.zeros(stackShape, logdetDType);
 
     if (a.shape[rank - 1] == 0) {
       signResult.fill(
@@ -2087,8 +2088,8 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
       );
       logdetResult.fill(castValue(0.0, logdetDType));
       if (outSign == null) signResult.detachToParentScope();
-      if (outLogdet == null) logdetResult.detachToParentScope();
-      return (sign: signResult, logabsdet: logdetResult);
+      if (outLogAbsDet == null) logdetResult.detachToParentScope();
+      return (sign: signResult, logAbsDet: logdetResult);
     }
 
     final marker = ScratchArena.marker;
@@ -2191,21 +2192,21 @@ NDArray<R> det<R extends DTypeTag, Out extends R>(
     if (outSign == null) {
       signResult.detachToParentScope();
     }
-    if (outLogdet == null) {
+    if (outLogAbsDet == null) {
       logdetResult.detachToParentScope();
     }
 
-    return (sign: signResult, logabsdet: logdetResult);
+    return (sign: signResult, logAbsDet: logdetResult);
   });
 }
 
 /// Extension on [slogdet] result record type to support easy disposal of both arrays.
 extension SlogdetRecordDispose<T extends DTypeTag, R extends DTypeTag>
-    on ({NDArray<T> sign, NDArray<R> logabsdet}) {
-  /// Disposes both [sign] and [logabsdet] arrays simultaneously.
+    on ({NDArray<T> sign, NDArray<R> logAbsDet}) {
+  /// Disposes both [sign] and [logAbsDet] arrays simultaneously.
   void dispose() {
     this.sign.dispose();
-    this.logabsdet.dispose();
+    this.logAbsDet.dispose();
   }
 }
 
@@ -3014,15 +3015,17 @@ eig<R extends DTypeTag, OutEigenvalues extends R, OutEigenvectors extends R>(
 /// - A contiguous `NDArray<DTypeTag>` containing the computed eigenvalues.
 ///
 /// Reference: [NumPy linalg.eigvals](https://numpy.org/doc/stable/reference/generated/numpy.linalg.eigvals.html)
-NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
+NDArray<R> eigValues<R extends DTypeTag, Out extends R>(
   NDArray<ComplexOf<R>> a, {
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
-    throw StateError('Cannot compute eigvals of a disposed array.');
+    throw StateError('Cannot compute eigValues of a disposed array.');
   }
   if (out != null && out.isDisposed) {
-    throw StateError('Cannot write eigvals result to a disposed output array.');
+    throw StateError(
+      'Cannot write eigValues result to a disposed output array.',
+    );
   }
   final rank = a.shape.length;
   if (rank < 2 || a.shape[rank - 1] != a.shape[rank - 2]) {
@@ -3033,9 +3036,9 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
     );
   }
   final n = a.shape[rank - 1];
-  checkBlasIntDim(n, 'n', 'eigvals');
-  checkBlasIntStride(a.strides[rank - 2], 'lda', 'eigvals');
-  checkBlasIntStride(a.strides[rank - 1], 'lda', 'eigvals');
+  checkBlasIntDim(n, 'n', 'eigValues');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'eigValues');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'eigValues');
   final stackShape = a.shape.sublist(0, rank - 2);
 
   final compDType =
@@ -3060,7 +3063,7 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
         );
       }
       if (!w.isContiguous || sharesMemory(a, w)) {
-        final temp = eigvals<R, R>(a);
+        final temp = eigValues<R, R>(a);
         temp.copy(out: w);
         return w;
       }
@@ -3108,7 +3111,7 @@ NDArray<R> eigvals<R extends DTypeTag, Out extends R>(
           final nf = _analyzeNonFinitePtr(sliceCopy.pointer, n * n, src.dtype);
           if (nf.hasNaN || nf.hasInf) {
             throw const LinAlgException(
-              'Array must not contain infs or NaNs in eigvals.',
+              'Array must not contain infs or NaNs in eigValues.',
             );
           }
 
@@ -3384,8 +3387,8 @@ NDArray<R> pinv<R extends DTypeTag, Out extends R>(
       }
     }
 
-    final v = conjugate(vt.transpose());
-    final ut = conjugate(u.transpose());
+    final v = conj(vt.transpose());
+    final ut = conj(u.transpose());
 
     final temp = matmul(v.asAnySpec, sPlus.asAnySpec);
     matmul(temp, ut.asAnySpec, out: result.asAnySpec);
@@ -3409,24 +3412,24 @@ NDArray<R> pinv<R extends DTypeTag, Out extends R>(
 ///
 /// **Example:**
 /// {@example /example/linalg_premium_example.dart lang=dart}
-NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
+NDArray<T> matrixPower<T extends DTypeTag, Out extends T>(
   NDArray<T> a,
   int n, {
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
-    throw StateError('Cannot execute matrix_power() on a disposed array.');
+    throw StateError('Cannot execute matrixPower() on a disposed array.');
   }
   if (out != null && out.isDisposed) {
     throw StateError(
-      'Cannot write matrix_power result to a disposed output array.',
+      'Cannot write matrixPower result to a disposed output array.',
     );
   }
   if (a.shape.length != 2 || a.shape[0] != a.shape[1]) {
     throw ArgumentError.value(
       a.shape,
       'a.shape',
-      'Must be a 2D square matrix (matrix_power is only defined for 2D square matrices, was shape ${a.shape}).',
+      'Must be a 2D square matrix (matrixPower is only defined for 2D square matrices, was shape ${a.shape}).',
     );
   }
   if (n < 0 && (a.dtype.isInteger || a.dtype == DType.boolean)) {
@@ -3439,9 +3442,9 @@ NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
 
   final size = a.shape[0];
   if (a.dtype.isFloating || a.dtype.isComplex || n < 0) {
-    checkBlasIntDim(size, 'n', 'matrix_power');
-    checkBlasIntStride(a.strides[0], 'lda', 'matrix_power');
-    checkBlasIntStride(a.strides[1], 'lda', 'matrix_power');
+    checkBlasIntDim(size, 'n', 'matrixPower');
+    checkBlasIntStride(a.strides[0], 'lda', 'matrixPower');
+    checkBlasIntStride(a.strides[1], 'lda', 'matrixPower');
   }
   if (out != null) {
     validateOutBuffer(out);
@@ -3454,7 +3457,7 @@ NDArray<T> matrix_power<T extends DTypeTag, Out extends T>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = matrix_power<T, T>(a, n);
+        final temp = matrixPower<T, T>(a, n);
         temp.copy(out: out);
         return out;
       });
@@ -4330,16 +4333,16 @@ NDArray<R> cholesky<R extends DTypeTag, Out extends R>(
       axes[rank - 2] = rank - 1;
       axes[rank - 1] = rank - 2;
       final aT = a.dtype.isComplex
-          ? conjugate(a.transpose(axes))
+          ? conj(a.transpose(axes))
           : a.transpose(axes).copy();
       try {
         final resT = _svd<T>(aT, fullMatrices: fullMatrices);
         final uNew = a.dtype.isComplex
-            ? conjugate(resT.vh.transpose(axes))
+            ? conj(resT.vh.transpose(axes))
             : resT.vh.transpose(axes);
         final sNew = resT.s;
         final vhNew = a.dtype.isComplex
-            ? conjugate(resT.u.transpose(axes))
+            ? conj(resT.u.transpose(axes))
             : resT.u.transpose(axes);
 
         final uResult = out?.u ?? uNew;
@@ -4581,10 +4584,10 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
   final rank = a.shape.length;
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
-  checkBlasIntDim(m, 'm', 'svdvals');
-  checkBlasIntDim(n, 'n', 'svdvals');
-  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svdvals');
-  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svdvals');
+  checkBlasIntDim(m, 'm', 'svdValues');
+  checkBlasIntDim(n, 'n', 'svdValues');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svdValues');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svdValues');
 
   if (a.dtype == DType.float16 || a.dtype == DType.bfloat16) {
     return NDArray.scope(() {
@@ -4612,7 +4615,7 @@ NDArray<DTypeTag> _svdVals<T extends DTypeTag>(
       axes[rank - 2] = rank - 1;
       axes[rank - 1] = rank - 2;
       final aT = a.dtype.isComplex
-          ? conjugate(a.transpose(axes))
+          ? conj(a.transpose(axes))
           : a.transpose(axes).copy();
       try {
         final resT = _svdVals<T>(aT, rejectInf: rejectInf);
@@ -5123,13 +5126,13 @@ extension EighRecordDispose<F extends DTypeTag, T extends DTypeTag>
 /// **Throws:**
 /// - Throws an [IterationsExceededException] if the eigenvalue computation does not converge.
 /// - Throws a [LinAlgException] if [a] contains non-finite values or if the LAPACK routine fails.
-NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
+NDArray<R> eigValuesH<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   MatrixTriangle uplo = MatrixTriangle.lower,
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
-    throw StateError('Cannot calculate eigvalsh on a disposed array.');
+    throw StateError('Cannot calculate eigValuesH on a disposed array.');
   }
   if (a.rank < 2) {
     throw ArgumentError.value(
@@ -5147,9 +5150,9 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
       'Must be square in the last two dimensions (last two dimensions must be square, got $m x $n).',
     );
   }
-  checkBlasIntDim(n, 'n', 'eigvalsh');
-  checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigvalsh');
-  checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'eigvalsh');
+  checkBlasIntDim(n, 'n', 'eigValuesH');
+  checkBlasIntStride(a.strides[a.rank - 2], 'lda', 'eigValuesH');
+  checkBlasIntStride(a.strides[a.rank - 1], 'lda', 'eigValuesH');
 
   final bool promoted = _promotesToFloat64(a.dtype as DType<DTypeTag>);
   final DType<DTypeTag> targetDType = promoted ? DType.float64 : a.dtype;
@@ -5181,7 +5184,7 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
         !out.isContiguous ||
         sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = eigvalsh<R, R>(a, uplo: uplo);
+        final temp = eigValuesH<R, R>(a, uplo: uplo);
         if (out.dtype == temp.dtype) {
           temp.copy(out: out);
         } else {
@@ -5230,7 +5233,7 @@ NDArray<R> eigvalsh<R extends DTypeTag, Out extends R>(
         );
         if (nf.hasNaN || nf.hasInf) {
           throw const LinAlgException(
-            'Array must not contain infs or NaNs in eigvalsh.',
+            'Array must not contain infs or NaNs in eigValuesH.',
           );
         }
       }
@@ -6229,9 +6232,9 @@ NDArray<T> outer<T extends SelfOf<DTypeTag>>(
 NDArray<T> cross<T extends SelfOf<DTypeTag>>(
   NDArray<T> a,
   NDArray<T> b, {
-  int? axisa,
-  int? axisb,
-  int? axisc,
+  int? axisA,
+  int? axisB,
+  int? axisC,
   int? axis,
   NDArray<T>? out,
 }) {
@@ -6246,74 +6249,74 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
     );
   }
 
-  final origAxisA = axis ?? axisa ?? -1;
-  final origAxisB = axis ?? axisb ?? -1;
-  var axisA = origAxisA;
-  var axisB = origAxisB;
-  var axisC = axis ?? axisc ?? -1;
+  final origAxisA = axis ?? axisA ?? -1;
+  final origAxisB = axis ?? axisB ?? -1;
+  var resolvedAxisA = origAxisA;
+  var resolvedAxisB = origAxisB;
+  var resolvedAxisC = axis ?? axisC ?? -1;
 
-  if (axisA < 0) axisA = a.rank + axisA;
-  if (axisB < 0) axisB = b.rank + axisB;
+  if (resolvedAxisA < 0) resolvedAxisA = a.rank + resolvedAxisA;
+  if (resolvedAxisB < 0) resolvedAxisB = b.rank + resolvedAxisB;
 
-  if (axisA < 0 || axisA >= a.rank) {
+  if (resolvedAxisA < 0 || resolvedAxisA >= a.rank) {
     throw RangeError.range(
       origAxisA,
       -a.rank,
       a.rank - 1,
-      axis != null ? 'axis' : 'axisa',
+      axis != null ? 'axis' : 'axisA',
       'Must be within valid rank range',
     );
   }
-  if (axisB < 0 || axisB >= b.rank) {
+  if (resolvedAxisB < 0 || resolvedAxisB >= b.rank) {
     throw RangeError.range(
       origAxisB,
       -b.rank,
       b.rank - 1,
-      axis != null ? 'axis' : 'axisb',
+      axis != null ? 'axis' : 'axisB',
       'Must be within valid rank range',
     );
   }
 
-  final lenA = a.shape[axisA];
-  final lenB = b.shape[axisB];
+  final lenA = a.shape[resolvedAxisA];
+  final lenB = b.shape[resolvedAxisB];
 
   if ((lenA != 2 && lenA != 3) || (lenB != 2 && lenB != 3)) {
     throw ArgumentError.value(
       [lenA, lenB],
-      'axisa, axisb',
-      'Must have axis sizes of 2 or 3 (cross product axes sizes must be 2 or 3, got axisa size $lenA and axisb size $lenB).',
+      'axisA, axisB',
+      'Must have axis sizes of 2 or 3 (cross product axes sizes must be 2 or 3, got axisA size $lenA and axisB size $lenB).',
     );
   }
   if (lenA != lenB) {
     throw ArgumentError.value(
       lenB,
-      'axisb',
-      'Must match axisa size $lenA (mismatched cross product axes sizes: axisa size $lenA != axisb size $lenB).',
+      'axisB',
+      'Must match axisA size $lenA (mismatched cross product axes sizes: axisA size $lenA != axisB size $lenB).',
     );
   }
 
   final is3D = lenA == 3;
 
-  final stackA = List<int>.from(a.shape)..removeAt(axisA);
-  final stackB = List<int>.from(b.shape)..removeAt(axisB);
+  final stackA = List<int>.from(a.shape)..removeAt(resolvedAxisA);
+  final stackB = List<int>.from(b.shape)..removeAt(resolvedAxisB);
   final broadcastStack = broadcastStackShapes(stackA, stackB);
 
   final expectedShape = List<int>.from(broadcastStack);
   if (is3D) {
-    final origAxisC = axisC;
-    var finalAxisC = axisC;
+    final origAxisC = resolvedAxisC;
+    var finalAxisC = resolvedAxisC;
     if (finalAxisC < 0) finalAxisC = expectedShape.length + 1 + finalAxisC;
     if (finalAxisC < 0 || finalAxisC > expectedShape.length) {
       throw RangeError.range(
         origAxisC,
         -(expectedShape.length + 1),
         expectedShape.length,
-        axis != null ? 'axis' : 'axisc',
+        axis != null ? 'axis' : 'axisC',
         'Must be within valid rank range',
       );
     }
     expectedShape.insert(finalAxisC, 3);
-    axisC = finalAxisC;
+    resolvedAxisC = finalAxisC;
   }
 
   final targetDType = a.dtype;
@@ -6331,9 +6334,9 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
         final temp = cross<T>(
           a,
           b,
-          axisa: axisa,
-          axisb: axisb,
-          axisc: axisc,
+          axisA: resolvedAxisA,
+          axisB: resolvedAxisB,
+          axisC: resolvedAxisC,
           axis: axis,
         );
         temp.copy(out: out);
@@ -6349,9 +6352,9 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
       final doubleRes = cross(
         doubleA,
         doubleB,
-        axisa: axisa,
-        axisb: axisb,
-        axisc: axisc,
+        axisA: resolvedAxisA,
+        axisB: resolvedAxisB,
+        axisC: resolvedAxisC,
         axis: axis,
       );
       final casted = castNDArray<T>(doubleRes, targetDType);
@@ -6379,18 +6382,18 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
     final axisIdxB = stackB.length - 1 - i;
 
     var resAxisIdx = resAxis;
-    if (is3D && resAxis >= axisC) {
+    if (is3D && resAxis >= resolvedAxisC) {
       resAxisIdx = resAxis + 1;
     }
 
     if (axisIdxA >= 0) {
-      final origAxisA = axisIdxA < axisA ? axisIdxA : axisIdxA + 1;
+      final origAxisA = axisIdxA < resolvedAxisA ? axisIdxA : axisIdxA + 1;
       walkStridesA[resAxis] = (stackA[axisIdxA] == broadcastStack[resAxis])
           ? aCast.strides[origAxisA]
           : 0;
     }
     if (axisIdxB >= 0) {
-      final origAxisB = axisIdxB < axisB ? axisIdxB : axisIdxB + 1;
+      final origAxisB = axisIdxB < resolvedAxisB ? axisIdxB : axisIdxB + 1;
       walkStridesB[resAxis] = (stackB[axisIdxB] == broadcastStack[resAxis])
           ? bCast.strides[origAxisB]
           : 0;
@@ -6398,9 +6401,9 @@ NDArray<T> cross<T extends SelfOf<DTypeTag>>(
     walkStridesRes[resAxis] = result.strides[resAxisIdx];
   }
 
-  final strideVecA = aCast.strides[axisA];
-  final strideVecB = bCast.strides[axisB];
-  final strideVecRes = is3D ? result.strides[axisC] : 0;
+  final strideVecA = aCast.strides[resolvedAxisA];
+  final strideVecB = bCast.strides[resolvedAxisB];
+  final strideVecRes = is3D ? result.strides[resolvedAxisC] : 0;
 
   void walk(int dim, int offsetA, int offsetB, int offsetRes) {
     if (dim == lenResult) {
@@ -6717,9 +6720,9 @@ NDArray<R> crossAs<
   NDArray<Ta> a,
   NDArray<Tb> b,
   DType<R> dtype, {
-  int? axisa,
-  int? axisb,
-  int? axisc,
+  int? axisA,
+  int? axisB,
+  int? axisC,
   int? axis,
   NDArray<Out>? out,
 }) {
@@ -6731,9 +6734,9 @@ NDArray<R> crossAs<
     return cross<AnySpec>(
           a.asAnySpec,
           b.asAnySpec,
-          axisa: axisa,
-          axisb: axisb,
-          axisc: axisc,
+          axisA: axisA,
+          axisB: axisB,
+          axisC: axisC,
           axis: axis,
           out: out?.asAnySpec,
         )
@@ -6745,9 +6748,9 @@ NDArray<R> crossAs<
     final res = cross<AnySpec>(
       aCast.asAnySpec,
       bCast.asAnySpec,
-      axisa: axisa,
-      axisb: axisb,
-      axisc: axisc,
+      axisA: axisA,
+      axisB: axisB,
+      axisC: axisC,
       axis: axis,
       out: out?.asAnySpec,
     );
@@ -6812,7 +6815,7 @@ NDArray<R> norm<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   Object? ord,
   Object? axis,
-  bool keepdims = false,
+  bool keepDims = false,
   NDArray<Out>? out,
 }) {
   if (a.isDisposed || (out != null && out.isDisposed)) {
@@ -6884,7 +6887,7 @@ NDArray<R> norm<R extends DTypeTag, Out extends R>(
       : DType.float64;
 
   final List<int> expectedShape;
-  if (keepdims) {
+  if (keepDims) {
     expectedShape = List<int>.from(a.shape);
     for (final ax in targetAxes) {
       expectedShape[ax] = 1;
@@ -6909,7 +6912,7 @@ NDArray<R> norm<R extends DTypeTag, Out extends R>(
     }
     if (!out.isContiguous || sharesMemory(a, out)) {
       return NDArray.scope(() {
-        final temp = norm<R, R>(a, ord: ord, axis: axis, keepdims: keepdims);
+        final temp = norm<R, R>(a, ord: ord, axis: axis, keepDims: keepDims);
         temp.copy(out: out);
         return out;
       });
@@ -6920,7 +6923,7 @@ NDArray<R> norm<R extends DTypeTag, Out extends R>(
     final NDArray<R> result =
         out ?? (NDArray<R>.create(expectedShape, targetDType as DType<R>));
 
-    if (targetAxes.length == rank && !keepdims) {
+    if (targetAxes.length == rank && !keepDims) {
       // Global norm
       if (isVecNorm) {
         final val = _vectorNorm(a, ord, targetDType);
@@ -7008,7 +7011,7 @@ NDArray<R> norm<R extends DTypeTag, Out extends R>(
 
         // Calculate dest flat index
         var destOffset = 0;
-        if (keepdims) {
+        if (keepDims) {
           for (var i = 0; i < result.shape.length; i++) {
             if (!targetAxes.contains(i)) {
               destOffset += currentCoords[i] * result.strides[i];
@@ -7977,15 +7980,17 @@ NDArray<R> cond<R extends DTypeTag, Out extends R>(
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.svdvals](https://numpy.org/doc/stable/reference/generated/numpy.linalg.svdvals.html)
-NDArray<R> svdvals<R extends DTypeTag, Out extends R>(
+NDArray<R> svdValues<R extends DTypeTag, Out extends R>(
   NDArray<RealFloatOf<R>> a, {
   NDArray<Out>? out,
 }) {
   if (a.isDisposed) {
-    throw StateError('Cannot execute svdvals() on a disposed array.');
+    throw StateError('Cannot execute svdValues() on a disposed array.');
   }
   if (out != null && out.isDisposed) {
-    throw StateError('Cannot write svdvals result to a disposed output array.');
+    throw StateError(
+      'Cannot write svdValues result to a disposed output array.',
+    );
   }
   final rank = a.shape.length;
   if (rank < 2) {
@@ -7998,10 +8003,10 @@ NDArray<R> svdvals<R extends DTypeTag, Out extends R>(
   final aDType = a.dtype as DType<DTypeTag>;
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
-  checkBlasIntDim(m, 'm', 'svdvals');
-  checkBlasIntDim(n, 'n', 'svdvals');
-  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svdvals');
-  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svdvals');
+  checkBlasIntDim(m, 'm', 'svdValues');
+  checkBlasIntDim(n, 'n', 'svdValues');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'svdValues');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'svdValues');
 
   final k = m < n ? m : n;
   final stackShape = a.shape.sublist(0, rank - 2);
@@ -8012,7 +8017,7 @@ NDArray<R> svdvals<R extends DTypeTag, Out extends R>(
       a,
       sShape,
       out,
-      (aF64) => svdvals<Float64, Float64>(aF64),
+      (aF64) => svdValues<Float64, Float64>(aF64),
     );
   }
 
@@ -8041,15 +8046,6 @@ NDArray<R> svdvals<R extends DTypeTag, Out extends R>(
     return sRes.detachToParentScope() as NDArray<R>;
   });
 }
-
-/// Alias for [svdvals].
-///
-/// **Example:**
-/// {@example /example/linalg_advanced_example.dart lang=dart}
-NDArray<R> svdValues<R extends DTypeTag, Out extends R>(
-  NDArray<RealFloatOf<R>> a, {
-  NDArray<Out>? out,
-}) => svdvals<R, Out>(a, out: out);
 
 /// Computes the matrix rank of an array using Singular Value Decomposition
 /// (or eigenvalue decomposition when [hermitian] is `true`).
@@ -8081,7 +8077,7 @@ NDArray<R> svdValues<R extends DTypeTag, Out extends R>(
 /// {@example /example/linalg_advanced_example.dart lang=dart}
 ///
 /// Reference: [NumPy linalg.matrix_rank](https://numpy.org/doc/stable/reference/generated/numpy.linalg.matrix_rank.html)
-NDArray<Int64> matrix_rank<T extends DTypeTag>(
+NDArray<Int64> matrixRank<T extends DTypeTag>(
   NDArray<T> a, {
   double? tol,
   double? rtol,
@@ -8089,11 +8085,11 @@ NDArray<Int64> matrix_rank<T extends DTypeTag>(
   NDArray<Int64>? out,
 }) {
   if (a.isDisposed) {
-    throw StateError('Cannot execute matrix_rank() on a disposed array.');
+    throw StateError('Cannot execute matrixRank() on a disposed array.');
   }
   if (out != null && out.isDisposed) {
     throw StateError(
-      'Cannot write matrix_rank result to a disposed output array.',
+      'Cannot write matrixRank result to a disposed output array.',
     );
   }
   if (tol != null && rtol != null) {
@@ -8154,10 +8150,10 @@ NDArray<Int64> matrix_rank<T extends DTypeTag>(
 
   final m = a.shape[rank - 2];
   final n = a.shape[rank - 1];
-  checkBlasIntDim(m, 'm', 'matrix_rank');
-  checkBlasIntDim(n, 'n', 'matrix_rank');
-  checkBlasIntStride(a.strides[rank - 2], 'lda', 'matrix_rank');
-  checkBlasIntStride(a.strides[rank - 1], 'lda', 'matrix_rank');
+  checkBlasIntDim(m, 'm', 'matrixRank');
+  checkBlasIntDim(n, 'n', 'matrixRank');
+  checkBlasIntStride(a.strides[rank - 2], 'lda', 'matrixRank');
+  checkBlasIntStride(a.strides[rank - 1], 'lda', 'matrixRank');
   if (hermitian && m != n) {
     throw ArgumentError.value(
       a.shape,
@@ -8188,10 +8184,10 @@ NDArray<Int64> matrix_rank<T extends DTypeTag>(
         : a;
     final NDArray<DTypeTag> sValues;
     if (hermitian) {
-      final eigVals = eigvalsh(aUse.asAnySpec);
+      final eigVals = eigValuesH(aUse.asAnySpec);
       sValues = abs(eigVals.asAnySpec);
     } else {
-      sValues = svdvals(aUse.asAnySpec);
+      sValues = svdValues(aUse.asAnySpec);
     }
 
     final bool isF32 = sValues.dtype == DType.float32;
@@ -8243,18 +8239,6 @@ NDArray<Int64> matrix_rank<T extends DTypeTag>(
     return result.detachToParentScope();
   });
 }
-
-/// Alias for [matrix_rank].
-///
-/// **Example:**
-/// {@example /example/linalg_advanced_example.dart lang=dart}
-NDArray<Int64> matrixRank<T extends DTypeTag>(
-  NDArray<T> a, {
-  double? tol,
-  double? rtol,
-  bool hermitian = false,
-  NDArray<Int64>? out,
-}) => matrix_rank<T>(a, tol: tol, rtol: rtol, hermitian: hermitian, out: out);
 
 /// Solves the tensor equation `a x = b` for `x`.
 ///

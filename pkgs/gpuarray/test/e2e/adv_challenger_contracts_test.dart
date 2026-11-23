@@ -547,7 +547,7 @@ void main() {
 
           _expectMatchNDArray(
             variance(gpuOffset),
-            nd.var_(ndOffset),
+            nd.variance(ndOffset),
             tol: 1e-4,
             reason: 'variance large offset',
           );
@@ -642,7 +642,7 @@ void main() {
           final gpuSpec = GpuArray<Float32>.fromNDArray(ndSpec, device: device);
           _expectMatchNDArray(
             nanToNum(gpuSpec, nan: 99.0, posinf: 888.0, neginf: -888.0),
-            nd.nan_to_num(ndSpec, nan: 99.0, posinf: 888.0, neginf: -888.0),
+            nd.nanToNum(ndSpec, nan: 99.0, posInf: 888.0, negInf: -888.0),
             reason: 'nanToNum custom',
           );
 

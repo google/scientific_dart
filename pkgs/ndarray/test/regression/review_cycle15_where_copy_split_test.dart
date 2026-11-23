@@ -281,9 +281,9 @@ void main() {
       },
     );
 
-    group('4. Aliased out: protection in array_split and array_split_at', () {
+    group('4. Aliased out: protection in arraySplit and splitAt', () {
       test(
-        'array_split with overlapping out views preserves original values',
+        'arraySplit with overlapping out views preserves original values',
         () {
           NDArray.scope(() {
             final a = NDArray<Float64>.fromList(
@@ -295,31 +295,28 @@ void main() {
             final firstHalf = a.slice([Slice(start: 0, stop: 2)]);
             final secondHalf = a.slice([Slice(start: 2, stop: 4)]);
 
-            array_split(a, 2, out: [secondHalf, firstHalf]);
+            arraySplit(a, 2, out: [secondHalf, firstHalf]);
             expect(secondHalf.toList(), equals([1.0, 2.0]));
             expect(firstHalf.toList(), equals([3.0, 4.0]));
           });
         },
       );
 
-      test(
-        'array_split_at with overlapping out views preserves original values',
-        () {
-          NDArray.scope(() {
-            final a = NDArray<Float64>.fromList(
-              [10.0, 20.0, 30.0, 40.0],
-              [4],
-              DType.float64,
-            );
-            final firstHalf = a.slice([Slice(start: 0, stop: 2)]);
-            final secondHalf = a.slice([Slice(start: 2, stop: 4)]);
+      test('splitAt with overlapping out views preserves original values', () {
+        NDArray.scope(() {
+          final a = NDArray<Float64>.fromList(
+            [10.0, 20.0, 30.0, 40.0],
+            [4],
+            DType.float64,
+          );
+          final firstHalf = a.slice([Slice(start: 0, stop: 2)]);
+          final secondHalf = a.slice([Slice(start: 2, stop: 4)]);
 
-            array_split_at(a, [2], out: [secondHalf, firstHalf]);
-            expect(secondHalf.toList(), equals([10.0, 20.0]));
-            expect(firstHalf.toList(), equals([30.0, 40.0]));
-          });
-        },
-      );
+          splitAt(a, [2], out: [secondHalf, firstHalf]);
+          expect(secondHalf.toList(), equals([10.0, 20.0]));
+          expect(firstHalf.toList(), equals([30.0, 40.0]));
+        });
+      });
     });
 
     group('5. Value-level complex Spacing check in gradient()', () {
@@ -354,14 +351,14 @@ void main() {
       );
     });
 
-    group('6. root_scalar(method: RootMethod.secant) ignores fprime', () {
-      test('RootMethod.secant does not invoke fprime even when provided', () {
+    group('6. rootScalar(method: RootMethod.secant) ignores fPrime', () {
+      test('RootMethod.secant does not invoke fPrime even when provided', () {
         var fprimeCalled = false;
-        final res = root_scalar(
+        final res = rootScalar(
           (x) => x * x - 4.0,
           method: RootMethod.secant,
           x0: 1.5,
-          fprime: (x) {
+          fPrime: (x) {
             fprimeCalled = true;
             return 0.0; // Would cause division by zero / failure if called
           },

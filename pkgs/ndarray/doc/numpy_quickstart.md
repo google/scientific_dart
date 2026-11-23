@@ -19,7 +19,7 @@ Before diving into code, understand the five structural differences between Pyth
    - **NumPy**: `np.ndarray` is dynamically typed; `float64_arr + int32_arr` promotes automatically at runtime.
    - **`package:ndarray`**: Arrays carry their data type in their Dart type (`NDArray<Float64>`, `NDArray<Float32>`, `NDArray<Int32>`, `NDArray<Boolean>`), inferred from `DType.float64`, `DType.int32`, etc.
      - Standard operators (`a + b`, `add(a, b)`) require both arrays to have the **same** type.
-     - To combine different types, use `*As` (`addAs(f64, i32, DType.float64)`) or convert explicitly (`f64 + i32.astype(DType.float64)`). See **[Section 2.C.1: Mixed-Type Arithmetic](#c1-mixed-type-arithmetic-float64--int32-float32--float64-etc)**.
+     - To combine different types, use `*As` (`addAs(f64, i32, DType.float64)`) or convert explicitly (`f64 + i32.asType(DType.float64)`). See **[Section 2.C.1: Mixed-Type Arithmetic](#c1-mixed-type-arithmetic-float64--int32-float32--float64-etc)**.
 
 3. **Explicit Statically-Typed Access vs. Polymorphic Overloads**:
    - **NumPy**: Square brackets `arr[...]` handle scalar indexing, slicing, boolean masking, and fancy indexing.
@@ -91,7 +91,7 @@ Before diving into code, understand the five structural differences between Pyth
 | `np.sin(a)`, `np.cos(a)` | `sin(a)`, `cos(a)`, `tan(a)` | Trigonometric universal functions (ints infer `NDArray<Float64>`). |
 | `np.exp(a)`, `np.log(a)` | `exp(a)`, `log(a)`, `log10(a)` | Exponential & logarithmic ufuncs (ints infer `NDArray<Float64>`). |
 | `np.sqrt(a)`, `np.power(a,2)`| `sqrt(a)`, `power(a, b)`, `floatPower(a, b)` | Square root and exponentiation. |
-| `np.nan_to_num(a, nan=0)` | `nan_to_num(a, nan: 0.0)` | Replaces NaNs and infinities with specified numbers. |
+| `np.nan_to_num(a, nan=0)` | `nanToNum(a, nan: 0.0)` | Replaces NaNs and infinities with specified numbers. |
 
 ---
 
@@ -119,12 +119,12 @@ final out = NDArray.empty([3], DType.float64);
 addAs(f64, i32, DType.float64, out: out);
 ```
 
-#### 2. Explicit `.astype(...)` Conversion with Infix Operators (`+`, `-`, `*`)
-When writing chained mathematical expressions with infix operators (`+`, `-`, `*`), promote the narrower operand explicitly with `.astype(...)` inside an `NDArray.scope` (which automatically frees the temporary converted array when the scope exits):
+#### 2. Explicit `.asType(...)` Conversion with Infix Operators (`+`, `-`, `*`)
+When writing chained mathematical expressions with infix operators (`+`, `-`, `*`), promote the narrower operand explicitly with `.asType(...)` inside an `NDArray.scope` (which automatically frees the temporary converted array when the scope exits):
 
 ```dart
 final result = NDArray.scope(() {
-  final res = (f64 + i32.astype(DType.float64)) * 2.0; // static type: NDArray<Float64>
+  final res = (f64 + i32.asType(DType.float64)) * 2.0; // static type: NDArray<Float64>
   return res.detachToParentScope();
 });
 ```
@@ -228,7 +228,7 @@ final intArr     = i32.asIntegerDType; // NDArray<AnyIntegerSpec>
 | :--- | :--- | :--- |
 | `arr.reshape(2, 5)` | `arr.reshape([2, 5])` | **Zero-Copy View** if `arr.isContiguous`; deep copy if strided. |
 | `arr.T`, `arr.transpose()`| `arr.transposed`, `arr.transpose()`| **Zero-Copy View** with permuted strides (`[C, B, A]`). |
-| `np.expand_dims(a, 0)` | `expand_dims(a, 0)` | **Zero-Copy View** inserting size-1 axis at position `0`. |
+| `np.expand_dims(a, 0)` | `expandDims(a, 0)` | **Zero-Copy View** inserting size-1 axis at position `0`. |
 | `np.squeeze(a, axis=0)` | `squeeze(a, axis: [0])` | **Zero-Copy View** dropping size-1 dimensions. |
 | `arr.flatten()` | `arr.flatten()` | **Deep 1-D Copy** (`arr.flatten()` always returns an independent 1-D copy). |
 | `arr.ravel()` | `arr.ravel()` | **Zero-Copy View** (`arr.ravel()` returns a zero-copy view when contiguous, else copy). |
@@ -250,15 +250,15 @@ final intArr     = i32.asIntegerDType; // NDArray<AnyIntegerSpec>
   ```
 - **Splitting**:
   - `split(a, 2)`: Splits array `a` into `2` **equal** sections along axis 0. (Throws if size not divisible).
-  - `split_at(a, [2, 5])`: Splits array `a` at specific **index split points** `2` and `5`.
-  - `array_split(a, 3)`: Splits array `a` into `3` sections, distributing remainder elements as evenly as possible.
+  - `splitAt(a, [2, 5])`: Splits array `a` at specific **index split points** `2` and `5`.
+  - `arraySplit(a, 3)`: Splits array `a` into `3` sections, distributing remainder elements as evenly as possible.
   - `hsplit(a, 2)` / `vsplit(a, 2)` / `dsplit(a, 2)`: Column-wise (axis 1), row-wise (axis 0), and depth-wise (axis 2) equal splits.
 
 ---
 
-### H. Statistical Reductions (`axis` and `keepdims`)
+### H. Statistical Reductions (`axis` and `keepDims`)
 
-In `package:ndarray`, reduction functions take an optional `axis` integer and `bool keepdims = false`.
+In `package:ndarray`, reduction functions take an optional `axis` integer and `bool keepDims = false`.
 If `axis` is omitted, the array is reduced across all dimensions to a **0-D scalar array**:
 
 ```dart
@@ -272,8 +272,8 @@ print(totalSum.scalar); // 10.0
 final colSum = sum(mat, axis: 0);
 print(colSum.toList()); // [4.0, 6.0]
 
-// Mean along rows preserving rank (axis 1, keepdims: true) -> shape [2, 1]
-final rowMean = mean(mat, axis: 1, keepdims: true);
+// Mean along rows preserving rank (axis 1, keepDims: true) -> shape [2, 1]
+final rowMean = mean(mat, axis: 1, keepDims: true);
 print(rowMean.shape); // [2, 1]
 ```
 

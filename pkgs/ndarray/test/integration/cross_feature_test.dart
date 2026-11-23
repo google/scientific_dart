@@ -289,7 +289,7 @@ void main() {
         final padded = pad(
           core,
           PadWidth.all(1),
-          mode: PaddingMode.constant,
+          mode: PadMode.constant,
           constantValues: PadValues<Float64>.all(0.0),
         );
         expect(padded.shape, equals([4, 4]));
@@ -358,9 +358,9 @@ void main() {
             ),
           );
           // Construct complex signal z(t) = cos(φ) + i*sin(φ)
-          final cCos = cos(truePhase).astype(DType.complex128);
+          final cCos = cos(truePhase).asType(DType.complex128);
           final cSin = multiply<Complex128>(
-            sin(truePhase).astype(DType.complex128),
+            sin(truePhase).asType(DType.complex128),
             NDArray.scalar(Complex(0.0, 1.0), dtype: DType.complex128),
           );
           final z = add<Complex128>(cCos, cSin);
@@ -382,29 +382,26 @@ void main() {
       },
     );
 
-    test(
-      '2D row-wise argsort with take_along_axis and inverse put_along_axis',
-      () {
-        NDArray.scope(() {
-          final m = NDArray.fromList(
-            [30.0, 10.0, 20.0, 5.0, 25.0, 15.0],
-            [2, 3],
-            DType.float64,
-          );
-          final order = argsort(m, axis: 1);
-          final sortedRows = take_along_axis(m, order, 1);
-          expect(
-            sortedRows.toList(),
-            equals([10.0, 20.0, 30.0, 5.0, 15.0, 25.0]),
-          );
+    test('2D row-wise argsort with takeAlongAxis and inverse putAlongAxis', () {
+      NDArray.scope(() {
+        final m = NDArray.fromList(
+          [30.0, 10.0, 20.0, 5.0, 25.0, 15.0],
+          [2, 3],
+          DType.float64,
+        );
+        final order = argsort(m, axis: 1);
+        final sortedRows = takeAlongAxis(m, order, 1);
+        expect(
+          sortedRows.toList(),
+          equals([10.0, 20.0, 30.0, 5.0, 15.0, 25.0]),
+        );
 
-          // Scatter sorted rows back into original positions using put_along_axis
-          final restored = NDArray.zeros([2, 3], DType.float64);
-          put_along_axis(restored, order, sortedRows, 1);
-          expect(allClose(restored, m), isTrue);
-        });
-      },
-    );
+        // Scatter sorted rows back into original positions using putAlongAxis
+        final restored = NDArray.zeros([2, 3], DType.float64);
+        putAlongAxis(restored, order, sortedRows, 1);
+        expect(allClose(restored, m), isTrue);
+      });
+    });
 
     test(
       'Sample covariance matrix via cov matches centered matmul and SVD singular values',
@@ -416,7 +413,7 @@ void main() {
             [4, 3],
             DType.float64,
           );
-          final NDArray<Float64> colMeans = mean(xObs, axis: 0, keepdims: true);
+          final NDArray<Float64> colMeans = mean(xObs, axis: 0, keepDims: true);
           final centered = subtract<Float64>(xObs, colMeans);
 
           // Manual covariance: (X_c^T * X_c) / (N - 1)
@@ -428,7 +425,7 @@ void main() {
           expect(allClose(covBuiltIn, covManual, atol: 1e-12), isTrue);
 
           // Eigenvalues of covManual equal s^2 / (N - 1) from SVD of centered
-          final eigVals = sort(eigvalsh(covBuiltIn));
+          final eigVals = sort(eigValuesH(covBuiltIn));
           final svdS = svd(centered).s;
           final svdVar = sort(
             divide(square(svdS), NDArray.scalar(3.0, dtype: DType.float64)),
@@ -444,7 +441,7 @@ void main() {
         NDArray.scope(() {
           final rng = RandomGenerator(2026);
           final draws = rng.randint([500], low: 0, high: 5);
-          final bc = bincount<Int64, Int64>(draws, minlength: 5);
+          final bc = bincount<Int64, Int64>(draws, minLength: 5);
           final u = uniqueAll(draws);
 
           expect(sum(bc).scalar, equals(500));
@@ -491,7 +488,7 @@ void main() {
       () {
         NDArray.scope(() {
           final sig = NDArray.full([8], 5.0, dtype: DType.float64);
-          final padded = pad(sig, PadWidth.all(1), mode: PaddingMode.symmetric);
+          final padded = pad(sig, PadWidth.all(1), mode: PadMode.symmetric);
           final boxKernel = NDArray.full([3], 1.0 / 3.0, dtype: DType.float64);
           final filtered = convolve(padded, boxKernel, mode: ConvMode.valid);
 
@@ -540,7 +537,7 @@ void main() {
     );
 
     test(
-      'Frobenius companion matrix eigvals match roots(p), and Vandermonde lstsq matches polyfit',
+      'Frobenius companion matrix eigValues match roots(p), and Vandermonde lstsq matches polyfit',
       () {
         NDArray.scope(() {
           // P(x) = x^3 - 6x^2 + 11x - 6 = (x-1)(x-2)(x-3)
@@ -554,7 +551,7 @@ void main() {
             [3, 3],
             DType.float64,
           );
-          final ev = sort(real(eigvals(comp)));
+          final ev = sort(real(eigValues(comp)));
           final rts = sort(real(roots(p)));
           expect(allClose(ev, rts, atol: 1e-11), isTrue);
           expect(
@@ -594,7 +591,7 @@ void main() {
           );
           final sd = slogdet(qrRes.q);
           expect(sd.sign.scalar.abs(), closeTo(1.0, 1e-11));
-          expect(sd.logabsdet.scalar, closeTo(0.0, 1e-11));
+          expect(sd.logAbsDet.scalar, closeTo(0.0, 1e-11));
         });
       },
     );
@@ -642,7 +639,7 @@ void main() {
           // Spectral derivative: ifft(i * k * fft(y))
           final k = fftfreq(n, d: dx / (2.0 * math.pi));
           final ik = multiply<Complex128>(
-            k.astype(DType.complex128),
+            k.asType(DType.complex128),
             NDArray.scalar(Complex(0.0, 1.0), dtype: DType.complex128),
           );
           final specDeriv = real(ifft(multiply<Complex128>(ik, fft(y))));
@@ -728,13 +725,13 @@ void main() {
       () {
         NDArray.scope(() {
           final u8 = NDArray.fromList([1, 2, 3, 4], [4], DType.uint8);
-          final i32 = u8.astype(DType.int32);
+          final i32 = u8.asType(DType.int32);
           final sqI32 = square(i32); // [1, 4, 9, 16]
-          final f16 = sqI32.astype(DType.float16);
-          final f64 = f16.astype(DType.float64);
+          final f16 = sqI32.asType(DType.float16);
+          final f64 = f16.asType(DType.float64);
           expect(cumsum(f64).toList(), equals([1.0, 5.0, 14.0, 30.0]));
 
-          final c128 = f64.astype(DType.complex128);
+          final c128 = f64.asType(DType.complex128);
           expect(sum(c128).scalar, equals(Complex(30.0, 0.0)));
         });
       },

@@ -394,12 +394,12 @@ void main() {
 
   group("Empty Axis Integer Mean Tests", () {
     test(
-      "mean on integer array with 0-length dimension returns NaN matching var_",
+      "mean on integer array with 0-length dimension returns NaN matching variance",
       () {
         NDArray.scope(() {
           final emptyInt = NDArray<Int64>.zeros(<int>[2, 0, 3], DType.int64);
           final m = mean(emptyInt, axis: 1);
-          final v = var_<Int64>(emptyInt, axis: 1);
+          final v = variance<Int64>(emptyInt, axis: 1);
 
           expect(m.shape, <int>[2, 3]);
           expect(v.shape, <int>[2, 3]);

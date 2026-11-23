@@ -105,8 +105,8 @@ MaskedArray<D> _maMean<T extends DTypeTag, D extends DTypeTag>(
 }) {
   return NDArray.scope(() {
     final targetDType = _doublePrecisionDType(self.dtype) as DType<D>;
-    final s = _maSum<T, DTypeTag>(self, axis: axis).astype<D, D>(targetDType);
-    final c = self.count(axis: axis).astype<D>(targetDType);
+    final s = _maSum<T, DTypeTag>(self, axis: axis).asType<D, D>(targetDType);
+    final c = self.count(axis: axis).asType<D>(targetDType);
     final res = _maDivide<D, D>(s, c, out: out);
     return out == null ? res.detachToParentScope() : res;
   });
@@ -119,7 +119,7 @@ MaskedArray<Float64> _maVariance(
 }) {
   return NDArray.scope(() {
     final targetDType = _doublePrecisionDType(self.dtype);
-    final selfPromoted = self.astype(targetDType);
+    final selfPromoted = self.asType(targetDType);
     final m = _maMean<DTypeTag, DTypeTag>(selfPromoted, axis: axis);
     final mExpanded = axis != null ? m.expandDims(axis) : m;
     final diff = selfPromoted.subtract(mExpanded);

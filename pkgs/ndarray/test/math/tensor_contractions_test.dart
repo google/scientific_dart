@@ -1068,7 +1068,7 @@ void main() {
           () => tensordot(a32.asAnySpec, b64.asAnySpec, axes: 1),
           throwsArgumentError,
         );
-        final a64 = a32.astype(DType.float64);
+        final a64 = a32.asType(DType.float64);
         final res = tensordot(a64, b64, axes: 1);
         expect(res.dtype, equals(DType.float64));
         expect(res.scalar, equals(11.0));
@@ -1623,7 +1623,7 @@ void main() {
         () => tensordot(aInt32.asAnySpec, bInt64.asAnySpec, axes: 2),
         throwsArgumentError,
       );
-      final resTdCast = tensordot(aInt32.astype(DType.int64), bInt64, axes: 2);
+      final resTdCast = tensordot(aInt32.asType(DType.int64), bInt64, axes: 2);
       expect(resTdCast.scalar, equals(10));
 
       // 3. tensordot non-sequential axes isSeq return false (line 254)

@@ -367,19 +367,19 @@ void safeDisposedLoop(NDArray<Float64> delta) {
     );
 
     test(
-      'ndarray_identity_cast_dispose flags unguarded .dispose() on astype(copy: false)',
+      'ndarray_identity_cast_dispose flags unguarded .dispose() on asType(copy: false)',
       () async {
         final diagnostics = await analyzeCode(
           '''
 import 'package:ndarray/ndarray.dart';
 
 void badCastDispose(NDArray<Float64> a) {
-  final casted = a.astype(DType.float64, copy: false);
+  final casted = a.asType(DType.float64, copy: false);
   casted.dispose(); // VIOLATION: disposes `a` when dtype already matches!
 }
 
 void goodGuardedCastDispose(NDArray<Float64> a) {
-  final casted = a.astype(DType.float64, copy: false);
+  final casted = a.asType(DType.float64, copy: false);
   if (!identical(casted, a)) {
     casted.dispose(); // OK: guarded by !identical
   }
@@ -531,8 +531,8 @@ double bad0d(NDArray<Float64> a) {
   final x = r[[0]].scalar; // VIOLATION: rank-0 array
   final okEmpty = r[[]].scalar; // OK
   final okScalar = max(a).scalar; // OK: no longer flagged
-  final k = sum(a, keepdims: true);
-  final okKeepdims = k[[0]].scalar; // OK: keepdims preserves rank
+  final k = sum(a, keepDims: true);
+  final okKeepdims = k[[0]].scalar; // OK: keepDims preserves rank
   final s = sum(a, axis: 0);
   final okAxis = s[[0]].scalar; // OK: axis given
   return x + okEmpty + okScalar + okKeepdims + okAxis;
@@ -577,7 +577,7 @@ void badIterCoords(NDArray<Float64> a) {
 import 'package:ndarray/ndarray.dart';
 
 void badCopyMutation(NDArray<Float64> a) {
-  a.astype(DType.float32)[[0]] = 1.0; // VIOLATION 1: index assignment on astype copy
+  a.asType(DType.float32)[[0]] = 1.0; // VIOLATION 1: index assignment on asType copy
   a.flatten().fill(0.0); // VIOLATION 2: .fill() on flatten() copy
   a.slice([Slice(start: 0, stop: 2)]).fill(0.0); // OK: slice() returns a view
 }
@@ -771,9 +771,9 @@ import 'package:ndarray/ndarray.dart';
 double checkZeroDimMore(NDArray<Float64> a) {
   final q0 = quantile(a, 0.5)[[0]].scalar; // VIOLATION 1
   final idx0 = argmax(a)[[0]].scalar; // VIOLATION 2
-  final cnt0 = count_nonzero(a)[[0]].scalar; // VIOLATION 3
+  final cnt0 = countNonzero(a)[[0]].scalar; // VIOLATION 3
   final sumNullAxis = sum(a, axis: null)[[0]].scalar; // VIOLATION 4
-  final sumKeepFalse = sum(a, keepdims: false)[[0]].scalar; // VIOLATION 5
+  final sumKeepFalse = sum(a, keepDims: false)[[0]].scalar; // VIOLATION 5
   return q0 + idx0 + cnt0 + sumNullAxis + sumKeepFalse;
 }
 ''',
@@ -1221,7 +1221,7 @@ NDArray<DTypeTag> f(NDArray<Float64> a, NDArray<Float32> b) => a + b;
         MismatchedDTypeOperandsRule(),
         CastOperandWithAstypeFix.new,
       );
-      expect(fixedMismatchOp, contains('a + b.astype(DType.float64)'));
+      expect(fixedMismatchOp, contains('a + b.asType(DType.float64)'));
 
       final fixedMismatchFn = await applyFixAtOffset(
         '''
@@ -1231,7 +1231,7 @@ NDArray<DTypeTag> f(NDArray<Int64> a, NDArray<Int32> b) => add(a, b);
         MismatchedDTypeOperandsRule(),
         CastOperandWithAstypeFix.new,
       );
-      expect(fixedMismatchFn, contains('add(a, b.astype(DType.int64))'));
+      expect(fixedMismatchFn, contains('add(a, b.asType(DType.int64))'));
 
       final fixedMismatchOpAs = await applyFixAtOffset(
         '''

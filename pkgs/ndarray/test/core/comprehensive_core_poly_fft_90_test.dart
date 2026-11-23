@@ -362,10 +362,10 @@ void main() {
   });
 
   group(
-    '4. Fancy Indexing: take_along_axis, put_along_axis, choose, select, where',
+    '4. Fancy Indexing: takeAlongAxis, putAlongAxis, choose, select, where',
     () {
       test(
-        'take_along_axis along axis 0 and 1 with positive and negative axes',
+        'takeAlongAxis along axis 0 and 1 with positive and negative axes',
         () {
           NDArray.scope(() {
             final a = NDArray.fromList(
@@ -376,24 +376,24 @@ void main() {
 
             // Take along axis 1
             final idx1 = NDArray.fromList([2, 0, 1, 2], [2, 2], DType.int32);
-            final res1 = take_along_axis(a, idx1, 1);
+            final res1 = takeAlongAxis(a, idx1, 1);
             expect(res1.shape, equals([2, 2]));
             expect(res1.toList(), equals([30.0, 10.0, 50.0, 60.0]));
 
             // Negative axis -1
-            final resNeg1 = take_along_axis(a, idx1, -1);
+            final resNeg1 = takeAlongAxis(a, idx1, -1);
             expect(resNeg1.toList(), equals(res1.toList()));
 
             // Take along axis 0
             final idx0 = NDArray.fromList([1, 0, 1], [1, 3], DType.int32);
-            final res0 = take_along_axis(a, idx0, 0);
+            final res0 = takeAlongAxis(a, idx0, 0);
             expect(res0.shape, equals([1, 3]));
             expect(res0.toList(), equals([40.0, 20.0, 60.0]));
           });
         },
       );
 
-      test('put_along_axis in-place and with out buffer', () {
+      test('putAlongAxis in-place and with out buffer', () {
         NDArray.scope(() {
           final a = NDArray.fromList(
             [10, 20, 30, 40, 50, 60],
@@ -408,7 +408,7 @@ void main() {
           );
 
           final out = NDArray.zeros([2, 3], DType.float64);
-          put_along_axis(a, idx, vals, 1, out: out);
+          putAlongAxis(a, idx, vals, 1, out: out);
           expect(out.toList(), equals([10.0, 99.0, 88.0, 77.0, 66.0, 60.0]));
         });
       });
@@ -1031,7 +1031,7 @@ void main() {
     });
   });
 
-  group('11. 1D Scalar Root Finding: brentq, newton, secant, root_scalar', () {
+  group('11. 1D Scalar Root Finding: brentq, newton, secant, rootScalar', () {
     test('brentq root convergence, exact endpoints, and errors', () {
       // Normal root
       final res1 = brentq((x) => x * x * x - 8.0, 1.0, 3.0);
@@ -1051,13 +1051,13 @@ void main() {
 
       // Errors
       expect(() => brentq((x) => x * x + 1.0, 1.0, 3.0), throwsArgumentError);
-      expect(() => brentq((x) => x, 0.0, 1.0, maxiter: 0), throwsArgumentError);
+      expect(() => brentq((x) => x, 0.0, 1.0, maxIter: 0), throwsArgumentError);
       expect(() => brentq((x) => x, 0.0, 1.0, xtol: -1.0), throwsArgumentError);
     });
 
     test('newton and secant iteration', () {
       // Newton with derivative
-      final resN = newton((x) => x * x - 9.0, 2.0, fprime: (x) => 2.0 * x);
+      final resN = newton((x) => x * x - 9.0, 2.0, fPrime: (x) => 2.0 * x);
       expect(resN.converged, isTrue);
       expect(resN.root, closeTo(3.0, 1e-8));
 
@@ -1070,17 +1070,17 @@ void main() {
       final resZeroDeriv = newton(
         (x) => x * x + 1.0,
         0.0,
-        fprime: (x) => 2.0 * x,
+        fPrime: (x) => 2.0 * x,
       );
       expect(resZeroDeriv.converged, isFalse);
 
       // Errors
-      expect(() => newton((x) => x, 1.0, maxiter: 0), throwsArgumentError);
+      expect(() => newton((x) => x, 1.0, maxIter: 0), throwsArgumentError);
       expect(() => newton((x) => x, 1.0, tol: 0.0), throwsArgumentError);
     });
 
-    test('root_scalar unified dispatcher', () {
-      final resB = root_scalar(
+    test('rootScalar unified dispatcher', () {
+      final resB = rootScalar(
         (x) => math.exp(x) - 3.0,
         method: RootMethod.brentq,
         bracketA: 0.0,
@@ -1089,16 +1089,16 @@ void main() {
       expect(resB.converged, isTrue);
       expect(resB.root, closeTo(math.log(3.0), 1e-8));
 
-      final resN = root_scalar(
+      final resN = rootScalar(
         (x) => math.exp(x) - 3.0,
         method: RootMethod.newton,
         x0: 1.0,
-        fprime: (x) => math.exp(x),
+        fPrime: (x) => math.exp(x),
       );
       expect(resN.converged, isTrue);
       expect(resN.root, closeTo(math.log(3.0), 1e-8));
 
-      final resS = root_scalar(
+      final resS = rootScalar(
         (x) => math.exp(x) - 3.0,
         method: RootMethod.secant,
         x0: 1.0,
@@ -1108,18 +1108,18 @@ void main() {
 
       // Missing argument errors
       expect(
-        () => root_scalar((x) => x, method: RootMethod.brentq),
+        () => rootScalar((x) => x, method: RootMethod.brentq),
         throwsArgumentError,
       );
       expect(
-        () => root_scalar((x) => x, method: RootMethod.newton),
+        () => rootScalar((x) => x, method: RootMethod.newton),
         throwsArgumentError,
       );
     });
   });
 
-  group('12. Multivariate Optimization: nelder_mead, lbfgs, minimize', () {
-    test('nelder_mead 2D optimization on parabolic bowl and Rosenbrock', () {
+  group('12. Multivariate Optimization: nelderMead, lbfgs, minimize', () {
+    test('nelderMead 2D optimization on parabolic bowl and Rosenbrock', () {
       NDArray.scope(() {
         // Parabolic bowl: f(x, y) = (x-3)^2 + (y+2)^2 + 5 -> minimum at (3, -2) with value 5
         double bowl(NDArray<Float64> x) {
@@ -1129,7 +1129,7 @@ void main() {
         }
 
         final xInit = NDArray.fromList([0.0, 0.0], [2], DType.float64);
-        final res = nelder_mead(bowl, xInit, adaptive: true);
+        final res = nelderMead(bowl, xInit, adaptive: true);
         expect(res.success, isTrue);
         expect(res.x.getCell([0]), closeTo(3.0, 1e-3));
         expect(res.x.getCell([1]), closeTo(-2.0, 1e-3));
@@ -1206,7 +1206,7 @@ void main() {
 
         // Error conditions
         expect(
-          () => nelder_mead(sphere, NDArray.zeros([2, 2], DType.float64)),
+          () => nelderMead(sphere, NDArray.zeros([2, 2], DType.float64)),
           throwsArgumentError,
         );
         expect(

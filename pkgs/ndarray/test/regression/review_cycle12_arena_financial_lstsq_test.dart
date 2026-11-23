@@ -251,7 +251,7 @@ void main() {
       );
     });
 
-    group('4. take_along_axis() out-of-bounds index cleanup', () {
+    group('4. takeAlongAxis() out-of-bounds index cleanup', () {
       test(
         'throws RangeError without leaking allocated result when out == null',
         () {
@@ -263,7 +263,7 @@ void main() {
           final badIndices = NDArray.fromList([0, 5], [1, 2], DType.int32);
           try {
             expect(
-              () => take_along_axis(arr, badIndices, 0),
+              () => takeAlongAxis(arr, badIndices, 0),
               throwsA(isA<RangeError>()),
             );
           } finally {

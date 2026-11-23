@@ -236,7 +236,7 @@ void main() {
           final gpuA = GpuArray<Float64>.fromNDArray(ndA, device: device);
           final sAll = nd.sum(ndA);
           final s0 = nd.sum(ndA, axis: 0);
-          final s1Keep = nd.sum(ndA, axis: 1, keepdims: true);
+          final s1Keep = nd.sum(ndA, axis: 1, keepDims: true);
           final mAll = nd.mean(ndA);
           final m0 = nd.mean(ndA, axis: 0);
           final min1 = nd.min(ndA, axis: 1);
@@ -450,7 +450,7 @@ void main() {
             _expectMatchNDArray(gpuSpec, ndFft, tol: 1e-4, reason: 'fft');
             _expectMatchNDArray(
               gpu_fft.ifft(gpuSpec),
-              ndSignal.astype(nd.DType.complex128),
+              ndSignal.asType(nd.DType.complex128),
               tol: 1e-4,
               reason: 'ifft round-trip',
             );
@@ -675,7 +675,7 @@ void main() {
             );
             _expectMatchNDArray(
               gCnz,
-              nd.count_nonzero(ndSortIn, axis: 1),
+              nd.countNonzero(ndSortIn, axis: 1),
               reason: 'countNonzero',
             );
 
@@ -800,7 +800,7 @@ void main() {
             // 5. Statistical & NaN-aware reductions
             _expectMatchNDArray(
               variance(gpuF32A, axis: 1),
-              nd.var_(ndF32A, axis: 1),
+              nd.variance(ndF32A, axis: 1),
               reason: 'variance',
             );
             _expectMatchNDArray(
@@ -877,22 +877,22 @@ void main() {
             );
             _expectMatchNDArray(
               isnan(gpuSpec),
-              nd.isnan(ndSpec),
+              nd.isNan(ndSpec),
               reason: 'isnan',
             );
             _expectMatchNDArray(
               isinf(gpuSpec),
-              nd.isinf(ndSpec),
+              nd.isInf(ndSpec),
               reason: 'isinf',
             );
             _expectMatchNDArray(
               isfinite(gpuSpec),
-              nd.isfinite(ndSpec),
+              nd.isFinite(ndSpec),
               reason: 'isfinite',
             );
             _expectMatchNDArray(
               nanToNum(gpuSpec, nan: 0.0, posinf: 99.0, neginf: -99.0),
-              nd.nan_to_num(ndSpec, nan: 0.0, posinf: 99.0, neginf: -99.0),
+              nd.nanToNum(ndSpec, nan: 0.0, posInf: 99.0, negInf: -99.0),
               reason: 'nanToNum',
             );
             expect(
@@ -1084,7 +1084,7 @@ void main() {
             );
             _expectMatchNDArray(
               eigvalshRes,
-              nd.eigvalsh(ndSpd32),
+              nd.eigValuesH(ndSpd32),
               tol: 1e-4,
               reason: 'f32 eigvalsh',
             );
@@ -1303,7 +1303,7 @@ void main() {
             );
             _expectMatchNDArray(
               variance(gpuFlip, axis: 1),
-              nd.var_(ndFlip, axis: 1),
+              nd.variance(ndFlip, axis: 1),
               reason: 'negative-stride variance',
             );
             _expectMatchNDArray(

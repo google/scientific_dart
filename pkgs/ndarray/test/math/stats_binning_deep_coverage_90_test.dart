@@ -74,17 +74,17 @@ void main() {
             expect(res1.shape, [0]);
             expect(res1.dtype, DType.int64);
 
-            final res2 = bincount(empty, minlength: 5);
+            final res2 = bincount(empty, minLength: 5);
             expect(res2.shape, [5]);
             expect(res2.toList(), equals([0, 0, 0, 0, 0]));
 
             final out = NDArray.fromList([9, 9, 9], [3], DType.int64);
-            final res3 = bincount(empty, minlength: 3, out: out);
+            final res3 = bincount(empty, minLength: 3, out: out);
             expect(identical(res3, out), isTrue);
             expect(out.toList(), equals([0, 0, 0]));
 
             final emptyW = NDArray<Float64>.fromList([], [0], DType.float64);
-            final resW = bincount(empty, weights: emptyW, minlength: 4);
+            final resW = bincount(empty, weights: emptyW, minLength: 4);
             expect(resW.shape, [4]);
             expect(resW.toList(), equals([0.0, 0.0, 0.0, 0.0]));
           });
@@ -239,7 +239,7 @@ void main() {
             expect(() => bincount(xNegative), throwsArgumentError);
 
             final xValid = NDArray.fromList([1, 2, 3], [3], DType.int32);
-            expect(() => bincount(xValid, minlength: -1), throwsArgumentError);
+            expect(() => bincount(xValid, minLength: -1), throwsArgumentError);
 
             final wDisposed = NDArray<Float64>.fromList(
               [1.0, 1.0, 1.0],
@@ -742,8 +742,8 @@ void main() {
               final m0 = mean(arr2D, axis: 0);
               expect(m0.shape, [2]);
 
-              // Axis 1 mean with keepdims
-              final m1Keep = mean(arr2D, axis: 1, keepdims: true);
+              // Axis 1 mean with keepDims
+              final m1Keep = mean(arr2D, axis: 1, keepDims: true);
               expect(m1Keep.shape, [2, 1]);
 
               if (!dt.isComplex && dt != DType.boolean) {
@@ -753,7 +753,7 @@ void main() {
                 expect(v.shape, [2]);
 
                 // Std
-                final s = std(numArr, axis: 1, keepdims: true);
+                final s = std(numArr, axis: 1, keepDims: true);
                 expect(s.shape, [2, 1]);
               }
             }
@@ -788,48 +788,51 @@ void main() {
         },
       );
 
-      test('std, variance and var_ with ddof = 0, 1, 2 and size <= ddof', () {
-        NDArray.scope(() {
-          final a = NDArray<Float64>.fromList(
-            [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0],
-            [8],
-            DType.float64,
-          );
+      test(
+        'std, variance and variance with ddof = 0, 1, 2 and size <= ddof',
+        () {
+          NDArray.scope(() {
+            final a = NDArray<Float64>.fromList(
+              [2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0],
+              [8],
+              DType.float64,
+            );
 
-          final v0 = variance(a, ddof: 0);
-          expect(v0.scalar, closeTo(4.0, 1e-9));
-          final s0 = std(a, ddof: 0);
-          expect(s0.scalar, closeTo(2.0, 1e-9));
+            final v0 = variance(a, ddof: 0);
+            expect(v0.scalar, closeTo(4.0, 1e-9));
+            final s0 = std(a, ddof: 0);
+            expect(s0.scalar, closeTo(2.0, 1e-9));
 
-          final v1 = var_(a, ddof: 1);
-          expect(v1.scalar, closeTo(32.0 / 7.0, 1e-9));
+            final v1 = variance(a, ddof: 1);
+            expect(v1.scalar, closeTo(32.0 / 7.0, 1e-9));
 
-          final small = NDArray<Float64>.fromList(
-            [1.0, 2.0],
-            [2],
-            DType.float64,
-          );
-          final vInf = variance(small, ddof: 2);
-          expect(vInf.scalar, double.infinity);
+            final small = NDArray<Float64>.fromList(
+              [1.0, 2.0],
+              [2],
+              DType.float64,
+            );
+            final vInf = variance(small, ddof: 2);
+            expect(vInf.scalar, double.infinity);
 
-          final constSmall = NDArray<Float64>.fromList(
-            [5.0, 5.0],
-            [2],
-            DType.float64,
-          );
-          final vNaN = variance(constSmall, ddof: 2);
-          expect(vNaN.scalar.isNaN, isTrue);
+            final constSmall = NDArray<Float64>.fromList(
+              [5.0, 5.0],
+              [2],
+              DType.float64,
+            );
+            final vNaN = variance(constSmall, ddof: 2);
+            expect(vNaN.scalar.isNaN, isTrue);
 
-          final a2D = NDArray<Float64>.fromList(
-            [1.0, 2.0, 3.0, 4.0],
-            [2, 2],
-            DType.float64,
-          );
-          final vAxis0 = variance(a2D, axis: 0, ddof: 0);
-          expect(vAxis0.shape, [2]);
-          expect(vAxis0.toList(), equals([1.0, 1.0]));
-        });
-      });
+            final a2D = NDArray<Float64>.fromList(
+              [1.0, 2.0, 3.0, 4.0],
+              [2, 2],
+              DType.float64,
+            );
+            final vAxis0 = variance(a2D, axis: 0, ddof: 0);
+            expect(vAxis0.shape, [2]);
+            expect(vAxis0.toList(), equals([1.0, 1.0]));
+          });
+        },
+      );
 
       test('min and max across all numeric DTypes and axis reductions', () {
         NDArray.scope(() {
@@ -851,7 +854,7 @@ void main() {
               equals([1, 2, 12]),
             );
 
-            final maxAxis1 = max(a, axis: 1, keepdims: true);
+            final maxAxis1 = max(a, axis: 1, keepDims: true);
             expect(maxAxis1.shape, [2, 1]);
             expect(
               maxAxis1.toList().map((e) => e.toInt()).toList(),
@@ -934,7 +937,7 @@ void main() {
         },
       );
 
-      test('median across all 15 DTypes with axis and keepdims', () {
+      test('median across all 15 DTypes with axis and keepDims', () {
         NDArray.scope(() {
           for (final dt in allDTypes) {
             final NDArray<AnySpec> arr = dt.isComplex
@@ -964,7 +967,7 @@ void main() {
             final med0 = median(arr, axis: 0);
             expect(med0.shape, [3]);
 
-            final med1Keep = median(arr, axis: 1, keepdims: true);
+            final med1Keep = median(arr, axis: 1, keepDims: true);
             expect(med1Keep.shape, [2, 1]);
           }
         });
@@ -1035,7 +1038,7 @@ void main() {
       );
 
       test(
-        'cov and corrcoef with 1D, 2D arrays, fweights, aweights and zero variance',
+        'cov and corrcoef with 1D, 2D arrays, fWeights, aWeights and zero variance',
         () {
           NDArray.scope(() {
             final x = NDArray<Float64>.fromList(
@@ -1064,7 +1067,7 @@ void main() {
               [3],
               DType.float64,
             );
-            final cWeights = cov(x, fweights: fw, aweights: aw);
+            final cWeights = cov(x, fWeights: fw, aWeights: aw);
             expect(cWeights.scalar, isA<double>());
 
             final r = corrcoef(x, y: y);
@@ -1080,19 +1083,19 @@ void main() {
             final rZero = corrcoef(zeroVar, y: x);
             expect(rZero.getCell([0, 0]).isNaN, isTrue);
 
-            // rowvar = false & bias = true
+            // rowVar = false & bias = true
             final m2D = NDArray<Float64>.fromList(
               [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
               [2, 3],
               DType.float64,
             );
-            final cColVar = cov(m2D, rowvar: false);
+            final cColVar = cov(m2D, rowVar: false);
             expect(cColVar.shape, [3, 3]);
 
             final cBias = cov(m2D, bias: true);
             expect(cBias.shape, [2, 2]);
 
-            final rColVar = corrcoef(m2D, rowvar: false);
+            final rColVar = corrcoef(m2D, rowVar: false);
             expect(rColVar.shape, [3, 3]);
           });
         },
@@ -1143,7 +1146,7 @@ void main() {
               final numArr = NDArray.fromList([1, 5, 2, 8, 3, 7], [2, 3], dt);
               final nm = nanmin(numArr, axis: 0);
               expect(nm.shape, [3]);
-              final nx = nanmax(numArr, axis: 1, keepdims: true);
+              final nx = nanmax(numArr, axis: 1, keepDims: true);
               expect(nx.shape, [2, 1]);
             }
           });
@@ -1203,7 +1206,7 @@ void main() {
         },
       );
 
-      test('nansum across 2D slices, keepdims, and complex numbers', () {
+      test('nansum across 2D slices, keepDims, and complex numbers', () {
         NDArray.scope(() {
           final a = NDArray<Float64>.fromList(
             [1.0, double.nan, double.nan, 4.0],
@@ -1214,7 +1217,7 @@ void main() {
           final sGlobal = nansum(a);
           expect(sGlobal.scalar, equals(5.0));
 
-          final s0 = nansum(a, axis: 0, keepdims: true);
+          final s0 = nansum(a, axis: 0, keepDims: true);
           expect(s0.shape, equals([1, 2]));
           expect(s0.toList(), equals([1.0, 4.0]));
 
@@ -2208,14 +2211,14 @@ void main() {
 
             final fweightsDisp = NDArray.fromList([1, 2], [2], DType.int32)
               ..dispose();
-            expect(() => cov(intArr, fweights: fweightsDisp), throwsStateError);
+            expect(() => cov(intArr, fWeights: fweightsDisp), throwsStateError);
 
             final aweightsDisp = NDArray<Float64>.fromList(
               [1.0, 1.0],
               [2],
               DType.float64,
             )..dispose();
-            expect(() => cov(intArr, aweights: aweightsDisp), throwsStateError);
+            expect(() => cov(intArr, aWeights: aweightsDisp), throwsStateError);
 
             final emptyArr = NDArray.fromList([], [0], DType.int32);
             expect(() => cov(emptyArr), throwsArgumentError);
@@ -2423,7 +2426,7 @@ void main() {
         });
       });
 
-      test('cov with 2D y array and fweights size validation', () {
+      test('cov with 2D y array and fWeights size validation', () {
         NDArray.scope(() {
           final m = NDArray<Float64>.fromList(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -2439,7 +2442,7 @@ void main() {
           expect(res.shape, [4, 4]);
 
           final fweightsBad = NDArray.fromList([1, 2], [2], DType.int32);
-          expect(() => cov(m, fweights: fweightsBad), throwsArgumentError);
+          expect(() => cov(m, fWeights: fweightsBad), throwsArgumentError);
         });
       });
 
@@ -2544,25 +2547,25 @@ void main() {
             DType.float64,
           );
 
-          // Negative fweights
+          // Negative fWeights
           final negFw = NDArray.fromList([1, -1, 1], [3], DType.int32);
-          expect(() => cov(m, fweights: negFw), throwsArgumentError);
+          expect(() => cov(m, fWeights: negFw), throwsArgumentError);
 
-          // aweights size mismatch
+          // aWeights size mismatch
           final badAw = NDArray<Float64>.fromList(
             [1.0, 2.0],
             [2],
             DType.float64,
           );
-          expect(() => cov(m, aweights: badAw), throwsArgumentError);
+          expect(() => cov(m, aWeights: badAw), throwsArgumentError);
 
-          // Negative aweights
+          // Negative aWeights
           final negAw = NDArray<Float64>.fromList(
             [1.0, -1.0, 1.0],
             [3],
             DType.float64,
           );
-          expect(() => cov(m, aweights: negAw), throwsArgumentError);
+          expect(() => cov(m, aWeights: negAw), throwsArgumentError);
 
           final y2x3 = NDArray<Float64>.fromList(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -2709,7 +2712,7 @@ void main() {
         });
       });
 
-      test('cov with aweights alone (without fweights)', () {
+      test('cov with aWeights alone (without fWeights)', () {
         NDArray.scope(() {
           final m = NDArray<Float64>.fromList(
             [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
@@ -2721,7 +2724,7 @@ void main() {
             [3],
             DType.float64,
           );
-          final res = cov(m, aweights: aw);
+          final res = cov(m, aWeights: aw);
           expect(res.shape, [2, 2]);
         });
       });
@@ -2786,8 +2789,8 @@ void _runFallbackPadTestsForDType<T extends DTypeTag>(DType<T> dt) {
     PadMode.linearRamp,
     PadMode.mean,
     PadMode.median,
-    PadMode.minimum,
-    PadMode.maximum,
+    PadMode.min,
+    PadMode.max,
   ];
 
   final NDArray<T> arr = dt.isComplex

@@ -64,12 +64,12 @@ void main() {
           DType.int64,
         ).transpose(); // view
         expect(() => divide(a.asAnySpec, b.asAnySpec), throwsArgumentError);
-        final res1 = divide(a, b.astype(DType.float64));
+        final res1 = divide(a, b.asType(DType.float64));
         expect(res1.toList(), [5.0, 5.0, 5.0, 5.0]);
 
         // Int64 / Float64
         expect(() => divide(b.asAnySpec, a.asAnySpec), throwsArgumentError);
-        final res2 = divide(b.astype(DType.float64), a);
+        final res2 = divide(b.asType(DType.float64), a);
         expect(res2.toList(), [0.2, 0.2, 0.2, 0.2]);
 
         // Int32 / Int32

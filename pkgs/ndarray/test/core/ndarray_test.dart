@@ -1171,7 +1171,7 @@ void main() {
         final b = NDArray.fromList([10.0, 20.0], [2], DType.float64);
 
         expect(() => add(a.asAnySpec, b.asAnySpec), throwsArgumentError);
-        final c = add(a, b.astype(DType.complex128));
+        final c = add(a, b.asType(DType.complex128));
         expect(c.shape, [2]);
         expect(c.data[0], Complex(11.0, 2.0));
         expect(c.data[1], Complex(23.0, 4.0));
@@ -1765,7 +1765,7 @@ void main() {
 
   group('Empty arrays', () {
     test(
-      'shapes [0], [3, 0], [0, 4, 2]: properties, transpose, astype, NDIter',
+      'shapes [0], [3, 0], [0, 4, 2]: properties, transpose, asType, NDIter',
       () => NDArray.scope(() {
         final e1 = NDArray.zeros([0], DType.float64);
         final e2 = NDArray.zeros([3, 0], DType.int32);
@@ -1776,7 +1776,7 @@ void main() {
         expect(e2.size, equals(0));
         expect(e2.transposed.shape, equals([0, 3]));
         expect(e3.size, equals(0));
-        expect(e1.astype(DType.int64).shape, equals([0]));
+        expect(e1.asType(DType.int64).shape, equals([0]));
 
         final it = NDIter(e2);
         expect(it.moveNext(), isFalse);
@@ -1792,7 +1792,7 @@ void main() {
       () => NDArray.scope(() {
         final base = NDArray.fromList([0, 1, 2, 3], [2, 2], DType.int64);
         for (final dt in DType.values) {
-          final a = base.astype(dt);
+          final a = base.asType(dt);
           final t = a.transposed;
           expect(t.isContiguous, isFalse);
           final c = t.copy();

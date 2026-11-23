@@ -918,7 +918,7 @@ NDArray<C> _orthoRoots<C extends DTypeTag>(
         }
         break;
     }
-    final res = eigvals<C, C>(cMat as NDArray<ComplexOf<C>>, out: out);
+    final res = eigValues<C, C>(cMat as NDArray<ComplexOf<C>>, out: out);
     if (out != null) return out;
     return res.detachToParentScope();
   });

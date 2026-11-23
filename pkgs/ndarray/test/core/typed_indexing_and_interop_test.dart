@@ -109,10 +109,15 @@ void main() {
         expect(() => a[Mask(dispMask)], throwsStateError);
         expect(() => a[Mask(dispMask)] = 0.0, throwsStateError);
         expect(() => a.slice([Mask(dispMask)]), throwsStateError);
+        expect(() => a.sliceAssign([Mask(dispMask)], 0.0), throwsStateError);
 
         final wrongMask = NDArray.fromList([true, false], [2], DType.boolean);
         expect(() => a[Mask(wrongMask)], throwsArgumentError);
         expect(() => a[Mask(wrongMask)] = 0.0, throwsArgumentError);
+        expect(
+          () => a.sliceAssign([Mask(wrongMask)], 0.0),
+          throwsArgumentError,
+        );
       });
     });
 
@@ -157,10 +162,17 @@ void main() {
           c.setByMaskScalar(cMask, const Complex(9, -1));
           expect(c.toList(), [const Complex(1, 2), const Complex(9, -1)]);
 
-          // Untyped NDArray<DTypeTag> fallback extension
+          // Untyped NDArray<DTypeTag> fallback extension (including 0-D NDArray scalar coercion)
           final NDArray<DTypeTag> erased = a.asAnySpec;
           erased.setByMaskScalar(mask, 42.0);
           expect(a.toList(), [42.0, 7.0, 42.0, 7.0]);
+          erased.setIndicesScalar(idx, 11.0);
+          expect(a.toList(), [42.0, 11.0, 42.0, 11.0]);
+          final scalar5 = NDArray.scalar(5.0, dtype: DType.float64);
+          erased.setByMaskScalar(mask, scalar5);
+          expect(a.toList(), [5.0, 11.0, 5.0, 11.0]);
+          scalar5.dispose();
+          expect(() => erased.setByMaskScalar(mask, scalar5), throwsStateError);
         });
       },
     );
@@ -425,6 +437,11 @@ void main() {
           () => NDArray.fromBytes(Uint8List(0), [-2], DType.uint8),
           throwsArgumentError,
         );
+        // Byte-size 64-bit overflow
+        expect(
+          () => NDArray.fromBytes(Uint8List(0), [1 << 60, 1], DType.float64),
+          throwsArgumentError,
+        );
       });
     });
   });
@@ -486,15 +503,18 @@ void main() {
           void checkWriteAndReadOnly<T extends DTypeTag, V extends TypedData>(
             NDArray<T> arr,
             V Function(NDArray<T>) getView,
+            int Function(NDArray<T>) withViewBytes,
             void Function(V) mutate,
           ) {
+            final expectedBytes = arr.size * arr.dtype.byteWidth;
+            expect(withViewBytes(arr), expectedBytes);
             final v = getView(arr);
-            expect(v.lengthInBytes, arr.size * arr.dtype.byteWidth);
+            expect(v.lengthInBytes, expectedBytes);
             mutate(v);
 
             arr.isWriteable = false;
             final roView = getView(arr);
-            expect(roView.lengthInBytes, arr.size * arr.dtype.byteWidth);
+            expect(roView.lengthInBytes, expectedBytes);
             expect(() => mutate(roView), throwsUnsupportedError);
 
             final roBytes = arr.asBytesView();
@@ -504,76 +524,91 @@ void main() {
           checkWriteAndReadOnly(
             NDArray.fromList([1.0, 2.0], [2], DType.float64),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9.0,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1.0, 2.0], [2], DType.float32),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9.0,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1.0, 2.0], [2], DType.float16),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 0x3C00,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1.0, 2.0], [2], DType.bfloat16),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 0x3F80,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.int64),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.int32),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.int16),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.int8),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.uint64),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.uint32),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.uint16),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([1, 2], [2], DType.uint8),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([const Complex(1, 2)], [1], DType.complex128),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9.0,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([const Complex(1, 2)], [1], DType.complex64),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 9.0,
           );
           checkWriteAndReadOnly(
             NDArray.fromList([true, false], [2], DType.boolean),
             (a) => a.asTypedDataView(),
+            (a) => a.withTypedData((v) => v.lengthInBytes),
             (v) => v[0] = 1,
           );
         });
@@ -629,6 +664,7 @@ void main() {
         expect(empty.toBytes(), isEmpty);
         expect(empty.asBytesView(), isEmpty);
         expect(empty.withTypedData((v) => v.length), 0);
+        expect((empty as NDArray<DTypeTag>).toList(), isEmpty);
 
         empty.isWriteable = false;
         expect(empty.asTypedDataView(), isEmpty);
@@ -640,6 +676,7 @@ void main() {
         expect(() => empty.toBytes(), throwsStateError);
         expect(() => empty.asBytesView(), throwsStateError);
         expect(() => empty.withTypedData((v) => v.length), throwsStateError);
+        expect(() => (empty as NDArray<DTypeTag>).toList(), throwsStateError);
       });
     });
 

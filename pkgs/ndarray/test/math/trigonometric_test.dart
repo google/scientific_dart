@@ -1063,14 +1063,14 @@ void main() {
       });
     });
 
-    test('nan_to_num and ndenumerate verification without data property', () {
+    test('nanToNum and ndenumerate verification without data property', () {
       NDArray.scope(() {
         final a = NDArray.fromList(
           [1.0, double.nan, double.infinity, double.negativeInfinity],
           [2, 2],
           DType.float64,
         );
-        final cleaned = nan_to_num(a, nan: 42.0, posinf: 100.0, neginf: -100.0);
+        final cleaned = nanToNum(a, nan: 42.0, posInf: 100.0, negInf: -100.0);
         expect(cleaned.getCell([0, 0]), 1.0);
         expect(cleaned.getCell([0, 1]), 42.0);
         expect(cleaned.getCell([1, 0]), 100.0);
