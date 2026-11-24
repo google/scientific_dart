@@ -162,6 +162,62 @@ void main() {
         openblasArtifactName(OS.linux, Architecture.x64, 'openblas_extensions'),
         equals('openblas_extensions-linux-x64.so'),
       );
+      expect(
+        openblasArtifactName(OS.android, Architecture.arm64, 'openblas'),
+        equals('openblas-android-arm64.so'),
+      );
+      expect(
+        openblasArtifactName(
+          OS.android,
+          Architecture.x64,
+          'openblas_extensions',
+        ),
+        equals('openblas_extensions-android-x64.so'),
+      );
+      expect(
+        openblasArtifactName(
+          OS.iOS,
+          Architecture.arm64,
+          'openblas',
+          iosSdk: IOSSdk.iPhoneOS,
+        ),
+        equals('openblas-ios-iphoneos-arm64.dylib'),
+      );
+      expect(
+        openblasArtifactName(
+          OS.iOS,
+          Architecture.arm64,
+          'openblas',
+          iosSdk: IOSSdk.iPhoneSimulator,
+        ),
+        equals('openblas-ios-iphonesimulator-arm64.dylib'),
+      );
+      expect(
+        openblasArtifactName(
+          OS.iOS,
+          Architecture.x64,
+          'openblas_extensions',
+          iosSdk: IOSSdk.iPhoneSimulator,
+        ),
+        equals('openblas_extensions-ios-iphonesimulator-x64.dylib'),
+      );
+      expect(
+        () => openblasArtifactName(OS.iOS, Architecture.arm64, 'openblas'),
+        throwsArgumentError,
+      );
+      expect(
+        () => openblasArtifactName(
+          OS.linux,
+          Architecture.x64,
+          'openblas',
+          iosSdk: IOSSdk.iPhoneOS,
+        ),
+        throwsArgumentError,
+      );
+      expect(
+        fileHashes.containsKey((OS.linux, Architecture.x64, null, 'openblas')),
+        isTrue,
+      );
 
       final currentHash = computeNativeSourceHash(Directory.current.uri);
       expect(currentHash.length, equals(64));

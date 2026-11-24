@@ -106,10 +106,16 @@ final class BuildOptions {
 
   /// Resolves the x86-64 ISA compiler flags for the target toolchain.
   ///
-  /// When [x86Flags] is `null`, defaults to AVX2+FMA+F16C. When [x86Flags] is
-  /// `""` or `"none"`, returns an empty list (baseline x86-64).
-  List<String> effectiveX86Flags({required bool isMSVC}) {
+  /// When [x86Flags] is `null`, defaults to AVX2+FMA+F16C on desktop targets
+  /// and baseline SSE4.2 (`-msse4.2`, without AVX2/FMA/F16C) on Android and
+  /// iOS simulator targets so binaries run safely on Android x86_64 emulators
+  /// and Rosetta 2. When [x86Flags] is `""` or `"none"`, returns an empty list
+  /// (baseline x86-64).
+  List<String> effectiveX86Flags({required bool isMSVC, OS? targetOS}) {
     if (x86Flags == null) {
+      if (targetOS == OS.android || targetOS == OS.iOS) {
+        return const <String>['-msse4.2'];
+      }
       return isMSVC
           ? const <String>['/arch:AVX2']
           : const <String>['-mavx2', '-mfma', '-mf16c'];

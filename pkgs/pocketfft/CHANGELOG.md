@@ -1,3 +1,7 @@
+## 0.2.1-wip
+
+- Add Android (`arm64`, `x64`, NDK API >= 24, 16 KB page alignment, static libc++) and iOS (`iphoneos-arm64`, `iphonesimulator-arm64`, `iphonesimulator-x64`, iOS >= 13.0) native build hook support.
+
 ## 0.2.0
 
 - **Breaking — 64-Bit FFT Lengths, Strides, & Dimensions**: Upgraded `kiss_fft_alloc`, `kiss_fft_stride`, `kiss_fft_next_fast_size`, `kiss_fftr_alloc`, `kiss_fftnd_alloc`, and `PocketFftPlanCache` from 32-bit `int` (`ffi.Int`) to 64-bit `int64_t` (`ffi.Int64`) so transform sizes, element strides, and N-D dimensions do not truncate on 64-bit arrays.

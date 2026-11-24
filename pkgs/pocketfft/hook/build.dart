@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:code_assets/code_assets.dart';
@@ -20,6 +21,9 @@ import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
 import 'package:pocketfft/src/hook_helpers/build_options.dart';
 import 'package:pocketfft/src/hook_helpers/hashes.dart';
+
+const int _minAndroidNdkApi = 24;
+const int _minIosVersion = 13;
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -164,12 +168,13 @@ final class FetchMode extends BuildMode {
 
     final os = input.config.code.targetOS;
     final arch = input.config.code.targetArchitecture;
-    final artifactName = pocketfftArtifactName(os, arch);
-    final expectedHash = fileHashes[(os, arch)];
+    final iosSdk = _targetIosSdk(input);
+    final artifactName = pocketfftArtifactName(os, arch, iosSdk: iosSdk);
+    final expectedHash = fileHashes[(os, arch, iosSdk)];
 
     if (expectedHash == null || expectedHash.startsWith('00000000')) {
       throw StateError(
-        'No prebuilt pocketfft binary hash is pinned for ($os, $arch) in release $version.\n'
+        'No prebuilt pocketfft binary hash is pinned for ($os, $arch${iosSdk != null ? ', $iosSdk' : ''}) in release $version.\n'
         '${BuildOptions.usageError('Switch to `buildMode: source` or `buildMode: local`.')}',
       );
     }
@@ -177,7 +182,7 @@ final class FetchMode extends BuildMode {
     final libName = _canonicalLibName(os);
     final sharedCacheDir = Directory.fromUri(
       input.outputDirectoryShared.resolve(
-        'pocketfft-$version/${os.name}-${arch.name}/',
+        'pocketfft-$version/${_targetTripleTag(os, arch, iosSdk)}/',
       ),
     );
     final cachedLibrary = File.fromUri(sharedCacheDir.uri.resolve(libName));
@@ -257,7 +262,11 @@ final class LocalMode extends BuildMode {
       if (candidate.existsSync()) return candidate;
       final artifactCandidate = File.fromUri(
         Directory(entityPath).uri.resolve(
-          pocketfftArtifactName(os, input.config.code.targetArchitecture),
+          pocketfftArtifactName(
+            os,
+            input.config.code.targetArchitecture,
+            iosSdk: _targetIosSdk(input),
+          ),
         ),
       );
       if (artifactCandidate.existsSync()) return artifactCandidate;
@@ -307,22 +316,23 @@ final class SourceMode extends BuildMode {
   String _resolveCxxCompiler(String cCompilerPath, OS os, bool isMSVC) {
     if (isMSVC) return cCompilerPath;
     if (cCompilerPath == 'cc') return 'c++';
-    if (cCompilerPath.endsWith('/clang') || cCompilerPath.endsWith(r'\clang')) {
-      final candidate = '$cCompilerPath++';
+    final hasExe = cCompilerPath.toLowerCase().endsWith('.exe');
+    final stem = hasExe
+        ? cCompilerPath.substring(0, cCompilerPath.length - 4)
+        : cCompilerPath;
+    final suffix = hasExe ? '.exe' : '';
+    if (stem.endsWith('/clang') || stem.endsWith(r'\clang')) {
+      final candidate = '$stem++$suffix';
       if (File(candidate).existsSync()) return candidate;
-    } else if (cCompilerPath == 'clang') {
-      return 'clang++';
-    } else if (cCompilerPath.endsWith('/gcc') ||
-        cCompilerPath.endsWith(r'\gcc')) {
-      final candidate =
-          '${cCompilerPath.substring(0, cCompilerPath.length - 3)}g++';
+    } else if (stem == 'clang') {
+      return 'clang++$suffix';
+    } else if (stem.endsWith('/gcc') || stem.endsWith(r'\gcc')) {
+      final candidate = '${stem.substring(0, stem.length - 3)}g++$suffix';
       if (File(candidate).existsSync()) return candidate;
-    } else if (cCompilerPath == 'gcc') {
-      return 'g++';
-    } else if (cCompilerPath.endsWith('/cc') ||
-        cCompilerPath.endsWith(r'\cc')) {
-      final candidate =
-          '${cCompilerPath.substring(0, cCompilerPath.length - 2)}c++';
+    } else if (stem == 'gcc') {
+      return 'g++$suffix';
+    } else if (stem.endsWith('/cc') || stem.endsWith(r'\cc')) {
+      final candidate = '${stem.substring(0, stem.length - 2)}c++$suffix';
       if (File(candidate).existsSync()) return candidate;
     }
     return cCompilerPath;
@@ -376,8 +386,12 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
 }
 ''');
 
+    final detectedAndroidClang = (os == OS.android && cCompiler == null)
+        ? _detectAndroidNdkClang()
+        : null;
+    final compilerUri = cCompiler?.compiler ?? detectedAndroidClang;
     final rawCompilerPath =
-        cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'c++');
+        compilerUri?.toFilePath() ?? (os == OS.windows ? 'cl' : 'c++');
     final compilerLower = rawCompilerPath.toLowerCase();
     final isClangCl = compilerLower.contains('clang-cl');
     final isGNU =
@@ -394,6 +408,38 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
                 compilerLower == 'cl' ||
                 compilerLower.contains('msvc')));
     final compilerPath = _resolveCxxCompiler(rawCompilerPath, os, isMSVC);
+
+    final targetFlags = <String>[];
+    if (os == OS.android) {
+      final targetApi = math.max(
+        input.config.code.android.targetNdkApi,
+        _minAndroidNdkApi,
+      );
+      targetFlags.add('--target=${_androidTargetTriple(arch)}$targetApi');
+      if (compilerUri != null) {
+        final sysroot = _androidSysrootFromCompiler(compilerUri);
+        if (sysroot != null) {
+          targetFlags.add('--sysroot=${sysroot.toFilePath()}');
+        }
+      }
+    } else if (os == OS.iOS) {
+      final iosSdk = input.config.code.iOS.targetSdk;
+      final iosVersion = math.max(
+        input.config.code.iOS.targetVersion,
+        _minIosVersion,
+      );
+      final sdkPath = await _resolveAppleSdkPath(iosSdk.type);
+      targetFlags.addAll([
+        '--target=${_iosClangTarget(arch, iosSdk, iosVersion)}',
+        '-isysroot',
+        sdkPath,
+      ]);
+    } else if (os == OS.macOS) {
+      targetFlags.addAll([
+        '-arch',
+        arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+      ]);
+    }
 
     final sanitize = buildOptions?.sanitize;
     final coverage = buildOptions?.coverage ?? false;
@@ -445,19 +491,23 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
             '/EXPORT:pocketfft_embedded_source_hash',
           ]
         : <String>[
+            ...targetFlags,
             if (os == OS.macOS || os == OS.iOS) ...[
-              '-arch',
-              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
               '-Wl,-install_name,@rpath/$libName',
               '-Wl,-headerpad_max_install_names',
             ],
+            if (os == OS.iOS) '-Wl,-encryptable',
             '-std=c++17',
             '-shared',
             '-fPIC',
             '-O3',
             ...sanitizeFlags,
             ...coverageFlags,
-            if (os == OS.android) '-Wl,-z,max-page-size=16384',
+            if (os == OS.android) ...[
+              '-static-libstdc++',
+              '-Wl,--exclude-libs,ALL',
+              '-Wl,-z,max-page-size=16384',
+            ],
             '-DPOCKETFFT_NO_MULTITHREADING=1',
             '-DPOCKETFFT_CACHE_SIZE=64',
             if (os != OS.windows) '-DPOCKETFFT_USE_POSIX_MEMALIGN=1',
@@ -507,6 +557,111 @@ STAMP_EXPORT const char* pocketfft_embedded_source_hash(void) {
   List<Uri> get dependencies => [
     for (final file in nativeSourceFiles(_root)) file.uri,
   ];
+}
+
+IOSSdk? _targetIosSdk(BuildInput input) => input.config.code.targetOS == OS.iOS
+    ? input.config.code.iOS.targetSdk
+    : null;
+
+String _targetTripleTag(OS os, Architecture arch, IOSSdk? iosSdk) =>
+    iosSdk != null
+    ? '${os.name}-${iosSdk.type}-${arch.name}'
+    : '${os.name}-${arch.name}';
+
+String _androidTargetTriple(Architecture arch) => switch (arch) {
+  Architecture.arm64 => 'aarch64-linux-android',
+  Architecture.x64 => 'x86_64-linux-android',
+  Architecture.arm => 'armv7a-linux-androideabi',
+  Architecture.ia32 => 'i686-linux-android',
+  Architecture.riscv64 => 'riscv64-linux-android',
+  _ => throw UnsupportedError('Unsupported Android architecture: $arch'),
+};
+
+String _iosClangTarget(Architecture arch, IOSSdk sdk, int version) =>
+    switch ((arch, sdk)) {
+      (Architecture.arm64, IOSSdk.iPhoneOS) => 'arm64-apple-ios$version.0',
+      (Architecture.arm64, IOSSdk.iPhoneSimulator) =>
+        'arm64-apple-ios$version.0-simulator',
+      (Architecture.x64, IOSSdk.iPhoneSimulator) =>
+        'x86_64-apple-ios$version.0-simulator',
+      _ => throw UnsupportedError('Unsupported iOS target: ($arch, $sdk)'),
+    };
+
+Future<String> _resolveAppleSdkPath(String sdkName) async {
+  final res = await Process.run('xcrun', ['--sdk', sdkName, '--show-sdk-path']);
+  if (res.exitCode != 0) {
+    throw StateError(
+      'Failed to locate Apple SDK "$sdkName" via xcrun (exit ${res.exitCode}):\n'
+      '${res.stderr}',
+    );
+  }
+  final path = (res.stdout as String).trim();
+  if (path.isEmpty) {
+    throw StateError('xcrun returned empty SDK path for "$sdkName".');
+  }
+  return path;
+}
+
+Uri? _androidSysrootFromCompiler(Uri compilerUri) {
+  final sysroot = compilerUri.resolve('../sysroot/');
+  return Directory.fromUri(sysroot).existsSync() ? sysroot : null;
+}
+
+List<Directory> _androidNdkCandidateDirs() {
+  final ndkCandidates = <Directory>[];
+  for (final key in const [
+    'ANDROID_NDK_LATEST_HOME',
+    'ANDROID_NDK_ROOT',
+    'ANDROID_NDK_HOME',
+    'ANDROID_NDK',
+  ]) {
+    final val = Platform.environment[key];
+    if (val != null && val.isNotEmpty) {
+      final dir = Directory(val);
+      if (dir.existsSync()) ndkCandidates.add(dir);
+    }
+  }
+  for (final sdkKey in const ['ANDROID_HOME', 'ANDROID_SDK_ROOT']) {
+    final sdkVal = Platform.environment[sdkKey];
+    if (sdkVal == null || sdkVal.isEmpty) continue;
+    final ndkParent = Directory('$sdkVal/ndk');
+    if (ndkParent.existsSync()) {
+      final versions = ndkParent.listSync().whereType<Directory>().toList()
+        ..sort(_compareVersionDesc);
+      ndkCandidates.addAll(versions);
+    }
+  }
+  return ndkCandidates;
+}
+
+int _compareVersionDesc(Directory a, Directory b) {
+  final aName = a.uri.pathSegments.where((s) => s.isNotEmpty).last;
+  final bName = b.uri.pathSegments.where((s) => s.isNotEmpty).last;
+  final aParts = aName.split('.').map(int.tryParse).toList();
+  final bParts = bName.split('.').map(int.tryParse).toList();
+  final len = math.max(aParts.length, bParts.length);
+  for (var i = 0; i < len; i++) {
+    final av = i < aParts.length ? aParts[i] : 0;
+    final bv = i < bParts.length ? bParts[i] : 0;
+    if (av == null || bv == null) return bName.compareTo(aName);
+    if (av != bv) return bv.compareTo(av);
+  }
+  return bName.compareTo(aName);
+}
+
+Uri? _detectAndroidNdkClang() {
+  final exe = Platform.isWindows ? 'clang.exe' : 'clang';
+  for (final ndkDir in _androidNdkCandidateDirs()) {
+    final prebuilt = Directory.fromUri(
+      ndkDir.uri.resolve('toolchains/llvm/prebuilt/'),
+    );
+    if (!prebuilt.existsSync()) continue;
+    for (final hostDir in prebuilt.listSync().whereType<Directory>()) {
+      final clang = File.fromUri(hostDir.uri.resolve('bin/$exe'));
+      if (clang.existsSync()) return clang.uri;
+    }
+  }
+  return null;
 }
 
 Future<Uint8List> _downloadBytesWithRedirects(Uri url) async {

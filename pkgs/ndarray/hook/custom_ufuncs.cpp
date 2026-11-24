@@ -6400,7 +6400,7 @@ static void fill_secure_bytes_win(void *dest, size_t size) {
 static void fill_secure_bytes(void *dest, size_t size) {
 #ifdef _WIN32
     fill_secure_bytes_win(dest, size);
-#elif defined(__wasi__)
+#elif defined(__wasi__) || defined(__APPLE__) || defined(__ANDROID__)
     arc4random_buf(dest, size);
 #else
     size_t bytes_read = 0;

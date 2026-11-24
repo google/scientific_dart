@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
@@ -21,6 +22,9 @@ import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
 import 'package:openblas/src/hook_helpers/build_options.dart';
 import 'package:openblas/src/hook_helpers/hashes.dart';
+
+const int _minAndroidNdkApi = 24;
+const int _minIosVersion = 13;
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -185,24 +189,36 @@ final class FetchMode extends BuildMode {
 
     final os = input.config.code.targetOS;
     final arch = input.config.code.targetArchitecture;
+    final iosSdk = _targetIosSdk(input);
 
-    final openblasArtifact = openblasArtifactName(os, arch, 'openblas');
-    final extArtifact = openblasArtifactName(os, arch, 'openblas_extensions');
-    final expectedOpenblasHash = fileHashes[(os, arch, 'openblas')];
-    final expectedExtHash = fileHashes[(os, arch, 'openblas_extensions')];
+    final openblasArtifact = openblasArtifactName(
+      os,
+      arch,
+      'openblas',
+      iosSdk: iosSdk,
+    );
+    final extArtifact = openblasArtifactName(
+      os,
+      arch,
+      'openblas_extensions',
+      iosSdk: iosSdk,
+    );
+    final expectedOpenblasHash = fileHashes[(os, arch, iosSdk, 'openblas')];
+    final expectedExtHash =
+        fileHashes[(os, arch, iosSdk, 'openblas_extensions')];
 
     if (expectedOpenblasHash == null ||
         expectedOpenblasHash.startsWith('00000000') ||
         expectedExtHash == null ||
         expectedExtHash.startsWith('00000000')) {
       throw StateError(
-        'No prebuilt openblas binary hashes are pinned for ($os, $arch) in release $version.\n'
+        'No prebuilt openblas binary hashes are pinned for ($os, $arch${iosSdk != null ? ', $iosSdk' : ''}) in release $version.\n'
         '${BuildOptions.usageError('Switch to `buildMode: source` or `buildMode: local`.')}',
       );
     }
 
     final sharedDir = input.outputDirectoryShared.resolve(
-      'openblas-$version/${os.name}-${arch.name}/',
+      'openblas-$version/${_targetTripleTag(os, arch, iosSdk)}/',
     );
     final sharedCacheDir = Directory.fromUri(sharedDir);
     final cachedOpenblas = File.fromUri(
@@ -324,6 +340,7 @@ final class LocalMode extends BuildMode {
     }
     final os = input.config.code.targetOS;
     final arch = input.config.code.targetArchitecture;
+    final iosSdk = _targetIosSdk(input);
     final entityPath = localPath!.toFilePath(windows: Platform.isWindows);
 
     if (FileSystemEntity.isDirectorySync(entityPath)) {
@@ -333,13 +350,22 @@ final class LocalMode extends BuildMode {
       );
       if (!openblasFile.existsSync()) {
         openblasFile = File.fromUri(
-          dirUri.resolve(openblasArtifactName(os, arch, 'openblas')),
+          dirUri.resolve(
+            openblasArtifactName(os, arch, 'openblas', iosSdk: iosSdk),
+          ),
         );
       }
       var extFile = File.fromUri(dirUri.resolve(_canonicalExtensionsName(os)));
       if (!extFile.existsSync()) {
         extFile = File.fromUri(
-          dirUri.resolve(openblasArtifactName(os, arch, 'openblas_extensions')),
+          dirUri.resolve(
+            openblasArtifactName(
+              os,
+              arch,
+              'openblas_extensions',
+              iosSdk: iosSdk,
+            ),
+          ),
         );
       }
       if (!openblasFile.existsSync() || !extFile.existsSync()) {
@@ -469,16 +495,219 @@ STAMP_EXPORT const char* openblas_embedded_source_hash(void) {
     switch (openblas) {
       case MacosAccelerateBinary():
         final compilerPath = cCompiler?.compiler.toFilePath() ?? 'cc';
+        final iosSdk = _targetIosSdk(input);
+        final int? iosVersion = os == OS.iOS
+            ? math.max(input.config.code.iOS.targetVersion, _minIosVersion)
+            : null;
+        final String? iosSdkPath = os == OS.iOS
+            ? await _resolveAppleSdkPath(iosSdk!.type)
+            : null;
+        final appleTargetFlags = <String>[
+          if (os == OS.macOS) ...[
+            '-arch',
+            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+          ],
+          if (os == OS.iOS) ...[
+            '--target=${_iosClangTarget(arch, iosSdk!, iosVersion!)}',
+            '-isysroot',
+            iosSdkPath!,
+          ],
+        ];
         final stubFile = File.fromUri(
           outputDir.uri.resolve('accelerate_stub.c'),
         );
         await stubFile.writeAsString('''
+#include <TargetConditionals.h>
+#include <dlfcn.h>
+#include <pthread.h>
+#include <stddef.h>
+#include <stdlib.h>
+#include <string.h>
+
+#define ACCEL_EXPORT __attribute__((visibility("default"), used))
+
 static int _accelerate_num_threads = 1;
-int openblas_get_num_threads(void) { return _accelerate_num_threads; }
-void openblas_set_num_threads(int num_threads) {
+ACCEL_EXPORT int openblas_get_num_threads(void) { return _accelerate_num_threads; }
+ACCEL_EXPORT void openblas_set_num_threads(int num_threads) {
   if (num_threads > 0) _accelerate_num_threads = num_threads;
 }
-const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
+ACCEL_EXPORT const char* openblas_get_config(void) {
+#if defined(TARGET_OS_IPHONE) && TARGET_OS_IPHONE
+  return "iOS Accelerate Framework";
+#else
+  return "MacOS Accelerate Framework";
+#endif
+}
+
+typedef float (*_fn_cblas_sdot_t)(int, const float*, int, const float*, int);
+typedef double (*_fn_cblas_ddot_t)(int, const double*, int, const double*, int);
+typedef void (*_fn_cblas_saxpy_t)(int, float, const float*, int, float*, int);
+typedef void (*_fn_cblas_daxpy_t)(int, double, const double*, int, double*, int);
+typedef void (*_fn_cblas_dcopy_t)(int, const double*, int, double*, int);
+typedef void (*_fn_cblas_scopy_t)(int, const float*, int, float*, int);
+typedef void (*_fn_cblas_dscal_t)(int, double, double*, int);
+typedef void (*_fn_cblas_sscal_t)(int, float, float*, int);
+typedef double (*_fn_cblas_dnrm2_t)(int, const double*, int);
+typedef float (*_fn_cblas_snrm2_t)(int, const float*, int);
+typedef void (*_fn_cblas_dgemm_t)(int, int, int, int, int, int, double, const double*, int, const double*, int, double, double*, int);
+typedef void (*_fn_cblas_sgemm_t)(int, int, int, int, int, int, float, const float*, int, const float*, int, float, float*, int);
+typedef void (*_fn_cblas_cgemm_t)(int, int, int, int, int, int, const void*, const void*, int, const void*, int, const void*, void*, int);
+typedef void (*_fn_cblas_zgemm_t)(int, int, int, int, int, int, const void*, const void*, int, const void*, int, const void*, void*, int);
+typedef void (*_fn_cblas_dgemv_t)(int, int, int, int, double, const double*, int, const double*, int, double, double*, int);
+typedef void (*_fn_cblas_sgemv_t)(int, int, int, int, float, const float*, int, const float*, int, float, float*, int);
+typedef void (*_fn_cblas_cgemv_t)(int, int, int, int, const void*, const void*, int, const void*, int, const void*, void*, int);
+typedef void (*_fn_cblas_zgemv_t)(int, int, int, int, const void*, const void*, int, const void*, int, const void*, void*, int);
+
+static _fn_cblas_sdot_t _p_cblas_sdot = NULL;
+static _fn_cblas_ddot_t _p_cblas_ddot = NULL;
+static _fn_cblas_saxpy_t _p_cblas_saxpy = NULL;
+static _fn_cblas_daxpy_t _p_cblas_daxpy = NULL;
+static _fn_cblas_dcopy_t _p_cblas_dcopy = NULL;
+static _fn_cblas_scopy_t _p_cblas_scopy = NULL;
+static _fn_cblas_dscal_t _p_cblas_dscal = NULL;
+static _fn_cblas_sscal_t _p_cblas_sscal = NULL;
+static _fn_cblas_dnrm2_t _p_cblas_dnrm2 = NULL;
+static _fn_cblas_snrm2_t _p_cblas_snrm2 = NULL;
+static _fn_cblas_dgemm_t _p_cblas_dgemm = NULL;
+static _fn_cblas_sgemm_t _p_cblas_sgemm = NULL;
+static _fn_cblas_cgemm_t _p_cblas_cgemm = NULL;
+static _fn_cblas_zgemm_t _p_cblas_zgemm = NULL;
+static _fn_cblas_dgemv_t _p_cblas_dgemv = NULL;
+static _fn_cblas_sgemv_t _p_cblas_sgemv = NULL;
+static _fn_cblas_cgemv_t _p_cblas_cgemv = NULL;
+static _fn_cblas_zgemv_t _p_cblas_zgemv = NULL;
+
+static pthread_once_t _accel_cblas_once = PTHREAD_ONCE_INIT;
+
+static void* _accel_sym_or_abort(void* handle, const char* name) {
+  void* sym = dlsym(handle, name);
+  if (sym == NULL) {
+    abort();
+  }
+  return sym;
+}
+
+static void _init_accel_cblas(void) {
+  static const char* const candidates[] = {
+    "/System/Library/Frameworks/Accelerate.framework/Accelerate",
+    "/System/Library/Frameworks/Accelerate.framework/Frameworks/vecLib.framework/libBLAS.dylib",
+    "/System/Library/Frameworks/Accelerate.framework/Versions/A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib",
+  };
+  void* handle = NULL;
+  for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+    void* h = dlopen(candidates[i], RTLD_LAZY | RTLD_LOCAL);
+    if (h != NULL && dlsym(h, "cblas_dgemm") != NULL) {
+      handle = h;
+      break;
+    }
+  }
+  if (handle == NULL) {
+    void* next_sym = dlsym(RTLD_NEXT, "cblas_dgemm");
+    if (next_sym != NULL) {
+      handle = RTLD_NEXT;
+    }
+  }
+  if (handle == NULL) {
+    abort();
+  }
+#define LOAD_CBLAS_SYM(name) do { void* _sym = _accel_sym_or_abort(handle, #name); memcpy(&_p_##name, &_sym, sizeof(_p_##name)); } while (0)
+  LOAD_CBLAS_SYM(cblas_sdot);
+  LOAD_CBLAS_SYM(cblas_ddot);
+  LOAD_CBLAS_SYM(cblas_saxpy);
+  LOAD_CBLAS_SYM(cblas_daxpy);
+  LOAD_CBLAS_SYM(cblas_dcopy);
+  LOAD_CBLAS_SYM(cblas_scopy);
+  LOAD_CBLAS_SYM(cblas_dscal);
+  LOAD_CBLAS_SYM(cblas_sscal);
+  LOAD_CBLAS_SYM(cblas_dnrm2);
+  LOAD_CBLAS_SYM(cblas_snrm2);
+  LOAD_CBLAS_SYM(cblas_dgemm);
+  LOAD_CBLAS_SYM(cblas_sgemm);
+  LOAD_CBLAS_SYM(cblas_cgemm);
+  LOAD_CBLAS_SYM(cblas_zgemm);
+  LOAD_CBLAS_SYM(cblas_dgemv);
+  LOAD_CBLAS_SYM(cblas_sgemv);
+  LOAD_CBLAS_SYM(cblas_cgemv);
+  LOAD_CBLAS_SYM(cblas_zgemv);
+#undef LOAD_CBLAS_SYM
+}
+
+static inline void _ensure_accel_cblas(void) {
+  pthread_once(&_accel_cblas_once, _init_accel_cblas);
+}
+
+ACCEL_EXPORT float cblas_sdot(int n, const float* x, int incx, const float* y, int incy) {
+  _ensure_accel_cblas();
+  return _p_cblas_sdot(n, x, incx, y, incy);
+}
+ACCEL_EXPORT double cblas_ddot(int n, const double* x, int incx, const double* y, int incy) {
+  _ensure_accel_cblas();
+  return _p_cblas_ddot(n, x, incx, y, incy);
+}
+ACCEL_EXPORT void cblas_saxpy(int n, float alpha, const float* x, int incx, float* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_saxpy(n, alpha, x, incx, y, incy);
+}
+ACCEL_EXPORT void cblas_daxpy(int n, double alpha, const double* x, int incx, double* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_daxpy(n, alpha, x, incx, y, incy);
+}
+ACCEL_EXPORT void cblas_dcopy(int n, const double* x, int incx, double* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_dcopy(n, x, incx, y, incy);
+}
+ACCEL_EXPORT void cblas_scopy(int n, const float* x, int incx, float* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_scopy(n, x, incx, y, incy);
+}
+ACCEL_EXPORT void cblas_dscal(int n, double alpha, double* x, int incx) {
+  _ensure_accel_cblas();
+  _p_cblas_dscal(n, alpha, x, incx);
+}
+ACCEL_EXPORT void cblas_sscal(int n, float alpha, float* x, int incx) {
+  _ensure_accel_cblas();
+  _p_cblas_sscal(n, alpha, x, incx);
+}
+ACCEL_EXPORT double cblas_dnrm2(int n, const double* x, int incx) {
+  _ensure_accel_cblas();
+  return _p_cblas_dnrm2(n, x, incx);
+}
+ACCEL_EXPORT float cblas_snrm2(int n, const float* x, int incx) {
+  _ensure_accel_cblas();
+  return _p_cblas_snrm2(n, x, incx);
+}
+ACCEL_EXPORT void cblas_dgemm(int order, int transA, int transB, int m, int n, int k, double alpha, const double* a, int lda, const double* b, int ldb, double beta, double* c, int ldc) {
+  _ensure_accel_cblas();
+  _p_cblas_dgemm(order, transA, transB, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+}
+ACCEL_EXPORT void cblas_sgemm(int order, int transA, int transB, int m, int n, int k, float alpha, const float* a, int lda, const float* b, int ldb, float beta, float* c, int ldc) {
+  _ensure_accel_cblas();
+  _p_cblas_sgemm(order, transA, transB, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+}
+ACCEL_EXPORT void cblas_cgemm(int order, int transA, int transB, int m, int n, int k, const void* alpha, const void* a, int lda, const void* b, int ldb, const void* beta, void* c, int ldc) {
+  _ensure_accel_cblas();
+  _p_cblas_cgemm(order, transA, transB, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+}
+ACCEL_EXPORT void cblas_zgemm(int order, int transA, int transB, int m, int n, int k, const void* alpha, const void* a, int lda, const void* b, int ldb, const void* beta, void* c, int ldc) {
+  _ensure_accel_cblas();
+  _p_cblas_zgemm(order, transA, transB, m, n, k, alpha, a, lda, b, ldb, beta, c, ldc);
+}
+ACCEL_EXPORT void cblas_dgemv(int order, int transA, int m, int n, double alpha, const double* a, int lda, const double* x, int incx, double beta, double* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_dgemv(order, transA, m, n, alpha, a, lda, x, incx, beta, y, incy);
+}
+ACCEL_EXPORT void cblas_sgemv(int order, int transA, int m, int n, float alpha, const float* a, int lda, const float* x, int incx, float beta, float* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_sgemv(order, transA, m, n, alpha, a, lda, x, incx, beta, y, incy);
+}
+ACCEL_EXPORT void cblas_cgemv(int order, int transA, int m, int n, const void* alpha, const void* a, int lda, const void* x, int incx, const void* beta, void* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_cgemv(order, transA, m, n, alpha, a, lda, x, incx, beta, y, incy);
+}
+ACCEL_EXPORT void cblas_zgemv(int order, int transA, int m, int n, const void* alpha, const void* a, int lda, const void* x, int incx, const void* beta, void* y, int incy) {
+  _ensure_accel_cblas();
+  _p_cblas_zgemv(order, transA, m, n, alpha, a, lda, x, incx, beta, y, incy);
+}
 ''');
 
         final libFile = File.fromUri(
@@ -495,12 +724,10 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         );
 
         final stubCompileArgs = [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-            '-Wl,-install_name,@rpath/libopenblas.dylib',
-            '-Wl,-headerpad_max_install_names',
-          ],
+          ...appleTargetFlags,
+          '-Wl,-install_name,@rpath/libopenblas.dylib',
+          '-Wl,-headerpad_max_install_names',
+          if (os == OS.iOS) '-Wl,-encryptable',
           '-dynamiclib',
           '-O3',
           ...sanitizeFlags,
@@ -512,7 +739,6 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
           tempLibFile.path,
           '-framework',
           'Accelerate',
-          '-Wl,-reexport_framework,Accelerate',
         ];
         final stubRes = await Process.run(compilerPath, stubCompileArgs);
         if (stubRes.exitCode != 0) {
@@ -525,12 +751,10 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         await tempLibFile.rename(libFile.path);
 
         final extCompileArgs = [
-          if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-            '-Wl,-install_name,@rpath/libopenblas_extensions.dylib',
-            '-Wl,-headerpad_max_install_names',
-          ],
+          ...appleTargetFlags,
+          '-Wl,-install_name,@rpath/libopenblas_extensions.dylib',
+          '-Wl,-headerpad_max_install_names',
+          if (os == OS.iOS) '-Wl,-encryptable',
           '-dynamiclib',
           '-O3',
           ...sanitizeFlags,
@@ -723,7 +947,29 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         return (openblasUri: outDllFile.uri, extensionsUri: extLibFile.uri);
 
       case CompileOpenBlas(:final sourceUrl):
-        String openBlasTarget = 'GENERIC';
+        final isAndroid = os == OS.android;
+        final int? androidNdkApi = isAndroid
+            ? math.max(
+                input.config.code.android.targetNdkApi,
+                _minAndroidNdkApi,
+              )
+            : null;
+        final androidNdkTools = isAndroid
+            ? _detectAndroidNdkTools(cCompiler)
+            : null;
+        if (isAndroid && androidNdkTools == null) {
+          throw StateError(
+            'Android NDK toolchain not found for building OpenBLAS. '
+            'Pass `cCompiler` or set ANDROID_NDK_LATEST_HOME / ANDROID_NDK_ROOT.',
+          );
+        }
+        final androidSysroot = isAndroid
+            ? _androidSysrootFromCompiler(androidNdkTools!.clang)
+            : null;
+
+        String openBlasTarget = isAndroid && arch == Architecture.x64
+            ? 'NEHALEM'
+            : 'GENERIC';
         if (arch == Architecture.arm64) {
           openBlasTarget = 'ARMV8';
         } else if (arch == Architecture.arm) {
@@ -735,11 +981,14 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         final legacyExtractDir = Directory.fromUri(
           outputDir.uri.resolve('OpenBLAS-0.3.33/'),
         );
-        final sharedOpenblasBase = legacyExtractDir.existsSync()
+        final buildTargetTag = isAndroid
+            ? 'android-${arch.name}-api$androidNdkApi'
+            : '${os.name}-${arch.name}';
+        final sharedOpenblasBase = (!isAndroid && legacyExtractDir.existsSync())
             ? outputDir
             : Directory.fromUri(
                 input.outputDirectoryShared.resolve(
-                  'openblas-src-${os.name}-${arch.name}/',
+                  'openblas-src-$buildTargetTag/',
                 ),
               );
         if (!sharedOpenblasBase.existsSync()) {
@@ -800,23 +1049,75 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             }
 
             print('Building OpenBLAS with target $openBlasTarget...');
-            final makeArgs = <String>[
-              'shared',
-              '-j${Platform.numberOfProcessors}',
-              'TARGET=$openBlasTarget',
-              if (arch == Architecture.x64) ...[
-                'DYNAMIC_ARCH=1',
-                'DYNAMIC_LIST=NEHALEM SANDYBRIDGE HASWELL SKYLAKEX ZEN',
-              ],
-              'USE_THREAD=1',
-              'FIXED_LIBNAME=1',
-              if (os != OS.current || arch != Architecture.current)
+            final List<String> makeArgs;
+            if (isAndroid) {
+              final tripleApi = '${_androidTargetTriple(arch)}$androidNdkApi';
+              final wrapperSuffix = Platform.isWindows ? '.cmd' : '';
+              final wrapperFile = File.fromUri(
+                androidNdkTools!.clang.resolve(
+                  '$tripleApi-clang$wrapperSuffix',
+                ),
+              );
+              final useWrapper = wrapperFile.existsSync();
+              // Keep `CC` as a single executable path without `--sysroot=...`
+              // slashes so OpenBLAS's `c_check` (`dirname "$compiler_name"`)
+              // does not corrupt `CROSS_SUFFIX`.
+              final androidCc = useWrapper
+                  ? wrapperFile.path
+                  : androidNdkTools.clang.toFilePath();
+              final androidCflags = <String>[
+                if (!useWrapper) ...[
+                  '--target=$tripleApi',
+                  if (androidSysroot != null)
+                    '--sysroot=${androidSysroot.toFilePath()}',
+                ],
+                '-Wno-implicit-function-declaration',
+                '-Wno-incompatible-pointer-types',
+              ].join(' ');
+              final lldExt = Platform.isWindows ? '.exe' : '';
+              final lldFile = File.fromUri(
+                androidNdkTools.clang.resolve('ld.lld$lldExt'),
+              );
+              makeArgs = <String>[
+                'shared',
+                '-j${Platform.numberOfProcessors}',
+                'OSNAME=Android',
+                'TARGET=$openBlasTarget',
+                'BINARY=64',
+                'NOFORTRAN=1',
+                'C_LAPACK=1',
+                'NO_LAPACK=0',
+                'NO_LAPACKE=0',
+                'USE_THREAD=1',
+                'NUM_THREADS=16',
+                'FIXED_LIBNAME=1',
                 OS.current == OS.macOS ? 'HOSTCC=clang' : 'HOSTCC=gcc',
-            ];
-
-            if (cCompiler != null) {
-              makeArgs.add('CC=${cCompiler.compiler.toFilePath()}');
-              makeArgs.add('AR=${cCompiler.archiver.toFilePath()}');
+                'CC=$androidCc',
+                'CFLAGS=$androidCflags',
+                'AR=${androidNdkTools.ar.toFilePath()}',
+                if (androidNdkTools.ranlib != null)
+                  'RANLIB=${androidNdkTools.ranlib!.toFilePath()}',
+                if (lldFile.existsSync()) 'LD=${lldFile.path}',
+                'LDFLAGS=-Wl,-z,max-page-size=16384',
+              ];
+            } else {
+              makeArgs = <String>[
+                'shared',
+                '-j${Platform.numberOfProcessors}',
+                'TARGET=$openBlasTarget',
+                if (arch == Architecture.x64) ...[
+                  'DYNAMIC_ARCH=1',
+                  'DYNAMIC_LIST=NEHALEM SANDYBRIDGE HASWELL SKYLAKEX ZEN',
+                ],
+                'USE_THREAD=1',
+                'FIXED_LIBNAME=1',
+                if (os != OS.current || arch != Architecture.current)
+                  OS.current == OS.macOS ? 'HOSTCC=clang' : 'HOSTCC=gcc',
+                if (cCompiler != null) ...[
+                  'CC=${cCompiler.compiler.toFilePath()}',
+                  'AR=${cCompiler.archiver.toFilePath()}',
+                ],
+              ];
             }
 
             await Process.run('chmod', [
@@ -833,7 +1134,8 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
             if (buildResult.exitCode != 0) {
               throw StateError(
                 'Failed to build OpenBLAS (exit ${buildResult.exitCode}):\n'
-                '${buildResult.stderr}',
+                'stdout: ${buildResult.stdout}\n'
+                'stderr: ${buildResult.stderr}',
               );
             }
           }
@@ -852,9 +1154,10 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
         final tempExtLibFile = File(
           '${extLibFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
         );
-        final compilerPath =
-            cCompiler?.compiler.toFilePath() ??
-            (os == OS.windows ? 'cl' : 'cc');
+        final compilerPath = isAndroid
+            ? androidNdkTools!.clang.toFilePath()
+            : (cCompiler?.compiler.toFilePath() ??
+                  (os == OS.windows ? 'cl' : 'cc'));
         final compilerLower = compilerPath.toLowerCase();
         final isClangCl = compilerLower.contains('clang-cl');
         final isMSVC =
@@ -883,12 +1186,17 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
                 '/EXPORT:openblas_embedded_source_hash',
               ]
             : [
+                if (isAndroid) ...[
+                  '--target=${_androidTargetTriple(arch)}$androidNdkApi',
+                  if (androidSysroot != null)
+                    '--sysroot=${androidSysroot.toFilePath()}',
+                ],
                 '-shared',
                 '-fPIC',
                 '-O3',
                 ...sanitizeFlags,
                 ...coverageFlags,
-                if (os == OS.android) '-Wl,-z,max-page-size=16384',
+                if (isAndroid) '-Wl,-z,max-page-size=16384',
                 '-I${extractDir}lapack-netlib/LAPACKE/include',
                 customExtensionsPath,
                 stampFile.path,
@@ -919,6 +1227,131 @@ const char* openblas_get_config(void) { return "MacOS Accelerate Framework"; }
   List<Uri> get dependencies => [
     for (final file in nativeSourceFiles(_root)) file.uri,
   ];
+}
+
+IOSSdk? _targetIosSdk(BuildInput input) => input.config.code.targetOS == OS.iOS
+    ? input.config.code.iOS.targetSdk
+    : null;
+
+String _targetTripleTag(OS os, Architecture arch, IOSSdk? iosSdk) =>
+    iosSdk != null
+    ? '${os.name}-${iosSdk.type}-${arch.name}'
+    : '${os.name}-${arch.name}';
+
+String _androidTargetTriple(Architecture arch) => switch (arch) {
+  Architecture.arm64 => 'aarch64-linux-android',
+  Architecture.x64 => 'x86_64-linux-android',
+  Architecture.arm => 'armv7a-linux-androideabi',
+  Architecture.ia32 => 'i686-linux-android',
+  Architecture.riscv64 => 'riscv64-linux-android',
+  _ => throw UnsupportedError('Unsupported Android architecture: $arch'),
+};
+
+String _iosClangTarget(Architecture arch, IOSSdk sdk, int version) =>
+    switch ((arch, sdk)) {
+      (Architecture.arm64, IOSSdk.iPhoneOS) => 'arm64-apple-ios$version.0',
+      (Architecture.arm64, IOSSdk.iPhoneSimulator) =>
+        'arm64-apple-ios$version.0-simulator',
+      (Architecture.x64, IOSSdk.iPhoneSimulator) =>
+        'x86_64-apple-ios$version.0-simulator',
+      _ => throw UnsupportedError('Unsupported iOS target: ($arch, $sdk)'),
+    };
+
+Future<String> _resolveAppleSdkPath(String sdkName) async {
+  final res = await Process.run('xcrun', ['--sdk', sdkName, '--show-sdk-path']);
+  if (res.exitCode != 0) {
+    throw StateError(
+      'Failed to locate Apple SDK "$sdkName" via xcrun (exit ${res.exitCode}):\n'
+      '${res.stderr}',
+    );
+  }
+  final path = (res.stdout as String).trim();
+  if (path.isEmpty) {
+    throw StateError('xcrun returned empty SDK path for "$sdkName".');
+  }
+  return path;
+}
+
+Uri? _androidSysrootFromCompiler(Uri compilerUri) {
+  final sysroot = compilerUri.resolve('../sysroot/');
+  return Directory.fromUri(sysroot).existsSync() ? sysroot : null;
+}
+
+List<Directory> _androidNdkCandidateDirs() {
+  final ndkCandidates = <Directory>[];
+  for (final key in const [
+    'ANDROID_NDK_LATEST_HOME',
+    'ANDROID_NDK_ROOT',
+    'ANDROID_NDK_HOME',
+    'ANDROID_NDK',
+  ]) {
+    final val = Platform.environment[key];
+    if (val != null && val.isNotEmpty) {
+      final dir = Directory(val);
+      if (dir.existsSync()) ndkCandidates.add(dir);
+    }
+  }
+  for (final sdkKey in const ['ANDROID_HOME', 'ANDROID_SDK_ROOT']) {
+    final sdkVal = Platform.environment[sdkKey];
+    if (sdkVal == null || sdkVal.isEmpty) continue;
+    final ndkParent = Directory('$sdkVal/ndk');
+    if (ndkParent.existsSync()) {
+      final versions = ndkParent.listSync().whereType<Directory>().toList()
+        ..sort(_compareVersionDesc);
+      ndkCandidates.addAll(versions);
+    }
+  }
+  return ndkCandidates;
+}
+
+int _compareVersionDesc(Directory a, Directory b) {
+  final aName = a.uri.pathSegments.where((s) => s.isNotEmpty).last;
+  final bName = b.uri.pathSegments.where((s) => s.isNotEmpty).last;
+  final aParts = aName.split('.').map(int.tryParse).toList();
+  final bParts = bName.split('.').map(int.tryParse).toList();
+  final len = math.max(aParts.length, bParts.length);
+  for (var i = 0; i < len; i++) {
+    final av = i < aParts.length ? aParts[i] : 0;
+    final bv = i < bParts.length ? bParts[i] : 0;
+    if (av == null || bv == null) return bName.compareTo(aName);
+    if (av != bv) return bv.compareTo(av);
+  }
+  return bName.compareTo(aName);
+}
+
+({Uri clang, Uri ar, Uri? ranlib})? _detectAndroidNdkTools(
+  CCompilerConfig? cCompiler,
+) {
+  final ext = Platform.isWindows ? '.exe' : '';
+  if (cCompiler != null) {
+    final ranlibCandidate = File.fromUri(
+      cCompiler.compiler.resolve('llvm-ranlib$ext'),
+    );
+    return (
+      clang: cCompiler.compiler,
+      ar: cCompiler.archiver,
+      ranlib: ranlibCandidate.existsSync() ? ranlibCandidate.uri : null,
+    );
+  }
+  for (final ndkDir in _androidNdkCandidateDirs()) {
+    final prebuilt = Directory.fromUri(
+      ndkDir.uri.resolve('toolchains/llvm/prebuilt/'),
+    );
+    if (!prebuilt.existsSync()) continue;
+    for (final hostDir in prebuilt.listSync().whereType<Directory>()) {
+      final clang = File.fromUri(hostDir.uri.resolve('bin/clang$ext'));
+      final ar = File.fromUri(hostDir.uri.resolve('bin/llvm-ar$ext'));
+      final ranlib = File.fromUri(hostDir.uri.resolve('bin/llvm-ranlib$ext'));
+      if (clang.existsSync() && ar.existsSync()) {
+        return (
+          clang: clang.uri,
+          ar: ar.uri,
+          ranlib: ranlib.existsSync() ? ranlib.uri : null,
+        );
+      }
+    }
+  }
+  return null;
 }
 
 sealed class OpenBlasBinary {

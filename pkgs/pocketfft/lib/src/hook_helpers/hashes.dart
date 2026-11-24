@@ -138,26 +138,43 @@ String computeNativeSourceHash(Uri packageRoot) {
   return sha256.convert(utf8.encode(buffer.toString())).toString();
 }
 
-/// Canonical release artifact filename for `(os, arch)`.
-String pocketfftArtifactName(OS os, Architecture arch) {
+/// Canonical release artifact filename for `(os, arch)` (and [iosSdk] on iOS).
+String pocketfftArtifactName(OS os, Architecture arch, {IOSSdk? iosSdk}) {
+  if (os == OS.iOS) {
+    if (iosSdk == null) {
+      throw ArgumentError.value(
+        iosSdk,
+        'iosSdk',
+        'Must be specified when os is OS.iOS.',
+      );
+    }
+    return 'pocketfft-${os.name}-${iosSdk.type}-${arch.name}.dylib';
+  }
+  if (iosSdk != null) {
+    throw ArgumentError.value(
+      iosSdk,
+      'iosSdk',
+      'Must be null when os is not OS.iOS.',
+    );
+  }
   final ext = switch (os) {
     OS.windows => 'dll',
-    OS.macOS || OS.iOS => 'dylib',
+    OS.macOS => 'dylib',
     _ => 'so',
   };
   return 'pocketfft-${os.name}-${arch.name}.$ext';
 }
 
-/// SHA-256 digests for prebuilt `pocketfft` binaries indexed by `(OS, Architecture)`.
-final fileHashes = <(OS, Architecture), String>{
-  (OS.linux, Architecture.x64):
+/// SHA-256 digests for prebuilt `pocketfft` binaries indexed by `(OS, Architecture, IOSSdk?)`.
+final fileHashes = <(OS, Architecture, IOSSdk?), String>{
+  (OS.linux, Architecture.x64, null):
       '25427edf4e095e844e30e8a563ad36c43173b2153196746204523b2ff2bc0315',
-  (OS.linux, Architecture.arm64):
+  (OS.linux, Architecture.arm64, null):
       '85efe3238e7ed956c3da6f54c2282d26f59a19d016801f3db55b00f5268513e7',
-  (OS.macOS, Architecture.arm64):
+  (OS.macOS, Architecture.arm64, null):
       '4f7beda3de31d02abc9dad57aed2d405a9b8b5e42bcd7b22e8f4a7b05e914256',
-  (OS.macOS, Architecture.x64):
+  (OS.macOS, Architecture.x64, null):
       'd9fb2ad122c825997a63cc84138d137c411e0d65c373787ff59754ede577b0e9',
-  (OS.windows, Architecture.x64):
+  (OS.windows, Architecture.x64, null):
       '39a55d5c1c53ca5ae63b6d683bc5cccdc8274fc0121feb506e145c989a190198',
 };

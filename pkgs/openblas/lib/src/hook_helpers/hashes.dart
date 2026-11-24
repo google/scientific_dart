@@ -139,38 +139,60 @@ String computeNativeSourceHash(Uri packageRoot) {
   return sha256.convert(utf8.encode(buffer.toString())).toString();
 }
 
-/// Canonical release artifact filename for `(os, arch, libraryKind)`.
+/// Canonical release artifact filename for `(os, arch, libraryKind)` (and [iosSdk] on iOS).
 ///
 /// [libraryKind] is either `'openblas'` or `'openblas_extensions'`.
-String openblasArtifactName(OS os, Architecture arch, String libraryKind) {
+String openblasArtifactName(
+  OS os,
+  Architecture arch,
+  String libraryKind, {
+  IOSSdk? iosSdk,
+}) {
+  if (os == OS.iOS) {
+    if (iosSdk == null) {
+      throw ArgumentError.value(
+        iosSdk,
+        'iosSdk',
+        'Must be specified when os is OS.iOS.',
+      );
+    }
+    return '$libraryKind-${os.name}-${iosSdk.type}-${arch.name}.dylib';
+  }
+  if (iosSdk != null) {
+    throw ArgumentError.value(
+      iosSdk,
+      'iosSdk',
+      'Must be null when os is not OS.iOS.',
+    );
+  }
   final ext = switch (os) {
     OS.windows => 'dll',
-    OS.macOS || OS.iOS => 'dylib',
+    OS.macOS => 'dylib',
     _ => 'so',
   };
   return '$libraryKind-${os.name}-${arch.name}.$ext';
 }
 
-/// SHA-256 digests for prebuilt `openblas` binaries indexed by `(OS, Architecture, libraryKind)`.
-final fileHashes = <(OS, Architecture, String), String>{
-  (OS.linux, Architecture.x64, 'openblas'):
+/// SHA-256 digests for prebuilt `openblas` binaries indexed by `(OS, Architecture, IOSSdk?, libraryKind)`.
+final fileHashes = <(OS, Architecture, IOSSdk?, String), String>{
+  (OS.linux, Architecture.x64, null, 'openblas'):
       '89a5bd9a56f29babae59c73f1d37cd961036664ba0b9d7fa55b1dcc29321d535',
-  (OS.linux, Architecture.x64, 'openblas_extensions'):
+  (OS.linux, Architecture.x64, null, 'openblas_extensions'):
       '7d9b42bfe43efcf2f2492d639b0523b7100153c47388c477862513b261deb8ff',
-  (OS.linux, Architecture.arm64, 'openblas'):
+  (OS.linux, Architecture.arm64, null, 'openblas'):
       'df645117ecf5aadc53aa2d99a6fc72b7fff1bb7efbb3af4c91e8d743c1b3fb06',
-  (OS.linux, Architecture.arm64, 'openblas_extensions'):
+  (OS.linux, Architecture.arm64, null, 'openblas_extensions'):
       '237a488830b5c83be69a2a722508a3de68c80e744a63ef045dc3c17eddab879b',
-  (OS.macOS, Architecture.arm64, 'openblas'):
+  (OS.macOS, Architecture.arm64, null, 'openblas'):
       'f2db3cbc31fa0cdeaf9e4a119123c513973ac11bb950fd0ae7aa6351e7bcfc4b',
-  (OS.macOS, Architecture.arm64, 'openblas_extensions'):
+  (OS.macOS, Architecture.arm64, null, 'openblas_extensions'):
       '84647a092b5c53edcecdedcb847cd6fa2ffe768b270c8238bf5506e79a2b2f7e',
-  (OS.macOS, Architecture.x64, 'openblas'):
+  (OS.macOS, Architecture.x64, null, 'openblas'):
       'a3eb9fd839d8d215c1fa258009a7438dc8f92343b812ce7267e0d6199db6b399',
-  (OS.macOS, Architecture.x64, 'openblas_extensions'):
+  (OS.macOS, Architecture.x64, null, 'openblas_extensions'):
       '8403bb8519bdc1a0c67f42b911e2e4f26d4b58a750e41f30fe61e1fbaff5b582',
-  (OS.windows, Architecture.x64, 'openblas'):
+  (OS.windows, Architecture.x64, null, 'openblas'):
       'c8b6f93012b81eb5775955006a1a363d720ba2013b5262052944763e0a736346',
-  (OS.windows, Architecture.x64, 'openblas_extensions'):
+  (OS.windows, Architecture.x64, null, 'openblas_extensions'):
       'c6498fd3a89c88ac9e258af363f073e2b6d21da6aacefb59abc3c697760d12b0',
 };

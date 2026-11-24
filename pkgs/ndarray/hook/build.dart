@@ -13,6 +13,7 @@
 // limitations under the License.
 
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:code_assets/code_assets.dart';
@@ -21,6 +22,9 @@ import 'package:hooks/hooks.dart';
 import 'package:ndarray/src/hook_helpers/build_options.dart';
 import 'package:ndarray/src/hook_helpers/hashes.dart';
 import 'package:ndarray/src/hook_helpers/msvc_compiler.dart';
+
+const int _minAndroidNdkApi = 24;
+const int _minIosVersion = 13;
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -140,14 +144,21 @@ String _canonicalCpuCheckLibName(OS os) => os == OS.windows
           : 'libndarray_cpu_check.so');
 
 int _requiredX86FeatureMask(
+  OS os,
   Architecture arch,
   BuildOptions options, {
   required bool isMSVC,
   required bool isSourceBuild,
 }) {
   if (arch != Architecture.x64) return 0;
-  if (!isSourceBuild) return 0x3F;
-  final flags = options.effectiveX86Flags(isMSVC: isMSVC);
+  if (!isSourceBuild) {
+    // Prebuilt desktop x64 binaries require AVX2+FMA+F16C; prebuilt mobile
+    // x64 binaries (Android x86_64 and iOS Simulator x86_64) target baseline
+    // SSE4.2 so they run safely on Android emulators and Rosetta 2.
+    if (os == OS.android || os == OS.iOS) return 0;
+    return 0x3F;
+  }
+  final flags = options.effectiveX86Flags(isMSVC: isMSVC, targetOS: os);
   if (flags.isEmpty) return 0;
   var mask = 0;
   for (final flag in flags) {
@@ -200,8 +211,12 @@ Future<Uri?> _buildCpuCheckLibrary(
   final arch = input.config.code.targetArchitecture;
   final cCompiler = input.config.code.cCompiler;
 
+  final detectedAndroidClang = (os == OS.android && cCompiler == null)
+      ? _detectAndroidNdkClang()
+      : null;
+  final compilerUri = cCompiler?.compiler ?? detectedAndroidClang;
   final compilerPath =
-      cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
+      compilerUri?.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
   final compilerLower = compilerPath.toLowerCase();
   final isClangCl = compilerLower.contains('clang-cl');
   final isGNU =
@@ -218,15 +233,52 @@ Future<Uri?> _buildCpuCheckLibrary(
               compilerLower.contains('msvc')));
 
   final requiredMask = _requiredX86FeatureMask(
+    os,
     arch,
     buildOptions,
     isMSVC: isMSVC,
     isSourceBuild: isSourceBuild,
   );
+  if (requiredMask == 0) {
+    return null;
+  }
+
+  final iosSdk = _targetIosSdk(input);
+  final targetTag = _targetTripleTag(os, arch, iosSdk);
+  final targetFlags = <String>[];
+  if (os == OS.android) {
+    final targetApi = math.max(
+      input.config.code.android.targetNdkApi,
+      _minAndroidNdkApi,
+    );
+    targetFlags.add('--target=${_androidTargetTriple(arch)}$targetApi');
+    if (compilerUri != null) {
+      final sysroot = _androidSysrootFromCompiler(compilerUri);
+      if (sysroot != null) {
+        targetFlags.add('--sysroot=${sysroot.toFilePath()}');
+      }
+    }
+  } else if (os == OS.iOS) {
+    final iosVersion = math.max(
+      input.config.code.iOS.targetVersion,
+      _minIosVersion,
+    );
+    final sdkPath = await _resolveAppleSdkPath(iosSdk!.type);
+    targetFlags.addAll([
+      '--target=${_iosClangTarget(arch, iosSdk, iosVersion)}',
+      '-isysroot',
+      sdkPath,
+    ]);
+  } else if (os == OS.macOS) {
+    targetFlags.addAll([
+      '-arch',
+      arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+    ]);
+  }
 
   final sharedDir = Directory.fromUri(
     input.outputDirectoryShared.resolve(
-      'ndarray-cpu-check-${os.name}-${arch.name}-m$requiredMask/',
+      'ndarray-cpu-check-$targetTag-m$requiredMask/',
     ),
   );
   final libName = _canonicalCpuCheckLibName(os);
@@ -351,12 +403,12 @@ CPU_CHECK_EXPORT int32_t ndarray_x86_required_features(void) {
             '/EXPORT:ndarray_x86_required_features',
           ]
         : <String>[
+            ...targetFlags,
             if (os == OS.macOS || os == OS.iOS) ...[
-              '-arch',
-              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
               '-Wl,-install_name,@rpath/$libName',
               '-Wl,-headerpad_max_install_names',
             ],
+            if (os == OS.iOS) '-Wl,-encryptable',
             '-shared',
             '-fPIC',
             '-O2',
@@ -444,12 +496,13 @@ final class FetchMode extends BuildMode {
 
     final os = input.config.code.targetOS;
     final arch = input.config.code.targetArchitecture;
-    final artifactName = ndarrayArtifactName(os, arch);
-    final expectedHash = fileHashes[(os, arch)];
+    final iosSdk = _targetIosSdk(input);
+    final artifactName = ndarrayArtifactName(os, arch, iosSdk: iosSdk);
+    final expectedHash = fileHashes[(os, arch, iosSdk)];
 
     if (expectedHash == null || expectedHash.startsWith('00000000')) {
       throw StateError(
-        'No prebuilt ndarray binary hash is pinned for ($os, $arch) in release $version.\n'
+        'No prebuilt ndarray binary hash is pinned for ($os, $arch${iosSdk != null ? ', $iosSdk' : ''}) in release $version.\n'
         '${BuildOptions.usageError('Switch to `buildMode: source` or `buildMode: local`.')}',
       );
     }
@@ -457,7 +510,7 @@ final class FetchMode extends BuildMode {
     final libName = _canonicalLibName(os);
     final sharedCacheDir = Directory.fromUri(
       input.outputDirectoryShared.resolve(
-        'ndarray-$version/${os.name}-${arch.name}/',
+        'ndarray-$version/${_targetTripleTag(os, arch, iosSdk)}/',
       ),
     );
     final cachedLibrary = File.fromUri(sharedCacheDir.uri.resolve(libName));
@@ -538,7 +591,11 @@ final class LocalMode extends BuildMode {
       if (candidate.existsSync()) return candidate;
       final artifactCandidate = File.fromUri(
         Directory(entityPath).uri.resolve(
-          ndarrayArtifactName(os, input.config.code.targetArchitecture),
+          ndarrayArtifactName(
+            os,
+            input.config.code.targetArchitecture,
+            iosSdk: _targetIosSdk(input),
+          ),
         ),
       );
       if (artifactCandidate.existsSync()) return artifactCandidate;
@@ -600,8 +657,12 @@ final class SourceMode extends BuildMode {
     }
     final libFile = File.fromUri(outputDir.uri.resolve(libName));
 
+    final detectedAndroidClang = (os == OS.android && cCompiler == null)
+        ? _detectAndroidNdkClang()
+        : null;
+    final compilerUri = cCompiler?.compiler ?? detectedAndroidClang;
     final compilerPath =
-        cCompiler?.compiler.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
+        compilerUri?.toFilePath() ?? (os == OS.windows ? 'cl' : 'cc');
     final compilerLower = compilerPath.toLowerCase();
     final isClangCl = compilerLower.contains('clang-cl');
     final isGNU =
@@ -624,7 +685,7 @@ final class SourceMode extends BuildMode {
       if (isMSVC) ...await getMSVCEnvironment(arch),
     };
 
-    final x86Flags = options.effectiveX86Flags(isMSVC: isMSVC);
+    final x86Flags = options.effectiveX86Flags(isMSVC: isMSVC, targetOS: os);
     var cppCompilerPath = compilerPath;
     if (isMSVC) {
       if (!isClangCl) {
@@ -636,19 +697,45 @@ final class SourceMode extends BuildMode {
           onLog: print,
         );
       }
-    } else if (compilerPath.endsWith('gcc')) {
-      cppCompilerPath =
-          '${compilerPath.substring(0, compilerPath.length - 3)}g++';
-    } else if (compilerPath.endsWith('clang')) {
-      cppCompilerPath = '$compilerPath++';
-    } else if (compilerPath.endsWith('cc')) {
-      cppCompilerPath = 'c++';
-    } else if (compilerPath.contains('gcc-')) {
-      cppCompilerPath = compilerPath.replaceAll('gcc-', 'g++-');
-    } else if (compilerPath.contains('clang-')) {
-      cppCompilerPath = compilerPath.replaceAll('clang-', 'clang++-');
+    } else {
+      cppCompilerPath = _resolveCxxCompilerPath(compilerPath);
     }
 
+    final iosSdk = _targetIosSdk(input);
+    final int? androidNdkApi = os == OS.android
+        ? math.max(input.config.code.android.targetNdkApi, _minAndroidNdkApi)
+        : null;
+    final int? iosVersion = os == OS.iOS
+        ? math.max(input.config.code.iOS.targetVersion, _minIosVersion)
+        : null;
+    final String? iosSdkPath = os == OS.iOS
+        ? await _resolveAppleSdkPath(iosSdk!.type)
+        : null;
+    final Uri? androidSysroot = (os == OS.android && compilerUri != null)
+        ? _androidSysrootFromCompiler(compilerUri)
+        : null;
+
+    final targetCompileFlags = <String>[
+      if (os == OS.macOS) ...[
+        '-arch',
+        arch == Architecture.arm64 ? 'arm64' : 'x86_64',
+      ],
+      if (os == OS.iOS) ...[
+        '--target=${_iosClangTarget(arch, iosSdk!, iosVersion!)}',
+        '-isysroot',
+        iosSdkPath!,
+      ],
+      if (os == OS.android) ...[
+        '--target=${_androidTargetTriple(arch)}$androidNdkApi',
+        if (androidSysroot != null) '--sysroot=${androidSysroot.toFilePath()}',
+      ],
+    ];
+
+    final buildTargetTag = switch (os) {
+      OS.android => 'android-${arch.name}-api$androidNdkApi',
+      OS.iOS => 'ios-${iosSdk!.type}-${arch.name}-v$iosVersion',
+      _ => '${os.name}-${arch.name}',
+    };
     final cacheKey = options.cacheKey;
     final hwyCacheKey = options.x86Flags == null
         ? ''
@@ -658,13 +745,17 @@ final class SourceMode extends BuildMode {
     final highwayDir = _root.resolve('third_party/highway/');
     final legacyHwyDir = Directory.fromUri(outputDir.uri.resolve('hwy_build'));
     final highwayBuildDir =
-        (!isMSVC && hwyCacheKey.isEmpty && legacyHwyDir.existsSync())
+        (!isMSVC &&
+            os != OS.android &&
+            os != OS.iOS &&
+            hwyCacheKey.isEmpty &&
+            legacyHwyDir.existsSync())
         ? legacyHwyDir
         : Directory.fromUri(
             input.outputDirectoryShared.resolve(
               isMSVC
-                  ? 'hwy_build_v2-${os.name}-${arch.name}$hwyCacheKey/'
-                  : 'hwy_build-${os.name}-${arch.name}$hwyCacheKey/',
+                  ? 'hwy_build_v2-$buildTargetTag$hwyCacheKey/'
+                  : 'hwy_build-$buildTargetTag$hwyCacheKey/',
             ),
           );
 
@@ -723,27 +814,51 @@ final class SourceMode extends BuildMode {
           staleCMakeFiles.deleteSync(recursive: true);
         }
 
-        final cmakeRes = await Process.run(
-          'cmake',
-          [
-            if (isMSVC) ...['-G', 'NMake Makefiles'],
-            '-DCMAKE_BUILD_TYPE=Release',
-            '-DCMAKE_CXX_STANDARD=17',
-            '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
-            '-DHWY_ENABLE_TESTS=OFF',
-            '-DHWY_ENABLE_EXAMPLES=OFF',
-            if (arch == Architecture.x64 && x86Flags.isNotEmpty)
-              '-DCMAKE_CXX_FLAGS=${x86Flags.join(' ')}',
-            if (cCompiler != null ||
-                (isMSVC &&
-                    cppCompilerPath.toLowerCase().contains('clang-cl'))) ...[
+        final cmakeArgs = <String>[
+          if (isMSVC) ...['-G', 'NMake Makefiles'],
+          '-DCMAKE_BUILD_TYPE=Release',
+          '-DCMAKE_CXX_STANDARD=17',
+          '-DCMAKE_POSITION_INDEPENDENT_CODE=ON',
+          '-DHWY_ENABLE_TESTS=OFF',
+          '-DHWY_ENABLE_EXAMPLES=OFF',
+          if (arch == Architecture.x64 && x86Flags.isNotEmpty)
+            '-DCMAKE_CXX_FLAGS=${x86Flags.join(' ')}',
+        ];
+        if (os == OS.android) {
+          final toolchainFile = _findAndroidNdkToolchainFile(compilerUri);
+          cmakeArgs.addAll([
+            '-DCMAKE_TOOLCHAIN_FILE=${toolchainFile.path}',
+            '-DANDROID_ABI=${_androidCmakeAbi(arch)}',
+            '-DANDROID_PLATFORM=android-$androidNdkApi',
+            '-DANDROID_STL=c++_static',
+          ]);
+        } else if (os == OS.iOS) {
+          cmakeArgs.addAll([
+            '-DCMAKE_SYSTEM_NAME=iOS',
+            '-DCMAKE_OSX_SYSROOT=$iosSdkPath',
+            '-DCMAKE_OSX_ARCHITECTURES=${arch == Architecture.arm64 ? 'arm64' : 'x86_64'}',
+            '-DCMAKE_OSX_DEPLOYMENT_TARGET=$iosVersion.0',
+            '-DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY',
+          ]);
+        } else {
+          if (cCompiler != null ||
+              (isMSVC && cppCompilerPath.toLowerCase().contains('clang-cl'))) {
+            cmakeArgs.addAll([
               '-DCMAKE_C_COMPILER=$cmakeCCompiler',
               '-DCMAKE_CXX_COMPILER=$cmakeCxxCompiler',
-            ],
-            if (os == OS.macOS || os == OS.iOS)
+            ]);
+          }
+          if (os == OS.macOS) {
+            cmakeArgs.add(
               '-DCMAKE_OSX_ARCHITECTURES=${arch == Architecture.arm64 ? 'arm64' : 'x86_64'}',
-            highwayDir.toFilePath(),
-          ],
+            );
+          }
+        }
+        cmakeArgs.add(highwayDir.toFilePath());
+
+        final cmakeRes = await Process.run(
+          'cmake',
+          cmakeArgs,
           workingDirectory: highwayBuildDir.path,
           environment: msvcEnv,
         );
@@ -834,7 +949,7 @@ final class SourceMode extends BuildMode {
     if (isMSVC) {
       final sharedObjDir = Directory.fromUri(
         input.outputDirectoryShared.resolve(
-          'ndarray-objs-${os.name}-${arch.name}$cacheKey/',
+          'ndarray-objs-$buildTargetTag$cacheKey/',
         ),
       );
       if (!sharedObjDir.existsSync()) {
@@ -1045,7 +1160,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
     } else {
       final sharedObjDir = Directory.fromUri(
         input.outputDirectoryShared.resolve(
-          'ndarray-objs-${os.name}-${arch.name}$cacheKey/',
+          'ndarray-objs-$buildTargetTag$cacheKey/',
         ),
       );
       if (!sharedObjDir.existsSync()) {
@@ -1117,10 +1232,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
 
         final compiledAny = await Future.wait([
           compileIfNeeded('Ufuncs', ufuncsSrc, ufuncsObj, cppCompilerPath, [
-            if (os == OS.macOS || os == OS.iOS) ...[
-              '-arch',
-              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-            ],
+            ...targetCompileFlags,
             '-std=c++17',
             '-c',
             '-fPIC',
@@ -1139,10 +1251,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
             ufuncsObj,
           ]),
           compileIfNeeded('Sorting', sortingSrc, sortingObj, cppCompilerPath, [
-            if (os == OS.macOS || os == OS.iOS) ...[
-              '-arch',
-              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-            ],
+            ...targetCompileFlags,
             '-std=c++17',
             '-c',
             '-fPIC',
@@ -1165,10 +1274,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
             indexingObj,
             cppCompilerPath,
             [
-              if (os == OS.macOS || os == OS.iOS) ...[
-                '-arch',
-                arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-              ],
+              ...targetCompileFlags,
               '-std=c++17',
               '-c',
               '-fPIC',
@@ -1186,10 +1292,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
             ],
           ),
           compileIfNeeded('miniz', minizSrc, minizObj, compilerPath, [
-            if (os == OS.macOS || os == OS.iOS) ...[
-              '-arch',
-              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-            ],
+            ...targetCompileFlags,
             '-c',
             '-fPIC',
             '-O3',
@@ -1203,10 +1306,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
             minizObj,
           ]),
           compileIfNeeded('npz_io', npzIoSrc, npzIoObj, cppCompilerPath, [
-            if (os == OS.macOS || os == OS.iOS) ...[
-              '-arch',
-              arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-            ],
+            ...targetCompileFlags,
             '-std=c++17',
             '-c',
             '-fPIC',
@@ -1226,10 +1326,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
             stampObj,
             compilerPath,
             [
-              if (os == OS.macOS || os == OS.iOS) ...[
-                '-arch',
-                arch == Architecture.arm64 ? 'arm64' : 'x86_64',
-              ],
+              ...targetCompileFlags,
               '-c',
               '-fPIC',
               '-O2',
@@ -1244,17 +1341,21 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
           '${libFile.path}.tmp.$pid.${DateTime.now().microsecondsSinceEpoch}',
         );
         final linkArgs = <String>[
+          ...targetCompileFlags,
           if (os == OS.macOS || os == OS.iOS) ...[
-            '-arch',
-            arch == Architecture.arm64 ? 'arm64' : 'x86_64',
             '-Wl,-install_name,@rpath/$libName',
             '-Wl,-headerpad_max_install_names',
           ],
+          if (os == OS.iOS) '-Wl,-encryptable',
           '-shared',
           '-fPIC',
           ...sanitizeFlags,
           ...coverageFlags,
-          if (os == OS.android) '-Wl,-z,max-page-size=16384',
+          if (os == OS.android) ...[
+            '-static-libstdc++',
+            '-Wl,--exclude-libs,ALL',
+            '-Wl,-z,max-page-size=16384',
+          ],
           ufuncsObj,
           sortingObj,
           indexingObj,
@@ -1271,6 +1372,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
         final linkHashFile = File('${libFile.path}.sha256');
         final linkDigestBuilder = BytesBuilder(copy: false)
           ..add(cacheKey.codeUnits)
+          ..add(targetCompileFlags.join(' ').codeUnits)
           ..add(currentSourceHash.codeUnits)
           ..add(libFile.path.codeUnits)
           ..add(sanitizeFlags.join(' ').codeUnits)
@@ -1353,6 +1455,168 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
     _root.resolve('third_party/miniz/miniz.h'),
     ..._highwayDependencies(_root),
   ];
+}
+
+IOSSdk? _targetIosSdk(BuildInput input) => input.config.code.targetOS == OS.iOS
+    ? input.config.code.iOS.targetSdk
+    : null;
+
+String _targetTripleTag(OS os, Architecture arch, IOSSdk? iosSdk) =>
+    iosSdk != null
+    ? '${os.name}-${iosSdk.type}-${arch.name}'
+    : '${os.name}-${arch.name}';
+
+String _resolveCxxCompilerPath(String compilerPath) {
+  final hasExe = compilerPath.toLowerCase().endsWith('.exe');
+  final stem = hasExe
+      ? compilerPath.substring(0, compilerPath.length - 4)
+      : compilerPath;
+  final suffix = hasExe ? '.exe' : '';
+  if (stem.endsWith('gcc')) {
+    return '${stem.substring(0, stem.length - 3)}g++$suffix';
+  } else if (stem.endsWith('clang')) {
+    return '$stem++$suffix';
+  } else if (stem.endsWith('cc')) {
+    return '${stem.substring(0, stem.length - 2)}c++$suffix';
+  } else if (stem.contains('gcc-')) {
+    return '${stem.replaceAll('gcc-', 'g++-')}$suffix';
+  } else if (stem.contains('clang-')) {
+    return '${stem.replaceAll('clang-', 'clang++-')}$suffix';
+  }
+  return compilerPath;
+}
+
+String _androidTargetTriple(Architecture arch) => switch (arch) {
+  Architecture.arm64 => 'aarch64-linux-android',
+  Architecture.x64 => 'x86_64-linux-android',
+  Architecture.arm => 'armv7a-linux-androideabi',
+  Architecture.ia32 => 'i686-linux-android',
+  Architecture.riscv64 => 'riscv64-linux-android',
+  _ => throw UnsupportedError('Unsupported Android architecture: $arch'),
+};
+
+String _androidCmakeAbi(Architecture arch) => switch (arch) {
+  Architecture.arm64 => 'arm64-v8a',
+  Architecture.x64 => 'x86_64',
+  Architecture.arm => 'armeabi-v7a',
+  Architecture.ia32 => 'x86',
+  Architecture.riscv64 => 'riscv64',
+  _ => throw UnsupportedError('Unsupported Android architecture: $arch'),
+};
+
+String _iosClangTarget(Architecture arch, IOSSdk sdk, int version) =>
+    switch ((arch, sdk)) {
+      (Architecture.arm64, IOSSdk.iPhoneOS) => 'arm64-apple-ios$version.0',
+      (Architecture.arm64, IOSSdk.iPhoneSimulator) =>
+        'arm64-apple-ios$version.0-simulator',
+      (Architecture.x64, IOSSdk.iPhoneSimulator) =>
+        'x86_64-apple-ios$version.0-simulator',
+      _ => throw UnsupportedError('Unsupported iOS target: ($arch, $sdk)'),
+    };
+
+Future<String> _resolveAppleSdkPath(String sdkName) async {
+  final res = await Process.run('xcrun', ['--sdk', sdkName, '--show-sdk-path']);
+  if (res.exitCode != 0) {
+    throw StateError(
+      'Failed to locate Apple SDK "$sdkName" via xcrun (exit ${res.exitCode}):\n'
+      '${res.stderr}',
+    );
+  }
+  final path = (res.stdout as String).trim();
+  if (path.isEmpty) {
+    throw StateError('xcrun returned empty SDK path for "$sdkName".');
+  }
+  return path;
+}
+
+Uri? _androidSysrootFromCompiler(Uri compilerUri) {
+  final sysroot = compilerUri.resolve('../sysroot/');
+  return Directory.fromUri(sysroot).existsSync() ? sysroot : null;
+}
+
+List<Directory> _androidNdkCandidateDirs() {
+  final ndkCandidates = <Directory>[];
+  for (final key in const [
+    'ANDROID_NDK_LATEST_HOME',
+    'ANDROID_NDK_ROOT',
+    'ANDROID_NDK_HOME',
+    'ANDROID_NDK',
+  ]) {
+    final val = Platform.environment[key];
+    if (val != null && val.isNotEmpty) {
+      final dir = Directory(val);
+      if (dir.existsSync()) ndkCandidates.add(dir);
+    }
+  }
+  for (final sdkKey in const ['ANDROID_HOME', 'ANDROID_SDK_ROOT']) {
+    final sdkVal = Platform.environment[sdkKey];
+    if (sdkVal == null || sdkVal.isEmpty) continue;
+    final ndkParent = Directory('$sdkVal/ndk');
+    if (ndkParent.existsSync()) {
+      final versions = ndkParent.listSync().whereType<Directory>().toList()
+        ..sort(_compareVersionDesc);
+      ndkCandidates.addAll(versions);
+    }
+  }
+  return ndkCandidates;
+}
+
+int _compareVersionDesc(Directory a, Directory b) {
+  final aName = a.uri.pathSegments.where((s) => s.isNotEmpty).last;
+  final bName = b.uri.pathSegments.where((s) => s.isNotEmpty).last;
+  final aParts = aName.split('.').map(int.tryParse).toList();
+  final bParts = bName.split('.').map(int.tryParse).toList();
+  final len = math.max(aParts.length, bParts.length);
+  for (var i = 0; i < len; i++) {
+    final av = i < aParts.length ? aParts[i] : 0;
+    final bv = i < bParts.length ? bParts[i] : 0;
+    if (av == null || bv == null) return bName.compareTo(aName);
+    if (av != bv) return bv.compareTo(av);
+  }
+  return bName.compareTo(aName);
+}
+
+Uri? _detectAndroidNdkClang() {
+  final exe = Platform.isWindows ? 'clang.exe' : 'clang';
+  for (final ndkDir in _androidNdkCandidateDirs()) {
+    final prebuilt = Directory.fromUri(
+      ndkDir.uri.resolve('toolchains/llvm/prebuilt/'),
+    );
+    if (!prebuilt.existsSync()) continue;
+    for (final hostDir in prebuilt.listSync().whereType<Directory>()) {
+      final clang = File.fromUri(hostDir.uri.resolve('bin/$exe'));
+      if (clang.existsSync()) return clang.uri;
+    }
+  }
+  return null;
+}
+
+File _findAndroidNdkToolchainFile(Uri? compilerUri) {
+  if (compilerUri != null) {
+    var dir = File.fromUri(compilerUri).parent;
+    for (var depth = 0; depth < 8; depth++) {
+      final candidate = File(
+        '${dir.path}${Platform.pathSeparator}build'
+        '${Platform.pathSeparator}cmake'
+        '${Platform.pathSeparator}android.toolchain.cmake',
+      );
+      if (candidate.existsSync()) return candidate;
+      final parent = dir.parent;
+      if (parent.path == dir.path) break;
+      dir = parent;
+    }
+  }
+  for (final ndkDir in _androidNdkCandidateDirs()) {
+    final candidate = File.fromUri(
+      ndkDir.uri.resolve('build/cmake/android.toolchain.cmake'),
+    );
+    if (candidate.existsSync()) return candidate;
+  }
+  throw StateError(
+    'Could not locate Android NDK CMake toolchain file '
+    '(build/cmake/android.toolchain.cmake). Set ANDROID_NDK_LATEST_HOME, '
+    'ANDROID_NDK_ROOT, or ANDROID_HOME.',
+  );
 }
 
 List<Uri> _highwayDependencies(Uri root) {

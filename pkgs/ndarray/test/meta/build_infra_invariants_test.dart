@@ -462,6 +462,95 @@ void main() {
         expect(keys.length, equals(4));
       },
     );
+
+    test(
+      'mobile x64 defaults to baseline SSE4.2 without AVX2/FMA/F16C while desktop keeps AVX2',
+      () {
+        const opts = BuildOptions(buildMode: BuildModeEnum.source);
+        expect(
+          opts.effectiveX86Flags(isMSVC: false, targetOS: OS.linux),
+          equals(const ['-mavx2', '-mfma', '-mf16c']),
+        );
+        expect(
+          opts.effectiveX86Flags(isMSVC: false, targetOS: OS.macOS),
+          equals(const ['-mavx2', '-mfma', '-mf16c']),
+        );
+        expect(
+          opts.effectiveX86Flags(isMSVC: true, targetOS: OS.windows),
+          equals(const ['/arch:AVX2']),
+        );
+        expect(
+          opts.effectiveX86Flags(isMSVC: false, targetOS: OS.android),
+          equals(const ['-msse4.2']),
+        );
+        expect(
+          opts.effectiveX86Flags(isMSVC: false, targetOS: OS.iOS),
+          equals(const ['-msse4.2']),
+        );
+      },
+    );
+
+    test(
+      'ndarrayArtifactName separates iOS device and simulator slices and validates iosSdk',
+      () {
+        expect(
+          ndarray_hashes.ndarrayArtifactName(OS.linux, Architecture.x64),
+          equals('ndarray-linux-x64.so'),
+        );
+        expect(
+          ndarray_hashes.ndarrayArtifactName(OS.android, Architecture.arm64),
+          equals('ndarray-android-arm64.so'),
+        );
+        expect(
+          ndarray_hashes.ndarrayArtifactName(OS.android, Architecture.x64),
+          equals('ndarray-android-x64.so'),
+        );
+        expect(
+          ndarray_hashes.ndarrayArtifactName(
+            OS.iOS,
+            Architecture.arm64,
+            iosSdk: IOSSdk.iPhoneOS,
+          ),
+          equals('ndarray-ios-iphoneos-arm64.dylib'),
+        );
+        expect(
+          ndarray_hashes.ndarrayArtifactName(
+            OS.iOS,
+            Architecture.arm64,
+            iosSdk: IOSSdk.iPhoneSimulator,
+          ),
+          equals('ndarray-ios-iphonesimulator-arm64.dylib'),
+        );
+        expect(
+          ndarray_hashes.ndarrayArtifactName(
+            OS.iOS,
+            Architecture.x64,
+            iosSdk: IOSSdk.iPhoneSimulator,
+          ),
+          equals('ndarray-ios-iphonesimulator-x64.dylib'),
+        );
+        expect(
+          () => ndarray_hashes.ndarrayArtifactName(OS.iOS, Architecture.arm64),
+          throwsArgumentError,
+        );
+        expect(
+          () => ndarray_hashes.ndarrayArtifactName(
+            OS.android,
+            Architecture.arm64,
+            iosSdk: IOSSdk.iPhoneOS,
+          ),
+          throwsArgumentError,
+        );
+        expect(
+          ndarray_hashes.fileHashes.containsKey((
+            OS.linux,
+            Architecture.x64,
+            null,
+          )),
+          isTrue,
+        );
+      },
+    );
   });
 
   group('M7: Baseline x86_64 CPU Feature Guard (ensureCpuSupported)', () {
