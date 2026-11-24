@@ -13,16 +13,18 @@
 # limitations under the License.
 
 name: ndarray
-description: High-performance N-dimensional arrays and numerical operations with SIMD acceleration and BLAS/LAPACK bindings.
+description: NumPy-inspired N-dimensional arrays, matrices, and tensors for Dart with SIMD acceleration, OpenBLAS/LAPACK linear algebra, FFT signal processing, and native FFI.
 version: 0.4.0-wip
 resolution: workspace
+homepage: https://google.github.io/scientific_dart/
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/ndarray
+issue_tracker: https://github.com/google/scientific_dart/issues
 topics:
-  - numerical
   - math
-  - ffi
-  - science
   - matrix
+  - tensor
+  - linear-algebra
+  - signal-processing
 
 environment:
   sdk: ^3.10.0

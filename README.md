@@ -8,6 +8,8 @@ The initial release centers on **`package:ndarray`**, providing a powerful N-dim
 
 > **Live Demo:** Try **[Scientific Dart Notebook in your browser](https://google.github.io/scientific_dart/)** — runs `ndarray`, `openblas`, `pocketfft`, and `gpuarray` entirely client-side via WebAssembly and WebGPU.
 
+> **Benchmarks:** In verified CI runs on `ubuntu-latest` (Dart AOT vs PyPI NumPy/SciPy with OpenBLAS), `package:ndarray` achieves a **1.14x single-threaded geometric mean** across 21 NumPy operations — see the [full 25-operation benchmark table](pkgs/ndarray/README.md#benchmarks).
+
 ## Packages
 
 The repository is organized as a Dart workspace configured under [`pubspec.yaml`](pubspec.yaml):

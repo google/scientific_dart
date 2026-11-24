@@ -61,6 +61,7 @@
   - **Note for tests using `package:test`**: `isIn` shares a name with `package:matcher`'s `isIn` (re-exported by `package:test/test.dart`). In test files that call `isIn`, disambiguate with an import prefix (`import 'package:ndarray/ndarray.dart' as nd;`) or `hide isIn`.
 - **Licensing & `pub.dev` Metadata**:
   - Restored `LICENSE` to canonical Apache License 2.0 text so `pana` / `pub.dev` recognizes `Apache-2.0`, and moved bundled third-party notices (`Google Highway`, `miniz`) to `THIRD_PARTY_NOTICES`.
+  - Expanded `pubspec.yaml` `description`, added `homepage` and `issue_tracker`, refined `topics` for `pub.dev` search discoverability, and added the live WebAssembly notebook callout and verified `ubuntu-latest` Dart AOT vs NumPy/SciPy benchmark results to `README.md`.
 
 ## 0.3.1
 

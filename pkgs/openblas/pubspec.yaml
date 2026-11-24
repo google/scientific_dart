@@ -13,10 +13,17 @@
 # limitations under the License.
 
 name: openblas
-description: FFI bindings for OpenBLAS.
+description: Native Dart FFI bindings and build hooks for OpenBLAS, providing multi-threaded BLAS and LAPACK linear algebra routines.
 version: 0.1.1-wip
 resolution: workspace
 repository: https://github.com/google/scientific_dart/tree/main/pkgs/openblas
+issue_tracker: https://github.com/google/scientific_dart/issues
+topics:
+  - blas
+  - lapack
+  - linear-algebra
+  - matrix
+  - ffi
 
 environment:
   sdk: ^3.10.0
