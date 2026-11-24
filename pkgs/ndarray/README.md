@@ -10,6 +10,8 @@ A strongly-typed N-dimensional array and scientific computing library for Dart, 
 
 Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API over C/C++ memory buffers, Google Highway SIMD vectorization, OpenBLAS/LAPACK linear algebra, and PocketFFT spectral transforms.
 
+> **Live Demo:** Try the **[Scientific Dart Notebook in your browser](https://google.github.io/scientific_dart/)** — runs `ndarray`, `openblas`, `pocketfft`, and `gpuarray` entirely client-side via WebAssembly and WebGPU.
+
 ---
 
 ## Highlights & Architecture
@@ -164,6 +166,52 @@ void main() {
 > **Top-Level Math Functions and `dart:math` Namespace Conflicts**
 >
 > Because `package:ndarray/ndarray.dart` exports vectorized top-level math functions (`sin`, `cos`, `sqrt`, `max`, `min`, `exp`, `log`, etc.), files that also use `dart:math` for scalar operations should import `dart:math` with a prefix (`import 'dart:math' as math;`) or import `ndarray` with a prefix (`import 'package:ndarray/ndarray.dart' as np;`).
+
+---
+
+## Benchmarks
+
+`package:ndarray` ships a curated, reproducible benchmark suite comparing **Dart AOT** (compiled via `dart build cli` with bundled native assets) against **PyPI NumPy** (OpenBLAS) and **SciPy** (`scipy.spatial.distance`) on identical deterministic pseudorandom inputs, using matching warmup (`200 ms` min) and `21` batch-calibrated samples (`~50 ms`/sample), reporting **median** latency with automated numerical parity checksum checks across all 25 operations.
+
+Measured on GitHub Actions `ubuntu-latest` ([run #45396480463](https://github.com/google/scientific_dart/actions/runs/45396480463), commit `4c8ecea7`):
+- **Environment:** AMD EPYC 7763 (4 logical cores), Linux `7.0.0-1020-azure`, Dart `3.14.1` AOT (`x86-64-v3` AVX2+FMA+F16C), Python `3.12.16`, NumPy `2.5.5` (`scipy-openblas` OpenBLAS `0.3.34`), SciPy `1.18.1`.
+- **Single-threaded NumPy geometric mean (21 ops): `1.14x`** (`> 1.0x` means `ndarray` is faster).
+
+| Category | Operation | `ndarray` AOT (median) | NumPy / SciPy (median) | Relative (`ndarray` vs baseline) |
+| :--- | :--- | ---: | ---: | ---: |
+| **Element-wise & Transcendentals** | `add(a, b, out: out) [1M f64]` | 585.6 µs | 311.4 µs | 0.53x |
+|  | `add(a, b) [1M f64, allocating]` | 588.2 µs | 317.9 µs | 0.54x |
+|  | `sin(x, out: out) [100k f64]` | 192.5 µs | 973.8 µs | **5.06x** |
+|  | `exp(x, out: out) [100k f64]` | 178.5 µs | 441.8 µs | **2.47x** |
+|  | `add(a.T, b.T, out: out) [1000x1000 f64]` | 2.41 ms | 2.11 ms | 0.88x |
+| **Reductions & Statistics** | `sum(x) [1M f64]` | 109.1 µs | 197.6 µs | **1.81x** |
+|  | `mean(mat, axis: 0) [1000x1000 f64]` | 155.9 µs | 164.2 µs | **1.05x** |
+|  | `nansum(x) [100k f64, 10% NaN]` | 15.0 µs | 134.6 µs | **8.99x** |
+| **Linear Algebra & Tensor Contractions** | `matmul(A, B) [256x256 f64, 1T]` | 777.2 µs | 762.6 µs | 0.98x |
+|  | `matmul(A, B) [512x512 f32, 1T]` | 2.93 ms | 2.82 ms | 0.96x |
+|  | `solve(A, b) [200x200 f64, 1T]` | 303.4 µs | 254.3 µs | 0.84x |
+|  | `svd(A, fullMatrices: false) [128x128 f64, 1T]` | 8.74 ms | 2.43 ms | 0.28x |
+|  | `cholesky(A) [200x200 SPD f64, 1T]` | 160.0 µs | 151.7 µs | 0.95x |
+|  | `einsum('bhid,bhjd->bhij') [2x8x64x64 f32, 1T]` | 189.7 µs | 145.0 µs | 0.76x |
+| **Spectral Transforms & Complex Math** | `rfft(x) [65,536 f64]` | 395.4 µs | 439.9 µs | **1.11x** |
+|  | `fft2(img) [512x512 f64]` | 2.48 ms | 2.93 ms | **1.18x** |
+|  | `abs(z) [100k complex128 -> f64]` | 77.9 µs | 130.9 µs | **1.68x** |
+| **Sorting & Selection** | `sort(x) [100k random f64]` | 1.12 ms | 934.7 µs | 0.83x |
+|  | `argsort(x) [100k random f64]` | 2.88 ms | 2.54 ms | 0.88x |
+|  | `partition(x, 50000) [100k random f64]` | 188.9 µs | 183.6 µs | 0.97x |
+| **Binary I/O** | `load(.npy) [1M f64, 8 MB]` | 301.5 µs | 354.7 µs | **1.18x** |
+| **Spatial Distance Metrics (vs SciPy)** | `cdist(A, B, euclidean) [500x100 vs 500x100]` | 15.22 ms | 8.35 ms *(SciPy)* | 0.55x |
+|  | `pdist(A, euclidean) [500x100 f64]` | 7.58 ms | 4.17 ms *(SciPy)* | 0.55x |
+| **Multi-Threaded Linear Algebra** | `matmul(A, B) [1024x1024 f64, 4T]` | 48.90 ms | 23.38 ms | 0.48x |
+|  | `matmul(A, B) [1024x1024 f32, 4T]` | 22.89 ms | 11.41 ms | 0.50x |
+
+Run the suite locally from a checkout of the repository's `pkgs/ndarray` directory (using a Python environment with PyPI `numpy`, and optionally `scipy`):
+
+```bash
+dart run benchmark/run_readme_benchmark.dart --python /path/to/venv/bin/python
+```
+
+Add `--strict-blas` to fail fast if your system Python links reference Netlib BLAS instead of OpenBLAS/MKL, or `--quick` for a fast smoke check. The same suite can be re-run on GitHub Actions via the manual [`Benchmarks (Dart AOT vs NumPy/SciPy)`](https://github.com/google/scientific_dart/actions/workflows/benchmark.yml) workflow on `ubuntu-latest`.
 
 ---
 
@@ -345,20 +393,6 @@ void main() {
 
 ---
 
-## Benchmarks
-
-`package:ndarray` ships a curated, reproducible benchmark suite comparing **Dart AOT** (compiled via `dart build cli` with bundled native assets) against **PyPI NumPy** (OpenBLAS) and **SciPy** (`scipy.spatial.distance`) on identical deterministic pseudorandom inputs, using matching warmup and batch-calibrated median/IQR timing plus automatic numerical parity checks across every operation.
-
-Run it locally from `pkgs/ndarray` (using a Python environment with PyPI `numpy`, and optionally `scipy`):
-
-```bash
-dart run benchmark/run_readme_benchmark.dart --python /path/to/venv/bin/python
-```
-
-Add `--strict-blas` to fail fast if your system Python links reference Netlib BLAS instead of OpenBLAS/MKL, or `--quick` for a fast smoke check. The same suite can also be triggered on GitHub Actions via the manual [`Benchmarks (Dart AOT vs NumPy/SciPy)`](https://github.com/google/scientific_dart/actions/workflows/benchmark.yml) workflow on `ubuntu-latest` to generate verified reports.
-
----
-
 ## Supported Data Types (`DType<T>`)
 
 `ndarray` provides strict compile-time and runtime type safety across **15 numerical and logical data types**:
@@ -387,10 +421,11 @@ Add `--strict-blas` to fail fast if your system Python links reference Netlib BL
 
 `ndarray` is the foundation of the Dart Scientific Computing Workspace and integrates with companion packages in this monorepo:
 
-- **[`package:resource_scope`](../resource_scope)**: Zone-based lexical lifetime management (`ResourceScope`) underlying `NDArray.scope` and deterministic FFI memory disposal.
+- **[`package:resource_scope`](https://pub.dev/packages/resource_scope)**: Zone-based lexical lifetime management (`ResourceScope`) underlying `NDArray.scope` and deterministic FFI memory disposal.
 - **[`package:gpuarray`](https://github.com/google/scientific_dart/tree/main/pkgs/gpuarray)** *(experimental)*: GPU-accelerated N-dimensional array computing with compute shaders and zero-copy/streaming `NDArray` interoperability.
-- **[`package:ndarray_ma`](../ndarray_ma)** *(experimental)*: Masked arrays (`MaskedArray`) for `ndarray`, enabling robust computation and statistical reductions over datasets with missing or invalid entries.
-- **[`package:symbolic_dart`](../symbolic_dart)** *(experimental)*: Native Computer Algebra System (CAS) symbolic mathematics with symbolic-to-numerical `ndarray` evaluation.
+- **[`package:ndarray_ma`](https://github.com/google/scientific_dart/tree/main/pkgs/ndarray_ma)** *(experimental)*: Masked arrays (`MaskedArray`) for `ndarray`, enabling robust computation and statistical reductions over datasets with missing or invalid entries.
+- **[`package:symbolic_dart`](https://github.com/google/scientific_dart/tree/main/pkgs/symbolic_dart)** *(experimental)*: Native Computer Algebra System (CAS) symbolic mathematics with symbolic-to-numerical `ndarray` evaluation.
+- **[`package:ndarray_transformer`](https://github.com/google/scientific_dart/tree/main/pkgs/ndarray_transformer)** *(experimental)*: Pure-Dart BERT / `all-MiniLM-L6-v2` sentence-embedding and semantic-search showcase loading Hugging Face `.safetensors` weights directly into `NDArray<Float32>`.
 
 ### Further Documentation
 
