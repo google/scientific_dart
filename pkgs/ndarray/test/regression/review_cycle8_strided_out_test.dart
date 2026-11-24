@@ -226,12 +226,12 @@ void main() {
         final startView = shared.slice([Slice(start: 0, stop: 1)]).reshape([2]);
         final stop = NDArray<Float64>.fromList([2.0, 30.0], [2], DType.float64);
         linspaceGrid<Float64>(startView, stop, 3, out: shared);
-        expect(shared[[0, 0]], closeTo(0.0, 1e-12));
-        expect(shared[[0, 1]], closeTo(10.0, 1e-12));
-        expect(shared[[1, 0]], closeTo(1.0, 1e-12));
-        expect(shared[[1, 1]], closeTo(20.0, 1e-12));
-        expect(shared[[2, 0]], closeTo(2.0, 1e-12));
-        expect(shared[[2, 1]], closeTo(30.0, 1e-12));
+        expect(shared[[0, 0]].scalar, closeTo(0.0, 1e-12));
+        expect(shared[[0, 1]].scalar, closeTo(10.0, 1e-12));
+        expect(shared[[1, 0]].scalar, closeTo(1.0, 1e-12));
+        expect(shared[[1, 1]].scalar, closeTo(20.0, 1e-12));
+        expect(shared[[2, 0]].scalar, closeTo(2.0, 1e-12));
+        expect(shared[[2, 1]].scalar, closeTo(30.0, 1e-12));
       });
     });
   });
@@ -278,16 +278,34 @@ void main() {
           final expectedCdist = cdist(xa, xb);
           final bufCdist = NDArray<Float64>.zeros([2, 2], DType.float64);
           cdist(xa, xb, out: flip(bufCdist, axis: 0));
-          expect(bufCdist[[0, 0]], closeTo(expectedCdist[[1, 0]], 1e-12));
-          expect(bufCdist[[0, 1]], closeTo(expectedCdist[[1, 1]], 1e-12));
-          expect(bufCdist[[1, 0]], closeTo(expectedCdist[[0, 0]], 1e-12));
-          expect(bufCdist[[1, 1]], closeTo(expectedCdist[[0, 1]], 1e-12));
+          expect(
+            bufCdist[[0, 0]].scalar,
+            closeTo(expectedCdist[[1, 0]].scalar, 1e-12),
+          );
+          expect(
+            bufCdist[[0, 1]].scalar,
+            closeTo(expectedCdist[[1, 1]].scalar, 1e-12),
+          );
+          expect(
+            bufCdist[[1, 0]].scalar,
+            closeTo(expectedCdist[[0, 0]].scalar, 1e-12),
+          );
+          expect(
+            bufCdist[[1, 1]].scalar,
+            closeTo(expectedCdist[[0, 1]].scalar, 1e-12),
+          );
 
           // cdist with out sharing memory with xa
           final sharedXa = xa.copy();
           cdist(sharedXa, xb, out: sharedXa);
-          expect(sharedXa[[0, 0]], closeTo(expectedCdist[[0, 0]], 1e-12));
-          expect(sharedXa[[1, 1]], closeTo(expectedCdist[[1, 1]], 1e-12));
+          expect(
+            sharedXa[[0, 0]].scalar,
+            closeTo(expectedCdist[[0, 0]].scalar, 1e-12),
+          );
+          expect(
+            sharedXa[[1, 1]].scalar,
+            closeTo(expectedCdist[[1, 1]].scalar, 1e-12),
+          );
         });
       },
     );

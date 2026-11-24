@@ -202,10 +202,11 @@ void main() {
     );
 
     test(
-      'ComplexList.backingList and BoolList.backingList also retain root NDArray owner',
+      'ComplexList, BoolList, Float16List, and BFloat16List backingList retain root NDArray owner',
       () async {
         @pragma('vm:never-inline')
-        (List<double>, List<double>, List<int>) extractBackingLists() {
+        (List<double>, List<double>, List<int>, List<int>, List<int>)
+        extractBackingLists() {
           final c128 = NDArray.fromList(
             [Complex(1.5, -2.5), Complex(3.5, 4.5)],
             [2],
@@ -221,19 +222,63 @@ void main() {
             [4],
             DType.boolean,
           );
+          final f16 = NDArray.fromList([1.0, 2.0], [2], DType.float16);
+          final bf16 = NDArray.fromList([1.0, 2.0], [2], DType.bfloat16);
           return (
             (c128.data as ComplexList).backingList,
             (c64.data as ComplexList).backingList,
             (b.data as BoolList).backingList,
+            (f16.data as Float16List).backingList,
+            (bf16.data as BFloat16List).backingList,
           );
         }
 
-        final (c128Backing, c64Backing, boolBacking) = extractBackingLists();
+        final (c128Backing, c64Backing, boolBacking, f16Backing, bf16Backing) =
+            extractBackingLists();
         await _churnGcAndNativeHeap(rounds: 10);
 
         expect(c128Backing, equals([1.5, -2.5, 3.5, 4.5]));
         expect(c64Backing, equals([-5.0, 6.0, 7.0, -8.0]));
         expect(boolBacking, equals([1, 0, 1, 1]));
+        expect(f16Backing, equals([0x3C00, 0x4000]));
+        expect(bf16Backing, equals([0x3F80, 0x4000]));
+      },
+    );
+
+    test(
+      'asTypedDataView and asBytesView (writeable, read-only, and sliced) retain root owner across GC',
+      () async {
+        @pragma('vm:never-inline')
+        (Float64List, Float64List, Uint8List, Uint8List) extractViews() {
+          final a = NDArray.fromList(
+            [1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
+            [2, 3],
+            DType.float64,
+          );
+          final row1 = a[1];
+          final rwView = row1.asTypedDataView();
+
+          final b = NDArray.fromList([10.0, 20.0, 30.0], [3], DType.float64)
+            ..isWriteable = false;
+          final roView = b.asTypedDataView();
+
+          final c = NDArray.fromList([7, 8, 9, 10], [2, 2], DType.uint8);
+          final rwBytes = c[1].asBytesView();
+
+          final d = NDArray.fromList([42, 43], [2], DType.uint8)
+            ..isWriteable = false;
+          final roBytes = d.asBytesView();
+
+          return (rwView, roView, rwBytes, roBytes);
+        }
+
+        final (rwView, roView, rwBytes, roBytes) = extractViews();
+        await _churnGcAndNativeHeap(rounds: 10);
+
+        expect(rwView, equals([4.0, 5.0, 6.0]));
+        expect(roView, equals([10.0, 20.0, 30.0]));
+        expect(rwBytes, equals([9, 10]));
+        expect(roBytes, equals([42, 43]));
       },
     );
 
@@ -553,7 +598,9 @@ class _AsTypedListEscapeVisitor extends RecursiveAstVisitor<void> {
           return;
         }
       } else if (enclosingExec is MethodDeclaration &&
-          enclosingExec.name.lexeme == '_createDataView') {
+          (enclosingExec.name.lexeme == '_createDataView' ||
+              enclosingExec.name.lexeme == 'asBytesView' ||
+              enclosingExec.name.lexeme == 'asTypedDataViewRaw')) {
         return;
       }
     }

@@ -42,8 +42,8 @@ void expectArraysEquivalent<T extends DTypeTag>(
   final n = actualFlat.size;
 
   for (var i = 0; i < n; i++) {
-    final Object? a = actualFlat[[i]];
-    final Object? e = expectedFlat[[i]];
+    final Object? a = actualFlat[[i]].scalar;
+    final Object? e = expectedFlat[[i]].scalar;
 
     if (a is double && e is double) {
       if (a.isNaN && e.isNaN) continue;
@@ -779,18 +779,18 @@ void main() {
             // partition & argpartition: kth element must equal sorted[kth]
             const kth = 10;
             final sortedRef = sort(aContig);
-            final Object? kthVal = sortedRef[[kth]];
+            final Object? kthVal = sortedRef[[kth]].scalar;
             for (final variant in [aContig, aStep2, aNeg]) {
               final part = partition(variant, kth);
               expect(
-                part[[kth]],
+                part[[kth]].scalar,
                 equals(kthVal),
                 reason: 'partition($dtype) kth value',
               );
               final argpart = argpartition(variant, kth);
               final gathered = takeAlongAxis(variant, argpart, 0);
               expect(
-                gathered[[kth]],
+                gathered[[kth]].scalar,
                 equals(kthVal),
                 reason: 'argpartition($dtype) kth value',
               );
@@ -940,7 +940,7 @@ void main() {
             // minVal % -1 must be 0 everywhere
             for (var i = 0; i < 25; i++) {
               expect(
-                remContig[[i]],
+                remContig[[i]].scalar,
                 equals(0),
                 reason: 'remainder($dtype) at $i must be 0',
               );
@@ -958,7 +958,7 @@ void main() {
             );
             for (var i = 0; i < 25; i++) {
               expect(
-                fmodContig[[i]],
+                fmodContig[[i]].scalar,
                 equals(0),
                 reason: 'fmod($dtype) at $i must be 0',
               );
@@ -1179,7 +1179,7 @@ void main() {
               // Reference sequential execution using 1-element binaryUfunc
               final expectedAt = base.copy();
               for (var k = 0; k < indices.size; k++) {
-                final idx = indices[[k]];
+                final idx = indices[[k]].scalar;
                 final cur = expectedAt.slice([
                   Slice(start: idx, stop: idx + 1),
                 ]);
@@ -1243,8 +1243,8 @@ void main() {
                   );
                 }
                 expect(
-                  actualReduceat[[0]],
-                  equals(acc[[0]]),
+                  actualReduceat[[0]].scalar,
+                  equals(acc[[0]].scalar),
                   reason:
                       'reduceAtUfunc($dtype, $op) segment [0..3) vs manual fold',
                 );
@@ -1336,7 +1336,7 @@ void main() {
                 );
                 final extExpectedAt = extBase.copy();
                 for (var k = 0; k < indices.size; k++) {
-                  final idx = indices[[k]];
+                  final idx = indices[[k]].scalar;
                   final cur = extExpectedAt.slice([
                     Slice(start: idx, stop: idx + 1),
                   ]);
@@ -1455,14 +1455,14 @@ void main() {
               );
               if (op == BinaryOp.fmin) {
                 expect(
-                  (rContig[[0]] as double).isNaN,
+                  (rContig[[0]].scalar as double).isNaN,
                   isFalse,
                   reason: 'reduceAtUfunc($dtype, fmin) must ignore leading NaN',
                 );
               }
               if (op == BinaryOp.fmax) {
                 expect(
-                  (rContig[[0]] as double).isNaN,
+                  (rContig[[0]].scalar as double).isNaN,
                   isFalse,
                   reason: 'reduceAtUfunc($dtype, fmax) must ignore leading NaN',
                 );
@@ -1534,12 +1534,12 @@ void main() {
               final res2 = binaryUfunc(posZeroArr, negZeroArr, op: op);
               for (var i = 0; i < 25; i++) {
                 expect(
-                  (res1[[i]] as double).isNegative,
+                  (res1[[i]].scalar as double).isNegative,
                   isTrue,
                   reason: '$op($dtype)(-0.0, +0.0) at $i must be -0.0',
                 );
                 expect(
-                  (res2[[i]] as double).isNegative,
+                  (res2[[i]].scalar as double).isNegative,
                   isTrue,
                   reason: '$op($dtype)(+0.0, -0.0) at $i must be -0.0',
                 );
@@ -1550,12 +1550,12 @@ void main() {
               final res2 = binaryUfunc(posZeroArr, negZeroArr, op: op);
               for (var i = 0; i < 25; i++) {
                 expect(
-                  (res1[[i]] as double).isNegative,
+                  (res1[[i]].scalar as double).isNegative,
                   isFalse,
                   reason: '$op($dtype)(-0.0, +0.0) at $i must be +0.0',
                 );
                 expect(
-                  (res2[[i]] as double).isNegative,
+                  (res2[[i]].scalar as double).isNegative,
                   isFalse,
                   reason: '$op($dtype)(+0.0, -0.0) at $i must be +0.0',
                 );
@@ -1578,12 +1578,12 @@ void main() {
             );
             // NaNs must sort to the end
             expect(
-              (sortContig[[24]] as double).isNaN,
+              (sortContig[[24]].scalar as double).isNaN,
               isTrue,
               reason: 'sort($dtype) must place NaNs at the end',
             );
             expect(
-              sortContig[[0]],
+              sortContig[[0]].scalar,
               equals(double.negativeInfinity),
               reason: 'sort($dtype) must place -Inf first',
             );
@@ -2229,7 +2229,7 @@ void main() {
             final col = column(j)..sort(ucmp);
             expect(
               [
-                for (var i = 0; i < 5; i++) sorted0[[i, j]],
+                for (var i = 0; i < 5; i++) sorted0[[i, j]].scalar,
               ],
               equals(col),
               reason: 'sort(uint64, axis: 0) transposed column $j',
@@ -2241,7 +2241,7 @@ void main() {
             final r = row(i)..sort(ucmp);
             expect(
               [
-                for (var j = 0; j < 5; j++) sorted1[[i, j]],
+                for (var j = 0; j < 5; j++) sorted1[[i, j]].scalar,
               ],
               equals(r),
               reason: 'sort(uint64, axis: 1) transposed row $i',

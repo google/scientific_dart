@@ -274,21 +274,25 @@ void main() {
 
     group("6. operator [] coordinate vs row selection ergonomics", () {
       test(
-        "1D array fancy list indexing selects elements",
+        "1D array fancy indexing selects elements via Indices and single coordinate returns 0-D view",
         () => NDArray.scope(() {
           final a = NDArray.fromList([10, 20, 30, 40, 50], [5], DType.int32);
 
-          // List with multiple indices on 1D array extracts elements via take
-          final res = a[[1, 3]] as NDArray<AnySpec>;
+          // Fancy indexing on 1D array uses Indices(...) or nested list
+          final res = a[Indices([1, 3])];
           expect(res.shape, [2]);
           expect(res.toList(), [20, 40]);
 
-          final res3 = a[[0, 2, 4]] as NDArray<AnySpec>;
+          final res3 = a[Indices([0, 2, 4])];
           expect(res3.shape, [3]);
           expect(res3.toList(), [10, 30, 50]);
 
-          // Single coordinate lookup
-          expect(a[[2]], 30);
+          // Flat list with > rank selectors throws ArgumentError
+          expect(() => a[[1, 3]], throwsArgumentError);
+
+          // Single coordinate lookup returns a 0-D NDArray view
+          expect(a[[2]].shape, isEmpty);
+          expect(a[[2]].scalar, 30);
         }),
       );
 
@@ -300,24 +304,27 @@ void main() {
             4,
           ], DType.int32);
 
-          // Coordinate lookup matching rank 2
-          expect(a[[0, 1]], 1);
-          expect(a[[2, 3]], 11);
+          // Coordinate lookup matching rank 2 returns a 0-D NDArray view
+          expect(a[[0, 1]].scalar, 1);
+          expect(a[[2, 3]].scalar, 11);
 
-          // Coordinate length mismatch throws ArgumentError
-          expect(() => a[[1]], throwsArgumentError);
+          // Per-axis list with 1 selector selects row 1
+          expect(a[[1]].shape, [4]);
+          expect(a[[1]].toList(), [4, 5, 6, 7]);
+
+          // Too many selectors throws ArgumentError
+          expect(() => a[[0, 1, 2]], throwsArgumentError);
 
           // Row selection with integer: a[1] extracts row 1 as 1D array
-          final row1 = a[1] as NDArray<AnySpec>;
+          final row1 = a[1];
           expect(row1.shape, [4]);
           expect(row1.toList(), [4, 5, 6, 7]);
 
           // Row stack with nested list: a[[ [0, 2] ]] extracts rows 0 and 2
           final rows02 =
               a[[
-                    [0, 2],
-                  ]]
-                  as NDArray<AnySpec>;
+                [0, 2],
+              ]];
           expect(rows02.shape, [2, 4]);
           expect(rows02.toList(), [0, 1, 2, 3, 8, 9, 10, 11]);
         }),
@@ -333,10 +340,10 @@ void main() {
           ], DType.int32);
 
           // Full coordinate matching rank 3
-          expect(a[[0, 1, 2]], 6);
+          expect(a[[0, 1, 2]].scalar, 6);
 
           // Subarray selection via slice / integer index
-          final sub2D = a[0] as NDArray<AnySpec>;
+          final sub2D = a[0];
           expect(sub2D.shape, [3, 4]);
         }),
       );
@@ -345,7 +352,7 @@ void main() {
         "operator []= polymorphic mutation with ergonomic selectors",
         () => NDArray.scope(() {
           final a = NDArray.fromList([10, 20, 30, 40, 50], [5], DType.int32);
-          a[[1, 3]] = NDArray.fromList([99, 88], [2], DType.int32);
+          a[Indices([1, 3])] = NDArray.fromList([99, 88], [2], DType.int32);
           expect(a.toList(), [10, 99, 30, 88, 50]);
 
           final b = NDArray.fromList(List.generate(12, (i) => i), [

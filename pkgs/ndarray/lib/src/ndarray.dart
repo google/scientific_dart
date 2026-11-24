@@ -1175,6 +1175,10 @@ sealed class NDArray<T extends DTypeTag>
       _dataOwnerExpando[list.backingList] = owner;
     } else if (list is BoolList) {
       _dataOwnerExpando[list.backingList] = owner;
+    } else if (list is Float16List) {
+      _dataOwnerExpando[list.backingList] = owner;
+    } else if (list is BFloat16List) {
+      _dataOwnerExpando[list.backingList] = owner;
     }
   }
 
@@ -1668,10 +1672,16 @@ sealed class NDArray<T extends DTypeTag>
 
   /// Factory to create a C-contiguous array from a Dart list (copies data).
   ///
-  /// The [list] is flattened and copied into the newly allocated array memory.
+  /// The [list] is copied into the newly allocated array memory. When [list] is
+  /// already a matching `dart:typed_data` list (such as [Float64List] for
+  /// [DType.float64]), this delegates to the bulk-copy [NDArray.fromTypedData]
+  /// fast path.
+  ///
   /// The total size of the [shape] must match the number of elements in [list].
   ///
-  /// It is an error if the total size of [shape] does not match the length of [list].
+  /// It is an error if the total size of [shape] does not match the length of
+  /// [list], or if an integer element falls outside the representable range of
+  /// [dtype].
   ///
   /// **Example:**
   /// {@example /example/ndarray_example.dart lang=dart}
@@ -1688,23 +1698,45 @@ sealed class NDArray<T extends DTypeTag>
         'Must have length matching total size of shape $shape ($totalSize)',
       );
     }
+    final bool isMatchingTypedList = switch (dtype) {
+      DType.float64 => list is Float64List,
+      DType.float32 => list is Float32List,
+      DType.int64 => list is Int64List,
+      DType.int32 => list is Int32List,
+      DType.int16 => list is Int16List,
+      DType.int8 => list is Int8List,
+      DType.uint64 => list is Uint64List,
+      DType.uint32 => list is Uint32List,
+      DType.uint16 => list is Uint16List,
+      DType.uint8 => list is Uint8List || list is Uint8ClampedList,
+      DType.float16 ||
+      DType.bfloat16 ||
+      DType.complex128 ||
+      DType.complex64 ||
+      DType.boolean => false,
+    };
+    if (isMatchingTypedList) {
+      return NDArray<T>.fromTypedData(list as TypedData, shape, dtype);
+    }
     final arr = NDArray<T>.create(shape, dtype);
     try {
-      final List<dynamic> eagerList = switch (dtype) {
-        DType.float64 => Float64List.fromList(
-          list.map((e) => (e as num).toDouble()).toList(),
-        ),
-        DType.float32 => Float32List.fromList(
-          list.map((e) => (e as num).toDouble()).toList(),
-        ),
-        DType.float16 ||
-        DType.bfloat16 => list.map((e) => (e as num).toDouble()).toList(),
-        DType.int64 => Int64List.fromList(
-          list.map((e) => (e as num).toInt()).toList(),
-        ),
-        DType.int32 => Int32List.fromList(
-          list.map((e) {
-            final v = (e as num).toInt();
+      final data = arr._data;
+      switch (dtype) {
+        case DType.float64:
+        case DType.float32:
+        case DType.float16:
+        case DType.bfloat16:
+          for (var i = 0; i < totalSize; i++) {
+            data[i] = (list[i] as num).toDouble();
+          }
+        case DType.int64:
+        case DType.uint64:
+          for (var i = 0; i < totalSize; i++) {
+            data[i] = (list[i] as num).toInt();
+          }
+        case DType.int32:
+          for (var i = 0; i < totalSize; i++) {
+            final v = (list[i] as num).toInt();
             if (v < -2147483648 || v > 2147483647) {
               throw RangeError.range(
                 v,
@@ -1714,12 +1746,11 @@ sealed class NDArray<T extends DTypeTag>
                 'Value out of range for int32',
               );
             }
-            return v;
-          }).toList(),
-        ),
-        DType.int16 => Int16List.fromList(
-          list.map((e) {
-            final v = (e as num).toInt();
+            data[i] = v;
+          }
+        case DType.int16:
+          for (var i = 0; i < totalSize; i++) {
+            final v = (list[i] as num).toInt();
             if (v < -32768 || v > 32767) {
               throw RangeError.range(
                 v,
@@ -1729,12 +1760,11 @@ sealed class NDArray<T extends DTypeTag>
                 'Value out of range for int16',
               );
             }
-            return v;
-          }).toList(),
-        ),
-        DType.int8 => Int8List.fromList(
-          list.map((e) {
-            final v = (e as num).toInt();
+            data[i] = v;
+          }
+        case DType.int8:
+          for (var i = 0; i < totalSize; i++) {
+            final v = (list[i] as num).toInt();
             if (v < -128 || v > 127) {
               throw RangeError.range(
                 v,
@@ -1744,15 +1774,11 @@ sealed class NDArray<T extends DTypeTag>
                 'Value out of range for int8',
               );
             }
-            return v;
-          }).toList(),
-        ),
-        DType.uint64 => Uint64List.fromList(
-          list.map((e) => (e as num).toInt()).toList(),
-        ),
-        DType.uint32 => Uint32List.fromList(
-          list.map((e) {
-            final v = (e as num).toInt();
+            data[i] = v;
+          }
+        case DType.uint32:
+          for (var i = 0; i < totalSize; i++) {
+            final v = (list[i] as num).toInt();
             if (v < 0 || v > 4294967295) {
               throw RangeError.range(
                 v,
@@ -1762,12 +1788,11 @@ sealed class NDArray<T extends DTypeTag>
                 'Value out of range for uint32',
               );
             }
-            return v;
-          }).toList(),
-        ),
-        DType.uint16 => Uint16List.fromList(
-          list.map((e) {
-            final v = (e as num).toInt();
+            data[i] = v;
+          }
+        case DType.uint16:
+          for (var i = 0; i < totalSize; i++) {
+            final v = (list[i] as num).toInt();
             if (v < 0 || v > 65535) {
               throw RangeError.range(
                 v,
@@ -1777,12 +1802,11 @@ sealed class NDArray<T extends DTypeTag>
                 'Value out of range for uint16',
               );
             }
-            return v;
-          }).toList(),
-        ),
-        DType.uint8 => Uint8List.fromList(
-          list.map((e) {
-            final v = (e as num).toInt();
+            data[i] = v;
+          }
+        case DType.uint8:
+          for (var i = 0; i < totalSize; i++) {
+            final v = (list[i] as num).toInt();
             if (v < 0 || v > 255) {
               throw RangeError.range(
                 v,
@@ -1792,14 +1816,17 @@ sealed class NDArray<T extends DTypeTag>
                 'Value out of range for uint8',
               );
             }
-            return v;
-          }).toList(),
-        ),
-        DType.boolean => List<bool>.from(list),
-        DType.complex128 || DType.complex64 => List<Complex>.from(list),
-      };
-      for (var i = 0; i < eagerList.length; i++) {
-        arr.setCellRaw(i, eagerList[i]);
+            data[i] = v;
+          }
+        case DType.boolean:
+          for (var i = 0; i < totalSize; i++) {
+            data[i] = list[i] as bool;
+          }
+        case DType.complex128:
+        case DType.complex64:
+          for (var i = 0; i < totalSize; i++) {
+            data[i] = list[i] as Complex;
+          }
       }
       return arr;
     } catch (_) {
@@ -1807,6 +1834,221 @@ sealed class NDArray<T extends DTypeTag>
       rethrow;
     }
   }
+
+  /// Factory to create a C-contiguous array by bulk-copying from a Dart
+  /// [TypedData] buffer.
+  ///
+  /// The runtime type and length of [data] must match [dtype] and [shape]:
+  /// - [DType.float64]: [Float64List] of length `size`
+  /// - [DType.float32]: [Float32List] of length `size`
+  /// - [DType.float16] / [DType.bfloat16]: [Uint16List] of length `size`
+  ///   (raw 16-bit IEEE 754 binary16 / bfloat16 bit patterns)
+  /// - [DType.int64]–[DType.int8]: matching signed integer list of length `size`
+  /// - [DType.uint64]–[DType.uint8]: matching unsigned integer list of length
+  ///   `size` ([Uint8ClampedList] is also accepted for [DType.uint8])
+  /// - [DType.complex128]: [Float64List] of length `2 * size` (interleaved
+  ///   `[real0, imag0, ...]`)
+  /// - [DType.complex64]: [Float32List] of length `2 * size` (interleaved
+  ///   `[real0, imag0, ...]`)
+  /// - [DType.boolean]: [Uint8List] of length `size` (non-zero bytes are
+  ///   normalized to `1`)
+  ///
+  /// Subviews (e.g. `Float64List.sublistView`) are respected via
+  /// [TypedData.offsetInBytes] and [TypedData.lengthInBytes].
+  ///
+  /// It is an error if [shape] contains negative dimensions or overflows 64-bit
+  /// bounds, or if [data] does not match [dtype] or [shape].
+  ///
+  /// **Performance considerations:**
+  /// - $O(N)$ bulk memory copy with zero intermediate Dart list allocations.
+  ///
+  /// **Example:**
+  /// {@example /example/indexing_example.dart lang=dart}
+  factory NDArray.fromTypedData(
+    TypedData data,
+    List<int> shape,
+    DType<T> dtype,
+  ) {
+    final totalSize = _computeCheckedTotalSize(shape);
+    final bool valid = switch (dtype) {
+      DType.float64 => data is Float64List && data.length == totalSize,
+      DType.float32 => data is Float32List && data.length == totalSize,
+      DType.float16 ||
+      DType.bfloat16 => data is Uint16List && data.length == totalSize,
+      DType.int64 => data is Int64List && data.length == totalSize,
+      DType.int32 => data is Int32List && data.length == totalSize,
+      DType.int16 => data is Int16List && data.length == totalSize,
+      DType.int8 => data is Int8List && data.length == totalSize,
+      DType.uint64 => data is Uint64List && data.length == totalSize,
+      DType.uint32 => data is Uint32List && data.length == totalSize,
+      DType.uint16 => data is Uint16List && data.length == totalSize,
+      DType.uint8 =>
+        (data is Uint8List && data.length == totalSize) ||
+            (data is Uint8ClampedList && data.length == totalSize),
+      DType.complex128 =>
+        data is Float64List &&
+            data.length.isEven &&
+            data.length ~/ 2 == totalSize,
+      DType.complex64 =>
+        data is Float32List &&
+            data.length.isEven &&
+            data.length ~/ 2 == totalSize,
+      DType.boolean => data is Uint8List && data.length == totalSize,
+    };
+    if (!valid) {
+      throw ArgumentError.value(
+        data,
+        'data',
+        'Must be a TypedData matching $dtype for shape $shape ($totalSize elements)',
+      );
+    }
+    final byteCount = totalSize * dtype.byteWidth;
+    final Uint8List? srcBytes = totalSize > 0 && dtype != DType.boolean
+        ? data.buffer.asUint8List(data.offsetInBytes, byteCount)
+        : null;
+    final arr = NDArray<T>.create(shape, dtype);
+    if (totalSize == 0) return arr;
+    if (dtype == DType.boolean) {
+      _copyBoolBytesToNative(arr._pointer, data as Uint8List, totalSize);
+    } else {
+      _copyBytesToNative(arr._pointer, srcBytes!, byteCount);
+    }
+    return arr;
+  }
+
+  /// Factory to create a C-contiguous array by bulk-copying raw host-endian
+  /// [bytes].
+  ///
+  /// The byte length of [bytes] must equal `size * dtype.byteWidth`, where
+  /// `size` is the total number of elements implied by [shape]. For
+  /// [DType.boolean], non-zero bytes are normalized to `1`.
+  ///
+  /// It is an error if [shape] contains negative dimensions or overflows 64-bit
+  /// bounds, or if `bytes.lengthInBytes != size * dtype.byteWidth`.
+  ///
+  /// **Performance considerations:**
+  /// - $O(N)$ bulk memory copy with zero intermediate Dart list allocations.
+  ///
+  /// **Example:**
+  /// {@example /example/indexing_example.dart lang=dart}
+  factory NDArray.fromBytes(Uint8List bytes, List<int> shape, DType<T> dtype) {
+    final totalSize = _computeCheckedTotalSize(shape);
+    if (totalSize > 0x7fffffffffffffff ~/ dtype.byteWidth) {
+      throw ArgumentError.value(
+        shape,
+        'shape',
+        'Must not result in byte size overflowing 64-bit integer',
+      );
+    }
+    final expectedBytes = totalSize * dtype.byteWidth;
+    if (bytes.lengthInBytes != expectedBytes) {
+      throw ArgumentError.value(
+        bytes,
+        'bytes',
+        'Must have byte length matching shape $shape and $dtype ($expectedBytes bytes, got ${bytes.lengthInBytes})',
+      );
+    }
+    final arr = NDArray<T>.create(shape, dtype);
+    if (expectedBytes == 0) return arr;
+    if (dtype == DType.boolean) {
+      _copyBoolBytesToNative(arr._pointer, bytes, totalSize);
+    } else {
+      _copyBytesToNative(arr._pointer, bytes, expectedBytes);
+    }
+    return arr;
+  }
+
+  static void _copyBytesToNative(
+    ffi.Pointer<ffi.Void> dst,
+    Uint8List src,
+    int byteCount,
+  ) {
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      final out = dst.cast<ffi.Uint8>();
+      for (var i = 0; i < byteCount; i++) {
+        out[i] = src[i];
+      }
+      return;
+    }
+    // coverage:ignore-end
+    dst.cast<ffi.Uint8>().asTypedList(byteCount).setAll(0, src);
+  }
+
+  static void _copyBoolBytesToNative(
+    ffi.Pointer<ffi.Void> dst,
+    Uint8List src,
+    int count,
+  ) {
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      final out = dst.cast<ffi.Uint8>();
+      for (var i = 0; i < count; i++) {
+        out[i] = src[i] != 0 ? 1 : 0;
+      }
+      return;
+    }
+    // coverage:ignore-end
+    final out = dst.cast<ffi.Uint8>().asTypedList(count);
+    for (var i = 0; i < count; i++) {
+      out[i] = src[i] != 0 ? 1 : 0;
+    }
+  }
+
+  static void _copyNativeToBytes(
+    Uint8List dst,
+    ffi.Pointer<ffi.Void> src,
+    int byteCount,
+  ) {
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      final inp = src.cast<ffi.Uint8>();
+      for (var i = 0; i < byteCount; i++) {
+        dst[i] = inp[i];
+      }
+      return;
+    }
+    // coverage:ignore-end
+    dst.setAll(0, src.cast<ffi.Uint8>().asTypedList(byteCount));
+  }
+
+  static TypedData _allocateTypedData(DType<DTypeTag> dtype, int count) =>
+      switch (dtype) {
+        DType.float64 => Float64List(count),
+        DType.float32 => Float32List(count),
+        DType.float16 || DType.bfloat16 => Uint16List(count),
+        DType.int64 => Int64List(count),
+        DType.int32 => Int32List(count),
+        DType.int16 => Int16List(count),
+        DType.int8 => Int8List(count),
+        DType.uint64 => Uint64List(count),
+        DType.uint32 => Uint32List(count),
+        DType.uint16 => Uint16List(count),
+        DType.uint8 => Uint8List(count),
+        DType.complex128 => Float64List(count * 2),
+        DType.complex64 => Float32List(count * 2),
+        DType.boolean => Uint8List(count),
+      };
+
+  static TypedData _asUnmodifiableTypedData(
+    DType<DTypeTag> dtype,
+    TypedData view,
+  ) => switch (dtype) {
+    DType.float64 ||
+    DType.complex128 => (view as Float64List).asUnmodifiableView(),
+    DType.float32 ||
+    DType.complex64 => (view as Float32List).asUnmodifiableView(),
+    DType.float16 ||
+    DType.bfloat16 ||
+    DType.uint16 => (view as Uint16List).asUnmodifiableView(),
+    DType.int64 => (view as Int64List).asUnmodifiableView(),
+    DType.int32 => (view as Int32List).asUnmodifiableView(),
+    DType.int16 => (view as Int16List).asUnmodifiableView(),
+    DType.int8 => (view as Int8List).asUnmodifiableView(),
+    DType.uint64 => (view as Uint64List).asUnmodifiableView(),
+    DType.uint32 => (view as Uint32List).asUnmodifiableView(),
+    DType.uint8 || DType.boolean => (view as Uint8List).asUnmodifiableView(),
+  };
 
   /// Factory to create a 0-dimensional scalar array containing a single [value].
   ///
@@ -3146,7 +3388,7 @@ sealed class NDArray<T extends DTypeTag>
   }
 
   /// Modifies elements where the provided boolean [mask] contains `true`,
-  /// drawing sequential values from another [NDArray] [values].
+  /// drawing sequential values from another [NDArray] [values] of the same dtype.
   ///
   /// **Polymorphic Equivalence:**
   /// Equivalent to calling `this[mask] = values`.
@@ -3155,13 +3397,17 @@ sealed class NDArray<T extends DTypeTag>
   /// - [mask] must share identical dimensions ([shape]) with this array.
   ///
   /// It is an error if [mask] shape does not match this array's shape, or if [values] has fewer elements than the number of true targets in [mask].
-  void setByMask(NDArray<Boolean> mask, NDArray<DTypeTag> values) {
+  void setByMask(NDArray<Boolean> mask, NDArray<T> values) {
     if (isDisposed || mask.isDisposed || values.isDisposed) {
       throw StateError('Cannot access a disposed NDArray.');
     }
     if (!isWriteable) {
       throw StateError('Cannot mutate a read-only broadcast view.');
     }
+    _setByMaskImpl(mask, values);
+  }
+
+  void _setByMaskImpl(NDArray<Boolean> mask, NDArray<DTypeTag> values) {
     if (mask.shape.length != shape.length) {
       throw ArgumentError.value(
         mask,
@@ -3180,7 +3426,7 @@ sealed class NDArray<T extends DTypeTag>
     }
 
     if (values.shape.isEmpty) {
-      setByMaskScalar(
+      setByMaskScalarUntyped(
         mask,
         _coerceScalar(values.getCellFlat(0), dtype, values.dtype),
       );
@@ -3197,7 +3443,7 @@ sealed class NDArray<T extends DTypeTag>
       final tempVal = valAliases ? values.copy() : values;
       final tempMask = maskAliases ? mask.copy() : mask;
       try {
-        setByMask(tempMask, tempVal);
+        _setByMaskImpl(tempMask, tempVal);
       } finally {
         if (!identical(tempVal, values)) tempVal.dispose();
         if (!identical(tempMask, mask)) tempMask.dispose();
@@ -3257,12 +3503,9 @@ sealed class NDArray<T extends DTypeTag>
     walk(0, offsetElements, mask.offsetElements);
   }
 
-  /// Modifies elements where the provided boolean binary [mask] contains `true`,
-  /// setting them all uniformly to the single scalar [value].
-  ///
-  /// **Preconditions:**
-  /// - [mask] must share identical dimensions ([shape]) with this array.
-  void setByMaskScalar(NDArray<Boolean> mask, Object? value) {
+  /// Internal untyped entry point for [NDArrayElements.setByMaskScalar].
+  @internal
+  void setByMaskScalarUntyped(NDArray<Boolean> mask, Object? value) {
     if (isDisposed ||
         mask.isDisposed ||
         (value is NDArray && value.isDisposed)) {
@@ -3292,7 +3535,7 @@ sealed class NDArray<T extends DTypeTag>
         helpers.sharesMemory(this, mask)) {
       final tempMask = mask.copy();
       try {
-        setByMaskScalar(tempMask, value);
+        setByMaskScalarUntyped(tempMask, value);
       } finally {
         tempMask.dispose();
       }
@@ -3334,13 +3577,10 @@ sealed class NDArray<T extends DTypeTag>
     walk(0, offsetElements, mask.offsetElements);
   }
 
-  /// Modifies entire sub-matrix rows or slices along the specified [axis] targeted by a 1D list of [indices], setting them all to a single [value].
-  ///
-  /// **Polymorphic Equivalence:**
-  /// When [axis] is `0`, equivalent to calling `this[ [indices] ] = value` (advanced row stack scalar mutation).
-  ///
-  void setIndicesScalar(
-    NDArray<DTypeTag> indices,
+  /// Internal untyped entry point for [NDArrayElements.setIndicesScalar].
+  @internal
+  void setIndicesScalarUntyped(
+    NDArray<IntegerDType> indices,
     Object? value, {
     int axis = 0,
   }) {
@@ -3360,7 +3600,7 @@ sealed class NDArray<T extends DTypeTag>
         helpers.sharesMemory(this, indices)) {
       final tempIdx = indices.copy();
       try {
-        setIndicesScalar(tempIdx, value, axis: axis);
+        setIndicesScalarUntyped(tempIdx, value, axis: axis);
       } finally {
         tempIdx.dispose();
       }
@@ -3386,7 +3626,7 @@ sealed class NDArray<T extends DTypeTag>
     final sliceStrides = List<int>.from(strides)..removeAt(axis);
 
     for (var idx = 0; idx < indices.size; idx++) {
-      final rawIdx = indices.getCellFlat(idx) as int;
+      final rawIdx = indices.getCellFlat(idx);
       if (indices.dtype == DType.uint64 && rawIdx < 0) {
         throw RangeError.range(
           rawIdx,
@@ -3420,14 +3660,15 @@ sealed class NDArray<T extends DTypeTag>
     }
   }
 
-  /// Modifies entire sub-matrix rows or slices along the specified [axis] targeted by a 1D list of [indices], overwriting them with sequential values from [values].
+  /// Modifies entire sub-matrix rows or slices along the specified [axis]
+  /// targeted by an integer [indices] array, overwriting them with sequential
+  /// values from [values] of the same dtype.
   ///
   /// **Polymorphic Equivalence:**
-  /// When [axis] is `0`, equivalent to calling `this[ [indices] ] = values` (advanced row stack array assignment).
-  ///
+  /// When [axis] is `0`, equivalent to calling `this[indices] = values`.
   void setIndices(
-    NDArray<DTypeTag> indices,
-    NDArray<DTypeTag> values, {
+    NDArray<IntegerDType> indices,
+    NDArray<T> values, {
     int axis = 0,
   }) {
     if (isDisposed || indices.isDisposed || values.isDisposed) {
@@ -3436,13 +3677,21 @@ sealed class NDArray<T extends DTypeTag>
     if (!isWriteable) {
       throw StateError('Cannot mutate a read-only broadcast view.');
     }
+    _setIndicesImpl(indices, values, axis: axis);
+  }
+
+  void _setIndicesImpl(
+    NDArray<IntegerDType> indices,
+    NDArray<DTypeTag> values, {
+    int axis = 0,
+  }) {
     if (axis < 0 || axis >= shape.length) {
       throw RangeError.range(axis, 0, shape.length - 1, 'axis');
     }
 
     final selfDType = dtype;
     if (values.shape.isEmpty) {
-      setIndicesScalar(
+      setIndicesScalarUntyped(
         indices,
         _coerceScalar(values.getCellFlat(0), selfDType, values.dtype),
         axis: axis,
@@ -3460,7 +3709,7 @@ sealed class NDArray<T extends DTypeTag>
       final tempVal = valAliases ? values.copy() : values;
       final tempIdx = idxAliases ? indices.copy() : indices;
       try {
-        setIndices(tempIdx, tempVal, axis: axis);
+        _setIndicesImpl(tempIdx, tempVal, axis: axis);
       } finally {
         if (!identical(tempVal, values)) tempVal.dispose();
         if (!identical(tempIdx, indices)) tempIdx.dispose();
@@ -3474,7 +3723,7 @@ sealed class NDArray<T extends DTypeTag>
 
     final targetIndices = <int>[];
     for (var idx = 0; idx < indices.size; idx++) {
-      final rawIdx = indices.getCellFlat(idx) as int;
+      final rawIdx = indices.getCellFlat(idx);
       if (indices.dtype == DType.uint64 && rawIdx < 0) {
         throw RangeError.range(
           rawIdx,
@@ -3638,7 +3887,7 @@ sealed class NDArray<T extends DTypeTag>
           item.length,
         ], DType.boolean);
         tempAllocations?.add(boolArr);
-        return Mask(BooleanMask(boolArr));
+        return Mask(boolArr);
       }
       throw ArgumentError.value(
         item,
@@ -3651,13 +3900,12 @@ sealed class NDArray<T extends DTypeTag>
         throw StateError('Cannot access a disposed NDArray.');
       }
       if (item.dtype == DType.boolean) {
-        return Mask(BooleanMask(item as NDArray<Boolean>));
+        return Mask(item as NDArray<Boolean>);
       }
       if (item.dtype.isInteger) {
         return Indices(_extractInt64Indices(item));
       }
     }
-    if (item is BooleanMask) return Mask(item);
     throw ArgumentError.value(
       item,
       'item',
@@ -3672,7 +3920,7 @@ sealed class NDArray<T extends DTypeTag>
   /// - [selectors] length must not exceed the rank of the array.
   ///
   /// It is an error if [selectors] has more elements than the array rank or if [value] cannot be broadcast to the selected slice shape.
-  void sliceAssign(List<Selector> selectors, Object? value) {
+  void sliceAssign(List<Selector> selectors, Object value) {
     if (isDisposed) {
       throw StateError(
         "Cannot access an array or view whose memory has been explicitly freed/disposed!",
@@ -3685,7 +3933,7 @@ sealed class NDArray<T extends DTypeTag>
   }
 
   /// Mutates multi-dimensional slices targeted by normalized [selectors].
-  void _sliceAssign(List<Selector> selectors, Object? value) {
+  void _sliceAssign(List<Selector> selectors, Object value) {
     if (value is NDArray && value.isDisposed) {
       throw StateError('Cannot access a disposed NDArray.');
     }
@@ -3723,7 +3971,10 @@ sealed class NDArray<T extends DTypeTag>
       final sel = processedSelectors[i];
       if (sel is Mask) {
         final mask = sel.mask;
-        if (mask.mask.shape.length != 1 || mask.mask.shape[0] != shape[i]) {
+        if (mask.isDisposed) {
+          throw StateError('Cannot access a disposed NDArray.');
+        }
+        if (mask.shape.length != 1 || mask.shape[0] != shape[i]) {
           throw ArgumentError.value(
             sel,
             'selectors[$i]',
@@ -3738,9 +3989,9 @@ sealed class NDArray<T extends DTypeTag>
             size * ffi.sizeOf<ffi.Int64>(),
           );
           final count = unpack_mask_c(
-            mask.mask.pointer.cast(),
+            mask.pointer.cast(),
             size,
-            mask.mask.strides[0],
+            mask.strides[0],
             pIndices,
           );
           indices = copyInt64PointerToList(pIndices, count);
@@ -3837,7 +4088,6 @@ sealed class NDArray<T extends DTypeTag>
       }
 
       NDArray? broadcastedVal;
-      NDArray? tempCopy;
       try {
         NDArray? valArr;
         if (value is NDArray) {
@@ -3846,10 +4096,6 @@ sealed class NDArray<T extends DTypeTag>
           } else {
             broadcastedVal = ops.broadcastTo(value, targetShape);
             valArr = broadcastedVal;
-          }
-          if (helpers.sharesMemory(this, valArr)) {
-            tempCopy = valArr.copy();
-            valArr = tempCopy;
           }
         } else {
           valArr = null;
@@ -3909,33 +4155,39 @@ sealed class NDArray<T extends DTypeTag>
         walk(0, 0);
       } finally {
         broadcastedVal?.dispose();
-        tempCopy?.dispose();
       }
     }
   }
 
-  /// Fetches elements polymorphically based on selection specification object [spec].
+  /// Indexes, slices, or filters this array, always returning a statically
+  /// typed `NDArray<T>`.
   ///
-  /// Corresponds to NumPy multi-dimensional indexing and slicing syntax.
-  ///
-  /// **Behavior by Parameter Type:**
-  /// - **[int]**: Extracts a view along the first axis with rank reduced by 1.
-  /// - **[Slice] / [Index] / [Indices] / [Mask] / [BooleanMask]**: Single-axis selector along dimension 0.
-  /// - **`List<int>`**: Fetches a single coordinate cell scalar matching array rank.
-  /// - **`List<List<int>>`**: Fetches sub-matrix row slices targeting axis 0.
-  /// - **`List<dynamic>`**: Multi-dimensional selection objects (e.g. mixed lists of slices, index lists, integers).
+  /// **Behavior by Selector Type:**
+  /// - **[int]**: Extracts a zero-copy view along axis 0 with rank reduced by 1
+  ///   (yields a 0-D view for a 1-D array; read its value with `.scalar` or use
+  ///   [NDArrayElements.getCell]).
+  /// - **[Selector]** ([Slice] / [Index] / [Indices] / [Mask]): Single-axis
+  ///   selector along dimension 0.
+  /// - **`List`**: Per-axis selectors applied across dimensions in order; each
+  ///   entry may be an `int`, [Selector], `List<int>`, `List<bool>`, integer
+  ///   [NDArray], or boolean [NDArray]. For example, `a[[0, 1]]` selects index 0
+  ///   on axis 0 and index 1 on axis 1 (a 0-D view on a 2-D array, or a 1-D view
+  ///   on a 3-D array). Use [Indices] (e.g. `a[Indices([0, 2])]`) or [take] for
+  ///   fancy selection along axis 0.
   /// - **`NDArray<Boolean>`**:
   ///   - Full mask (`spec.shape == shape`): Calls [applyMask].
-  ///   - 1D mask along axis 0: Calls [slice].
-  /// - **`NDArray` (integer)**: Performs [take] for fancy index selection.
+  ///   - 1-D mask along axis 0: Calls `slice([Mask(spec)])`.
+  /// - **`NDArray` (integer)**: Performs fancy index selection along axis 0.
   ///
   /// **Preconditions:**
   /// - The array must not be disposed.
-  /// - [spec] must be a supported indexing / slicing object type or list of selector objects.
+  /// - [spec] must be a supported indexing / slicing object type or list of
+  ///   selector objects.
   ///
   /// - It is an error if this array has been explicitly disposed.
-  /// - It is an error if [spec] is an unsupported type or contains dimension mismatch.
-  dynamic operator [](Object? spec) {
+  /// - It is an error if [spec] is an unsupported type or contains a dimension
+  ///   mismatch.
+  NDArray<T> operator [](Object spec) {
     if (isDisposed) {
       throw StateError(
         "Cannot access an array or view whose memory has been explicitly freed/disposed!",
@@ -3943,61 +4195,38 @@ sealed class NDArray<T extends DTypeTag>
     }
     if (spec is int) {
       return slice([Index(spec)]);
-    } else if (spec is Slice ||
-        spec is Index ||
-        spec is Indices ||
-        spec is Mask ||
-        spec is BooleanMask) {
-      return slice([_toSelector(spec)]);
-    } else if (spec is List) {
-      if (spec.length == 1 && spec.first is List) {
-        final subList = spec.first as List;
-        if (subList.every((e) => e is int)) {
-          final intIndices = subList.cast<int>();
-          return take(intIndices);
-        }
-      } else if (spec.every((e) => e is int)) {
-        if (shape.length == 1 && spec.length > 1) {
-          return take(spec.cast<int>());
-        }
-        if (spec.length != shape.length) {
-          throw ArgumentError.value(
-            spec,
-            'spec',
-            'Must have length matching array rank (${shape.length})',
-          );
-        }
-        return getCell(spec.cast<int>());
-      }
-      final temps = <NDArray>[];
-      try {
-        final selectors = spec
-            .map((e) => _toSelector(e, temps))
-            .cast<Selector>()
-            .toList();
-        return slice(selectors);
-      } finally {
-        for (final t in temps) {
-          t.dispose();
-        }
-      }
-    } else if (spec is NDArray && spec.dtype == DType.boolean) {
-      if (spec.isDisposed) {
+    } else if (spec is Mask ||
+        (spec is NDArray && spec.dtype == DType.boolean)) {
+      final NDArray<Boolean> boolMask = spec is Mask
+          ? spec.mask
+          : spec as NDArray<Boolean>;
+      if (boolMask.isDisposed) {
         throw StateError('Cannot access a disposed NDArray.');
       }
-      final boolMask = spec as NDArray<Boolean>;
       if (listEquals(boolMask.shape, shape)) {
         return applyMask(boolMask);
       } else if (boolMask.shape.length == 1 &&
           shape.isNotEmpty &&
           boolMask.shape[0] == shape[0]) {
-        return slice([Mask(BooleanMask(boolMask))]);
+        return slice([Mask(boolMask)]);
       } else {
         throw ArgumentError.value(
           spec,
           'spec',
           'Must have shape matching array shape ($shape)',
         );
+      }
+    } else if (spec is Selector) {
+      return slice([spec]);
+    } else if (spec is List) {
+      final temps = <NDArray>[];
+      try {
+        final selectors = spec.map((e) => _toSelector(e, temps)).toList();
+        return slice(selectors);
+      } finally {
+        for (final t in temps) {
+          t.dispose();
+        }
       }
     } else if (spec is NDArray && spec.dtype.isInteger) {
       if (spec.isDisposed) {
@@ -4030,29 +4259,34 @@ sealed class NDArray<T extends DTypeTag>
     }
   }
 
-  /// Mutates elements polymorphically based on selection specification object [spec].
+  /// Mutates elements in-place based on selection specification [spec].
   ///
-  /// Corresponds to NumPy multi-dimensional slice assignment.
+  /// Corresponds to NumPy multi-dimensional slice and mask assignment.
   ///
-  /// **Behavior by Parameter Type:**
-  /// - **[int]**: Modifies row or slice along the first axis.
-  /// - **[Slice] / [Index] / [Indices] / [Mask] / [BooleanMask]**: Mutates targeted sub-matrix elements along dimension 0.
-  /// - **`List<int>`**: Modifies a single coordinate cell scalar matching array rank.
-  /// - **`List<List<int>>`**: Modifies targeted row slices along axis 0.
-  /// - **`List<dynamic>`**: Multi-dimensional selection objects (e.g. mixed lists of slices, index lists, integers).
+  /// **Behavior by Selector Type:**
+  /// - **[int]**: Modifies the sub-array or element at [spec] along axis 0.
+  /// - **[Selector]** ([Slice] / [Index] / [Indices] / [Mask]): Mutates the
+  ///   selected slice along axis 0.
+  /// - **`List`**: Per-axis selectors matching [operator []] (e.g.
+  ///   `a[[0, 1]] = 5.0` or `a[[Slice(start: 0, stop: 2), 1]] = values`).
   /// - **`NDArray<Boolean>`**:
-  ///   - Full mask (`spec.shape == shape`): Calls [setByMask] or [setByMaskScalar].
-  ///   - 1D mask along axis 0: Performs slice assignment along dimension 0.
-  /// - **`NDArray` (integer)**: Modifies elements selected by fancy integer array indices.
+  ///   - Full mask (`spec.shape == shape`): Calls [setByMask] or
+  ///     [NDArrayElements.setByMaskScalar].
+  ///   - 1-D mask along axis 0: Performs slice assignment along dimension 0.
+  /// - **`NDArray` (integer)**: Modifies elements selected by fancy integer
+  ///   array indices.
   ///
   /// **Preconditions:**
-  /// - The array must not be disposed.
+  /// - The array must not be disposed and must be writeable.
   /// - [spec] must be a supported selection specification object.
-  /// - [value] must match elements or broadcast to the selected shape.
+  /// - [value] must be a scalar or an [NDArray] broadcastable to the selected
+  ///   shape.
   ///
-  /// - It is an error if this array has been explicitly disposed.
-  /// - It is an error if [spec] or [value] is unsupported or has dimension mismatch.
-  void operator []=(Object? spec, Object? value) {
+  /// - It is an error if this array has been explicitly disposed or is
+  ///   read-only.
+  /// - It is an error if [spec] or [value] is unsupported or has a dimension
+  ///   mismatch.
+  void operator []=(Object spec, Object value) {
     if (isDisposed) {
       throw StateError(
         "Cannot access an array or view whose memory has been explicitly freed/disposed!",
@@ -4065,86 +4299,51 @@ sealed class NDArray<T extends DTypeTag>
       throw StateError('Cannot mutate a read-only broadcast view.');
     }
     if (spec is int) {
-      _assignIntIndicesList([spec], value);
-    } else if (spec is Slice ||
-        spec is Index ||
-        spec is Indices ||
-        spec is Mask ||
-        spec is BooleanMask) {
-      _sliceAssign([_toSelector(spec)], value);
-    } else if (spec is List) {
-      if (spec.length == 1 && spec.first is List) {
-        final subList = spec.first as List;
-        if (subList.every((e) => e is int)) {
-          _assignIntIndicesList(subList.cast<int>(), value);
-          return;
-        }
-      }
-      if (spec.every((e) => e is int)) {
-        if (shape.length == 1 && spec.length > 1) {
-          _assignIntIndicesList(spec.cast<int>(), value);
-          return;
-        }
-        if (spec.length != shape.length) {
-          throw ArgumentError.value(
-            spec,
-            'spec',
-            'Must have length matching array rank (${shape.length})',
-          );
-        }
-        if (value is NDArray && value.size != 1) {
-          throw ArgumentError.value(
-            value,
-            'value',
-            'Must be a scalar or single-element array when assigning to a single cell coordinate (got shape ${value.shape})',
-          );
-        }
-        final intCoords = spec.cast<int>();
-        setCell(intCoords, _coerceScalar(value));
-        return;
-      } else {
-        final temps = <NDArray>[];
-        try {
-          final selectors = spec
-              .map((e) => _toSelector(e, temps))
-              .cast<Selector>()
-              .toList();
-          _sliceAssign(selectors, value);
-        } finally {
-          for (final t in temps) {
-            t.dispose();
-          }
-        }
-      }
-    } else if (spec is NDArray && spec.dtype == DType.boolean) {
-      if (spec.isDisposed) {
+      _sliceAssign([Index(spec)], value);
+    } else if (spec is Mask ||
+        (spec is NDArray && spec.dtype == DType.boolean)) {
+      final NDArray<Boolean> boolMask = spec is Mask
+          ? spec.mask
+          : spec as NDArray<Boolean>;
+      if (boolMask.isDisposed) {
         throw StateError('Cannot access a disposed NDArray.');
       }
-      final boolMask = spec as NDArray<Boolean>;
       if (listEquals(boolMask.shape, shape)) {
         if (value is NDArray) {
           if (value.shape.isEmpty ||
               (value.shape.length == 1 && value.size == 1)) {
-            setByMaskScalar(
+            setByMaskScalarUntyped(
               boolMask,
               _coerceScalar(value.getCellFlat(0), dtype, value.dtype),
             );
           } else {
-            setByMask(boolMask, value);
+            _setByMaskImpl(boolMask, value);
           }
         } else {
-          setByMaskScalar(boolMask, _coerceScalar(value));
+          setByMaskScalarUntyped(boolMask, _coerceScalar(value));
         }
       } else if (boolMask.shape.length == 1 &&
           shape.isNotEmpty &&
           boolMask.shape[0] == shape[0]) {
-        _sliceAssign([Mask(BooleanMask(boolMask))], value);
+        _sliceAssign([Mask(boolMask)], value);
       } else {
         throw ArgumentError.value(
           spec,
           'spec',
           'Must have shape matching array shape ($shape)',
         );
+      }
+    } else if (spec is Selector) {
+      _sliceAssign([spec], value);
+    } else if (spec is List) {
+      final temps = <NDArray>[];
+      try {
+        final selectors = spec.map((e) => _toSelector(e, temps)).toList();
+        _sliceAssign(selectors, value);
+      } finally {
+        for (final t in temps) {
+          t.dispose();
+        }
       }
     } else if (spec is NDArray && spec.dtype.isInteger) {
       if (spec.isDisposed) {
@@ -4178,9 +4377,9 @@ sealed class NDArray<T extends DTypeTag>
             broadcastedVal = ops.broadcastTo(value, targetShape);
             valArr = broadcastedVal;
           }
-          setIndices(indices, valArr);
+          _setIndicesImpl(indices, valArr);
         } else {
-          setIndicesScalar(indices, _coerceScalar(value));
+          setIndicesScalarUntyped(indices, _coerceScalar(value));
         }
       } finally {
         if (!identical(indices, casted)) {
@@ -4197,27 +4396,6 @@ sealed class NDArray<T extends DTypeTag>
         'spec',
         'Must be a supported selector type for operator []=',
       );
-    }
-  }
-
-  void _assignIntIndicesList(List<int> intIndices, Object? value) {
-    final indices = NDArray<Int64>.fromList(intIndices, [
-      intIndices.length,
-    ], DType.int64);
-    NDArray? broadcastedVal;
-    try {
-      if (value is NDArray) {
-        final targetShape = <int>[intIndices.length, ...shape.sublist(1)];
-        final valArr = listEquals(value.shape, targetShape)
-            ? value
-            : (broadcastedVal = ops.broadcastTo(value, targetShape));
-        setIndices(indices, valArr);
-      } else {
-        setIndicesScalar(indices, _coerceScalar(value));
-      }
-    } finally {
-      indices.dispose();
-      broadcastedVal?.dispose();
     }
   }
 
@@ -4340,10 +4518,12 @@ sealed class NDArray<T extends DTypeTag>
       return fn(other);
     }
     final marker = ScratchArena.marker;
+    NDArray? otherArr;
     try {
-      final otherArr = _wrapScalarArena(other, shape, dtype);
+      otherArr = _wrapScalarArena(other, shape, dtype);
       return fn(otherArr);
     } finally {
+      otherArr?.dispose();
       ScratchArena.reset(marker);
     }
   }
@@ -4724,7 +4904,10 @@ sealed class NDArray<T extends DTypeTag>
       final sel = processedSelectors[i];
       if (sel is Mask) {
         final mask = sel.mask;
-        if (mask.mask.shape.length != 1 || mask.mask.shape[0] != shape[i]) {
+        if (mask.isDisposed) {
+          throw StateError('Cannot access a disposed NDArray.');
+        }
+        if (mask.shape.length != 1 || mask.shape[0] != shape[i]) {
           throw ArgumentError.value(
             sel,
             'selectors[$i]',
@@ -4739,9 +4922,9 @@ sealed class NDArray<T extends DTypeTag>
             size * ffi.sizeOf<ffi.Int64>(),
           );
           final count = unpack_mask_c(
-            mask.mask.pointer.cast(),
+            mask.pointer.cast(),
             size,
-            mask.mask.strides[0],
+            mask.strides[0],
             pIndices,
           );
           indices = copyInt64PointerToList(pIndices, count);
@@ -4942,7 +5125,7 @@ sealed class NDArray<T extends DTypeTag>
       if (mask.shape.length == 1 &&
           shape.isNotEmpty &&
           mask.shape[0] == shape[0]) {
-        return slice([Mask(BooleanMask(mask))]);
+        return slice([Mask(mask)]);
       }
       throw ArgumentError.value(
         mask,
@@ -4974,6 +5157,160 @@ sealed class NDArray<T extends DTypeTag>
     }
   }
 
+  /// Copies the logical elements of this array in C (row-major) order into a
+  /// freshly allocated host-endian [Uint8List].
+  ///
+  /// Works for both contiguous and non-contiguous views, on both Dart VM and
+  /// WebAssembly (`dart2wasm`).
+  ///
+  /// It is an error if this array has been disposed.
+  ///
+  /// **Performance considerations:**
+  /// - $O(N)$ bulk memory copy for C-contiguous arrays; materializes a
+  ///   contiguous copy first for strided views.
+  Uint8List toBytes() {
+    if (isDisposed) {
+      throw StateError('Cannot access a disposed NDArray.');
+    }
+    final n = size;
+    if (n == 0) return Uint8List(0);
+    if (!isContiguous) {
+      final contig = copy();
+      try {
+        return contig.toBytes();
+      } finally {
+        contig.dispose();
+      }
+    }
+    final byteCount = n * dtype.byteWidth;
+    final out = Uint8List(byteCount);
+    _copyNativeToBytes(out, _pointer, byteCount);
+    return out;
+  }
+
+  /// Returns a zero-copy [Uint8List] view over the logical elements of this
+  /// C-contiguous array, starting at [pointer] (incorporating [offsetElements]).
+  ///
+  /// The returned view retains the root owning [NDArray] so GC will not reclaim
+  /// the backing C memory while the view is reachable. If [isWriteable] is
+  /// `false`, the returned view is unmodifiable.
+  ///
+  /// **Restrictions:**
+  /// - Requires [isContiguous] to be `true`; throws [StateError] on strided
+  ///   views (call [copy] first or use [toBytes]).
+  /// - Becomes invalid if the owning array is explicitly freed via [dispose] or
+  ///   when an enclosing [NDArray.scope] exits.
+  /// - Throws [UnsupportedError] when compiled to WebAssembly (`dart2wasm`);
+  ///   use [toBytes] instead.
+  ///
+  /// **Performance considerations:**
+  /// - $O(1)$ zero-copy view.
+  Uint8List asBytesView() {
+    if (isDisposed) {
+      throw StateError('Cannot access a disposed NDArray.');
+    }
+    if (!isContiguous) {
+      throw StateError(
+        'Cannot create a zero-copy byte view of a non-contiguous NDArray. '
+        'Call copy() first or use toBytes().',
+      );
+    }
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      throw UnsupportedError(
+        'asBytesView() is not supported when compiled to WebAssembly; '
+        'use toBytes() instead.',
+      );
+    }
+    // coverage:ignore-end
+    final n = size;
+    if (n == 0) {
+      final empty = Uint8List(0);
+      return isWriteable ? empty : empty.asUnmodifiableView();
+    }
+    final view = _pointer.cast<ffi.Uint8>().asTypedList(n * dtype.byteWidth);
+    _dataOwnerExpando[view] = _rootParent;
+    if (!isWriteable) {
+      final readOnly = view.asUnmodifiableView();
+      _dataOwnerExpando[readOnly] = _rootParent;
+      return readOnly;
+    }
+    return view;
+  }
+
+  /// Internal untyped backing for `toTypedData()` extensions.
+  @internal
+  TypedData toTypedDataRaw() {
+    if (isDisposed) {
+      throw StateError('Cannot access a disposed NDArray.');
+    }
+    if (!isContiguous) {
+      final contig = copy();
+      try {
+        return contig.toTypedDataRaw();
+      } finally {
+        contig.dispose();
+      }
+    }
+    final n = size;
+    final result = _allocateTypedData(dtype, n);
+    if (n == 0) return result;
+    final byteCount = n * dtype.byteWidth;
+    _copyNativeToBytes(result.buffer.asUint8List(), _pointer, byteCount);
+    return result;
+  }
+
+  /// Internal untyped backing for `asTypedDataView()` and `withTypedData()`.
+  @internal
+  TypedData asTypedDataViewRaw() {
+    if (isDisposed) {
+      throw StateError('Cannot access a disposed NDArray.');
+    }
+    if (!isContiguous) {
+      throw StateError(
+        'Cannot create a zero-copy TypedData view of a non-contiguous NDArray. '
+        'Call copy() first or use toTypedData().',
+      );
+    }
+    // coverage:ignore-start
+    if (isWasmRuntime) {
+      throw UnsupportedError(
+        'asTypedDataView() is not supported when compiled to WebAssembly; '
+        'use toTypedData() instead.',
+      );
+    }
+    // coverage:ignore-end
+    final n = size;
+    final writeable = isWriteable;
+    if (n == 0) {
+      final empty = _allocateTypedData(dtype, 0);
+      return writeable ? empty : _asUnmodifiableTypedData(dtype, empty);
+    }
+    final TypedData view = switch (dtype) {
+      DType.float64 => _pointer.cast<ffi.Double>().asTypedList(n),
+      DType.float32 => _pointer.cast<ffi.Float>().asTypedList(n),
+      DType.float16 ||
+      DType.bfloat16 ||
+      DType.uint16 => _pointer.cast<ffi.Uint16>().asTypedList(n),
+      DType.int64 => _pointer.cast<ffi.Int64>().asTypedList(n),
+      DType.int32 => _pointer.cast<ffi.Int32>().asTypedList(n),
+      DType.int16 => _pointer.cast<ffi.Int16>().asTypedList(n),
+      DType.int8 => _pointer.cast<ffi.Int8>().asTypedList(n),
+      DType.uint64 => _pointer.cast<ffi.Uint64>().asTypedList(n),
+      DType.uint32 => _pointer.cast<ffi.Uint32>().asTypedList(n),
+      DType.uint8 || DType.boolean => _pointer.cast<ffi.Uint8>().asTypedList(n),
+      DType.complex128 => _pointer.cast<ffi.Double>().asTypedList(n * 2),
+      DType.complex64 => _pointer.cast<ffi.Float>().asTypedList(n * 2),
+    };
+    _dataOwnerExpando[view] = _rootParent;
+    if (!writeable) {
+      final readOnly = _asUnmodifiableTypedData(dtype, view);
+      _dataOwnerExpando[readOnly] = _rootParent;
+      return readOnly;
+    }
+    return view;
+  }
+
   /// Returns a flat Dart list containing a copy of the elements in this array,
   /// traversed in the logical order defined by its shape and strides.
   ///
@@ -4985,6 +5322,11 @@ sealed class NDArray<T extends DTypeTag>
       throw StateError(
         'Cannot access an array or view whose memory has been explicitly freed/disposed!',
       );
+    }
+    final n = size;
+    if (n == 0) return <Object?>[];
+    if (isContiguous) {
+      return List<Object?>.of(_data);
     }
     final result = <Object?>[];
     _fillListRecursive(this, List<int>.filled(shape.length, 0), 0, result);
@@ -5501,6 +5843,18 @@ sealed class NDArray<T extends DTypeTag>
       switch (invocation.memberName) {
         case #toList:
           return toListRaw();
+        case #toTypedData:
+          if (args.isEmpty && invocation.namedArguments.isEmpty) {
+            return toTypedDataRaw();
+          }
+        case #asTypedDataView:
+          if (args.isEmpty && invocation.namedArguments.isEmpty) {
+            return asTypedDataViewRaw();
+          }
+        case #withTypedData:
+          if (args.length == 1 && invocation.namedArguments.isEmpty) {
+            return (args[0] as Function)(asTypedDataViewRaw());
+          }
         case #getCell:
           return getCellUntyped((args[0] as List).cast<int>());
         case #setCell:
@@ -5519,6 +5873,20 @@ sealed class NDArray<T extends DTypeTag>
         case #fill:
           fillUntyped(args[0]);
           return null;
+        case #setByMaskScalar:
+          if (args.length == 2 && invocation.namedArguments.isEmpty) {
+            setByMaskScalarUntyped(args[0] as NDArray<Boolean>, args[1]);
+            return null;
+          }
+        case #setIndicesScalar:
+          if (args.length == 2) {
+            setIndicesScalarUntyped(
+              args[0] as NDArray<IntegerDType>,
+              args[1],
+              axis: (invocation.namedArguments[#axis] as int?) ?? 0,
+            );
+            return null;
+          }
       }
     }
     return super.noSuchMethod(invocation);
@@ -6159,7 +6527,7 @@ String _formatND(NDArray arr, {String indent = ''}) {
       continue;
     }
 
-    final subArray = arr[idx] as NDArray;
+    final subArray = arr[idx];
     final formattedSub = _formatND(subArray, indent: '$indent ');
     if (isFirst) {
       sb.write('[$formattedSub');
@@ -6184,15 +6552,6 @@ bool listEquals<E>(List<E>? a, List<E>? b) {
     if (a[i] != b[i]) return false;
   }
   return true;
-}
-
-/// A wrapper class for boolean masks used in advanced indexing.
-final class BooleanMask {
-  /// The underlying boolean array.
-  final NDArray<Boolean> mask;
-
-  /// Creates a new boolean mask. Precondition: mask dtype must be `DType.boolean.`
-  BooleanMask(this.mask);
 }
 
 /// Represents a complex number with double precision real and imaginary parts.
@@ -6498,21 +6857,22 @@ final class Indices extends Selector {
   Indices(List<int> values) : values = List<int>.unmodifiable(values);
 }
 
-/// Selects elements of an [NDArray] matching a boolean mask array.
+/// Selects elements of an [NDArray] matching a 1-D boolean mask array.
 ///
-/// Triggers boolean indexing/masking.
+/// Triggers boolean indexing/masking along the corresponding dimension.
 ///
 /// **Preconditions:**
-/// - The [mask] must share identical shape and dimensions with the targeted dimension array.
+/// - The [mask] must be 1-dimensional with length matching the targeted
+///   dimension of the array.
 ///
 /// **Example:**
-/// {@example /example/ndarray_example.dart lang=dart}
+/// {@example /example/indexing_example.dart lang=dart}
 final class Mask extends Selector {
-  /// The boolean mask wrapper.
-  final BooleanMask mask;
+  /// The 1-D boolean mask array.
+  final NDArray<Boolean> mask;
 
-  /// Creates a boolean [Mask] selector wrapping [array].
-  Mask(this.mask);
+  /// Creates a boolean [Mask] selector wrapping [mask].
+  const Mask(this.mask);
 }
 
 void _copyContiguousNDArray(NDArray src, NDArray dest, int size) {
@@ -6551,6 +6911,9 @@ extension NDArrayElements<T extends ElementOf<E>, E> on NDArray<T> {
   ///
   /// **Restrictions:**
   /// - Fixed length; cannot be resized.
+  /// - Exposes raw backing storage without applying [NDArray.offsetElements],
+  ///   strides, or shape; prefer `asTypedDataView()` or `withTypedData(...)`
+  ///   for contiguous logical views.
   /// - Becomes invalid if the owning array is explicitly freed via
   ///   [NDArray.dispose] (or when an enclosing [NDArray.scope] exits).
   ///   Accessing it after explicit disposal is undefined behavior.
@@ -6567,11 +6930,23 @@ extension NDArrayElements<T extends ElementOf<E>, E> on NDArray<T> {
   /// - Time complexity: $O(1)$.
   E get scalar => scalarRaw as E;
 
-  /// The elements of this array as a Dart list, in C (row-major) order.
+  /// The elements of this array as a growable Dart list, in C (row-major) order.
   ///
   /// **Performance considerations:**
   /// - Time complexity: $O(n)$; allocates a new list.
-  List<E> toList() => toListRaw().cast<E>();
+  List<E> toList() {
+    if (isDisposed) {
+      throw StateError(
+        'Cannot access an array or view whose memory has been explicitly freed/disposed!',
+      );
+    }
+    final n = size;
+    if (n == 0) return <E>[];
+    if (isContiguous) {
+      return List<E>.of(_data as List<E>);
+    }
+    return List<E>.from(toListRaw());
+  }
 
   /// The element at the given multi-dimensional [coords].
   ///
@@ -6623,6 +6998,25 @@ extension NDArrayElements<T extends ElementOf<E>, E> on NDArray<T> {
   /// **Performance considerations:**
   /// - Time complexity: $O(n)$.
   void fill(E value) => fillUntyped(value);
+
+  /// Modifies elements where [mask] is `true`, setting them all uniformly to
+  /// [value].
+  ///
+  /// It is an error if [mask] shape does not match this array's shape, or if
+  /// this array is disposed or read-only.
+  void setByMaskScalar(NDArray<Boolean> mask, E value) =>
+      setByMaskScalarUntyped(mask, value);
+
+  /// Modifies entire slices along [axis] targeted by integer [indices], setting
+  /// all selected elements to [value].
+  ///
+  /// It is an error if [axis] or any index is out of bounds, or if this array
+  /// is disposed or read-only.
+  void setIndicesScalar(
+    NDArray<IntegerDType> indices,
+    E value, {
+    int axis = 0,
+  }) => setIndicesScalarUntyped(indices, value, axis: axis);
 }
 
 /// Fallback element access when the type argument is widened to [DTypeTag].
@@ -6659,6 +7053,284 @@ extension NDArrayBaseElements on NDArray<DTypeTag> {
 
   /// Sets every element of this array to [value].
   void fill(Object? value) => fillUntyped(value);
+
+  /// Modifies elements where [mask] is `true`, setting them all to [value].
+  void setByMaskScalar(NDArray<Boolean> mask, Object value) =>
+      setByMaskScalarUntyped(mask, value);
+
+  /// Modifies slices along [axis] targeted by integer [indices], setting them
+  /// all to [value].
+  void setIndicesScalar(
+    NDArray<IntegerDType> indices,
+    Object value, {
+    int axis = 0,
+  }) => setIndicesScalarUntyped(indices, value, axis: axis);
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Float64>`.
+extension NDArrayFloat64TypedData on NDArray<Float64> {
+  /// Copies all logical elements in C (row-major) order into a new
+  /// [Float64List].
+  Float64List toTypedData() => toTypedDataRaw() as Float64List;
+
+  /// Returns a zero-copy [Float64List] view over this contiguous array's
+  /// logical elements (read-only if [NDArray.isWriteable] is `false`).
+  ///
+  /// Throws [StateError] if disposed or non-contiguous, and [UnsupportedError]
+  /// on WebAssembly (`dart2wasm`).
+  Float64List asTypedDataView() => asTypedDataViewRaw() as Float64List;
+
+  /// Runs [action] with a zero-copy [Float64List] view over this contiguous
+  /// array's logical elements.
+  ///
+  /// The passed view must not escape [action] or outlive disposal of this
+  /// array.
+  R withTypedData<R>(R Function(Float64List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Float32>`.
+extension NDArrayFloat32TypedData on NDArray<Float32> {
+  /// Copies all logical elements in C (row-major) order into a new
+  /// [Float32List].
+  Float32List toTypedData() => toTypedDataRaw() as Float32List;
+
+  /// Returns a zero-copy [Float32List] view over this contiguous array's
+  /// logical elements (read-only if [NDArray.isWriteable] is `false`).
+  Float32List asTypedDataView() => asTypedDataViewRaw() as Float32List;
+
+  /// Runs [action] with a zero-copy [Float32List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Float32List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Float16>` (raw 16-bit binary16
+/// bit patterns in a [Uint16List]).
+extension NDArrayFloat16TypedData on NDArray<Float16> {
+  /// Copies raw 16-bit IEEE 754 half-precision words in C (row-major) order
+  /// into a new [Uint16List].
+  Uint16List toTypedData() => toTypedDataRaw() as Uint16List;
+
+  /// Returns a zero-copy [Uint16List] view over this contiguous array's raw
+  /// 16-bit IEEE 754 words (read-only if [NDArray.isWriteable] is `false`).
+  Uint16List asTypedDataView() => asTypedDataViewRaw() as Uint16List;
+
+  /// Runs [action] with a zero-copy [Uint16List] view over this contiguous
+  /// array's raw 16-bit IEEE 754 words.
+  R withTypedData<R>(R Function(Uint16List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<BFloat16>` (raw 16-bit bfloat16
+/// bit patterns in a [Uint16List]).
+extension NDArrayBFloat16TypedData on NDArray<BFloat16> {
+  /// Copies raw 16-bit bfloat16 words in C (row-major) order into a new
+  /// [Uint16List].
+  Uint16List toTypedData() => toTypedDataRaw() as Uint16List;
+
+  /// Returns a zero-copy [Uint16List] view over this contiguous array's raw
+  /// 16-bit bfloat16 words (read-only if [NDArray.isWriteable] is `false`).
+  Uint16List asTypedDataView() => asTypedDataViewRaw() as Uint16List;
+
+  /// Runs [action] with a zero-copy [Uint16List] view over this contiguous
+  /// array's raw 16-bit bfloat16 words.
+  R withTypedData<R>(R Function(Uint16List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Int64>`.
+extension NDArrayInt64TypedData on NDArray<Int64> {
+  /// Copies all logical elements in C (row-major) order into a new [Int64List].
+  Int64List toTypedData() => toTypedDataRaw() as Int64List;
+
+  /// Returns a zero-copy [Int64List] view over this contiguous array's logical
+  /// elements (read-only if [NDArray.isWriteable] is `false`).
+  Int64List asTypedDataView() => asTypedDataViewRaw() as Int64List;
+
+  /// Runs [action] with a zero-copy [Int64List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Int64List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Int32>`.
+extension NDArrayInt32TypedData on NDArray<Int32> {
+  /// Copies all logical elements in C (row-major) order into a new [Int32List].
+  Int32List toTypedData() => toTypedDataRaw() as Int32List;
+
+  /// Returns a zero-copy [Int32List] view over this contiguous array's logical
+  /// elements (read-only if [NDArray.isWriteable] is `false`).
+  Int32List asTypedDataView() => asTypedDataViewRaw() as Int32List;
+
+  /// Runs [action] with a zero-copy [Int32List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Int32List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Int16>`.
+extension NDArrayInt16TypedData on NDArray<Int16> {
+  /// Copies all logical elements in C (row-major) order into a new [Int16List].
+  Int16List toTypedData() => toTypedDataRaw() as Int16List;
+
+  /// Returns a zero-copy [Int16List] view over this contiguous array's logical
+  /// elements (read-only if [NDArray.isWriteable] is `false`).
+  Int16List asTypedDataView() => asTypedDataViewRaw() as Int16List;
+
+  /// Runs [action] with a zero-copy [Int16List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Int16List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Int8>`.
+extension NDArrayInt8TypedData on NDArray<Int8> {
+  /// Copies all logical elements in C (row-major) order into a new [Int8List].
+  Int8List toTypedData() => toTypedDataRaw() as Int8List;
+
+  /// Returns a zero-copy [Int8List] view over this contiguous array's logical
+  /// elements (read-only if [NDArray.isWriteable] is `false`).
+  Int8List asTypedDataView() => asTypedDataViewRaw() as Int8List;
+
+  /// Runs [action] with a zero-copy [Int8List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Int8List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Uint64>`.
+extension NDArrayUint64TypedData on NDArray<Uint64> {
+  /// Copies all logical elements in C (row-major) order into a new
+  /// [Uint64List].
+  Uint64List toTypedData() => toTypedDataRaw() as Uint64List;
+
+  /// Returns a zero-copy [Uint64List] view over this contiguous array's
+  /// logical elements (read-only if [NDArray.isWriteable] is `false`).
+  Uint64List asTypedDataView() => asTypedDataViewRaw() as Uint64List;
+
+  /// Runs [action] with a zero-copy [Uint64List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Uint64List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Uint32>`.
+extension NDArrayUint32TypedData on NDArray<Uint32> {
+  /// Copies all logical elements in C (row-major) order into a new
+  /// [Uint32List].
+  Uint32List toTypedData() => toTypedDataRaw() as Uint32List;
+
+  /// Returns a zero-copy [Uint32List] view over this contiguous array's
+  /// logical elements (read-only if [NDArray.isWriteable] is `false`).
+  Uint32List asTypedDataView() => asTypedDataViewRaw() as Uint32List;
+
+  /// Runs [action] with a zero-copy [Uint32List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Uint32List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Uint16>`.
+extension NDArrayUint16TypedData on NDArray<Uint16> {
+  /// Copies all logical elements in C (row-major) order into a new
+  /// [Uint16List].
+  Uint16List toTypedData() => toTypedDataRaw() as Uint16List;
+
+  /// Returns a zero-copy [Uint16List] view over this contiguous array's
+  /// logical elements (read-only if [NDArray.isWriteable] is `false`).
+  Uint16List asTypedDataView() => asTypedDataViewRaw() as Uint16List;
+
+  /// Runs [action] with a zero-copy [Uint16List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Uint16List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Uint8>`.
+extension NDArrayUint8TypedData on NDArray<Uint8> {
+  /// Copies all logical elements in C (row-major) order into a new [Uint8List].
+  Uint8List toTypedData() => toTypedDataRaw() as Uint8List;
+
+  /// Returns a zero-copy [Uint8List] view over this contiguous array's logical
+  /// elements (read-only if [NDArray.isWriteable] is `false`).
+  Uint8List asTypedDataView() => asTypedDataViewRaw() as Uint8List;
+
+  /// Runs [action] with a zero-copy [Uint8List] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(Uint8List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Complex128>` (interleaved
+/// `[real0, imag0, ...]` values in a [Float64List] of length `2 * size`).
+extension NDArrayComplex128TypedData on NDArray<Complex128> {
+  /// Copies all logical elements in C (row-major) order into a new interleaved
+  /// [Float64List] of length `2 * size`.
+  Float64List toTypedData() => toTypedDataRaw() as Float64List;
+
+  /// Returns a zero-copy interleaved [Float64List] view of length `2 * size`
+  /// over this contiguous array's logical elements (read-only if
+  /// [NDArray.isWriteable] is `false`).
+  Float64List asTypedDataView() => asTypedDataViewRaw() as Float64List;
+
+  /// Runs [action] with a zero-copy interleaved [Float64List] view over this
+  /// contiguous array's logical elements.
+  R withTypedData<R>(R Function(Float64List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Complex64>` (interleaved
+/// `[real0, imag0, ...]` values in a [Float32List] of length `2 * size`).
+extension NDArrayComplex64TypedData on NDArray<Complex64> {
+  /// Copies all logical elements in C (row-major) order into a new interleaved
+  /// [Float32List] of length `2 * size`.
+  Float32List toTypedData() => toTypedDataRaw() as Float32List;
+
+  /// Returns a zero-copy interleaved [Float32List] view of length `2 * size`
+  /// over this contiguous array's logical elements (read-only if
+  /// [NDArray.isWriteable] is `false`).
+  Float32List asTypedDataView() => asTypedDataViewRaw() as Float32List;
+
+  /// Runs [action] with a zero-copy interleaved [Float32List] view over this
+  /// contiguous array's logical elements.
+  R withTypedData<R>(R Function(Float32List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Typed `dart:typed_data` interop for `NDArray<Boolean>` (`0`/`1` bytes in a
+/// [Uint8List]).
+extension NDArrayBooleanTypedData on NDArray<Boolean> {
+  /// Copies all logical boolean elements (`0` or `1`) in C (row-major) order
+  /// into a new [Uint8List].
+  Uint8List toTypedData() => toTypedDataRaw() as Uint8List;
+
+  /// Returns a zero-copy [Uint8List] view (`0`/`1` bytes) over this contiguous
+  /// array's logical elements (read-only if [NDArray.isWriteable] is `false`).
+  Uint8List asTypedDataView() => asTypedDataViewRaw() as Uint8List;
+
+  /// Runs [action] with a zero-copy [Uint8List] view over this contiguous
+  /// array's logical boolean bytes.
+  R withTypedData<R>(R Function(Uint8List data) action) =>
+      action(asTypedDataView());
+}
+
+/// Fallback `dart:typed_data` interop when the dtype tag is not a concrete
+/// leaf tag (e.g. `NDArray<DTypeTag>`, `NDArray<AnySpec>`, or
+/// `NDArray<IntegerDType>`).
+extension NDArrayBaseTypedData on NDArray<DTypeTag> {
+  /// Copies all logical elements in C (row-major) order into a new [TypedData]
+  /// buffer matching [NDArray.dtype].
+  TypedData toTypedData() => toTypedDataRaw();
+
+  /// Returns a zero-copy [TypedData] view over this contiguous array's logical
+  /// elements (read-only if [NDArray.isWriteable] is `false`).
+  TypedData asTypedDataView() => asTypedDataViewRaw();
+
+  /// Runs [action] with a zero-copy [TypedData] view over this contiguous
+  /// array's logical elements.
+  R withTypedData<R>(R Function(TypedData data) action) =>
+      action(asTypedDataView());
 }
 
 /// Fallback true division operator (`/`) when the receiver is typed as [DTypeTag].

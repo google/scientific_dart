@@ -421,7 +421,7 @@ void main() {
             );
             final idx = NDArray.fromList([3, 1], [2], DType.int32);
 
-            final res = a[idx] as NDArray<Float64>;
+            final res = a[idx];
             expect(res.shape, equals([2]));
             expect(res.getCell([0]), equals(40.0));
             expect(res.getCell([1]), equals(20.0));

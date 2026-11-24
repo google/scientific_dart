@@ -78,13 +78,13 @@ void main() {
         return val;
       });
 
-      final dtObj = dt;
+      final dtObj = dt.asAnySpec;
       if (strided) {
         final flatArr = NDArray.fromList(rawList, [size * 2], dtObj);
         final sliced = flatArr[Slice(step: 2)];
         return sliced.reshape(shape);
       } else {
-        return NDArray.fromList(rawList, shape, (dtObj as DType<AnySpec>));
+        return NDArray.fromList(rawList, shape, dtObj);
       }
     }
 
@@ -98,13 +98,13 @@ void main() {
         size * (strided ? 2 : 1),
         (i) => ((i % 5) + 1),
       );
-      final dtNum = dt;
+      final dtNum = dt.asAnySpec;
       if (strided) {
         final flatArr = NDArray.fromList(rawList, [size * 2], dtNum);
         final sliced = flatArr[Slice(step: 2)];
         return sliced.reshape(shape);
       } else {
-        return NDArray.fromList(rawList, shape, (dtNum as DType<AnySpec>));
+        return NDArray.fromList(rawList, shape, dtNum);
       }
     }
 

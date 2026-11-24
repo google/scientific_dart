@@ -28,6 +28,7 @@ workspace:
   - pkgs/resource_scope
   - pkgs/gpuarray
   - pkgs/scientific_dart_analysis_plugin
+  - pkgs/ndarray_transformer
 dependencies:
   args: ^2.7.0
   code_assets: '>=1.0.0 <3.0.0'

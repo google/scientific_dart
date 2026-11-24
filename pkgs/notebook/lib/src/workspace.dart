@@ -455,10 +455,7 @@ T __set_l2dGeom<T extends NDArray<Float64>>(T v) {
   NDArray<Boolean> mask,
 ) {
   final flat = mask.flatten();
-  final subMatrix = l2dGeom.slice([
-    Mask(BooleanMask(flat)),
-    Mask(BooleanMask(flat)),
-  ]);
+  final subMatrix = l2dGeom.slice([Mask(flat), Mask(flat)]);
   return eigh(subMatrix);
 }
 
@@ -727,7 +724,7 @@ NDArray<Float64> synthesizeDrumStrike({
         (xCoord - xStrike) * (xCoord - xStrike) +
         (yCoord - yStrike) * (yCoord - yStrike);
     final mallet2D = exp(distSqStrike * (-malletSharpness));
-    final malletInterior = mallet2D[mask] as NDArray<Float64>;
+    final malletInterior = mallet2D[mask];
     final nDof = malletInterior.shape[0];
     final nModes = math.min(numSynthModes, nDof);
     final eigVecsM = eigenvectors.slice([Slice.all(), Slice(stop: nModes)]);

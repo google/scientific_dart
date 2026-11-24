@@ -38,9 +38,9 @@ void main() {
               ]) {
                 final idx = NDArray.fromList([3, 1, 0], [3], idxDType);
                 final res = takeAlongAxis(arr1d, idx, 0);
-                expect(res[[0]], equals(40.0));
-                expect(res[[1]], equals(20.0));
-                expect(res[[2]], equals(10.0));
+                expect(res[[0]].scalar, equals(40.0));
+                expect(res[[1]].scalar, equals(20.0));
+                expect(res[[2]].scalar, equals(10.0));
               }
 
               // Signed negative indices in int8
@@ -50,8 +50,8 @@ void main() {
                 DType.int8,
               );
               final resNeg = takeAlongAxis(arr1d, idxNegInt8, 0);
-              expect(resNeg[[0]], equals(40.0));
-              expect(resNeg[[1]], equals(20.0));
+              expect(resNeg[[0]].scalar, equals(40.0));
+              expect(resNeg[[1]].scalar, equals(20.0));
 
               // 2D test across axis 0 and axis 1
               final arr2d = NDArray<Float64>.fromList(
@@ -65,10 +65,10 @@ void main() {
                 DType.uint32,
               );
               final res2d = takeAlongAxis(arr2d, idx2d, 1);
-              expect(res2d[[0, 0]], equals(3.0));
-              expect(res2d[[0, 1]], equals(1.0));
-              expect(res2d[[1, 0]], equals(5.0));
-              expect(res2d[[1, 1]], equals(5.0));
+              expect(res2d[[0, 0]].scalar, equals(3.0));
+              expect(res2d[[0, 1]].scalar, equals(1.0));
+              expect(res2d[[1, 0]].scalar, equals(5.0));
+              expect(res2d[[1, 1]].scalar, equals(5.0));
             });
           },
         );
@@ -95,10 +95,10 @@ void main() {
                   DType.float64,
                 );
                 putAlongAxis(arr, idx, vals, 0);
-                expect(arr[[0]], equals(10.0));
-                expect(arr[[1]], equals(88.0));
-                expect(arr[[2]], equals(30.0));
-                expect(arr[[3]], equals(99.0));
+                expect(arr[[0]].scalar, equals(10.0));
+                expect(arr[[1]].scalar, equals(88.0));
+                expect(arr[[2]].scalar, equals(30.0));
+                expect(arr[[3]].scalar, equals(99.0));
               }
             });
           },
@@ -150,16 +150,16 @@ void main() {
             final res32 = hessenberg(aInt32);
             expect(res32.h.dtype, equals(DType.float64));
             expect(res32.q.dtype, equals(DType.float64));
-            expect(res32.h[[2, 0]], closeTo(0.0, 1e-12));
+            expect(res32.h[[2, 0]].scalar, closeTo(0.0, 1e-12));
 
             // Verify Q * H * Q^T == A
             final q = res32.q;
             final h = res32.h;
             final qt = q.transpose();
             final reconstructed = matmul(matmul(q, h), qt);
-            expect(reconstructed[[0, 0]], closeTo(1.0, 1e-10));
-            expect(reconstructed[[1, 1]], closeTo(5.0, 1e-10));
-            expect(reconstructed[[2, 2]], closeTo(9.0, 1e-10));
+            expect(reconstructed[[0, 0]].scalar, closeTo(1.0, 1e-10));
+            expect(reconstructed[[1, 1]].scalar, closeTo(5.0, 1e-10));
+            expect(reconstructed[[2, 2]].scalar, closeTo(9.0, 1e-10));
 
             final aInt64 = NDArray<Int64>.fromList(
               [2, 1, 0, 1, 3, 1, 0, 1, 2],
@@ -171,7 +171,7 @@ void main() {
             final res64 = hessenberg(aInt64, outH: outH, outQ: outQ);
             expect(identical(res64.h, outH), isTrue);
             expect(identical(res64.q, outQ), isTrue);
-            expect(outH[[2, 0]], closeTo(0.0, 1e-12));
+            expect(outH[[2, 0]].scalar, closeTo(0.0, 1e-12));
 
             final aUint8 = NDArray<Uint8>.fromList(
               [1, 0, 0, 0, 2, 0, 0, 0, 3],
@@ -183,9 +183,9 @@ void main() {
             final resU8 = hessenberg(aUint8, outH: outHU8, outQ: outQU8);
             expect(identical(resU8.h, outHU8), isTrue);
             expect(identical(resU8.q, outQU8), isTrue);
-            expect(outHU8[[0, 0]], closeTo(1.0, 1e-12));
-            expect(outHU8[[1, 1]], closeTo(2.0, 1e-12));
-            expect(outHU8[[2, 2]], closeTo(3.0, 1e-12));
+            expect(outHU8[[0, 0]].scalar, closeTo(1.0, 1e-12));
+            expect(outHU8[[1, 1]].scalar, closeTo(2.0, 1e-12));
+            expect(outHU8[[2, 2]].scalar, closeTo(3.0, 1e-12));
           });
         },
       );
@@ -222,10 +222,10 @@ void main() {
               );
 
               // Verify out was NOT overwritten with arr's contents
-              expect(out[[0, 0]], equals(100.0));
-              expect(out[[0, 1]], equals(200.0));
-              expect(out[[1, 0]], equals(300.0));
-              expect(out[[1, 1]], equals(400.0));
+              expect(out[[0, 0]].scalar, equals(100.0));
+              expect(out[[0, 1]].scalar, equals(200.0));
+              expect(out[[1, 0]].scalar, equals(300.0));
+              expect(out[[1, 1]].scalar, equals(400.0));
             });
           },
         );
@@ -241,13 +241,13 @@ void main() {
             NDArray.scope(() {
               final pos = geomspace(1e-200, 1e-180, 5, dtype: DType.float64);
               expect(pos.shape, equals([5]));
-              expect(pos[[0]], closeTo(1e-200, 1e-212));
-              expect(pos[[2]], closeTo(1e-190, 1e-202));
-              expect(pos[[4]], closeTo(1e-180, 1e-192));
+              expect(pos[[0]].scalar, closeTo(1e-200, 1e-212));
+              expect(pos[[2]].scalar, closeTo(1e-190, 1e-202));
+              expect(pos[[4]].scalar, closeTo(1e-180, 1e-192));
 
               final neg = geomspace(-1e-200, -1e-180, 5, dtype: DType.float64);
-              expect(neg[[0]], closeTo(-1e-200, 1e-212));
-              expect(neg[[4]], closeTo(-1e-180, 1e-192));
+              expect(neg[[0]].scalar, closeTo(-1e-200, 1e-212));
+              expect(neg[[4]].scalar, closeTo(-1e-180, 1e-192));
 
               expect(
                 () => geomspace(1e-200, -1e-200, 5, dtype: DType.float64),

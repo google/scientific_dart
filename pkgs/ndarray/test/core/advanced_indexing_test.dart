@@ -268,14 +268,16 @@ void main() {
         );
 
         test(
-          'operator[]= coordinate length mismatch throws ArgumentError',
+          'operator[]= per-axis single-element list assigns row and too many selectors throws ArgumentError',
           () => NDArray.scope(() {
             final a = NDArray.fromList(
               [1.0, 2.0, 3.0, 4.0],
               [2, 2],
               DType.float64,
             );
-            expect(() => a[[0]] = 99.0, throwsArgumentError);
+            a[[0]] = 99.0;
+            expect(a.toList(), [99.0, 99.0, 3.0, 4.0]);
+            expect(() => a[[0, 1, 2]] = 99.0, throwsArgumentError);
           }),
         );
 

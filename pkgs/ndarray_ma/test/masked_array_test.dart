@@ -128,9 +128,12 @@ void main() {
       final mask = NDArray.fromList([false, true, false], [3], DType.boolean);
       final marr = MaskedArray(data, mask);
 
-      expect(marr[0], 1);
-      expect(marr[1], null);
-      expect(marr[2], 3);
+      expect(marr.getCell([0]), 1);
+      expect(marr.getCell([1]), null);
+      expect(marr.getCell([2]), 3);
+      expect(marr[0].scalar, 1);
+      expect(marr[1].scalar, null);
+      expect(marr[2].scalar, 3);
       expect(marr.toList(), <int?>[1, null, 3]);
     });
 
@@ -143,10 +146,12 @@ void main() {
       );
       final marr = MaskedArray(data, mask);
 
-      expect(marr[[0, 0]], 1);
-      expect(marr[[0, 1]], null);
-      expect(marr[[1, 0]], 3);
-      expect(marr[[1, 1]], 4);
+      expect(marr.getCell([0, 0]), 1);
+      expect(marr.getCell([0, 1]), null);
+      expect(marr[[0, 0]].scalar, 1);
+      expect(marr[[0, 1]].scalar, null);
+      expect(marr[[1, 0]].scalar, 3);
+      expect(marr[[1, 1]].scalar, 4);
     });
 
     test('slicing 1D', () {
@@ -160,8 +165,8 @@ void main() {
 
       final slice = marr[Slice(start: 1, stop: 3)];
       expect(slice.shape, [2]);
-      expect(slice[0], null);
-      expect(slice[1], 3);
+      expect(slice[0].scalar, null);
+      expect(slice[1].scalar, 3);
     });
 
     test('slicing 2D', () {
@@ -175,16 +180,16 @@ void main() {
 
       final row0 = marr[0];
       expect(row0.shape, [3]);
-      expect(row0[0], 1);
-      expect(row0[1], null);
-      expect(row0[2], 3);
+      expect(row0[0].scalar, 1);
+      expect(row0[1].scalar, null);
+      expect(row0[2].scalar, 3);
 
       final colSlice = marr[[Slice.all(), Slice(start: 1, stop: 3)]];
       expect(colSlice.shape, [2, 2]);
-      expect(colSlice[[0, 0]], null);
-      expect(colSlice[[0, 1]], 3);
-      expect(colSlice[[1, 0]], 5);
-      expect(colSlice[[1, 1]], null);
+      expect(colSlice[[0, 0]].scalar, null);
+      expect(colSlice[[0, 1]].scalar, 3);
+      expect(colSlice[[1, 0]].scalar, 5);
+      expect(colSlice[[1, 1]].scalar, null);
     });
   });
 
@@ -195,11 +200,11 @@ void main() {
       final marr = MaskedArray(data, mask);
 
       marr[1] = null;
-      expect(marr[1], null);
+      expect(marr[1].scalar, null);
       expect(marr.mask.toList(), [false, true, false]);
 
       marr[1] = 42;
-      expect(marr[1], 42);
+      expect(marr[1].scalar, 42);
       expect(marr.data.toList(), [0, 42, 0]);
       expect(marr.mask.toList(), [false, false, false]);
     });
@@ -219,6 +224,13 @@ void main() {
 
       marr[Slice(start: 2, stop: 4)] = null;
       expect(marr.mask.toList(), [false, false, true, true]);
+
+      // Fancy Indices assignment mutates in-place without leaking views
+      marr[Indices([0, 3])] = 7;
+      expect(marr.data.toList(), [7, 42, 42, 7]);
+      expect(marr.mask.toList(), [false, false, true, false]);
+      marr[Indices([1, 3])] = null;
+      expect(marr.mask.toList(), [false, true, true, true]);
     });
 
     test('slice assignment from NDArray', () {
@@ -292,9 +304,9 @@ void main() {
       final res = a.divide(b);
       expect(res.shape, [3]);
       expect(res.mask.toList(), [false, true, false]);
-      expect(res[0], 2.0);
-      expect(res[1], null);
-      expect(res[2], 2.0);
+      expect(res[0].scalar, 2.0);
+      expect(res[1].scalar, null);
+      expect(res[2].scalar, 2.0);
     });
 
     test('division bypass for masked elements', () {
@@ -310,9 +322,9 @@ void main() {
       expect(() => a.divide(b), returnsNormally);
       final res = a.divide(b);
       expect(res.mask.toList(), [false, true, false]);
-      expect(res[0], 2.0);
-      expect(res[1], null);
-      expect(res[2], 2.0);
+      expect(res[0].scalar, 2.0);
+      expect(res[1].scalar, null);
+      expect(res[2].scalar, 2.0);
     });
 
     test('bitwise and shift operations', () {
@@ -350,15 +362,15 @@ void main() {
       );
 
       expect(sqrt(a).toList(), [0.0, null, 2.0]);
-      expect(sin(a)[0], closeTo(0.0, 1e-12));
-      expect(cos(a)[0], closeTo(1.0, 1e-12));
-      expect(tan(a)[0], closeTo(0.0, 1e-12));
-      expect(exp(a)[0], closeTo(1.0, 1e-12));
-      expect(log(b)[0], closeTo(0.0, 1e-12));
+      expect(sin(a)[0].scalar, closeTo(0.0, 1e-12));
+      expect(cos(a)[0].scalar, closeTo(1.0, 1e-12));
+      expect(tan(a)[0].scalar, closeTo(0.0, 1e-12));
+      expect(exp(a)[0].scalar, closeTo(1.0, 1e-12));
+      expect(log(b)[0].scalar, closeTo(0.0, 1e-12));
       expect(abs(-b).toList(), [1.0, 2.0, 3.0]);
       expect(power(b, b).toList(), [1.0, 4.0, 27.0]);
-      expect(hypot(a, b)[0], closeTo(1.0, 1e-12));
-      expect(atan2(a, b)[0], closeTo(0.0, 1e-12));
+      expect(hypot(a, b)[0].scalar, closeTo(1.0, 1e-12));
+      expect(atan2(a, b)[0].scalar, closeTo(0.0, 1e-12));
       expect(minimum(a, b).toList(), [0.0, null, 3.0]);
       expect(maximum(a, b).toList(), [1.0, null, 4.0]);
       expect(clip(b, aMin: 1.5, aMax: 2.5).toList(), [1.5, 2.0, 2.5]);
@@ -479,19 +491,19 @@ void main() {
 
       final squeezed = marr.squeeze(1);
       expect(squeezed.shape, [2, 3]);
-      expect(squeezed[[0, 1]], null);
+      expect(squeezed[[0, 1]].scalar, null);
 
       final reshaped = squeezed.reshape([3, 2]);
       expect(reshaped.shape, [3, 2]);
-      expect(reshaped[[0, 1]], null);
+      expect(reshaped[[0, 1]].scalar, null);
 
       final transposed = squeezed.transposed;
       expect(transposed.shape, [3, 2]);
-      expect(transposed[[1, 0]], null);
+      expect(transposed[[1, 0]].scalar, null);
 
       final flat = squeezed.flatten();
       expect(flat.shape, [6]);
-      expect(flat[1], null);
+      expect(flat[1].scalar, null);
     });
   });
 
@@ -517,9 +529,9 @@ void main() {
       final marr = MaskedArray(data, mask);
 
       final res = marr.mapUnary((x) => -x);
-      expect(res[0], -1.0);
-      expect(res[1], null);
-      expect(res[2], -3.0);
+      expect(res[0].scalar, -1.0);
+      expect(res[1].scalar, null);
+      expect(res[2].scalar, -3.0);
     });
   });
 
@@ -599,9 +611,9 @@ void main() {
 
       final divI32 = i32 / 2;
       expect(divI32, isA<MaskedArray<Float64>>());
-      expect(divI32[0], 1.0);
-      expect(divI32[1], isNull);
-      expect(divI32[2], 3.0);
+      expect(divI32[0].scalar, 1.0);
+      expect(divI32[1].scalar, isNull);
+      expect(divI32[2].scalar, 3.0);
 
       final f16 = MaskedArray(
         NDArray.fromList([4.0, 6.0], [2], DType.float16),
@@ -609,8 +621,8 @@ void main() {
       );
       final divF16 = f16 / 2.0;
       expect(divF16, isA<MaskedArray<Float16>>());
-      expect(divF16[0], 2.0);
-      expect(divF16[1], 3.0);
+      expect(divF16[0].scalar, 2.0);
+      expect(divF16[1].scalar, 3.0);
 
       final cnt = i32.count();
       expect(cnt, isA<NDArray<Int64>>());
@@ -628,23 +640,23 @@ void main() {
         NDArray.fromList([false, false, false], [3], DType.boolean),
       );
 
-      expect((a + b)[0], 13);
-      expect((a + b)[1], isNull);
-      expect((a - b)[2], 25);
-      expect((a * 2)[0], 20);
-      expect((a ~/ b)[0], 3);
-      expect((a % b)[0], 1);
-      expect((-a)[0], -10);
+      expect((a + b)[0].scalar, 13);
+      expect((a + b)[1].scalar, isNull);
+      expect((a - b)[2].scalar, 25);
+      expect((a * 2)[0].scalar, 20);
+      expect((a ~/ b)[0].scalar, 3);
+      expect((a % b)[0].scalar, 1);
+      expect((-a)[0].scalar, -10);
 
       final lt = a < 25;
       expect(lt, isA<MaskedArray<Boolean>>());
-      expect(lt[0], true);
-      expect(lt[1], isNull);
-      expect(lt[2], false);
+      expect(lt[0].scalar, true);
+      expect(lt[1].scalar, isNull);
+      expect(lt[2].scalar, false);
 
-      expect((a <= 10)[0], true);
-      expect((a > b)[2], true);
-      expect((a >= 30)[2], true);
+      expect((a <= 10)[0].scalar, true);
+      expect((a > b)[2].scalar, true);
+      expect((a >= 30)[2].scalar, true);
       expect(equal(a, b).toList(), [false, null, false]);
       expect(notEqual(a, b).toList(), [true, null, true]);
       expect(less(a, b).toList(), [false, null, false]);
@@ -665,13 +677,13 @@ void main() {
       );
 
       final res = add(a, b);
-      expect(res[0], 11);
-      expect(res[1], null);
+      expect(res[0].scalar, 11);
+      expect(res[1].scalar, null);
 
       final rawB = NDArray.fromList([10, 20], [2], DType.int32);
       final resInstance = a.add(rawB);
-      expect(resInstance[0], 11);
-      expect(resInstance[1], null);
+      expect(resInstance[0].scalar, 11);
+      expect(resInstance[1].scalar, null);
     });
 
     test('top-level reductions', () {

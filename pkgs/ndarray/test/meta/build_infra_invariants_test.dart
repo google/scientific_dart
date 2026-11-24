@@ -22,6 +22,7 @@ import 'package:ndarray/ndarray.dart';
 import 'package:ndarray/src/cpu_check.dart';
 import 'package:ndarray/src/hook_helpers/build_options.dart';
 import 'package:ndarray/src/hook_helpers/hashes.dart' as ndarray_hashes;
+import 'package:ndarray/src/hook_helpers/msvc_compiler.dart';
 import 'package:openblas/src/hook_helpers/hashes.dart' as openblas_hashes;
 import 'package:pocketfft/src/hook_helpers/hashes.dart' as pocketfft_hashes;
 import 'package:test/test.dart';
@@ -792,6 +793,221 @@ void main() {
           reason:
               'computeInputDigest in build.dart must include ndarray_common.h',
         );
+      },
+    );
+  });
+
+  group('Windows C++ Compiler Discovery & MSVC STL Compatibility Probe', () {
+    test(
+      'windowsClangClCandidates prefers VS-bundled LLVM over standalone LLVM and deduplicates paths',
+      () {
+        final x64Candidates = windowsClangClCandidates(
+          Architecture.x64,
+          environment: const {
+            'LLVMX64':
+                r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\x64\bin\',
+            'VCINSTALLDIR':
+                r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\',
+            'ProgramFiles': r'C:\Program Files',
+          },
+        );
+        expect(
+          x64Candidates,
+          equals(const [
+            r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\x64\bin\clang-cl.exe',
+            r'C:\Program Files\LLVM\bin\clang-cl.exe',
+            'clang-cl.exe',
+          ]),
+        );
+
+        final arm64Candidates = windowsClangClCandidates(
+          Architecture.arm64,
+          environment: const {
+            'llvmArm64': '   ',
+            'vcinstalldir':
+                r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC',
+          },
+        );
+        expect(
+          arm64Candidates,
+          equals(const [
+            r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\ARM64\bin\clang-cl.exe',
+            r'C:\Program Files\LLVM\bin\clang-cl.exe',
+            'clang-cl.exe',
+          ]),
+        );
+
+        final ia32Candidates = windowsClangClCandidates(
+          Architecture.ia32,
+          environment: const {
+            'VCINSTALLDIR':
+                r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC/',
+          },
+        );
+        expect(
+          ia32Candidates,
+          equals(const [
+            r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\bin\clang-cl.exe',
+            r'C:\Program Files\LLVM\bin\clang-cl.exe',
+            'clang-cl.exe',
+          ]),
+        );
+      },
+    );
+
+    test(
+      'windowsCompilerProbeSource includes <atomic> and target architecture guards',
+      () {
+        final x64Src = windowsCompilerProbeSource(Architecture.x64);
+        expect(x64Src, contains('#include <atomic>'));
+        expect(x64Src, contains('defined(_M_X64)'));
+
+        final arm64Src = windowsCompilerProbeSource(Architecture.arm64);
+        expect(arm64Src, contains('#include <atomic>'));
+        expect(arm64Src, contains('defined(_M_ARM64)'));
+
+        final ia32Src = windowsCompilerProbeSource(Architecture.ia32);
+        expect(ia32Src, contains('#include <atomic>'));
+        expect(ia32Src, contains('defined(_M_IX86)'));
+
+        final otherSrc = windowsCompilerProbeSource(Architecture.riscv64);
+        expect(otherSrc, contains('#include <atomic>'));
+        expect(otherSrc, isNot(contains('#error')));
+      },
+    );
+
+    test(
+      'resolveWindowsCppCompiler selects VS-bundled clang-cl when compatible and passes x86Flags',
+      () async {
+        final invoked = <String>[];
+        late List<String> capturedArgs;
+        late String probeContent;
+        final logs = <String>[];
+        final tempParent = Directory.systemTemp.createTempSync(
+          'ndarray_probe_parent_',
+        );
+        try {
+          final selected = await resolveWindowsCppCompiler(
+            fallbackCompiler: r'C:\VC\cl.exe',
+            arch: Architecture.x64,
+            environment: const {
+              'llvmX64':
+                  r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\x64\bin',
+            },
+            x86Flags: const ['/arch:AVX2'],
+            probeParentDir: tempParent,
+            onLog: logs.add,
+            runProcess:
+                (
+                  exe,
+                  args, {
+                  String? workingDirectory,
+                  Map<String, String>? environment,
+                }) async {
+                  invoked.add(exe);
+                  capturedArgs = args;
+                  probeContent = File(
+                    '$workingDirectory/probe.cpp',
+                  ).readAsStringSync();
+                  return ProcessResult(0, 0, '', '');
+                },
+          );
+
+          expect(
+            selected,
+            equals(
+              r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\x64\bin\clang-cl.exe',
+            ),
+          );
+          expect(invoked, hasLength(1));
+          expect(capturedArgs, contains('/std:c++17'));
+          expect(capturedArgs, contains('/arch:AVX2'));
+          expect(probeContent, contains('#include <atomic>'));
+          expect(logs.single, contains('Using Windows C++ compiler:'));
+          // Probe directory must be cleaned up.
+          expect(tempParent.listSync(), isEmpty);
+        } finally {
+          tempParent.deleteSync(recursive: true);
+        }
+      },
+    );
+
+    test(
+      'resolveWindowsCppCompiler skips missing or STL-incompatible clang-cl and falls back to cl.exe',
+      () async {
+        final invoked = <String>[];
+        final logs = <String>[];
+        final selected = await resolveWindowsCppCompiler(
+          fallbackCompiler: r'C:\VC\bin\cl.exe',
+          arch: Architecture.x64,
+          environment: const {
+            'llvmX64':
+                r'C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\x64\bin',
+          },
+          onLog: logs.add,
+          runProcess:
+              (
+                exe,
+                args, {
+                String? workingDirectory,
+                Map<String, String>? environment,
+              }) async {
+                invoked.add(exe);
+                if (exe.contains('Visual Studio')) {
+                  throw ProcessException(exe, args, 'Not found', 2);
+                }
+                if (exe == r'C:\Program Files\LLVM\bin\clang-cl.exe') {
+                  return ProcessResult(
+                    0,
+                    1,
+                    '',
+                    'In file included from probe.cpp:1:\n'
+                        'yvals_core.h(906,1): error: static assertion failed: '
+                        'error STL1000: Unexpected compiler version, expected Clang 22 or newer.\n',
+                  );
+                }
+                return ProcessResult(0, 1, '', '');
+              },
+        );
+
+        expect(selected, equals(r'C:\VC\bin\cl.exe'));
+        expect(invoked, hasLength(3));
+        expect(logs, anyElement(contains('STL1000')));
+        expect(logs.last, contains('falling back to Windows C++ compiler'));
+      },
+    );
+
+    test(
+      'resolveWindowsCppCompiler handles non-error failure output, non-x64 targets, cleanup failure, and default logger',
+      () async {
+        final selected = await resolveWindowsCppCompiler(
+          fallbackCompiler: 'cl',
+          arch: Architecture.arm64,
+          environment: const {},
+          x86Flags: const ['/arch:AVX2'],
+          runProcess:
+              (
+                exe,
+                args, {
+                String? workingDirectory,
+                Map<String, String>? environment,
+              }) async {
+                expect(args, isNot(contains('/arch:AVX2')));
+                // Simulate cleanup FileSystemException by removing probeDir early.
+                final dir = Directory(workingDirectory!);
+                if (dir.existsSync()) {
+                  dir.deleteSync(recursive: true);
+                }
+                return ProcessResult(
+                  0,
+                  1,
+                  'warning: first line\nsecond line\n',
+                  '\n',
+                );
+              },
+        );
+
+        expect(selected, equals('cl'));
       },
     );
   });

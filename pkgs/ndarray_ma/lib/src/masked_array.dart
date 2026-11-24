@@ -396,157 +396,77 @@ final class MaskedArray<T extends DTypeTag> {
     );
   }
 
-  /// Element access and slicing.
-  ///
-  /// If [spec] represents coordinates ([int] for 1D, [List<int>] for ND),
-  /// returns the scalar value at that coordinate, or `null` if it is masked.
-  ///
-  /// If [spec] represents a slice ([Slice], [List<Slice>], [List<Selector>]),
-  /// returns a new [MaskedArray] view representing the sliced portion of
-  /// [data] and [mask].
-  dynamic operator [](dynamic spec) {
-    final isCoords =
-        (spec is int && rank == 1) ||
-        (spec is List<int>) ||
-        (spec is List && spec.every((e) => e is int));
-
-    if (isCoords) {
-      final List<int> coords;
-      if (spec is int) {
-        coords = [spec];
-      } else if (spec is List<int>) {
-        coords = spec;
-      } else {
-        coords = (spec as List).cast<int>();
-      }
-      return getCellUntyped(coords);
-    } else {
-      final List<Selector> selectors;
-      if (spec is Slice) {
-        selectors = [spec];
-      } else if (spec is List<Slice>) {
-        selectors = spec;
-      } else if (spec is List<Selector>) {
-        selectors = spec;
-      } else if (spec is List) {
-        selectors = spec.map((e) {
-          if (e is int) return Index(e);
-          if (e is Selector) return e;
-          throw ArgumentError.value(
-            spec,
-            'spec',
-            'Must contain only int or Selector entries, but found $e.',
-          );
-        }).toList();
-      } else if (spec is int) {
-        selectors = [Index(spec)];
-      } else {
+  static List<Selector> _parseSelectors(Object spec) {
+    if (spec is Selector) return [spec];
+    if (spec is int) return [Index(spec)];
+    if (spec is List<Selector>) return spec;
+    if (spec is List) {
+      return spec.map((e) {
+        if (e is int) return Index(e);
+        if (e is Selector) return e;
         throw ArgumentError.value(
           spec,
           'spec',
-          'Must be an int, a List<int>, a Slice, or a List of Selectors.',
+          'Must contain only int or Selector entries, but found $e.',
         );
-      }
+      }).toList();
+    }
+    throw ArgumentError.value(
+      spec,
+      'spec',
+      'Must be an int, a Selector, or a List of int/Selector entries.',
+    );
+  }
 
-      return MaskedArray(
-        data.slice(selectors),
-        mask.slice(selectors),
-        fillValue: fillValue,
-      );
+  /// Slices or indexes this [MaskedArray], always returning a [MaskedArray<T>]
+  /// view sharing [data] and [mask] storage.
+  ///
+  /// - [int]: selects a single index along axis 0 (reducing rank by 1; yields a
+  ///   0-dimensional [MaskedArray] for 1-D arrays).
+  /// - [Selector] ([Slice], [Index], [Indices], [Mask]): applies along axis 0.
+  /// - `List` of `int` / [Selector]: applies per-axis selectors across
+  ///   dimensions (e.g. `marr[[0, 1]]` returns a 0-D [MaskedArray] view on a
+  ///   2-D array; read its value with `.scalar` or `marr.getCell([0, 1])`).
+  MaskedArray<T> operator [](Object spec) {
+    final selectors = _parseSelectors(spec);
+    final dataSlice = data.slice(selectors);
+    try {
+      final maskSlice = mask.slice(selectors);
+      return MaskedArray<T>(dataSlice, maskSlice, fillValue: fillValue);
+    } catch (_) {
+      dataSlice.dispose();
+      rethrow;
     }
   }
 
   /// Element and slice assignment.
   ///
-  /// If [spec] represents coordinates:
-  /// - If [value] is `null`, masks the element.
-  /// - If [value] is non-null, sets the value in [data] and unmasks it.
-  ///
-  /// If [spec] represents a slice:
-  /// - If [value] is `null`, masks all elements in the slice.
+  /// [spec] follows the same selector rules as [operator []]:
+  /// - If [value] is `null`, masks all selected elements.
   /// - If [value] is [MaskedArray], copies values and masks from it
   ///   (broadcasting if needed).
-  /// - If [value] is [NDArray], copies values from it and unmasks all elements
-  ///   in the slice.
-  /// - If [value] is a scalar, fills the slice with [value] and unmasks it.
-  void operator []=(dynamic spec, dynamic value) {
-    final isCoords =
-        (spec is int && rank == 1) ||
-        (spec is List<int>) ||
-        (spec is List && spec.every((e) => e is int));
-
-    if (isCoords) {
-      final List<int> coords;
-      if (spec is int) {
-        coords = [spec];
-      } else if (spec is List<int>) {
-        coords = spec;
-      } else {
-        coords = (spec as List).cast<int>();
-      }
-
-      if (value == null) {
-        mask.setCell(coords, true);
-      } else {
-        data.setCell(coords, value as Object);
-        mask.setCell(coords, false);
-      }
+  /// - If [value] is [NDArray], copies values from it and unmasks all selected
+  ///   elements.
+  /// - If [value] is a scalar, fills the selection with [value] and unmasks it.
+  void operator []=(Object spec, Object? value) {
+    final selectors = _parseSelectors(spec);
+    if (value == null) {
+      mask.sliceAssign(selectors, true);
+    } else if (value is MaskedArray<T>) {
+      data.sliceAssign(selectors, value.data);
+      mask.sliceAssign(selectors, value.mask);
+    } else if (value is NDArray<T>) {
+      data.sliceAssign(selectors, value);
+      mask.sliceAssign(selectors, false);
+    } else if (value is num || value is Complex || value is bool) {
+      data.sliceAssign(selectors, value);
+      mask.sliceAssign(selectors, false);
     } else {
-      final List<Selector> selectors;
-      if (spec is Slice) {
-        selectors = [spec];
-      } else if (spec is List<Slice>) {
-        selectors = spec;
-      } else if (spec is List<Selector>) {
-        selectors = spec;
-      } else if (spec is List) {
-        selectors = spec.map((e) {
-          if (e is int) return Index(e);
-          if (e is Selector) return e;
-          throw ArgumentError.value(
-            spec,
-            'spec',
-            'Must contain only int or Selector entries, but found $e.',
-          );
-        }).toList();
-      } else if (spec is int) {
-        selectors = [Index(spec)];
-      } else {
-        throw ArgumentError.value(
-          spec,
-          'spec',
-          'Must be an int, a List<int>, a Slice, or a List of Selectors.',
-        );
-      }
-
-      final dataView = data.slice(selectors);
-      final maskView = mask.slice(selectors);
-
-      if (value == null) {
-        maskView.fill(true);
-      } else if (value is MaskedArray<T>) {
-        NDArray.scope(() {
-          final broadcastedData = ndops.broadcastTo(value.data, dataView.shape);
-          final broadcastedMask = ndops.broadcastTo(value.mask, maskView.shape);
-          broadcastedData.copy(out: dataView);
-          broadcastedMask.copy(out: maskView);
-        });
-      } else if (value is NDArray<T>) {
-        NDArray.scope(() {
-          final broadcastedData = ndops.broadcastTo(value, dataView.shape);
-          broadcastedData.copy(out: dataView);
-          maskView.fill(false);
-        });
-      } else if (value is num || value is Complex || value is bool) {
-        dataView.fill(value as Object);
-        maskView.fill(false);
-      } else {
-        throw ArgumentError.value(
-          value,
-          'value',
-          'Must be null, a MaskedArray<$T>, an NDArray<$T>, or a scalar.',
-        );
-      }
+      throw ArgumentError.value(
+        value,
+        'value',
+        'Must be null, a MaskedArray<$T>, an NDArray<$T>, or a scalar.',
+      );
     }
   }
 

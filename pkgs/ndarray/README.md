@@ -34,14 +34,14 @@ Uses Dart Native Assets (`dart:ffi`) to provide an ergonomic, idiomatic Dart API
 - **Spectral Transforms & DSP**:
   - Mixed-radix 1D, 2D, and N-dimensional complex and real Fast Fourier Transforms (`fft`, `ifft`, `rfft`, `irfft`, `fft2`, `fftn`) powered by `package:pocketfft`.
   - Frequency bin generators (`fftfreq`, `rfftfreq`) and zero-frequency shifting (`fftshift`, `ifftshift`).
-  - 1D/2D convolution and cross-correlation (`convolve`, `correlate`).
-  - Spectral window functions (Hann, Hamming, Blackman, Bartlett, Kaiser).
+  - 1D/2D convolution and 1D cross-correlation (`convolve`, `convolve2d`, `correlate`).
+  - Spectral window functions (Hann `hanning` and Hamming `hamming`).
 - **Numerical Optimization & Root Finding**:
   - Multivariate nonlinear function minimization (`minimize`) supporting quasi-Newton **L-BFGS** (`MinimizeMethod.lbfgs`) and derivative-free **Nelder-Mead** simplex (`MinimizeMethod.nelderMead`).
   - 1D scalar root finding (`rootScalar`) via **Brent's method** (`RootMethod.brentq`), Newton-Raphson, and secant iterations.
-- **Spatial Distance Metrics & Orthogonal Polynomials**:
-  - Pairwise distance matrix computations (`pdist`, `cdist`, `squareform`) across Euclidean, Manhattan, Cosine, Chebyshev, and Minkowski metrics.
-  - Classical orthogonal polynomial evaluation, fitting, differentiation, integration, and root/quadrature generation (Chebyshev, Legendre, Hermite, Laguerre).
+- **Spatial Distance Metrics & Polynomials**:
+  - Pairwise distance matrix computations (`pdist`, `cdist`) across Euclidean, Cosine, Hamming, and Chebyshev metrics.
+  - Standard polynomial fitting, evaluation, differentiation, integration, and root finding (`polyfit`, `polyval`, `polyder`, `polyint`, `roots`), plus classical orthogonal polynomial evaluation and root finding (Chebyshev, Legendre, Hermite, Laguerre).
 - **Zero-Copy NumPy `.npy` & `.npz` Streaming I/O**:
   - Native binary serialization and deserialization for single arrays (`save`, `load`).
   - Multi-array ZIP archives (`savez`, `loadz` with optional compression), enabling data exchange with Python, NumPy, SciPy, and PyTorch pipelines.
@@ -342,6 +342,20 @@ void main() {
   }
 }
 ```
+
+---
+
+## Benchmarks
+
+`package:ndarray` ships a curated, reproducible benchmark suite comparing **Dart AOT** (compiled via `dart build cli` with bundled native assets) against **PyPI NumPy** (OpenBLAS) and **SciPy** (`scipy.spatial.distance`) on identical deterministic pseudorandom inputs, using matching warmup and batch-calibrated median/IQR timing plus automatic numerical parity checks across every operation.
+
+Run it locally from `pkgs/ndarray` (using a Python environment with PyPI `numpy`, and optionally `scipy`):
+
+```bash
+dart run benchmark/run_readme_benchmark.dart --python /path/to/venv/bin/python
+```
+
+Add `--strict-blas` to fail fast if your system Python links reference Netlib BLAS instead of OpenBLAS/MKL, or `--quick` for a fast smoke check. The same suite can also be triggered on GitHub Actions via the manual [`Benchmarks (Dart AOT vs NumPy/SciPy)`](https://github.com/google/scientific_dart/actions/workflows/benchmark.yml) workflow on `ubuntu-latest` to generate verified reports.
 
 ---
 

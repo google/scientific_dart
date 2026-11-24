@@ -241,5 +241,21 @@ void main() {
         expect(w.toList()[1].real, closeTo(expectedW.toList()[1].real, 1e-9));
       }),
     );
+
+    test(
+      'eigValues() auto-promotes boolean matrix to float64',
+      () => NDArray.scope(() {
+        final a = NDArray.fromList(
+          [true, true, false, true],
+          [2, 2],
+          DType.boolean,
+        );
+        final w = eigValues(a);
+        final expected = eigValues(a.asType(DType.float64));
+        expect(w.dtype, equals(DType.complex128));
+        expect(w.shape, equals([2]));
+        expect(allClose(w, expected), isTrue);
+      }),
+    );
   });
 }
