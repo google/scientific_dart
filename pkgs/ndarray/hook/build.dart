@@ -20,6 +20,7 @@ import 'package:crypto/crypto.dart';
 import 'package:hooks/hooks.dart';
 import 'package:ndarray/src/hook_helpers/build_options.dart';
 import 'package:ndarray/src/hook_helpers/hashes.dart';
+import 'package:ndarray/src/hook_helpers/msvc_compiler.dart';
 
 void main(List<String> args) async {
   await build(args, (input, output) async {
@@ -623,23 +624,19 @@ final class SourceMode extends BuildMode {
       if (isMSVC) ...await getMSVCEnvironment(arch),
     };
 
+    final x86Flags = options.effectiveX86Flags(isMSVC: isMSVC);
     var cppCompilerPath = compilerPath;
-    if (isMSVC && !isClangCl) {
-      for (final candidate in const [
-        r'C:\Program Files\LLVM\bin\clang-cl.exe',
-        'clang-cl.exe',
-      ]) {
-        try {
-          final check = await Process.run(candidate, [
-            '--version',
-          ], environment: msvcEnv);
-          if (check.exitCode == 0) {
-            cppCompilerPath = candidate;
-            break;
-          }
-        } catch (_) {}
+    if (isMSVC) {
+      if (!isClangCl) {
+        cppCompilerPath = await resolveWindowsCppCompiler(
+          fallbackCompiler: compilerPath,
+          arch: arch,
+          environment: msvcEnv,
+          x86Flags: x86Flags,
+          onLog: print,
+        );
       }
-    } else if (!isMSVC && compilerPath.endsWith('gcc')) {
+    } else if (compilerPath.endsWith('gcc')) {
       cppCompilerPath =
           '${compilerPath.substring(0, compilerPath.length - 3)}g++';
     } else if (compilerPath.endsWith('clang')) {
@@ -652,7 +649,6 @@ final class SourceMode extends BuildMode {
       cppCompilerPath = compilerPath.replaceAll('clang-', 'clang++-');
     }
 
-    final x86Flags = options.effectiveX86Flags(isMSVC: isMSVC);
     final cacheKey = options.cacheKey;
     final hwyCacheKey = options.x86Flags == null
         ? ''
@@ -688,18 +684,44 @@ final class SourceMode extends BuildMode {
     }
 
     await _withSharedLock(highwayBuildDir, () async {
-      if (!resolveHwyLib(hwyLibName).existsSync() ||
-          !resolveHwyLib(hwyContribLibName).existsSync()) {
-        print('Highway static libraries not found. Compiling highway...');
+      final cmakeCCompiler =
+          (isMSVC && cppCompilerPath.toLowerCase().contains('clang-cl'))
+          ? cppCompilerPath.replaceAll('\\', '/')
+          : compilerPath.replaceAll('\\', '/');
+      final cmakeCxxCompiler = cppCompilerPath.replaceAll('\\', '/');
+      final compilerStampFile = File.fromUri(
+        highwayBuildDir.uri.resolve('.compiler'),
+      );
+      final compilerIdentity = '$cmakeCCompiler|$cmakeCxxCompiler';
+      final hasValidHwyCache =
+          resolveHwyLib(hwyLibName).existsSync() &&
+          resolveHwyLib(hwyContribLibName).existsSync() &&
+          compilerStampFile.existsSync() &&
+          compilerStampFile.readAsStringSync().trim() == compilerIdentity;
+
+      if (!hasValidHwyCache) {
+        print(
+          'Highway static libraries missing or built with a different compiler '
+          '($compilerIdentity); compiling highway...',
+        );
         if (!highwayBuildDir.existsSync()) {
           highwayBuildDir.createSync(recursive: true);
         }
-
-        final cmakeCCompiler =
-            (isMSVC && cppCompilerPath.toLowerCase().contains('clang-cl'))
-            ? cppCompilerPath.replaceAll('\\', '/')
-            : compilerPath.replaceAll('\\', '/');
-        final cmakeCxxCompiler = cppCompilerPath.replaceAll('\\', '/');
+        if (compilerStampFile.existsSync()) {
+          compilerStampFile.deleteSync();
+        }
+        final staleCache = File.fromUri(
+          highwayBuildDir.uri.resolve('CMakeCache.txt'),
+        );
+        if (staleCache.existsSync()) {
+          staleCache.deleteSync();
+        }
+        final staleCMakeFiles = Directory.fromUri(
+          highwayBuildDir.uri.resolve('CMakeFiles/'),
+        );
+        if (staleCMakeFiles.existsSync()) {
+          staleCMakeFiles.deleteSync(recursive: true);
+        }
 
         final cmakeRes = await Process.run(
           'cmake',
@@ -755,15 +777,22 @@ final class SourceMode extends BuildMode {
             'stderr: ${buildRes.stderr}',
           );
         }
+
+        await compilerStampFile.writeAsString(compilerIdentity);
       }
     });
 
     final libhwy = resolveHwyLib(hwyLibName);
     final libhwyContrib = resolveHwyLib(hwyContribLibName);
 
-    String computeInputDigest(String src, List<String> args) {
+    String computeInputDigest(
+      String src,
+      List<String> args, {
+      required String compiler,
+    }) {
       final bytes = BytesBuilder(copy: false);
       bytes.add(cacheKey.codeUnits);
+      bytes.add(compiler.codeUnits);
       bytes.add(args.join(' ').codeUnits);
       bytes.add(File(src).readAsBytesSync());
       final headerPaths = <String>{
@@ -838,7 +867,7 @@ final class SourceMode extends BuildMode {
       ) async {
         final objF = File(obj);
         final hashF = File('$obj.sha256');
-        final digest = computeInputDigest(src, args);
+        final digest = computeInputDigest(src, args, compiler: exe);
         if (objF.existsSync() &&
             hashF.existsSync() &&
             hashF.readAsStringSync().trim() == digest) {
@@ -1061,7 +1090,7 @@ STAMP_EXPORT const char* ndarray_embedded_source_hash(void) {
       ) async {
         final objF = File(obj);
         final hashF = File('$obj.sha256');
-        final digest = computeInputDigest(src, args);
+        final digest = computeInputDigest(src, args, compiler: exe);
         if (objF.existsSync() &&
             hashF.existsSync() &&
             hashF.readAsStringSync().trim() == digest) {
