@@ -639,6 +639,115 @@ NDARRAY_EXPORT int npz_save(
     }
 }
 
+NDARRAY_EXPORT int npz_save_mem(
+    size_t num_arrays,
+    const char** entry_names,
+    const uint8_t** header_bytes,
+    const size_t* header_lens,
+    const void** data_ptrs,
+    const size_t* data_lens,
+    int compress_level,
+    void** out_buf,
+    size_t* out_size) {
+    if (!out_buf || !out_size) {
+        return -1;
+    }
+    *out_buf = NULL;
+    *out_size = 0;
+
+    if (num_arrays == 0 || !entry_names || !header_bytes || !header_lens ||
+        !data_ptrs || !data_lens) {
+        return -1;
+    }
+
+    bool force_zip64 = (compress_level & 0x100) != 0;
+    int level = compress_level & 0xFF;
+    bool need_zip64 = force_zip64 || (num_arrays >= 0xFFFFULL);
+    uint64_t total_uncomp_estimate = 0;
+    for (size_t i = 0; i < num_arrays; i++) {
+        if (!entry_names[i]) {
+            return -1;
+        }
+        size_t nlen = strlen(entry_names[i]);
+        if (nlen > 0xFFFFULL) {
+            return -7;
+        }
+        if (header_lens[i] > SIZE_MAX - data_lens[i]) {
+            return -7;
+        }
+        uint64_t entry_len = (uint64_t)header_lens[i] + (uint64_t)data_lens[i];
+        if (entry_len >= 0xFFFFFFFFULL) {
+            need_zip64 = true;
+        }
+        total_uncomp_estimate += 30ULL + (uint64_t)nlen + entry_len + 46ULL + (uint64_t)nlen;
+        if (total_uncomp_estimate >= 0xFFFFFFFFULL) {
+            need_zip64 = true;
+        }
+    }
+
+    mz_zip_archive zip;
+    mz_zip_zero_struct(&zip);
+    zip.m_pAlloc = npz_alloc;
+    zip.m_pFree = npz_free;
+    zip.m_pRealloc = npz_realloc;
+
+    mz_uint init_flags = need_zip64 ? MZ_ZIP_FLAG_WRITE_ZIP64 : 0;
+    if (!mz_zip_writer_init_heap_v2(&zip, 0, 0, init_flags)) {
+        return -2;
+    }
+
+    for (size_t i = 0; i < num_arrays; i++) {
+        struct NpzReadEntryState state;
+        state.header = header_bytes[i];
+        state.header_len = header_lens[i];
+        state.data = (const uint8_t*)data_ptrs[i];
+        state.data_len = data_lens[i];
+
+        size_t total_len = state.header_len + state.data_len;
+        mz_uint flags = (level > 0) ? (mz_uint)level : 0;
+
+        mz_bool ok = mz_zip_writer_add_read_buf_callback(
+            &zip,
+            entry_names[i],
+            npz_read_entry_callback,
+            &state,
+            total_len,
+            NULL,
+            NULL,
+            0,
+            flags,
+            NULL,
+            0,
+            NULL,
+            0);
+
+        if (!ok) {
+            mz_zip_writer_end(&zip);
+            return -3;
+        }
+    }
+
+    if (!mz_zip_writer_finalize_heap_archive(&zip, out_buf, out_size)) {
+        mz_zip_writer_end(&zip);
+        *out_buf = NULL;
+        *out_size = 0;
+        return -4;
+    }
+
+    if (!mz_zip_writer_end(&zip)) {
+        free(*out_buf);
+        *out_buf = NULL;
+        *out_size = 0;
+        return -5;
+    }
+
+    return 0;
+}
+
+NDARRAY_EXPORT void npz_free_buffer(void* buf) {
+    free(buf);
+}
+
 // ---------------------------------------------------------------------------
 // NpzReader Definition & Implementation
 // ---------------------------------------------------------------------------
@@ -666,6 +775,7 @@ struct NpzReader {
 #endif
     const uint8_t* mmap_data;
     size_t file_size;
+    bool owns_mmap;
     size_t num_files;
     NpzEntryInfo* entries;
 
@@ -705,12 +815,14 @@ NDARRAY_EXPORT void npz_close_reader(void* handle) {
     }
 
     if (reader->mmap_data) {
+        if (reader->owns_mmap) {
 #if defined(_WIN32)
-        UnmapViewOfFile(reader->mmap_data);
-        if (reader->hMapping) CloseHandle(reader->hMapping);
+            UnmapViewOfFile(reader->mmap_data);
+            if (reader->hMapping) CloseHandle(reader->hMapping);
 #else
-        munmap((void*)reader->mmap_data, reader->file_size);
+            munmap((void*)reader->mmap_data, reader->file_size);
 #endif
+        }
         reader->mmap_data = NULL;
     }
 
@@ -721,6 +833,10 @@ NDARRAY_EXPORT void npz_close_reader(void* handle) {
 
     free(reader);
 }
+
+static void* npz_init_reader_from_buffer(
+    struct NpzReader* reader,
+    int64_t* out_num_entries);
 
 NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entries) {
     if (!filepath || !out_num_entries) return NULL;
@@ -762,6 +878,7 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
 
     struct NpzReader* reader = (struct NpzReader*)calloc(1, sizeof(struct NpzReader));
     if (!reader) {
+        ndarray_set_oom_flag();
 #if defined(_WIN32)
         UnmapViewOfFile(mmap_data);
         if (hMapping) CloseHandle(hMapping);
@@ -775,12 +892,41 @@ NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entr
     reader->fp = fp;
     reader->file_size = file_size;
     reader->mmap_data = mmap_data;
+    reader->owns_mmap = true;
 #if defined(_WIN32)
     reader->hFile = hFile;
     reader->hMapping = hMapping;
 #else
     reader->fd = fd;
 #endif
+
+    return npz_init_reader_from_buffer(reader, out_num_entries);
+}
+
+NDARRAY_EXPORT void* npz_open_reader_mem(
+    const uint8_t* data,
+    size_t data_len,
+    int64_t* out_num_entries) {
+    if (!data || data_len < 22 || !out_num_entries) return NULL;
+
+    struct NpzReader* reader = (struct NpzReader*)calloc(1, sizeof(struct NpzReader));
+    if (!reader) {
+        ndarray_set_oom_flag();
+        return NULL;
+    }
+
+    reader->mmap_data = data;
+    reader->file_size = data_len;
+    reader->owns_mmap = false;
+
+    return npz_init_reader_from_buffer(reader, out_num_entries);
+}
+
+static void* npz_init_reader_from_buffer(
+    struct NpzReader* reader,
+    int64_t* out_num_entries) {
+    const uint8_t* mmap_data = reader->mmap_data;
+    size_t file_size = reader->file_size;
 
     size_t eocd_pos = find_eocd(mmap_data, file_size);
     if (eocd_pos == (size_t)-1) {

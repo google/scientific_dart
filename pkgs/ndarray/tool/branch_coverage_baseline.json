@@ -1,10 +1,10 @@
 {
   "summary": {
-    "totalMissedBranches": 712,
-    "totalBranchesFound": 11927,
-    "totalBranchesHit": 11215,
-    "branchCoveragePercent": 94.03,
-    "lineCoveragePercent": 93.39
+    "totalMissedBranches": 703,
+    "totalBranchesFound": 11981,
+    "totalBranchesHit": 11278,
+    "branchCoveragePercent": 94.13,
+    "lineCoveragePercent": 93.43
   },
   "files": {
     "lib/src/cpu_check.dart": {
@@ -54,12 +54,12 @@
     },
     "lib/src/ndarray.dart": {
       "missedBranches": 10,
-      "branchesFound": 1151,
-      "branchesHit": 1141,
+      "branchesFound": 1153,
+      "branchesHit": 1143,
       "branchCoveragePercent": 99.13,
       "missedLines": 26,
-      "linesFound": 2426,
-      "linesHit": 2400
+      "linesFound": 2427,
+      "linesHit": 2401
     },
     "lib/src/nditer.dart": {
       "missedBranches": 6,
@@ -161,13 +161,13 @@
       "linesHit": 145
     },
     "lib/src/operations/io.dart": {
-      "missedBranches": 34,
-      "branchesFound": 130,
-      "branchesHit": 96,
-      "branchCoveragePercent": 73.85,
-      "missedLines": 52,
-      "linesFound": 383,
-      "linesHit": 331
+      "missedBranches": 25,
+      "branchesFound": 162,
+      "branchesHit": 137,
+      "branchCoveragePercent": 84.57,
+      "missedLines": 43,
+      "linesFound": 437,
+      "linesHit": 394
     },
     "lib/src/operations/linalg.dart": {
       "missedBranches": 2,
@@ -450,12 +450,12 @@
     },
     "lib/src/wasm_pointer_lists.dart": {
       "missedBranches": 2,
-      "branchesFound": 62,
-      "branchesHit": 60,
-      "branchCoveragePercent": 96.77,
+      "branchesFound": 82,
+      "branchesHit": 80,
+      "branchCoveragePercent": 97.56,
       "missedLines": 4,
-      "linesFound": 134,
-      "linesHit": 130
+      "linesFound": 172,
+      "linesHit": 168
     }
   }
 }

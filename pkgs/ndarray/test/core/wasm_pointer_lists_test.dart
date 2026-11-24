@@ -336,4 +336,69 @@ void main() {
       }
     });
   });
+
+  group('Wasm bulk byte copy helpers', () {
+    test(
+      'copyBytesToWasmNative and copyWasmNativeToBytes cover empty, short, aligned, unaligned src/dst, and tail bytes',
+      () {
+        final buf = calloc<ffi.Uint8>(128);
+        try {
+          // Empty / non-positive lengths are no-ops.
+          copyBytesToWasmNative(buf.cast(), Uint8List(0), 0);
+          copyWasmNativeToBytes(Uint8List(0), buf.cast(), 0);
+          copyBytesToNative(buf.cast(), Uint8List(0), 0);
+          copyNativeToBytes(Uint8List(0), buf.cast(), 0);
+
+          // Test several lengths (< 8, exact 8-byte multiple, multi-word + tail)
+          // and combinations of aligned/unaligned src, dst, and native pointers.
+          for (final len in [1, 5, 8, 16, 29]) {
+            final backingSrc = Uint8List(len + 8);
+            for (var i = 0; i < backingSrc.length; i++) {
+              backingSrc[i] = (i * 37 + 13) & 0xFF;
+            }
+            for (final srcOffset in [0, 3]) {
+              final src = Uint8List.sublistView(
+                backingSrc,
+                srcOffset,
+                srcOffset + len,
+              );
+              for (final ptrOffset in [0, 1]) {
+                final dstPtr = (buf + ptrOffset).cast<ffi.Void>();
+                copyBytesToWasmNative(dstPtr, src, len);
+
+                for (final dstOffset in [0, 5]) {
+                  final backingDst = Uint8List(len + 8);
+                  final dst = Uint8List.sublistView(
+                    backingDst,
+                    dstOffset,
+                    dstOffset + len,
+                  );
+                  copyWasmNativeToBytes(dst, dstPtr, len);
+                  expect(dst, equals(src));
+                }
+
+                // Also exercise the platform-dispatching wrappers.
+                final roundTrip = Uint8List(len);
+                copyBytesToNative(dstPtr, src, len);
+                copyNativeToBytes(roundTrip, dstPtr, len);
+                expect(roundTrip, equals(src));
+              }
+            }
+          }
+        } finally {
+          calloc.free(buf);
+        }
+      },
+    );
+
+    test(
+      'NDArray.create normalizes native allocation OOM to OutOfMemoryError',
+      () {
+        expect(
+          () => NDArray.create([1 << 60], DType.uint8),
+          throwsA(isA<OutOfMemoryError>()),
+        );
+      },
+    );
+  });
 }

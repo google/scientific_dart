@@ -54,6 +54,39 @@ NDARRAY_EXPORT int npz_save(
     int compress_level);
 
 /**
+ * Saves multiple named arrays into an in-memory ZIP archive (.npz) buffer.
+ *
+ * On success, `*out_buf` points to a newly allocated buffer of `*out_size`
+ * bytes that must be released with `npz_free_buffer`.
+ *
+ * @param num_arrays Number of array entries.
+ * @param entry_names Array of entry filenames (e.g. "arr_a.npy").
+ * @param header_bytes Array of pointers to .npy header byte buffers.
+ * @param header_lens Array of header buffer lengths in bytes.
+ * @param data_ptrs Array of pointers to contiguous array data.
+ * @param data_lens Array of array data lengths in bytes.
+ * @param compress_level Compression level: 0 for uncompressed (STORED), 1-9 for Deflate.
+ * @param out_buf Output pointer receiving the heap-allocated archive buffer.
+ * @param out_size Output pointer receiving the archive length in bytes.
+ * @return 0 on success, negative error code on failure.
+ */
+NDARRAY_EXPORT int npz_save_mem(
+    size_t num_arrays,
+    const char** entry_names,
+    const uint8_t** header_bytes,
+    const size_t* header_lens,
+    const void** data_ptrs,
+    const size_t* data_lens,
+    int compress_level,
+    void** out_buf,
+    size_t* out_size);
+
+/**
+ * Releases a buffer allocated by `npz_save_mem`. NULL is ignored.
+ */
+NDARRAY_EXPORT void npz_free_buffer(void* buf);
+
+/**
  * Opens a .npz ZIP archive for reading.
  *
  * @param filepath Path to the .npz archive.
@@ -61,6 +94,22 @@ NDARRAY_EXPORT int npz_save(
  * @return Opaque reader handle on success, NULL on failure.
  */
 NDARRAY_EXPORT void* npz_open_reader(const char* filepath, int64_t* out_num_entries);
+
+/**
+ * Opens an in-memory .npz ZIP archive buffer for reading.
+ *
+ * The caller must keep [data] alive and immutable until `npz_close_reader` is
+ * called on the returned handle.
+ *
+ * @param data Pointer to the raw .npz bytes in memory.
+ * @param data_len Length of [data] in bytes.
+ * @param out_num_entries Output pointer receiving the total number of entries in the archive.
+ * @return Opaque reader handle on success, NULL on failure.
+ */
+NDARRAY_EXPORT void* npz_open_reader_mem(
+    const uint8_t* data,
+    size_t data_len,
+    int64_t* out_num_entries);
 
 /**
  * Retrieves entry metadata and the .npy header bytes for a given index in the archive.
