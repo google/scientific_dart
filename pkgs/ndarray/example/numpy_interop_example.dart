@@ -22,6 +22,7 @@ void main() {
     print('=== NDArray NumPy Binary Interoperability Examples ===\n');
     runNpySaveAndLoadExample();
     runNpzMultiSaveAndLoadExample();
+    runInMemoryBytesExample();
   });
 }
 
@@ -105,4 +106,26 @@ void runNpzMultiSaveAndLoadExample() {
       file.parent.deleteSync();
     }
   }
+}
+
+void runInMemoryBytesExample() {
+  NDArray.scope(() {
+    print('\n--- In-Memory .npy & .npz Byte Serialization (Web-Safe) ---');
+    final matrix = NDArray.fromList(
+      Float64List.fromList([1.0, 2.0, 3.0, 4.0]),
+      [2, 2],
+      DType.float64,
+    );
+
+    final npyBytes = saveBytes(matrix);
+    final restored = loadBytes(npyBytes);
+    print('Restored .npy from ${npyBytes.length} bytes: ${restored.toList()}');
+
+    final npzBytes = savezBytes({'matrix': matrix}, compressed: true);
+    final archive = loadzBytes(npzBytes);
+    print(
+      'Restored .npz from ${npzBytes.length} bytes: '
+      'keys=${archive.keys.toList()}, data=${archive['matrix']!.toList()}',
+    );
+  });
 }

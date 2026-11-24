@@ -1649,9 +1649,14 @@ sealed class NDArray<T extends DTypeTag>
         : -minRelativeOffset;
 
     final allocator = zeroInit ? calloc : malloc;
-    final ffi.Pointer<ffi.Void> pointer = allocator<ffi.Uint8>(
-      allocSize * dtype.byteWidth,
-    ).cast();
+    final ffi.Pointer<ffi.Void> pointer;
+    try {
+      pointer = allocator<ffi.Uint8>(allocSize * dtype.byteWidth).cast();
+      // package:ffi's allocator throws ArgumentError when OS allocation fails.
+      // ignore: avoid_catching_errors
+    } on ArgumentError {
+      throw OutOfMemoryError();
+    }
     final List<Object?> data = _createDataView(pointer, dtype, allocSize);
 
     final logicalPointer = initialOffsetElements == 0
@@ -1962,18 +1967,7 @@ sealed class NDArray<T extends DTypeTag>
     ffi.Pointer<ffi.Void> dst,
     Uint8List src,
     int byteCount,
-  ) {
-    // coverage:ignore-start
-    if (isWasmRuntime) {
-      final out = dst.cast<ffi.Uint8>();
-      for (var i = 0; i < byteCount; i++) {
-        out[i] = src[i];
-      }
-      return;
-    }
-    // coverage:ignore-end
-    dst.cast<ffi.Uint8>().asTypedList(byteCount).setAll(0, src);
-  }
+  ) => copyBytesToNative(dst, src, byteCount);
 
   static void _copyBoolBytesToNative(
     ffi.Pointer<ffi.Void> dst,
@@ -1999,18 +1993,7 @@ sealed class NDArray<T extends DTypeTag>
     Uint8List dst,
     ffi.Pointer<ffi.Void> src,
     int byteCount,
-  ) {
-    // coverage:ignore-start
-    if (isWasmRuntime) {
-      final inp = src.cast<ffi.Uint8>();
-      for (var i = 0; i < byteCount; i++) {
-        dst[i] = inp[i];
-      }
-      return;
-    }
-    // coverage:ignore-end
-    dst.setAll(0, src.cast<ffi.Uint8>().asTypedList(byteCount));
-  }
+  ) => copyNativeToBytes(dst, src, byteCount);
 
   static TypedData _allocateTypedData(DType<DTypeTag> dtype, int count) =>
       switch (dtype) {

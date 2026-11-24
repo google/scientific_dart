@@ -44,12 +44,56 @@ external int npz_save(
   int compress_level,
 );
 
+/// NPZ native in-memory zip archive serialization
+@ffi.Native<
+  ffi.Int Function(
+    ffi.Size,
+    ffi.Pointer<ffi.Pointer<ffi.Char>>,
+    ffi.Pointer<ffi.Pointer<ffi.Uint8>>,
+    ffi.Pointer<ffi.Size>,
+    ffi.Pointer<ffi.Pointer<ffi.Void>>,
+    ffi.Pointer<ffi.Size>,
+    ffi.Int,
+    ffi.Pointer<ffi.Pointer<ffi.Void>>,
+    ffi.Pointer<ffi.Size>,
+  )
+>()
+external int npz_save_mem(
+  int num_arrays,
+  ffi.Pointer<ffi.Pointer<ffi.Char>> entry_names,
+  ffi.Pointer<ffi.Pointer<ffi.Uint8>> header_bytes,
+  ffi.Pointer<ffi.Size> header_lens,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> data_ptrs,
+  ffi.Pointer<ffi.Size> data_lens,
+  int compress_level,
+  ffi.Pointer<ffi.Pointer<ffi.Void>> out_buf,
+  ffi.Pointer<ffi.Size> out_size,
+);
+
+/// Releases a buffer allocated by [npz_save_mem].
+@ffi.Native<ffi.Void Function(ffi.Pointer<ffi.Void>)>()
+external void npz_free_buffer(ffi.Pointer<ffi.Void> buf);
+
 /// NPZ native zip archive reader open
 @ffi.Native<
   ffi.Pointer<ffi.Void> Function(ffi.Pointer<ffi.Char>, ffi.Pointer<ffi.Int64>)
 >()
 external ffi.Pointer<ffi.Void> npz_open_reader(
   ffi.Pointer<ffi.Char> filepath,
+  ffi.Pointer<ffi.Int64> out_num_entries,
+);
+
+/// NPZ native in-memory zip archive reader open
+@ffi.Native<
+  ffi.Pointer<ffi.Void> Function(
+    ffi.Pointer<ffi.Uint8>,
+    ffi.Size,
+    ffi.Pointer<ffi.Int64>,
+  )
+>()
+external ffi.Pointer<ffi.Void> npz_open_reader_mem(
+  ffi.Pointer<ffi.Uint8> data,
+  int data_len,
   ffi.Pointer<ffi.Int64> out_num_entries,
 );
 

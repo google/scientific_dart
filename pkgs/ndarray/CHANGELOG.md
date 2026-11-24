@@ -1,5 +1,9 @@
 ## 0.4.0-wip
 
+- **In-Memory `.npy`/`.npz` Serialization & `dart2wasm` Interop**:
+  - Added `saveBytes`, `loadBytes`, `savezBytes`, and `loadzBytes` in `package:ndarray` for browser- and memory-friendly NumPy `.npy`/`.npz` serialization over `Uint8List` (with native `miniz` heap/memory ZIP support for uncompressed and compressed `.npz` archives).
+  - Accelerated `dart2wasm` bulk byte transfers (`fromBytes`, `toBytes`, `fromTypedData`, `toTypedData`, and in-memory `.npy`/`.npz` I/O) with 8-byte `Uint64` copy loops in `wasm_pointer_lists.dart`.
+  - Normalized native `malloc`/`calloc` `ArgumentError` failures in `NDArray.create` to `OutOfMemoryError` across VM and `wasm32`.
 - **Breaking — Typed `NDArray<T> operator []`, Simplified `Mask`, & Tightened Setters**:
   - Changed `NDArray.operator [](Object spec)` to always return `NDArray<T>` (instead of `dynamic`). Full-rank coordinate lookups (e.g. `a[[i, j]]`) return 0-D shared-memory views; extract Dart scalars via `.scalar` (e.g. `a[[i, j]].scalar`) or `getCell([i, j])`.
   - Standardized `operator []` and `operator []=` to treat `List` specs uniformly as per-axis selectors (e.g. `a[[1]]` on a 2-D array selects row 1; use `Indices([i, j])`, an integer `NDArray`, or `take` for fancy selection along axis 0).

@@ -30,6 +30,110 @@ const bool isWasmRuntime = bool.fromEnvironment('dart.tool.dart2wasm');
 /// round sizes up for alignment must leave their own headroom below it.
 const int maxWasm32AllocationBytes = 0x7fffffff;
 
+/// Copies [byteCount] bytes from [src] into native memory at [dst] without
+/// calling `Pointer.asTypedList` (which is unavailable on `dart2wasm`).
+///
+/// Transfers 8 bytes per iteration using `Uint64` loads/stores when [dst] is
+/// 8-byte aligned (using a direct [Uint64List] view when `src.offsetInBytes`
+/// is also 8-byte aligned, or [ByteData.getUint64] otherwise), and finishes
+/// any trailing or unaligned bytes element-wise.
+void copyBytesToWasmNative(
+  ffi.Pointer<ffi.Void> dst,
+  Uint8List src,
+  int byteCount,
+) {
+  if (byteCount <= 0) return;
+  final out8 = dst.cast<ffi.Uint8>();
+  final words = byteCount >> 3;
+  var offset = 0;
+  if (words > 0 && (dst.address & 7) == 0) {
+    final out64 = dst.cast<ffi.Uint64>();
+    if ((src.offsetInBytes & 7) == 0) {
+      final in64 = src.buffer.asUint64List(src.offsetInBytes, words);
+      for (var i = 0; i < words; i++) {
+        out64[i] = in64[i];
+      }
+    } else {
+      final bd = ByteData.sublistView(src, 0, byteCount);
+      for (var i = 0; i < words; i++) {
+        out64[i] = bd.getUint64(i << 3, Endian.host);
+      }
+    }
+    offset = words << 3;
+  }
+  for (var i = offset; i < byteCount; i++) {
+    out8[i] = src[i];
+  }
+}
+
+/// Copies [byteCount] bytes from native memory at [src] into [dst] without
+/// calling `Pointer.asTypedList` (which is unavailable on `dart2wasm`).
+///
+/// Transfers 8 bytes per iteration using `Uint64` loads/stores when [src] is
+/// 8-byte aligned, and finishes any trailing or unaligned bytes element-wise.
+void copyWasmNativeToBytes(
+  Uint8List dst,
+  ffi.Pointer<ffi.Void> src,
+  int byteCount,
+) {
+  if (byteCount <= 0) return;
+  final in8 = src.cast<ffi.Uint8>();
+  final words = byteCount >> 3;
+  var offset = 0;
+  if (words > 0 && (src.address & 7) == 0) {
+    final in64 = src.cast<ffi.Uint64>();
+    if ((dst.offsetInBytes & 7) == 0) {
+      final out64 = dst.buffer.asUint64List(dst.offsetInBytes, words);
+      for (var i = 0; i < words; i++) {
+        out64[i] = in64[i];
+      }
+    } else {
+      final bd = ByteData.sublistView(dst, 0, byteCount);
+      for (var i = 0; i < words; i++) {
+        bd.setUint64(i << 3, in64[i], Endian.host);
+      }
+    }
+    offset = words << 3;
+  }
+  for (var i = offset; i < byteCount; i++) {
+    dst[i] = in8[i];
+  }
+}
+
+/// Copies [byteCount] bytes from [src] into native memory at [dst], using
+/// `Pointer.asTypedList` on Dart VM and [copyBytesToWasmNative] on `dart2wasm`.
+void copyBytesToNative(
+  ffi.Pointer<ffi.Void> dst,
+  Uint8List src,
+  int byteCount,
+) {
+  if (byteCount <= 0) return;
+  // coverage:ignore-start
+  if (isWasmRuntime) {
+    copyBytesToWasmNative(dst, src, byteCount);
+    return;
+  }
+  // coverage:ignore-end
+  dst.cast<ffi.Uint8>().asTypedList(byteCount).setRange(0, byteCount, src);
+}
+
+/// Copies [byteCount] bytes from native memory at [src] into [dst], using
+/// `Pointer.asTypedList` on Dart VM and [copyWasmNativeToBytes] on `dart2wasm`.
+void copyNativeToBytes(
+  Uint8List dst,
+  ffi.Pointer<ffi.Void> src,
+  int byteCount,
+) {
+  if (byteCount <= 0) return;
+  // coverage:ignore-start
+  if (isWasmRuntime) {
+    copyWasmNativeToBytes(dst, src, byteCount);
+    return;
+  }
+  // coverage:ignore-end
+  dst.setRange(0, byteCount, src.cast<ffi.Uint8>().asTypedList(byteCount));
+}
+
 /// Copies [count] 64-bit integers from [ptr] into a new [Int64List].
 ///
 /// On the VM this is a single bulk copy of the `asTypedList` view; on
