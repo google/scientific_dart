@@ -17,6 +17,8 @@ import 'dart:typed_data';
 import 'package:ndarray/ndarray.dart';
 import 'package:test/test.dart';
 
+const bool _isWasm = bool.fromEnvironment('dart.tool.dart2wasm');
+
 void main() {
   tearDown(NDArray.checkNoLeaks);
 
@@ -459,6 +461,32 @@ void main() {
         final row1 = base[1];
         expect(row1.isContiguous, isTrue);
 
+        if (_isWasm) {
+          expect(() => row1.asTypedDataView(), throwsUnsupportedError);
+          expect(() => row1.asBytesView(), throwsUnsupportedError);
+          expect(
+            () => row1.withTypedData((v) => v.length),
+            throwsUnsupportedError,
+          );
+
+          final dynamic dynRow = row1;
+          expect(dynRow.toTypedData(), [40.0, 50.0, 60.0]);
+          expect(() => dynRow.asTypedDataView(), throwsUnsupportedError);
+          expect(
+            () => dynRow.withTypedData((Float64List v) => v.length),
+            throwsUnsupportedError,
+          );
+
+          final NDArray<DTypeTag> erased = row1.asAnySpec;
+          expect(erased.toTypedData(), isA<Float64List>());
+          expect(() => erased.asTypedDataView(), throwsUnsupportedError);
+          expect(
+            () => erased.withTypedData((v) => v.lengthInBytes),
+            throwsUnsupportedError,
+          );
+          return;
+        }
+
         final view = row1.asTypedDataView();
         expect(view, isA<Float64List>());
         expect(view.length, 3);
@@ -506,6 +534,12 @@ void main() {
             int Function(NDArray<T>) withViewBytes,
             void Function(V) mutate,
           ) {
+            if (_isWasm) {
+              expect(() => getView(arr), throwsUnsupportedError);
+              expect(() => withViewBytes(arr), throwsUnsupportedError);
+              expect(() => arr.asBytesView(), throwsUnsupportedError);
+              return;
+            }
             final expectedBytes = arr.size * arr.dtype.byteWidth;
             expect(withViewBytes(arr), expectedBytes);
             final v = getView(arr);
@@ -660,15 +694,24 @@ void main() {
       NDArray.scope(() {
         final empty = NDArray.zeros([0], DType.float64);
         expect(empty.toTypedData(), isEmpty);
-        expect(empty.asTypedDataView(), isEmpty);
         expect(empty.toBytes(), isEmpty);
-        expect(empty.asBytesView(), isEmpty);
-        expect(empty.withTypedData((v) => v.length), 0);
         expect((empty as NDArray<DTypeTag>).toList(), isEmpty);
+        if (_isWasm) {
+          expect(() => empty.asTypedDataView(), throwsUnsupportedError);
+          expect(() => empty.asBytesView(), throwsUnsupportedError);
+          expect(
+            () => empty.withTypedData((v) => v.length),
+            throwsUnsupportedError,
+          );
+        } else {
+          expect(empty.asTypedDataView(), isEmpty);
+          expect(empty.asBytesView(), isEmpty);
+          expect(empty.withTypedData((v) => v.length), 0);
 
-        empty.isWriteable = false;
-        expect(empty.asTypedDataView(), isEmpty);
-        expect(empty.asBytesView(), isEmpty);
+          empty.isWriteable = false;
+          expect(empty.asTypedDataView(), isEmpty);
+          expect(empty.asBytesView(), isEmpty);
+        }
 
         empty.dispose();
         expect(() => empty.toTypedData(), throwsStateError);

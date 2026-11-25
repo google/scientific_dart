@@ -19,10 +19,7 @@ on:
     branches: [ main ]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+permissions: {}
 
 concurrency:
   group: "pages"
@@ -32,28 +29,22 @@ jobs:
   build:
     name: Build Serverless Wasm Notebook Bundle
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Set up Dart SDK (main channel for dart2wasm experimental FFI)
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1
         with:
           sdk: main
 
-      - name: Install LLVM 21 & Wasm32-WASI Toolchain Prerequisites
-        run: |
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc >/dev/null
-          CODENAME=$(lsb_release -cs)
-          echo "deb http://apt.llvm.org/${CODENAME}/ llvm-toolchain-${CODENAME}-21 main" | sudo tee /etc/apt/sources.list.d/llvm-21.list
-          sudo apt-get update
-          sudo apt-get install -y clang-21 lld-21 llvm-21 wasi-libc
-
-      - name: Cache Wasm Sysroot & OpenBLAS Wasm128 Archive
-        uses: actions/cache@v4
+      - name: Cache WASI SDK & OpenBLAS Wasm128 Archive
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
-            .dart_tool/wasm_sysroot
+            .dart_tool/wasm_sdk
             .dart_tool/wasm_build/libopenblas_wasm128.a
             .dart_tool/wasm_build/libopenblas_wasm128.stamp
             .dart_tool/wasm_build/OpenBLAS-0.3.33/.wasm_normalization_stamp
@@ -61,9 +52,9 @@ jobs:
             .dart_tool/wasm_build/objs
             .dart_tool/wasm_build/compiler_worker
             .dart_tool/wasm_build/sdk_3_14
-          key: Linux-wasm-notebook-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h', 'pkgs/notebook/lib/src/wasm_*.dart') }}
+          key: Linux-wasm-notebook-v2-${{ hashFiles('tool/build_wasm.dart', 'pkgs/*/hook/**', 'pkgs/*/*.c', 'pkgs/*/*.cpp', 'pkgs/*/*.h', 'pkgs/notebook/lib/src/wasm_*.dart') }}
           restore-keys: |
-            Linux-wasm-notebook-
+            Linux-wasm-notebook-v2-
 
       - name: Install Dart Dependencies
         run: dart pub get
@@ -71,11 +62,8 @@ jobs:
       - name: Build Serverless Wasm Notebook Static Bundle
         run: dart --disable-dart-dev --packages=.dart_tool/package_config.json pkgs/notebook/bin/build_wasm_notebook.dart -o _site
 
-      - name: Configure GitHub Pages
-        uses: actions/configure-pages@v5
-
       - name: Upload GitHub Pages Artifact
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
         with:
           path: _site
 
@@ -83,10 +71,16 @@ jobs:
     name: Deploy to GitHub Pages
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
+
       - name: Deploy to GitHub Pages
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4

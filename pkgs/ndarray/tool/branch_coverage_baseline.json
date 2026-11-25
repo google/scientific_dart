@@ -1,10 +1,10 @@
 {
   "summary": {
-    "totalMissedBranches": 782,
-    "totalBranchesFound": 11828,
-    "totalBranchesHit": 11046,
-    "branchCoveragePercent": 93.39,
-    "lineCoveragePercent": 92.94
+    "totalMissedBranches": 712,
+    "totalBranchesFound": 11927,
+    "totalBranchesHit": 11215,
+    "branchCoveragePercent": 94.03,
+    "lineCoveragePercent": 93.39
   },
   "files": {
     "lib/src/cpu_check.dart": {
@@ -27,12 +27,12 @@
     },
     "lib/src/float16_utils.dart": {
       "missedBranches": 9,
-      "branchesFound": 43,
-      "branchesHit": 34,
-      "branchCoveragePercent": 79.07,
+      "branchesFound": 45,
+      "branchesHit": 36,
+      "branchCoveragePercent": 80.0,
       "missedLines": 18,
-      "linesFound": 111,
-      "linesHit": 93
+      "linesFound": 115,
+      "linesHit": 97
     },
     "lib/src/hook_helpers/build_options.dart": {
       "missedBranches": 22,
@@ -54,12 +54,12 @@
     },
     "lib/src/ndarray.dart": {
       "missedBranches": 10,
-      "branchesFound": 1001,
-      "branchesHit": 991,
-      "branchCoveragePercent": 99.0,
+      "branchesFound": 1151,
+      "branchesHit": 1141,
+      "branchCoveragePercent": 99.13,
       "missedLines": 26,
-      "linesFound": 2189,
-      "linesHit": 2163
+      "linesFound": 2426,
+      "linesHit": 2400
     },
     "lib/src/nditer.dart": {
       "missedBranches": 6,
@@ -80,13 +80,13 @@
       "linesHit": 341
     },
     "lib/src/operations/broadcasting.dart": {
-      "missedBranches": 3,
+      "missedBranches": 2,
       "branchesFound": 24,
-      "branchesHit": 21,
-      "branchCoveragePercent": 87.5,
-      "missedLines": 4,
+      "branchesHit": 22,
+      "branchCoveragePercent": 91.67,
+      "missedLines": 2,
       "linesFound": 63,
-      "linesHit": 59
+      "linesHit": 61
     },
     "lib/src/operations/calculus.dart": {
       "missedBranches": 45,
@@ -117,21 +117,21 @@
     },
     "lib/src/operations/fft.dart": {
       "missedBranches": 6,
-      "branchesFound": 457,
-      "branchesHit": 451,
-      "branchCoveragePercent": 98.69,
+      "branchesFound": 453,
+      "branchesHit": 447,
+      "branchCoveragePercent": 98.68,
       "missedLines": 25,
-      "linesFound": 1156,
-      "linesHit": 1131
+      "linesFound": 1144,
+      "linesHit": 1119
     },
     "lib/src/operations/financial.dart": {
       "missedBranches": 0,
-      "branchesFound": 120,
-      "branchesHit": 120,
+      "branchesFound": 100,
+      "branchesHit": 100,
       "branchCoveragePercent": 100.0,
       "missedLines": 0,
-      "linesFound": 348,
-      "linesHit": 348
+      "linesFound": 291,
+      "linesHit": 291
     },
     "lib/src/operations/helpers.dart": {
       "missedBranches": 48,
@@ -144,21 +144,21 @@
     },
     "lib/src/operations/indexing.dart": {
       "missedBranches": 0,
-      "branchesFound": 305,
-      "branchesHit": 305,
+      "branchesFound": 295,
+      "branchesHit": 295,
       "branchCoveragePercent": 100.0,
       "missedLines": 11,
-      "linesFound": 789,
-      "linesHit": 778
+      "linesFound": 769,
+      "linesHit": 758
     },
     "lib/src/operations/interpolation.dart": {
       "missedBranches": 16,
-      "branchesFound": 62,
-      "branchesHit": 46,
-      "branchCoveragePercent": 74.19,
+      "branchesFound": 61,
+      "branchesHit": 45,
+      "branchCoveragePercent": 73.77,
       "missedLines": 27,
-      "linesFound": 174,
-      "linesHit": 147
+      "linesFound": 172,
+      "linesHit": 145
     },
     "lib/src/operations/io.dart": {
       "missedBranches": 34,
@@ -171,12 +171,12 @@
     },
     "lib/src/operations/linalg.dart": {
       "missedBranches": 2,
-      "branchesFound": 1216,
-      "branchesHit": 1214,
-      "branchCoveragePercent": 99.84,
+      "branchesFound": 1212,
+      "branchesHit": 1210,
+      "branchCoveragePercent": 99.83,
       "missedLines": 17,
-      "linesFound": 3627,
-      "linesHit": 3610
+      "linesFound": 3619,
+      "linesHit": 3602
     },
     "lib/src/operations/manipulation.dart": {
       "missedBranches": 16,
@@ -188,13 +188,13 @@
       "linesHit": 674
     },
     "lib/src/operations/math/arithmetic.dart": {
-      "missedBranches": 20,
-      "branchesFound": 1439,
-      "branchesHit": 1419,
-      "branchCoveragePercent": 98.61,
-      "missedLines": 109,
-      "linesFound": 6854,
-      "linesHit": 6745
+      "missedBranches": 7,
+      "branchesFound": 1436,
+      "branchesHit": 1429,
+      "branchCoveragePercent": 99.51,
+      "missedLines": 81,
+      "linesFound": 6848,
+      "linesHit": 6767
     },
     "lib/src/operations/math/binary_op.dart": {
       "missedBranches": 0,
@@ -225,12 +225,12 @@
     },
     "lib/src/operations/math/complex.dart": {
       "missedBranches": 16,
-      "branchesFound": 88,
-      "branchesHit": 72,
-      "branchCoveragePercent": 81.82,
+      "branchesFound": 87,
+      "branchesHit": 71,
+      "branchCoveragePercent": 81.61,
       "missedLines": 46,
-      "linesFound": 230,
-      "linesHit": 184
+      "linesFound": 228,
+      "linesHit": 182
     },
     "lib/src/operations/math/exponential.dart": {
       "missedBranches": 8,
@@ -279,12 +279,12 @@
     },
     "lib/src/operations/math/ufunc_methods.dart": {
       "missedBranches": 13,
-      "branchesFound": 631,
-      "branchesHit": 618,
-      "branchCoveragePercent": 97.94,
+      "branchesFound": 624,
+      "branchesHit": 611,
+      "branchCoveragePercent": 97.92,
       "missedLines": 78,
-      "linesFound": 1940,
-      "linesHit": 1862
+      "linesFound": 1926,
+      "linesHit": 1848
     },
     "lib/src/operations/math/utility.dart": {
       "missedBranches": 8,
@@ -315,12 +315,12 @@
     },
     "lib/src/operations/optimize.dart": {
       "missedBranches": 32,
-      "branchesFound": 156,
-      "branchesHit": 124,
-      "branchCoveragePercent": 79.49,
+      "branchesFound": 155,
+      "branchesHit": 123,
+      "branchCoveragePercent": 79.35,
       "missedLines": 49,
-      "linesFound": 412,
-      "linesHit": 363
+      "linesFound": 410,
+      "linesHit": 361
     },
     "lib/src/operations/padding.dart": {
       "missedBranches": 18,
@@ -405,21 +405,21 @@
     },
     "lib/src/operations/splitting.dart": {
       "missedBranches": 17,
-      "branchesFound": 57,
-      "branchesHit": 40,
-      "branchCoveragePercent": 70.18,
+      "branchesFound": 56,
+      "branchesHit": 39,
+      "branchCoveragePercent": 69.64,
       "missedLines": 21,
-      "linesFound": 128,
-      "linesHit": 107
+      "linesFound": 126,
+      "linesHit": 105
     },
     "lib/src/operations/stats.dart": {
       "missedBranches": 2,
-      "branchesFound": 1160,
-      "branchesHit": 1158,
+      "branchesFound": 1159,
+      "branchesHit": 1157,
       "branchCoveragePercent": 99.83,
       "missedLines": 104,
-      "linesFound": 3054,
-      "linesHit": 2950
+      "linesFound": 3052,
+      "linesHit": 2948
     },
     "lib/src/operations/tensor_contractions.dart": {
       "missedBranches": 37,
@@ -449,13 +449,13 @@
       "linesHit": 69
     },
     "lib/src/wasm_pointer_lists.dart": {
-      "missedBranches": 58,
+      "missedBranches": 2,
       "branchesFound": 62,
-      "branchesHit": 4,
-      "branchCoveragePercent": 6.45,
-      "missedLines": 129,
+      "branchesHit": 60,
+      "branchCoveragePercent": 96.77,
+      "missedLines": 4,
       "linesFound": 134,
-      "linesHit": 5
+      "linesHit": 130
     }
   }
 }

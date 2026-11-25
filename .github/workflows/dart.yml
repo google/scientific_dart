@@ -20,6 +20,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+
 jobs:
   build-and-test:
     name: Test on ${{ matrix.os }}
@@ -31,17 +34,17 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Set up Dart SDK
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1
         with:
           sdk: stable
 
       - name: Cache Build Artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .dart_tool/
@@ -58,7 +61,7 @@ jobs:
 
       - name: Set up MSVC Developer Command Prompt
         if: matrix.os == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
 
       - name: Verify MSVC Environment
         if: matrix.os == 'windows-latest'
@@ -153,17 +156,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Set up Dart SDK
-        uses: dart-lang/setup-dart@v1
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1
         with:
           sdk: stable
 
       - name: Cache Build Artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: |
             .dart_tool/
@@ -219,3 +222,35 @@ jobs:
         run: |
           ASAN_LIB=$(gcc -print-file-name=libasan.so)
           LD_PRELOAD="$ASAN_LIB" NDARRAY_X86_FLAGS="none" dart test test/core/math_ufunc_test.dart test/core/sorting_searching_test.dart
+
+  wasm-test:
+    name: Test on Wasm (dart2wasm)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Set up Dart SDK
+        uses: dart-lang/setup-dart@2286a0c042b44434fe26d292bbce8d34f7ec662b # v1
+        with:
+          sdk: stable
+
+      - name: Cache WASI SDK, OpenBLAS Wasm128, & Native Objects
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            .dart_tool/wasm_sdk
+            .dart_tool/wasm_build/libopenblas_wasm128.a
+            .dart_tool/wasm_build/libopenblas_wasm128.stamp
+            .dart_tool/wasm_build/OpenBLAS-0.3.33/.wasm_normalization_stamp
+            .dart_tool/wasm_build/OpenBLAS-0.3.33/lapack-netlib/LAPACKE/include
+            .dart_tool/wasm_build/objs
+          key: Linux-wasm-test-v1-${{ hashFiles('tool/build_wasm.dart', 'pkgs/ndarray/hook/**', 'pkgs/openblas/hook/**', 'pkgs/pocketfft/hook/**') }}
+          restore-keys: |
+            Linux-wasm-test-v1-
+
+      - name: Install Dependencies
+        run: dart pub get
+
+      - name: Build native_math.wasm & Run Wasm Test Suite
+        run: dart run tool/build_wasm.dart --test-all --test-jobs=2
